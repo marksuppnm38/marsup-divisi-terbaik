@@ -648,6 +648,36 @@ function rupiah(n) {
   return 'Rp ' + Number(n).toLocaleString('id-ID');
 }
 
+async function removeBackground(base64) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = data.data;
+      // ambil warna pojok kiri atas sebagai warna background
+      const bgR = d[0], bgG = d[1], bgB = d[2];
+      const threshold = 30;
+      for (let i = 0; i < d.length; i += 4) {
+        const dr = Math.abs(d[i] - bgR);
+        const dg = Math.abs(d[i+1] - bgG);
+        const db = Math.abs(d[i+2] - bgB);
+        if (dr < threshold && dg < threshold && db < threshold) {
+          d[i+3] = 0; // transparan
+        }
+      }
+      ctx.putImageData(data, 0, 0);
+      resolve(canvas.toDataURL('image/png').split(',')[1]);
+    };
+    img.onerror = () => resolve(base64);
+    img.src = 'data:image/png;base64,' + base64;
+  });
+}
+
 // FETCH IMAGE AS BASE64
 async function fetchImageBase64(kode_asli, kode_produk) {
   const kodeForUrl = (kode_asli && kode_asli.trim()) ? kode_asli.trim() : kode_produk;
@@ -905,7 +935,9 @@ btnExport.addEventListener('click', async () => {
     const imgMap = {};
     setProgress(0, kodesArr.length, 'Mengambil thumbnail gambar…');
     const results = await Promise.all(kodesArr.map(k => fetchImageBase64(allKodesMap.get(k), k)));
-    kodesArr.forEach((k, i) => { if (results[i]) imgMap[k] = results[i]; });
+    await Promise.all(kodesArr.map(async (k, i) => {
+  if (results[i]) imgMap[k] = await removeBackground(results[i]);
+  }));
     setProgress(kodesArr.length, kodesArr.length, 'Gambar selesai…');
 
     setProgress(kodesArr.length, kodesArr.length, 'Membuat file Excel…');
