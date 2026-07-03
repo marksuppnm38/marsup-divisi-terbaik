@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Conversion Workspace — PT Pionir Nusantara Manufacturing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/tabler-icons.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f0f2f5;
+  --surface:#fff;
+  --surface-2:#f5f6f8;
+  --border:#e2e4e9;
+  --border-strong:#c8ccd6;
+  --text:#111827;
+  --text-secondary:#4b5563;
+  --text-muted:#9ca3af;
+  --accent:#1d5bd4;
+  --accent-bg:#eff4ff;
+  --accent-text:#1d4ed8;
+  --success:#15803d;
+  --success-bg:#f0fdf4;
+  --success-border:#86efac;
+  --danger:#b91c1c;
+  --danger-bg:#fff5f5;
+  --danger-border:#fca5a5;
+  --accent-hover:#1749b1;
+  --radius:10px;
+  --mono:'JetBrains Mono',monospace;
+}
+body[data-theme="dark"]{
+  --bg:#111318;
+  --surface:#1a1d24;
+  --surface-2:#22262e;
+  --border:#2c313b;
+  --border-strong:#3d4350;
+  --text:#e8eaed;
+  --text-secondary:#a8afbc;
+  --text-muted:#6b7280;
+  --accent:#5b8def;
+  --accent-bg:#1c2b45;
+  --accent-text:#7ba8f5;
+  --success:#4ade80;
+  --success-bg:#132a1c;
+  --success-border:#1f5c37;
+  --danger:#f87171;
+  --danger-bg:#3a1a1a;
+  --danger-border:#6b2b2b;
+  --accent-hover:#3f6fd6;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;height:100vh;display:flex;flex-direction:column;overflow:hidden;transition:background .2s,color .2s}
+
+/* HEADER */
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
+.logo{width:32px;height:32px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;flex-shrink:0}
+.logo-text{font-size:15px;font-weight:600}
+.logo-sub{font-size:11px;color:var(--text-muted)}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.clip-count{font-size:12px;color:var(--text-muted)}
+.clip-count span{font-weight:600;color:var(--accent)}
+
+/* LAYOUT */
+.workspace{display:flex;flex:1;overflow:hidden}
+
+/* PANEL KIRI */
+.panel-search{display:flex;flex-direction:column;flex:1;min-width:0;border-right:1px solid var(--border);overflow:hidden}
+.panel-header{padding:14px 16px 10px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.panel-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:10px}
+.search-wrap{position:relative;margin-bottom:8px}
+.search-wrap .ti-search{position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:16px;color:var(--text-muted);pointer-events:none}
+#search-input{width:100%;height:38px;padding:0 36px;font-size:14px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none;transition:border-color .15s,box-shadow .15s}
+#search-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,91,212,.08)}
+#search-input::placeholder{color:var(--text-muted)}
+.clear-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:16px;display:none;padding:2px;border-radius:4px;line-height:1}
+.clear-btn:hover{color:var(--text);background:var(--surface-2)}
+#autocomplete{position:absolute;top:42px;left:0;right:0;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);z-index:100;overflow:hidden;display:none}
+.ac-item{padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);transition:background .1s}
+.ac-item:last-child{border-bottom:none}
+.ac-item:hover,.ac-item.active{background:var(--accent-bg)}
+.ac-name{flex:1;font-size:13px}
+.ac-code{font-size:11px;color:var(--text-muted);font-family:var(--mono)}
+.ac-badge{font-size:10px;padding:1px 6px;border-radius:20px;background:var(--accent-bg);color:var(--accent-text);font-weight:500}
+.filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.filter-select{height:30px;padding:0 8px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;outline:none}
+.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s}
+.toggle-btn.on{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);font-weight:500}
+.panel-body{flex:1;overflow-y:auto;padding:10px 12px}
+#meta{font-size:12px;color:var(--text-muted);min-height:16px}
+.meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+#sort-select{flex-shrink:0}
+#results{display:flex;flex-direction:column;gap:6px}
+.rcard{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color .15s,box-shadow .15s;position:relative}
+.rcard:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(29,91,212,.08)}
+.rcard.selected{border-color:var(--accent);background:var(--accent-bg)}
+.rcard.selected::after{content:'\ea5e';font-family:'tabler-icons';position:absolute;top:10px;right:10px;font-size:16px;color:var(--accent)}
+.rcard-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;padding-right:20px}
+.rcard-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;flex:1}
+.tipe-badge{font-size:10px;font-weight:500;padding:2px 7px;border-radius:20px;white-space:nowrap;flex-shrink:0}
+.tipe-unit{background:var(--accent-bg);color:var(--accent-text)}
+.tipe-set{background:var(--success-bg);color:var(--success)}
+.tipe-other{background:var(--surface-2);color:var(--text-secondary)}
+.badge-katalog-yes{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px}
+.badge-katalog-no{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px}
+.rcard-meta{display:flex;flex-wrap:wrap;gap:3px 12px}
+.mi{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary)}
+.mi i{font-size:12px;color:var(--text-muted)}
+.mi span{font-family:var(--mono);font-size:11px}
+.mi.harga span{color:var(--success);font-weight:500}
+#hint{text-align:center;padding:40px 16px;color:var(--text-muted)}
+#hint i{font-size:36px;display:block;margin-bottom:8px;color:var(--border-strong)}
+#hint p{font-size:13px}
+#empty{display:none;text-align:center;padding:40px 16px;color:var(--text-muted)}
+#empty i{font-size:36px;display:block;margin-bottom:8px}
+#empty p{font-size:13px}
+#loading{display:none;text-align:center;padding:40px 16px;color:var(--text-muted);font-size:13px}
+#loading i{font-size:20px;animation:spin 1s linear infinite;display:inline-block;vertical-align:middle;margin-right:6px}
+#err{display:none;background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:var(--danger)}
+
+/* PANEL KANAN */
+.panel-clip{width:340px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
+.clip-header{padding:14px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0}
+.clip-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:10px}
+.form-group{margin-bottom:8px}
+.form-group label{font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px;font-weight:500}
+.form-group input{width:100%;height:32px;padding:0 10px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface-2);color:var(--text);outline:none;transition:border-color .15s}
+.form-group input:focus{border-color:var(--accent);background:var(--surface)}
+.clip-body{flex:1;overflow-y:auto;padding:10px 12px}
+.clip-empty{text-align:center;padding:32px 12px;color:var(--text-muted)}
+.clip-empty i{font-size:32px;display:block;margin-bottom:8px;color:var(--border-strong)}
+.clip-empty p{font-size:12px}
+.clip-item{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px}
+.clip-item-info{flex:1;min-width:0}
+.clip-item-name{font-size:12px;font-weight:500;color:var(--text);line-height:1.4;margin-bottom:2px}
+.clip-item-meta{display:flex;flex-wrap:wrap;gap:2px 10px}
+.clip-item-code{font-size:11px;font-family:var(--mono);color:var(--text-muted)}
+.clip-item-harga{font-size:11px;color:var(--success);font-weight:500}
+.clip-item-tipe{font-size:10px;padding:1px 6px;border-radius:20px;font-weight:500}
+.clip-remove{background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:15px;padding:1px;border-radius:4px;flex-shrink:0;line-height:1;margin-top:1px}
+.clip-remove:hover{color:var(--danger);background:var(--danger-bg)}
+.clip-item-right{display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0}
+.qty-ctrl{display:flex;align-items:center;gap:3px}
+.qty-btn{width:20px;height:20px;border:1px solid var(--border-strong);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;padding:0}
+.qty-btn:hover{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.qty-val{font-size:12px;font-weight:600;min-width:20px;text-align:center;font-family:var(--mono)}
+.clip-footer{padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0}
+.clip-summary{font-size:12px;color:var(--text-muted);margin-bottom:8px}
+.clip-summary span{font-weight:600;color:var(--text)}
+.btn-export{width:100%;height:38px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s}
+.btn-export:hover{background:var(--accent-hover)}
+.btn-export:disabled{background:var(--border-strong);cursor:not-allowed}
+.btn-clear-all{width:100%;height:30px;background:none;color:var(--text-muted);border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;cursor:pointer;margin-top:6px;transition:all .15s}
+.btn-clear-all:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-bg)}
+
+/* PROGRESS MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:none;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal-box{background:var(--surface);border-radius:var(--radius);padding:28px 32px;width:360px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.15)}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:6px}
+.modal-sub{font-size:13px;color:var(--text-muted);margin-bottom:20px}
+.progress-track{height:6px;background:var(--surface-2);border-radius:4px;overflow:hidden;margin-bottom:8px}
+.progress-fill{height:100%;background:var(--accent);border-radius:4px;transition:width .3s}
+.progress-label{font-size:12px;color:var(--text-muted)}
+
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
+
+/* MOBILE */
+@media(max-width:768px){
+  .workspace{flex-direction:column}
+  .panel-search{border-right:none;display:none;flex:1;overflow:hidden}
+  .panel-search.active{display:flex}
+  .panel-clip{width:100%;display:none;flex:1;overflow:hidden}
+  .panel-clip.active{display:flex}
+  .mobile-tabs{display:flex;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0}
+  .mobile-tab{flex:1;height:52px;border:none;background:none;font-family:inherit;font-size:11px;font-weight:500;color:var(--text-muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;transition:color .15s}
+  .mobile-tab i{font-size:20px}
+  .mobile-tab.active{color:var(--accent)}
+  .tab-badge{background:var(--accent);color:#fff;font-size:10px;font-weight:600;padding:1px 5px;border-radius:20px;min-width:16px;text-align:center;line-height:16px}
+}
+@media(min-width:769px){
+  .mobile-tabs{display:none}
+  .panel-search{display:flex !important}
+  .panel-clip{display:flex !important}
+}
+</style>
+</head>
+<body>
+<script>
+(function(){
+  const saved = localStorage.getItem('theme');
+  const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  if (theme === 'dark') document.body.setAttribute('data-theme', 'dark');
+})();
+</script>
+
+<header>
+  <div class="logo"><i class="ti ti-building-hospital"></i></div>
+  <div>
+    <div class="logo-text">PT Pionir Nusantara Manufacturing</div>
+    <div class="logo-sub">Conversion Workspace</div>
+  </div>
+  <div class="header-right">
+    <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
+    <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><i class="ti ti-moon" id="theme-icon"></i></button>
+  </div>
+</header>
+
+<div class="workspace">
+  <!-- PANEL KIRI: SEARCH -->
+  <div class="panel-search" id="panel-search">
+    <div class="panel-header">
+      <div class="panel-title"><i class="ti ti-search" style="font-size:11px"></i> Cari Produk</div>
+      <div class="search-wrap">
+        <i class="ti ti-search"></i>
+        <input id="search-input" type="search" placeholder="Nama produk, kode, AKD, KFA…" autocomplete="off"/>
+        <button class="clear-btn" id="clear-btn"><i class="ti ti-x"></i></button>
+        <div id="autocomplete"></div>
+      </div>
+      <div class="filters">
+        <button class="toggle-btn tipe-btn" id="ti-instrument" data-tipe="INSTRUMENT"><i class="ti ti-tools"></i> Instrumen</button>
+        <button class="toggle-btn tipe-btn" id="ti-set" data-tipe="SET"><i class="ti ti-packages"></i> Set</button>
+        <button class="toggle-btn tipe-btn" id="ti-unit" data-tipe="UNIT"><i class="ti ti-device-desktop"></i> Unit</button>
+        <button class="toggle-btn" id="takd"><i class="ti ti-certificate"></i> AKD</button>
+        <button class="toggle-btn" id="tswasta"><i class="ti ti-building-store"></i> Harga Swasta</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div id="err"></div>
+      <div class="meta-row">
+        <div id="meta"></div>
+        <select class="filter-select" id="sort-select" style="display:none">
+          <option value="relevance">Paling relevan</option>
+          <option value="harga_desc">Harga: Tertinggi</option>
+          <option value="harga_asc">Harga: Terendah</option>
+        </select>
+      </div>
+      <div id="hint"><i class="ti ti-search"></i><p>Ketik untuk mulai mencari produk.<br>Klik hasil untuk menambahkan ke clipboard.</p></div>
+      <div id="loading"><i class="ti ti-loader-2"></i> Mencari…</div>
+      <div id="empty"><i class="ti ti-search-off"></i><p>Produk tidak ditemukan.<br>Coba kata kunci lain.</p></div>
+      <div id="results"></div>
+    </div>
+  </div>
+
+  <!-- PANEL KANAN: CLIPBOARD -->
+  <div class="panel-clip" id="panel-clip">
+    <div class="clip-header">
+      <div class="clip-title"><i class="ti ti-clipboard" style="font-size:11px"></i> Clipboard Konversi</div>
+      <div class="form-group">
+        <label>Nama RS / Instansi</label>
+        <input id="inp-rs" type="text" placeholder="contoh: RSUD Dr. Soetomo"/>
+      </div>
+      <div class="form-group">
+        <label>Nama Sales</label>
+        <input id="inp-sales" type="text" placeholder="Nama sales"/>
+      </div>
+    </div>
+    <div class="clip-body">
+      <div class="clip-empty" id="clip-empty">
+        <i class="ti ti-clipboard"></i>
+        <p>Belum ada produk.<br>Klik hasil pencarian untuk menambahkan.</p>
+      </div>
+      <div id="clip-list"></div>
+    </div>
+    <div class="clip-footer">
+      <div class="clip-summary">Total: <span id="clip-total">0</span> produk dipilih</div>
+      <button class="btn-export" id="btn-export" disabled>
+        <i class="ti ti-file-spreadsheet"></i> Export ke Excel
+      </button>
+      <button class="btn-clear-all" id="btn-clear-all">Hapus semua</button>
+    </div>
+  </div>
+</div>
+
+<!-- MOBILE TABS -->
+<div class="mobile-tabs">
+  <button class="mobile-tab active" id="tab-search" onclick="switchTab('search')">
+    <i class="ti ti-search"></i>
+    <span>Cari Produk</span>
+  </button>
+  <button class="mobile-tab" id="tab-clip" onclick="switchTab('clip')">
+    <i class="ti ti-clipboard"></i>
+    <span>Clipboard <span class="tab-badge" id="tab-badge" style="display:none">0</span></span>
+  </button>
+</div>
+
+<!-- PROGRESS MODAL -->
+<div class="modal-overlay" id="export-modal">
+  <div class="modal-box">
+    <div class="modal-title">Menyiapkan Export…</div>
+    <div class="modal-sub" id="modal-sub">Mengambil data dan gambar produk</div>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <div class="progress-label" id="progress-label">0 / 0</div>
+  </div>
+</div>
+
+<!-- LAMPIRAN GALLERY MODAL -->
+<div class="modal-overlay" id="lampiran-modal">
+  <div class="modal-box" style="width:90vw;max-width:760px;max-height:88vh;overflow-y:auto;text-align:left;padding:20px 24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div class="modal-title" id="lampiran-title" style="margin:0">Lampiran Produk</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button id="lampiran-ganti-btn" style="display:none;border:1px solid var(--accent-text);background:var(--accent-bg);color:var(--accent-text);font-size:12px;font-weight:500;padding:6px 12px;border-radius:20px;cursor:pointer;white-space:nowrap">Ganti Lampiran</button>
+        <button id="lampiran-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
+      </div>
+    </div>
+    <div id="lampiran-status" style="font-size:13px;color:var(--text-muted);padding:24px 0;text-align:center">Memuat lampiran…</div>
+    <div id="lampiran-picker" style="display:none;margin-bottom:14px">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">PDF tidak ketemu otomatis. Cari & klik file brosur yang sesuai:</div>
+      <input type="text" id="lampiran-search-input" placeholder="Ketik untuk cari nama file PDF…" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px"/>
+      <div id="lampiran-suggest-list" style="margin-top:6px;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;display:none"></div>
+    </div>
+    <div id="lampiran-save-row" style="display:none;margin-bottom:14px;padding:10px;background:var(--surface-2);border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <span style="font-size:12px;color:var(--text-muted)">Simpan pilihan ini supaya otomatis kebuka lain kali?</span>
+      <button id="lampiran-save-btn" style="font-size:12px;padding:6px 12px;border-radius:8px;border:none;background:var(--success);color:#fff;cursor:pointer;white-space:nowrap">Simpan</button>
+    </div>
+    <div id="lampiran-pages" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div>
+</div>
+
+
+<script>
+const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
+const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
+const LAMPIRAN_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/lampiran-unit/';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+const lampiranModal = document.getElementById('lampiran-modal');
+const lampiranTitle = document.getElementById('lampiran-title');
+const lampiranStatus = document.getElementById('lampiran-status');
+const lampiranPages = document.getElementById('lampiran-pages');
+const lampiranPicker = document.getElementById('lampiran-picker');
+const lampiranSearchInput = document.getElementById('lampiran-search-input');
+const lampiranSuggestList = document.getElementById('lampiran-suggest-list');
+const lampiranSaveRow = document.getElementById('lampiran-save-row');
+const lampiranSaveBtn = document.getElementById('lampiran-save-btn');
+const lampiranGantiBtn = document.getElementById('lampiran-ganti-btn');
+document.getElementById('lampiran-close').addEventListener('click', () => lampiranModal.classList.remove('show'));
+lampiranModal.addEventListener('click', (e) => { if (e.target === lampiranModal) lampiranModal.classList.remove('show'); });
+
+let lampiranBucketFiles = null; // cache daftar file di bucket
+let lampiranCurrentProdukId = null;
+let lampiranCurrentKode = null;
+let lampiranCurrentFilename = null;
+
+async function getProdukId(kode_produk) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/produk?kode_produk=eq.${encodeURIComponent(kode_produk)}&select=id&limit=1`, {
+    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY}
+  });
+  const data = await r.json();
+  return (data && data.length) ? data[0].id : null;
+}
+
+async function getSavedBrosurUrl(produk_id) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/produk_media?produk_id=eq.${produk_id}&jenis=eq.brosur&select=url&limit=1`, {
+    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY}
+  });
+  const data = await r.json();
+  return (data && data.length) ? data[0].url : null;
+}
+
+async function listLampiranBucket() {
+  if (lampiranBucketFiles) return lampiranBucketFiles;
+  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/list/lampiran-unit`, {
+    method: 'POST',
+    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY,'Content-Type':'application/json'},
+    body: JSON.stringify({prefix:'', limit:1000, offset:0, sortBy:{column:'name',order:'asc'}})
+  });
+  const data = await r.json();
+  lampiranBucketFiles = (Array.isArray(data) ? data : []).map(f => f.name).filter(n => n && n.toLowerCase().endsWith('.pdf'));
+  return lampiranBucketFiles;
+}
+
+function renderSuggestList(filterText) {
+  const q = (filterText||'').toLowerCase().trim();
+  const files = lampiranBucketFiles || [];
+  const matches = q ? files.filter(f => f.toLowerCase().includes(q)) : files;
+  if (!matches.length) {
+    lampiranSuggestList.innerHTML = `<div style="padding:10px;font-size:12px;color:var(--text-muted)">Tidak ada file yang cocok.</div>`;
+    lampiranSuggestList.style.display = 'block';
+    return;
+  }
+  lampiranSuggestList.innerHTML = matches.slice(0, 50).map(f =>
+    `<div class="lampiran-suggest-item" data-file="${f.replace(/"/g,'&quot;')}" style="padding:8px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)">${f}</div>`
+  ).join('');
+  lampiranSuggestList.style.display = 'block';
+  lampiranSuggestList.querySelectorAll('.lampiran-suggest-item').forEach(el => {
+    el.addEventListener('mouseenter', () => el.style.background = 'var(--surface-2)');
+    el.addEventListener('mouseleave', () => el.style.background = '');
+    el.addEventListener('click', () => selectLampiranFile(el.dataset.file));
+  });
+}
+
+async function selectLampiranFile(filename) {
+  lampiranCurrentFilename = filename;
+  lampiranSearchInput.value = filename;
+  lampiranSuggestList.style.display = 'none';
+  const url = LAMPIRAN_BASE + encodeURIComponent(filename);
+  try {
+    await renderPdfFromUrl(url);
+    lampiranSaveRow.style.display = 'flex';
+    lampiranGantiBtn.style.display = 'inline-block';
+  } catch (e) {
+    lampiranStatus.style.display = 'block';
+    lampiranStatus.textContent = 'Gagal buka file itu: ' + (e.message||e);
+  }
+}
+
+lampiranSearchInput.addEventListener('input', () => renderSuggestList(lampiranSearchInput.value));
+lampiranSearchInput.addEventListener('focus', () => renderSuggestList(lampiranSearchInput.value));
+
+async function renderPdfFromUrl(pdfUrl) {
+  lampiranPages.innerHTML = '';
+  lampiranStatus.style.display = 'block';
+  lampiranStatus.textContent = 'Memuat PDF…';
+  const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+  lampiranStatus.textContent = `Merender ${pdf.numPages} halaman…`;
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const img = document.createElement('img');
+    img.src = canvas.toDataURL('image/jpeg', 0.85);
+    img.style.cssText = 'width:100%;border:1px solid var(--border);border-radius:8px;display:block';
+    lampiranPages.appendChild(img);
+    lampiranStatus.textContent = `Merender halaman ${p} / ${pdf.numPages}…`;
+  }
+  lampiranStatus.style.display = 'none';
+}
+
+// versi headless (tanpa render ke DOM) buat dipakai di export Excel
+async function getPdfPagesBase64(pdfUrl, scale = 1.5) {
+  const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+  const pages = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    pages.push({
+      base64: canvas.toDataURL('image/jpeg', 0.85).split(',')[1],
+      width: viewport.width,
+      height: viewport.height
+    });
+  }
+  return pages;
+}
+
+// ambil halaman lampiran (PDF) suatu kode produk, pakai prioritas yg sama dgn modal: saved url -> auto match -> kosong
+async function getLampiranPagesForKode(kode_produk) {
+  function filenameFromUrl(url) {
+    try {
+      const last = url.split('/').pop().split('?')[0];
+      return decodeURIComponent(last).replace(/\.pdf$/i, '');
+    } catch (e) { return kode_produk; }
+  }
+  try {
+    const produk_id = await getProdukId(kode_produk);
+    if (produk_id) {
+      const savedUrl = await getSavedBrosurUrl(produk_id);
+      if (savedUrl) {
+        try {
+          const pages = await getPdfPagesBase64(savedUrl);
+          return { filename: filenameFromUrl(savedUrl), pages };
+        } catch (e) { /* lanjut coba auto */ }
+      }
+    }
+  } catch (e) {}
+  const autoUrl = LAMPIRAN_BASE + encodeURIComponent(kode_produk) + '.pdf';
+  try {
+    const pages = await getPdfPagesBase64(autoUrl);
+    return { filename: filenameFromUrl(autoUrl), pages };
+  } catch (e) {
+    return { filename: kode_produk, pages: [] };
+  }
+}
+
+async function openLampiranModal(kode_produk) {
+  lampiranTitle.textContent = 'Lampiran — ' + kode_produk;
+  lampiranPages.innerHTML = '';
+  lampiranPicker.style.display = 'none';
+  lampiranSuggestList.style.display = 'none';
+  lampiranSearchInput.value = '';
+  lampiranSaveRow.style.display = 'none';
+  lampiranGantiBtn.style.display = 'none';
+  lampiranSaveBtn.disabled = false;
+  lampiranSaveBtn.textContent = 'Simpan';
+  lampiranStatus.style.display = 'block';
+  lampiranStatus.textContent = 'Memuat lampiran…';
+  lampiranModal.classList.add('show');
+  lampiranCurrentKode = kode_produk;
+  lampiranCurrentFilename = null;
+
+  const produk_id = await getProdukId(kode_produk);
+  lampiranCurrentProdukId = produk_id;
+
+  // 1. Cek apakah sudah ada link tersimpan manual di produk_media
+  if (produk_id) {
+    const savedUrl = await getSavedBrosurUrl(produk_id);
+    if (savedUrl) {
+      try {
+        await renderPdfFromUrl(savedUrl);
+        lampiranGantiBtn.style.display = 'inline-block';
+        return;
+      }
+      catch (e) { /* lanjut coba cara lain */ }
+    }
+  }
+
+  // 2. Coba auto-match kode_produk.pdf
+  const autoUrl = LAMPIRAN_BASE + encodeURIComponent(kode_produk) + '.pdf';
+  try {
+    await renderPdfFromUrl(autoUrl);
+    lampiranGantiBtn.style.display = 'inline-block';
+    return;
+  } catch (e) {
+    // 3. Gagal — tampilkan picker dengan daftar suggestion
+    await showLampiranPicker();
+  }
+}
+
+async function showLampiranPicker() {
+  lampiranPages.innerHTML = '';
+  lampiranGantiBtn.style.display = 'none';
+  lampiranStatus.style.display = 'block';
+  lampiranStatus.textContent = 'Pilih file lampiran PDF:';
+  lampiranPicker.style.display = 'block';
+  lampiranSearchInput.value = '';
+  try {
+    await listLampiranBucket();
+    renderSuggestList('');
+  } catch (e2) {
+    lampiranStatus.textContent = 'Gagal mengambil daftar file dari bucket: ' + (e2.message||e2);
+  }
+}
+
+lampiranGantiBtn.addEventListener('click', () => { showLampiranPicker(); });
+
+lampiranSaveBtn.addEventListener('click', async () => {
+  if (!lampiranCurrentProdukId || !lampiranCurrentFilename) return;
+  lampiranSaveBtn.disabled = true;
+  lampiranSaveBtn.textContent = 'Menyimpan…';
+  try {
+    const url = LAMPIRAN_BASE + encodeURIComponent(lampiranCurrentFilename);
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/produk_media`, {
+      method: 'POST',
+      headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
+      body: JSON.stringify({
+        produk_id: lampiranCurrentProdukId,
+        jenis: 'brosur',
+        judul: lampiranCurrentFilename,
+        url: url,
+        is_primary: true,
+        urutan: 1
+      })
+    });
+    if (!r.ok) throw new Error(await r.text());
+    lampiranSaveBtn.textContent = 'Tersimpan ✓';
+  } catch (e) {
+    lampiranSaveBtn.disabled = false;
+    lampiranSaveBtn.textContent = 'Simpan';
+    alert('Gagal simpan: ' + (e.message||e));
+  }
+});
+
+// STATE
+let clipboard = [];
+let acItems = [], acIndex = -1, onlyAkd = false, selectedTipe = null, acTimer = null;
+let lastResults = [];
+let modeSwasta = false;
+let sortMode = 'relevance';
+
+// ELEMENTS
+const searchInput = document.getElementById('search-input');
+const clearBtn = document.getElementById('clear-btn');
+const acBox = document.getElementById('autocomplete');
+const resultsEl = document.getElementById('results');
+const metaEl = document.getElementById('meta');
+const loadingEl = document.getElementById('loading');
+const emptyEl = document.getElementById('empty');
+const hintEl = document.getElementById('hint');
+const errEl = document.getElementById('err');
+const tipeBtns = document.querySelectorAll('.tipe-btn');
+const takd = document.getElementById('takd');
+const tswasta = document.getElementById('tswasta');
+const sortSelect = document.getElementById('sort-select');
+const clipList = document.getElementById('clip-list');
+const clipEmpty = document.getElementById('clip-empty');
+const clipTotal = document.getElementById('clip-total');
+const hdrCount = document.getElementById('hdr-count');
+const btnExport = document.getElementById('btn-export');
+const btnClearAll = document.getElementById('btn-clear-all');
+const inpRs = document.getElementById('inp-rs');
+const inpSales = document.getElementById('inp-sales');
+const exportModal = document.getElementById('export-modal');
+const progressFill = document.getElementById('progress-fill');
+const progressLabel = document.getElementById('progress-label');
+const modalSub = document.getElementById('modal-sub');
+const themeToggle = document.getElementById('theme-toggle');
+const themeIcon = document.getElementById('theme-icon');
+
+// DARK MODE
+function setThemeIcon() {
+  const isDark = document.body.getAttribute('data-theme') === 'dark';
+  themeIcon.className = isDark ? 'ti ti-sun' : 'ti ti-moon';
+}
+setThemeIcon();
+themeToggle.addEventListener('click', () => {
+  const isDark = document.body.getAttribute('data-theme') === 'dark';
+  if (isDark) {
+    document.body.removeAttribute('data-theme');
+    localStorage.setItem('theme', 'light');
+  } else {
+    document.body.setAttribute('data-theme', 'dark');
+    localStorage.setItem('theme', 'dark');
+  }
+  setThemeIcon();
+});
+
+// SUPABASE
+async function rpc(fn, params) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY},
+    body: JSON.stringify(params)
+  });
+  const data = await res.json();
+  if (!res.ok) return {data:null, error:data};
+  return {data, error:null};
+}
+
+function rupiah(n) {
+  if (!n && n !== 0) return '—';
+  return 'Rp ' + Number(n).toLocaleString('id-ID');
+}
+
+// FETCH IMAGE AS BASE64
+async function fetchImageBase64(kode_asli, kode_produk) {
+  const kodeForUrl = (kode_asli && kode_asli.trim()) ? kode_asli.trim() : kode_produk;
+  try {
+    const url = THUMB_BASE + kodeForUrl + '.png';
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+// AUTOCOMPLETE
+async function runAutocomplete(q) { acBox.style.display = 'none'; }
+
+// SEARCH
+async function runSearch() {
+  const q = searchInput.value.trim();
+  if (!q) { reset(); return; }
+  errEl.style.display = 'none';
+  hintEl.style.display = 'none';
+  loadingEl.style.display = 'block';
+  resultsEl.innerHTML = '';
+  emptyEl.style.display = 'none';
+  metaEl.textContent = '';
+
+  const {data, error} = await rpc('search_produk_dengan_harga', {
+    q, p_tipe: selectedTipe, only_akd: onlyAkd, only_kfa: false
+  });
+  loadingEl.style.display = 'none';
+
+  if (error) { errEl.textContent = 'Error: '+(error.message||JSON.stringify(error)); errEl.style.display='block'; return; }
+  if (!data || !data.length) { emptyEl.style.display='block'; metaEl.textContent='Tidak ada hasil untuk "'+q+'"'; return; }
+
+  lastResults = data;
+  sortSelect.style.display = 'inline-block';
+  applySort();
+  metaEl.textContent = data.length + ' produk ditemukan — klik untuk tambah ke clipboard';
+  renderResults(lastResults);
+}
+
+// SORT
+function applySort() {
+  if (sortMode === 'relevance') return; // urutan asli dari backend (score DESC)
+  const field = modeSwasta ? 'harga_swasta' : 'harga_ekat';
+  const dir = sortMode === 'harga_asc' ? 1 : -1;
+  lastResults.sort((a, b) => {
+    const av = a[field], bv = b[field];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;  // produk tanpa harga ditaruh paling bawah
+    if (bv == null) return -1;
+    return (av - bv) * dir;
+  });
+}
+
+function renderResults(data) {
+  resultsEl.innerHTML = data.map((r, i) => {
+    const inClip = clipboard.some(c => c.kode_produk === r.kode_produk);
+    const isSet = r.tipe && r.tipe.toUpperCase() === 'SET';
+    const tipeClass = isSet ? 'tipe-set' : (r.tipe && r.tipe.toUpperCase() === 'UNIT') ? 'tipe-unit' : 'tipe-other';
+    const hargaTampil = modeSwasta ? r.harga_swasta : r.harga_ekat;
+    const tahunTampil = modeSwasta ? r.tahun_harga_swasta : r.tahun_harga;
+    const labelHarga = modeSwasta ? 'Harga Swasta' : 'Harga belum ada';
+    return `<div class="rcard${inClip?' selected':''}" data-kode="${r.kode_produk}">
+      <div class="rcard-top">
+        <span class="rcard-name">${r.nama_produk||'—'}</span>
+        ${r.tipe?`<span class="tipe-badge ${tipeClass}">${r.tipe}</span>`:''}
+      </div>
+      <div class="rcard-meta">
+        <span class="mi"><i class="ti ti-barcode"></i><span>${r.kode_produk||'—'}</span></span>
+        ${r.no_akd?`<span class="mi"><i class="ti ti-certificate"></i><span>${r.no_akd}</span></span>`:''}
+        ${r.kode_kfa?`<span class="mi"><i class="ti ti-tag"></i><span>${r.kode_kfa}</span></span>`:''}
+        ${hargaTampil?`<span class="mi harga"><i class="ti ti-coin-rupee"></i><span>${rupiah(hargaTampil)}${tahunTampil?' · '+tahunTampil:''}</span></span>`:`<span class="mi"><i class="ti ti-coin-rupee"></i><span style="color:var(--text-muted)">${modeSwasta?'Harga swasta belum ada':'Harga belum ada'}</span></span>`}
+      </div>
+      <div style="margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+        ${modeSwasta ? '<span></span>' : (r.link_v6
+          ?`<span class="badge-katalog-yes"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</span>`
+          :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
+        )}
+        ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
+        ${r.tipe==='UNIT'?`<button class="btn-lampiran" data-kode="${r.kode_produk}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>`:''}
+        ${!inClip?`<span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambah</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  resultsEl.querySelectorAll('.rcard').forEach(el => {
+    el.addEventListener('click', () => addToClip(el.dataset.kode));
+  });
+  resultsEl.querySelectorAll('.btn-lampiran').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openLampiranModal(btn.dataset.kode);
+    });
+  });
+}
+
+// CLIPBOARD
+function addToClip(kode) {
+  const r = lastResults.find(x => x.kode_produk === kode);
+  if (!r) return;
+  if (clipboard.some(c => c.kode_produk === r.kode_produk)) { removeFromClip(r.kode_produk); return; }
+  const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
+  clipboard.push({
+    kode_produk: r.kode_produk,
+    kode_asli: r.kode_asli || null,
+    nama_produk: r.nama_produk,
+    tipe: r.tipe,
+    is_set: isSet,
+    produk_id: r.id || null,
+    no_akd: r.no_akd,
+    kode_kfa: r.kode_kfa,
+    link_v6: r.link_v6,
+    harga_ekat: r.harga_ekat || null,
+    tahun_harga: r.tahun_harga || null,
+    harga_swasta: r.harga_swasta || null,
+    tahun_harga_swasta: r.tahun_harga_swasta || null,
+    qty: 1
+  });
+  updateClipboard();
+  renderResults(lastResults);
+}
+
+function removeFromClip(kode) {
+  clipboard = clipboard.filter(c => c.kode_produk !== kode);
+  updateClipboard();
+  renderResults(lastResults);
+}
+
+function updateClipboard() {
+  const n = clipboard.length;
+  hdrCount.textContent = n;
+  clipTotal.textContent = n;
+  btnExport.disabled = n === 0;
+  clipEmpty.style.display = n === 0 ? 'block' : 'none';
+  const tabBadge = document.getElementById('tab-badge');
+  if (tabBadge) { tabBadge.textContent = n; tabBadge.style.display = n > 0 ? 'inline-block' : 'none'; }
+
+  clipList.innerHTML = clipboard.map(item => {
+    const isSet = item.is_set;
+    const tipeColor = isSet ? 'background:var(--success-bg);color:var(--success)' : 'background:var(--accent-bg);color:var(--accent-text)';
+    const hargaTampil = modeSwasta ? item.harga_swasta : item.harga_ekat;
+    const totalHarga = hargaTampil ? hargaTampil * item.qty : null;
+    return `<div class="clip-item">
+      <div class="clip-item-info">
+        <div class="clip-item-name">${item.nama_produk}</div>
+        <div class="clip-item-meta">
+          <span class="clip-item-code">${item.kode_produk}</span>
+          <span class="clip-item-tipe" style="${tipeColor}">${item.tipe||'—'}</span>
+          ${hargaTampil?`<span class="clip-item-harga">${rupiah(totalHarga)}</span>`:'<span class="clip-item-code" style="color:var(--text-muted)">Harga N/A</span>'}
+        </div>
+      </div>
+      <div class="clip-item-right">
+        <div class="qty-ctrl">
+          <button class="qty-btn" data-kode="${item.kode_produk}" data-d="-1">−</button>
+          <span class="qty-val">${item.qty}</span>
+          <button class="qty-btn" data-kode="${item.kode_produk}" data-d="1">+</button>
+          <button class="clip-remove" data-kode="${item.kode_produk}" title="Hapus" style="margin-left:2px;width:20px;height:20px;border:1px solid var(--danger-border);border-radius:4px;color:var(--danger);background:var(--danger-bg);font-size:13px">×</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  clipList.querySelectorAll('.clip-remove').forEach(btn => {
+    btn.addEventListener('click', () => removeFromClip(btn.dataset.kode));
+  });
+  clipList.querySelectorAll('.qty-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = clipboard.find(c => c.kode_produk === btn.dataset.kode);
+      if (!item) return;
+      item.qty = Math.max(1, item.qty + parseInt(btn.dataset.d));
+      updateClipboard();
+    });
+  });
+}
+
+// PROGRESS
+function setProgress(current, total, label) {
+  const pct = total > 0 ? Math.round((current/total)*100) : 0;
+  progressFill.style.width = pct + '%';
+  progressLabel.textContent = `${current} / ${total}`;
+  if (label) modalSub.textContent = label;
+}
+
+// GET SET ITEMS
+async function getSetItems(kode_produk) {
+  const r1 = await fetch(`${SUPABASE_URL}/rest/v1/produk?kode_produk=eq.${encodeURIComponent(kode_produk)}&select=id&limit=1`, {
+    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY}
+  });
+  const prodList = await r1.json();
+  if (!prodList || !prodList.length) return [];
+  const set_id = prodList[0].id;
+  
+  const r2 = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_set_items`, {
+    method: 'POST',
+    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY,'Content-Type':'application/json'},
+    body: JSON.stringify({p_set_id: set_id})
+  });
+  const data = await r2.json();
+  return data || [];
+}
+
+// EXPORT EXCEL
+btnExport.addEventListener('click', async () => {
+  const namaRs = inpRs.value.trim() || 'RS';
+  const namaSales = inpSales.value.trim() || 'Sales';
+  const tanggal = new Date().toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'});
+  const filename = `CONVERTED${modeSwasta?'-SWASTA':''}-${namaSales.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${namaRs.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${tanggal}.xlsx`;
+
+  exportModal.classList.add('show');
+  setProgress(0, 1, 'Menyiapkan data…');
+
+  try {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'PT Pionir Nusantara Manufacturing';
+    wb.created = new Date();
+
+    // ── COLLECT ALL ITEMS NEEDED FOR IMAGE FETCH ──
+    const sets = clipboard.filter(i => i.is_set);
+    const satuans = clipboard.filter(i => !i.is_set && i.tipe !== 'UNIT');
+
+    // fetch set items
+    setProgress(0, sets.length + 1, 'Mengambil rincian set…');
+    const setItemsMap = {};
+    for (let s = 0; s < sets.length; s++) {
+      const items = await getSetItems(sets[s].kode_produk);
+      setItemsMap[sets[s].kode_produk] = items;
+      setProgress(s+1, sets.length + 1, `Mengambil rincian: ${sets[s].nama_produk}`);
+    }
+
+    // collect all items needing images (keep kode_produk as map key, kode_asli for URL)
+    const allKodesMap = new Map(); // kode_produk -> kode_asli
+    clipboard.forEach(item => {
+      if (!item.is_set && item.tipe !== 'UNIT') allKodesMap.set(item.kode_produk, item.kode_asli);
+      else if (setItemsMap[item.kode_produk]) {
+        setItemsMap[item.kode_produk].forEach(si => allKodesMap.set(si.kode_produk, si.kode_asli));
+      }
+    });
+    const kodesArr = [...allKodesMap.keys()];
+
+    // fetch all images (using kode_asli for the URL, fallback to kode_produk)
+    const imgMap = {};
+    setProgress(0, kodesArr.length, 'Mengambil thumbnail gambar…');
+    const results = await Promise.all(kodesArr.map(k => fetchImageBase64(allKodesMap.get(k), k)));
+    kodesArr.forEach((k, i) => { if (results[i]) imgMap[k] = results[i]; });
+    setProgress(kodesArr.length, kodesArr.length, 'Gambar selesai…');
+
+    setProgress(kodesArr.length, kodesArr.length, 'Membuat file Excel…');
+
+    // ── HELPER: ADD IMAGE TO SHEET ──
+    function addImg(ws, b64, row, col, w=80, h=80) {
+      if (!b64) return;
+      try {
+        const imgId = wb.addImage({ base64: b64, extension: 'png' });
+        ws.addImage(imgId, {
+          tl: { col: col - 0.9, row: row - 0.9 },
+          ext: { width: w, height: h }
+        });
+      } catch(e) {}
+    }
+
+    // ── SHEET 1: SUMMARY ──
+    const wsSummary = wb.addWorksheet('SUMMARY');
+    // header info
+    wsSummary.getRow(1).getCell(1).value = 'DOKUMEN KONVERSI INSTRUMEN';
+    wsSummary.getRow(1).getCell(1).font = {bold:true, size:13};
+    wsSummary.getRow(2).getCell(1).value = 'PT Pionir Nusantara Manufacturing';
+    wsSummary.getRow(2).getCell(1).font = {italic:true, color:{argb:'FF4B5563'}};
+    wsSummary.getRow(3).getCell(1).value = 'RS / Instansi'; wsSummary.getRow(3).getCell(2).value = namaRs;
+    wsSummary.getRow(4).getCell(1).value = 'Nama Sales';    wsSummary.getRow(4).getCell(2).value = namaSales;
+    wsSummary.getRow(5).getCell(1).value = 'Tanggal';       wsSummary.getRow(5).getCell(2).value = tanggal;
+    wsSummary.getRow(6).getCell(1).value = '';
+
+    // column headers (dinamis sesuai mode)
+    const sumHdrRow = wsSummary.getRow(7);
+    const sumHeaders = modeSwasta
+      ? ['No.','Kode Produk','Nama Produk / Deskripsi','QTY','Harga Swasta','Total Harga']
+      : ['No.','Kode Produk','Nama Produk / Deskripsi','QTY','Harga e-Kat','Total Harga','Link e-Katalog v6'];
+    sumHeaders.forEach((h,i) => {
+      const cell = sumHdrRow.getCell(i+1);
+      cell.value = h;
+      cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
+      cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF1D5BD4'}};
+      cell.alignment = {vertical:'middle', horizontal:'center'};
+      cell.border = {bottom:{style:'thin',color:{argb:'FFE2E4E9'}}};
+    });
+    sumHdrRow.height = 22;
+    wsSummary.columns = modeSwasta
+      ? [{width:5},{width:24},{width:50},{width:8},{width:18},{width:18}]
+      : [{width:5},{width:24},{width:50},{width:8},{width:18},{width:18},{width:45}];
+
+    let sumRow = 8;
+    let grandTotal = 0;
+    clipboard.forEach((item, idx) => {
+      const row = wsSummary.getRow(sumRow);
+      const hargaPakai = modeSwasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
+      const total = hargaPakai * (item.qty || 1);
+      grandTotal += total;
+      row.getCell(1).value = idx + 1;
+      row.getCell(2).value = item.kode_produk;
+      row.getCell(3).value = item.nama_produk;
+      row.getCell(4).value = item.qty || 1;
+      row.getCell(5).value = hargaPakai || '';
+      row.getCell(6).value = total || '';
+      if (!modeSwasta && item.link_v6) {
+        row.getCell(7).value = {text:'Lihat di e-Katalog', hyperlink: item.link_v6};
+        row.getCell(7).font = {color:{argb:'FF1D4ED8'}, underline:true};
+      }
+      // zebra
+      const zebraCount = modeSwasta ? 6 : 7;
+      if (idx % 2 === 0) {
+        Array.from({length: zebraCount}, (_,c)=>c+1).forEach(c => {
+          row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
+        });
+      }
+      row.alignment = {vertical:'middle'};
+      sumRow++;
+    });
+
+    // total row
+    const totRow = wsSummary.getRow(sumRow);
+    totRow.getCell(3).value = 'GRAND TOTAL';
+    totRow.getCell(3).font = {bold:true};
+    totRow.getCell(6).value = grandTotal;
+    totRow.getCell(6).font = {bold:true};
+    totRow.getCell(6).numFmt = '#,##0';
+
+    // format harga cols
+    for (let r = 8; r <= sumRow; r++) {
+      wsSummary.getRow(r).getCell(5).numFmt = '#,##0';
+      wsSummary.getRow(r).getCell(6).numFmt = '#,##0';
+    }
+
+    // ── SHEETS PER SET ──
+    for (const setItem of sets) {
+      const items = setItemsMap[setItem.kode_produk] || [];
+      const sheetName = setItem.nama_produk.replace(/[\\\/\?\*\[\]:]/g,'').substring(0,31);
+      const ws = wb.addWorksheet(sheetName);
+
+      // header
+      ws.getRow(1).getCell(1).value = setItem.nama_produk;
+      ws.getRow(1).getCell(1).font = {bold:true, size:13, color:{argb:'FF1D5BD4'}};
+      ws.getRow(1).getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFEFF4FF'}};
+      ws.mergeCells('A1:E1');
+      ws.getRow(1).height = 30;
+
+      ws.getRow(2).getCell(1).value = 'PT Pionir Nusantara Manufacturing';
+      ws.getRow(2).getCell(1).font = {italic:true, size:10, color:{argb:'FF4B5563'}};
+      ws.mergeCells('A2:E2');
+
+      ws.getRow(3).getCell(1).value = '';
+
+      const hdrRow = ws.getRow(4);
+      ['NO','KODE PNM','DESKRIPSI BARANG','QTY','GAMBAR'].forEach((h, i) => {
+        const cell = hdrRow.getCell(i+1);
+        cell.value = h;
+        cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
+        cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF1D5BD4'}};
+        cell.alignment = {vertical:'middle', horizontal:'center'};
+      });
+      hdrRow.height = 22;
+
+      ws.columns = [{width:6},{width:24},{width:45},{width:8},{width:18}];
+
+      for (let idx = 0; idx < items.length; idx++) {
+        const si = items[idx];
+        const dataRow = 5 + idx;
+        const row = ws.getRow(dataRow);
+        row.height = 70;
+        row.getCell(1).value = si.urutan || idx+1;
+        row.getCell(2).value = si.kode_produk;
+        row.getCell(3).value = si.nama_produk;
+        row.getCell(4).value = si.qty;
+        [1,2,3,4,5].forEach(c => {
+          row.getCell(c).alignment = {vertical:'middle', horizontal: c===3?'left':'center', wrapText:true};
+          if (idx % 2 === 0) row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
+        });
+        addImg(ws, imgMap[si.kode_produk], dataRow, 5, 80, 65);
+      }
+
+      // total
+      const totalRow = ws.getRow(5 + items.length);
+      totalRow.getCell(3).value = 'TOTAL';
+      totalRow.getCell(3).font = {bold:true};
+      totalRow.getCell(4).value = items.reduce((s,i)=>s+(i.qty||0),0);
+      totalRow.getCell(4).font = {bold:true};
+    }
+
+    // ── SHEET RINCIAN GAMBAR (satuan only) ──
+    if (satuans.length > 0) {
+      const wsGambar = wb.addWorksheet('RINCIAN GAMBAR');
+      wsGambar.getRow(1).getCell(1).value = 'RINCIAN GAMBAR — ITEM SATUAN';
+      wsGambar.getRow(1).getCell(1).font = {bold:true, size:13, color:{argb:'FF1D5BD4'}};
+      wsGambar.getRow(1).getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFEFF4FF'}};
+      wsGambar.mergeCells('A1:E1');
+      wsGambar.getRow(1).height = 30;
+
+      const hdrRow = wsGambar.getRow(2);
+      ['NO','KODE PNM','DESKRIPSI BARANG','QTY','GAMBAR'].forEach((h,i) => {
+        const cell = hdrRow.getCell(i+1);
+        cell.value = h;
+        cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
+        cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF1D5BD4'}};
+        cell.alignment = {vertical:'middle', horizontal:'center'};
+      });
+      hdrRow.height = 22;
+      wsGambar.columns = [{width:6},{width:24},{width:45},{width:8},{width:18}];
+
+      for (let idx = 0; idx < satuans.length; idx++) {
+        const item = satuans[idx];
+        const dataRow = 3 + idx;
+        const row = wsGambar.getRow(dataRow);
+        row.height = 70;
+        row.getCell(1).value = idx + 1;
+        row.getCell(2).value = item.kode_produk;
+        row.getCell(3).value = item.nama_produk;
+        row.getCell(4).value = 1;
+        [1,2,3,4,5].forEach(c => {
+          row.getCell(c).alignment = {vertical:'middle', horizontal: c===3?'left':'center', wrapText:true};
+          if (idx % 2 === 0) row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
+        });
+        addImg(wsGambar, imgMap[item.kode_produk], dataRow, 5, 80, 65);
+      }
+    }
+
+    // ── SHEET LAMPIRAN PER UNIT (1 sheet per unit, nama sheet = nama file brosurnya) ──
+    const unitItems = clipboard.filter(i => i.tipe === 'UNIT');
+    if (unitItems.length > 0) {
+      const usedSheetNames = new Set();
+      function uniqueSheetName(base) {
+        let name = base.replace(/[\\\/\?\*\[\]:]/g,'').trim().substring(0,31) || 'LAMPIRAN';
+        let final = name;
+        let i = 2;
+        while (usedSheetNames.has(final.toLowerCase())) {
+          const suffix = ` (${i})`;
+          final = name.substring(0, 31 - suffix.length) + suffix;
+          i++;
+        }
+        usedSheetNames.add(final.toLowerCase());
+        return final;
+      }
+
+      for (let u = 0; u < unitItems.length; u++) {
+        const item = unitItems[u];
+        setProgress(u, unitItems.length, `Mengambil lampiran PDF: ${item.nama_produk}`);
+        const { filename, pages } = await getLampiranPagesForKode(item.kode_produk);
+
+        const wsLamp = wb.addWorksheet(uniqueSheetName(filename));
+        wsLamp.getRow(1).getCell(1).value = `${item.kode_produk} — ${item.nama_produk}`;
+        wsLamp.getRow(1).getCell(1).font = {bold:true, size:13, color:{argb:'FF1D5BD4'}};
+        wsLamp.getRow(1).getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFEFF4FF'}};
+        wsLamp.mergeCells('A1:B1');
+        wsLamp.getRow(1).height = 30;
+        wsLamp.columns = [{width:90}];
+
+        let lampRow = 3;
+        if (!pages.length) {
+          wsLamp.getRow(lampRow).getCell(1).value = '(Lampiran tidak tersedia)';
+          wsLamp.getRow(lampRow).getCell(1).font = {italic:true, color:{argb:'FF9CA3AF'}};
+          continue;
+        }
+
+        const targetW = 520;
+        for (const pg of pages) {
+          const targetH = Math.round(pg.height * (targetW / pg.width));
+          const imgId = wb.addImage({ base64: pg.base64, extension: 'jpeg' });
+          wsLamp.addImage(imgId, {
+            tl: { col: 0.05, row: lampRow - 0.9 },
+            ext: { width: targetW, height: targetH }
+          });
+          wsLamp.getRow(lampRow).height = targetH * 0.75;
+          lampRow += 1;
+        }
+      }
+      setProgress(unitItems.length, unitItems.length, 'Lampiran selesai…');
+    }
+
+    // WRITE FILE
+    setProgress(kodesArr.length, kodesArr.length, 'Menyimpan file…');
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+
+  } catch(e) {
+    alert('Export gagal: ' + e.message);
+    console.error(e);
+  } finally {
+    exportModal.classList.remove('show');
+  }
+});
+
+// CLEAR ALL
+btnClearAll.addEventListener('click', () => {
+  if (!clipboard.length) return;
+  if (confirm('Hapus semua item dari clipboard?')) {
+    clipboard = [];
+    updateClipboard();
+    renderResults(lastResults);
+  }
+});
+
+// RESET
+function reset() {
+  resultsEl.innerHTML = '';
+  metaEl.textContent = '';
+  sortSelect.style.display = 'none';
+  emptyEl.style.display = 'none';
+  loadingEl.style.display = 'none';
+  hintEl.style.display = 'block';
+  errEl.style.display = 'none';
+}
+
+// EVENTS
+takd.addEventListener('click', () => { onlyAkd=!onlyAkd; takd.classList.toggle('on',onlyAkd); runSearch(); });
+tswasta.addEventListener('click', () => {
+  modeSwasta = !modeSwasta;
+  tswasta.classList.toggle('on', modeSwasta);
+  applySort();
+  if (lastResults.length) renderResults(lastResults);
+  updateClipboard();
+});
+sortSelect.addEventListener('change', () => {
+  sortMode = sortSelect.value;
+  applySort();
+  renderResults(lastResults);
+});
+tipeBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tipe = btn.dataset.tipe;
+    selectedTipe = (selectedTipe === tipe) ? null : tipe;
+    tipeBtns.forEach(b => b.classList.toggle('on', b.dataset.tipe === selectedTipe));
+    runSearch();
+  });
+});
+clearBtn.addEventListener('click', () => { searchInput.value=''; clearBtn.style.display='none'; acBox.style.display='none'; reset(); searchInput.focus(); });
+
+searchInput.addEventListener('input', () => {
+  clearBtn.style.display = searchInput.value ? 'block' : 'none';
+  clearTimeout(acTimer);
+  acTimer = setTimeout(() => runSearch(), 350);
+});
+
+searchInput.addEventListener('keydown', e => {
+  const items = acBox.querySelectorAll('.ac-item');
+  if (e.key==='ArrowDown'){e.preventDefault();acIndex=Math.min(acIndex+1,items.length-1);items.forEach((el,i)=>el.classList.toggle('active',i===acIndex));}
+  else if(e.key==='ArrowUp'){e.preventDefault();acIndex=Math.max(acIndex-1,-1);items.forEach((el,i)=>el.classList.toggle('active',i===acIndex));}
+  else if(e.key==='Enter'){if(acIndex>=0&&items[acIndex])searchInput.value=acItems[acIndex].nama_produk;acBox.style.display='none';runSearch();}
+  else if(e.key==='Escape')acBox.style.display='none';
+});
+
+document.addEventListener('click', e => { if(!document.querySelector('.search-wrap').contains(e.target)) acBox.style.display='none'; });
+
+function switchTab(tab) {
+  const ps = document.getElementById('panel-search');
+  const pc = document.getElementById('panel-clip');
+  const ts = document.getElementById('tab-search');
+  const tc = document.getElementById('tab-clip');
+  if (tab==='search') { ps.classList.add('active'); pc.classList.remove('active'); ts.classList.add('active'); tc.classList.remove('active'); }
+  else { pc.classList.add('active'); ps.classList.remove('active'); tc.classList.add('active'); ts.classList.remove('active'); }
+}
+
+if (window.innerWidth <= 768) document.getElementById('panel-search').classList.add('active');
+
+updateClipboard();
+</script>
+</body>
+</html>
