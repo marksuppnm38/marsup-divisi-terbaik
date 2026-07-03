@@ -684,7 +684,17 @@ async function runSearch() {
   });
   loadingEl.style.display = 'none';
 
-  if (error) { errEl.textContent = 'Error: '+(error.message||JSON.stringify(error)); errEl.style.display='block'; return; }
+  if (error) {
+  const msg = error.message || JSON.stringify(error);
+  if (msg.includes('timeout') || msg.includes('canceling')) {
+    emptyEl.style.display='block';
+    metaEl.textContent='Pencarian timeout — coba kata kunci lebih spesifik';
+  } else {
+    errEl.textContent = 'Error: '+msg;
+    errEl.style.display='block';
+  }
+  return;
+}
   if (!data || !data.length) { emptyEl.style.display='block'; metaEl.textContent='Tidak ada hasil untuk "'+q+'"'; return; }
 
   lastResults = data;
