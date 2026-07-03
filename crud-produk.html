@@ -79,6 +79,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .gate-msg.success{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
 .gate-msg.error{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-border)}
 .gate-footer{margin-top:18px;font-size:11px;color:var(--text-muted);text-align:center}
+.auth-tabs{display:flex;gap:4px;background:var(--surface-2);border-radius:8px;padding:3px;margin-bottom:18px}
+.auth-tab{flex:1;padding:8px;border:none;background:none;border-radius:6px;font-size:13px;font-weight:500;color:var(--text-muted);cursor:pointer;font-family:inherit}
+.auth-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.06)}
 
 /* AUTHENTICATED VIEW (placeholder buat sekarang) */
 .app-wrap{display:none;padding:24px;max-width:960px;margin:0 auto}
@@ -88,6 +91,71 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .logout-btn{background:none;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text-secondary);cursor:pointer;font-family:inherit}
 .logout-btn:hover{border-color:var(--danger);color:var(--danger)}
 .placeholder-box{background:var(--surface);border:1px dashed var(--border-strong);border-radius:var(--radius);padding:40px;text-align:center;color:var(--text-muted);font-size:13px}
+
+/* TOOLBAR + TABLE */
+.toolbar{display:flex;gap:10px;margin-bottom:16px}
+.search-wrap{flex:1;position:relative}
+.search-wrap i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:15px}
+.search-input{width:100%;padding:9px 12px 9px 34px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;font-family:inherit}
+.search-input:focus{outline:none;border-color:var(--accent)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:none;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap}
+.btn-accent{background:var(--accent);color:#fff}
+.btn-accent:hover{background:var(--accent-hover)}
+.btn-ghost{background:none;border:1px solid var(--border-strong);color:var(--text-secondary)}
+.btn-ghost:hover{background:var(--surface-2)}
+.btn-danger-ghost{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-border)}
+.btn-danger-ghost:hover{opacity:.85}
+.btn-sm{padding:6px 10px;font-size:12px;border-radius:6px}
+
+.table-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px 14px;background:var(--surface-2);color:var(--text-muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--border)}
+td{padding:10px 14px;border-bottom:1px solid var(--border)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr.clickable{cursor:pointer}
+tbody tr.clickable:hover{background:var(--surface-2)}
+.kode-cell{font-family:var(--mono);font-size:12px;color:var(--text-secondary)}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-on{background:var(--success-bg);color:var(--success)}
+.badge-off{background:var(--surface-2);color:var(--text-muted)}
+.state-row td{text-align:center;padding:30px;color:var(--text-muted)}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,12,16,.5);z-index:60;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px}
+.modal-overlay.open{display:flex}
+.modal-card{background:var(--surface);border-radius:12px;width:100%;max-width:680px;padding:26px 26px 22px}
+.modal-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px}
+.modal-title{font-size:16px;font-weight:600}
+.modal-sub{font-size:12px;color:var(--text-muted);margin-top:2px}
+.modal-close{background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:2px}
+
+.sec-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin:20px 0 10px;padding-top:14px;border-top:1px solid var(--border)}
+.sec-label:first-of-type{border-top:none;padding-top:0;margin-top:14px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.f{display:flex;flex-direction:column;gap:4px}
+.f.full{grid-column:1/-1}
+.f label{font-size:11px;font-weight:600;color:var(--text-muted)}
+.f input,.f select,.f textarea{padding:8px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;background:var(--surface);color:var(--text);font-family:inherit}
+.f input:focus,.f select:focus,.f textarea:focus{outline:none;border-color:var(--accent)}
+.f textarea{resize:vertical;min-height:56px}
+.f-row{display:flex;gap:8px}
+.f-row input{flex:1}
+.check-row{display:flex;align-items:center;gap:8px;margin-top:2px}
+.check-row label{font-size:12.5px;color:var(--text);font-weight:400}
+
+.lookup-msg{font-size:11.5px;margin-top:6px}
+.lookup-msg.found{color:var(--success)}
+.lookup-msg.notfound{color:#b8860b}
+
+.harga-add{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-top:10px;align-items:end}
+.harga-add .btn{height:34px}
+
+.modal-actions{display:flex;justify-content:space-between;margin-top:22px;padding-top:14px;border-top:1px solid var(--border)}
+
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:11px 18px;border-radius:8px;font-size:12.5px;z-index:100;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.error{background:var(--danger)}
 </style>
 </head>
 <body>
@@ -108,12 +176,30 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   <div class="gate-card">
     <div class="gate-icon"><i class="ti ti-lock"></i></div>
     <div class="gate-title" id="gateTitle">Masuk ke CRUD Produk</div>
-    <div class="gate-desc" id="gateDesc">Khusus tim internal. Masukkan email kamu, nanti dikirim link login ke inbox.</div>
+    <div class="gate-desc" id="gateDesc">Khusus tim internal.</div>
 
-    <div id="emailFormWrap">
-      <label class="field-label" for="emailInput">Email</label>
-      <input type="email" id="emailInput" class="field-input" placeholder="nama@email.com" autocomplete="email"/>
-      <button class="btn-primary" id="sendLinkBtn">Kirim Link Login</button>
+    <div class="auth-tabs" id="authTabs">
+      <button class="auth-tab active" id="tabLoginBtn" type="button">Masuk</button>
+      <button class="auth-tab" id="tabSignupBtn" type="button">Daftar</button>
+    </div>
+
+    <!-- LOGIN (email + password) -->
+    <div id="loginFormWrap">
+      <label class="field-label" for="loginEmail">Email</label>
+      <input type="email" id="loginEmail" class="field-input" placeholder="nama@email.com" autocomplete="email"/>
+      <label class="field-label" style="margin-top:10px;" for="loginPassword">Password</label>
+      <input type="password" id="loginPassword" class="field-input" placeholder="••••••••" autocomplete="current-password"/>
+      <button class="btn-primary" id="loginBtn">Masuk</button>
+    </div>
+
+    <!-- SIGN UP (email + password, sekali konfirmasi email) -->
+    <div id="signupFormWrap" style="display:none;">
+      <label class="field-label" for="signupEmail">Email</label>
+      <input type="email" id="signupEmail" class="field-input" placeholder="nama@email.com" autocomplete="email"/>
+      <label class="field-label" style="margin-top:10px;" for="signupPassword">Buat Password</label>
+      <input type="password" id="signupPassword" class="field-input" placeholder="Minimal 6 karakter" autocomplete="new-password"/>
+      <button class="btn-primary" id="signupBtn">Daftar</button>
+      <div class="gate-footer" style="margin-top:10px;">Sekali daftar, kamu bakal dikirim email konfirmasi. Setelah itu tinggal pakai email + password ini buat masuk, tanpa email lagi.</div>
     </div>
 
     <div class="gate-msg" id="gateMsg"></div>
@@ -131,11 +217,120 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       <button class="logout-btn" id="logoutBtn">Keluar</button>
     </div>
   </div>
-  <div class="placeholder-box">
-    Login berhasil ✅<br/>
-    Form tambah/edit produk menyusul di langkah berikutnya.
+  <div class="toolbar">
+    <div class="search-wrap">
+      <i class="ti ti-search"></i>
+      <input type="text" class="search-input" id="searchInput" placeholder="Cari kode produk atau nama produk..."/>
+    </div>
+    <button class="btn btn-accent" id="addBtn"><i class="ti ti-plus"></i> Tambah Produk</button>
+  </div>
+
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr><th>Kode Produk</th><th>Nama Produk</th><th>Tipe</th><th>Golongan</th><th>Status</th></tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr class="state-row"><td colspan="5">Memuat data...</td></tr>
+      </tbody>
+    </table>
   </div>
 </div>
+
+<!-- MODAL FORM -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="modalTitle">Tambah Produk</div>
+        <div class="modal-sub" id="modalSub">Isi data produk baru</div>
+      </div>
+      <button class="modal-close" id="modalCloseBtn"><i class="ti ti-x"></i></button>
+    </div>
+
+    <div class="sec-label">Kode Asli / Master Produk</div>
+    <div class="f full">
+      <label>Kode Asli</label>
+      <div class="f-row">
+        <input type="text" id="f_kode_asli" placeholder="Ketik kode_asli..."/>
+        <button class="btn btn-ghost btn-sm" id="cekMasterBtn" type="button"><i class="ti ti-search"></i> Cek</button>
+      </div>
+      <div id="masterLookupMsg"></div>
+    </div>
+    <div id="masterFields" style="display:none;margin-top:10px;">
+      <div class="grid2">
+        <div class="f full"><label>Deskripsi Vendor</label><input type="text" id="m_deskripsi_vendor"/></div>
+        <div class="f"><label>Family</label><input type="text" id="m_family"/></div>
+        <div class="f"><label>Sub Family</label><input type="text" id="m_sub_family"/></div>
+        <div class="f"><label>Manufacturer</label><input type="text" id="m_manufacturer"/></div>
+        <div class="f"><label>Capital</label><input type="text" id="m_capital"/></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Data Produk</div>
+    <div class="grid2">
+      <div class="f"><label>Kode Produk *</label><input type="text" id="f_kode_produk"/></div>
+      <div class="f"><label>Tipe *</label>
+        <select id="f_tipe">
+          <option value="">— pilih —</option>
+          <option value="UNIT">UNIT</option>
+          <option value="INSTRUMENT">INSTRUMENT</option>
+          <option value="SET">SET</option>
+        </select>
+      </div>
+      <div class="f full"><label>Nama Produk</label><input type="text" id="f_nama_produk"/></div>
+      <div class="f"><label>No. AKD</label><input type="text" id="f_no_akd"/></div>
+      <div class="f"><label>Masa Berlaku</label><input type="date" id="f_masa_berlaku"/></div>
+      <div class="f"><label>Golongan</label><input type="text" id="f_golongan"/></div>
+      <div class="f"><label>Kode KFA</label><input type="text" id="f_kode_kfa"/></div>
+      <div class="f"><label>Kode Cangkang</label><input type="text" id="f_kode_cangkang"/></div>
+      <div class="f"><label>Nama Cangkang</label><input type="text" id="f_nama_cangkang"/></div>
+      <div class="f"><label>Berat (gram)</label><input type="number" step="any" id="f_berat_gram"/></div>
+      <div class="f"><label>Status V6</label><input type="text" id="f_status_v6"/></div>
+      <div class="f"><label>Link V6</label><input type="text" id="f_link_v6"/></div>
+      <div class="f full"><label>Spesifikasi</label><textarea id="f_spesifikasi"></textarea></div>
+      <div class="f full check-row">
+        <input type="checkbox" id="f_is_active" checked/>
+        <label for="f_is_active">Produk aktif</label>
+      </div>
+    </div>
+
+    <div id="hargaSection" style="display:none;">
+      <div class="sec-label">Harga</div>
+      <div class="table-card">
+        <table>
+          <thead><tr><th>Tahun</th><th>Jenis</th><th>Harga</th><th></th></tr></thead>
+          <tbody id="hargaTableBody">
+            <tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="harga-add">
+        <div class="f"><label>Tahun</label><input type="number" id="h_tahun" placeholder="2026"/></div>
+        <div class="f"><label>Jenis</label>
+          <select id="h_jenis">
+            <option value="EKATALOG">EKATALOG</option>
+            <option value="SWASTA">SWASTA</option>
+            <option value="UPLOAD">UPLOAD</option>
+            <option value="__custom__">Lainnya...</option>
+          </select>
+        </div>
+        <div class="f"><label>Harga (Rp)</label><input type="number" step="any" id="h_harga" placeholder="0"/></div>
+        <button class="btn btn-ghost" id="addHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="deleteBtn" style="display:none;"><i class="ti ti-trash"></i> Hapus Produk</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" id="cancelBtn">Batal</button>
+        <button class="btn btn-accent" id="saveBtn"><i class="ti ti-check"></i> Simpan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script>
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
@@ -160,9 +355,17 @@ const gateWrap = document.getElementById('gateWrap');
 const appWrap = document.getElementById('appWrap');
 const gateTitle = document.getElementById('gateTitle');
 const gateDesc = document.getElementById('gateDesc');
-const emailFormWrap = document.getElementById('emailFormWrap');
-const emailInput = document.getElementById('emailInput');
-const sendLinkBtn = document.getElementById('sendLinkBtn');
+const authTabs = document.getElementById('authTabs');
+const tabLoginBtn = document.getElementById('tabLoginBtn');
+const tabSignupBtn = document.getElementById('tabSignupBtn');
+const loginFormWrap = document.getElementById('loginFormWrap');
+const signupFormWrap = document.getElementById('signupFormWrap');
+const loginEmail = document.getElementById('loginEmail');
+const loginPassword = document.getElementById('loginPassword');
+const loginBtn = document.getElementById('loginBtn');
+const signupEmail = document.getElementById('signupEmail');
+const signupPassword = document.getElementById('signupPassword');
+const signupBtn = document.getElementById('signupBtn');
 const gateMsg = document.getElementById('gateMsg');
 const userEmailLabel = document.getElementById('userEmailLabel');
 const logoutBtn = document.getElementById('logoutBtn');
@@ -172,30 +375,79 @@ function showMsg(text, type){
   gateMsg.className = 'gate-msg show ' + type;
 }
 
-// ---- Kirim Magic Link ----
-sendLinkBtn.addEventListener('click', async () => {
-  const email = emailInput.value.trim().toLowerCase();
-  if(!email || !email.includes('@')){
-    showMsg('Masukkan email yang valid dulu ya.', 'error');
+// ---- Tab switch Masuk / Daftar ----
+tabLoginBtn.addEventListener('click', () => {
+  tabLoginBtn.classList.add('active');
+  tabSignupBtn.classList.remove('active');
+  loginFormWrap.style.display = 'block';
+  signupFormWrap.style.display = 'none';
+  gateMsg.className = 'gate-msg';
+});
+tabSignupBtn.addEventListener('click', () => {
+  tabSignupBtn.classList.add('active');
+  tabLoginBtn.classList.remove('active');
+  signupFormWrap.style.display = 'block';
+  loginFormWrap.style.display = 'none';
+  gateMsg.className = 'gate-msg';
+});
+
+// ---- Masuk (email + password, tanpa kirim email) ----
+loginBtn.addEventListener('click', async () => {
+  const email = loginEmail.value.trim().toLowerCase();
+  const password = loginPassword.value;
+  if (!email || !email.includes('@')) { showMsg('Masukkan email yang valid dulu ya.', 'error'); return; }
+  if (!password) { showMsg('Masukkan password.', 'error'); return; }
+
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Memproses...';
+
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+
+  loginBtn.disabled = false;
+  loginBtn.textContent = 'Masuk';
+
+  if (error) {
+    if (error.message.toLowerCase().includes('email not confirmed')) {
+      showMsg('Email belum dikonfirmasi. Cek inbox kamu buat klik link konfirmasi dulu.', 'error');
+    } else {
+      showMsg('Gagal masuk: ' + error.message, 'error');
+    }
     return;
   }
-  sendLinkBtn.disabled = true;
-  sendLinkBtn.textContent = 'Mengirim...';
+  // sukses -> onAuthStateChange bakal handle whitelist check & tampilin app
+});
 
-  const { error } = await sb.auth.signInWithOtp({
-    email,
+// ---- Daftar (sekali kirim email konfirmasi, abis itu pakai password) ----
+signupBtn.addEventListener('click', async () => {
+  const email = signupEmail.value.trim().toLowerCase();
+  const password = signupPassword.value;
+  if (!email || !email.includes('@')) { showMsg('Masukkan email yang valid dulu ya.', 'error'); return; }
+  if (!password || password.length < 6) { showMsg('Password minimal 6 karakter.', 'error'); return; }
+
+  signupBtn.disabled = true;
+  signupBtn.textContent = 'Mendaftarkan...';
+
+  const { data, error } = await sb.auth.signUp({
+    email, password,
     options: { emailRedirectTo: window.location.origin + '/crud-produk.html' }
   });
 
-  sendLinkBtn.disabled = false;
-  sendLinkBtn.textContent = 'Kirim Link Login';
+  signupBtn.disabled = false;
+  signupBtn.textContent = 'Daftar';
 
   if (error) {
-    showMsg('Gagal kirim link: ' + error.message, 'error');
+    showMsg('Gagal daftar: ' + error.message, 'error');
     return;
   }
-  showMsg('Link login udah dikirim ke ' + email + '. Cek inbox (atau folder spam) ya.', 'success');
-  emailFormWrap.style.display = 'none';
+
+  // Kalau "Confirm email" mati di project ini, signUp langsung kasih session -> langsung masuk.
+  // Kalau nyala (default & direkomendasikan), harus klik link di email dulu.
+  if (data.session) {
+    showMsg('Akun dibuat, langsung masuk...', 'success');
+  } else {
+    showMsg('Email konfirmasi udah dikirim ke ' + email + '. Klik link di email itu buat aktivasi, abis itu pakai tab "Masuk".', 'success');
+    signupFormWrap.style.display = 'none';
+  }
 });
 
 // ---- Cek whitelist setelah login ----
@@ -213,7 +465,9 @@ async function checkWhitelistAndShowApp(session){
     await sb.auth.signOut();
     gateTitle.textContent = 'Akses Ditolak';
     gateDesc.textContent = 'Email ' + email + ' belum terdaftar sebagai tim. Hubungi admin kalau ini seharusnya salah.';
-    emailFormWrap.style.display = 'none';
+    authTabs.style.display = 'none';
+    loginFormWrap.style.display = 'none';
+    signupFormWrap.style.display = 'none';
     gateMsg.className = 'gate-msg show error';
     gateMsg.textContent = 'Silakan hubungi admin untuk ditambahkan ke daftar akses.';
     gateWrap.style.display = 'flex';
@@ -225,6 +479,7 @@ async function checkWhitelistAndShowApp(session){
   userEmailLabel.textContent = email + ' · ' + data.role;
   gateWrap.style.display = 'none';
   appWrap.style.display = 'block';
+  loadProduk();
 }
 
 // ---- Logout ----
@@ -245,6 +500,320 @@ sb.auth.onAuthStateChange((event, session) => {
 
 sb.auth.getSession().then(({ data: { session } }) => {
   if (session) checkWhitelistAndShowApp(session);
+});
+
+// ================================================================
+// CRUD PRODUK + HARGA
+// ================================================================
+let currentProdukId = null;
+let masterExists = false;
+let hargaRows = [];
+
+function showToast(msg, isError){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => t.className = 'toast', 3000);
+}
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+// ---- List + search ----
+const tableBody = document.getElementById('tableBody');
+const searchInput = document.getElementById('searchInput');
+let searchTimer = null;
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadProduk, 350);
+});
+
+async function loadProduk(){
+  tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Memuat data...</td></tr>`;
+  const q = searchInput.value.trim();
+  let query = sb.from('produk')
+    .select('id, kode_produk, nama_produk, tipe, golongan, is_active')
+    .order('updated_at', { ascending: false })
+    .limit(50);
+  if (q) query = query.or(`kode_produk.ilike.%${q}%,nama_produk.ilike.%${q}%`);
+
+  const { data, error } = await query;
+  if (error) {
+    tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+  if (!data || data.length === 0) {
+    tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Tidak ada produk ditemukan.</td></tr>`;
+    return;
+  }
+  tableBody.innerHTML = '';
+  data.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.className = 'clickable';
+    tr.innerHTML = `
+      <td class="kode-cell">${escapeHtml(p.kode_produk)}</td>
+      <td>${escapeHtml(p.nama_produk || '—')}</td>
+      <td>${escapeHtml(p.tipe || '—')}</td>
+      <td>${escapeHtml(p.golongan || '—')}</td>
+      <td><span class="badge ${p.is_active ? 'badge-on' : 'badge-off'}">${p.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
+    `;
+    tr.addEventListener('click', () => openEdit(p.id));
+    tableBody.appendChild(tr);
+  });
+}
+
+// ---- Modal open/close ----
+const modalOverlay = document.getElementById('modalOverlay');
+const modalTitle = document.getElementById('modalTitle');
+const modalSub = document.getElementById('modalSub');
+const hargaSection = document.getElementById('hargaSection');
+const deleteBtn = document.getElementById('deleteBtn');
+
+document.getElementById('addBtn').addEventListener('click', openAdd);
+document.getElementById('cancelBtn').addEventListener('click', closeModal);
+document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
+
+function closeModal(){ modalOverlay.classList.remove('open'); }
+
+function resetForm(){
+  ['f_kode_asli','f_kode_produk','f_nama_produk','f_no_akd','f_masa_berlaku','f_golongan',
+   'f_kode_kfa','f_kode_cangkang','f_nama_cangkang','f_berat_gram','f_status_v6','f_link_v6',
+   'f_spesifikasi','m_deskripsi_vendor','m_family','m_sub_family','m_manufacturer','m_capital'
+  ].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f_tipe').value = '';
+  document.getElementById('f_is_active').checked = true;
+  document.getElementById('masterFields').style.display = 'none';
+  document.getElementById('masterLookupMsg').innerHTML = '';
+  masterExists = false;
+  hargaRows = [];
+  renderHargaTable();
+}
+
+function openAdd(){
+  resetForm();
+  currentProdukId = null;
+  modalTitle.textContent = 'Tambah Produk';
+  modalSub.textContent = 'Isi data produk baru';
+  hargaSection.style.display = 'none';
+  deleteBtn.style.display = 'none';
+  modalOverlay.classList.add('open');
+}
+
+async function openEdit(produkId){
+  resetForm();
+  currentProdukId = produkId;
+  modalTitle.textContent = 'Edit Produk';
+  modalSub.textContent = 'Memuat data...';
+  hargaSection.style.display = 'block';
+  deleteBtn.style.display = 'inline-flex';
+  modalOverlay.classList.add('open');
+
+  const { data: p, error } = await sb.from('produk').select('*').eq('id', produkId).single();
+  if (error) { showToast('Gagal memuat produk: ' + error.message, true); closeModal(); return; }
+
+  document.getElementById('f_kode_asli').value = p.kode_asli || '';
+  document.getElementById('f_kode_produk').value = p.kode_produk || '';
+  document.getElementById('f_nama_produk').value = p.nama_produk || '';
+  document.getElementById('f_tipe').value = p.tipe || '';
+  document.getElementById('f_no_akd').value = p.no_akd || '';
+  document.getElementById('f_masa_berlaku').value = p.masa_berlaku || '';
+  document.getElementById('f_golongan').value = p.golongan || '';
+  document.getElementById('f_kode_kfa').value = p.kode_kfa || '';
+  document.getElementById('f_kode_cangkang').value = p.kode_cangkang || '';
+  document.getElementById('f_nama_cangkang').value = p.nama_cangkang || '';
+  document.getElementById('f_berat_gram').value = p.berat_gram ?? '';
+  document.getElementById('f_status_v6').value = p.status_v6 || '';
+  document.getElementById('f_link_v6').value = p.link_v6 || '';
+  document.getElementById('f_spesifikasi').value = p.spesifikasi || '';
+  document.getElementById('f_is_active').checked = !!p.is_active;
+  modalSub.textContent = 'Kode: ' + (p.kode_produk || '—');
+
+  if (p.kode_asli) await cekMaster(p.kode_asli, true);
+  await loadHarga(produkId);
+}
+
+// ---- Master produk lookup ----
+document.getElementById('cekMasterBtn').addEventListener('click', () => {
+  const kode = document.getElementById('f_kode_asli').value.trim();
+  if (!kode) { showToast('Isi kode_asli dulu', true); return; }
+  cekMaster(kode, false);
+});
+
+async function cekMaster(kodeAsli, silent){
+  const msgEl = document.getElementById('masterLookupMsg');
+  const fieldsEl = document.getElementById('masterFields');
+  if (!silent) msgEl.innerHTML = `<div class="lookup-msg">Mencari...</div>`;
+
+  const { data, error } = await sb.from('master_produk').select('*').eq('kode_asli', kodeAsli).maybeSingle();
+  if (error) { msgEl.innerHTML = `<div class="lookup-msg notfound">Gagal cek: ${escapeHtml(error.message)}</div>`; return; }
+
+  fieldsEl.style.display = 'block';
+  if (data) {
+    masterExists = true;
+    document.getElementById('m_deskripsi_vendor').value = data.deskripsi_vendor || '';
+    document.getElementById('m_family').value = data.family || '';
+    document.getElementById('m_sub_family').value = data.sub_family || '';
+    document.getElementById('m_manufacturer').value = data.manufacturer || '';
+    document.getElementById('m_capital').value = data.capital || '';
+    msgEl.innerHTML = `<div class="lookup-msg found"><i class="ti ti-check"></i> Ditemukan di master_produk, data terisi otomatis.</div>`;
+  } else {
+    masterExists = false;
+    msgEl.innerHTML = `<div class="lookup-msg notfound"><i class="ti ti-alert-triangle"></i> Belum ada — isi field di bawah untuk buat master baru.</div>`;
+  }
+}
+
+// ---- Harga ----
+async function loadHarga(produkId){
+  const { data, error } = await sb.from('produk_harga').select('*').eq('produk_id', produkId).order('tahun', { ascending: false });
+  if (error) { showToast('Gagal memuat harga: ' + error.message, true); return; }
+  hargaRows = data || [];
+  renderHargaTable();
+}
+
+function renderHargaTable(){
+  const tbody = document.getElementById('hargaTableBody');
+  if (hargaRows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = '';
+  hargaRows.forEach(h => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${h.tahun}</td>
+      <td>${escapeHtml(h.jenis)}</td>
+      <td>Rp ${Number(h.harga).toLocaleString('id-ID')}</td>
+      <td><button class="btn btn-danger-ghost btn-sm" data-id="${h.id}"><i class="ti ti-trash"></i></button></td>
+    `;
+    tr.querySelector('button').addEventListener('click', () => deleteHarga(h.id));
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('h_jenis').addEventListener('change', e => {
+  if (e.target.value === '__custom__') {
+    const custom = prompt('Masukkan jenis harga baru:');
+    if (custom) {
+      const opt = document.createElement('option');
+      opt.value = custom.toUpperCase();
+      opt.textContent = custom.toUpperCase();
+      opt.selected = true;
+      e.target.insertBefore(opt, e.target.lastElementChild);
+    } else {
+      e.target.value = 'EKATALOG';
+    }
+  }
+});
+
+document.getElementById('addHargaBtn').addEventListener('click', async () => {
+  if (!currentProdukId) { showToast('Simpan data produk dulu sebelum menambah harga', true); return; }
+  const tahun = parseInt(document.getElementById('h_tahun').value, 10);
+  const jenis = document.getElementById('h_jenis').value;
+  const harga = parseFloat(document.getElementById('h_harga').value);
+  if (!tahun || !jenis || isNaN(harga)) { showToast('Lengkapi tahun, jenis, dan harga', true); return; }
+
+  const { error } = await sb.from('produk_harga').insert({ produk_id: currentProdukId, tahun, jenis, harga });
+  if (error) { showToast('Gagal tambah harga: ' + error.message, true); return; }
+
+  document.getElementById('h_tahun').value = '';
+  document.getElementById('h_harga').value = '';
+  showToast('Harga ditambahkan');
+  loadHarga(currentProdukId);
+});
+
+async function deleteHarga(id){
+  if (!confirm('Hapus baris harga ini?')) return;
+  const { error } = await sb.from('produk_harga').delete().eq('id', id);
+  if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
+  showToast('Harga dihapus');
+  loadHarga(currentProdukId);
+}
+
+// ---- Save produk ----
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const kodeAsli = document.getElementById('f_kode_asli').value.trim();
+  const kodeProduk = document.getElementById('f_kode_produk').value.trim();
+  const tipe = document.getElementById('f_tipe').value;
+  if (!kodeProduk || !tipe) { showToast('Kode Produk dan Tipe wajib diisi', true); return; }
+
+  if (kodeAsli) {
+    // Selalu cek ulang ke database sebelum simpan, jangan andalkan status
+    // "masterExists" dari klik tombol Cek sebelumnya (bisa aja user belum klik,
+    // atau kode_asli diketik ulang setelah cek terakhir).
+    const { data: existingMaster, error: checkErr } = await sb
+      .from('master_produk').select('kode_asli').eq('kode_asli', kodeAsli).maybeSingle();
+    if (checkErr) { showToast('Gagal cek master_produk: ' + checkErr.message, true); return; }
+    masterExists = !!existingMaster;
+  }
+
+  if (kodeAsli && !masterExists) {
+    const { error: mErr } = await sb.from('master_produk').insert({
+      kode_asli: kodeAsli,
+      deskripsi_vendor: document.getElementById('m_deskripsi_vendor').value || null,
+      family: document.getElementById('m_family').value || null,
+      sub_family: document.getElementById('m_sub_family').value || null,
+      manufacturer: document.getElementById('m_manufacturer').value || null,
+      capital: document.getElementById('m_capital').value || null
+    });
+    if (mErr) { showToast('Gagal membuat master_produk: ' + mErr.message, true); return; }
+    masterExists = true;
+  } else if (kodeAsli && masterExists) {
+    const { error: uErr } = await sb.from('master_produk').update({
+      deskripsi_vendor: document.getElementById('m_deskripsi_vendor').value || null,
+      family: document.getElementById('m_family').value || null,
+      sub_family: document.getElementById('m_sub_family').value || null,
+      manufacturer: document.getElementById('m_manufacturer').value || null,
+      capital: document.getElementById('m_capital').value || null
+    }).eq('kode_asli', kodeAsli);
+    if (uErr) { showToast('Gagal update master_produk: ' + uErr.message, true); return; }
+  }
+
+  const payload = {
+    kode_asli: kodeAsli || null,
+    kode_produk: kodeProduk,
+    nama_produk: document.getElementById('f_nama_produk').value || null,
+    tipe,
+    no_akd: document.getElementById('f_no_akd').value || null,
+    masa_berlaku: document.getElementById('f_masa_berlaku').value || null,
+    golongan: document.getElementById('f_golongan').value || null,
+    kode_kfa: document.getElementById('f_kode_kfa').value || null,
+    kode_cangkang: document.getElementById('f_kode_cangkang').value || null,
+    nama_cangkang: document.getElementById('f_nama_cangkang').value || null,
+    berat_gram: document.getElementById('f_berat_gram').value || null,
+    status_v6: document.getElementById('f_status_v6').value || null,
+    link_v6: document.getElementById('f_link_v6').value || null,
+    spesifikasi: document.getElementById('f_spesifikasi').value || null,
+    is_active: document.getElementById('f_is_active').checked
+  };
+
+  let result;
+  if (currentProdukId) {
+    result = await sb.from('produk').update(payload).eq('id', currentProdukId).select().single();
+  } else {
+    result = await sb.from('produk').insert(payload).select().single();
+  }
+  if (result.error) { showToast('Gagal simpan produk: ' + result.error.message, true); return; }
+
+  showToast(currentProdukId ? 'Produk diperbarui' : 'Produk ditambahkan');
+  currentProdukId = result.data.id;
+  hargaSection.style.display = 'block';
+  deleteBtn.style.display = 'inline-flex';
+  modalTitle.textContent = 'Edit Produk';
+  modalSub.textContent = 'Kode: ' + result.data.kode_produk;
+  await loadHarga(currentProdukId);
+  loadProduk();
+});
+
+// ---- Delete produk ----
+deleteBtn.addEventListener('click', async () => {
+  if (!currentProdukId) return;
+  if (!confirm('Hapus produk ini? Data harga terkait juga sebaiknya dicek manual.')) return;
+  const { error } = await sb.from('produk').delete().eq('id', currentProdukId);
+  if (error) { showToast('Gagal hapus produk: ' + error.message, true); return; }
+  showToast('Produk dihapus');
+  closeModal();
+  loadProduk();
 });
 </script>
 
