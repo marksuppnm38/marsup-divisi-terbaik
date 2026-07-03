@@ -1193,7 +1193,7 @@ clearBtn.addEventListener('click', () => { searchInput.value=''; clearBtn.style.
 searchInput.addEventListener('input', () => {
   clearBtn.style.display = searchInput.value ? 'block' : 'none';
   clearTimeout(acTimer);
-  acTimer = setTimeout(() => runSearch(), 350);
+  acTimer = setTimeout(() => runSearch(), 150);
 });
 
 searchInput.addEventListener('keydown', e => {
