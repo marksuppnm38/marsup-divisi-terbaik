@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pionir Group — Tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F6F3EC;
+    --ink: #20242B;
+    --navy: #1C2B45;
+    --rust: #B5502E;
+    --teal: #3F6E6A;
+    --line: #D9D2C2;
+    --line-soft: #E7E2D5;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', sans-serif;
+    min-height: 100vh;
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-position: -1px -1px;
+  }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 56px 24px 80px;
+  }
+
+  header {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 20px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .brand-eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--rust);
+    margin-bottom: 8px;
+  }
+
+  h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: clamp(32px, 5vw, 44px);
+    letter-spacing: -0.01em;
+    color: var(--navy);
+    line-height: 1.05;
+  }
+
+  .meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink);
+    opacity: 0.55;
+    text-align: right;
+  }
+
+  .board-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink);
+    opacity: 0.45;
+    margin: 40px 0 16px;
+  }
+
+  .tickets {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .ticket {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    background: #FFFDF8;
+    border: 1.5px solid var(--ink);
+    text-decoration: none;
+    color: var(--ink);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 4px 4px 0 var(--line);
+  }
+
+  .ticket:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 var(--rust);
+  }
+
+  .ticket:active {
+    transform: translate(0, 0);
+    box-shadow: 2px 2px 0 var(--line);
+  }
+
+  .ticket-stub {
+    flex: 0 0 88px;
+    background: var(--navy);
+    color: var(--paper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    writing-mode: vertical-rl;
+    text-transform: uppercase;
+    border-right: 1.5px dashed var(--paper);
+    position: relative;
+  }
+
+  .ticket-stub::before,
+  .ticket-stub::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: var(--paper);
+    border-radius: 50%;
+    right: -7px;
+  }
+  .ticket-stub::before { top: -7px; }
+  .ticket-stub::after { bottom: -7px; }
+
+  .ticket-body {
+    flex: 1;
+    padding: 20px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .ticket-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    color: var(--navy);
+    margin-bottom: 4px;
+  }
+
+  .ticket-desc {
+    font-size: 14px;
+    color: var(--ink);
+    opacity: 0.7;
+    max-width: 46ch;
+  }
+
+  .ticket-status {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 5px 10px;
+    border: 1.5px solid var(--teal);
+    color: var(--teal);
+    white-space: nowrap;
+    transform: rotate(-2deg);
+  }
+
+  .ticket-status.soon {
+    border-color: var(--ink);
+    color: var(--ink);
+    opacity: 0.45;
+  }
+
+  .ticket.disabled {
+    opacity: 0.55;
+    pointer-events: none;
+    box-shadow: 4px 4px 0 var(--line-soft);
+  }
+
+  .ticket.disabled .ticket-stub {
+    background: #8A8A82;
+  }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink);
+    opacity: 0.45;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  @media (max-width: 520px) {
+    .ticket-stub { flex-basis: 60px; font-size: 10px; }
+    .ticket-body { padding: 16px 18px; }
+    .meta { text-align: left; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <div class="brand-eyebrow">Pionir Group · Internal</div>
+        <h1>Tools Manifest</h1>
+      </div>
+      <div class="meta">SMY / PNM / METO<br>marketing &amp; sales ops</div>
+    </header>
+
+    <div class="board-label">Modul Aktif</div>
+    <div class="tickets">
+      <a class="ticket" href="/konversian.html">
+        <div class="ticket-stub">Modul 01</div>
+        <div class="ticket-body">
+          <div>
+            <div class="ticket-title">Konversi</div>
+            <div class="ticket-desc">Cari produk, susun harga, dan export ke Excel dengan gambar.</div>
+          </div>
+          <div class="ticket-status">Live</div>
+        </div>
+      </a>
+
+      <a class="ticket" href="/generatesph.html">
+        <div class="ticket-stub">Modul 02</div>
+        <div class="ticket-body">
+          <div>
+            <div class="ticket-title">SPH Generator</div>
+            <div class="ticket-desc">Buat Surat Penawaran Harga dari sheet SUMMARY, lengkap dengan lampiran.</div>
+          </div>
+          <div class="ticket-status">Live</div>
+        </div>
+      </a>
+
+      <div class="ticket disabled">
+        <div class="ticket-stub">Modul 03</div>
+        <div class="ticket-body">
+          <div>
+            <div class="ticket-title">Stok</div>
+            <div class="ticket-desc">Pemantauan stok dan pergerakan barang antar gudang.</div>
+          </div>
+          <div class="ticket-status soon">Segera</div>
+        </div>
+      </div>
+
+      <div class="ticket disabled">
+        <div class="ticket-stub">Modul 04</div>
+        <div class="ticket-body">
+          <div>
+            <div class="ticket-title">Dashboard</div>
+            <div class="ticket-desc">Ringkasan penjualan dan aktivitas tim lintas perusahaan.</div>
+          </div>
+          <div class="ticket-status soon">Segera</div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <span>tools-conversion.vercel.app</span>
+      <span>Diperbarui manual via Vercel CLI</span>
+    </footer>
+  </div>
+</body>
+</html>
