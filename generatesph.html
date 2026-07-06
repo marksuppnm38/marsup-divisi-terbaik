@@ -1046,17 +1046,19 @@ async function generateSph(){
     let y = MARGIN_TOP;
 
     // ---- HEADER: LOGO + TANGGAL ----
-    let logoH = 0;
-    if (logoAsset) {
-      const logoW = parseFloat(document.getElementById('inp-logo-width').value) || 45;
-      logoH = (logoAsset.h / logoAsset.w) * logoW;
-      try { doc.addImage(logoAsset.dataUrl, 'PNG', MARGIN_X, y, logoW, logoH); } catch(e){}
-    }
-    doc.setFont('helvetica','normal'); doc.setFontSize(FONT_SIZE);
-    doc.text(`Yogyakarta, ${tanggalSurat}`, PAGE_W - MARGIN_X, y + 5, {align:'right'});
-
-    y += Math.max(logoH + 8, 26);
-
+   let logoH = 0;
+if (logoAsset) {
+  const logoW = parseFloat(document.getElementById('inp-logo-width').value) || 45;
+  logoH = (logoAsset.h / logoAsset.w) * logoW;
+  try { doc.addImage(logoAsset.dataUrl, 'PNG', MARGIN_X, y, logoW, logoH); } catch(e){}
+}
+doc.setFont('helvetica','normal'); doc.setFontSize(FONT_SIZE);
+// FIX: tanggal digambar SETELAH tahu tinggi logo yang sebenarnya, dan diposisikan
+// DI BAWAH kop surat (bukan sejajar di atasnya) — supaya tidak nabrak elemen
+// dekoratif pada logo kop surat lebar seperti punya PNM/Meto.
+const dateY = y + Math.max(logoH, 8) + 6;
+doc.text(`Yogyakarta, ${tanggalSurat}`, PAGE_W - MARGIN_X, dateY, {align:'right'});
+y = dateY + 8;
     // ---- NOMOR / HAL / LAMP ----
     doc.setFontSize(FONT_SIZE);
     doc.text('No.', MARGIN_X, y); doc.text(`: ${nomorSph}`, MARGIN_X + 22, y);
