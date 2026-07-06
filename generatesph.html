@@ -115,6 +115,18 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .progress-bar{height:8px;background:var(--surface-2);border-radius:6px;overflow:hidden;margin-bottom:8px}
 .progress-fill{height:100%;background:var(--accent);width:0%;transition:width .2s;border-radius:6px}
 .modal-box .sub{font-size:12px;color:var(--text-muted)}
+.record-modal-box{background:var(--surface);border-radius:12px;padding:22px 24px;width:90vw;max-width:440px;text-align:left;max-height:88vh;overflow-y:auto}
+.record-field{margin-bottom:12px}
+.record-field label{display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
+.record-field .ro{font-size:13px;color:var(--text);background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;word-break:break-word}
+.record-field input,.record-field textarea{width:100%;font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none}
+.record-field textarea{resize:vertical;min-height:56px}
+.record-actions{display:flex;gap:8px;margin-top:16px}
+.record-actions button{flex:1;height:38px;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;border:none}
+#record-sph-submit-btn{background:var(--success);color:#fff}
+#record-sph-submit-btn:disabled{background:var(--border-strong);cursor:not-allowed}
+#record-sph-cancel-btn{background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border)}
+#record-sph-status{font-size:12px;margin-top:10px;text-align:center;min-height:16px}
 
 @media (max-width: 640px){
   .workspace{flex-direction:column}
@@ -202,6 +214,12 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
           <input type="text" id="inp-tanggal" readonly style="background:var(--border);color:var(--text-secondary);cursor:not-allowed"/>
           <div class="helper-text">Otomatis mengikuti tanggal hari ini (Yogyakarta).</div>
         </div>
+
+        <div class="form-group">
+          <label>PIC (Owner)</label>
+          <input type="text" id="inp-owner" placeholder="Nama kamu"/>
+          <div class="helper-text">Dipakai buat record SPH ke sheet, otomatis diingat di browser ini.</div>
+        </div>
       </div>
 
       <!-- ASSET PERUSAHAAN (MODULAR) -->
@@ -266,6 +284,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       <span class="ptitle" id="preview-title">Preview Dokumen</span>
       <div style="margin-left:auto;display:flex;gap:8px">
         <button class="btn-secondary" id="btn-download" style="width:auto;height:32px;padding:0 14px;margin-top:0;display:none" ><i class="ti ti-download"></i> Download PDF</button>
+        <button class="btn-secondary" id="btn-record-sph" style="width:auto;height:32px;padding:0 14px;margin-top:0;display:none;background:var(--success);color:#fff;border-color:var(--success)"><i class="ti ti-clipboard-check"></i> Record SPH</button>
       </div>
     </div>
     <div class="preview-body">
@@ -285,6 +304,65 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
     <h3 id="modal-title">Memproses…</h3>
     <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
     <div class="sub" id="modal-sub">Mempersiapkan data…</div>
+  </div>
+</div>
+
+<!-- RECORD SPH MODAL -->
+<div class="modal-overlay" id="record-sph-modal">
+  <div class="record-modal-box">
+    <div class="modal-title" style="margin-bottom:14px;font-size:14px;font-weight:600">Record ke Sheet Record SPH</div>
+
+    <div class="record-field">
+      <label>No. SPH</label>
+      <div class="ro" id="rsph-nomor">-</div>
+    </div>
+    <div class="record-field">
+      <label>Distributor</label>
+      <div class="ro" id="rsph-distributor">-</div>
+    </div>
+    <div class="record-field">
+      <label>Tanggal Surat</label>
+      <div class="ro" id="rsph-tanggal">-</div>
+    </div>
+    <div class="record-field">
+      <label>Customer</label>
+      <div class="ro" id="rsph-customer">-</div>
+    </div>
+    <div class="record-field">
+      <label>PIC Sales</label>
+      <div class="ro" id="rsph-sales">-</div>
+    </div>
+    <div class="record-field">
+      <label>Detail Penawaran</label>
+      <div class="ro" id="rsph-detail">-</div>
+    </div>
+    <div class="record-field">
+      <label>Total Value</label>
+      <div class="ro" id="rsph-value">-</div>
+    </div>
+    <div class="record-field">
+      <label>Nama File</label>
+      <div class="ro" id="rsph-namafile">-</div>
+    </div>
+    <div class="record-field">
+      <label>Tanggal File</label>
+      <div class="ro" id="rsph-tanggalfile">-</div>
+    </div>
+    <div class="record-field">
+      <label>PIC (Owner)</label>
+      <div class="ro" id="rsph-owner">-</div>
+    </div>
+    <div class="record-field">
+      <label>Link File (opsional)</label>
+      <input id="rsph-link" type="text" placeholder="Link file PDF (Drive, dsb) — isi kalau sudah diupload"/>
+    </div>
+
+    <div id="record-sph-status"></div>
+
+    <div class="record-actions">
+      <button id="record-sph-cancel-btn">Batal</button>
+      <button id="record-sph-submit-btn">Kirim ke Sheet</button>
+    </div>
   </div>
 </div>
 
@@ -356,11 +434,13 @@ const inpNamaPt = document.getElementById('inp-namapt');
 const inpRs = document.getElementById('inp-rs');
 const inpSales = document.getElementById('inp-sales');
 const inpTanggal = document.getElementById('inp-tanggal');
+const inpOwner = document.getElementById('inp-owner');
 const suffixBulanTahun = document.getElementById('suffix-bulan-tahun');
 
 const btnGenerate = document.getElementById('btn-generate');
 const btnReset = document.getElementById('btn-reset');
 const btnDownload = document.getElementById('btn-download');
+const btnRecordSph = document.getElementById('btn-record-sph');
 const validationMsg = document.getElementById('validation-msg');
 
 const emptyPreview = document.getElementById('empty-preview');
@@ -372,6 +452,25 @@ const progressFill = document.getElementById('progress-fill');
 const modalSub = document.getElementById('modal-sub');
 const modalTitle = document.getElementById('modal-title');
 
+const recordSphModal = document.getElementById('record-sph-modal');
+const rsphNomor = document.getElementById('rsph-nomor');
+const rsphDistributor = document.getElementById('rsph-distributor');
+const rsphTanggal = document.getElementById('rsph-tanggal');
+const rsphCustomer = document.getElementById('rsph-customer');
+const rsphSales = document.getElementById('rsph-sales');
+const rsphDetail = document.getElementById('rsph-detail');
+const rsphValue = document.getElementById('rsph-value');
+const rsphNamaFile = document.getElementById('rsph-namafile');
+const rsphTanggalFile = document.getElementById('rsph-tanggalfile');
+const rsphOwner = document.getElementById('rsph-owner');
+const rsphLink = document.getElementById('rsph-link');
+const recordSphStatus = document.getElementById('record-sph-status');
+const recordSphSubmitBtn = document.getElementById('record-sph-submit-btn');
+const recordSphCancelBtn = document.getElementById('record-sph-cancel-btn');
+
+// Data hasil generate terakhir, dipakai buat Record SPH
+let lastSphRecord = null;
+
 // ===== INIT DEFAULTS =====
 (function initDate(){
   const now = new Date();
@@ -379,6 +478,16 @@ const modalTitle = document.getElementById('modal-title');
   inpTanggal.value = `${dd} ${MONTH_NAMES_ID[now.getMonth()]} ${now.getFullYear()}`;
   suffixBulanTahun.textContent = `/ ${ROMAN_MONTHS[now.getMonth()]} / ${now.getFullYear()}`;
 })();
+
+// Ingat nama PIC (Owner) di browser ini supaya ga perlu ketik ulang tiap buka
+(function initOwnerName(){
+  const saved = localStorage.getItem('pic_owner_name');
+  if (saved) inpOwner.value = saved;
+})();
+inpOwner.addEventListener('input', () => {
+  localStorage.setItem('pic_owner_name', inpOwner.value.trim());
+});
+
 
 function setProgress(pct, label, title){
   progressFill.style.width = pct + '%';
@@ -1190,6 +1299,28 @@ async function generateSph(){
     btnDownload.style.display = 'inline-flex';
     previewTitle.textContent = `Preview — ${nomorSph}`;
 
+    // ── Simpan data buat Record SPH ──
+    const namaRsFileNow = (namaRs || 'RS').replace(/[^a-zA-Z0-9 ]/g,'').trim();
+    const nomorFileNow = inpNomor.value.trim() || 'SPH';
+    const tanggalFileNow = inpTanggal.value.replace(/ /g,'_');
+    const namaFileGenerated = `SPH-${nomorFileNow}-${namaRsFileNow}-${tanggalFileNow}.pdf`;
+    const detailPenawaran = parsedData.items
+      .map(i => `${i.deskripsi}${i.qty ? ` (x${i.qty})` : ''}`)
+      .join('; ');
+
+    lastSphRecord = {
+      nomorSph,
+      distributor: namaPt,
+      tanggalSurat: inpTanggal.value,
+      customer: namaRs,
+      picSales: namaSales,
+      detailPenawaran,
+      totalValue: parsedData.grandTotal,
+      namaFile: namaFileGenerated,
+      tanggalFile: new Date().toISOString().slice(0, 10)
+    };
+    btnRecordSph.style.display = 'inline-flex';
+
   } catch(err) {
     console.error(err);
     hideModal();
@@ -1240,8 +1371,92 @@ btnReset.addEventListener('click', () => {
   emptyPreview.style.display = 'block';
   pdfPagesContainer.innerHTML='';
   btnDownload.style.display='none';
+  btnRecordSph.style.display='none';
+  lastSphRecord = null;
   previewTitle.textContent = 'Preview Dokumen';
   updateGenerateButtonState();
+});
+
+// ══════════════════════════════════════════
+// RECORD SPH → GOOGLE SHEETS (Apps Script webhook)
+// ══════════════════════════════════════════
+
+// GANTI dengan URL Web App hasil deploy Google Apps Script kamu.
+const GAS_SPH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbypJFkyvDTxGqxiA6cjQ0aiP05q_i4_lf3fshLNcnOxCjNG4PHFpESJvcETEMkbNMv49w/exec';
+
+function openRecordSphModal(){
+  if (!lastSphRecord) return;
+  rsphNomor.textContent = lastSphRecord.nomorSph;
+  rsphDistributor.textContent = lastSphRecord.distributor;
+  rsphTanggal.textContent = lastSphRecord.tanggalSurat;
+  rsphCustomer.textContent = lastSphRecord.customer;
+  rsphSales.textContent = lastSphRecord.picSales;
+  rsphDetail.textContent = lastSphRecord.detailPenawaran;
+  rsphValue.textContent = rupiah(lastSphRecord.totalValue);
+  rsphNamaFile.textContent = lastSphRecord.namaFile;
+  rsphTanggalFile.textContent = lastSphRecord.tanggalFile;
+  rsphOwner.textContent = inpOwner.value.trim() || '-';
+  rsphLink.value = '';
+  recordSphStatus.textContent = '';
+  recordSphStatus.style.color = '';
+  recordSphSubmitBtn.disabled = false;
+  recordSphSubmitBtn.textContent = 'Kirim ke Sheet';
+
+  recordSphModal.classList.add('show');
+}
+
+btnRecordSph.addEventListener('click', openRecordSphModal);
+recordSphCancelBtn.addEventListener('click', () => recordSphModal.classList.remove('show'));
+recordSphModal.addEventListener('click', (e) => { if (e.target === recordSphModal) recordSphModal.classList.remove('show'); });
+
+recordSphSubmitBtn.addEventListener('click', async () => {
+  if (!lastSphRecord) return;
+  if (!inpOwner.value.trim()) {
+    recordSphStatus.textContent = 'Isi dulu nama PIC (Owner) di panel kiri.';
+    recordSphStatus.style.color = 'var(--danger)';
+    return;
+  }
+
+  const payload = {
+    no_sph: lastSphRecord.nomorSph,
+    distributor: lastSphRecord.distributor,
+    tanggal_surat: lastSphRecord.tanggalSurat,
+    customer: lastSphRecord.customer,
+    pic_sales: lastSphRecord.picSales,
+    detail_penawaran: lastSphRecord.detailPenawaran,
+    total_value: lastSphRecord.totalValue,
+    nama_file: lastSphRecord.namaFile,
+    tanggal_file: lastSphRecord.tanggalFile,
+    pic_owner: inpOwner.value.trim(),
+    link_file: rsphLink.value.trim(),
+    controller: '' // sengaja dikosongin
+  };
+
+  recordSphSubmitBtn.disabled = true;
+  recordSphSubmitBtn.textContent = 'Mengirim…';
+  recordSphStatus.textContent = '';
+
+  try {
+    if (!GAS_SPH_WEBHOOK_URL || GAS_SPH_WEBHOOK_URL.startsWith('PASTE_URL')) {
+      throw new Error('URL webhook Apps Script belum diisi di kode (GAS_SPH_WEBHOOK_URL).');
+    }
+    const res = await fetch(GAS_SPH_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight ke Apps Script
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error || 'Gagal menyimpan ke sheet');
+
+    recordSphStatus.textContent = 'Berhasil dicatat ke Record SPH ✓';
+    recordSphStatus.style.color = 'var(--success)';
+    setTimeout(() => recordSphModal.classList.remove('show'), 1200);
+  } catch (err) {
+    recordSphStatus.textContent = 'Gagal: ' + err.message;
+    recordSphStatus.style.color = 'var(--danger)';
+    recordSphSubmitBtn.disabled = false;
+    recordSphSubmitBtn.textContent = 'Kirim ke Sheet';
+  }
 });
 </script>
 
