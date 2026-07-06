@@ -917,13 +917,11 @@ function addToClip(kode) {
   updateClipboard();
   renderResults(lastResults);
 }
-
 function removeFromClip(kode) {
   clipboard = clipboard.filter(c => c.kode_produk !== kode);
   updateClipboard();
   renderResults(lastResults);
 }
-
 function updateClipboard() {
   const n = clipboard.length;
   hdrCount.textContent = n;
@@ -933,7 +931,6 @@ function updateClipboard() {
   clipEmpty.style.display = n === 0 ? 'block' : 'none';
   const tabBadge = document.getElementById('tab-badge');
   if (tabBadge) { tabBadge.textContent = n; tabBadge.style.display = n > 0 ? 'inline-block' : 'none'; }
-
   clipList.innerHTML = clipboard.map(item => {
     const isSet = item.is_set;
     const tipeColor = isSet ? 'background:var(--success-bg);color:var(--success)' : 'background:var(--accent-bg);color:var(--accent-text)';
@@ -951,7 +948,16 @@ function updateClipboard() {
       <div class="clip-item-right">
         <div class="qty-ctrl">
           <button class="qty-btn" data-kode="${item.kode_produk}" data-d="-1">−</button>
-          <span class="qty-val">${item.qty}</span>
+          <input
+            class="qty-input"
+            type="number"
+            min="1"
+            step="1"
+            inputmode="numeric"
+            value="${item.qty}"
+            data-kode="${item.kode_produk}"
+            style="width:44px;text-align:center;border:1px solid var(--border,#ccc);border-radius:4px;font-size:13px;padding:2px 0;-moz-appearance:textfield"
+          />
           <button class="qty-btn" data-kode="${item.kode_produk}" data-d="1">+</button>
           <button class="clip-remove" data-kode="${item.kode_produk}" title="Hapus" style="margin-left:2px;width:20px;height:20px;border:1px solid var(--danger-border);border-radius:4px;color:var(--danger);background:var(--danger-bg);font-size:13px">×</button>
         </div>
@@ -968,6 +974,24 @@ function updateClipboard() {
       item.qty = Math.max(1, item.qty + parseInt(btn.dataset.d));
       updateClipboard();
     });
+  });
+  // FIX: handler untuk input qty yang diketik manual
+  clipList.querySelectorAll('.qty-input').forEach(input => {
+    // update saat user selesai ngetik (blur) atau tekan Enter
+    const commit = () => {
+      const item = clipboard.find(c => c.kode_produk === input.dataset.kode);
+      if (!item) return;
+      let val = parseInt(input.value, 10);
+      if (isNaN(val) || val < 1) val = 1;
+      item.qty = val;
+      updateClipboard();
+    };
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    });
+    // supaya klik di input tidak ikut trigger event lain di parent (kalau ada)
+    input.addEventListener('click', (e) => e.stopPropagation());
   });
 }
 
