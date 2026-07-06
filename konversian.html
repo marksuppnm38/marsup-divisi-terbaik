@@ -226,7 +226,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   </div>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
-    <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><i class="ti ti-moon" id="theme-icon"></i></button>
+    <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><span id="theme-icon">🌙</span></button>
   </div>
 </header>
 
@@ -698,7 +698,7 @@ const themeIcon = document.getElementById('theme-icon');
 // DARK MODE
 function setThemeIcon() {
   const isDark = document.body.getAttribute('data-theme') === 'dark';
-  themeIcon.className = isDark ? 'ti ti-sun' : 'ti ti-moon-stars';
+  themeIcon.textContent = isDark ? '☀️' : '🌙';
 }
 setThemeIcon();
 themeToggle.addEventListener('click', () => {
