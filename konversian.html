@@ -13,27 +13,24 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#f4f6fb;
-  --surface:#ffffff;
-  --surface-2:#f0f2f8;
-  --surface-3:#e8eaf2;
-  --border:#dde1eb;
-  --border-strong:#b8bece;
-  --text:#0f1623;
-  --text-secondary:#374151;
-  --text-muted:#7c8799;
-  --accent:#2563eb;
+  --bg:#f0f2f5;
+  --surface:#fff;
+  --surface-2:#f5f6f8;
+  --border:#e2e4e9;
+  --border-strong:#c8ccd6;
+  --text:#111827;
+  --text-secondary:#4b5563;
+  --text-muted:#9ca3af;
+  --accent:#1d5bd4;
   --accent-bg:#eff4ff;
   --accent-text:#1d4ed8;
-  --accent-hover:#1d4ed8;
-  --success:#16803d;
+  --success:#15803d;
   --success-bg:#f0fdf4;
   --success-border:#86efac;
-  --danger:#dc2626;
-  --danger-bg:#fef2f2;
+  --danger:#b91c1c;
+  --danger-bg:#fff5f5;
   --danger-border:#fca5a5;
-  --shadow-sm:0 1px 3px rgba(15,22,35,.06),0 1px 2px rgba(15,22,35,.04);
-  --shadow-md:0 4px 12px rgba(15,22,35,.08),0 2px 4px rgba(15,22,35,.04);
+  --accent-hover:#1749b1;
   --radius:10px;
   --mono:'JetBrains Mono',monospace;
 }
@@ -59,20 +56,7 @@ body[data-theme="dark"]{
 }
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;height:100vh;display:flex;flex-direction:column;overflow:hidden;transition:background .4s ease,color .4s ease}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;transition:background-color .4s ease,border-color .4s ease,color .3s ease}
-body{transition:background .35s cubic-bezier(.4,0,.2,1),color .35s cubic-bezier(.4,0,.2,1)}
-header,
-.panel-header,
-.panel-clip,
-.rcard,
-.clip-item,
-.toggle-btn,
-.filter-select,
-#search-input,
-.form-group input,
-.modal-box{transition:background .35s cubic-bezier(.4,0,.2,1),border-color .35s cubic-bezier(.4,0,.2,1),color .25s cubic-bezier(.4,0,.2,1),box-shadow .25s cubic-bezier(.4,0,.2,1)}
-#theme-toggle{transition:transform .3s cubic-bezier(.34,1.56,.64,1),background .25s}
-#theme-toggle:active{transform:rotate(18deg) scale(.88)}
-#theme-toggle i{transition:transform .4s cubic-bezier(.34,1.56,.64,1),opacity .3s}
+
 /* HEADER */
 header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
 .logo{width:32px;height:32px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;flex-shrink:0}
@@ -116,14 +100,6 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .rcard:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(29,91,212,.08)}
 .rcard.selected{border-color:var(--accent);background:var(--accent-bg)}
 .rcard.selected::after{content:'\ea5e';font-family:'tabler-icons';position:absolute;top:10px;right:10px;font-size:16px;color:var(--accent)}
-.rcard.no-price{border-color:#f97316;background:#fff7ed;border-left:3px solid #f97316}
-.rcard.no-price:hover{border-color:#ea580c;box-shadow:0 2px 10px rgba(249,115,22,.15)}
-.rcard.no-price .rcard-name{color:#9a3412}
-[data-theme="dark"] .rcard.no-price{border-color:#c2410c;background:#1c1108;border-left:3px solid #f97316}
-[data-theme="dark"] .rcard.no-price .rcard-name{color:#fb923c}
-.rcard.no-link{border-color:#a78bfa;background:#faf5ff;border-left:3px solid #a78bfa}
-.rcard.no-link:hover{border-color:#7c3aed;box-shadow:0 2px 10px rgba(167,139,250,.15)}
-[data-theme="dark"] .rcard.no-link{border-color:#6d28d9;background:#130e1f;border-left:3px solid #a78bfa}
 .rcard-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;padding-right:20px}
 .rcard-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;flex:1}
 .tipe-badge{font-size:10px;font-weight:500;padding:2px 7px;border-radius:20px;white-space:nowrap;flex-shrink:0}
@@ -676,6 +652,7 @@ let acItems = [], acIndex = -1, onlyAkd = false, selectedTipe = null, acTimer = 
 let lastResults = [];
 let modeSwasta = false;
 let sortMode = 'relevance';
+let prioritizeLink = true; // produk yang ada link_v6 diprioritaskan (hanya berlaku saat mode e-katalog)
 
 // ELEMENTS
 const searchInput = document.getElementById('search-input');
@@ -807,6 +784,9 @@ async function runAutocomplete(q) { acBox.style.display = 'none'; }
 // SEARCH
 async function runSearch() {
   const q = searchInput.value.trim();
+  console.log('DEBUG q:', JSON.stringify(q));
+  console.log('DEBUG codes:', [...q].map(c => c.charCodeAt(0)));
+  
   if (!q) { reset(); return; }
   errEl.style.display = 'none';
   hintEl.style.display = 'none';
@@ -814,25 +794,26 @@ async function runSearch() {
   resultsEl.innerHTML = '';
   emptyEl.style.display = 'none';
   metaEl.textContent = '';
-
   const {data, error} = await rpc('search_produk_dengan_harga', {
     q, p_tipe: selectedTipe, only_akd: onlyAkd, only_kfa: false
   });
-  loadingEl.style.display = 'none';
+  console.log('DEBUG data length:', data ? data.length : null);
+  console.log('DEBUG error:', error);
+
+  loadingEl.style.display = 'none'; // FIX: matikan loading begitu response datang (sebelum branching)
 
   if (error) {
-  const msg = error.message || JSON.stringify(error);
-  if (msg.includes('timeout') || msg.includes('canceling')) {
-    emptyEl.style.display='block';
-    metaEl.textContent='Pencarian timeout — coba kata kunci lebih spesifik';
-  } else {
-    errEl.textContent = 'Error: '+msg;
-    errEl.style.display='block';
+    const msg = error.message || JSON.stringify(error);
+    if (msg.includes('timeout') || msg.includes('canceling')) {
+      emptyEl.style.display='block';
+      metaEl.textContent='Pencarian timeout — coba kata kunci lebih spesifik';
+    } else {
+      errEl.textContent = 'Error: '+msg;
+      errEl.style.display='block';
+    }
+    return;
   }
-  return;
-}
   if (!data || !data.length) { emptyEl.style.display='block'; metaEl.textContent='Tidak ada hasil untuk "'+q+'"'; return; }
-
   lastResults = data;
   sortSelect.style.display = 'inline-block';
   applySort();
@@ -842,10 +823,27 @@ async function runSearch() {
 
 // SORT
 function applySort() {
-  if (sortMode === 'relevance') return; // urutan asli dari backend (score DESC)
+  const useLinkPriority = prioritizeLink && !modeSwasta;
+
+  if (sortMode === 'relevance') {
+    if (useLinkPriority) {
+      lastResults = [...lastResults].sort((a, b) => {
+        const aHas = a.link_v6 ? 0 : 1;
+        const bHas = b.link_v6 ? 0 : 1;
+        return aHas - bHas; // stable sort: urutan relevansi asli tetap terjaga di tiap grup
+      });
+    }
+    return; // urutan asli dari backend (score DESC), atau sudah dipartisi link_v6 di atas
+  }
+
   const field = modeSwasta ? 'harga_swasta' : 'harga_ekat';
   const dir = sortMode === 'harga_asc' ? 1 : -1;
   lastResults.sort((a, b) => {
+    if (useLinkPriority) {
+      const aHas = a.link_v6 ? 0 : 1;
+      const bHas = b.link_v6 ? 0 : 1;
+      if (aHas !== bHas) return aHas - bHas;
+    }
     const av = a[field], bv = b[field];
     if (av == null && bv == null) return 0;
     if (av == null) return 1;  // produk tanpa harga ditaruh paling bawah
@@ -862,10 +860,7 @@ function renderResults(data) {
     const hargaTampil = modeSwasta ? r.harga_swasta : r.harga_ekat;
     const tahunTampil = modeSwasta ? r.tahun_harga_swasta : r.tahun_harga;
     const labelHarga = modeSwasta ? 'Harga Swasta' : 'Harga belum ada';
-    const noPrice = !hargaTampil;
-    const noLink = !r.link_v6 && !modeSwasta;
-    const extraClass = inClip ? ' selected' : (noPrice ? ' no-price' : (noLink ? ' no-link' : ''));
-    return `<div class="rcard${extraClass}" data-kode="${r.kode_produk}">
+    return `<div class="rcard${inClip?' selected':''}" data-kode="${r.kode_produk}">
       <div class="rcard-top">
         <span class="rcard-name">${r.nama_produk||'—'}</span>
         ${r.tipe?`<span class="tipe-badge ${tipeClass}">${r.tipe}</span>`:''}
@@ -897,7 +892,6 @@ function renderResults(data) {
     });
   });
 }
-
 // CLIPBOARD
 function addToClip(kode) {
   const r = lastResults.find(x => x.kode_produk === kode);
