@@ -156,6 +156,21 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .btn-export:disabled{background:var(--border-strong);cursor:not-allowed}
 .btn-clear-all{width:100%;height:30px;background:none;color:var(--text-muted);border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;cursor:pointer;margin-top:6px;transition:all .15s}
 .btn-clear-all:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-bg)}
+.btn-record{width:100%;height:38px;background:var(--success);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s;margin-top:8px}
+.btn-record:hover{filter:brightness(0.92)}
+.btn-record:disabled{background:var(--border-strong);cursor:not-allowed;filter:none}
+.record-modal-box{background:var(--surface);border-radius:12px;padding:22px 24px;width:90vw;max-width:420px;text-align:left}
+.record-field{margin-bottom:12px}
+.record-field label{display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
+.record-field .ro{font-size:13px;color:var(--text);background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:7px 10px}
+.record-field input,.record-field textarea{width:100%;font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none}
+.record-field textarea{resize:vertical;min-height:56px}
+.record-actions{display:flex;gap:8px;margin-top:16px}
+.record-actions button{flex:1;height:38px;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;border:none}
+#record-submit-btn{background:var(--success);color:#fff}
+#record-submit-btn:disabled{background:var(--border-strong);cursor:not-allowed}
+#record-cancel-btn{background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border)}
+#record-status{font-size:12px;margin-top:10px;text-align:center;min-height:16px}
 
 /* PROGRESS MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:none;align-items:center;justify-content:center}
@@ -259,6 +274,10 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
         <label>Nama Sales</label>
         <input id="inp-sales" type="text" placeholder="Nama sales"/>
       </div>
+      <div class="form-group">
+        <label>PIC Marsup (kamu)</label>
+        <input id="inp-marsup" type="text" placeholder="Nama kamu"/>
+      </div>
     </div>
     <div class="clip-body">
       <div class="clip-empty" id="clip-empty">
@@ -271,6 +290,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       <div class="clip-summary">Total: <span id="clip-total">0</span> produk dipilih</div>
       <button class="btn-export" id="btn-export" disabled>
         <i class="ti ti-file-spreadsheet"></i> Export ke Excel
+      </button>
+      <button class="btn-record" id="btn-record" disabled>
+        <i class="ti ti-clipboard-check"></i> Record Konversi
       </button>
       <button class="btn-clear-all" id="btn-clear-all">Hapus semua</button>
     </div>
@@ -296,6 +318,49 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
     <div class="modal-sub" id="modal-sub">Mengambil data dan gambar produk</div>
     <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
     <div class="progress-label" id="progress-label">0 / 0</div>
+  </div>
+</div>
+
+<!-- RECORD KONVERSI MODAL -->
+<div class="modal-overlay" id="record-modal">
+  <div class="record-modal-box">
+    <div class="modal-title" style="margin-bottom:14px">Record ke Sheet Konversi</div>
+
+    <div class="record-field">
+      <label>Tanggal</label>
+      <div class="ro" id="rec-tanggal">-</div>
+    </div>
+    <div class="record-field">
+      <label>Rekanan / Customer / Distributor / Keyword</label>
+      <div class="ro" id="rec-rs">-</div>
+    </div>
+    <div class="record-field">
+      <label>PIC Sales</label>
+      <div class="ro" id="rec-sales">-</div>
+    </div>
+    <div class="record-field">
+      <label>Kategori</label>
+      <div class="ro" id="rec-kategori">-</div>
+    </div>
+    <div class="record-field">
+      <label>Value</label>
+      <div class="ro" id="rec-value">-</div>
+    </div>
+    <div class="record-field">
+      <label>Notes (opsional)</label>
+      <textarea id="rec-notes" placeholder="Catatan tambahan…"></textarea>
+    </div>
+    <div class="record-field">
+      <label>Link (opsional)</label>
+      <input id="rec-link" type="text" placeholder="Link file/dokumen terkait (jika ada)"/>
+    </div>
+
+    <div id="record-status"></div>
+
+    <div class="record-actions">
+      <button id="record-cancel-btn">Batal</button>
+      <button id="record-submit-btn">Kirim ke Sheet</button>
+    </div>
   </div>
 </div>
 
@@ -606,6 +671,19 @@ const btnExport = document.getElementById('btn-export');
 const btnClearAll = document.getElementById('btn-clear-all');
 const inpRs = document.getElementById('inp-rs');
 const inpSales = document.getElementById('inp-sales');
+const inpMarsup = document.getElementById('inp-marsup');
+const btnRecord = document.getElementById('btn-record');
+const recordModal = document.getElementById('record-modal');
+const recTanggal = document.getElementById('rec-tanggal');
+const recRs = document.getElementById('rec-rs');
+const recSales = document.getElementById('rec-sales');
+const recKategori = document.getElementById('rec-kategori');
+const recValue = document.getElementById('rec-value');
+const recNotes = document.getElementById('rec-notes');
+const recLink = document.getElementById('rec-link');
+const recordStatus = document.getElementById('record-status');
+const recordSubmitBtn = document.getElementById('record-submit-btn');
+const recordCancelBtn = document.getElementById('record-cancel-btn');
 const exportModal = document.getElementById('export-modal');
 const progressFill = document.getElementById('progress-fill');
 const progressLabel = document.getElementById('progress-label');
@@ -826,6 +904,7 @@ function updateClipboard() {
   hdrCount.textContent = n;
   clipTotal.textContent = n;
   btnExport.disabled = n === 0;
+  btnRecord.disabled = n === 0;
   clipEmpty.style.display = n === 0 ? 'block' : 'none';
   const tabBadge = document.getElementById('tab-badge');
   if (tabBadge) { tabBadge.textContent = n; tabBadge.style.display = n > 0 ? 'inline-block' : 'none'; }
@@ -1260,6 +1339,118 @@ function switchTab(tab) {
 if (window.innerWidth <= 768) document.getElementById('panel-search').classList.add('active');
 
 updateClipboard();
+
+// ══════════════════════════════════════════
+// RECORD KONVERSI → GOOGLE SHEETS (Apps Script webhook)
+// ══════════════════════════════════════════
+
+// GANTI dengan URL Web App hasil deploy Google Apps Script kamu.
+const GAS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbylWyYXD5HQG2vEFhUG4vekkuJEyOfTFQmY-UOgn1CKvBgZ9z3JLkA8Ke2zgTVdEWWTkQ/exec';
+
+// Ingat nama PIC Marsup di browser supaya ga perlu ketik ulang tiap buka
+(function initMarsupName() {
+  const saved = localStorage.getItem('pic_marsup_name');
+  if (saved) inpMarsup.value = saved;
+})();
+inpMarsup.addEventListener('input', () => {
+  localStorage.setItem('pic_marsup_name', inpMarsup.value.trim());
+});
+
+// Hitung kategori (Instrumen / Set / Unit / Campuran) + total value dari clipboard
+function computeKonversiSummary() {
+  const tipeSet = new Set(clipboard.map(i => (i.tipe || '').toUpperCase()));
+  let kategori;
+  if (tipeSet.size === 0) kategori = '-';
+  else if (tipeSet.size > 1) kategori = 'Campuran';
+  else {
+    const t = [...tipeSet][0];
+    kategori = t === 'INSTRUMENT' ? 'Instrumen' : t === 'SET' ? 'Set' : t === 'UNIT' ? 'Unit' : t;
+  }
+
+  let grandTotal = 0;
+  clipboard.forEach(item => {
+    const hargaPakai = modeSwasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
+    grandTotal += hargaPakai * (item.qty || 1);
+  });
+
+  return { kategori, grandTotal };
+}
+
+function openRecordModal() {
+  const namaRs = inpRs.value.trim() || 'RS';
+  const namaSales = inpSales.value.trim() || 'Sales';
+  const { kategori, grandTotal } = computeKonversiSummary();
+
+  recTanggal.textContent = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+  recRs.textContent = namaRs;
+  recSales.textContent = namaSales;
+  recKategori.textContent = kategori;
+  recValue.textContent = rupiah(grandTotal);
+  recNotes.value = '';
+  recLink.value = '';
+  recordStatus.textContent = '';
+  recordStatus.style.color = '';
+  recordSubmitBtn.disabled = false;
+  recordSubmitBtn.textContent = 'Kirim ke Sheet';
+
+  recordModal.classList.add('show');
+}
+
+btnRecord.addEventListener('click', openRecordModal);
+recordCancelBtn.addEventListener('click', () => recordModal.classList.remove('show'));
+recordModal.addEventListener('click', (e) => { if (e.target === recordModal) recordModal.classList.remove('show'); });
+
+recordSubmitBtn.addEventListener('click', async () => {
+  if (!inpMarsup.value.trim()) {
+    recordStatus.textContent = 'Isi dulu nama PIC Marsup di panel clipboard.';
+    recordStatus.style.color = 'var(--danger)';
+    return;
+  }
+
+  const namaRs = inpRs.value.trim() || 'RS';
+  const namaSales = inpSales.value.trim() || 'Sales';
+  const { kategori, grandTotal } = computeKonversiSummary();
+
+  const payload = {
+    tanggal: new Date().toISOString().slice(0, 10), // yyyy-mm-dd, Apps Script akan parse jadi Date
+    pic_marsup: inpMarsup.value.trim(),
+    pic_sales: namaSales,
+    keyword: namaRs,
+    rekanan: namaRs,
+    customer: namaRs,
+    distributor: namaRs,
+    kategori: kategori,
+    value: grandTotal,
+    notes: recNotes.value.trim(),
+    link: recLink.value.trim()
+  };
+
+  recordSubmitBtn.disabled = true;
+  recordSubmitBtn.textContent = 'Mengirim…';
+  recordStatus.textContent = '';
+
+  try {
+    if (!GAS_WEBHOOK_URL || GAS_WEBHOOK_URL.startsWith('PASTE_URL')) {
+      throw new Error('URL webhook Apps Script belum diisi di kode (GAS_WEBHOOK_URL).');
+    }
+    const res = await fetch(GAS_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight ke Apps Script
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error || 'Gagal menyimpan ke sheet');
+
+    recordStatus.textContent = 'Berhasil dicatat ke Record Konversi ✓';
+    recordStatus.style.color = 'var(--success)';
+    setTimeout(() => recordModal.classList.remove('show'), 1200);
+  } catch (err) {
+    recordStatus.textContent = 'Gagal: ' + err.message;
+    recordStatus.style.color = 'var(--danger)';
+    recordSubmitBtn.disabled = false;
+    recordSubmitBtn.textContent = 'Kirim ke Sheet';
+  }
+});
 </script>
 </body>
 </html>
