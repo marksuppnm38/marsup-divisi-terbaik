@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/tabler-icons.min.css"/>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"/>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <style>
@@ -226,7 +226,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   </div>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
-    <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><span id="theme-icon">🌙</span></button>
+    <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
   </div>
 </header>
 
@@ -698,7 +698,7 @@ const themeIcon = document.getElementById('theme-icon');
 // DARK MODE
 function setThemeIcon() {
   const isDark = document.body.getAttribute('data-theme') === 'dark';
-  themeIcon.textContent = isDark ? '☀️' : '🌙';
+  themeIcon.className = isDark ? 'ph ph-sun' : 'ph ph-moon';
 }
 setThemeIcon();
 themeToggle.addEventListener('click', () => {
