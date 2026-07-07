@@ -961,6 +961,13 @@ function renderResults(data) {
     const tipeClass = isSet ? 'tipe-set' : (r.tipe && r.tipe.toUpperCase() === 'UNIT') ? 'tipe-unit' : 'tipe-other';
     const hargaTampil = modeSwasta ? r.harga_swasta : r.harga_ekat;
     const tahunTampil = modeSwasta ? r.tahun_harga_swasta : r.tahun_harga;
+    const noPrice = !hargaTampil;
+    const noLink = !r.link_v6 && !modeSwasta;
+    const extraClass = inClip
+  ? ' selected'
+  : (noPrice
+      ? ' no-price'
+      : (noLink ? ' no-link' : ''));
     const labelHarga = modeSwasta ? 'Harga Swasta' : 'Harga belum ada';
     const stokBadge = r.stok_status === 'READY'
       ? `<span class="mi stok-ready"><i class="ph ph-check-circle"></i><span>Ready · ${r.stok_qty} pcs</span></span>`
