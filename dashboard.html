@@ -215,14 +215,14 @@ tr:hover td{background:var(--surface-2)}
   <div class="header-right">
     <span class="last-update"><span class="material-symbols-rounded" style="font-size:14px">sync</span> <span id="last-update-text">Memuat…</span></span>
     <a class="nav-link" href="index.html"><span class="material-symbols-rounded">swap_horiz</span> Home</a>
-    <button class="theme-btn" id="theme-btn" title="Ganti tema"><i class="ti ti-moon" id="theme-icon"></i></button>
+    <button class="theme-btn" id="theme-btn" title="Ganti tema"><span class="material-symbols-rounded" id="theme-icon">dark_mode</span></button>
   </div>
 </header>
 
 <main>
 
   <!-- STAT CARDS -->
-  <div class="section-label"><i class="ti ti-database" style="font-size:12px"></i> Ringkasan Database</div>
+  <div class="section-label"><span class="material-symbols-rounded" style="font-size:14px">database</span> Ringkasan Database</div>
   <div class="stats-grid" id="stats-grid">
     <!-- diisi JS -->
     <div class="stat-card blue"><div class="skeleton" style="width:60%;height:28px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
@@ -234,7 +234,7 @@ tr:hover td{background:var(--surface-2)}
   </div>
 
   <!-- PROGRESS SECTION -->
-  <div class="section-label"><i class="ti ti-chart-area" style="font-size:12px"></i> Kelengkapan Data</div>
+  <div class="section-label"><span class="material-symbols-rounded" style="font-size:14px">area_chart</span> Kelengkapan Data</div>
   <div class="prog-cards progress-section" id="prog-cards">
     <div class="prog-card">
       <div class="prog-card-title"><i class="ti ti-coin-rupee" style="color:var(--success)"></i> Harga</div>
@@ -261,10 +261,10 @@ tr:hover td{background:var(--surface-2)}
   </div>
 
   <!-- TABLE -->
-  <div class="section-label"><i class="ti ti-table" style="font-size:12px"></i> Daftar Produk</div>
+  <div class="section-label"><span class="material-symbols-rounded" style="font-size:14px">table</span> Daftar Produk</div>
   <div class="table-section">
     <div class="table-header">
-      <div class="table-title"><i class="ti ti-list"></i> Filter & Telusuri Produk</div>
+      <div class="table-title"><span class="material-symbols-rounded">list</span> Filter & Telusuri Produk</div>
       <div class="filter-bar">
         <button class="filter-btn active" data-f="all" onclick="setFilter('all',this)"><i class="ti ti-apps"></i> Semua</button>
         <button class="filter-btn f-noharga" data-f="noharga" onclick="setFilter('noharga',this)"><i class="ti ti-coin-rupee-off"></i> Tanpa Harga</button>
