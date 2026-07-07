@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dashboard Produk — PT Pionir Nusantara Manufacturing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/tabler-icons.min.css"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f0f3f9;
+  --surface:#ffffff;
+  --surface-2:#f5f7fc;
+  --surface-3:#eceef5;
+  --border:#dde1ed;
+  --border-strong:#c4c9d9;
+  --text:#0d1526;
+  --text-secondary:#3d4a63;
+  --text-muted:#7a88a3;
+  --accent:#2563eb;
+  --accent-bg:#eff4ff;
+  --accent-light:#dbeafe;
+  --accent-text:#1d4ed8;
+  --success:#16a34a;
+  --success-bg:#f0fdf4;
+  --success-light:#dcfce7;
+  --warning:#d97706;
+  --warning-bg:#fffbeb;
+  --warning-light:#fef3c7;
+  --danger:#dc2626;
+  --danger-bg:#fef2f2;
+  --danger-light:#fee2e2;
+  --purple:#7c3aed;
+  --purple-bg:#f5f3ff;
+  --purple-light:#ede9fe;
+  --shadow-sm:0 1px 3px rgba(13,21,38,.06),0 1px 2px rgba(13,21,38,.04);
+  --shadow-md:0 4px 16px rgba(13,21,38,.08),0 2px 6px rgba(13,21,38,.04);
+  --shadow-lg:0 8px 32px rgba(13,21,38,.1),0 4px 12px rgba(13,21,38,.05);
+  --radius:12px;
+  --mono:'JetBrains Mono',monospace;
+}
+[data-theme="dark"]{
+  --bg:#0a0e1a;
+  --surface:#111827;
+  --surface-2:#161d2e;
+  --surface-3:#1d2640;
+  --border:#1e2a42;
+  --border-strong:#2d3d5a;
+  --text:#e8eef8;
+  --text-secondary:#8fa3c4;
+  --text-muted:#4d6080;
+  --accent:#4d8ef0;
+  --accent-bg:#0e1c35;
+  --accent-light:#162240;
+  --accent-text:#79aaff;
+  --success:#4ade80;
+  --success-bg:#0a1f12;
+  --success-light:#0f2e1c;
+  --warning:#fbbf24;
+  --warning-bg:#1a1200;
+  --warning-light:#251a00;
+  --danger:#f87171;
+  --danger-bg:#1f0a0a;
+  --danger-light:#2e1010;
+  --purple:#a78bfa;
+  --purple-bg:#130e22;
+  --purple-light:#1c1530;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.4);
+  --shadow-md:0 4px 16px rgba(0,0,0,.5);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.6);
+}
+
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;min-height:100vh;transition:background .35s,color .3s}
+
+/* HEADER */
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:50;box-shadow:var(--shadow-sm);transition:background .35s,border-color .35s}
+.logo{width:34px;height:34px;background:var(--accent);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;flex-shrink:0;box-shadow:0 2px 8px rgba(37,99,235,.3)}
+.logo-text{font-size:15px;font-weight:700;letter-spacing:-.3px}
+.logo-sub{font-size:11px;color:var(--text-muted);font-weight:500}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.nav-link{height:32px;padding:0 14px;font-size:12px;font-weight:500;font-family:inherit;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none;transition:all .15s}
+.nav-link:hover{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
+.theme-btn{width:34px;height:34px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .25s cubic-bezier(.34,1.56,.64,1)}
+.theme-btn:hover{background:var(--accent-bg);color:var(--accent);border-color:var(--accent)}
+.theme-btn:active{transform:rotate(20deg) scale(.88)}
+.last-update{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px}
+
+/* MAIN */
+main{max-width:1280px;margin:0 auto;padding:28px 24px 48px}
+
+/* SECTION TITLE */
+.section-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* STAT CARDS */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:28px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow-sm);transition:background .35s,border-color .35s,transform .2s,box-shadow .2s;position:relative;overflow:hidden}
+.stat-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--radius) var(--radius) 0 0}
+.stat-card.blue::before{background:linear-gradient(90deg,var(--accent),#60a5fa)}
+.stat-card.green::before{background:linear-gradient(90deg,var(--success),#4ade80)}
+.stat-card.orange::before{background:linear-gradient(90deg,var(--warning),#fbbf24)}
+.stat-card.red::before{background:linear-gradient(90deg,var(--danger),#f87171)}
+.stat-card.purple::before{background:linear-gradient(90deg,var(--purple),#a78bfa)}
+.stat-card.teal::before{background:linear-gradient(90deg,#0d9488,#2dd4bf)}
+.stat-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px}
+.stat-icon.blue{background:var(--accent-light);color:var(--accent)}
+.stat-icon.green{background:var(--success-light);color:var(--success)}
+.stat-icon.orange{background:var(--warning-light);color:var(--warning)}
+.stat-icon.red{background:var(--danger-light);color:var(--danger)}
+.stat-icon.purple{background:var(--purple-light);color:var(--purple)}
+.stat-icon.teal{background:#ccfbf1;color:#0d9488}
+[data-theme="dark"] .stat-icon.teal{background:#042f2e;color:#2dd4bf}
+.stat-val{font-size:28px;font-weight:700;letter-spacing:-1px;font-family:var(--mono);line-height:1}
+.stat-label{font-size:12px;color:var(--text-muted);margin-top:4px;font-weight:500}
+.stat-sub{font-size:11px;color:var(--text-muted);margin-top:6px;display:flex;align-items:center;gap:4px}
+.stat-pct{font-size:12px;font-weight:600;font-family:var(--mono);padding:1px 6px;border-radius:20px}
+.pct-good{background:var(--success-light);color:var(--success)}
+.pct-warn{background:var(--warning-light);color:var(--warning)}
+.pct-bad{background:var(--danger-light);color:var(--danger)}
+[data-theme="dark"] .pct-good{background:var(--success-bg);color:var(--success)}
+[data-theme="dark"] .pct-warn{background:var(--warning-bg);color:var(--warning)}
+[data-theme="dark"] .pct-bad{background:var(--danger-bg);color:var(--danger)}
+
+/* PROGRESS BARS */
+.progress-section{margin-bottom:28px}
+.prog-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.prog-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow-sm);transition:background .35s,border-color .35s}
+.prog-card-title{font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.prog-item{margin-bottom:12px}
+.prog-item:last-child{margin-bottom:0}
+.prog-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.prog-name{font-size:12px;font-weight:500;color:var(--text-secondary)}
+.prog-num{font-size:12px;font-family:var(--mono);font-weight:600;color:var(--text)}
+.prog-track{height:7px;background:var(--surface-3);border-radius:20px;overflow:hidden}
+.prog-fill{height:100%;border-radius:20px;transition:width 1s cubic-bezier(.4,0,.2,1)}
+.prog-pct{font-size:10px;color:var(--text-muted);margin-top:2px;text-align:right;font-family:var(--mono)}
+
+/* TABLE SECTION */
+.table-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:28px;transition:background .35s,border-color .35s}
+.table-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.table-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.filter-btn{height:30px;padding:0 12px;font-size:12px;font-weight:500;font-family:inherit;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+.filter-btn:hover,.filter-btn.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
+.filter-btn.active{font-weight:600}
+.filter-btn.f-noharga.active{background:var(--warning-light);color:var(--warning);border-color:var(--warning)}
+.filter-btn.f-nolink.active{background:var(--purple-light);color:var(--purple);border-color:var(--purple)}
+.filter-btn.f-noakd.active{background:var(--danger-light);color:var(--danger);border-color:var(--danger)}
+[data-theme="dark"] .filter-btn.f-noharga.active{background:var(--warning-bg);color:var(--warning);border-color:var(--warning)}
+[data-theme="dark"] .filter-btn.f-nolink.active{background:var(--purple-bg);color:var(--purple);border-color:var(--purple)}
+[data-theme="dark"] .filter-btn.f-noakd.active{background:var(--danger-bg);color:var(--danger);border-color:var(--danger)}
+.search-mini{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface-2);color:var(--text);outline:none;width:200px;transition:border-color .15s}
+.search-mini:focus{border-color:var(--accent);background:var(--surface)}
+table{width:100%;border-collapse:collapse}
+thead tr{background:var(--surface-2);border-bottom:1px solid var(--border)}
+th{padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);text-align:left;white-space:nowrap}
+td{padding:9px 14px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--surface-2)}
+.badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap;font-family:var(--mono)}
+.badge-instrument{background:var(--accent-light);color:var(--accent-text)}
+.badge-set{background:var(--success-light);color:var(--success)}
+.badge-unit{background:var(--purple-light);color:var(--purple)}
+[data-theme="dark"] .badge-instrument{background:var(--accent-bg);color:var(--accent-text)}
+[data-theme="dark"] .badge-set{background:var(--success-bg);color:var(--success)}
+[data-theme="dark"] .badge-unit{background:var(--purple-bg);color:var(--purple)}
+.chip{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;padding:2px 7px;border-radius:20px}
+.chip-yes{background:var(--success-light);color:var(--success)}
+.chip-no{background:var(--danger-light);color:var(--danger)}
+[data-theme="dark"] .chip-yes{background:var(--success-bg);color:var(--success)}
+[data-theme="dark"] .chip-no{background:var(--danger-bg);color:var(--danger)}
+.kode-text{font-family:var(--mono);font-size:11px;color:var(--text-muted)}
+.table-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--text-muted)}
+.pagination{display:flex;gap:4px}
+.page-btn{width:28px;height:28px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;font-size:12px;font-family:inherit;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.page-btn:hover,.page-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.empty-row td{text-align:center;padding:32px;color:var(--text-muted);font-size:13px}
+
+/* LOADING */
+.loading-row td{text-align:center;padding:32px;color:var(--text-muted)}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.spinner{animation:spin 1s linear infinite;display:inline-block;font-size:20px}
+
+/* SKELETON */
+.skeleton{background:linear-gradient(90deg,var(--surface-3) 25%,var(--border) 50%,var(--surface-3) 75%);background-size:200% 100%;animation:shimmer 1.3s ease-in-out infinite;border-radius:4px;height:11px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* DONUT MINI */
+.donut-wrap{display:flex;align-items:center;gap:16px}
+.donut-legend{display:flex;flex-direction:column;gap:6px;flex:1}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:12px}
+.legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* RESPONSIVE */
+@media(max-width:640px){
+  main{padding:16px 14px 40px}
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .search-mini{width:140px}
+  .table-header{flex-direction:column;align-items:flex-start}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><i class="ti ti-chart-bar"></i></div>
+  <div>
+    <div class="logo-text">Dashboard Produk</div>
+    <div class="logo-sub">PT Pionir Nusantara Manufacturing</div>
+  </div>
+  <div class="header-right">
+    <span class="last-update"><i class="ti ti-refresh" style="font-size:12px"></i> <span id="last-update-text">Memuat…</span></span>
+    <a class="nav-link" href="pnum-konversi.html"><i class="ti ti-arrows-exchange"></i> Conversion Workspace</a>
+    <button class="theme-btn" id="theme-btn" title="Ganti tema"><i class="ti ti-moon" id="theme-icon"></i></button>
+  </div>
+</header>
+
+<main>
+
+  <!-- STAT CARDS -->
+  <div class="section-label"><i class="ti ti-database" style="font-size:12px"></i> Ringkasan Database</div>
+  <div class="stats-grid" id="stats-grid">
+    <!-- diisi JS -->
+    <div class="stat-card blue"><div class="skeleton" style="width:60%;height:28px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+    <div class="stat-card green"><div class="skeleton" style="width:60%;height:28px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+    <div class="stat-card orange"><div class="skeleton" style="width:60%;height:28px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+    <div class="stat-card red"><div class="skeleton" style="width:60%;height:28px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+    <div class="stat-card purple"><div class="skeleton" style="width:60%;height:28px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+    <div class="stat-card teal"><div class="skeleton" style="width:60%;height:28px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+  </div>
+
+  <!-- PROGRESS SECTION -->
+  <div class="section-label"><i class="ti ti-chart-area" style="font-size:12px"></i> Kelengkapan Data</div>
+  <div class="prog-cards progress-section" id="prog-cards">
+    <div class="prog-card">
+      <div class="prog-card-title"><i class="ti ti-coin-rupee" style="color:var(--success)"></i> Harga</div>
+      <div id="prog-harga">
+        <div class="skeleton" style="height:40px;margin-bottom:10px"></div>
+        <div class="skeleton" style="height:40px;margin-bottom:10px"></div>
+        <div class="skeleton" style="height:40px"></div>
+      </div>
+    </div>
+    <div class="prog-card">
+      <div class="prog-card-title"><i class="ti ti-link" style="color:var(--accent)"></i> E-Katalog v6</div>
+      <div id="prog-link">
+        <div class="skeleton" style="height:40px;margin-bottom:10px"></div>
+        <div class="skeleton" style="height:40px"></div>
+      </div>
+    </div>
+    <div class="prog-card">
+      <div class="prog-card-title"><i class="ti ti-certificate" style="color:var(--warning)"></i> AKD</div>
+      <div id="prog-akd">
+        <div class="skeleton" style="height:40px;margin-bottom:10px"></div>
+        <div class="skeleton" style="height:40px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="section-label"><i class="ti ti-table" style="font-size:12px"></i> Daftar Produk</div>
+  <div class="table-section">
+    <div class="table-header">
+      <div class="table-title"><i class="ti ti-list"></i> Filter & Telusuri Produk</div>
+      <div class="filter-bar">
+        <button class="filter-btn active" data-f="all" onclick="setFilter('all',this)"><i class="ti ti-apps"></i> Semua</button>
+        <button class="filter-btn f-noharga" data-f="noharga" onclick="setFilter('noharga',this)"><i class="ti ti-coin-rupee-off"></i> Tanpa Harga</button>
+        <button class="filter-btn f-nolink" data-f="nolink" onclick="setFilter('nolink',this)"><i class="ti ti-unlink"></i> Tanpa Link</button>
+        <button class="filter-btn f-noakd" data-f="noakd" onclick="setFilter('noakd',this)"><i class="ti ti-certificate-off"></i> Tanpa AKD</button>
+        <select id="tipe-filter" onchange="setTipe(this.value)" style="height:30px;padding:0 8px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface-2);color:var(--text);cursor:pointer;outline:none">
+          <option value="">Semua Tipe</option>
+          <option value="INSTRUMENT">Instrumen</option>
+          <option value="SET">Set</option>
+          <option value="UNIT">Unit</option>
+        </select>
+        <input class="search-mini" id="tbl-search" type="search" placeholder="Cari kode / nama…" oninput="onSearch()"/>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Kode Produk</th>
+            <th>Nama Produk</th>
+            <th>Tipe</th>
+            <th>Harga e-Kat</th>
+            <th>Link v6</th>
+            <th>No. AKD</th>
+          </tr>
+        </thead>
+        <tbody id="tbl-body">
+          <tr class="loading-row"><td colspan="6"><i class="ti ti-loader-2 spinner"></i> Memuat data…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-footer">
+      <span id="tbl-info">—</span>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
+
+// THEME
+(function(){
+  const t = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+  if(t==='dark') document.body.setAttribute('data-theme','dark');
+})();
+const themeBtn = document.getElementById('theme-btn');
+const themeIcon = document.getElementById('theme-icon');
+function syncIcon(){
+  themeIcon.className = document.body.getAttribute('data-theme')==='dark' ? 'ti ti-sun' : 'ti ti-moon';
+}
+syncIcon();
+themeBtn.addEventListener('click',()=>{
+  const dark = document.body.getAttribute('data-theme')==='dark';
+  dark ? document.body.removeAttribute('data-theme') : document.body.setAttribute('data-theme','dark');
+  localStorage.setItem('theme', dark?'light':'dark');
+  syncIcon();
+});
+
+function fmt(n){ return Number(n).toLocaleString('id-ID'); }
+function pct(a,b){ return b ? Math.round(a/b*100) : 0; }
+function pctClass(p){ return p>=80?'pct-good':p>=50?'pct-warn':'pct-bad'; }
+function rupiah(n){ return n ? 'Rp '+Number(n).toLocaleString('id-ID') : '—'; }
+
+async function get(path){
+  const r = await fetch(SUPABASE_URL+path,{headers:{'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY}});
+  return r.json();
+}
+async function rpc(fn,params){
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY},
+    body:JSON.stringify(params)
+  });
+  return r.json();
+}
+
+// LOAD SUMMARY STATS
+async function loadStats(){
+  const [summary, hargaData] = await Promise.all([
+    get('/rest/v1/produk?select=tipe,link_v6,no_akd&is_active=eq.true&limit=20000'),
+    get('/rest/v1/produk_harga?select=produk_id&jenis=eq.EKATALOG&limit=20000')
+  ]);
+
+  const total = summary.length;
+  const instrument = summary.filter(r=>r.tipe==='INSTRUMENT').length;
+  const set = summary.filter(r=>r.tipe==='SET').length;
+  const unit = summary.filter(r=>r.tipe==='UNIT').length;
+  const punya_link = summary.filter(r=>r.link_v6).length;
+  const punya_akd = summary.filter(r=>r.no_akd).length;
+  const punya_harga = new Set(hargaData.map(r=>r.produk_id)).size;
+
+  document.getElementById('last-update-text').textContent = 'Live — '+new Date().toLocaleTimeString('id-ID');
+
+  // STAT CARDS
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card blue">
+      <div class="stat-icon blue"><i class="ti ti-database"></i></div>
+      <div class="stat-val">${fmt(total)}</div>
+      <div class="stat-label">Total Produk Aktif</div>
+      <div class="stat-sub"><i class="ti ti-check" style="font-size:11px;color:var(--success)"></i> Semua aktif di database</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-icon green"><i class="ti ti-coin-rupee"></i></div>
+      <div class="stat-val">${fmt(punya_harga)}</div>
+      <div class="stat-label">Punya Harga e-Katalog</div>
+      <div class="stat-sub"><span class="stat-pct ${pctClass(pct(punya_harga,total))}">${pct(punya_harga,total)}%</span> dari total produk</div>
+    </div>
+    <div class="stat-card orange">
+      <div class="stat-icon orange"><i class="ti ti-coin-rupee-off"></i></div>
+      <div class="stat-val">${fmt(total-punya_harga)}</div>
+      <div class="stat-label">Belum Ada Harga</div>
+      <div class="stat-sub"><span class="stat-pct pct-bad">${pct(total-punya_harga,total)}%</span> perlu dilengkapi</div>
+    </div>
+    <div class="stat-card teal">
+      <div class="stat-icon teal"><i class="ti ti-link"></i></div>
+      <div class="stat-val">${fmt(punya_link)}</div>
+      <div class="stat-label">Ada di e-Katalog v6</div>
+      <div class="stat-sub"><span class="stat-pct ${pctClass(pct(punya_link,total))}">${pct(punya_link,total)}%</span> dari total produk</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-icon purple"><i class="ti ti-certificate"></i></div>
+      <div class="stat-val">${fmt(punya_akd)}</div>
+      <div class="stat-label">Punya Nomor AKD</div>
+      <div class="stat-sub"><span class="stat-pct ${pctClass(pct(punya_akd,total))}">${pct(punya_akd,total)}%</span> dari total produk</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-icon red"><i class="ti ti-unlink"></i></div>
+      <div class="stat-val">${fmt(total-punya_link)}</div>
+      <div class="stat-label">Belum di e-Katalog</div>
+      <div class="stat-sub"><span class="stat-pct pct-bad">${pct(total-punya_link,total)}%</span> belum terdaftar</div>
+    </div>
+  `;
+
+  // PROGRESS CARDS
+  document.getElementById('prog-harga').innerHTML = `
+    ${progItem('Instrumen',punya_harga,instrument,'#2563eb')}
+    ${progItem('Set',Math.round(punya_harga*set/total),set,'#16a34a')}
+    ${progItem('Unit',Math.round(punya_harga*unit/total),unit,'#7c3aed')}
+  `;
+  document.getElementById('prog-link').innerHTML = `
+    ${progItem('Punya Link v6',punya_link,total,'#0d9488')}
+    ${progItem('Belum Ada Link',total-punya_link,total,'#dc2626')}
+  `;
+  document.getElementById('prog-akd').innerHTML = `
+    ${progItem('Punya AKD',punya_akd,total,'#d97706')}
+    ${progItem('Tanpa AKD',total-punya_akd,total,'#dc2626')}
+  `;
+}
+
+function progItem(name, val, total, color){
+  const p = pct(val,total);
+  return `<div class="prog-item">
+    <div class="prog-meta">
+      <span class="prog-name">${name}</span>
+      <span class="prog-num">${fmt(val)} / ${fmt(total)}</span>
+    </div>
+    <div class="prog-track"><div class="prog-fill" style="width:${p}%;background:${color}"></div></div>
+    <div class="prog-pct">${p}%</div>
+  </div>`;
+}
+
+// TABLE
+const PAGE_SIZE = 25;
+let allRows = [];
+let filtered = [];
+let currentFilter = 'all';
+let currentTipe = '';
+let currentSearch = '';
+let currentPage = 1;
+
+async function loadTable(){
+  const data = await get('/rest/v1/produk?select=kode_produk,nama_produk,tipe,link_v6,no_akd&is_active=eq.true&order=kode_produk.asc&limit=20000');
+  // tambahkan data harga
+  const hargaData = await get('/rest/v1/produk_harga?select=produk_id,harga,jenis&jenis=eq.EKATALOG&limit=20000');
+  const hargaMap = {};
+  hargaData.forEach(h=>{ if(!hargaMap[h.produk_id]) hargaMap[h.produk_id]=h.harga; });
+
+  // join produk_id
+  const prodIds = await get('/rest/v1/produk?select=id,kode_produk&is_active=eq.true&limit=20000');
+  const idMap = {};
+  prodIds.forEach(p=>{ idMap[p.kode_produk]=p.id; });
+
+  allRows = data.map(r=>({
+    ...r,
+    harga: hargaMap[idMap[r.kode_produk]] || null
+  }));
+  applyFilters();
+}
+
+function setFilter(f, el){
+  currentFilter = f;
+  currentPage = 1;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  applyFilters();
+}
+function setTipe(v){ currentTipe=v; currentPage=1; applyFilters(); }
+function onSearch(){ currentSearch=document.getElementById('tbl-search').value.trim().toLowerCase(); currentPage=1; applyFilters(); }
+
+function applyFilters(){
+  filtered = allRows.filter(r=>{
+    if(currentTipe && r.tipe!==currentTipe) return false;
+    if(currentFilter==='noharga' && r.harga) return false;
+    if(currentFilter==='nolink' && r.link_v6) return false;
+    if(currentFilter==='noakd' && r.no_akd) return false;
+    if(currentSearch){
+      const q = currentSearch;
+      if(!r.kode_produk?.toLowerCase().includes(q) && !r.nama_produk?.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+  renderTable();
+}
+
+function renderTable(){
+  const total = filtered.length;
+  const pages = Math.max(1, Math.ceil(total/PAGE_SIZE));
+  currentPage = Math.min(currentPage, pages);
+  const slice = filtered.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+
+  document.getElementById('tbl-info').textContent = `Menampilkan ${fmt(Math.min((currentPage-1)*PAGE_SIZE+1,total))}–${fmt(Math.min(currentPage*PAGE_SIZE,total))} dari ${fmt(total)} produk`;
+
+  const tipeClass = {INSTRUMENT:'badge-instrument',SET:'badge-set',UNIT:'badge-unit'};
+
+  if(!slice.length){
+    document.getElementById('tbl-body').innerHTML = '<tr class="empty-row"><td colspan="6"><i class="ti ti-search-off" style="font-size:24px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
+  } else {
+    document.getElementById('tbl-body').innerHTML = slice.map(r=>`
+      <tr>
+        <td><span class="kode-text">${r.kode_produk||'—'}</span></td>
+        <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.nama_produk||'—'}</td>
+        <td><span class="badge ${tipeClass[r.tipe]||''}">${r.tipe||'—'}</span></td>
+        <td>${r.harga ? `<span style="font-family:var(--mono);font-size:12px;color:var(--success);font-weight:500">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="ti ti-x" style="font-size:10px"></i> Belum ada</span>`}</td>
+        <td>${r.link_v6 ? `<a href="${r.link_v6}" target="_blank" class="chip chip-yes" style="text-decoration:none"><i class="ti ti-external-link" style="font-size:10px"></i> Ada</a>` : `<span class="chip chip-no"><i class="ti ti-x" style="font-size:10px"></i> Belum</span>`}</td>
+        <td>${r.no_akd ? `<span class="chip chip-yes" style="font-family:var(--mono)">${r.no_akd}</span>` : `<span class="chip chip-no"><i class="ti ti-x" style="font-size:10px"></i> Belum</span>`}</td>
+      </tr>
+    `).join('');
+  }
+
+  // PAGINATION
+  const pg = document.getElementById('pagination');
+  const btns = [];
+  const range = 2;
+  for(let i=1;i<=pages;i++){
+    if(i===1||i===pages||Math.abs(i-currentPage)<=range){
+      btns.push(`<button class="page-btn${i===currentPage?' active':''}" onclick="goPage(${i})">${i}</button>`);
+    } else if(btns[btns.length-1]!=='…'){
+      btns.push('…');
+    }
+  }
+  pg.innerHTML = btns.map(b=>b==='…'?`<span style="padding:0 4px;color:var(--text-muted);font-size:12px">…</span>`:b).join('');
+}
+
+function goPage(p){ currentPage=p; renderTable(); window.scrollTo({top:document.querySelector('.table-section').offsetTop-80,behavior:'smooth'}); }
+
+// INIT
+loadStats();
+loadTable();
+</script>
+</body>
+</html>
