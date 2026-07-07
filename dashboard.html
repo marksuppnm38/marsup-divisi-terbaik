@@ -202,6 +202,13 @@ tr:hover td{background:var(--surface-2)}
   .search-mini{width:140px}
   .table-header{flex-direction:column;align-items:flex-start}
 }
+
+.material-symbols-rounded{
+  font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;
+  font-size:18px;
+  line-height:1;
+  vertical-align:middle;
+}
 </style>
 </head>
 <body>
@@ -237,7 +244,7 @@ tr:hover td{background:var(--surface-2)}
   <div class="section-label"><span class="material-symbols-rounded" style="font-size:14px">area_chart</span> Kelengkapan Data</div>
   <div class="prog-cards progress-section" id="prog-cards">
     <div class="prog-card">
-      <div class="prog-card-title"><i class="ti ti-coin-rupee" style="color:var(--success)"></i> Harga</div>
+      <div class="prog-card-title"><i class="payments" style="color:var(--success)"></i> Harga</div>
       <div id="prog-harga">
         <div class="skeleton" style="height:40px;margin-bottom:10px"></div>
         <div class="skeleton" style="height:40px;margin-bottom:10px"></div>
@@ -252,7 +259,7 @@ tr:hover td{background:var(--surface-2)}
       </div>
     </div>
     <div class="prog-card">
-      <div class="prog-card-title"><i class="ti ti-certificate" style="color:var(--warning)"></i> AKD</div>
+      <div class="prog-card-title"><i class="verified" style="color:var(--warning)"></i> AKD</div>
       <div id="prog-akd">
         <div class="skeleton" style="height:40px;margin-bottom:10px"></div>
         <div class="skeleton" style="height:40px"></div>
@@ -266,10 +273,10 @@ tr:hover td{background:var(--surface-2)}
     <div class="table-header">
       <div class="table-title"><span class="material-symbols-rounded">list</span> Filter & Telusuri Produk</div>
       <div class="filter-bar">
-        <button class="filter-btn active" data-f="all" onclick="setFilter('all',this)"><i class="ti ti-apps"></i> Semua</button>
-        <button class="filter-btn f-noharga" data-f="noharga" onclick="setFilter('noharga',this)"><i class="ti ti-coin-rupee-off"></i> Tanpa Harga</button>
-        <button class="filter-btn f-nolink" data-f="nolink" onclick="setFilter('nolink',this)"><i class="ti ti-unlink"></i> Tanpa Link</button>
-        <button class="filter-btn f-noakd" data-f="noakd" onclick="setFilter('noakd',this)"><i class="ti ti-certificate-off"></i> Tanpa AKD</button>
+        <button class="filter-btn active" data-f="all" onclick="setFilter('all',this)"><span class="material-symbols-rounded">apps</span> Semua</button>
+        <button class="filter-btn f-noharga" data-f="noharga" onclick="setFilter('noharga',this)"><span class="material-symbols-rounded">money_off</span> Tanpa Harga</button>
+        <button class="filter-btn f-nolink" data-f="nolink" onclick="setFilter('nolink',this)"><span class="material-symbols-rounded">link_off</span> Tanpa Link</button>
+        <button class="filter-btn f-noakd" data-f="noakd" onclick="setFilter('noakd',this)"><span class="material-symbols-rounded">verified_off</span> Tanpa AKD</button>
         <select id="tipe-filter" onchange="setTipe(this.value)" style="height:30px;padding:0 8px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface-2);color:var(--text);cursor:pointer;outline:none">
           <option value="">Semua Tipe</option>
           <option value="INSTRUMENT">Instrumen</option>
@@ -316,7 +323,7 @@ const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const themeBtn = document.getElementById('theme-btn');
 const themeIcon = document.getElementById('theme-icon');
 function syncIcon(){
-  themeIcon.className = document.body.getAttribute('data-theme')==='dark' ? 'ti ti-sun' : 'ti ti-moon';
+  themeIcon.textContent = document.body.getAttribute('data-theme')==='dark' ? 'light_mode' : 'dark_mode';
 }
 syncIcon();
 themeBtn.addEventListener('click',()=>{
@@ -364,37 +371,37 @@ async function loadStats(){
   // STAT CARDS
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card blue">
-      <div class="stat-icon blue"><i class="ti ti-database"></i></div>
+      <div class="stat-icon blue"><i class="database"></i></div>
       <div class="stat-val">${fmt(total)}</div>
       <div class="stat-label">Total Produk Aktif</div>
-      <div class="stat-sub"><i class="ti ti-check" style="font-size:11px;color:var(--success)"></i> Semua aktif di database</div>
+      <div class="stat-sub"><i class="check" style="font-size:11px;color:var(--success)"></i> Semua aktif di database</div>
     </div>
     <div class="stat-card green">
-      <div class="stat-icon green"><i class="ti ti-coin-rupee"></i></div>
+      <div class="stat-icon green"><i class="payments"></i></div>
       <div class="stat-val">${fmt(punya_harga)}</div>
       <div class="stat-label">Punya Harga e-Katalog</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(punya_harga,total))}">${pct(punya_harga,total)}%</span> dari total produk</div>
     </div>
     <div class="stat-card orange">
-      <div class="stat-icon orange"><i class="ti ti-coin-rupee-off"></i></div>
+      <div class="stat-icon orange"><i class="money_off"></i></div>
       <div class="stat-val">${fmt(total-punya_harga)}</div>
       <div class="stat-label">Belum Ada Harga</div>
       <div class="stat-sub"><span class="stat-pct pct-bad">${pct(total-punya_harga,total)}%</span> perlu dilengkapi</div>
     </div>
     <div class="stat-card teal">
-      <div class="stat-icon teal"><i class="ti ti-link"></i></div>
+      <div class="stat-icon teal"><i class="link"></i></div>
       <div class="stat-val">${fmt(punya_link)}</div>
       <div class="stat-label">Ada di e-Katalog v6</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(punya_link,total))}">${pct(punya_link,total)}%</span> dari total produk</div>
     </div>
     <div class="stat-card purple">
-      <div class="stat-icon purple"><i class="ti ti-certificate"></i></div>
+      <div class="stat-icon purple"><i class="verified"></i></div>
       <div class="stat-val">${fmt(punya_akd)}</div>
       <div class="stat-label">Punya Nomor AKD</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(punya_akd,total))}">${pct(punya_akd,total)}%</span> dari total produk</div>
     </div>
     <div class="stat-card red">
-      <div class="stat-icon red"><i class="ti ti-unlink"></i></div>
+      <div class="stat-icon red"><i class="link_off"></i></div>
       <div class="stat-val">${fmt(total-punya_link)}</div>
       <div class="stat-label">Belum di e-Katalog</div>
       <div class="stat-sub"><span class="stat-pct pct-bad">${pct(total-punya_link,total)}%</span> belum terdaftar</div>
@@ -493,16 +500,16 @@ function renderTable(){
   const tipeClass = {INSTRUMENT:'badge-instrument',SET:'badge-set',UNIT:'badge-unit'};
 
   if(!slice.length){
-    document.getElementById('tbl-body').innerHTML = '<tr class="empty-row"><td colspan="6"><i class="ti ti-search-off" style="font-size:24px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
+    document.getElementById('tbl-body').innerHTML = '<tr class="empty-row"><td colspan="6"><i class="search-off" style="font-size:24px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
   } else {
     document.getElementById('tbl-body').innerHTML = slice.map(r=>`
       <tr>
         <td><span class="kode-text">${r.kode_produk||'—'}</span></td>
         <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.nama_produk||'—'}</td>
         <td><span class="badge ${tipeClass[r.tipe]||''}">${r.tipe||'—'}</span></td>
-        <td>${r.harga ? `<span style="font-family:var(--mono);font-size:12px;color:var(--success);font-weight:500">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="ti ti-x" style="font-size:10px"></i> Belum ada</span>`}</td>
-        <td>${r.link_v6 ? `<a href="${r.link_v6}" target="_blank" class="chip chip-yes" style="text-decoration:none"><i class="ti ti-external-link" style="font-size:10px"></i> Ada</a>` : `<span class="chip chip-no"><i class="ti ti-x" style="font-size:10px"></i> Belum</span>`}</td>
-        <td>${r.no_akd ? `<span class="chip chip-yes" style="font-family:var(--mono)">${r.no_akd}</span>` : `<span class="chip chip-no"><i class="ti ti-x" style="font-size:10px"></i> Belum</span>`}</td>
+        <td>${r.harga ? `<span style="font-family:var(--mono);font-size:12px;color:var(--success);font-weight:500">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="close" style="font-size:10px"></i> Belum ada</span>`}</td>
+        <td>${r.link_v6 ? `<a href="${r.link_v6}" target="_blank" class="chip chip-yes" style="text-decoration:none"><i class="open_in_new" style="font-size:10px"></i> Ada</a>` : `<span class="chip chip-no"><i class="close" style="font-size:10px"></i> Belum</span>`}</td>
+        <td>${r.no_akd ? `<span class="chip chip-yes" style="font-family:var(--mono)">${r.no_akd}</span>` : `<span class="chip chip-no"><i class="close" style="font-size:10px"></i> Belum</span>`}</td>
       </tr>
     `).join('');
   }
