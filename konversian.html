@@ -113,6 +113,24 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .mi i{font-size:12px;color:var(--text-muted)}
 .mi span{font-family:var(--mono);font-size:11px}
 .mi.harga span{color:var(--success);font-weight:500}
+.mi.stok-ready span{color:var(--success);font-weight:500}
+.mi.stok-indent span{color:var(--danger);font-weight:500}
+.mi.stok-unknown span{color:var(--text-muted)}
+#btn-stok{margin-right:2px}
+.stok-modal-box{background:var(--surface);border-radius:12px;padding:22px 24px;width:90vw;max-width:420px;text-align:left}
+.stok-modal-box h3{font-size:15px;font-weight:600;margin-bottom:4px}
+.stok-modal-sub{font-size:12px;color:var(--text-muted);margin-bottom:16px;line-height:1.5}
+.stok-field{margin-bottom:12px}
+.stok-field label{display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
+.stok-field input[type="email"],.stok-field input[type="password"]{width:100%;height:34px;padding:0 10px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none}
+.stok-field input[type="file"]{width:100%;font-size:12px;padding:8px;border:1.5px dashed var(--border-strong);border-radius:8px;background:var(--surface-2)}
+.stok-actions{display:flex;gap:8px;margin-top:16px}
+.stok-actions button{flex:1;height:36px;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;border:none}
+#stok-login-btn,#stok-upload-btn{background:var(--accent);color:#fff}
+#stok-login-btn:disabled,#stok-upload-btn:disabled{background:var(--border-strong);cursor:not-allowed}
+#stok-cancel-btn{background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border)!important}
+#stok-status-msg{font-size:12px;margin-top:10px;min-height:16px}
+.stok-preview{max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:11px;font-family:var(--mono);color:var(--text-secondary);background:var(--surface-2);margin-top:8px}
 #hint{text-align:center;padding:40px 16px;color:var(--text-muted)}
 #hint i{font-size:36px;display:block;margin-bottom:8px;color:var(--border-strong)}
 #hint p{font-size:13px}
@@ -226,6 +244,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   </div>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
+    <button class="toggle-btn" id="btn-stok" title="Upload / Update Stok"><i class="ph ph-truck"></i> Stok</button>
     <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
   </div>
 </header>
@@ -257,6 +276,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
           <option value="relevance">Paling relevan</option>
           <option value="harga_desc">Harga: Tertinggi</option>
           <option value="harga_asc">Harga: Terendah</option>
+          <option value="stok_ready_dulu">Stok: Ready dulu</option>
+          <option value="stok_indent_dulu">Stok: Indent dulu</option>
         </select>
       </div>
       <div id="hint"><i class="ti ti-search"></i><p>Ketik untuk mulai mencari produk.<br>Klik hasil untuk menambahkan ke clipboard.</p></div>
@@ -368,7 +389,46 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   </div>
 </div>
 
-<!-- LAMPIRAN GALLERY MODAL -->
+<!-- STOK MODAL -->
+<div class="modal-overlay" id="stok-modal">
+  <div class="stok-modal-box">
+    <h3>Upload / Update Stok</h3>
+    <div class="stok-modal-sub">Upload Excel harian (kolom KODEASLI, NAMA BARANG, QTY). Ini akan MENIMPA seluruh data stok yang ada dengan isi file ini.</div>
+
+    <!-- State 1: belum login -->
+    <div id="stok-login-wrap">
+      <div class="stok-field">
+        <label>Email</label>
+        <input type="email" id="stok-email" placeholder="nama@email.com" autocomplete="email"/>
+      </div>
+      <div class="stok-field">
+        <label>Password</label>
+        <input type="password" id="stok-password" placeholder="••••••••" autocomplete="current-password"/>
+      </div>
+      <div class="stok-actions">
+        <button id="stok-cancel-btn">Batal</button>
+        <button id="stok-login-btn">Masuk</button>
+      </div>
+    </div>
+
+    <!-- State 2: sudah login, pilih file -->
+    <div id="stok-upload-wrap" style="display:none;">
+      <div class="stok-field">
+        <label>File Excel Stok (.xlsx)</label>
+        <input type="file" id="stok-file" accept=".xlsx,.xls"/>
+      </div>
+      <div id="stok-preview" class="stok-preview" style="display:none;"></div>
+      <div class="stok-actions">
+        <button id="stok-cancel-btn-2">Batal</button>
+        <button id="stok-upload-btn" disabled>Upload &amp; Timpa Stok</button>
+      </div>
+    </div>
+
+    <div id="stok-status-msg"></div>
+  </div>
+</div>
+
+
 <div class="modal-overlay" id="lampiran-modal">
   <div class="modal-box" style="width:90vw;max-width:760px;max-height:88vh;overflow-y:auto;text-align:left;padding:20px 24px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -690,6 +750,19 @@ const recordStatus = document.getElementById('record-status');
 const recordSubmitBtn = document.getElementById('record-submit-btn');
 const recordCancelBtn = document.getElementById('record-cancel-btn');
 const exportModal = document.getElementById('export-modal');
+const btnStok = document.getElementById('btn-stok');
+const stokModal = document.getElementById('stok-modal');
+const stokLoginWrap = document.getElementById('stok-login-wrap');
+const stokUploadWrap = document.getElementById('stok-upload-wrap');
+const stokEmail = document.getElementById('stok-email');
+const stokPassword = document.getElementById('stok-password');
+const stokLoginBtn = document.getElementById('stok-login-btn');
+const stokFile = document.getElementById('stok-file');
+const stokPreview = document.getElementById('stok-preview');
+const stokUploadBtn = document.getElementById('stok-upload-btn');
+const stokStatusMsg = document.getElementById('stok-status-msg');
+const stokCancelBtn = document.getElementById('stok-cancel-btn');
+const stokCancelBtn2 = document.getElementById('stok-cancel-btn-2');
 const progressFill = document.getElementById('progress-fill');
 const progressLabel = document.getElementById('progress-label');
 const modalSub = document.getElementById('modal-sub');
@@ -815,6 +888,7 @@ async function runSearch() {
   }
   if (!data || !data.length) { emptyEl.style.display='block'; metaEl.textContent='Tidak ada hasil untuk "'+q+'"'; return; }
   lastResults = data;
+  await enrichResultsWithStok(lastResults);
   sortSelect.style.display = 'inline-block';
   applySort();
   metaEl.textContent = data.length + ' produk ditemukan — klik untuk tambah ke clipboard';
@@ -834,6 +908,23 @@ function applySort() {
       });
     }
     return; // urutan asli dari backend (score DESC), atau sudah dipartisi link_v6 di atas
+  }
+
+  if (sortMode === 'stok_ready_dulu' || sortMode === 'stok_indent_dulu') {
+    // urutan: READY -> INDENT -> tanpa data stok (paling bawah), lalu tie-break by qty desc
+    const rank = (status) => status === 'READY' ? 0 : status === 'INDENT' ? 1 : 2;
+    const dirFlip = sortMode === 'stok_indent_dulu';
+    lastResults.sort((a, b) => {
+      let ra = rank(a.stok_status), rb = rank(b.stok_status);
+      if (dirFlip) {
+        // tukar urutan READY/INDENT, tapi "tanpa data" tetap paling bawah
+        if (ra < 2) ra = ra === 0 ? 1 : 0;
+        if (rb < 2) rb = rb === 0 ? 1 : 0;
+      }
+      if (ra !== rb) return ra - rb;
+      return (b.stok_qty || 0) - (a.stok_qty || 0);
+    });
+    return;
   }
 
   const field = modeSwasta ? 'harga_swasta' : 'harga_ekat';
@@ -860,6 +951,11 @@ function renderResults(data) {
     const hargaTampil = modeSwasta ? r.harga_swasta : r.harga_ekat;
     const tahunTampil = modeSwasta ? r.tahun_harga_swasta : r.tahun_harga;
     const labelHarga = modeSwasta ? 'Harga Swasta' : 'Harga belum ada';
+    const stokBadge = r.stok_status === 'READY'
+      ? `<span class="mi stok-ready"><i class="ph ph-check-circle"></i><span>Ready · ${r.stok_qty} pcs</span></span>`
+      : r.stok_status === 'INDENT'
+        ? `<span class="mi stok-indent"><i class="ph ph-clock-countdown"></i><span>Indent${r.stok_qty ? ' · '+r.stok_qty+' pcs' : ''}</span></span>`
+        : `<span class="mi stok-unknown"><i class="ph ph-question"></i><span>Stok: -</span></span>`;
     return `<div class="rcard${inClip?' selected':''}" data-kode="${r.kode_produk}">
       <div class="rcard-top">
         <span class="rcard-name">${r.nama_produk||'—'}</span>
@@ -870,6 +966,7 @@ function renderResults(data) {
         ${r.no_akd?`<span class="mi"><i class="ti ti-certificate"></i><span>${r.no_akd}</span></span>`:''}
         ${r.kode_kfa?`<span class="mi"><i class="ti ti-tag"></i><span>${r.kode_kfa}</span></span>`:''}
         ${hargaTampil?`<span class="mi harga"><i class="ti ti-coin-rupee"></i><span>${rupiah(hargaTampil)}${tahunTampil?' · '+tahunTampil:''}</span></span>`:`<span class="mi"><i class="ti ti-coin-rupee"></i><span style="color:var(--text-muted)">${modeSwasta?'Harga swasta belum ada':'Harga belum ada'}</span></span>`}
+        ${stokBadge}
       </div>
       <div style="margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:8px">
         ${modeSwasta ? '<span></span>' : (r.link_v6
@@ -912,6 +1009,8 @@ function addToClip(kode) {
     tahun_harga: r.tahun_harga || null,
     harga_swasta: r.harga_swasta || null,
     tahun_harga_swasta: r.tahun_harga_swasta || null,
+    stok_status: r.stok_status || null,
+    stok_qty: r.stok_qty ?? null,
     qty: 1
   });
   updateClipboard();
@@ -1097,8 +1196,8 @@ btnExport.addEventListener('click', async () => {
     // column headers (dinamis sesuai mode)
     const sumHdrRow = wsSummary.getRow(7);
     const sumHeaders = modeSwasta
-      ? ['No.','Kode Produk','Nama Produk / Deskripsi','QTY','Harga Swasta','Total Harga']
-      : ['No.','Kode Produk','Nama Produk / Deskripsi','QTY','Harga e-Kat','Total Harga','Link e-Katalog v6'];
+      ? ['No.','Kode Produk','Nama Produk / Deskripsi','QTY','Harga Swasta','Total Harga','Status Stok']
+      : ['No.','Kode Produk','Nama Produk / Deskripsi','QTY','Harga e-Kat','Total Harga','Link e-Katalog v6','Status Stok'];
     sumHeaders.forEach((h,i) => {
       const cell = sumHdrRow.getCell(i+1);
       cell.value = h;
@@ -1109,11 +1208,12 @@ btnExport.addEventListener('click', async () => {
     });
     sumHdrRow.height = 22;
     wsSummary.columns = modeSwasta
-      ? [{width:5},{width:24},{width:50},{width:8},{width:18},{width:18}]
-      : [{width:5},{width:24},{width:50},{width:8},{width:18},{width:18},{width:45}];
+      ? [{width:5},{width:24},{width:50},{width:8},{width:18},{width:18},{width:14}]
+      : [{width:5},{width:24},{width:50},{width:8},{width:18},{width:18},{width:45},{width:14}];
 
     let sumRow = 8;
     let grandTotal = 0;
+    const stokColIdx = modeSwasta ? 7 : 8;
     clipboard.forEach((item, idx) => {
       const row = wsSummary.getRow(sumRow);
       const hargaPakai = modeSwasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
@@ -1129,8 +1229,13 @@ btnExport.addEventListener('click', async () => {
         row.getCell(7).value = {text:'Lihat di e-Katalog', hyperlink: item.link_v6};
         row.getCell(7).font = {color:{argb:'FF1D4ED8'}, underline:true};
       }
+      const stokLabel = item.stok_status === 'READY' ? 'Ready' : item.stok_status === 'INDENT' ? 'Indent' : '-';
+      row.getCell(stokColIdx).value = stokLabel;
+      row.getCell(stokColIdx).alignment = {horizontal:'center', vertical:'middle'};
+      if (stokLabel === 'Ready') row.getCell(stokColIdx).font = {color:{argb:'FF15803D'}, bold:true};
+      else if (stokLabel === 'Indent') row.getCell(stokColIdx).font = {color:{argb:'FFB91C1C'}, bold:true};
       // zebra
-      const zebraCount = modeSwasta ? 6 : 7;
+      const zebraCount = modeSwasta ? 7 : 8;
       if (idx % 2 === 0) {
         Array.from({length: zebraCount}, (_,c)=>c+1).forEach(c => {
           row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
@@ -1500,6 +1605,197 @@ recordSubmitBtn.addEventListener('click', async () => {
     recordSubmitBtn.textContent = 'Kirim ke Sheet';
   }
 });
+
+// ══════════════════════════════════════════
+// MODUL STOK: login ringan, parse Excel, upload (full replace),
+// dan integrasi tampilan/sort stok ke hasil search
+// ══════════════════════════════════════════
+
+let stokAccessToken = null; // token cuma di-hold di memory selama tab ini terbuka
+let stokParsedRows = null;  // hasil parse Excel yang siap diupload
+
+function openStokModal() {
+  stokStatusMsg.textContent = '';
+  if (stokAccessToken) {
+    stokLoginWrap.style.display = 'none';
+    stokUploadWrap.style.display = 'block';
+  } else {
+    stokLoginWrap.style.display = 'block';
+    stokUploadWrap.style.display = 'none';
+    stokEmail.value = '';
+    stokPassword.value = '';
+  }
+  stokModal.classList.add('show');
+}
+function closeStokModal() { stokModal.classList.remove('show'); }
+
+btnStok.addEventListener('click', openStokModal);
+stokCancelBtn.addEventListener('click', closeStokModal);
+stokCancelBtn2.addEventListener('click', closeStokModal);
+stokModal.addEventListener('click', (e) => { if (e.target === stokModal) closeStokModal(); });
+
+// ---- Login (dipakai cuma buat dapetin token, biar bisa panggil RPC yang butuh 'authenticated') ----
+stokLoginBtn.addEventListener('click', async () => {
+  const email = stokEmail.value.trim().toLowerCase();
+  const password = stokPassword.value;
+  if (!email || !password) {
+    stokStatusMsg.textContent = 'Isi email dan password dulu.';
+    stokStatusMsg.style.color = 'var(--danger)';
+    return;
+  }
+  stokLoginBtn.disabled = true;
+  stokLoginBtn.textContent = 'Memproses…';
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Login gagal');
+
+    stokAccessToken = data.access_token;
+    stokStatusMsg.textContent = '';
+    stokLoginWrap.style.display = 'none';
+    stokUploadWrap.style.display = 'block';
+  } catch (err) {
+    stokStatusMsg.textContent = 'Gagal masuk: ' + err.message;
+    stokStatusMsg.style.color = 'var(--danger)';
+  } finally {
+    stokLoginBtn.disabled = false;
+    stokLoginBtn.textContent = 'Masuk';
+  }
+});
+
+// ---- Parse file Excel (KODEASLI, NAMA BARANG, QTY) ----
+stokFile.addEventListener('change', async () => {
+  stokParsedRows = null;
+  stokUploadBtn.disabled = true;
+  stokPreview.style.display = 'none';
+  stokStatusMsg.textContent = '';
+
+  const file = stokFile.files[0];
+  if (!file) return;
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+    const ws = wb.worksheets[0];
+
+    // cari kolom KODEASLI dan QTY dari baris header (case-insensitive)
+    const headerRow = ws.getRow(1);
+    let colKode = null, colQty = null;
+    headerRow.eachCell((cell, colNumber) => {
+      const v = String(cell.value || '').trim().toUpperCase();
+      if (v === 'KODEASLI' || v === 'KODE ASLI') colKode = colNumber;
+      if (v === 'QTY') colQty = colNumber;
+    });
+
+    if (!colKode || !colQty) {
+      throw new Error('Kolom KODEASLI dan/atau QTY tidak ditemukan di baris pertama file.');
+    }
+
+    const rows = [];
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      const kodeAsli = String(row.getCell(colKode).value || '').trim();
+      const qtyRaw = row.getCell(colQty).value;
+      const qty = parseInt(qtyRaw, 10);
+      if (!kodeAsli) continue;
+      rows.push({ kode_asli: kodeAsli, qty: isNaN(qty) ? 0 : qty });
+    }
+
+    if (rows.length === 0) throw new Error('Tidak ada baris data yang valid di file ini.');
+
+    stokParsedRows = rows;
+    stokPreview.style.display = 'block';
+    stokPreview.textContent = `${rows.length} baris terbaca. Contoh: ` +
+      rows.slice(0, 5).map(r => `${r.kode_asli}=${r.qty}`).join(', ') +
+      (rows.length > 5 ? ', …' : '');
+    stokUploadBtn.disabled = false;
+  } catch (err) {
+    stokStatusMsg.textContent = 'Gagal baca file: ' + err.message;
+    stokStatusMsg.style.color = 'var(--danger)';
+  }
+});
+
+// ---- Upload (panggil replace_stok_produk pakai token login, bukan anon key) ----
+stokUploadBtn.addEventListener('click', async () => {
+  if (!stokParsedRows || !stokAccessToken) return;
+  if (!confirm(`Yakin timpa seluruh data stok dengan ${stokParsedRows.length} baris dari file ini?`)) return;
+
+  stokUploadBtn.disabled = true;
+  stokUploadBtn.textContent = 'Mengupload…';
+  stokStatusMsg.textContent = '';
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/replace_stok_produk`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': ANON_KEY,
+        'Authorization': 'Bearer ' + stokAccessToken
+      },
+      body: JSON.stringify({ rows: stokParsedRows })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal upload stok (cek apakah email kamu terdaftar di allowed_users)');
+    }
+
+    const result = await res.json();
+    stokStatusMsg.style.color = 'var(--success)';
+    let msg = `Berhasil! ${result.inserted} kode stok diperbarui.`;
+    if (result.skipped_count > 0) {
+      msg += ` ${result.skipped_count} kode DILEWATI karena belum terdaftar di master_produk: ` +
+        result.skipped_codes.slice(0, 15).join(', ') +
+        (result.skipped_codes.length > 15 ? `, dan ${result.skipped_codes.length - 15} lainnya…` : '');
+      stokStatusMsg.style.color = 'var(--danger)';
+    }
+    stokStatusMsg.textContent = msg;
+    if (result.skipped_count === 0) {
+      setTimeout(() => closeStokModal(), 1400);
+    }
+
+    // refresh badge stok di hasil search yang lagi tampil, kalau ada
+    if (lastResults && lastResults.length) {
+      await enrichResultsWithStok(lastResults);
+      applySort();
+      renderResults(lastResults);
+    }
+  } catch (err) {
+    stokStatusMsg.style.color = 'var(--danger)';
+    stokStatusMsg.textContent = 'Gagal: ' + err.message;
+  } finally {
+    stokUploadBtn.disabled = false;
+    stokUploadBtn.textContent = 'Upload & Timpa Stok';
+  }
+});
+
+// ---- Ambil status stok buat semua kode_asli yang muncul di hasil search ----
+async function enrichResultsWithStok(results) {
+  const kodeAsliList = [...new Set(results.map(r => r.kode_asli).filter(Boolean))];
+  if (kodeAsliList.length === 0) return;
+
+  try {
+    const inList = kodeAsliList.map(k => `"${k.replace(/"/g,'')}"`).join(',');
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/v_stok_status?kode_asli=in.(${inList})&select=kode_asli,qty,status`,
+      { headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + ANON_KEY } }
+    );
+    if (!res.ok) return; // kalau gagal, biarin badge stok gak muncul, jangan blokir search
+    const stokData = await res.json();
+    const stokMap = new Map(stokData.map(s => [s.kode_asli, s]));
+
+    results.forEach(r => {
+      const s = r.kode_asli ? stokMap.get(r.kode_asli) : null;
+      r.stok_qty = s ? s.qty : null;
+      r.stok_status = s ? s.status : null; // null = belum ada data stok sama sekali buat kode ini
+    });
+  } catch { /* diamkan, stok cuma nice-to-have di tampilan search */ }
+}
 </script>
 </body>
 </html>
