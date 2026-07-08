@@ -73,6 +73,17 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .logo{height:32px;width:auto;object-fit:contain;flex-shrink:0}
 .logo-text{font-size:15px;font-weight:600}
 .logo-sub{font-size:11px;color:var(--text-muted)}
+.session-indicator{display:flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;border-radius:20px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;max-width:280px;transition:all .18s var(--ease)}
+.session-indicator:hover{border-color:var(--accent);color:var(--text)}
+.session-indicator i{font-size:14px;flex-shrink:0}
+.session-indicator span#session-indicator-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.session-indicator.empty{color:var(--text-muted);font-weight:500;font-style:italic;background:transparent;border-style:dashed}
+.session-indicator.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-text)}
+.session-indicator-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--text-muted);transition:background .2s var(--ease)}
+.session-indicator-dot.dot-saving{background:#ff9f0a;animation:pulse-dot 1s ease-in-out infinite}
+.session-indicator-dot.dot-saved{background:var(--success)}
+.session-indicator-dot.dot-error{background:var(--danger)}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.35}}
 .header-right{margin-left:auto;display:flex;align-items:center;gap:8px}
 .clip-count{font-size:12px;color:var(--text-muted)}
 .clip-count span{font-weight:600;color:var(--accent)}
@@ -306,6 +317,11 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 
 /* MOBILE */
 @media(max-width:768px){
+  header{padding:10px 12px;flex-wrap:wrap;row-gap:8px}
+  .logo-sub{display:none}
+  .session-indicator{order:3;width:100%;max-width:none}
+  .header-right{gap:6px}
+  .header-right .clip-count{display:none}
   .workspace{flex-direction:column}
   .panel-search{border-right:none;display:none;flex:1;overflow:hidden}
   .panel-search.active{display:flex}
@@ -359,6 +375,11 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
     <div class="logo-text">PT Pionir Nusantara Manufacturing</div>
     <div class="logo-sub">Conversion Workspace</div>
   </div>
+  <button class="session-indicator empty" id="session-indicator" type="button" title="Klik untuk lihat daftar Konversi Berjalan">
+    <span class="session-indicator-dot" id="session-indicator-dot"></span>
+    <i class="ph ph-hospital"></i>
+    <span id="session-indicator-text">Belum ada sesi aktif</span>
+  </button>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
     <button class="toggle-btn" id="btn-stok" title="Upload / Update Stok"><i class="ph ph-truck"></i> Stok</button>
@@ -1119,11 +1140,27 @@ const btnSesiBaru = document.getElementById('btn-sesi-baru');
 const btnSesiRefresh = document.getElementById('btn-sesi-refresh');
 const btnButuhBantuan = document.getElementById('btn-butuh-bantuan');
 const sesiSaveStatus = document.getElementById('sesi-save-status');
+const sessionIndicator = document.getElementById('session-indicator');
+const sessionIndicatorDot = document.getElementById('session-indicator-dot');
+const sessionIndicatorText = document.getElementById('session-indicator-text');
+const APP_TITLE_BASE = document.title; // "Conversion Workspace — PT Pionir Nusantara Manufacturing"
 
 function setSesiSavedStatus(text, isError) {
   sesiSaveStatus.textContent = text || '';
   sesiSaveStatus.style.color = isError ? 'var(--danger)' : 'var(--text-muted)';
+  // Dot di badge sesi (header global) ngikutin status simpan yang sama —
+  // biar "draft belum tersimpan" vs "sudah tersimpan" kebaca dari satu titik
+  // yang selalu kelihatan, bukan cuma teks kecil ini yang gampang kelewat scroll.
+  sessionIndicatorDot.classList.remove('dot-saving', 'dot-saved', 'dot-error');
+  if (isError) sessionIndicatorDot.classList.add('dot-error');
+  else if (text === 'Menyimpan…') sessionIndicatorDot.classList.add('dot-saving');
+  else if (text) sessionIndicatorDot.classList.add('dot-saved');
+  // text kosong (belum ada aktivitas sama sekali) → dot netral, biarin default abu-abu
 }
+sessionIndicator.addEventListener('click', () => {
+  if (window.innerWidth <= 860 && typeof switchTab === 'function') switchTab('search');
+  switchSubTab('sesi');
+});
 
 // Semua panggilan REST ke Supabase buat modul sesi lewat sini, supaya kalau
 // token expired di tengah jalan, langsung ditendang balik ke gerbang login.
@@ -1460,6 +1497,7 @@ async function deleteSesi(id, nama, btn) {
       renderResults(lastResults);
       renderButuhBantuanBtn();
       setSesiSavedStatus('');
+      updateClipHeaderCompact();
       resetChecklistUI();
     }
     await loadSesiList();
@@ -1571,10 +1609,29 @@ setInterval(async () => {
 }, 30000);
 
 function updateClipHeaderCompact() {
-  const rs = inpRs.value.trim() || '(nama RS belum diisi)';
+  const rsRaw = inpRs.value.trim();
+  const rs = rsRaw || '(nama RS belum diisi)';
   const sales = inpSales.value.trim();
   const marsup = inpMarsup.value.trim();
   clipHeaderCompact.innerHTML = `<b>${rs}</b>${sales ? ' · Sales: ' + sales : ''}${marsup ? ' · PIC: ' + marsup : ''}`;
+  updateSessionIndicatorAndTitle(rsRaw, sales);
+}
+
+// Satu sumber kebenaran "lagi di sesi/RS mana" yang SELALU kelihatan, di dua
+// tempat: badge sticky di header global (nggak ikut hilang pas panel diciutkan
+// atau di-scroll) dan judul tab browser (biar gampang bedain kalau buka
+// beberapa tab untuk beberapa RS sekaligus).
+function updateSessionIndicatorAndTitle(rsRaw, salesRaw) {
+  const hasName = !!rsRaw;
+  sessionIndicator.classList.toggle('empty', !hasName);
+  sessionIndicator.classList.toggle('active', hasName);
+  if (hasName) {
+    sessionIndicatorText.textContent = salesRaw ? `${rsRaw} · ${salesRaw}` : rsRaw;
+    document.title = `${rsRaw} — Conversion Workspace`;
+  } else {
+    sessionIndicatorText.textContent = 'Belum ada sesi aktif';
+    document.title = APP_TITLE_BASE;
+  }
 }
 function setClipHeaderCollapsed(collapsed) {
   clipHeader.classList.toggle('collapsed', collapsed);
