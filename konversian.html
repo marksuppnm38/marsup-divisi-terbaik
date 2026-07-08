@@ -98,6 +98,14 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .ac-name{flex:1;font-size:13px}
 .ac-code{font-size:11px;color:var(--text-muted);font-family:var(--mono)}
 .ac-badge{font-size:10px;padding:1px 6px;border-radius:20px;background:var(--accent-bg);color:var(--accent-text);font-weight:500}
+.subtab-row{display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--border)}
+.subtab-btn{background:none;border:none;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--text-muted);padding:6px 4px 10px;cursor:pointer;display:flex;align-items:center;gap:5px;border-bottom:2px solid transparent;margin-bottom:-1px}
+.subtab-btn:hover{color:var(--text)}
+.subtab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.subtab-badge{background:var(--danger);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;line-height:1.4}
+.sesi-toolbar{display:flex;gap:8px;margin-bottom:10px}
+.sesi-toolbar #btn-sesi-baru{flex:1}
+#btn-butuh-bantuan.on{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-border);border-radius:6px}
 .filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .filter-select{height:30px;padding:0 8px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;outline:none}
 .toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s}
@@ -360,22 +368,27 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   <!-- PANEL KIRI: SEARCH -->
   <div class="panel-search" id="panel-search">
     <div class="panel-header">
-      <div class="panel-title"><i class="ti ti-search" style="font-size:11px"></i> Cari Produk</div>
-      <div class="search-wrap">
-        <i class="ti ti-search"></i>
-        <input id="search-input" type="search" placeholder="Nama produk, kode, AKD, KFA…" autocomplete="off"/>
-        <button class="clear-btn" id="clear-btn"><i class="ti ti-x"></i></button>
-        <div id="autocomplete"></div>
+      <div class="subtab-row">
+        <button class="subtab-btn active" id="subtab-cari" type="button"><i class="ti ti-search"></i> Cari Produk</button>
+        <button class="subtab-btn" id="subtab-sesi" type="button"><i class="ti ti-list-details"></i> Konversi Berjalan <span class="subtab-badge" id="sesi-badge" style="display:none">0</span></button>
       </div>
-      <div class="filters">
-        <button class="toggle-btn tipe-btn" id="ti-instrument" data-tipe="INSTRUMENT"><i class="ti ti-tools"></i> Instrumen</button>
-        <button class="toggle-btn tipe-btn" id="ti-set" data-tipe="SET"><i class="ti ti-packages"></i> Set</button>
-        <button class="toggle-btn tipe-btn" id="ti-unit" data-tipe="UNIT"><i class="ti ti-device-desktop"></i> Unit</button>
-        <button class="toggle-btn" id="takd"><i class="ti ti-certificate"></i> AKD</button>
-        <button class="toggle-btn" id="tswasta"><i class="ti ti-building-store"></i> Harga Swasta</button>
+      <div id="cari-controls">
+        <div class="search-wrap">
+          <i class="ti ti-search"></i>
+          <input id="search-input" type="search" placeholder="Nama produk, kode, AKD, KFA…" autocomplete="off"/>
+          <button class="clear-btn" id="clear-btn"><i class="ti ti-x"></i></button>
+          <div id="autocomplete"></div>
+        </div>
+        <div class="filters">
+          <button class="toggle-btn tipe-btn" id="ti-instrument" data-tipe="INSTRUMENT"><i class="ti ti-tools"></i> Instrumen</button>
+          <button class="toggle-btn tipe-btn" id="ti-set" data-tipe="SET"><i class="ti ti-packages"></i> Set</button>
+          <button class="toggle-btn tipe-btn" id="ti-unit" data-tipe="UNIT"><i class="ti ti-device-desktop"></i> Unit</button>
+          <button class="toggle-btn" id="takd"><i class="ti ti-certificate"></i> AKD</button>
+          <button class="toggle-btn" id="tswasta"><i class="ti ti-building-store"></i> Harga Swasta</button>
+        </div>
       </div>
     </div>
-    <div class="panel-body">
+    <div class="panel-body" id="panel-body-cari">
       <div id="err"></div>
       <div class="meta-row">
         <div id="meta"></div>
@@ -392,6 +405,19 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       <div id="empty"><i class="ti ti-search-off"></i><p>Produk tidak ditemukan.<br>Coba kata kunci lain.</p></div>
       <div id="results"></div>
     </div>
+    <div class="panel-body" id="panel-body-sesi" style="display:none">
+      <div class="sesi-toolbar">
+        <button class="pr-add-clip-btn" id="btn-sesi-baru" type="button"><i class="ti ti-plus"></i> Konversi Baru</button>
+        <button class="toggle-btn" id="btn-sesi-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
+      </div>
+      <div id="sesi-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat sesi…</div>
+      <div id="sesi-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
+      <div class="clip-empty" id="sesi-list-empty" style="display:none">
+        <i class="ti ti-list-details"></i>
+        <p>Belum ada konversi yang berjalan.<br>Mulai dari tab Cari Produk, sesi otomatis muncul di sini.</p>
+      </div>
+      <div id="sesi-list"></div>
+    </div>
   </div>
 
   <!-- PANEL KANAN: CLIPBOARD -->
@@ -399,8 +425,12 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
     <div class="clip-header" id="clip-header">
       <div class="clip-title-row">
         <div class="clip-title"><i class="ti ti-clipboard" style="font-size:11px"></i> Clipboard Konversi</div>
-        <button class="clip-header-edit-btn" id="clip-header-toggle" type="button"><i class="ti ti-pencil" style="font-size:11px"></i> <span id="clip-header-toggle-label">Ciutkan</span></button>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button class="clip-header-edit-btn" id="btn-butuh-bantuan" type="button" title="Tandai sesi ini butuh bantuan tim">🙋 Minta Bantuan</button>
+          <button class="clip-header-edit-btn" id="clip-header-toggle" type="button"><i class="ti ti-pencil" style="font-size:11px"></i> <span id="clip-header-toggle-label">Ciutkan</span></button>
+        </div>
       </div>
+      <div id="sesi-save-status" style="font-size:11px;color:var(--text-muted);margin-bottom:4px;min-height:14px"></div>
       <div class="clip-header-compact" id="clip-header-compact"></div>
       <div class="clip-header-form">
         <div class="form-group">
@@ -534,24 +564,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
     <h3>Upload / Update Stok</h3>
     <div class="stok-modal-sub">Upload Excel harian (kolom KODEASLI, NAMA BARANG, QTY). Ini akan MENIMPA seluruh data stok yang ada dengan isi file ini.</div>
 
-    <!-- State 1: belum login -->
-    <div id="stok-login-wrap">
-      <div class="stok-field">
-        <label>Email</label>
-        <input type="email" id="stok-email" placeholder="nama@email.com" autocomplete="email"/>
-      </div>
-      <div class="stok-field">
-        <label>Password</label>
-        <input type="password" id="stok-password" placeholder="••••••••" autocomplete="current-password"/>
-      </div>
-      <div class="stok-actions">
-        <button id="stok-cancel-btn">Batal</button>
-        <button id="stok-login-btn">Masuk</button>
-      </div>
-    </div>
-
-    <!-- State 2: sudah login, pilih file -->
-    <div id="stok-upload-wrap" style="display:none;">
+    <!-- Login sudah ditangani di gerbang awal (satu login buat seluruh app) -->
+    <div id="stok-upload-wrap">
       <div class="stok-field">
         <label>File Excel Stok (.xlsx)</label>
         <input type="file" id="stok-file" accept=".xlsx,.xls"/>
@@ -573,24 +587,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
     <h3>Catat Permintaan RS</h3>
     <div class="pr-sub">Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Ini murni buat data insight — bukan proses konversi otomatis.</div>
 
-    <!-- State 1: belum login (pakai sesi yang sama dengan modul Stok) -->
-    <div id="pr-login-wrap">
-      <div class="pr-field">
-        <label>Email</label>
-        <input type="email" id="pr-email" placeholder="nama@email.com" autocomplete="email"/>
-      </div>
-      <div class="pr-field">
-        <label>Password</label>
-        <input type="password" id="pr-password" placeholder="••••••••" autocomplete="current-password"/>
-      </div>
-      <div class="pr-actions">
-        <button class="pr-cancel" id="pr-cancel-btn">Batal</button>
-        <button id="pr-login-btn">Masuk</button>
-      </div>
-    </div>
-
-    <!-- State 2: sudah login -->
-    <div id="pr-form-wrap" style="display:none;">
+    <!-- Login sudah ditangani di gerbang awal (satu login buat seluruh app) -->
+    <div id="pr-form-wrap">
       <div class="pr-row2">
         <div class="pr-field">
           <label>Nama RS / Instansi</label>
@@ -1072,6 +1070,346 @@ const clipHeaderCompact = document.getElementById('clip-header-compact');
 const clipTotalHarga = document.getElementById('clip-total-harga');
 const clipBudget = document.getElementById('clip-budget');
 
+// ══════════════════════════════════════════
+// SESI KONVERSI: bikin "clipboard" jadi objek yang tersimpan di server,
+// bukan array lokal doang. Satu sesi = satu konversi yang lagi dikerjakan,
+// bisa dibuka lagi (dan dibantu tim lain) dari daftar "Konversi Berjalan".
+// ══════════════════════════════════════════
+const SESI_TABLE = 'sesi_konversi';
+const SESI_ITEM_TABLE = 'sesi_konversi_item';
+let currentSesiId = null;
+let currentButuhBantuan = false;
+
+const subtabCari = document.getElementById('subtab-cari');
+const subtabSesi = document.getElementById('subtab-sesi');
+const cariControls = document.getElementById('cari-controls');
+const panelBodyCari = document.getElementById('panel-body-cari');
+const panelBodySesi = document.getElementById('panel-body-sesi');
+const sesiBadge = document.getElementById('sesi-badge');
+const sesiList = document.getElementById('sesi-list');
+const sesiListEmpty = document.getElementById('sesi-list-empty');
+const sesiListLoading = document.getElementById('sesi-list-loading');
+const sesiListError = document.getElementById('sesi-list-error');
+const btnSesiBaru = document.getElementById('btn-sesi-baru');
+const btnSesiRefresh = document.getElementById('btn-sesi-refresh');
+const btnButuhBantuan = document.getElementById('btn-butuh-bantuan');
+const sesiSaveStatus = document.getElementById('sesi-save-status');
+
+function setSesiSavedStatus(text, isError) {
+  sesiSaveStatus.textContent = text || '';
+  sesiSaveStatus.style.color = isError ? 'var(--danger)' : 'var(--text-muted)';
+}
+
+// Semua panggilan REST ke Supabase buat modul sesi lewat sini, supaya kalau
+// token expired di tengah jalan, langsung ditendang balik ke gerbang login.
+async function sesiFetch(path, options = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': ANON_KEY,
+      'Authorization': 'Bearer ' + stokAccessToken,
+      ...(options.headers || {})
+    }
+  });
+  if (res.status === 401) { showGate('Sesi kamu habis, silakan masuk lagi.'); throw new Error('Sesi login habis'); }
+  return res;
+}
+
+async function touchSesiUpdatedAt(id) {
+  if (!id) return;
+  try {
+    await sesiFetch(`${SESI_TABLE}?id=eq.${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ updated_at: new Date().toISOString() })
+    });
+  } catch { /* diamkan, bukan blocking */ }
+}
+
+// Bikin baris sesi baru di server begitu ada aktivitas pertama (isi form atau
+// tambah produk), kalau belum ada sesi yang lagi dibuka.
+async function ensureSesi() {
+  if (currentSesiId) return currentSesiId;
+  const body = {
+    nama_rs: inpRs.value.trim() || null,
+    nama_sales: inpSales.value.trim() || null,
+    pic_marsup: inpMarsup.value.trim() || null,
+    pagu: (typeof checklistPagu !== 'undefined' ? checklistPagu : null),
+    status: 'berjalan',
+    butuh_bantuan: currentButuhBantuan
+  };
+  const res = await sesiFetch(SESI_TABLE, {
+    method: 'POST',
+    headers: { 'Prefer': 'return=representation' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || errData.hint || 'Gagal membuat sesi baru (cek tabel sesi_konversi di Supabase)');
+  }
+  const rows = await res.json();
+  currentSesiId = rows[0].id;
+  return currentSesiId;
+}
+
+async function persistAddItem(item) {
+  setSesiSavedStatus('Menyimpan…');
+  try {
+    const sesiId = await ensureSesi();
+    const res = await sesiFetch(SESI_ITEM_TABLE, {
+      method: 'POST',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify({
+        sesi_id: sesiId,
+        kode_produk: item.kode_produk,
+        kode_asli: item.kode_asli,
+        nama_produk: item.nama_produk,
+        tipe: item.tipe,
+        is_set: item.is_set,
+        produk_id: item.produk_id,
+        no_akd: item.no_akd,
+        kode_kfa: item.kode_kfa,
+        link_v6: item.link_v6,
+        harga_ekat: item.harga_ekat,
+        tahun_harga: item.tahun_harga,
+        harga_swasta: item.harga_swasta,
+        tahun_harga_swasta: item.tahun_harga_swasta,
+        stok_status: item.stok_status,
+        stok_qty: item.stok_qty,
+        qty: item.qty
+      })
+    });
+    if (res.ok) {
+      const rows = await res.json();
+      item._sesiItemId = rows[0] && rows[0].id;
+    }
+    await touchSesiUpdatedAt(sesiId);
+    setSesiSavedStatus('Tersimpan ✓');
+  } catch (err) {
+    setSesiSavedStatus('Gagal simpan: ' + err.message, true);
+  }
+}
+
+async function persistRemoveItem(item) {
+  if (!currentSesiId) return;
+  setSesiSavedStatus('Menyimpan…');
+  try {
+    if (item._sesiItemId) {
+      await sesiFetch(`${SESI_ITEM_TABLE}?id=eq.${item._sesiItemId}`, { method: 'DELETE' });
+    } else {
+      await sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${currentSesiId}&kode_produk=eq.${encodeURIComponent(item.kode_produk)}`, { method: 'DELETE' });
+    }
+    await touchSesiUpdatedAt(currentSesiId);
+    setSesiSavedStatus('Tersimpan ✓');
+  } catch (err) {
+    setSesiSavedStatus('Gagal hapus: ' + err.message, true);
+  }
+}
+
+let qtySaveTimer = null;
+function persistUpdateQty(item) {
+  if (!currentSesiId || !item._sesiItemId) return;
+  setSesiSavedStatus('Menyimpan…');
+  clearTimeout(qtySaveTimer);
+  qtySaveTimer = setTimeout(async () => {
+    try {
+      await sesiFetch(`${SESI_ITEM_TABLE}?id=eq.${item._sesiItemId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ qty: item.qty })
+      });
+      await touchSesiUpdatedAt(currentSesiId);
+      setSesiSavedStatus('Tersimpan ✓');
+    } catch (err) {
+      setSesiSavedStatus('Gagal simpan qty: ' + err.message, true);
+    }
+  }, 400);
+}
+
+// Nama RS / Sales / PIC diketik → sesi ikut keupdate (bikin baru kalau belum ada)
+let headerSaveTimer = null;
+[inpRs, inpSales, inpMarsup].forEach(inp => {
+  inp.addEventListener('input', () => {
+    clearTimeout(headerSaveTimer);
+    setSesiSavedStatus('Menyimpan…');
+    headerSaveTimer = setTimeout(async () => {
+      try {
+        const sesiId = await ensureSesi();
+        await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            nama_rs: inpRs.value.trim() || null,
+            nama_sales: inpSales.value.trim() || null,
+            pic_marsup: inpMarsup.value.trim() || null,
+            updated_at: new Date().toISOString()
+          })
+        });
+        setSesiSavedStatus('Tersimpan ✓');
+      } catch (err) {
+        setSesiSavedStatus('Gagal simpan: ' + err.message, true);
+      }
+    }, 700);
+  });
+});
+
+function renderButuhBantuanBtn() {
+  btnButuhBantuan.classList.toggle('on', currentButuhBantuan);
+  btnButuhBantuan.textContent = currentButuhBantuan ? '🙋 Butuh Bantuan' : '🙋 Minta Bantuan';
+}
+btnButuhBantuan.addEventListener('click', async () => {
+  currentButuhBantuan = !currentButuhBantuan;
+  renderButuhBantuanBtn();
+  try {
+    const sesiId = await ensureSesi();
+    await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ butuh_bantuan: currentButuhBantuan, updated_at: new Date().toISOString() })
+    });
+  } catch (err) {
+    alert('Gagal update status bantuan: ' + err.message);
+  }
+});
+renderButuhBantuanBtn();
+
+// Mulai konversi baru dari nol (sesi lama tetap tersimpan, bisa dibuka lagi lewat daftar)
+function startNewSesi() {
+  if (clipboard.length && !confirm('Mulai konversi baru? Sesi yang sedang dibuka akan ditinggalkan — datanya tetap tersimpan, bisa dibuka lagi lewat daftar Konversi Berjalan.')) return;
+  currentSesiId = null;
+  currentButuhBantuan = false;
+  clipboard = [];
+  inpRs.value = '';
+  inpSales.value = '';
+  updateClipboard();
+  renderResults(lastResults);
+  setClipHeaderCollapsed(false);
+  updateClipHeaderCompact();
+  renderButuhBantuanBtn();
+  setSesiSavedStatus('');
+  switchSubTab('cari');
+}
+btnSesiBaru.addEventListener('click', startNewSesi);
+btnSesiRefresh.addEventListener('click', loadSesiList);
+
+function switchSubTab(tab) {
+  const isSesi = tab === 'sesi';
+  subtabCari.classList.toggle('active', !isSesi);
+  subtabSesi.classList.toggle('active', isSesi);
+  panelBodyCari.style.display = isSesi ? 'none' : 'block';
+  panelBodySesi.style.display = isSesi ? 'block' : 'none';
+  cariControls.style.display = isSesi ? 'none' : 'block';
+  if (isSesi) loadSesiList();
+}
+subtabCari.addEventListener('click', () => switchSubTab('cari'));
+subtabSesi.addEventListener('click', () => switchSubTab('sesi'));
+
+function sesiTimeAgo(iso) {
+  if (!iso) return '-';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return 'baru saja';
+  if (min < 60) return min + ' menit lalu';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + ' jam lalu';
+  return Math.floor(hr / 24) + ' hari lalu';
+}
+
+function renderSesiCard(s) {
+  const itemCount = (s.sesi_konversi_item && s.sesi_konversi_item[0] && s.sesi_konversi_item[0].count) || 0;
+  const bantuanBadge = s.butuh_bantuan
+    ? `<span class="tipe-badge" style="background:var(--danger-bg);color:var(--danger)">🙋 Butuh bantuan</span>`
+    : '';
+  return `<div class="rcard sesi-card" data-id="${s.id}">
+    <div class="rcard-top">
+      <div class="rcard-name">${s.nama_rs ? s.nama_rs : '(Nama RS belum diisi)'}</div>
+      ${bantuanBadge}
+    </div>
+    <div class="rcard-meta">
+      <span class="mi"><i class="ti ti-user"></i><span>PIC: ${s.pic_marsup || '-'}</span></span>
+      <span class="mi"><i class="ti ti-users"></i><span>Sales: ${s.nama_sales || '-'}</span></span>
+      <span class="mi"><i class="ti ti-package"></i><span>${itemCount} produk</span></span>
+      <span class="mi"><i class="ti ti-clock"></i><span>${sesiTimeAgo(s.updated_at)}</span></span>
+    </div>
+  </div>`;
+}
+
+async function loadSesiList() {
+  sesiListLoading.style.display = 'block';
+  sesiListError.style.display = 'none';
+  sesiListEmpty.style.display = 'none';
+  sesiList.innerHTML = '';
+  try {
+    const res = await sesiFetch(`${SESI_TABLE}?status=eq.berjalan&select=*,${SESI_ITEM_TABLE}(count)&order=updated_at.desc`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Tabel sesi_konversi belum tersedia di Supabase — jalankan dulu SQL setup-nya.');
+    }
+    const data = await res.json();
+    sesiBadge.textContent = data.length;
+    sesiBadge.style.display = data.length > 0 ? 'inline-block' : 'none';
+    if (data.length === 0) { sesiListEmpty.style.display = 'block'; return; }
+    sesiList.innerHTML = data.map(renderSesiCard).join('');
+    sesiList.querySelectorAll('.sesi-card').forEach(card => {
+      card.addEventListener('click', () => openSesi(card.dataset.id));
+    });
+  } catch (err) {
+    sesiListError.textContent = err.message;
+    sesiListError.style.display = 'block';
+  } finally {
+    sesiListLoading.style.display = 'none';
+  }
+}
+
+async function openSesi(id) {
+  try {
+    const [sesiRes, itemsRes] = await Promise.all([
+      sesiFetch(`${SESI_TABLE}?id=eq.${id}&select=*`),
+      sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${id}&select=*`)
+    ]);
+    if (!sesiRes.ok || !itemsRes.ok) throw new Error('Gagal memuat sesi dari server');
+    const [sesiRows, items] = await Promise.all([sesiRes.json(), itemsRes.json()]);
+    const sesi = sesiRows[0];
+    if (!sesi) throw new Error('Sesi tidak ditemukan (mungkin sudah dihapus/selesai)');
+
+    currentSesiId = sesi.id;
+    currentButuhBantuan = !!sesi.butuh_bantuan;
+    inpRs.value = sesi.nama_rs || '';
+    inpSales.value = sesi.nama_sales || '';
+    if (sesi.pic_marsup) inpMarsup.value = sesi.pic_marsup;
+    checklistPagu = (sesi.pagu != null) ? sesi.pagu : null;
+
+    clipboard = items.map(it => ({
+      kode_produk: it.kode_produk, kode_asli: it.kode_asli, nama_produk: it.nama_produk,
+      tipe: it.tipe, is_set: it.is_set, produk_id: it.produk_id, no_akd: it.no_akd,
+      kode_kfa: it.kode_kfa, link_v6: it.link_v6, harga_ekat: it.harga_ekat, tahun_harga: it.tahun_harga,
+      harga_swasta: it.harga_swasta, tahun_harga_swasta: it.tahun_harga_swasta,
+      stok_status: it.stok_status, stok_qty: it.stok_qty, qty: it.qty, _sesiItemId: it.id
+    }));
+
+    updateClipboard();
+    if (lastResults.length) renderResults(lastResults);
+    renderButuhBantuanBtn();
+    setClipHeaderCollapsed(false);
+    updateClipHeaderCompact();
+    setSesiSavedStatus('Sesi dimuat ✓');
+    switchSubTab('cari');
+    if (window.innerWidth <= 860 && typeof switchTab === 'function') switchTab('clip');
+  } catch (err) {
+    alert('Gagal membuka sesi: ' + err.message);
+  }
+}
+
+// Refresh ringan badge jumlah sesi aktif tiap 30 detik, biar kelihatan
+// walau lagi di tab Cari Produk — tanpa nge-reload seluruh daftar.
+setInterval(async () => {
+  if (!stokAccessToken) return;
+  try {
+    const res = await sesiFetch(`${SESI_TABLE}?status=eq.berjalan&select=id`);
+    if (!res.ok) return;
+    const rows = await res.json();
+    sesiBadge.textContent = rows.length;
+    sesiBadge.style.display = rows.length > 0 ? 'inline-block' : 'none';
+  } catch { /* diamkan */ }
+}, 30000);
+
 function updateClipHeaderCompact() {
   const rs = inpRs.value.trim() || '(nama RS belum diisi)';
   const sales = inpSales.value.trim();
@@ -1103,26 +1441,16 @@ const recordCancelBtn = document.getElementById('record-cancel-btn');
 const exportModal = document.getElementById('export-modal');
 const btnStok = document.getElementById('btn-stok');
 const stokModal = document.getElementById('stok-modal');
-const stokLoginWrap = document.getElementById('stok-login-wrap');
 const stokUploadWrap = document.getElementById('stok-upload-wrap');
-const stokEmail = document.getElementById('stok-email');
-const stokPassword = document.getElementById('stok-password');
-const stokLoginBtn = document.getElementById('stok-login-btn');
 const stokFile = document.getElementById('stok-file');
 const stokPreview = document.getElementById('stok-preview');
 const stokUploadBtn = document.getElementById('stok-upload-btn');
 const stokStatusMsg = document.getElementById('stok-status-msg');
-const stokCancelBtn = document.getElementById('stok-cancel-btn');
 const stokCancelBtn2 = document.getElementById('stok-cancel-btn-2');
 
 const btnPermintaan = document.getElementById('btn-permintaan');
 const prModal = document.getElementById('pr-modal');
-const prLoginWrap = document.getElementById('pr-login-wrap');
 const prFormWrap = document.getElementById('pr-form-wrap');
-const prEmail = document.getElementById('pr-email');
-const prPassword = document.getElementById('pr-password');
-const prLoginBtn = document.getElementById('pr-login-btn');
-const prCancelBtn = document.getElementById('pr-cancel-btn');
 const prCancelBtn2 = document.getElementById('pr-cancel-btn-2');
 const prNamaRs = document.getElementById('pr-nama-rs');
 const prTanggal = document.getElementById('pr-tanggal');
@@ -1388,7 +1716,7 @@ function addToClip(kode) {
   if (!r) return;
   if (clipboard.some(c => c.kode_produk === r.kode_produk)) { removeFromClip(r.kode_produk); return; }
   const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
-  clipboard.push({
+  const newItem = {
     kode_produk: r.kode_produk,
     kode_asli: r.kode_asli || null,
     nama_produk: r.nama_produk,
@@ -1405,14 +1733,18 @@ function addToClip(kode) {
     stok_status: r.stok_status || null,
     stok_qty: r.stok_qty ?? null,
     qty: 1
-  });
+  };
+  clipboard.push(newItem);
   updateClipboard();
   renderResults(lastResults);
+  persistAddItem(newItem); // simpan ke sesi (async, gak nunggu biar UI tetep responsif)
 }
 function removeFromClip(kode) {
+  const removed = clipboard.find(c => c.kode_produk === kode);
   clipboard = clipboard.filter(c => c.kode_produk !== kode);
   updateClipboard();
   renderResults(lastResults);
+  if (removed) persistRemoveItem(removed);
 }
 function updateClipboard() {
   const n = clipboard.length;
@@ -1494,6 +1826,7 @@ function updateClipboard() {
       if (!item) return;
       item.qty = Math.max(1, item.qty + parseInt(btn.dataset.d));
       updateClipboard();
+      persistUpdateQty(item);
     });
   });
   // FIX: handler untuk input qty yang diketik manual
@@ -1506,6 +1839,7 @@ function updateClipboard() {
       if (isNaN(val) || val < 1) val = 1;
       item.qty = val;
       updateClipboard();
+      persistUpdateQty(item);
     };
     input.addEventListener('blur', commit);
     input.addEventListener('keydown', (e) => {
@@ -1846,9 +2180,15 @@ btnExport.addEventListener('click', async () => {
 btnClearAll.addEventListener('click', () => {
   if (!clipboard.length) return;
   if (confirm('Hapus semua item dari clipboard?')) {
+    const sesiIdSebelumnya = currentSesiId;
     clipboard = [];
     updateClipboard();
     renderResults(lastResults);
+    if (sesiIdSebelumnya) {
+      sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${sesiIdSebelumnya}`, { method: 'DELETE' })
+        .then(() => touchSesiUpdatedAt(sesiIdSebelumnya))
+        .catch(() => {});
+    }
   }
 });
 
@@ -2019,6 +2359,13 @@ recordSubmitBtn.addEventListener('click', async () => {
 
     recordStatus.textContent = 'Berhasil dicatat ke Record Konversi ✓';
     recordStatus.style.color = 'var(--success)';
+    // Konversi sudah direkam → sesi ini selesai, keluar dari daftar "Konversi Berjalan"
+    if (currentSesiId) {
+      sesiFetch(`${SESI_TABLE}?id=eq.${currentSesiId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
+      }).catch(() => {});
+    }
     setTimeout(() => recordModal.classList.remove('show'), 1200);
   } catch (err) {
     recordStatus.textContent = 'Gagal: ' + err.message;
@@ -2037,57 +2384,21 @@ let stokParsedRows = null;  // hasil parse Excel yang siap diupload
 
 function openStokModal() {
   stokStatusMsg.textContent = '';
-  if (stokAccessToken) {
-    stokLoginWrap.style.display = 'none';
-    stokUploadWrap.style.display = 'block';
-  } else {
-    stokLoginWrap.style.display = 'block';
-    stokUploadWrap.style.display = 'none';
-    stokEmail.value = '';
-    stokPassword.value = '';
+  // Satu login di gerbang awal sudah cukup buat seluruh app, termasuk modul ini.
+  // Kalau token ternyata sudah expired (jarang, tapi bisa terjadi di sesi lama),
+  // tendang balik ke gerbang login daripada nampilin form login kedua di sini.
+  if (!stokAccessToken) {
+    closeStokModal();
+    showGate('Sesi kamu habis, silakan masuk lagi.');
+    return;
   }
   stokModal.classList.add('show');
 }
 function closeStokModal() { stokModal.classList.remove('show'); }
 
 btnStok.addEventListener('click', openStokModal);
-stokCancelBtn.addEventListener('click', closeStokModal);
 stokCancelBtn2.addEventListener('click', closeStokModal);
 stokModal.addEventListener('click', (e) => { if (e.target === stokModal) closeStokModal(); });
-
-// ---- Login (dipakai cuma buat dapetin token, biar bisa panggil RPC yang butuh 'authenticated') ----
-stokLoginBtn.addEventListener('click', async () => {
-  const email = stokEmail.value.trim().toLowerCase();
-  const password = stokPassword.value;
-  if (!email || !password) {
-    stokStatusMsg.textContent = 'Isi email dan password dulu.';
-    stokStatusMsg.style.color = 'var(--danger)';
-    return;
-  }
-  stokLoginBtn.disabled = true;
-  stokLoginBtn.textContent = 'Memproses…';
-
-  try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || data.msg || 'Login gagal');
-
-    stokAccessToken = data.access_token;
-    stokStatusMsg.textContent = '';
-    stokLoginWrap.style.display = 'none';
-    stokUploadWrap.style.display = 'block';
-  } catch (err) {
-    stokStatusMsg.textContent = 'Gagal masuk: ' + err.message;
-    stokStatusMsg.style.color = 'var(--danger)';
-  } finally {
-    stokLoginBtn.disabled = false;
-    stokLoginBtn.textContent = 'Masuk';
-  }
-});
 
 // ---- Parse file Excel (KODEASLI, NAMA BARANG, QTY) ----
 stokFile.addEventListener('change', async () => {
@@ -2229,52 +2540,19 @@ function openPrModal() {
   prShowTab('teks');
   if (!prTanggal.value) prTanggal.value = new Date().toISOString().slice(0,10);
 
-  if (stokAccessToken) { // reuse token yang sama dengan modul Stok
-    prLoginWrap.style.display = 'none';
-    prFormWrap.style.display = 'block';
-  } else {
-    prLoginWrap.style.display = 'block';
-    prFormWrap.style.display = 'none';
-    prEmail.value = ''; prPassword.value = '';
+  // Satu login di gerbang awal sudah cukup — kalau token expired, balik ke gerbang.
+  if (!stokAccessToken) {
+    closePrModal();
+    showGate('Sesi kamu habis, silakan masuk lagi.');
+    return;
   }
   prModal.classList.add('show');
 }
 function closePrModal() { prModal.classList.remove('show'); }
 
 btnPermintaan.addEventListener('click', openPrModal);
-prCancelBtn.addEventListener('click', closePrModal);
 prCancelBtn2.addEventListener('click', closePrModal);
 prModal.addEventListener('click', (e) => { if (e.target === prModal) closePrModal(); });
-
-prLoginBtn.addEventListener('click', async () => {
-  const email = prEmail.value.trim().toLowerCase();
-  const password = prPassword.value;
-  if (!email || !password) {
-    prStatusMsg.textContent = 'Isi email dan password dulu.';
-    prStatusMsg.style.color = 'var(--danger)';
-    return;
-  }
-  prLoginBtn.disabled = true;
-  prLoginBtn.textContent = 'Memproses…';
-  try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || data.msg || 'Login gagal');
-    stokAccessToken = data.access_token; // token dishare dengan modul Stok
-    prLoginWrap.style.display = 'none';
-    prFormWrap.style.display = 'block';
-  } catch (err) {
-    prStatusMsg.textContent = 'Gagal masuk: ' + err.message;
-    prStatusMsg.style.color = 'var(--danger)';
-  } finally {
-    prLoginBtn.disabled = false;
-    prLoginBtn.textContent = 'Masuk';
-  }
-});
 
 // ---- Tab switch Teks / Excel / Screenshot ----
 let prTeksFromOcr = false;
