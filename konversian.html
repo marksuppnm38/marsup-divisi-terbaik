@@ -119,6 +119,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .rcard:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(29,91,212,.08)}
 .rcard.selected{border-color:var(--accent);background:var(--accent-bg)}
 .rcard.selected::after{content:'\ea5e';font-family:'tabler-icons';position:absolute;top:10px;right:10px;font-size:16px;color:var(--accent)}
+.sesi-delete-btn{position:absolute;top:8px;right:8px;width:24px;height:24px;border:1px solid var(--danger-border);border-radius:6px;background:var(--danger-bg);color:var(--danger);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:filter .15s}
+.sesi-delete-btn:hover{filter:brightness(0.95)}
+.sesi-delete-btn:disabled{opacity:.5;cursor:not-allowed}
 .rcard-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;padding-right:20px}
 .rcard-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;flex:1}
 .tipe-badge{font-size:10px;font-weight:500;padding:2px 7px;border-radius:20px;white-space:nowrap;flex-shrink:0}
@@ -708,6 +711,27 @@ function readAuthSession() {
 function showApp() {
   authGate.style.display = 'none';
   appRoot.style.display = 'flex';
+  openSesiFromUrlIfAny();
+}
+// Kalau app dibuka lewat link yang dikirim dari tombol "Minta Bantuan" (format
+// ?sesi=<id>), langsung pindah ke tab Konversi Berjalan dan buka sesinya —
+// biar temen yang klik link gak perlu cari-cari manual dulu.
+function openSesiFromUrlIfAny() {
+  const params = new URLSearchParams(window.location.search);
+  const sesiId = params.get('sesi');
+  if (!sesiId) return;
+  if (window.innerWidth <= 860 && typeof switchTab === 'function') switchTab('search');
+  switchSubTab('sesi');
+  openSesi(sesiId);
+}
+function buildSesiShareUrl(id) {
+  return `${window.location.origin}${window.location.pathname}?sesi=${encodeURIComponent(id)}`;
+}
+function shareSesiToWhatsApp(id, namaRs) {
+  const link = buildSesiShareUrl(id);
+  const label = namaRs && namaRs.trim() ? namaRs.trim() : '(Nama RS belum diisi)';
+  const text = `🙋 Butuh bantuan untuk sesi konversi "${label}":\n${link}`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
 }
 function showGate(msg) {
   stokAccessToken = null;
@@ -1265,6 +1289,11 @@ btnButuhBantuan.addEventListener('click', async () => {
       method: 'PATCH',
       body: JSON.stringify({ butuh_bantuan: currentButuhBantuan, updated_at: new Date().toISOString() })
     });
+    // Baru minta bantuan (bukan batalin) → langsung tawarin kirim link sesinya ke WA,
+    // biar temen yang dihubungi bisa langsung klik & buka sesi yang sama.
+    if (currentButuhBantuan && confirm('Kirim link sesi ini ke WhatsApp sekarang?')) {
+      shareSesiToWhatsApp(sesiId, inpRs.value);
+    }
   } catch (err) {
     alert('Gagal update status bantuan: ' + err.message);
   }
@@ -1316,8 +1345,10 @@ function sesiTimeAgo(iso) {
 
 function renderSesiCard(s) {
   const itemCount = (s.sesi_konversi_item && s.sesi_konversi_item[0] && s.sesi_konversi_item[0].count) || 0;
+  const namaAman = (s.nama_rs || '(Nama RS belum diisi)').replace(/"/g, '&quot;');
   const bantuanBadge = s.butuh_bantuan
-    ? `<span class="tipe-badge" style="background:var(--danger-bg);color:var(--danger)">🙋 Butuh bantuan</span>`
+    ? `<span class="tipe-badge" style="background:var(--danger-bg);color:var(--danger)">🙋 Butuh bantuan</span>
+       <button class="sesi-wa-btn" data-id="${s.id}" data-nama="${namaAman}" title="Kirim link sesi ini ke WhatsApp" type="button" style="position:absolute;top:8px;right:38px;width:24px;height:24px;border:1px solid var(--success-border);border-radius:6px;background:var(--success-bg);color:var(--success);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center"><i class="ti ti-brand-whatsapp"></i></button>`
     : '';
   // Ringkasan Permintaan RS (kalau ada) — biar temen yang lagi liat daftar
   // "Konversi Berjalan" langsung tau ada permintaan apa gak di sesi ini,
@@ -1326,8 +1357,9 @@ function renderSesiCard(s) {
   const permintaanChip = p
     ? `<span class="mi"><i class="ph ph-clipboard-text"></i><span>Permintaan RS: ${p.items_terpenuhi}/${p.items_total} terpenuhi${p.items_pending > 0 ? ' · ' + p.items_pending + ' belum dicek' : ''}</span></span>`
     : '';
-  return `<div class="rcard sesi-card" data-id="${s.id}">
-    <div class="rcard-top">
+  return `<div class="rcard sesi-card" data-id="${s.id}" style="position:relative">
+    <button class="sesi-delete-btn" data-id="${s.id}" data-nama="${(s.nama_rs || '(Nama RS belum diisi)').replace(/"/g, '&quot;')}" title="Hapus sesi ini" type="button"><i class="ti ti-trash"></i></button>
+    <div class="rcard-top" style="padding-right:66px">
       <div class="rcard-name">${s.nama_rs ? s.nama_rs : '(Nama RS belum diisi)'}</div>
       ${bantuanBadge}
     </div>
@@ -1385,11 +1417,55 @@ async function loadSesiList() {
     sesiList.querySelectorAll('.sesi-card').forEach(card => {
       card.addEventListener('click', () => openSesi(card.dataset.id));
     });
+    sesiList.querySelectorAll('.sesi-delete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation(); // jangan sampai ikut buka sesinya
+        deleteSesi(btn.dataset.id, btn.dataset.nama, btn);
+      });
+    });
+    sesiList.querySelectorAll('.sesi-wa-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        shareSesiToWhatsApp(btn.dataset.id, btn.dataset.nama);
+      });
+    });
   } catch (err) {
     sesiListError.textContent = err.message;
     sesiListError.style.display = 'block';
   } finally {
     sesiListLoading.style.display = 'none';
+  }
+}
+
+// Hapus sesi konversi secara permanen (beserta semua item di dalamnya).
+// Kalau sesi yang dihapus adalah sesi yang sedang dibuka, layar clipboard
+// ikut direset biar gak nyisa data sesi yang udah gak ada.
+async function deleteSesi(id, nama, btn) {
+  if (!confirm(`Hapus sesi "${nama}"? Semua produk di dalamnya ikut terhapus dan tidak bisa dikembalikan.`)) return;
+  if (btn) btn.disabled = true;
+  try {
+    await sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${id}`, { method: 'DELETE' });
+    const res = await sesiFetch(`${SESI_TABLE}?id=eq.${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal menghapus sesi');
+    }
+    if (currentSesiId === id) {
+      currentSesiId = null;
+      clipboard = [];
+      inpRs.value = '';
+      inpSales.value = '';
+      currentButuhBantuan = false;
+      updateClipboard();
+      renderResults(lastResults);
+      renderButuhBantuanBtn();
+      setSesiSavedStatus('');
+      resetChecklistUI();
+    }
+    await loadSesiList();
+  } catch (err) {
+    alert('Gagal hapus sesi: ' + err.message);
+    if (btn) btn.disabled = false;
   }
 }
 
