@@ -457,15 +457,16 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
           <div class="kb-count" id="kb-count"></div>
         </div>
         <div class="kb-head-btns">
+          <button class="kb-collapse-btn" id="kb-refresh-btn" title="Muat ulang (biar lihat update dari temen)"><i class="ti ti-refresh"></i></button>
           <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan daftar"><i class="ti ti-chevron-up"></i></button>
           <button class="kb-close-btn" id="kb-close-btn" title="Sembunyikan (data tetap tersimpan)">×</button>
         </div>
       </div>
       <div class="kb-summary" id="kb-summary"></div>
+      <div id="kb-refresh-status" style="font-size:10.5px;color:var(--text-muted);padding:0 14px 4px;min-height:14px"></div>
       <div id="kb-list" class="kb-list"></div>
       <div class="kb-footer">
-        <div id="kb-record-status" class="kb-record-status"></div>
-        <button class="kb-record-btn" id="kb-record-btn"><i class="ti ti-device-floppy"></i> Record Sesi Ini</button>
+        <div id="kb-record-status" class="kb-record-status">Tingkat pemenuhan tersimpan otomatis tiap item ditandai.</div>
       </div>
     </div>
 
@@ -1284,6 +1285,7 @@ function startNewSesi() {
   updateClipHeaderCompact();
   renderButuhBantuanBtn();
   setSesiSavedStatus('');
+  resetChecklistUI();
   switchSubTab('cari');
 }
 btnSesiBaru.addEventListener('click', startNewSesi);
@@ -1317,6 +1319,13 @@ function renderSesiCard(s) {
   const bantuanBadge = s.butuh_bantuan
     ? `<span class="tipe-badge" style="background:var(--danger-bg);color:var(--danger)">🙋 Butuh bantuan</span>`
     : '';
+  // Ringkasan Permintaan RS (kalau ada) — biar temen yang lagi liat daftar
+  // "Konversi Berjalan" langsung tau ada permintaan apa gak di sesi ini,
+  // tanpa perlu buka satu-satu dulu.
+  const p = s._permintaan;
+  const permintaanChip = p
+    ? `<span class="mi"><i class="ph ph-clipboard-text"></i><span>Permintaan RS: ${p.items_terpenuhi}/${p.items_total} terpenuhi${p.items_pending > 0 ? ' · ' + p.items_pending + ' belum dicek' : ''}</span></span>`
+    : '';
   return `<div class="rcard sesi-card" data-id="${s.id}">
     <div class="rcard-top">
       <div class="rcard-name">${s.nama_rs ? s.nama_rs : '(Nama RS belum diisi)'}</div>
@@ -1326,9 +1335,34 @@ function renderSesiCard(s) {
       <span class="mi"><i class="ti ti-user"></i><span>PIC: ${s.pic_marsup || '-'}</span></span>
       <span class="mi"><i class="ti ti-users"></i><span>Sales: ${s.nama_sales || '-'}</span></span>
       <span class="mi"><i class="ti ti-package"></i><span>${itemCount} produk</span></span>
+      ${permintaanChip}
       <span class="mi"><i class="ti ti-clock"></i><span>${sesiTimeAgo(s.updated_at)}</span></span>
     </div>
   </div>`;
+}
+
+// Ambil ringkasan Permintaan RS buat sekumpulan sesi sekaligus (1 panggilan RPC
+// buat seluruh daftar), lalu tempel ke masing-masing baris sesi sebagai _permintaan.
+// Gagal di sini gak boleh gagalin daftar sesi — badge-nya optional.
+async function attachPermintaanSummary(sesiRows) {
+  if (!sesiRows.length) return sesiRows;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_permintaan_summary_by_sesi_ids`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': ANON_KEY,
+        'Authorization': 'Bearer ' + stokAccessToken
+      },
+      body: JSON.stringify({ p_sesi_ids: sesiRows.map(s => s.id) })
+    });
+    if (!res.ok) return sesiRows;
+    const summaries = await res.json();
+    const bySesiId = {};
+    (summaries || []).forEach(s => { bySesiId[s.sesi_id] = s; });
+    sesiRows.forEach(s => { s._permintaan = bySesiId[s.id] || null; });
+  } catch { /* badge permintaan opsional, diamkan kalau gagal */ }
+  return sesiRows;
 }
 
 async function loadSesiList() {
@@ -1346,6 +1380,7 @@ async function loadSesiList() {
     sesiBadge.textContent = data.length;
     sesiBadge.style.display = data.length > 0 ? 'inline-block' : 'none';
     if (data.length === 0) { sesiListEmpty.style.display = 'block'; return; }
+    await attachPermintaanSummary(data);
     sesiList.innerHTML = data.map(renderSesiCard).join('');
     sesiList.querySelectorAll('.sesi-card').forEach(card => {
       card.addEventListener('click', () => openSesi(card.dataset.id));
@@ -1360,6 +1395,7 @@ async function loadSesiList() {
 
 async function openSesi(id) {
   try {
+    resetChecklistUI(); // buang checklist Permintaan RS dari sesi sebelumnya (kalau ada) dulu
     const [sesiRes, itemsRes] = await Promise.all([
       sesiFetch(`${SESI_TABLE}?id=eq.${id}&select=*`),
       sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${id}&select=*`)
@@ -1392,8 +1428,56 @@ async function openSesi(id) {
     setSesiSavedStatus('Sesi dimuat ✓');
     switchSubTab('cari');
     if (window.innerWidth <= 860 && typeof switchTab === 'function') switchTab('clip');
+
+    // Permintaan RS yang nempel di sesi ini (kalau ada) ikut dimuat & ditampilin,
+    // jadi siapa pun yang buka sesi ini liat daftar permintaannya — bukan cuma
+    // orang yang pertama nyatetnya.
+    await loadChecklistForSesi(sesi.id);
   } catch (err) {
     alert('Gagal membuka sesi: ' + err.message);
+  }
+}
+
+// Reset state checklist "Kebutuhan RS" di layar (dipanggil sebelum ganti sesi,
+// biar gak nyisa data dari sesi yang lain).
+function resetChecklistUI() {
+  checklistItems = [];
+  checklistPermintaanId = null;
+  if (typeof kbSection !== 'undefined' && kbSection) kbSection.style.display = 'none';
+  if (typeof kbRefreshStatus !== 'undefined' && kbRefreshStatus) kbRefreshStatus.textContent = '';
+}
+
+// Ambil Permintaan RS yang nempel ke sesi ini (kalau ada) dan tampilin di
+// panel "Kebutuhan RS", persis kayak saat baru disubmit — bedanya ini dipicu
+// pas buka sesi, jadi berlaku juga buat temen yang bukan pembuat pertamanya.
+async function loadChecklistForSesi(sesiId) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_permintaan_by_sesi`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': ANON_KEY,
+        'Authorization': 'Bearer ' + stokAccessToken
+      },
+      body: JSON.stringify({ p_sesi_id: sesiId })
+    });
+    if (!res.ok) { kbRefreshStatus.textContent = 'Gagal memuat checklist.'; return; }
+    const data = await res.json();
+    if (!data) { kbRefreshStatus.textContent = ''; return; } // sesi ini emang gak punya Permintaan RS
+
+    checklistItems = Array.isArray(data.items) ? data.items : [];
+    checklistNamaRs = data.nama_rs || '(tanpa nama RS)';
+    checklistSales = data.pic_sales || '(tanpa nama sales)';
+    checklistPagu = (data.pagu != null) ? data.pagu : checklistPagu;
+    checklistPermintaanId = data.permintaan_id;
+
+    kbSection.style.display = 'flex';
+    kbSection.classList.remove('kb-collapsed');
+    kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
+    kbRefreshStatus.textContent = 'Diperbarui ✓ ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    renderChecklist();
+  } catch {
+    kbRefreshStatus.textContent = 'Gagal memuat checklist.';
   }
 }
 
@@ -1480,10 +1564,11 @@ const kbTitle = document.getElementById('kb-title');
 const kbCount = document.getElementById('kb-count');
 const kbList = document.getElementById('kb-list');
 const kbSummary = document.getElementById('kb-summary');
-const kbRecordBtn = document.getElementById('kb-record-btn');
 const kbRecordStatus = document.getElementById('kb-record-status');
 const kbCloseBtn = document.getElementById('kb-close-btn');
 const kbCollapseBtn = document.getElementById('kb-collapse-btn');
+const kbRefreshBtn = document.getElementById('kb-refresh-btn');
+const kbRefreshStatus = document.getElementById('kb-refresh-status');
 const progressFill = document.getElementById('progress-fill');
 const progressLabel = document.getElementById('progress-label');
 const modalSub = document.getElementById('modal-sub');
@@ -2359,12 +2444,18 @@ recordSubmitBtn.addEventListener('click', async () => {
 
     recordStatus.textContent = 'Berhasil dicatat ke Record Konversi ✓';
     recordStatus.style.color = 'var(--success)';
-    // Konversi sudah direkam → sesi ini selesai, keluar dari daftar "Konversi Berjalan"
+    // Konversi sudah direkam → sesi ini selesai, keluar dari daftar "Konversi Berjalan".
+    // Kalau sesi ini punya checklist Permintaan RS yang nempel, rekap tingkat
+    // pemenuhannya ikut dipastikan tersimpan di langkah yang sama — gak perlu
+    // klik "Record Sesi" terpisah lagi, satu tombol ini udah nutup keduanya.
     if (currentSesiId) {
       sesiFetch(`${SESI_TABLE}?id=eq.${currentSesiId}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
       }).catch(() => {});
+    }
+    if (checklistPermintaanId) {
+      autoFinalizePermintaan().catch(() => {});
     }
     setTimeout(() => recordModal.classList.remove('show'), 1200);
   } catch (err) {
@@ -2691,6 +2782,23 @@ prSubmitBtn.addEventListener('click', async () => {
   prSubmitBtn.textContent = 'Menyimpan…';
 
   try {
+    // Permintaan RS ini nempel ke sesi konversi yang lagi aktif (bikin baru
+    // kalau belum ada), jadi kalau temen buka sesi yang sama, daftar
+    // permintaannya ikut kelihatan — bukan cuma tersimpan di layar sendiri.
+    const sesiId = await ensureSesi();
+    const namaRsTrim = prNamaRs.value.trim();
+    const picSalesTrim = prPicSales.value.trim();
+    if (namaRsTrim || picSalesTrim) {
+      await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          nama_rs: namaRsTrim || null,
+          nama_sales: picSalesTrim || null,
+          updated_at: new Date().toISOString()
+        })
+      });
+    }
+
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/submit_permintaan_rs`, {
       method: 'POST',
       headers: {
@@ -2704,7 +2812,8 @@ prSubmitBtn.addEventListener('click', async () => {
         p_pic_sales: prPicSales.value.trim() || null,
         p_sumber: sumber,
         p_pagu: parsePaguValue(prPagu.value),
-        p_items: items
+        p_items: items,
+        p_sesi_id: sesiId
       })
     });
     if (!res.ok) {
@@ -2752,7 +2861,8 @@ function startChecklistSession(submitResult, namaRs, picSales, pagu) {
 
   kbSection.style.display = 'flex';
   kbSection.classList.remove('kb-collapsed');
-  kbRecordStatus.textContent = '';
+  kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
+  kbRefreshStatus.textContent = '';
   renderChecklist();
 
   // pastikan panel clipboard kelihatan (termasuk di mobile, yang defaultnya nampilin tab search)
@@ -2807,6 +2917,7 @@ kbList.addEventListener('click', async (e) => {
     const item = checklistItems.find(i => i.id === itemId);
     if (item) item.status = status;
     renderChecklist();
+    autoFinalizePermintaan(); // rekap tingkat pemenuhan ke-update sendiri, gak perlu tombol terpisah
   } catch (err) {
     alert('Gagal update: ' + err.message);
     renderChecklist();
@@ -2824,17 +2935,29 @@ kbCollapseBtn.addEventListener('click', () => {
   kbCollapseBtn.title = collapsed ? 'Buka daftar' : 'Ciutkan daftar';
 });
 
-kbRecordBtn.addEventListener('click', async () => {
+// Kerja bareng dalam satu sesi yang sama bisa jalan bersamaan (bukan cuma
+// gantian) — tombol ini nge-tarik ulang status checklist dari server, biar
+// item yang barusan ditandai temen langsung kelihatan tanpa buka-tutup sesi.
+kbRefreshBtn.addEventListener('click', async () => {
+  if (!currentSesiId) return;
+  kbRefreshBtn.disabled = true;
+  kbRefreshStatus.textContent = 'Memuat ulang…';
+  await loadChecklistForSesi(currentSesiId);
+  kbRefreshBtn.disabled = false;
+});
+
+// Dulu ini tombol "Record Sesi Ini" terpisah yang harus diklik manual.
+// Sekarang otomatis: tiap kali item dicentang (bisa/tidak), tingkat pemenuhan
+// langsung dihitung ulang & disimpan di background — gak nunggu diklik, dan
+// otomatis ke-cover juga saat "Record Konversi" ditekan di akhir.
+async function autoFinalizePermintaan() {
   if (!checklistPermintaanId) return;
   const total = checklistItems.length;
   const done = checklistItems.filter(i => i.status === 'TERPENUHI').length;
   const tingkatPemenuhan = total > 0 ? Math.round((done / total) * 1000) / 10 : 0; // 1 desimal
 
-  kbRecordBtn.disabled = true;
-  kbRecordBtn.textContent = 'Menyimpan…';
   kbRecordStatus.style.color = 'var(--text-muted)';
-  kbRecordStatus.textContent = 'Menyimpan rekap sesi…';
-
+  kbRecordStatus.textContent = 'Menyimpan…';
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/finalize_permintaan_rs`, {
       method: 'POST',
@@ -2850,20 +2973,14 @@ kbRecordBtn.addEventListener('click', async () => {
         p_items_total: total
       })
     });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || errData.hint || 'Gagal record sesi (cek login/whitelist)');
-    }
+    if (!res.ok) throw new Error('Gagal simpan rekap');
     kbRecordStatus.style.color = 'var(--success)';
-    kbRecordStatus.textContent = `Tersimpan ✓ Tingkat pemenuhan: ${tingkatPemenuhan}% (${done}/${total} item)`;
-  } catch (err) {
+    kbRecordStatus.textContent = `Tersimpan otomatis ✓ ${tingkatPemenuhan}% terpenuhi (${done}/${total} item)`;
+  } catch {
     kbRecordStatus.style.color = 'var(--danger)';
-    kbRecordStatus.textContent = 'Gagal: ' + err.message;
-  } finally {
-    kbRecordBtn.disabled = false;
-    kbRecordBtn.innerHTML = '<i class="ti ti-device-floppy"></i> Record Sesi Ini';
+    kbRecordStatus.textContent = 'Gagal simpan rekap otomatis (gak masalah, dicoba lagi pas item berikutnya ditandai)';
   }
-});
+}
 
 async function callUpdatePermintaanItem(itemId, status, produkId, kodeProduk) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/update_permintaan_item`, {
