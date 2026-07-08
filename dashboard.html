@@ -404,9 +404,11 @@ async function openDetail(kode){
     if(!d){ document.getElementById('dm-body').innerHTML = '<div class="detail-loading">Produk tidak ditemukan.</div>'; return; }
     document.getElementById('dm-title').textContent = d.nama_produk || '—';
     document.getElementById('dm-kode').textContent = d.kode_produk;
-    const thumb = d.media ? d.media.find(m=>m.is_primary && m.url) || d.media.find(m=>m.url) : null;
-    const thumbHtml = thumb
-      ? `<img class="detail-thumb" src="${thumb.url}" alt="${d.nama_produk}" onerror="this.style.display='none'"/>`
+    const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
+    const mediaThumb = d.media ? d.media.find(m=>m.is_primary && m.url) || d.media.find(m=>m.url) : null;
+    const thumbUrl = mediaThumb?.url || (d.kode_asli ? THUMB_BASE + d.kode_asli + '.png' : null);
+    const thumbHtml = thumbUrl
+      ? `<img class="detail-thumb" src="${thumbUrl}" alt="${d.nama_produk}" onerror="this.style.display='none'"/>`
       : `<div class="detail-thumb-placeholder"><i class="ph ph-image"></i> Tidak ada gambar</div>`;
     const hargaMap = {};
     (d.harga||[]).forEach(h=>{ if(!hargaMap[h.jenis]) hargaMap[h.jenis]=h; });
@@ -663,7 +665,7 @@ function renderTable(total, rows){
     document.getElementById('tbl-body').innerHTML = '<tr style="cursor:pointer" onclick="openDetail(${r.kode_produk})"><td colspan="6"><i class="ph ph-magnifying-glass" style="font-size:28px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
   } else {
     document.getElementById('tbl-body').innerHTML = rows.map(r => `
-      <tr>
+      <tr style="cursor:pointer" onclick="openDetail('${r.kode_produk}')">
         <td><span class="kode-text">${r.kode_produk || '—'}</span></td>
         <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.nama_produk || '—'}</td>
         <td><span class="badge ${tipeClass[r.tipe] || ''}">${r.tipe || '—'}</span></td>
