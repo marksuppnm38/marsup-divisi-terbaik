@@ -663,7 +663,7 @@ function renderTable(total, rows){
     document.getElementById('tbl-body').innerHTML = '<tr style="cursor:pointer" onclick="openDetail(${r.kode_produk})"><td colspan="6"><i class="ph ph-magnifying-glass" style="font-size:28px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
   } else {
     document.getElementById('tbl-body').innerHTML = rows.map(r => `
-      <tr>
+      <tr style="cursor:pointer" onclick="openDetail('${r.kode_produk}')">
         <td><span class="kode-text">${r.kode_produk || '—'}</span></td>
         <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.nama_produk || '—'}</td>
         <td><span class="badge ${tipeClass[r.tipe] || ''}">${r.tipe || '—'}</span></td>
