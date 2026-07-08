@@ -176,13 +176,35 @@ tr:hover td{background:var(--surface-2)}
 .err-banner.show{display:flex}
 
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
-
+.detail-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:center;justify-content:center;padding:16px}
+.detail-modal-overlay.show{display:flex}
+.detail-modal{background:var(--surface);border-radius:12px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.detail-modal-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:10px;position:sticky;top:0;background:var(--surface);z-index:1}
+.detail-modal-title{font-size:14px;font-weight:600;line-height:1.4}
+.detail-modal-sub{font-size:11px;color:var(--text-muted);font-family:var(--mono);margin-top:2px}
+.detail-modal-close{border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1;flex-shrink:0;padding:2px}
+.detail-modal-close:hover{color:var(--danger)}
+.detail-modal-body{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.detail-thumb{width:100%;height:160px;object-fit:contain;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
+.detail-thumb-placeholder{width:100%;height:120px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text-muted);font-size:12px;gap:6px}
+.detail-row{display:flex;gap:8px;align-items:flex-start}
+.detail-key{font-size:11px;font-weight:600;color:var(--text-muted);width:110px;flex-shrink:0;padding-top:1px}
+.detail-val{font-size:12px;color:var(--text);flex:1;word-break:break-word}
+.detail-val a{color:var(--accent);text-decoration:none}
+.detail-val a:hover{text-decoration:underline}
+.harga-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.harga-box{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.harga-box-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:4px}
+.harga-box-val{font-size:13px;font-weight:600;font-family:var(--mono);color:var(--text)}
+.harga-box-tahun{font-size:10px;color:var(--text-muted);margin-top:2px}
+.detail-loading{text-align:center;padding:40px;color:var(--text-muted)}
 @media(max-width:640px){
   main{padding:16px 12px 36px}
   .stats-grid{grid-template-columns:repeat(2,1fr)}
   .search-mini{width:130px}
   .table-header{flex-direction:column;align-items:flex-start}
 }
+
 </style>
 </head>
 <body>
@@ -361,6 +383,52 @@ async function refreshAuthSession(refreshToken) {
   if (!res.ok) throw new Error(data.error_description || data.msg || 'Sesi habis, silakan masuk lagi.');
   return data;
 }
+
+// DETAIL MODAL
+const detailOverlay = document.getElementById('detail-modal-overlay');
+document.getElementById('dm-close').addEventListener('click', () => detailOverlay.classList.remove('show'));
+detailOverlay.addEventListener('click', e => { if(e.target===detailOverlay) detailOverlay.classList.remove('show'); });
+
+async function openDetail(kode){
+  document.getElementById('dm-title').textContent = '—';
+  document.getElementById('dm-kode').textContent = kode;
+  document.getElementById('dm-body').innerHTML = '<div class="detail-loading"><i class="ph ph-circle-notch spinner"></i> Memuat detail…</div>';
+  detailOverlay.classList.add('show');
+  try {
+    const d = await rpc('get_produk_detail', {p_kode: kode});
+    if(!d){ document.getElementById('dm-body').innerHTML = '<div class="detail-loading">Produk tidak ditemukan.</div>'; return; }
+    document.getElementById('dm-title').textContent = d.nama_produk || '—';
+    document.getElementById('dm-kode').textContent = d.kode_produk;
+    const thumb = d.media ? d.media.find(m=>m.is_primary && m.url) || d.media.find(m=>m.url) : null;
+    const thumbHtml = thumb
+      ? `<img class="detail-thumb" src="${thumb.url}" alt="${d.nama_produk}" onerror="this.style.display='none'"/>`
+      : `<div class="detail-thumb-placeholder"><i class="ph ph-image"></i> Tidak ada gambar</div>`;
+    const hargaMap = {};
+    (d.harga||[]).forEach(h=>{ if(!hargaMap[h.jenis]) hargaMap[h.jenis]=h; });
+    const hargaHtml = `<div class="harga-grid">
+      ${['EKATALOG','UPLOAD','SWASTA'].map(j=>`
+        <div class="harga-box">
+          <div class="harga-box-label">${j==='EKATALOG'?'e-Katalog':j==='UPLOAD'?'Upload':j}</div>
+          <div class="harga-box-val">${hargaMap[j] ? rupiah(hargaMap[j].harga) : '—'}</div>
+          <div class="harga-box-tahun">${hargaMap[j] ? hargaMap[j].tahun : ''}</div>
+        </div>`).join('')}
+    </div>`;
+    document.getElementById('dm-body').innerHTML = `
+      ${thumbHtml}
+      ${hargaHtml}
+      <div>
+        ${row('Tipe', `<span class="badge badge-${(d.tipe||'').toLowerCase()}">${d.tipe||'—'}</span>`)}
+        ${row('No. AKD', d.no_akd || '—')}
+        ${row('Kode KFA', d.kode_kfa ? `<span style="font-family:var(--mono)">${d.kode_kfa}</span>` : '—')}
+        ${row('Spesifikasi', d.spesifikasi || '—')}
+        ${row('Link v6', d.link_v6 ? `<a href="${d.link_v6}" target="_blank">Lihat di e-Katalog <i class="ph ph-arrow-square-out"></i></a>` : '—')}
+      </div>
+    `;
+  } catch(e){
+    document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${e.message}</div>`;
+  }
+}
+function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`; }
 async function initAuth() {
   const saved = readAuthSession();
   if (!saved) { showGate(); return; }
@@ -587,7 +655,7 @@ function renderTable(total, rows){
   const tipeClass = {INSTRUMENT:'badge-instrument', SET:'badge-set', UNIT:'badge-unit'};
 
   if (!rows.length){
-    document.getElementById('tbl-body').innerHTML = '<tr class="empty-row"><td colspan="6"><i class="ph ph-magnifying-glass" style="font-size:28px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
+    document.getElementById('tbl-body').innerHTML = '<tr style="cursor:pointer" onclick="openDetail(${r.kode_produk})"><td colspan="6"><i class="ph ph-magnifying-glass" style="font-size:28px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
   } else {
     document.getElementById('tbl-body').innerHTML = rows.map(r => `
       <tr>
@@ -636,5 +704,19 @@ async function loadEverything(){
 
 initAuth();
 </script>
+<div class="detail-modal-overlay" id="detail-modal-overlay">
+  <div class="detail-modal" id="detail-modal">
+    <div class="detail-modal-head">
+      <div>
+        <div class="detail-modal-title" id="dm-title">—</div>
+        <div class="detail-modal-sub" id="dm-kode">—</div>
+      </div>
+      <button class="detail-modal-close" id="dm-close">&times;</button>
+    </div>
+    <div class="detail-modal-body" id="dm-body">
+      <div class="detail-loading"><i class="ph ph-circle-notch spinner"></i> Memuat detail…</div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
