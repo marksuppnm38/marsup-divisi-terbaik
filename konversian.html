@@ -10,30 +10,28 @@
 <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"/>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#f4f6fb;
-  --surface:#ffffff;
-  --surface-2:#f0f2f8;
-  --surface-3:#e8eaf2;
-  --border:#dde1eb;
-  --border-strong:#b8bece;
-  --text:#0f1623;
-  --text-secondary:#374151;
-  --text-muted:#7c8799;
-  --accent:#2563eb;
+  --bg:#f0f2f5;
+  --surface:#fff;
+  --surface-2:#f5f6f8;
+  --border:#e2e4e9;
+  --border-strong:#c8ccd6;
+  --text:#111827;
+  --text-secondary:#4b5563;
+  --text-muted:#9ca3af;
+  --accent:#1d5bd4;
   --accent-bg:#eff4ff;
   --accent-text:#1d4ed8;
-  --accent-hover:#1d4ed8;
-  --success:#16803d;
+  --success:#15803d;
   --success-bg:#f0fdf4;
   --success-border:#86efac;
-  --danger:#dc2626;
-  --danger-bg:#fef2f2;
+  --danger:#b91c1c;
+  --danger-bg:#fff5f5;
   --danger-border:#fca5a5;
-  --shadow-sm:0 1px 3px rgba(15,22,35,.06),0 1px 2px rgba(15,22,35,.04);
-  --shadow-md:0 4px 12px rgba(15,22,35,.08),0 2px 4px rgba(15,22,35,.04);
+  --accent-hover:#1749b1;
   --radius:10px;
   --mono:'JetBrains Mono',monospace;
 }
@@ -59,6 +57,16 @@ body[data-theme="dark"]{
 }
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;height:100vh;display:flex;flex-direction:column;overflow:hidden;transition:background .4s ease,color .4s ease}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;transition:background-color .4s ease,border-color .4s ease,color .3s ease}
+
+/* AUTH GATE */
+.auth-gate{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center}
+.auth-gate-box{width:320px;max-width:90vw;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 24px;box-shadow:0 8px 28px rgba(0,0,0,.12);display:flex;flex-direction:column;align-items:stretch}
+.auth-gate-logo{height:36px;width:auto;object-fit:contain;align-self:center;margin-bottom:10px}
+.auth-gate-title{font-size:16px;font-weight:600;text-align:center}
+.auth-gate-sub{font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px}
+.auth-gate-btn{margin-top:6px;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.auth-gate-btn:disabled{background:var(--border-strong);cursor:not-allowed}
+.auth-gate-status{font-size:12px;text-align:center;margin-top:10px;min-height:16px}
 
 /* HEADER */
 header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
@@ -134,7 +142,70 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 #stok-cancel-btn{background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border)!important}
 #stok-status-msg{font-size:12px;margin-top:10px;min-height:16px}
 .stok-preview{max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:11px;font-family:var(--mono);color:var(--text-secondary);background:var(--surface-2);margin-top:8px}
-#hint{text-align:center;padding:40px 16px;color:var(--text-muted)}
+
+/* PERMINTAAN RS MODAL */
+.pr-modal-box{background:var(--surface);border-radius:12px;padding:22px 24px;width:92vw;max-width:560px;max-height:88vh;overflow-y:auto;text-align:left}
+.pr-modal-box h3{font-size:15px;font-weight:600;margin-bottom:4px}
+.pr-sub{font-size:12px;color:var(--text-muted);margin-bottom:16px;line-height:1.5}
+.pr-tabs{display:flex;gap:4px;background:var(--surface-2);border-radius:8px;padding:3px;margin-bottom:14px}
+.pr-tab{flex:1;padding:7px;border:none;background:none;border-radius:6px;font-size:12px;font-weight:500;color:var(--text-muted);cursor:pointer;font-family:inherit}
+.pr-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.pr-field{margin-bottom:10px}
+.pr-field label{display:block;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
+.pr-field input[type="text"],.pr-field input[type="date"],.pr-field input[type="email"],.pr-field input[type="password"]{width:100%;height:32px;padding:0 10px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none}
+.pr-field textarea{width:100%;min-height:120px;padding:8px 10px;font-size:12.5px;font-family:var(--mono);border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none;resize:vertical}
+.pr-field input[type="file"]{width:100%;font-size:12px;padding:8px;border:1.5px dashed var(--border-strong);border-radius:8px;background:var(--surface-2)}
+.pr-row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pr-actions{display:flex;gap:8px;margin-top:14px}
+.pr-actions button{flex:1;height:36px;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;border:none}
+#pr-login-btn,#pr-submit-btn{background:var(--accent);color:#fff}
+#pr-login-btn:disabled,#pr-submit-btn:disabled{background:var(--border-strong);cursor:not-allowed}
+.pr-cancel{background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border)!important}
+#pr-status-msg{font-size:12px;margin-top:10px;min-height:16px}
+.pr-results{margin-top:16px;border-top:1px solid var(--border);padding-top:12px}
+.pr-summary{font-size:13px;font-weight:600;margin-bottom:10px}
+.pr-item-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:12px;margin-bottom:4px}
+.pr-item-row.match{background:var(--success-bg)}
+.pr-item-row.tidak-match{background:var(--danger-bg)}
+.pr-item-text{flex:1}
+.pr-item-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
+.pr-item-badge.match{background:var(--success);color:#fff}
+.pr-item-badge.tidak-match{background:var(--danger);color:#fff}
+.pr-add-clip-btn{font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;border:1px solid var(--accent);background:var(--accent-bg);color:var(--accent-text);cursor:pointer;white-space:nowrap;font-family:inherit}
+.pr-add-clip-btn:hover{background:var(--accent);color:#fff}
+.pr-add-clip-btn:disabled{cursor:default;opacity:.7;background:var(--surface-2);color:var(--text-muted);border-color:var(--border)}
+
+/* KEBUTUHAN RS: section nempel di sidebar clip, bagian dari alur konversi yang sama */
+.clip-kebutuhan-section{flex-shrink:0;border-bottom:2px solid var(--border-strong);background:var(--accent-bg);display:flex;flex-direction:column;max-height:38%;overflow:hidden}
+.clip-kebutuhan-section.kb-collapsed{max-height:none}
+.clip-kebutuhan-section.kb-collapsed .kb-list,
+.clip-kebutuhan-section.kb-collapsed .kb-footer{display:none}
+.kb-head{display:flex;align-items:flex-start;justify-content:space-between;padding:10px 14px 6px;gap:6px}
+.kb-head-btns{display:flex;gap:2px;flex-shrink:0}
+.kb-title{font-size:12.5px;font-weight:700;color:var(--accent-text)}
+.kb-count{font-size:10.5px;color:var(--text-muted);margin-top:1px}
+.kb-close-btn,.kb-collapse-btn{width:20px;height:20px;border:none;border-radius:6px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:13px;line-height:1;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.kb-close-btn:hover,.kb-collapse-btn:hover{background:var(--surface)}
+.kb-collapse-btn i{transition:transform .2s ease}
+.kb-collapsed .kb-collapse-btn i{transform:rotate(180deg)}
+.kb-summary{padding:0 14px 8px;font-size:11px;display:flex;flex-direction:column;gap:2px}
+.kb-summary-row{display:flex;justify-content:space-between;gap:8px;color:var(--text-secondary)}
+.kb-summary-row b{color:var(--text);font-weight:600}
+.kb-list{overflow-y:auto;padding:0 10px 6px;flex:1}
+.kb-item{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:12px;background:var(--surface)}
+.kb-item.terpenuhi{background:var(--success-bg);opacity:.85}
+.kb-item.tidak-terpenuhi{background:var(--danger-bg);opacity:.85}
+.kb-item-text{line-height:1.4}
+.kb-item-sub{font-size:10.5px;color:var(--text-muted);margin-top:2px}
+.kb-item-actions{display:flex;gap:6px}
+.kb-item-actions button{flex:1;font-size:11px;font-weight:600;padding:5px 8px;border-radius:6px;border:none;cursor:pointer;font-family:inherit}
+.kb-bisa-btn{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)!important}
+.kb-tidak-btn{background:var(--surface-2);color:var(--danger);border:1px solid var(--danger-border)!important}
+.kb-footer{flex-shrink:0;padding:8px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.kb-record-btn{background:var(--success);color:#fff;border:none;border-radius:8px;padding:8px 10px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px}
+.kb-record-btn:disabled{background:var(--border-strong);cursor:not-allowed}
+.kb-record-status{font-size:11px;text-align:center}
+
 #hint i{font-size:36px;display:block;margin-bottom:8px;color:var(--border-strong)}
 #hint p{font-size:13px}
 #empty{display:none;text-align:center;padding:40px 16px;color:var(--text-muted)}
@@ -146,19 +217,18 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 #theme-toggle{transition:transform .3s ease,background .3s ease}
 #theme-toggle:active{transform:rotate(20deg) scale(0.9)}
 #theme-toggle i{transition:transform .4s ease,opacity .3s ease}
-.rcard.no-price{border-color:#f97316;background:#fff7ed;border-left:3px solid #f97316}
-.rcard.no-price:hover{border-color:#ea580c;box-shadow:0 2px 10px rgba(249,115,22,.15)}
-.rcard.no-price .rcard-name{color:#9a3412}
-[data-theme="dark"] .rcard.no-price{border-color:#c2410c;background:#1c1108;border-left:3px solid #f97316}
-[data-theme="dark"] .rcard.no-price .rcard-name{color:#fb923c}
-.rcard.no-link{border-color:#a78bfa;background:#faf5ff;border-left:3px solid #a78bfa}
-.rcard.no-link:hover{border-color:#7c3aed;box-shadow:0 2px 10px rgba(167,139,250,.15)}
-[data-theme="dark"] .rcard.no-link{border-color:#6d28d9;background:#130e1f;border-left:3px solid #a78bfa}
 
 /* PANEL KANAN */
 .panel-clip{width:340px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
-.clip-header{padding:14px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0}
-.clip-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:10px}
+.clip-header{padding:12px 14px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
+.clip-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.clip-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)}
+.clip-header-edit-btn{font-size:10.5px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 4px;display:flex;align-items:center;gap:3px}
+.clip-header-edit-btn:hover{text-decoration:underline}
+.clip-header-compact{display:none;font-size:12px;color:var(--text-secondary);line-height:1.5;padding:2px 2px 6px}
+.clip-header-compact b{color:var(--text);font-weight:600}
+.clip-header.collapsed .clip-header-form{display:none}
+.clip-header.collapsed .clip-header-compact{display:block}
 .form-group{margin-bottom:8px}
 .form-group label{font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px;font-weight:500}
 .form-group input{width:100%;height:32px;padding:0 10px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface-2);color:var(--text);outline:none;transition:border-color .15s}
@@ -182,8 +252,13 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .qty-btn:hover{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
 .qty-val{font-size:12px;font-weight:600;min-width:20px;text-align:center;font-family:var(--mono)}
 .clip-footer{padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0}
-.clip-summary{font-size:12px;color:var(--text-muted);margin-bottom:8px}
+.clip-summary{font-size:12px;color:var(--text-muted);margin-bottom:4px;display:flex;justify-content:space-between;gap:8px}
 .clip-summary span{font-weight:600;color:var(--text)}
+.clip-budget{display:none;font-size:11.5px;padding:6px 8px;border-radius:6px;margin-bottom:8px;justify-content:space-between;gap:8px;font-weight:500}
+.clip-budget.show{display:flex}
+.clip-budget.under{background:var(--success-bg);color:var(--success)}
+.clip-budget.over{background:var(--danger-bg);color:var(--danger)}
+.clip-budget b{font-weight:700}
 .btn-export{width:100%;height:38px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s}
 .btn-export:hover{background:var(--accent-hover)}
 .btn-export:disabled{background:var(--border-strong);cursor:not-allowed}
@@ -247,6 +322,26 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 })();
 </script>
 
+<!-- AUTH GATE: seluruh aplikasi wajib login, sesi tersimpan (persistent) -->
+<div id="auth-gate" class="auth-gate">
+  <div class="auth-gate-box">
+    <img src="assets/logo-mark-pnm.png" alt="PNM Logo" class="auth-gate-logo">
+    <div class="auth-gate-title">Conversion Workspace</div>
+    <div class="auth-gate-sub">Masuk untuk melanjutkan.</div>
+    <div class="pr-field">
+      <label>Email</label>
+      <input type="email" id="gate-email" placeholder="nama@email.com" autocomplete="email"/>
+    </div>
+    <div class="pr-field">
+      <label>Password</label>
+      <input type="password" id="gate-password" placeholder="••••••••" autocomplete="current-password"/>
+    </div>
+    <button id="gate-login-btn" class="auth-gate-btn">Masuk</button>
+    <div id="gate-status" class="auth-gate-status"></div>
+  </div>
+</div>
+
+<div id="app-root" style="display:none;flex-direction:column;height:100vh;overflow:hidden">
 <header>
   <img src="assets/logo-mark-pnm.png" alt="PNM Logo" class="logo">
   <div>
@@ -256,6 +351,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
     <button class="toggle-btn" id="btn-stok" title="Upload / Update Stok"><i class="ph ph-truck"></i> Stok</button>
+    <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ph ph-clipboard-text"></i> Permintaan RS</button>
     <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
   </div>
 </header>
@@ -300,21 +396,49 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 
   <!-- PANEL KANAN: CLIPBOARD -->
   <div class="panel-clip" id="panel-clip">
-    <div class="clip-header">
-      <div class="clip-title"><i class="ti ti-clipboard" style="font-size:11px"></i> Clipboard Konversi</div>
-      <div class="form-group">
-        <label>Nama RS / Instansi</label>
-        <input id="inp-rs" type="text" placeholder="contoh: RSUD Dr. Soetomo"/>
+    <div class="clip-header" id="clip-header">
+      <div class="clip-title-row">
+        <div class="clip-title"><i class="ti ti-clipboard" style="font-size:11px"></i> Clipboard Konversi</div>
+        <button class="clip-header-edit-btn" id="clip-header-toggle" type="button"><i class="ti ti-pencil" style="font-size:11px"></i> <span id="clip-header-toggle-label">Ciutkan</span></button>
       </div>
-      <div class="form-group">
-        <label>Nama Sales</label>
-        <input id="inp-sales" type="text" placeholder="Nama sales"/>
-      </div>
-      <div class="form-group">
-        <label>PIC Marsup (kamu)</label>
-        <input id="inp-marsup" type="text" placeholder="Nama kamu"/>
+      <div class="clip-header-compact" id="clip-header-compact"></div>
+      <div class="clip-header-form">
+        <div class="form-group">
+          <label>Nama RS / Instansi</label>
+          <input id="inp-rs" type="text" placeholder="contoh: RSUD Dr. Soetomo"/>
+        </div>
+        <div class="form-group">
+          <label>Nama Sales</label>
+          <input id="inp-sales" type="text" placeholder="Nama sales"/>
+        </div>
+        <div class="form-group">
+          <label>PIC Marsup (kamu)</label>
+          <input id="inp-marsup" type="text" placeholder="Nama kamu"/>
+        </div>
       </div>
     </div>
+
+    <!-- KEBUTUHAN RS: nempel di alur yang sama, muncul kalau ada sesi Permintaan RS aktif.
+         Bukan panel terpisah lagi — ini langkah pertama sebelum cari & tambah produk. -->
+    <div id="clip-kebutuhan-section" class="clip-kebutuhan-section" style="display:none;">
+      <div class="kb-head">
+        <div>
+          <div class="kb-title" id="kb-title">Kebutuhan RS</div>
+          <div class="kb-count" id="kb-count"></div>
+        </div>
+        <div class="kb-head-btns">
+          <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan daftar"><i class="ti ti-chevron-up"></i></button>
+          <button class="kb-close-btn" id="kb-close-btn" title="Sembunyikan (data tetap tersimpan)">×</button>
+        </div>
+      </div>
+      <div class="kb-summary" id="kb-summary"></div>
+      <div id="kb-list" class="kb-list"></div>
+      <div class="kb-footer">
+        <div id="kb-record-status" class="kb-record-status"></div>
+        <button class="kb-record-btn" id="kb-record-btn"><i class="ti ti-device-floppy"></i> Record Sesi Ini</button>
+      </div>
+    </div>
+
     <div class="clip-body">
       <div class="clip-empty" id="clip-empty">
         <i class="ti ti-clipboard"></i>
@@ -323,7 +447,11 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       <div id="clip-list"></div>
     </div>
     <div class="clip-footer">
-      <div class="clip-summary">Total: <span id="clip-total">0</span> produk dipilih</div>
+      <div class="clip-budget" id="clip-budget"></div>
+      <div class="clip-summary">
+        <span>Total: <span id="clip-total">0</span> produk dipilih</span>
+        <span id="clip-total-harga"></span>
+      </div>
       <button class="btn-export" id="btn-export" disabled>
         <i class="ti ti-file-spreadsheet"></i> Export ke Excel
       </button>
@@ -439,6 +567,91 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   </div>
 </div>
 
+<!-- PERMINTAAN RS MODAL -->
+<div class="modal-overlay" id="pr-modal">
+  <div class="pr-modal-box">
+    <h3>Catat Permintaan RS</h3>
+    <div class="pr-sub">Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Ini murni buat data insight — bukan proses konversi otomatis.</div>
+
+    <!-- State 1: belum login (pakai sesi yang sama dengan modul Stok) -->
+    <div id="pr-login-wrap">
+      <div class="pr-field">
+        <label>Email</label>
+        <input type="email" id="pr-email" placeholder="nama@email.com" autocomplete="email"/>
+      </div>
+      <div class="pr-field">
+        <label>Password</label>
+        <input type="password" id="pr-password" placeholder="••••••••" autocomplete="current-password"/>
+      </div>
+      <div class="pr-actions">
+        <button class="pr-cancel" id="pr-cancel-btn">Batal</button>
+        <button id="pr-login-btn">Masuk</button>
+      </div>
+    </div>
+
+    <!-- State 2: sudah login -->
+    <div id="pr-form-wrap" style="display:none;">
+      <div class="pr-row2">
+        <div class="pr-field">
+          <label>Nama RS / Instansi</label>
+          <input type="text" id="pr-nama-rs" placeholder="RS ABC"/>
+        </div>
+        <div class="pr-field">
+          <label>Tanggal</label>
+          <input type="date" id="pr-tanggal"/>
+        </div>
+      </div>
+      <div class="pr-row2">
+        <div class="pr-field">
+          <label>PIC Sales</label>
+          <input type="text" id="pr-pic-sales" placeholder="Nama sales"/>
+        </div>
+        <div class="pr-field">
+          <label>Pagu (Rp)</label>
+          <input type="text" inputmode="numeric" id="pr-pagu" placeholder="cth: 150.000.000"/>
+        </div>
+      </div>
+
+      <div class="pr-tabs">
+        <button class="pr-tab active" id="pr-tab-teks" type="button">Paste Teks</button>
+        <button class="pr-tab" id="pr-tab-excel" type="button">Upload Excel</button>
+        <button class="pr-tab" id="pr-tab-ss" type="button">Screenshot (OCR)</button>
+      </div>
+
+      <div id="pr-teks-wrap">
+        <div class="pr-field">
+          <label>Daftar Permintaan (1 baris = 1 barang, qty boleh di depan/belakang)</label>
+          <textarea id="pr-teks" placeholder="10 Trocar 5mm&#10;Laparoscopy set 2&#10;5 Infusion Pump"></textarea>
+        </div>
+      </div>
+      <div id="pr-excel-wrap" style="display:none;">
+        <div class="pr-field">
+          <label>File Excel Permintaan (kolom nama barang + qty, header bebas)</label>
+          <input type="file" id="pr-file" accept=".xlsx,.xls"/>
+        </div>
+      </div>
+      <div id="pr-ss-wrap" style="display:none;">
+        <div class="pr-field">
+          <label>Screenshot Permintaan (foto/screenshot chat WA, dll)</label>
+          <input type="file" id="pr-ss-file" accept="image/*"/>
+        </div>
+        <div class="pr-actions" style="justify-content:flex-start;margin-top:8px">
+          <button id="pr-ss-run-btn" type="button">Baca Teks dari Gambar</button>
+        </div>
+        <div id="pr-ss-status" style="font-size:12px;color:var(--text-muted);margin-top:6px"></div>
+        <div class="pr-sub" style="margin-top:6px">Cocok buat screenshot chat/list sederhana. Untuk screenshot tabel padat (banyak kolom), hasil OCR sering berantakan — lebih cepat ketik manual di tab "Paste Teks". Hasil OCR akan muncul di tab Paste Teks untuk dicek/diedit dulu sebelum disimpan.</div>
+      </div>
+
+      <div class="pr-actions">
+        <button class="pr-cancel" id="pr-cancel-btn-2">Batal</button>
+        <button id="pr-submit-btn">Mulai Sesi &amp; Cek Satu-satu</button>
+      </div>
+    </div>
+
+    <div id="pr-status-msg"></div>
+  </div>
+</div>
+
 
 <div class="modal-overlay" id="lampiran-modal">
   <div class="modal-box" style="width:90vw;max-width:760px;max-height:88vh;overflow-y:auto;text-align:left;padding:20px 24px">
@@ -467,6 +680,109 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 <script>
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
+
+// ══════════════════════════════════════════
+// SESI LOGIN PERSISTENT: seluruh aplikasi wajib login, tapi sesi disimpan
+// di localStorage supaya user gak perlu login ulang tiap buka tab/refresh.
+// ══════════════════════════════════════════
+const AUTH_STORAGE_KEY = 'pnm_auth_session';
+let stokAccessToken = null; // dipakai di seluruh app buat panggil RPC yang butuh role 'authenticated'
+
+const authGate = document.getElementById('auth-gate');
+const appRoot = document.getElementById('app-root');
+const gateEmail = document.getElementById('gate-email');
+const gatePassword = document.getElementById('gate-password');
+const gateLoginBtn = document.getElementById('gate-login-btn');
+const gateStatus = document.getElementById('gate-status');
+
+function saveAuthSession(data) {
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600)
+  }));
+}
+function clearAuthSession() { localStorage.removeItem(AUTH_STORAGE_KEY); }
+function readAuthSession() {
+  try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null'); } catch { return null; }
+}
+function showApp() {
+  authGate.style.display = 'none';
+  appRoot.style.display = 'flex';
+}
+function showGate(msg) {
+  stokAccessToken = null;
+  appRoot.style.display = 'none';
+  authGate.style.display = 'flex';
+  if (msg) { gateStatus.style.color = 'var(--danger)'; gateStatus.textContent = msg; }
+}
+
+async function refreshAuthSession(refreshToken) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
+    body: JSON.stringify({ refresh_token: refreshToken })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error_description || data.msg || 'Sesi habis, silakan masuk lagi.');
+  return data;
+}
+
+async function initAuth() {
+  const saved = readAuthSession();
+  if (!saved) { showGate(); return; }
+  // Kalau token masih berlaku >60 detik lagi, pakai langsung. Kalau enggak, refresh dulu.
+  if (saved.expires_at && saved.expires_at - Math.floor(Date.now() / 1000) > 60) {
+    stokAccessToken = saved.access_token;
+    showApp();
+    return;
+  }
+  try {
+    const data = await refreshAuthSession(saved.refresh_token);
+    stokAccessToken = data.access_token;
+    saveAuthSession(data);
+    showApp();
+  } catch (err) {
+    clearAuthSession();
+    showGate('Sesi kamu sudah habis, silakan masuk lagi.');
+  }
+}
+
+gateLoginBtn.addEventListener('click', async () => {
+  const email = gateEmail.value.trim().toLowerCase();
+  const password = gatePassword.value;
+  if (!email || !password) {
+    gateStatus.style.color = 'var(--danger)';
+    gateStatus.textContent = 'Isi email dan password dulu.';
+    return;
+  }
+  gateLoginBtn.disabled = true;
+  gateLoginBtn.textContent = 'Memproses…';
+  gateStatus.style.color = 'var(--text-muted)';
+  gateStatus.textContent = '';
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Login gagal');
+    stokAccessToken = data.access_token;
+    saveAuthSession(data);
+    gatePassword.value = '';
+    showApp();
+  } catch (err) {
+    gateStatus.style.color = 'var(--danger)';
+    gateStatus.textContent = 'Gagal masuk: ' + err.message;
+  } finally {
+    gateLoginBtn.disabled = false;
+    gateLoginBtn.textContent = 'Masuk';
+  }
+});
+gatePassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') gateLoginBtn.click(); });
+
+initAuth();
 const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
 const LAMPIRAN_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/lampiran-unit/';
 
@@ -749,6 +1065,30 @@ const inpRs = document.getElementById('inp-rs');
 const inpSales = document.getElementById('inp-sales');
 const inpMarsup = document.getElementById('inp-marsup');
 const btnRecord = document.getElementById('btn-record');
+const clipHeader = document.getElementById('clip-header');
+const clipHeaderToggle = document.getElementById('clip-header-toggle');
+const clipHeaderToggleLabel = document.getElementById('clip-header-toggle-label');
+const clipHeaderCompact = document.getElementById('clip-header-compact');
+const clipTotalHarga = document.getElementById('clip-total-harga');
+const clipBudget = document.getElementById('clip-budget');
+
+function updateClipHeaderCompact() {
+  const rs = inpRs.value.trim() || '(nama RS belum diisi)';
+  const sales = inpSales.value.trim();
+  const marsup = inpMarsup.value.trim();
+  clipHeaderCompact.innerHTML = `<b>${rs}</b>${sales ? ' · Sales: ' + sales : ''}${marsup ? ' · PIC: ' + marsup : ''}`;
+}
+function setClipHeaderCollapsed(collapsed) {
+  clipHeader.classList.toggle('collapsed', collapsed);
+  clipHeaderToggleLabel.textContent = collapsed ? 'Ubah' : 'Ciutkan';
+  if (collapsed) updateClipHeaderCompact();
+}
+clipHeaderToggle.addEventListener('click', () => {
+  setClipHeaderCollapsed(!clipHeader.classList.contains('collapsed'));
+});
+[inpRs, inpSales, inpMarsup].forEach(inp => {
+  inp.addEventListener('input', updateClipHeaderCompact);
+});
 const recordModal = document.getElementById('record-modal');
 const recTanggal = document.getElementById('rec-tanggal');
 const recRs = document.getElementById('rec-rs');
@@ -774,6 +1114,48 @@ const stokUploadBtn = document.getElementById('stok-upload-btn');
 const stokStatusMsg = document.getElementById('stok-status-msg');
 const stokCancelBtn = document.getElementById('stok-cancel-btn');
 const stokCancelBtn2 = document.getElementById('stok-cancel-btn-2');
+
+const btnPermintaan = document.getElementById('btn-permintaan');
+const prModal = document.getElementById('pr-modal');
+const prLoginWrap = document.getElementById('pr-login-wrap');
+const prFormWrap = document.getElementById('pr-form-wrap');
+const prEmail = document.getElementById('pr-email');
+const prPassword = document.getElementById('pr-password');
+const prLoginBtn = document.getElementById('pr-login-btn');
+const prCancelBtn = document.getElementById('pr-cancel-btn');
+const prCancelBtn2 = document.getElementById('pr-cancel-btn-2');
+const prNamaRs = document.getElementById('pr-nama-rs');
+const prTanggal = document.getElementById('pr-tanggal');
+const prPicSales = document.getElementById('pr-pic-sales');
+const prPagu = document.getElementById('pr-pagu');
+
+// Format input Pagu jadi "150.000.000" sambil ngetik, biar kebaca jelas —
+// tapi tetep nerima keyboard numerik biasa (bukan input type=number yang suka nolak titik).
+function parsePaguValue(str) {
+  const digits = (str || '').replace(/\D/g, '');
+  return digits ? Number(digits) : null;
+}
+prPagu.addEventListener('input', () => {
+  const digits = prPagu.value.replace(/\D/g, '');
+  prPagu.value = digits ? Number(digits).toLocaleString('id-ID') : '';
+});
+const prTabTeks = document.getElementById('pr-tab-teks');
+const prTabExcel = document.getElementById('pr-tab-excel');
+const prTeksWrap = document.getElementById('pr-teks-wrap');
+const prExcelWrap = document.getElementById('pr-excel-wrap');
+const prTeks = document.getElementById('pr-teks');
+const prFile = document.getElementById('pr-file');
+const prSubmitBtn = document.getElementById('pr-submit-btn');
+const prStatusMsg = document.getElementById('pr-status-msg');
+const kbSection = document.getElementById('clip-kebutuhan-section');
+const kbTitle = document.getElementById('kb-title');
+const kbCount = document.getElementById('kb-count');
+const kbList = document.getElementById('kb-list');
+const kbSummary = document.getElementById('kb-summary');
+const kbRecordBtn = document.getElementById('kb-record-btn');
+const kbRecordStatus = document.getElementById('kb-record-status');
+const kbCloseBtn = document.getElementById('kb-close-btn');
+const kbCollapseBtn = document.getElementById('kb-collapse-btn');
 const progressFill = document.getElementById('progress-fill');
 const progressLabel = document.getElementById('progress-label');
 const modalSub = document.getElementById('modal-sub');
@@ -961,13 +1343,6 @@ function renderResults(data) {
     const tipeClass = isSet ? 'tipe-set' : (r.tipe && r.tipe.toUpperCase() === 'UNIT') ? 'tipe-unit' : 'tipe-other';
     const hargaTampil = modeSwasta ? r.harga_swasta : r.harga_ekat;
     const tahunTampil = modeSwasta ? r.tahun_harga_swasta : r.tahun_harga;
-    const noPrice = !hargaTampil;
-    const noLink = !r.link_v6 && !modeSwasta;
-    const extraClass = inClip
-  ? ' selected'
-  : (noPrice
-      ? ' no-price'
-      : (noLink ? ' no-link' : ''));
     const labelHarga = modeSwasta ? 'Harga Swasta' : 'Harga belum ada';
     const stokBadge = r.stok_status === 'READY'
       ? `<span class="mi stok-ready"><i class="ph ph-check-circle"></i><span>Ready · ${r.stok_qty} pcs</span></span>`
@@ -1048,6 +1423,35 @@ function updateClipboard() {
   clipEmpty.style.display = n === 0 ? 'block' : 'none';
   const tabBadge = document.getElementById('tab-badge');
   if (tabBadge) { tabBadge.textContent = n; tabBadge.style.display = n > 0 ? 'inline-block' : 'none'; }
+
+  // Total harga clipboard + bandingin sama Pagu (kalau ada sesi Kebutuhan RS aktif)
+  let totalHargaClip = 0;
+  let adaHargaKosong = false;
+  clipboard.forEach(item => {
+    const h = modeSwasta ? item.harga_swasta : item.harga_ekat;
+    if (h) totalHargaClip += h * item.qty;
+    else adaHargaKosong = true;
+  });
+  if (n === 0) {
+    clipTotalHarga.textContent = '';
+  } else {
+    clipTotalHarga.textContent = rupiah(totalHargaClip) + (adaHargaKosong ? ' +' : '');
+  }
+  if (n > 0 && typeof checklistPagu !== 'undefined' && checklistPagu != null) {
+    const sisa = checklistPagu - totalHargaClip;
+    clipBudget.classList.add('show');
+    if (sisa >= 0) {
+      clipBudget.classList.remove('over');
+      clipBudget.classList.add('under');
+      clipBudget.innerHTML = `<span>Sisa pagu</span><b>${rupiah(sisa)}</b>`;
+    } else {
+      clipBudget.classList.remove('under');
+      clipBudget.classList.add('over');
+      clipBudget.innerHTML = `<span>Lebih dari pagu</span><b>${rupiah(Math.abs(sisa))}</b>`;
+    }
+  } else {
+    clipBudget.classList.remove('show');
+  }
   clipList.innerHTML = clipboard.map(item => {
     const isSet = item.is_set;
     const tipeColor = isSet ? 'background:var(--success-bg);color:var(--success)' : 'background:var(--accent-bg);color:var(--accent-text)';
@@ -1629,7 +2033,6 @@ recordSubmitBtn.addEventListener('click', async () => {
 // dan integrasi tampilan/sort stok ke hasil search
 // ══════════════════════════════════════════
 
-let stokAccessToken = null; // token cuma di-hold di memory selama tab ini terbuka
 let stokParsedRows = null;  // hasil parse Excel yang siap diupload
 
 function openStokModal() {
@@ -1814,6 +2217,392 @@ async function enrichResultsWithStok(results) {
     });
   } catch { /* diamkan, stok cuma nice-to-have di tampilan search */ }
 }
+
+// ══════════════════════════════════════════
+// MODUL PERMINTAAN RS: catat permintaan (teks/Excel), cocokkan ke katalog,
+// tampilkan mana yang match vs tidak. Pure data collection, bukan auto-konversi.
+// ══════════════════════════════════════════
+
+function openPrModal() {
+  prStatusMsg.textContent = '';
+  prTeksFromOcr = false;
+  prShowTab('teks');
+  if (!prTanggal.value) prTanggal.value = new Date().toISOString().slice(0,10);
+
+  if (stokAccessToken) { // reuse token yang sama dengan modul Stok
+    prLoginWrap.style.display = 'none';
+    prFormWrap.style.display = 'block';
+  } else {
+    prLoginWrap.style.display = 'block';
+    prFormWrap.style.display = 'none';
+    prEmail.value = ''; prPassword.value = '';
+  }
+  prModal.classList.add('show');
+}
+function closePrModal() { prModal.classList.remove('show'); }
+
+btnPermintaan.addEventListener('click', openPrModal);
+prCancelBtn.addEventListener('click', closePrModal);
+prCancelBtn2.addEventListener('click', closePrModal);
+prModal.addEventListener('click', (e) => { if (e.target === prModal) closePrModal(); });
+
+prLoginBtn.addEventListener('click', async () => {
+  const email = prEmail.value.trim().toLowerCase();
+  const password = prPassword.value;
+  if (!email || !password) {
+    prStatusMsg.textContent = 'Isi email dan password dulu.';
+    prStatusMsg.style.color = 'var(--danger)';
+    return;
+  }
+  prLoginBtn.disabled = true;
+  prLoginBtn.textContent = 'Memproses…';
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Login gagal');
+    stokAccessToken = data.access_token; // token dishare dengan modul Stok
+    prLoginWrap.style.display = 'none';
+    prFormWrap.style.display = 'block';
+  } catch (err) {
+    prStatusMsg.textContent = 'Gagal masuk: ' + err.message;
+    prStatusMsg.style.color = 'var(--danger)';
+  } finally {
+    prLoginBtn.disabled = false;
+    prLoginBtn.textContent = 'Masuk';
+  }
+});
+
+// ---- Tab switch Teks / Excel / Screenshot ----
+let prTeksFromOcr = false;
+prTeks.addEventListener('input', () => { prTeksFromOcr = false; });
+const prTabSs = document.getElementById('pr-tab-ss');
+const prSsWrap = document.getElementById('pr-ss-wrap');
+const prSsFile = document.getElementById('pr-ss-file');
+const prSsRunBtn = document.getElementById('pr-ss-run-btn');
+const prSsStatus = document.getElementById('pr-ss-status');
+
+let prActiveTab = 'teks';
+function prShowTab(which) {
+  prActiveTab = which;
+  prTabTeks.classList.toggle('active', which === 'teks');
+  prTabExcel.classList.toggle('active', which === 'excel');
+  prTabSs.classList.toggle('active', which === 'ss');
+  prTeksWrap.style.display = which === 'teks' ? 'block' : 'none';
+  prExcelWrap.style.display = which === 'excel' ? 'block' : 'none';
+  prSsWrap.style.display = which === 'ss' ? 'block' : 'none';
+}
+prTabTeks.addEventListener('click', () => prShowTab('teks'));
+prTabExcel.addEventListener('click', () => prShowTab('excel'));
+prTabSs.addEventListener('click', () => prShowTab('ss'));
+
+// ---- OCR screenshot pakai Tesseract.js (gratis, jalan di browser, gak ada API key) ----
+prSsRunBtn.addEventListener('click', async () => {
+  const file = prSsFile.files[0];
+  if (!file) {
+    prSsStatus.textContent = 'Pilih file gambar dulu.';
+    prSsStatus.style.color = 'var(--danger)';
+    return;
+  }
+  prSsRunBtn.disabled = true;
+  prSsStatus.style.color = 'var(--text-muted)';
+  try {
+    const result = await Tesseract.recognize(file, 'ind+eng', {
+      logger: (m) => {
+        if (m.status === 'recognizing text') {
+          prSsStatus.textContent = `Membaca gambar… ${Math.round((m.progress || 0) * 100)}%`;
+        } else {
+          prSsStatus.textContent = 'Menyiapkan OCR…';
+        }
+      }
+    });
+    const text = (result.data && result.data.text || '').trim();
+    if (!text) {
+      prSsStatus.style.color = 'var(--danger)';
+      prSsStatus.textContent = 'Gak ada teks yang kebaca dari gambar ini. Coba ketik manual di tab Paste Teks.';
+      return;
+    }
+    // Hasil OCR ditaruh ke textarea Paste Teks, biar user cek/edit dulu sebelum simpan —
+    // sama sekali gak langsung disimpan otomatis dari OCR.
+    prTeks.value = (prTeks.value ? prTeks.value + '\n' : '') + text;
+    prTeksFromOcr = true;
+    prShowTab('teks');
+    prSsStatus.textContent = '';
+  } catch (err) {
+    prSsStatus.style.color = 'var(--danger)';
+    prSsStatus.textContent = 'Gagal baca gambar: ' + err.message;
+  } finally {
+    prSsRunBtn.disabled = false;
+  }
+});
+
+// ---- Parsing teks paste: 1 baris = 1 item, qty boleh di depan atau belakang ----
+function parseTeksPermintaan(teks) {
+  return teks.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
+    let m = line.match(/^(\d+)\s*[xX]?\s*(.+)$/); // "10 Trocar" atau "10x Trocar"
+    if (m) return { raw_text: m[2].trim(), qty: parseInt(m[1], 10) };
+    m = line.match(/^(.+?)\s+(\d+)$/); // "Trocar 10"
+    if (m) return { raw_text: m[1].trim(), qty: parseInt(m[2], 10) };
+    return { raw_text: line, qty: null }; // gak ketemu angka, qty kosong
+  });
+}
+
+// ---- Parsing Excel: cari kolom nama barang & qty secara fleksibel ----
+async function parseExcelPermintaan(file) {
+  const buffer = await file.arrayBuffer();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  const ws = wb.worksheets[0];
+
+  const headerRow = ws.getRow(1);
+  let colNama = null, colQty = null;
+  headerRow.eachCell((cell, colNumber) => {
+    const v = String(cell.value || '').trim().toUpperCase();
+    if (!colNama && /NAMA|BARANG|ITEM|PRODUK|DESKRIPSI/.test(v)) colNama = colNumber;
+    if (!colQty && /QTY|JUMLAH|QUANTITY/.test(v)) colQty = colNumber;
+  });
+  // fallback: kolom 1 = nama, kolom 2 = qty kalau header gak ketebak
+  if (!colNama) colNama = 1;
+  if (!colQty) colQty = 2;
+
+  const rows = [];
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const namaBarang = String(row.getCell(colNama).value || '').trim();
+    if (!namaBarang) continue;
+    const qtyRaw = row.getCell(colQty).value;
+    const qty = parseInt(qtyRaw, 10);
+    rows.push({ raw_text: namaBarang, qty: isNaN(qty) ? null : qty });
+  }
+  return rows;
+}
+
+prSubmitBtn.addEventListener('click', async () => {
+  prStatusMsg.textContent = '';
+
+  let items = [];
+  let sumber = 'TEKS';
+  try {
+    if (prActiveTab === 'teks') {
+      items = parseTeksPermintaan(prTeks.value);
+      sumber = prTeksFromOcr ? 'SCREENSHOT' : 'TEKS';
+    } else if (prActiveTab === 'excel') {
+      const file = prFile.files[0];
+      if (!file) throw new Error('Pilih file Excel dulu.');
+      items = await parseExcelPermintaan(file);
+      sumber = 'EXCEL';
+    } else {
+      throw new Error('Klik "Baca Teks dari Gambar" dulu, hasilnya akan dicek di tab Paste Teks sebelum disimpan.');
+    }
+  } catch (err) {
+    prStatusMsg.textContent = 'Gagal baca input: ' + err.message;
+    prStatusMsg.style.color = 'var(--danger)';
+    return;
+  }
+
+  if (items.length === 0) {
+    prStatusMsg.textContent = 'Gak ada baris permintaan yang terbaca.';
+    prStatusMsg.style.color = 'var(--danger)';
+    return;
+  }
+
+  prSubmitBtn.disabled = true;
+  prSubmitBtn.textContent = 'Menyimpan…';
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/submit_permintaan_rs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': ANON_KEY,
+        'Authorization': 'Bearer ' + stokAccessToken
+      },
+      body: JSON.stringify({
+        p_tanggal: prTanggal.value || null,
+        p_nama_rs: prNamaRs.value.trim() || null,
+        p_pic_sales: prPicSales.value.trim() || null,
+        p_sumber: sumber,
+        p_pagu: parsePaguValue(prPagu.value),
+        p_items: items
+      })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal simpan (cek login/whitelist)');
+    }
+    const result = await res.json();
+
+    startChecklistSession(result, prNamaRs.value.trim(), prPicSales.value.trim(), parsePaguValue(prPagu.value));
+    closePrModal();
+  } catch (err) {
+    prStatusMsg.style.color = 'var(--danger)';
+    prStatusMsg.textContent = 'Gagal: ' + err.message;
+  } finally {
+    prSubmitBtn.disabled = false;
+    prSubmitBtn.textContent = 'Mulai Sesi & Cek Satu-satu';
+  }
+});
+
+// ══════════════════════════════════════════
+// KEBUTUHAN RS: nempel di sidebar clipboard, bagian dari alur konversi yang sama.
+// "Bisa Dipenuhi" itu penilaian tim marsup sendiri (bukan matching otomatis) —
+// tujuannya cuma ngumpulin data insight (mana kebutuhan RS yang sering gak bisa
+// kita penuhi), bukan proses konversi. Konversi produk tetap manual lewat search+clipboard.
+// ══════════════════════════════════════════
+var checklistItems = [];       // [{id, raw_text, qty_diminta, status}]
+var checklistNamaRs = '';
+var checklistSales = '';
+var checklistPagu = null;
+var checklistPermintaanId = null;
+
+function startChecklistSession(submitResult, namaRs, picSales, pagu) {
+  checklistItems = Array.isArray(submitResult.items) ? submitResult.items : [];
+  checklistNamaRs = namaRs || '(tanpa nama RS)';
+  checklistSales = picSales || '(tanpa nama sales)';
+  checklistPagu = (pagu === undefined) ? null : pagu;
+  checklistPermintaanId = submitResult.permintaan_id;
+
+  // Auto-isi Nama RS / Sales di clipboard, biar gak perlu diketik ulang —
+  // ini satu sesi konversi yang sama, bukan dua langkah terpisah.
+  if (namaRs) inpRs.value = namaRs;
+  if (picSales) inpSales.value = picSales;
+  updateClipboard();
+  setClipHeaderCollapsed(true);
+
+  kbSection.style.display = 'flex';
+  kbSection.classList.remove('kb-collapsed');
+  kbRecordStatus.textContent = '';
+  renderChecklist();
+
+  // pastikan panel clipboard kelihatan (termasuk di mobile, yang defaultnya nampilin tab search)
+  if (window.innerWidth <= 860 && typeof switchTab === 'function') switchTab('clip');
+  kbSection.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function renderChecklist() {
+  const pending = checklistItems.filter(i => i.status === 'PENDING').length;
+  const done = checklistItems.filter(i => i.status === 'TERPENUHI').length;
+  const na = checklistItems.filter(i => i.status === 'TIDAK_TERPENUHI').length;
+
+  kbTitle.textContent = 'Kebutuhan RS';
+  kbCount.textContent = `${pending} belum dicek · ${done} bisa dipenuhi · ${na} tidak bisa`;
+
+  kbSummary.innerHTML = `
+    <div class="kb-summary-row"><span>Nama RS</span><b>${checklistNamaRs || '-'}</b></div>
+    <div class="kb-summary-row"><span>Pagu</span><b>${checklistPagu != null ? rupiah(checklistPagu) : '-'}</b></div>
+  `;
+
+  kbList.innerHTML = checklistItems.map(item => {
+    const isPending = item.status === 'PENDING';
+    const isDone = item.status === 'TERPENUHI';
+    const isNa = item.status === 'TIDAK_TERPENUHI';
+    const cls = isDone ? 'terpenuhi' : isNa ? 'tidak-terpenuhi' : '';
+    let sub = '';
+    if (isDone) sub = `✓ Bisa dipenuhi`;
+    else if (isNa) sub = `✕ Tidak bisa dipenuhi`;
+
+    return `<div class="kb-item ${cls}">
+      <div class="kb-item-text">${item.raw_text}${item.qty_diminta ? ' · qty ' + item.qty_diminta : ''}</div>
+      ${sub ? `<div class="kb-item-sub">${sub}</div>` : ''}
+      ${isPending ? `
+        <div class="kb-item-actions">
+          <button class="kb-bisa-btn" data-action="bisa" data-id="${item.id}">✓ Bisa Dipenuhi</button>
+          <button class="kb-tidak-btn" data-action="tidak" data-id="${item.id}">✕ Tidak Bisa</button>
+        </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+kbList.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const itemId = parseInt(btn.dataset.id, 10);
+  const action = btn.dataset.action;
+  const status = action === 'bisa' ? 'TERPENUHI' : 'TIDAK_TERPENUHI';
+
+  btn.closest('.kb-item-actions').querySelectorAll('button').forEach(b => b.disabled = true);
+  try {
+    await callUpdatePermintaanItem(itemId, status, null, null);
+    const item = checklistItems.find(i => i.id === itemId);
+    if (item) item.status = status;
+    renderChecklist();
+  } catch (err) {
+    alert('Gagal update: ' + err.message);
+    renderChecklist();
+  }
+});
+
+kbCloseBtn.addEventListener('click', () => {
+  if (checklistItems.some(i => i.status === 'PENDING') &&
+      !confirm('Masih ada item yang belum dicek. Sembunyikan? (data tetap tersimpan, bisa dibuka lagi lewat Permintaan RS)')) return;
+  kbSection.style.display = 'none';
+});
+
+kbCollapseBtn.addEventListener('click', () => {
+  const collapsed = kbSection.classList.toggle('kb-collapsed');
+  kbCollapseBtn.title = collapsed ? 'Buka daftar' : 'Ciutkan daftar';
+});
+
+kbRecordBtn.addEventListener('click', async () => {
+  if (!checklistPermintaanId) return;
+  const total = checklistItems.length;
+  const done = checklistItems.filter(i => i.status === 'TERPENUHI').length;
+  const tingkatPemenuhan = total > 0 ? Math.round((done / total) * 1000) / 10 : 0; // 1 desimal
+
+  kbRecordBtn.disabled = true;
+  kbRecordBtn.textContent = 'Menyimpan…';
+  kbRecordStatus.style.color = 'var(--text-muted)';
+  kbRecordStatus.textContent = 'Menyimpan rekap sesi…';
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/finalize_permintaan_rs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': ANON_KEY,
+        'Authorization': 'Bearer ' + stokAccessToken
+      },
+      body: JSON.stringify({
+        p_permintaan_id: checklistPermintaanId,
+        p_tingkat_pemenuhan: tingkatPemenuhan,
+        p_items_terpenuhi: done,
+        p_items_total: total
+      })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal record sesi (cek login/whitelist)');
+    }
+    kbRecordStatus.style.color = 'var(--success)';
+    kbRecordStatus.textContent = `Tersimpan ✓ Tingkat pemenuhan: ${tingkatPemenuhan}% (${done}/${total} item)`;
+  } catch (err) {
+    kbRecordStatus.style.color = 'var(--danger)';
+    kbRecordStatus.textContent = 'Gagal: ' + err.message;
+  } finally {
+    kbRecordBtn.disabled = false;
+    kbRecordBtn.innerHTML = '<i class="ti ti-device-floppy"></i> Record Sesi Ini';
+  }
+});
+
+async function callUpdatePermintaanItem(itemId, status, produkId, kodeProduk) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/update_permintaan_item`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': ANON_KEY,
+      'Authorization': 'Bearer ' + stokAccessToken
+    },
+    body: JSON.stringify({ p_item_id: itemId, p_status: status, p_produk_id: produkId, p_kode_produk: kodeProduk })
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || errData.hint || 'Gagal update item');
+  }
+}
 </script>
+</div><!-- /#app-root -->
 </body>
 </html>
