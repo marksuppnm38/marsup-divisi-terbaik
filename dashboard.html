@@ -385,9 +385,14 @@ async function refreshAuthSession(refreshToken) {
 }
 
 // DETAIL MODAL
-const detailOverlay = document.getElementById('detail-modal-overlay');
-document.getElementById('dm-close').addEventListener('click', () => detailOverlay.classList.remove('show'));
-detailOverlay.addEventListener('click', e => { if(e.target===detailOverlay) detailOverlay.classList.remove('show'); });
+let detailOverlay;
+document.addEventListener('DOMContentLoaded', () => {
+  detailOverlay = document.getElementById('detail-modal-overlay');
+  if(detailOverlay){
+    document.getElementById('dm-close').addEventListener('click', () => detailOverlay.classList.remove('show'));
+    detailOverlay.addEventListener('click', e => { if(e.target===detailOverlay) detailOverlay.classList.remove('show'); });
+  }
+});
 
 async function openDetail(kode){
   document.getElementById('dm-title').textContent = '—';
@@ -702,7 +707,6 @@ async function loadEverything(){
   }
 }
 
-initAuth();
 </script>
 <div class="detail-modal-overlay" id="detail-modal-overlay">
   <div class="detail-modal" id="detail-modal">
@@ -718,5 +722,8 @@ initAuth();
     </div>
   </div>
 </div>
+<script>
+  initAuth();
+</script>
 </body>
 </html>
