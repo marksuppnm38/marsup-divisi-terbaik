@@ -145,8 +145,11 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .tipe-unit{background:var(--accent-bg);color:var(--accent-text)}
 .tipe-set{background:var(--success-bg);color:var(--success)}
 .tipe-other{background:var(--surface-2);color:var(--text-secondary)}
-.badge-katalog-yes{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px}
+.badge-katalog-yes{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px;text-decoration:none;cursor:pointer;transition:filter .15s}
+.badge-katalog-yes:hover{filter:brightness(0.96);text-decoration:underline}
 .badge-katalog-no{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px}
+.btn-preview-gambar{font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-family:inherit;transition:all .15s}
+.btn-preview-gambar:hover{border-color:var(--accent);color:var(--accent-text)}
 .badge-jadi-order{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px;white-space:nowrap}
 .badge-tanpa-order{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px;white-space:nowrap}
 .rcard-meta{display:flex;flex-wrap:wrap;gap:3px 12px}
@@ -730,6 +733,19 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   </div>
 </div>
 
+<div class="modal-overlay" id="gambar-modal">
+  <div class="modal-box" style="width:auto;max-width:90vw;padding:20px 20px 16px;text-align:center">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div class="modal-title" id="gambar-title" style="margin:0;text-align:left">Gambar Produk</div>
+      <button id="gambar-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1;flex-shrink:0">&times;</button>
+    </div>
+    <div id="gambar-body" style="min-width:220px;max-width:70vw;max-height:70vh;display:flex;align-items:center;justify-content:center">
+      <div id="gambar-status" style="font-size:13px;color:var(--text-muted);padding:24px 0">Memuat gambar…</div>
+      <img id="gambar-img" src="" alt="Gambar produk" style="display:none;max-width:100%;max-height:70vh;border-radius:8px;border:1px solid var(--border)"/>
+    </div>
+  </div>
+</div>
+
 
 <script>
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
@@ -875,6 +891,29 @@ const lampiranSaveBtn = document.getElementById('lampiran-save-btn');
 const lampiranGantiBtn = document.getElementById('lampiran-ganti-btn');
 document.getElementById('lampiran-close').addEventListener('click', () => lampiranModal.classList.remove('show'));
 lampiranModal.addEventListener('click', (e) => { if (e.target === lampiranModal) lampiranModal.classList.remove('show'); });
+
+// MODAL PREVIEW GAMBAR PRODUK (dipicu tombol mata di kartu hasil pencarian)
+const gambarModal = document.getElementById('gambar-modal');
+const gambarTitle = document.getElementById('gambar-title');
+const gambarStatus = document.getElementById('gambar-status');
+const gambarImg = document.getElementById('gambar-img');
+document.getElementById('gambar-close').addEventListener('click', () => gambarModal.classList.remove('show'));
+gambarModal.addEventListener('click', (e) => { if (e.target === gambarModal) gambarModal.classList.remove('show'); });
+
+function openGambarModal(kode_asli, kode_produk, nama_produk) {
+  const kodeForUrl = (kode_asli && kode_asli.trim()) ? kode_asli.trim() : kode_produk;
+  gambarTitle.textContent = nama_produk || 'Gambar Produk';
+  gambarImg.style.display = 'none';
+  gambarStatus.style.display = 'block';
+  gambarStatus.style.color = 'var(--text-muted)';
+  gambarStatus.textContent = 'Memuat gambar…';
+  gambarModal.classList.add('show');
+
+  const url = THUMB_BASE + kodeForUrl + '.png';
+  gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarImg.style.display = 'block'; };
+  gambarImg.onerror = () => { gambarStatus.style.color = 'var(--danger)'; gambarStatus.textContent = 'Gambar belum tersedia untuk produk ini.'; };
+  gambarImg.src = url;
+}
 
 let lampiranBucketFiles = null; // cache daftar file di bucket
 let lampiranCurrentProdukId = null;
@@ -2082,14 +2121,19 @@ function renderResults(data) {
         ${hargaTampil?`<span class="mi harga"><i class="ti ti-coin-rupee"></i><span>${rupiah(hargaTampil)}${tahunTampil?' · '+tahunTampil:''}</span></span>`:`<span class="mi"><i class="ti ti-coin-rupee"></i><span style="color:var(--text-muted)">${modeSwasta?'Harga swasta belum ada':'Harga belum ada'}</span></span>`}
         ${stokBadge}
       </div>
-      <div style="margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:8px">
-        ${modeSwasta ? '<span></span>' : (r.link_v6
-          ?`<span class="badge-katalog-yes"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</span>`
-          :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
-        )}
-        ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
-        ${r.tipe==='UNIT'?`<button class="btn-lampiran" data-kode="${r.kode_produk}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>`:''}
-        ${!inClip?`<span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambah</span>`:''}
+      <div style="margin-top:6px;display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:8px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${modeSwasta ? '' : (r.link_v6
+            ?`<a href="${r.link_v6}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</a>`
+            :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
+          )}
+          <button class="btn-preview-gambar" data-kode="${r.kode_produk}" data-kode-asli="${r.kode_asli||''}" data-nama="${(r.nama_produk||'').replace(/"/g,'&quot;')}"><i class="ti ti-eye" style="font-size:12px"></i> Lihat Gambar</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
+          ${r.tipe==='UNIT'?`<button class="btn-lampiran" data-kode="${r.kode_produk}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>`:''}
+          ${!inClip?`<span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambah</span>`:''}
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -2100,6 +2144,15 @@ function renderResults(data) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       openLampiranModal(btn.dataset.kode);
+    });
+  });
+  resultsEl.querySelectorAll('[data-role="link-katalog"]').forEach(a => {
+    a.addEventListener('click', (e) => { e.stopPropagation(); });
+  });
+  resultsEl.querySelectorAll('.btn-preview-gambar').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openGambarModal(btn.dataset.kodeAsli, btn.dataset.kode, btn.dataset.nama);
     });
   });
 }
