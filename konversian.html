@@ -31,6 +31,9 @@
   --danger:#b91c1c;
   --danger-bg:#fff5f5;
   --danger-border:#fca5a5;
+  --warning:#b45309;
+  --warning-bg:#fffbeb;
+  --warning-border:#fcd34d;
   --accent-hover:#1749b1;
   --radius:10px;
   --mono:'JetBrains Mono',monospace;
@@ -53,6 +56,9 @@ body[data-theme="dark"]{
   --danger:#f87171;
   --danger-bg:#3a1a1a;
   --danger-border:#6b2b2b;
+  --warning:#fbbf24;
+  --warning-bg:#3a2e0f;
+  --warning-border:#6b5416;
   --accent-hover:#3f6fd6;
 }
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;height:100vh;display:flex;flex-direction:column;overflow:hidden;transition:background .4s ease,color .4s ease}
@@ -119,7 +125,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 #btn-butuh-bantuan.on{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-border);border-radius:6px}
 .filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .filter-select{height:30px;padding:0 8px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;outline:none}
-.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s}
+.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;text-decoration:none;box-sizing:border-box}
 .toggle-btn.on{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);font-weight:500}
 .panel-body{flex:1;overflow-y:auto;padding:10px 12px}
 #meta{font-size:12px;color:var(--text-muted);min-height:16px}
@@ -141,6 +147,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .tipe-other{background:var(--surface-2);color:var(--text-secondary)}
 .badge-katalog-yes{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px}
 .badge-katalog-no{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px}
+.badge-jadi-order{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px;white-space:nowrap}
+.badge-tanpa-order{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px;white-space:nowrap}
 .rcard-meta{display:flex;flex-wrap:wrap;gap:3px 12px}
 .mi{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary)}
 .mi i{font-size:12px;color:var(--text-muted)}
@@ -286,6 +294,24 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .btn-export:disabled{background:var(--border-strong);cursor:not-allowed}
 .btn-clear-all{width:100%;height:30px;background:none;color:var(--text-muted);border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;cursor:pointer;margin-top:6px;transition:all .15s}
 .btn-clear-all:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-bg)}
+.btn-end-sesi{width:100%;height:32px;background:var(--surface);color:var(--text-secondary);border:1px solid var(--border-strong);border-radius:6px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
+.btn-end-sesi:hover:not(:disabled){color:var(--success);border-color:var(--success-border);background:var(--success-bg)}
+.btn-end-sesi:disabled{opacity:.5;cursor:not-allowed}
+
+/* TOAST */
+#toast-container{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{background:var(--text);color:var(--bg);font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.18);opacity:0;transform:translateY(8px);transition:opacity .25s ease,transform .25s ease;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast-success{background:var(--success);color:#fff}
+.toast-error{background:var(--danger);color:#fff}
+.toast i{font-size:15px}
+.pr-nudge{display:none;align-items:flex-start;gap:8px;background:var(--warning-bg);border:1px solid var(--warning-border);color:var(--warning);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.5;margin-bottom:14px}
+.pr-nudge.show{display:flex}
+.pr-nudge i{font-size:16px;flex-shrink:0;margin-top:1px}
+.pr-nudge-text{flex:1;color:var(--text-secondary)}
+.pr-nudge-text b{color:var(--warning)}
+.pr-nudge-btn{background:none;border:1px solid var(--warning-border);color:var(--warning);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;margin-top:6px}
+.pr-nudge-btn:hover{background:var(--warning-bg)}
 .btn-record{width:100%;height:38px;background:var(--success);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s;margin-top:8px}
 .btn-record:hover{filter:brightness(0.92)}
 .btn-record:disabled{background:var(--border-strong);cursor:not-allowed;filter:none}
@@ -378,11 +404,11 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   <button class="session-indicator empty" id="session-indicator" type="button" title="Klik untuk lihat daftar Konversi Berjalan">
     <span class="session-indicator-dot" id="session-indicator-dot"></span>
     <i class="ph ph-hospital"></i>
-    <span id="session-indicator-text">Belum ada sesi aktif</span>
+    <span id="session-indicator-text">Belum ada sesi — klik "Mulai Sesi Baru"</span>
   </button>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
-    <button class="toggle-btn" id="btn-stok" title="Upload / Update Stok"><i class="ph ph-truck"></i> Stok</button>
+    <a class="toggle-btn" href="/stok.html" title="Buka modul Stok"><i class="ph ph-truck"></i> Stok</a>
     <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ph ph-clipboard-text"></i> Permintaan RS</button>
     <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
   </div>
@@ -395,6 +421,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       <div class="subtab-row">
         <button class="subtab-btn active" id="subtab-cari" type="button"><i class="ti ti-search"></i> Cari Produk</button>
         <button class="subtab-btn" id="subtab-sesi" type="button"><i class="ti ti-list-details"></i> Konversi Berjalan <span class="subtab-badge" id="sesi-badge" style="display:none">0</span></button>
+        <button class="subtab-btn" id="subtab-riwayat" type="button"><i class="ti ti-history"></i> Riwayat</button>
       </div>
       <div id="cari-controls">
         <div class="search-wrap">
@@ -431,7 +458,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
     </div>
     <div class="panel-body" id="panel-body-sesi" style="display:none">
       <div class="sesi-toolbar">
-        <button class="pr-add-clip-btn" id="btn-sesi-baru" type="button"><i class="ti ti-plus"></i> Konversi Baru</button>
+        <button class="pr-add-clip-btn" id="btn-sesi-baru" type="button"><i class="ti ti-plus"></i> Mulai Sesi Baru</button>
         <button class="toggle-btn" id="btn-sesi-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
       </div>
       <div id="sesi-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat sesi…</div>
@@ -441,6 +468,19 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
         <p>Belum ada konversi yang berjalan.<br>Mulai dari tab Cari Produk, sesi otomatis muncul di sini.</p>
       </div>
       <div id="sesi-list"></div>
+    </div>
+    <div class="panel-body" id="panel-body-riwayat" style="display:none">
+      <div class="sesi-toolbar">
+        <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center">Sesi yang sudah selesai — jadi order maupun enggak</span>
+        <button class="toggle-btn" id="btn-riwayat-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
+      </div>
+      <div id="riwayat-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat riwayat…</div>
+      <div id="riwayat-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
+      <div class="clip-empty" id="riwayat-list-empty" style="display:none">
+        <i class="ti ti-history"></i>
+        <p>Belum ada sesi yang selesai.<br>Sesi yang di-Record atau di-Selesaikan bakal muncul di sini.</p>
+      </div>
+      <div id="riwayat-list"></div>
     </div>
   </div>
 
@@ -513,6 +553,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       <button class="btn-record" id="btn-record" disabled>
         <i class="ti ti-clipboard-check"></i> Record Konversi
       </button>
+      <button class="btn-end-sesi" id="btn-end-sesi" type="button" disabled title="Tutup sesi ini tanpa Record — data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan">
+        <i class="ti ti-square-check"></i> Selesaikan Sesi
+      </button>
       <button class="btn-clear-all" id="btn-clear-all">Hapus semua</button>
     </div>
   </div>
@@ -544,6 +587,14 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 <div class="modal-overlay" id="record-modal">
   <div class="record-modal-box">
     <div class="modal-title" style="margin-bottom:14px">Record ke Sheet Konversi</div>
+
+    <div class="pr-nudge" id="pr-nudge">
+      <i class="ph ph-warning-circle"></i>
+      <div class="pr-nudge-text">
+        <b>Belum ada Permintaan RS</b> yang dicatat buat sesi ini. Kalau ada, isi dulu biar ke-link ke record ini — kalau memang gak ada (mis. cek stok internal), lanjut aja gapapa.
+        <div><button type="button" class="pr-nudge-btn" id="pr-nudge-btn">Isi Permintaan RS dulu</button></div>
+      </div>
+    </div>
 
     <div class="record-field">
       <label>Tanggal</label>
@@ -584,27 +635,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 </div>
 
 <!-- STOK MODAL -->
-<div class="modal-overlay" id="stok-modal">
-  <div class="stok-modal-box">
-    <h3>Upload / Update Stok</h3>
-    <div class="stok-modal-sub">Upload Excel harian (kolom KODEASLI, NAMA BARANG, QTY). Ini akan MENIMPA seluruh data stok yang ada dengan isi file ini.</div>
-
-    <!-- Login sudah ditangani di gerbang awal (satu login buat seluruh app) -->
-    <div id="stok-upload-wrap">
-      <div class="stok-field">
-        <label>File Excel Stok (.xlsx)</label>
-        <input type="file" id="stok-file" accept=".xlsx,.xls"/>
-      </div>
-      <div id="stok-preview" class="stok-preview" style="display:none;"></div>
-      <div class="stok-actions">
-        <button id="stok-cancel-btn-2">Batal</button>
-        <button id="stok-upload-btn" disabled>Upload &amp; Timpa Stok</button>
-      </div>
-    </div>
-
-    <div id="stok-status-msg"></div>
-  </div>
-</div>
+<!-- Modal Stok dipindah ke stok.html (modul mandiri di index) -->
 
 <!-- PERMINTAAN RS MODAL -->
 <div class="modal-overlay" id="pr-modal">
@@ -1128,9 +1159,16 @@ let currentButuhBantuan = false;
 
 const subtabCari = document.getElementById('subtab-cari');
 const subtabSesi = document.getElementById('subtab-sesi');
+const subtabRiwayat = document.getElementById('subtab-riwayat');
 const cariControls = document.getElementById('cari-controls');
 const panelBodyCari = document.getElementById('panel-body-cari');
 const panelBodySesi = document.getElementById('panel-body-sesi');
+const panelBodyRiwayat = document.getElementById('panel-body-riwayat');
+const riwayatList = document.getElementById('riwayat-list');
+const riwayatListEmpty = document.getElementById('riwayat-list-empty');
+const riwayatListLoading = document.getElementById('riwayat-list-loading');
+const riwayatListError = document.getElementById('riwayat-list-error');
+const btnRiwayatRefresh = document.getElementById('btn-riwayat-refresh');
 const sesiBadge = document.getElementById('sesi-badge');
 const sesiList = document.getElementById('sesi-list');
 const sesiListEmpty = document.getElementById('sesi-list-empty');
@@ -1143,7 +1181,33 @@ const sesiSaveStatus = document.getElementById('sesi-save-status');
 const sessionIndicator = document.getElementById('session-indicator');
 const sessionIndicatorDot = document.getElementById('session-indicator-dot');
 const sessionIndicatorText = document.getElementById('session-indicator-text');
+const btnEndSesi = document.getElementById('btn-end-sesi');
+const toastContainer = document.getElementById('toast-container');
 const APP_TITLE_BASE = document.title; // "Conversion Workspace — PT Pionir Nusantara Manufacturing"
+
+// Notifikasi kecil yang muncul-hilang sendiri — dipakai buat kasih feedback instan
+// untuk aksi yang sebelumnya senyap (bikin sesi, selesaikan sesi), biar user gak
+// ragu-ragu apakah aksinya beneran kejadian atau enggak.
+function showToast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  const icon = type === 'error' ? 'ti-alert-circle' : 'ti-circle-check';
+  el.innerHTML = `<i class="ti ${icon}"></i><span></span>`;
+  el.querySelector('span').textContent = msg;
+  toastContainer.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, 2600);
+}
+
+// Tombol "Selesaikan Sesi" cuma boleh aktif kalau memang lagi ada sesi yang
+// berjalan di server (currentSesiId keisi) — jadi state-nya selalu nyambung
+// sama kenyataan, gak pernah nampilin tombol aktif buat sesi yang gak ada.
+function updateEndSesiBtnState() {
+  btnEndSesi.disabled = !currentSesiId;
+}
 
 function setSesiSavedStatus(text, isError) {
   sesiSaveStatus.textContent = text || '';
@@ -1211,6 +1275,8 @@ async function ensureSesi() {
   }
   const rows = await res.json();
   currentSesiId = rows[0].id;
+  updateEndSesiBtnState();
+  updateClipHeaderCompact(); // refresh indikator header (ikut currentSesiId, bukan cuma nama RS)
   return currentSesiId;
 }
 
@@ -1337,8 +1403,11 @@ btnButuhBantuan.addEventListener('click', async () => {
 });
 renderButuhBantuanBtn();
 
-// Mulai konversi baru dari nol (sesi lama tetap tersimpan, bisa dibuka lagi lewat daftar)
-function startNewSesi() {
+// Mulai konversi baru dari nol (sesi lama tetap tersimpan, bisa dibuka lagi lewat daftar).
+// Beda sama sebelumnya: begitu diklik, baris sesi langsung dibikin di server saat
+// itu juga (bukan nunggu user isi form/nambah produk dulu) — biar "Mulai Sesi Baru"
+// beneran berarti sesi udah mulai, dan langsung muncul di daftar Konversi Berjalan.
+async function startNewSesi() {
   if (clipboard.length && !confirm('Mulai konversi baru? Sesi yang sedang dibuka akan ditinggalkan — datanya tetap tersimpan, bisa dibuka lagi lewat daftar Konversi Berjalan.')) return;
   currentSesiId = null;
   currentButuhBantuan = false;
@@ -1352,22 +1421,73 @@ function startNewSesi() {
   renderButuhBantuanBtn();
   setSesiSavedStatus('');
   resetChecklistUI();
+  updateEndSesiBtnState();
   switchSubTab('cari');
+
+  btnSesiBaru.disabled = true;
+  try {
+    await ensureSesi();
+    updateEndSesiBtnState();
+    setSesiSavedStatus('Tersimpan ✓');
+    showToast('Sesi baru dibuat ✓');
+    loadSesiList();
+  } catch (err) {
+    showToast('Gagal bikin sesi baru: ' + err.message, 'error');
+  } finally {
+    btnSesiBaru.disabled = false;
+  }
 }
 btnSesiBaru.addEventListener('click', startNewSesi);
+
+// Nutup sesi yang lagi dibuka tanpa harus lewat Record — buat kasus sesi cuma
+// dipakai cek-cek/diskusi dan gak jadi ada transaksi, tapi user tetap mau
+// "beresin" biar gak numpuk di daftar Konversi Berjalan.
+btnEndSesi.addEventListener('click', async () => {
+  if (!currentSesiId) return;
+  const namaAktif = inpRs.value.trim() || '(Nama RS belum diisi)';
+  if (!confirm(`Selesaikan sesi "${namaAktif}"? Sesi akan keluar dari daftar Konversi Berjalan, tapi datanya tetap tersimpan.`)) return;
+  btnEndSesi.disabled = true;
+  try {
+    await sesiFetch(`${SESI_TABLE}?id=eq.${currentSesiId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
+    });
+    currentSesiId = null;
+    currentButuhBantuan = false;
+    clipboard = [];
+    inpRs.value = '';
+    inpSales.value = '';
+    updateClipboard();
+    renderResults(lastResults);
+    setClipHeaderCollapsed(false);
+    updateClipHeaderCompact();
+    renderButuhBantuanBtn();
+    setSesiSavedStatus('');
+    resetChecklistUI();
+    showToast('Sesi diselesaikan ✓');
+    loadSesiList();
+  } catch (err) {
+    showToast('Gagal selesaikan sesi: ' + err.message, 'error');
+  } finally {
+    updateEndSesiBtnState();
+  }
+});
 btnSesiRefresh.addEventListener('click', loadSesiList);
 
 function switchSubTab(tab) {
-  const isSesi = tab === 'sesi';
-  subtabCari.classList.toggle('active', !isSesi);
-  subtabSesi.classList.toggle('active', isSesi);
-  panelBodyCari.style.display = isSesi ? 'none' : 'block';
-  panelBodySesi.style.display = isSesi ? 'block' : 'none';
-  cariControls.style.display = isSesi ? 'none' : 'block';
-  if (isSesi) loadSesiList();
+  subtabCari.classList.toggle('active', tab === 'cari');
+  subtabSesi.classList.toggle('active', tab === 'sesi');
+  subtabRiwayat.classList.toggle('active', tab === 'riwayat');
+  panelBodyCari.style.display = tab === 'cari' ? 'block' : 'none';
+  panelBodySesi.style.display = tab === 'sesi' ? 'block' : 'none';
+  panelBodyRiwayat.style.display = tab === 'riwayat' ? 'block' : 'none';
+  cariControls.style.display = tab === 'cari' ? 'block' : 'none';
+  if (tab === 'sesi') loadSesiList();
+  if (tab === 'riwayat') loadRiwayatList();
 }
 subtabCari.addEventListener('click', () => switchSubTab('cari'));
 subtabSesi.addEventListener('click', () => switchSubTab('sesi'));
+subtabRiwayat.addEventListener('click', () => switchSubTab('riwayat'));
 
 function sesiTimeAgo(iso) {
   if (!iso) return '-';
@@ -1410,7 +1530,64 @@ function renderSesiCard(s) {
   </div>`;
 }
 
-// Ambil ringkasan Permintaan RS buat sekumpulan sesi sekaligus (1 panggilan RPC
+// Kartu riwayat: sesi yang statusnya 'selesai', apapun hasilnya. Dibedain visual
+// pake badge "Jadi Order" (kalau ada baris konversi_record nempel di sesi ini,
+// lewat kolom konversi_record.sesi_id) vs "Ditutup Tanpa Order" (kalau enggak —
+// artinya ditutup lewat "Selesaikan Sesi", bukan "Record Konversi"). Kalau sesi
+// ini udah pernah direvisi (>1 baris konversi_record), badge-nya nunjukin nomor
+// REV terakhir + berapa versi yang kesimpen semuanya.
+function renderRiwayatCard(s) {
+  const itemCount = (s.sesi_konversi_item && s.sesi_konversi_item[0] && s.sesi_konversi_item[0].count) || 0;
+  const records = s.konversi_record || [];
+  const latest = records.length ? records.reduce((a, b) => (b.revisi > a.revisi ? b : a)) : null;
+  const orderBadge = latest
+    ? `<span class="badge-jadi-order"><i class="ti ti-circle-check"></i> Jadi Order${latest.revisi > 0 ? ' · REV' + latest.revisi : ''}${latest.grand_total != null ? ' · Rp' + Number(latest.grand_total).toLocaleString('id-ID') : ''}</span>`
+    : `<span class="badge-tanpa-order"><i class="ti ti-square-off"></i> Ditutup Tanpa Order</span>`;
+  const versiChip = records.length > 1
+    ? `<span class="mi"><i class="ti ti-versions"></i><span>${records.length} versi tersimpan</span></span>`
+    : '';
+  return `<div class="rcard riwayat-card" data-id="${s.id}" style="position:relative">
+    <div class="rcard-top" style="padding-right:8px">
+      <div class="rcard-name">${s.nama_rs ? s.nama_rs : '(Nama RS belum diisi)'}</div>
+      ${orderBadge}
+    </div>
+    <div class="rcard-meta">
+      <span class="mi"><i class="ti ti-user"></i><span>PIC: ${s.pic_marsup || '-'}</span></span>
+      <span class="mi"><i class="ti ti-users"></i><span>Sales: ${s.nama_sales || '-'}</span></span>
+      <span class="mi"><i class="ti ti-package"></i><span>${itemCount} produk</span></span>
+      ${versiChip}
+      <span class="mi"><i class="ti ti-clock"></i><span>Selesai ${sesiTimeAgo(s.updated_at)}</span></span>
+    </div>
+  </div>`;
+}
+
+async function loadRiwayatList() {
+  riwayatListLoading.style.display = 'block';
+  riwayatListError.style.display = 'none';
+  riwayatListEmpty.style.display = 'none';
+  riwayatList.innerHTML = '';
+  try {
+    const res = await sesiFetch(`${SESI_TABLE}?status=eq.selesai&select=*,${SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi)&order=updated_at.desc&limit=100`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
+    }
+    const data = await res.json();
+    if (data.length === 0) { riwayatListEmpty.style.display = 'block'; return; }
+    riwayatList.innerHTML = data.map(renderRiwayatCard).join('');
+    riwayatList.querySelectorAll('.riwayat-card').forEach(card => {
+      card.addEventListener('click', () => openSesi(card.dataset.id));
+    });
+  } catch (err) {
+    riwayatListError.textContent = err.message;
+    riwayatListError.style.display = 'block';
+  } finally {
+    riwayatListLoading.style.display = 'none';
+  }
+}
+btnRiwayatRefresh.addEventListener('click', loadRiwayatList);
+
+
 // buat seluruh daftar), lalu tempel ke masing-masing baris sesi sebagai _permintaan.
 // Gagal di sini gak boleh gagalin daftar sesi — badge-nya optional.
 async function attachPermintaanSummary(sesiRows) {
@@ -1499,6 +1676,7 @@ async function deleteSesi(id, nama, btn) {
       setSesiSavedStatus('');
       updateClipHeaderCompact();
       resetChecklistUI();
+      updateEndSesiBtnState();
     }
     await loadSesiList();
   } catch (err) {
@@ -1525,6 +1703,7 @@ async function openSesi(id) {
     inpSales.value = sesi.nama_sales || '';
     if (sesi.pic_marsup) inpMarsup.value = sesi.pic_marsup;
     checklistPagu = (sesi.pagu != null) ? sesi.pagu : null;
+    updateEndSesiBtnState();
 
     clipboard = items.map(it => ({
       kode_produk: it.kode_produk, kode_asli: it.kode_asli, nama_produk: it.nama_produk,
@@ -1622,14 +1801,18 @@ function updateClipHeaderCompact() {
 // atau di-scroll) dan judul tab browser (biar gampang bedain kalau buka
 // beberapa tab untuk beberapa RS sekaligus).
 function updateSessionIndicatorAndTitle(rsRaw, salesRaw) {
-  const hasName = !!rsRaw;
-  sessionIndicator.classList.toggle('empty', !hasName);
-  sessionIndicator.classList.toggle('active', hasName);
-  if (hasName) {
-    sessionIndicatorText.textContent = salesRaw ? `${rsRaw} · ${salesRaw}` : rsRaw;
-    document.title = `${rsRaw} — Conversion Workspace`;
+  // Aktif/enggaknya indikator sekarang ngikutin currentSesiId (fakta di server),
+  // bukan cuma "ada nama RS yang diketik" — soalnya sesi bisa udah kebentuk
+  // duluan (lewat "Mulai Sesi Baru") sebelum nama RS-nya sempat diisi.
+  const hasSesi = !!currentSesiId;
+  sessionIndicator.classList.toggle('empty', !hasSesi);
+  sessionIndicator.classList.toggle('active', hasSesi);
+  if (hasSesi) {
+    const label = rsRaw ? (salesRaw ? `${rsRaw} · ${salesRaw}` : rsRaw) : 'Sesi baru (RS belum diisi)';
+    sessionIndicatorText.textContent = label;
+    document.title = rsRaw ? `${rsRaw} — Conversion Workspace` : APP_TITLE_BASE;
   } else {
-    sessionIndicatorText.textContent = 'Belum ada sesi aktif';
+    sessionIndicatorText.textContent = 'Belum ada sesi — klik "Mulai Sesi Baru"';
     document.title = APP_TITLE_BASE;
   }
 }
@@ -1656,14 +1839,6 @@ const recordStatus = document.getElementById('record-status');
 const recordSubmitBtn = document.getElementById('record-submit-btn');
 const recordCancelBtn = document.getElementById('record-cancel-btn');
 const exportModal = document.getElementById('export-modal');
-const btnStok = document.getElementById('btn-stok');
-const stokModal = document.getElementById('stok-modal');
-const stokUploadWrap = document.getElementById('stok-upload-wrap');
-const stokFile = document.getElementById('stok-file');
-const stokPreview = document.getElementById('stok-preview');
-const stokUploadBtn = document.getElementById('stok-upload-btn');
-const stokStatusMsg = document.getElementById('stok-status-msg');
-const stokCancelBtn2 = document.getElementById('stok-cancel-btn-2');
 
 const btnPermintaan = document.getElementById('btn-permintaan');
 const prModal = document.getElementById('pr-modal');
@@ -2099,7 +2274,28 @@ btnExport.addEventListener('click', async () => {
   const namaRs = inpRs.value.trim() || 'RS';
   const namaSales = inpSales.value.trim() || 'Sales';
   const tanggal = new Date().toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'});
-  const filename = `CONVERTED${modeSwasta?'-SWASTA':''}-${namaSales.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${namaRs.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${tanggal}.xlsx`;
+
+  // Sesi ini udah pernah di-Record sebelumnya? Kalau iya, file export dikasih
+  // suffix -REV{n} ngikutin nomor revisi yang BAKAL kepake kalau kamu Record
+  // sekarang (revisi terakhir + 1) — bukan revisi lama yang udah tersimpan.
+  // Ini disamain sama cara Record ngitung nomornya, biar nama file yang kamu
+  // export duluan (sebelum sempet Record) tetep konsisten sama yang bakal
+  // kesimpen nanti, bukan ketinggalan satu angka.
+  let revSuffix = '';
+  if (currentSesiId) {
+    try {
+      const revRes = await sesiFetch(`konversi_record?sesi_id=eq.${currentSesiId}&select=revisi&order=revisi.desc&limit=1`);
+      if (revRes.ok) {
+        const revRows = await revRes.json();
+        if (revRows.length) {
+          const revisiBerikutnya = (revRows[0].revisi || 0) + 1;
+          revSuffix = `-REV${revisiBerikutnya}`;
+        }
+      }
+    } catch { /* gagal cek revisi → export tetap jalan tanpa suffix, bukan blocking */ }
+  }
+
+  const filename = `CONVERTED${modeSwasta?'-SWASTA':''}-${namaSales.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${namaRs.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${tanggal}${revSuffix}.xlsx`;
 
   exportModal.classList.add('show');
   setProgress(0, 1, 'Menyiapkan data…');
@@ -2515,6 +2711,12 @@ function openRecordModal() {
   const namaSales = inpSales.value.trim() || 'Sales';
   const { kategori, grandTotal } = computeKonversiSummary();
 
+  // Soft-gate: cuma nudge, gak nge-block. checklistPermintaanId keisi kalau
+  // sesi ini udah pernah ada Permintaan RS (baru diisi ATAU dimuat ulang
+  // lewat loadChecklistForSesi pas openSesi). Kalau kosong, kemungkinan besar
+  // emang belum dicatat — 1x reminder di titik final ini nangkep kasus lupa.
+  document.getElementById('pr-nudge').classList.toggle('show', !checklistPermintaanId);
+
   recTanggal.textContent = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
   recRs.textContent = namaRs;
   recSales.textContent = namaSales;
@@ -2534,6 +2736,24 @@ btnRecord.addEventListener('click', openRecordModal);
 recordCancelBtn.addEventListener('click', () => recordModal.classList.remove('show'));
 recordModal.addEventListener('click', (e) => { if (e.target === recordModal) recordModal.classList.remove('show'); });
 
+// Klik "Isi Permintaan RS dulu" dari dalam nudge: pindah ke modal Permintaan RS,
+// tandain biar abis submit balik lagi ke Record modal (bukan ilang ke layar lain).
+var resumeRecordAfterPr = false;
+document.getElementById('pr-nudge-btn').addEventListener('click', () => {
+  resumeRecordAfterPr = true;
+  recordModal.classList.remove('show');
+  openPrModal();
+});
+
+// ══════════════════════════════════════════
+// DUAL WRITE: Supabase (konversi_record + konversi_item, granular, source
+// of truth buat insight) dulu, baru Google Sheet (mirror, format lama tetap
+// dipertahankan persis karena ada laporan lain yang gantung ke situ).
+// Urutannya sengaja gak paralel: kalau Supabase gagal, seluruh operasi
+// dianggap gagal (data belum "resmi" tercatat). Kalau cuma Sheet yang gagal,
+// data tetap dianggap tersimpan — user bisa retry sync ke Sheet aja tanpa
+// harus input ulang semuanya dari nol.
+// ══════════════════════════════════════════
 recordSubmitBtn.addEventListener('click', async () => {
   if (!inpMarsup.value.trim()) {
     recordStatus.textContent = 'Isi dulu nama PIC Marsup di panel clipboard.';
@@ -2544,9 +2764,123 @@ recordSubmitBtn.addEventListener('click', async () => {
   const namaRs = inpRs.value.trim() || 'RS';
   const namaSales = inpSales.value.trim() || 'Sales';
   const { kategori, grandTotal } = computeKonversiSummary();
+  const tanggalIso = new Date().toISOString().slice(0, 10);
 
-  const payload = {
-    tanggal: new Date().toISOString().slice(0, 10), // yyyy-mm-dd, Apps Script akan parse jadi Date
+  recordSubmitBtn.disabled = true;
+  recordSubmitBtn.textContent = 'Menyimpan…';
+  recordStatus.textContent = '';
+
+  let newRecordId = null;
+
+  // ---- Tahap 1: Supabase (fondasi, wajib sukses) ----
+  try {
+    // Cek dulu apakah sesi ini udah pernah kerekam sebelumnya (mis. sesi lama
+    // yang di-reopen dari tab Riwayat lalu diubah lagi). Kalau iya, ini
+    // dianggap REVISI: record baru tetap di-INSERT (bukan nimpa yang lama —
+    // biar histori tiap versi kesimpen lengkap), tapi dikasih nomor revisi
+    // yang naik dari yang terakhir.
+    let revisiKe = 0;
+    if (currentSesiId) {
+      try {
+        const cekRes = await sesiFetch(`konversi_record?sesi_id=eq.${currentSesiId}&select=revisi&order=revisi.desc&limit=1`);
+        if (cekRes.ok) {
+          const cekRows = await cekRes.json();
+          if (cekRows.length) revisiKe = (cekRows[0].revisi || 0) + 1;
+        }
+      } catch { /* gagal cek → anggap revisi 0, fallback aman (bukan blocking) */ }
+    }
+
+    const recordBody = {
+      sesi_id: currentSesiId || null,
+      permintaan_id: checklistPermintaanId || null,
+      tanggal: tanggalIso,
+      nama_rs: namaRs,
+      pic_sales: namaSales,
+      pic_marsup: inpMarsup.value.trim(),
+      pagu_total: (typeof checklistPagu !== 'undefined' ? checklistPagu : null),
+      kategori: kategori,
+      grand_total: grandTotal,
+      revisi: revisiKe,
+      notes: recNotes.value.trim(),
+      link: recLink.value.trim(),
+      synced_to_sheet: false
+    };
+
+    const recRes = await sesiFetch('konversi_record', {
+      method: 'POST',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify(recordBody)
+    });
+    if (!recRes.ok) {
+      const errData = await recRes.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal menyimpan header konversi_record');
+    }
+    const recRows = await recRes.json();
+    newRecordId = recRows[0].id;
+
+    // Detail per item — ini yang bikin data granular buat insight nanti
+    // (produk apa yang sering INDENT, revenue per kategori/produk, dst).
+    const itemRows = clipboard.map(item => {
+      const hargaPakai = modeSwasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
+      return {
+        konversi_record_id: newRecordId,
+        produk_id: item.produk_id || null,
+        kode_produk: item.kode_produk,
+        nama_produk: item.nama_produk,
+        qty: item.qty || 1,
+        harga: hargaPakai
+      };
+    });
+
+    if (itemRows.length) {
+      const itemRes = await sesiFetch('konversi_item', {
+        method: 'POST',
+        body: JSON.stringify(itemRows)
+      });
+      if (!itemRes.ok) {
+        const errData = await itemRes.json().catch(() => ({}));
+        throw new Error(errData.message || errData.hint || 'Record tersimpan, tapi detail item gagal (cek konversi_item)');
+      }
+    }
+
+    // Sesi ini selesai → keluar dari daftar "Konversi Berjalan". Kalau ada
+    // checklist Permintaan RS yang nempel, rekap pemenuhannya ikut
+    // dipastikan tersimpan di langkah yang sama.
+    if (currentSesiId) {
+      sesiFetch(`${SESI_TABLE}?id=eq.${currentSesiId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
+      }).catch(() => {});
+      // currentSesiId SENGAJA tetap dipertahankan (bukan di-null-in) — kalau
+      // langsung di-null, Export yang diklik tepat setelah Record kehilangan
+      // pegangan buat ngecek nomor revisi (jadi filename-nya balik polos tanpa
+      // -REVx). Sesi tetap "kepegang" di layar sampai user eksplisit klik
+      // "Mulai Sesi Baru" atau buka sesi lain — statusnya sendiri udah 'selesai'
+      // di server, jadi tetap gak nyangkut di daftar "Konversi Berjalan".
+      updateEndSesiBtnState();
+      loadSesiList();
+      if (subtabRiwayat.classList.contains('active')) loadRiwayatList();
+    }
+    if (checklistPermintaanId) {
+      autoFinalizePermintaan().catch(() => {});
+    }
+
+    recordStatus.textContent = (revisiKe > 0 ? `Tersimpan sebagai REV${revisiKe} ✓` : 'Tersimpan ✓') + ' — menyinkronkan ke Sheet…';
+    recordStatus.style.color = 'var(--success)';
+  } catch (err) {
+    recordStatus.textContent = 'Gagal: ' + err.message;
+    recordStatus.style.color = 'var(--danger)';
+    recordSubmitBtn.disabled = false;
+    recordSubmitBtn.textContent = 'Kirim ke Sheet';
+    return; // stop total — fondasi gagal, jangan lanjut ke sheet
+  }
+
+  // ---- Tahap 2: Google Sheet (mirror, format tetap sama persis) ----
+  // keyword/rekanan/customer/distributor sengaja diisi nilai yang sama —
+  // itu format yang sudah dipakai sheet lain yang gantung ke kolom ini,
+  // jadi TIDAK diubah.
+  const sheetPayload = {
+    tanggal: tanggalIso,
     pic_marsup: inpMarsup.value.trim(),
     pic_sales: namaSales,
     keyword: namaRs,
@@ -2559,10 +2893,6 @@ recordSubmitBtn.addEventListener('click', async () => {
     link: recLink.value.trim()
   };
 
-  recordSubmitBtn.disabled = true;
-  recordSubmitBtn.textContent = 'Mengirim…';
-  recordStatus.textContent = '';
-
   try {
     if (!GAS_WEBHOOK_URL || GAS_WEBHOOK_URL.startsWith('PASTE_URL')) {
       throw new Error('URL webhook Apps Script belum diisi di kode (GAS_WEBHOOK_URL).');
@@ -2570,32 +2900,28 @@ recordSubmitBtn.addEventListener('click', async () => {
     const res = await fetch(GAS_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight ke Apps Script
-      body: JSON.stringify(payload)
+      body: JSON.stringify(sheetPayload)
     });
     const result = await res.json();
     if (!result.ok) throw new Error(result.error || 'Gagal menyimpan ke sheet');
 
-    recordStatus.textContent = 'Berhasil dicatat ke Record Konversi ✓';
-    recordStatus.style.color = 'var(--success)';
-    // Konversi sudah direkam → sesi ini selesai, keluar dari daftar "Konversi Berjalan".
-    // Kalau sesi ini punya checklist Permintaan RS yang nempel, rekap tingkat
-    // pemenuhannya ikut dipastikan tersimpan di langkah yang sama — gak perlu
-    // klik "Record Sesi" terpisah lagi, satu tombol ini udah nutup keduanya.
-    if (currentSesiId) {
-      sesiFetch(`${SESI_TABLE}?id=eq.${currentSesiId}`, {
+    if (newRecordId) {
+      sesiFetch(`konversi_record?id=eq.${newRecordId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
+        body: JSON.stringify({ synced_to_sheet: true })
       }).catch(() => {});
     }
-    if (checklistPermintaanId) {
-      autoFinalizePermintaan().catch(() => {});
-    }
+
+    recordStatus.textContent = 'Berhasil dicatat & disinkronkan ke Sheet ✓';
+    recordStatus.style.color = 'var(--success)';
     setTimeout(() => recordModal.classList.remove('show'), 1200);
   } catch (err) {
-    recordStatus.textContent = 'Gagal: ' + err.message;
+    // Sheet gagal BUKAN berarti semuanya gagal — data sudah aman di Supabase.
+    recordStatus.textContent = 'Tersimpan di sistem ✓, tapi gagal sync ke Sheet: ' + err.message;
     recordStatus.style.color = 'var(--danger)';
     recordSubmitBtn.disabled = false;
-    recordSubmitBtn.textContent = 'Kirim ke Sheet';
+    recordSubmitBtn.textContent = 'Coba Sync ke Sheet Lagi';
+    recordSubmitBtn.dataset.retryRecordId = newRecordId || '';
   }
 });
 
@@ -2604,131 +2930,11 @@ recordSubmitBtn.addEventListener('click', async () => {
 // dan integrasi tampilan/sort stok ke hasil search
 // ══════════════════════════════════════════
 
-let stokParsedRows = null;  // hasil parse Excel yang siap diupload
-
-function openStokModal() {
-  stokStatusMsg.textContent = '';
-  // Satu login di gerbang awal sudah cukup buat seluruh app, termasuk modul ini.
-  // Kalau token ternyata sudah expired (jarang, tapi bisa terjadi di sesi lama),
-  // tendang balik ke gerbang login daripada nampilin form login kedua di sini.
-  if (!stokAccessToken) {
-    closeStokModal();
-    showGate('Sesi kamu habis, silakan masuk lagi.');
-    return;
-  }
-  stokModal.classList.add('show');
-}
-function closeStokModal() { stokModal.classList.remove('show'); }
-
-btnStok.addEventListener('click', openStokModal);
-stokCancelBtn2.addEventListener('click', closeStokModal);
-stokModal.addEventListener('click', (e) => { if (e.target === stokModal) closeStokModal(); });
-
-// ---- Parse file Excel (KODEASLI, NAMA BARANG, QTY) ----
-stokFile.addEventListener('change', async () => {
-  stokParsedRows = null;
-  stokUploadBtn.disabled = true;
-  stokPreview.style.display = 'none';
-  stokStatusMsg.textContent = '';
-
-  const file = stokFile.files[0];
-  if (!file) return;
-
-  try {
-    const buffer = await file.arrayBuffer();
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer);
-    const ws = wb.worksheets[0];
-
-    // cari kolom KODEASLI dan QTY dari baris header (case-insensitive)
-    const headerRow = ws.getRow(1);
-    let colKode = null, colQty = null;
-    headerRow.eachCell((cell, colNumber) => {
-      const v = String(cell.value || '').trim().toUpperCase();
-      if (v === 'KODEASLI' || v === 'KODE ASLI') colKode = colNumber;
-      if (v === 'QTY') colQty = colNumber;
-    });
-
-    if (!colKode || !colQty) {
-      throw new Error('Kolom KODEASLI dan/atau QTY tidak ditemukan di baris pertama file.');
-    }
-
-    const rows = [];
-    for (let r = 2; r <= ws.rowCount; r++) {
-      const row = ws.getRow(r);
-      const kodeAsli = String(row.getCell(colKode).value || '').trim();
-      const qtyRaw = row.getCell(colQty).value;
-      const qty = parseInt(qtyRaw, 10);
-      if (!kodeAsli) continue;
-      rows.push({ kode_asli: kodeAsli, qty: isNaN(qty) ? 0 : qty });
-    }
-
-    if (rows.length === 0) throw new Error('Tidak ada baris data yang valid di file ini.');
-
-    stokParsedRows = rows;
-    stokPreview.style.display = 'block';
-    stokPreview.textContent = `${rows.length} baris terbaca. Contoh: ` +
-      rows.slice(0, 5).map(r => `${r.kode_asli}=${r.qty}`).join(', ') +
-      (rows.length > 5 ? ', …' : '');
-    stokUploadBtn.disabled = false;
-  } catch (err) {
-    stokStatusMsg.textContent = 'Gagal baca file: ' + err.message;
-    stokStatusMsg.style.color = 'var(--danger)';
-  }
-});
-
-// ---- Upload (panggil replace_stok_produk pakai token login, bukan anon key) ----
-stokUploadBtn.addEventListener('click', async () => {
-  if (!stokParsedRows || !stokAccessToken) return;
-  if (!confirm(`Yakin timpa seluruh data stok dengan ${stokParsedRows.length} baris dari file ini?`)) return;
-
-  stokUploadBtn.disabled = true;
-  stokUploadBtn.textContent = 'Mengupload…';
-  stokStatusMsg.textContent = '';
-
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/replace_stok_produk`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': ANON_KEY,
-        'Authorization': 'Bearer ' + stokAccessToken
-      },
-      body: JSON.stringify({ rows: stokParsedRows })
-    });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || errData.hint || 'Gagal upload stok (cek apakah email kamu terdaftar di allowed_users)');
-    }
-
-    const result = await res.json();
-    stokStatusMsg.style.color = 'var(--success)';
-    let msg = `Berhasil! ${result.inserted} kode stok diperbarui.`;
-    if (result.skipped_count > 0) {
-      msg += ` ${result.skipped_count} kode DILEWATI karena belum terdaftar di master_produk: ` +
-        result.skipped_codes.slice(0, 15).join(', ') +
-        (result.skipped_codes.length > 15 ? `, dan ${result.skipped_codes.length - 15} lainnya…` : '');
-      stokStatusMsg.style.color = 'var(--danger)';
-    }
-    stokStatusMsg.textContent = msg;
-    if (result.skipped_count === 0) {
-      setTimeout(() => closeStokModal(), 1400);
-    }
-
-    // refresh badge stok di hasil search yang lagi tampil, kalau ada
-    if (lastResults && lastResults.length) {
-      await enrichResultsWithStok(lastResults);
-      applySort();
-      renderResults(lastResults);
-    }
-  } catch (err) {
-    stokStatusMsg.style.color = 'var(--danger)';
-    stokStatusMsg.textContent = 'Gagal: ' + err.message;
-  } finally {
-    stokUploadBtn.disabled = false;
-    stokUploadBtn.textContent = 'Upload & Timpa Stok';
-  }
-});
+// Upload/timpa stok sekarang jadi modul mandiri di stok.html (Modul 03 di
+// index) — divisi lain gak perlu lagi buka Konversian buat update stok
+// harian. Konversian tetap butuh status stok buat badge READY/INDENT di
+// hasil search, jadi bagian read-only (enrichResultsWithStok) di bawah ini
+// TETAP ada, cuma bagian upload/timpa-nya yang dipindah.
 
 // ---- Ambil status stok buat semua kode_asli yang muncul di hasil search ----
 async function enrichResultsWithStok(results) {
@@ -2775,8 +2981,17 @@ function openPrModal() {
 function closePrModal() { prModal.classList.remove('show'); }
 
 btnPermintaan.addEventListener('click', openPrModal);
-prCancelBtn2.addEventListener('click', closePrModal);
-prModal.addEventListener('click', (e) => { if (e.target === prModal) closePrModal(); });
+prCancelBtn2.addEventListener('click', () => { closePrModal(); resumeRecordAfterCancel(); });
+prModal.addEventListener('click', (e) => { if (e.target === prModal) { closePrModal(); resumeRecordAfterCancel(); } });
+
+// Kalau modal PR dibuka dari nudge tapi dibatalin (bukan submit), tetap balik
+// ke Record modal — user cuma ngecek/mikir ulang, bukan mau kabur dari flow.
+function resumeRecordAfterCancel() {
+  if (resumeRecordAfterPr) {
+    resumeRecordAfterPr = false;
+    openRecordModal();
+  }
+}
 
 // ---- Tab switch Teks / Excel / Screenshot ----
 let prTeksFromOcr = false;
@@ -2957,6 +3172,13 @@ prSubmitBtn.addEventListener('click', async () => {
 
     startChecklistSession(result, prNamaRs.value.trim(), prPicSales.value.trim(), parsePaguValue(prPagu.value));
     closePrModal();
+
+    // Kalau tadi masuk ke sini lewat nudge di Record modal, balik lagi ke situ
+    // biar user lanjut dari titik yang sama (bukan ilang, harus klik Record lagi).
+    if (resumeRecordAfterPr) {
+      resumeRecordAfterPr = false;
+      openRecordModal();
+    }
   } catch (err) {
     prStatusMsg.style.color = 'var(--danger)';
     prStatusMsg.textContent = 'Gagal: ' + err.message;
@@ -3131,6 +3353,7 @@ async function callUpdatePermintaanItem(itemId, status, produkId, kodeProduk) {
   }
 }
 </script>
+<div id="toast-container"></div>
 </div><!-- /#app-root -->
 </body>
 </html>

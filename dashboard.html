@@ -254,6 +254,13 @@ tr:hover td{background:var(--surface-2)}
 
   <div class="err-banner" id="err-banner"><i class="ph ph-warning-circle"></i> <span id="err-text"></span></div>
 
+  <div class="section-label"><i class="ph ph-arrows-clockwise"></i> Konversi Hari Ini</div>
+  <div class="stats-grid" id="stats-grid-konversi">
+    <div class="stat-card blue"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+    <div class="stat-card green"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+    <div class="stat-card purple"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+  </div>
+
   <div class="section-label"><i class="ph ph-database"></i> Ringkasan Database</div>
   <div class="stats-grid" id="stats-grid">
     <div class="stat-card blue"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
@@ -649,6 +656,37 @@ async function rpc(fn, params){
 }
 
 // ══════════════════════════════════════════
+// KONVERSI HARI INI — snapshot operasional cepat: berapa sesi lagi jalan
+// SEKARANG (bukan cuma yang dibuka hari ini, karena sesi bisa nginep
+// berhari-hari), dan berapa yang beres hari ini + total valuenya.
+// "Beres" di-dedup per sesi (ambil revisi terakhir aja) biar sesi yang
+// direvisi 2x hari ini gak ke-count 2 kali.
+// ══════════════════════════════════════════
+async function loadKonversiToday(){
+  const k = await rpc('get_dashboard_konversi_today', {});
+  document.getElementById('stats-grid-konversi').innerHTML = `
+    <div class="stat-card blue">
+      <div class="stat-icon blue"><i class="ph ph-hourglass-medium"></i></div>
+      <div class="stat-val">${fmt(k.berjalan_count)}</div>
+      <div class="stat-label">Konversi Sedang Berjalan</div>
+      <div class="stat-sub"><i class="ph ph-plus-circle"></i> ${fmt(k.berjalan_baru_count)} sesi baru dibuka hari ini</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-icon green"><i class="ph ph-check-circle"></i></div>
+      <div class="stat-val">${fmt(k.selesai_count)}</div>
+      <div class="stat-label">Konversi Selesai Hari Ini</div>
+      <div class="stat-sub"><i class="ph ph-money"></i> Total ${rupiah(k.selesai_value)}</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-icon purple"><i class="ph ph-chart-line-up"></i></div>
+      <div class="stat-val">${rupiah(k.selesai_avg)}</div>
+      <div class="stat-label">Rata-rata Value / Order</div>
+      <div class="stat-sub"><i class="ph ph-info"></i> Dari ${fmt(k.selesai_count)} order hari ini</div>
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════
 // RINGKASAN — satu panggilan RPC (get_dashboard_summary), dihitung
 // penuh di Postgres. Gantinya fetch produk + produk_harga mentah
 // dengan limit=20000 yang kemarin bikin angka undercount.
@@ -816,7 +854,7 @@ function handleLoadError(err){
 async function loadEverything(){
   clearError();
   try {
-    await Promise.all([loadStats(), loadTable()]);
+    await Promise.all([loadStats(), loadTable(), loadKonversiToday()]);
   } catch (err) {
     handleLoadError(err);
   }
