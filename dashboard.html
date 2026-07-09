@@ -429,8 +429,12 @@ async function openDetail(kode){
     const thumbUrl = mediaThumb?.url || (d.kode_asli ? THUMB_BASE + d.kode_asli + '.png' : null);
     // HAPUS canvas approach, ganti dengan img biasa
     const thumbHtml = thumbUrl
-    ? `<img src="${thumbUrl}" style="width:100%;height:160px;object-fit:contain;border-radius:8px;mix-blend-mode:multiply" onerror="this.style.display='none'"/>`
-    : `<div class="detail-thumb-placeholder"><i class="ph ph-image"></i> Tidak ada gambar</div>`;
+  ? `<div style="background:#fff;border-radius:8px;padding:8px;border:1px solid var(--border)">
+       <img src="${thumbUrl}" 
+            style="width:100%;height:150px;object-fit:contain;display:block;mix-blend-mode:multiply"
+            onerror="this.parentElement.style.display='none'"/>
+     </div>`
+  : `<div class="detail-thumb-placeholder"><i class="ph ph-image"></i> Tidak ada gambar</div>`;
 
     const hargaMap = {};
     (d.harga||[]).forEach(h=>{ if(!hargaMap[h.jenis]) hargaMap[h.jenis]=h; });
