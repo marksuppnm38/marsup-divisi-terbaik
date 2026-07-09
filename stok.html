@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stok — Pionir Group Tools</title>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"/>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+<style>
+:root{
+  --bg:#f0f2f5; --surface:#fff; --surface-2:#f5f6f8;
+  --border:#e2e4e9; --border-strong:#c8ccd6;
+  --text:#111827; --text-secondary:#4b5563; --text-muted:#9ca3af;
+  --accent:#1d5bd4; --accent-bg:#eff4ff; --accent-text:#1d4ed8; --accent-hover:#1749b1;
+  --success:#15803d; --success-bg:#f0fdf4; --success-border:#86efac;
+  --danger:#b91c1c; --danger-bg:#fff5f5; --danger-border:#fca5a5;
+  --ease:cubic-bezier(.4,0,.2,1);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#111318; --surface:#1a1d24; --surface-2:#22262e;
+    --border:#2c313b; --border-strong:#3d4350;
+    --text:#e8eaed; --text-secondary:#a8afbc; --text-muted:#6b7280;
+    --accent:#5b8def; --accent-bg:#1c2b45; --accent-text:#7ba8f5; --accent-hover:#3f6fd6;
+    --success:#4ade80; --success-bg:#132a1c; --success-border:#1f5c37;
+    --danger:#f87171; --danger-bg:#3a1a1a; --danger-border:#6b2b2b;
+  }
+}
+*{box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;min-height:100vh;margin:0;transition:background .3s ease,color .3s ease}
+
+.auth-gate{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center}
+.auth-gate-box{width:320px;max-width:90vw;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 24px;box-shadow:0 8px 28px rgba(0,0,0,.12);display:flex;flex-direction:column;align-items:stretch}
+.auth-gate-title{font-size:16px;font-weight:600;text-align:center}
+.auth-gate-sub{font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px}
+.pr-field{margin-bottom:12px}
+.pr-field label{display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
+.pr-field input{width:100%;height:36px;padding:0 10px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none}
+.auth-gate-btn{margin-top:6px;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.auth-gate-btn:disabled{background:var(--border-strong);cursor:not-allowed}
+.auth-gate-status{font-size:12px;text-align:center;margin-top:10px;min-height:16px}
+
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.back-link{font-size:12.5px;color:var(--text-secondary);text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.back-link:hover{color:var(--accent)}
+.hdr-title{font-size:14px;font-weight:600}
+.hdr-sub{font-size:11.5px;color:var(--text-muted)}
+
+main{max-width:560px;margin:0 auto;padding:32px 20px 60px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px}
+.card h1{font-size:18px;font-weight:700;margin:0 0 6px}
+.card-sub{font-size:12.5px;color:var(--text-muted);line-height:1.6;margin-bottom:20px}
+
+.stok-field{margin-bottom:14px}
+.stok-field label{display:block;font-size:12.5px;font-weight:600;color:var(--text-secondary);margin-bottom:6px}
+.stok-field input[type="file"]{width:100%;font-size:12.5px;padding:10px;border:1.5px dashed var(--border-strong);border-radius:10px;background:var(--surface-2);color:var(--text)}
+
+.stok-preview{max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:11.5px;font-family:ui-monospace,monospace;color:var(--text-secondary);background:var(--surface-2);margin-top:10px}
+
+.stok-actions{display:flex;gap:8px;margin-top:18px}
+.stok-actions button{flex:1;height:40px;border-radius:10px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;border:none}
+#stok-upload-btn{background:var(--accent);color:#fff}
+#stok-upload-btn:disabled{background:var(--border-strong);cursor:not-allowed}
+#stok-upload-btn:hover:not(:disabled){background:var(--accent-hover)}
+
+#stok-status-msg{font-size:12.5px;margin-top:14px;line-height:1.6;min-height:16px}
+
+.logout-link{font-size:11.5px;color:var(--text-muted);text-decoration:underline;cursor:pointer;background:none;border:none;font-family:inherit;padding:0}
+</style>
+</head>
+<body>
+
+<div id="auth-gate" class="auth-gate">
+  <div class="auth-gate-box">
+    <div class="auth-gate-title">Modul Stok</div>
+    <div class="auth-gate-sub">Masuk untuk melanjutkan.</div>
+    <div class="pr-field">
+      <label>Email</label>
+      <input type="email" id="gate-email" placeholder="nama@email.com" autocomplete="email"/>
+    </div>
+    <div class="pr-field">
+      <label>Password</label>
+      <input type="password" id="gate-password" placeholder="••••••••" autocomplete="current-password"/>
+    </div>
+    <button id="gate-login-btn" class="auth-gate-btn">Masuk</button>
+    <div id="gate-status" class="auth-gate-status"></div>
+  </div>
+</div>
+
+<div id="app-root" style="display:none">
+  <header>
+    <div>
+      <div class="hdr-title">Stok</div>
+      <div class="hdr-sub">Pionir Group — PNM / SMY / METO</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <a class="back-link" href="/index.html"><i class="ph ph-arrow-left"></i> Semua Modul</a>
+      <button class="logout-link" id="logout-btn">Keluar</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <h1>Upload / Update Stok</h1>
+      <div class="card-sub">
+        Upload Excel harian dengan kolom <b>KODEASLI</b> dan <b>QTY</b> (nama kolom di baris pertama, huruf besar/kecil bebas).
+        Ini akan <b>MENIMPA seluruh data stok yang ada</b> dengan isi file ini — pastikan file yang diupload sudah data terbaru & lengkap.
+      </div>
+
+      <div class="stok-field">
+        <label>File Excel Stok (.xlsx)</label>
+        <input type="file" id="stok-file" accept=".xlsx,.xls"/>
+      </div>
+      <div id="stok-preview" class="stok-preview" style="display:none;"></div>
+
+      <div class="stok-actions">
+        <button id="stok-upload-btn" disabled>Upload &amp; Timpa Stok</button>
+      </div>
+
+      <div id="stok-status-msg"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
+
+// Pakai key localStorage yang SAMA dengan konversian.html / crud-produk.html,
+// biar satu login berlaku buat seluruh modul di domain ini (gak perlu login ulang).
+const AUTH_STORAGE_KEY = 'pnm_auth_session';
+let stokAccessToken = null;
+
+const authGate = document.getElementById('auth-gate');
+const appRoot = document.getElementById('app-root');
+const gateEmail = document.getElementById('gate-email');
+const gatePassword = document.getElementById('gate-password');
+const gateLoginBtn = document.getElementById('gate-login-btn');
+const gateStatus = document.getElementById('gate-status');
+const logoutBtn = document.getElementById('logout-btn');
+
+function saveAuthSession(data) {
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600)
+  }));
+}
+function clearAuthSession() { localStorage.removeItem(AUTH_STORAGE_KEY); }
+function readAuthSession() {
+  try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null'); } catch { return null; }
+}
+function showApp() {
+  authGate.style.display = 'none';
+  appRoot.style.display = 'block';
+}
+function showGate(msg) {
+  stokAccessToken = null;
+  appRoot.style.display = 'none';
+  authGate.style.display = 'flex';
+  if (msg) { gateStatus.style.color = 'var(--danger)'; gateStatus.textContent = msg; }
+}
+
+async function refreshAuthSession(refreshToken) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
+    body: JSON.stringify({ refresh_token: refreshToken })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error_description || data.msg || 'Sesi habis, silakan masuk lagi.');
+  return data;
+}
+
+async function initAuth() {
+  const saved = readAuthSession();
+  if (!saved) { showGate(); return; }
+  if (saved.expires_at && saved.expires_at - Math.floor(Date.now() / 1000) > 60) {
+    stokAccessToken = saved.access_token;
+    showApp();
+    return;
+  }
+  try {
+    const data = await refreshAuthSession(saved.refresh_token);
+    stokAccessToken = data.access_token;
+    saveAuthSession(data);
+    showApp();
+  } catch (err) {
+    clearAuthSession();
+    showGate('Sesi kamu sudah habis, silakan masuk lagi.');
+  }
+}
+
+gateLoginBtn.addEventListener('click', async () => {
+  const email = gateEmail.value.trim().toLowerCase();
+  const password = gatePassword.value;
+  if (!email || !password) {
+    gateStatus.style.color = 'var(--danger)';
+    gateStatus.textContent = 'Isi email dan password dulu.';
+    return;
+  }
+  gateLoginBtn.disabled = true;
+  gateLoginBtn.textContent = 'Memproses…';
+  gateStatus.style.color = 'var(--text-muted)';
+  gateStatus.textContent = '';
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Login gagal');
+    stokAccessToken = data.access_token;
+    saveAuthSession(data);
+    gatePassword.value = '';
+    showApp();
+  } catch (err) {
+    gateStatus.style.color = 'var(--danger)';
+    gateStatus.textContent = 'Gagal masuk: ' + err.message;
+  } finally {
+    gateLoginBtn.disabled = false;
+    gateLoginBtn.textContent = 'Masuk';
+  }
+});
+gatePassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') gateLoginBtn.click(); });
+logoutBtn.addEventListener('click', () => { clearAuthSession(); showGate(); });
+
+initAuth();
+
+// ══════════════════════════════════════════
+// UPLOAD STOK — logic dipindah persis dari konversian.html, gak diubah,
+// cuma gak lagi hidup di dalam modal.
+// ══════════════════════════════════════════
+const stokFile = document.getElementById('stok-file');
+const stokPreview = document.getElementById('stok-preview');
+const stokUploadBtn = document.getElementById('stok-upload-btn');
+const stokStatusMsg = document.getElementById('stok-status-msg');
+
+let stokParsedRows = null;
+
+stokFile.addEventListener('change', async () => {
+  stokParsedRows = null;
+  stokUploadBtn.disabled = true;
+  stokPreview.style.display = 'none';
+  stokStatusMsg.textContent = '';
+
+  const file = stokFile.files[0];
+  if (!file) return;
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+    const ws = wb.worksheets[0];
+
+    const headerRow = ws.getRow(1);
+    let colKode = null, colQty = null;
+    headerRow.eachCell((cell, colNumber) => {
+      const v = String(cell.value || '').trim().toUpperCase();
+      if (v === 'KODEASLI' || v === 'KODE ASLI') colKode = colNumber;
+      if (v === 'QTY') colQty = colNumber;
+    });
+
+    if (!colKode || !colQty) {
+      throw new Error('Kolom KODEASLI dan/atau QTY tidak ditemukan di baris pertama file.');
+    }
+
+    const rows = [];
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      const kodeAsli = String(row.getCell(colKode).value || '').trim();
+      const qtyRaw = row.getCell(colQty).value;
+      const qty = parseInt(qtyRaw, 10);
+      if (!kodeAsli) continue;
+      rows.push({ kode_asli: kodeAsli, qty: isNaN(qty) ? 0 : qty });
+    }
+
+    if (rows.length === 0) throw new Error('Tidak ada baris data yang valid di file ini.');
+
+    stokParsedRows = rows;
+    stokPreview.style.display = 'block';
+    stokPreview.textContent = `${rows.length} baris terbaca. Contoh: ` +
+      rows.slice(0, 5).map(r => `${r.kode_asli}=${r.qty}`).join(', ') +
+      (rows.length > 5 ? ', …' : '');
+    stokUploadBtn.disabled = false;
+  } catch (err) {
+    stokStatusMsg.style.color = 'var(--danger)';
+    stokStatusMsg.textContent = 'Gagal baca file: ' + err.message;
+  }
+});
+
+stokUploadBtn.addEventListener('click', async () => {
+  if (!stokParsedRows || !stokAccessToken) return;
+  if (!confirm(`Yakin timpa seluruh data stok dengan ${stokParsedRows.length} baris dari file ini?`)) return;
+
+  stokUploadBtn.disabled = true;
+  stokUploadBtn.textContent = 'Mengupload…';
+  stokStatusMsg.textContent = '';
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/replace_stok_produk`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': ANON_KEY,
+        'Authorization': 'Bearer ' + stokAccessToken
+      },
+      body: JSON.stringify({ rows: stokParsedRows })
+    });
+    if (res.status === 401) { showGate('Sesi kamu habis, silakan masuk lagi.'); return; }
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal upload stok (cek apakah email kamu terdaftar di allowed_users)');
+    }
+
+    const result = await res.json();
+    stokStatusMsg.style.color = 'var(--success)';
+    let msg = `Berhasil! ${result.inserted} kode stok diperbarui.`;
+    if (result.skipped_count > 0) {
+      msg += ` ${result.skipped_count} kode DILEWATI karena belum terdaftar di master_produk: ` +
+        result.skipped_codes.slice(0, 15).join(', ') +
+        (result.skipped_codes.length > 15 ? `, dan ${result.skipped_codes.length - 15} lainnya…` : '');
+      stokStatusMsg.style.color = 'var(--danger)';
+    }
+    stokStatusMsg.textContent = msg;
+
+    // reset form biar jelas selesai, file lama gak nyangkut
+    stokFile.value = '';
+    stokParsedRows = null;
+    stokPreview.style.display = 'none';
+  } catch (err) {
+    stokStatusMsg.style.color = 'var(--danger)';
+    stokStatusMsg.textContent = 'Gagal: ' + err.message;
+  } finally {
+    stokUploadBtn.disabled = false;
+    stokUploadBtn.textContent = 'Upload & Timpa Stok';
+  }
+});
+</script>
+</body>
+</html>
