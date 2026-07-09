@@ -132,6 +132,13 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
 #sort-select{flex-shrink:0}
 #results{display:flex;flex-direction:column;gap:6px}
+#pagination{display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 0 6px}
+#pagination.hidden{display:none}
+.page-btn{height:30px;min-width:30px;padding:0 8px;font-size:12.5px;font-family:inherit;font-weight:500;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;transition:all .15s}
+.page-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent-text)}
+.page-btn:disabled{opacity:.4;cursor:not-allowed}
+.page-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.page-info{font-size:12px;color:var(--text-muted);padding:0 6px}
 .rcard{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color .15s,box-shadow .15s;position:relative}
 .rcard:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(29,91,212,.08)}
 .rcard.selected{border-color:var(--accent);background:var(--accent-bg)}
@@ -459,6 +466,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       <div id="loading"><i class="ti ti-loader-2"></i> Mencari…</div>
       <div id="empty"><i class="ti ti-search-off"></i><p>Produk tidak ditemukan.<br>Coba kata kunci lain.</p></div>
       <div id="results"></div>
+      <div id="pagination"></div>
     </div>
     <div class="panel-body" id="panel-body-sesi" style="display:none">
       <div class="sesi-toolbar">
@@ -1155,12 +1163,15 @@ let lastResults = [];
 let modeSwasta = false;
 let sortMode = 'relevance';
 let prioritizeLink = true; // produk yang ada link_v6 diprioritaskan (hanya berlaku saat mode e-katalog)
+const RESULTS_PER_PAGE = 20;
+let currentPage = 1;
 
 // ELEMENTS
 const searchInput = document.getElementById('search-input');
 const clearBtn = document.getElementById('clear-btn');
 const acBox = document.getElementById('autocomplete');
 const resultsEl = document.getElementById('results');
+const paginationEl = document.getElementById('pagination');
 const metaEl = document.getElementById('meta');
 const loadingEl = document.getElementById('loading');
 const emptyEl = document.getElementById('empty');
@@ -2056,6 +2067,7 @@ async function runSearch() {
   await enrichResultsWithStok(lastResults);
   sortSelect.style.display = 'inline-block';
   applySort();
+  currentPage = 1;
   metaEl.textContent = data.length + ' produk ditemukan — klik untuk tambah ke clipboard';
   renderResults(lastResults);
 }
@@ -2109,7 +2121,14 @@ function applySort() {
 }
 
 function renderResults(data) {
-  resultsEl.innerHTML = data.map((r, i) => {
+  // clamp currentPage kalau data berubah (misal abis filter) jadi lebih pendek dari halaman aktif
+  const totalPages = Math.max(1, Math.ceil(data.length / RESULTS_PER_PAGE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+  const start = (currentPage - 1) * RESULTS_PER_PAGE;
+  const pageData = data.slice(start, start + RESULTS_PER_PAGE);
+
+  resultsEl.innerHTML = pageData.map((r, i) => {
     const inClip = clipboard.some(c => c.kode_produk === r.kode_produk);
     const isSet = r.tipe && r.tipe.toUpperCase() === 'SET';
     const tipeClass = isSet ? 'tipe-set' : (r.tipe && r.tipe.toUpperCase() === 'UNIT') ? 'tipe-unit' : 'tipe-other';
@@ -2171,6 +2190,52 @@ function renderResults(data) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       openGambarModal(btn.dataset.kodeAsli, btn.dataset.kode, btn.dataset.nama);
+    });
+  });
+  renderPagination(data.length);
+}
+
+// PAGINATION
+function renderPagination(totalItems) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / RESULTS_PER_PAGE));
+  if (totalPages <= 1) { paginationEl.innerHTML = ''; paginationEl.classList.add('hidden'); return; }
+  paginationEl.classList.remove('hidden');
+
+  function pageBtn(p, label, disabled=false) {
+    const active = p === currentPage;
+    return `<button class="page-btn${active?' active':''}" data-page="${p}"${disabled?' disabled':''}>${label}</button>`;
+  }
+
+  // selalu tampilin halaman 1, halaman terakhir, dan sekitar halaman aktif; sisanya "…"
+  const pagesToShow = [...new Set([1, totalPages, currentPage-1, currentPage, currentPage+1])]
+    .filter(p => p >= 1 && p <= totalPages)
+    .sort((a,b) => a-b);
+
+  let numberBtns = '';
+  let prevP = null;
+  pagesToShow.forEach(p => {
+    if (prevP !== null && p - prevP > 1) numberBtns += `<span class="page-info">…</span>`;
+    numberBtns += pageBtn(p, p);
+    prevP = p;
+  });
+
+  const startItem = (currentPage - 1) * RESULTS_PER_PAGE + 1;
+  const endItem = Math.min(currentPage * RESULTS_PER_PAGE, totalItems);
+
+  paginationEl.innerHTML = `
+    <span class="page-info">${startItem}–${endItem} dari ${totalItems}</span>
+    ${pageBtn(currentPage - 1, '<i class="ti ti-chevron-left"></i>', currentPage === 1)}
+    ${numberBtns}
+    ${pageBtn(currentPage + 1, '<i class="ti ti-chevron-right"></i>', currentPage === totalPages)}
+  `;
+
+  paginationEl.querySelectorAll('.page-btn[data-page]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = parseInt(btn.dataset.page, 10);
+      if (!p || p < 1 || p > totalPages || p === currentPage) return;
+      currentPage = p;
+      renderResults(lastResults);
+      panelBodyCari.scrollTop = 0;
     });
   });
 }
@@ -2695,6 +2760,9 @@ btnClearAll.addEventListener('click', () => {
 // RESET
 function reset() {
   resultsEl.innerHTML = '';
+  paginationEl.innerHTML = '';
+  paginationEl.classList.add('hidden');
+  currentPage = 1;
   metaEl.textContent = '';
   sortSelect.style.display = 'none';
   emptyEl.style.display = 'none';
@@ -2709,12 +2777,14 @@ tswasta.addEventListener('click', () => {
   modeSwasta = !modeSwasta;
   tswasta.classList.toggle('on', modeSwasta);
   applySort();
+  currentPage = 1;
   if (lastResults.length) renderResults(lastResults);
   updateClipboard();
 });
 sortSelect.addEventListener('change', () => {
   sortMode = sortSelect.value;
   applySort();
+  currentPage = 1;
   renderResults(lastResults);
 });
 tipeBtns.forEach(btn => {
