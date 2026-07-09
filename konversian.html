@@ -119,7 +119,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 #btn-butuh-bantuan.on{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-border);border-radius:6px}
 .filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .filter-select{height:30px;padding:0 8px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;outline:none}
-.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s}
+.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;text-decoration:none;box-sizing:border-box}
 .toggle-btn.on{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);font-weight:500}
 .panel-body{flex:1;overflow-y:auto;padding:10px 12px}
 #meta{font-size:12px;color:var(--text-muted);min-height:16px}
@@ -382,7 +382,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   </button>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
-    <button class="toggle-btn" id="btn-stok" title="Upload / Update Stok"><i class="ph ph-truck"></i> Stok</button>
+    <a class="toggle-btn" href="/stok.html" title="Buka modul Stok"><i class="ph ph-truck"></i> Stok</a>
     <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ph ph-clipboard-text"></i> Permintaan RS</button>
     <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
   </div>
@@ -584,27 +584,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 </div>
 
 <!-- STOK MODAL -->
-<div class="modal-overlay" id="stok-modal">
-  <div class="stok-modal-box">
-    <h3>Upload / Update Stok</h3>
-    <div class="stok-modal-sub">Upload Excel harian (kolom KODEASLI, NAMA BARANG, QTY). Ini akan MENIMPA seluruh data stok yang ada dengan isi file ini.</div>
-
-    <!-- Login sudah ditangani di gerbang awal (satu login buat seluruh app) -->
-    <div id="stok-upload-wrap">
-      <div class="stok-field">
-        <label>File Excel Stok (.xlsx)</label>
-        <input type="file" id="stok-file" accept=".xlsx,.xls"/>
-      </div>
-      <div id="stok-preview" class="stok-preview" style="display:none;"></div>
-      <div class="stok-actions">
-        <button id="stok-cancel-btn-2">Batal</button>
-        <button id="stok-upload-btn" disabled>Upload &amp; Timpa Stok</button>
-      </div>
-    </div>
-
-    <div id="stok-status-msg"></div>
-  </div>
-</div>
+<!-- Modal Stok dipindah ke stok.html (modul mandiri di index) -->
 
 <!-- PERMINTAAN RS MODAL -->
 <div class="modal-overlay" id="pr-modal">
@@ -1656,14 +1636,6 @@ const recordStatus = document.getElementById('record-status');
 const recordSubmitBtn = document.getElementById('record-submit-btn');
 const recordCancelBtn = document.getElementById('record-cancel-btn');
 const exportModal = document.getElementById('export-modal');
-const btnStok = document.getElementById('btn-stok');
-const stokModal = document.getElementById('stok-modal');
-const stokUploadWrap = document.getElementById('stok-upload-wrap');
-const stokFile = document.getElementById('stok-file');
-const stokPreview = document.getElementById('stok-preview');
-const stokUploadBtn = document.getElementById('stok-upload-btn');
-const stokStatusMsg = document.getElementById('stok-status-msg');
-const stokCancelBtn2 = document.getElementById('stok-cancel-btn-2');
 
 const btnPermintaan = document.getElementById('btn-permintaan');
 const prModal = document.getElementById('pr-modal');
@@ -2534,6 +2506,15 @@ btnRecord.addEventListener('click', openRecordModal);
 recordCancelBtn.addEventListener('click', () => recordModal.classList.remove('show'));
 recordModal.addEventListener('click', (e) => { if (e.target === recordModal) recordModal.classList.remove('show'); });
 
+// ══════════════════════════════════════════
+// DUAL WRITE: Supabase (konversi_record + konversi_item, granular, source
+// of truth buat insight) dulu, baru Google Sheet (mirror, format lama tetap
+// dipertahankan persis karena ada laporan lain yang gantung ke situ).
+// Urutannya sengaja gak paralel: kalau Supabase gagal, seluruh operasi
+// dianggap gagal (data belum "resmi" tercatat). Kalau cuma Sheet yang gagal,
+// data tetap dianggap tersimpan — user bisa retry sync ke Sheet aja tanpa
+// harus input ulang semuanya dari nol.
+// ══════════════════════════════════════════
 recordSubmitBtn.addEventListener('click', async () => {
   if (!inpMarsup.value.trim()) {
     recordStatus.textContent = 'Isi dulu nama PIC Marsup di panel clipboard.';
@@ -2544,9 +2525,97 @@ recordSubmitBtn.addEventListener('click', async () => {
   const namaRs = inpRs.value.trim() || 'RS';
   const namaSales = inpSales.value.trim() || 'Sales';
   const { kategori, grandTotal } = computeKonversiSummary();
+  const tanggalIso = new Date().toISOString().slice(0, 10);
 
-  const payload = {
-    tanggal: new Date().toISOString().slice(0, 10), // yyyy-mm-dd, Apps Script akan parse jadi Date
+  recordSubmitBtn.disabled = true;
+  recordSubmitBtn.textContent = 'Menyimpan…';
+  recordStatus.textContent = '';
+
+  let newRecordId = null;
+
+  // ---- Tahap 1: Supabase (fondasi, wajib sukses) ----
+  try {
+    const recordBody = {
+      sesi_id: currentSesiId || null,
+      permintaan_id: checklistPermintaanId || null,
+      tanggal: tanggalIso,
+      nama_rs: namaRs,
+      pic_sales: namaSales,
+      pic_marsup: inpMarsup.value.trim(),
+      pagu_total: (typeof checklistPagu !== 'undefined' ? checklistPagu : null),
+      kategori: kategori,
+      grand_total: grandTotal,
+      notes: recNotes.value.trim(),
+      link: recLink.value.trim(),
+      synced_to_sheet: false
+    };
+
+    const recRes = await sesiFetch('konversi_record', {
+      method: 'POST',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify(recordBody)
+    });
+    if (!recRes.ok) {
+      const errData = await recRes.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal menyimpan header konversi_record');
+    }
+    const recRows = await recRes.json();
+    newRecordId = recRows[0].id;
+
+    // Detail per item — ini yang bikin data granular buat insight nanti
+    // (produk apa yang sering INDENT, revenue per kategori/produk, dst).
+    const itemRows = clipboard.map(item => {
+      const hargaPakai = modeSwasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
+      return {
+        konversi_record_id: newRecordId,
+        produk_id: item.produk_id || null,
+        kode_produk: item.kode_produk,
+        nama_produk: item.nama_produk,
+        qty: item.qty || 1,
+        harga: hargaPakai
+      };
+    });
+
+    if (itemRows.length) {
+      const itemRes = await sesiFetch('konversi_item', {
+        method: 'POST',
+        body: JSON.stringify(itemRows)
+      });
+      if (!itemRes.ok) {
+        const errData = await itemRes.json().catch(() => ({}));
+        throw new Error(errData.message || errData.hint || 'Record tersimpan, tapi detail item gagal (cek konversi_item)');
+      }
+    }
+
+    // Sesi ini selesai → keluar dari daftar "Konversi Berjalan". Kalau ada
+    // checklist Permintaan RS yang nempel, rekap pemenuhannya ikut
+    // dipastikan tersimpan di langkah yang sama.
+    if (currentSesiId) {
+      sesiFetch(`${SESI_TABLE}?id=eq.${currentSesiId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
+      }).catch(() => {});
+    }
+    if (checklistPermintaanId) {
+      autoFinalizePermintaan().catch(() => {});
+    }
+
+    recordStatus.textContent = 'Tersimpan ✓ — menyinkronkan ke Sheet…';
+    recordStatus.style.color = 'var(--success)';
+  } catch (err) {
+    recordStatus.textContent = 'Gagal: ' + err.message;
+    recordStatus.style.color = 'var(--danger)';
+    recordSubmitBtn.disabled = false;
+    recordSubmitBtn.textContent = 'Kirim ke Sheet';
+    return; // stop total — fondasi gagal, jangan lanjut ke sheet
+  }
+
+  // ---- Tahap 2: Google Sheet (mirror, format tetap sama persis) ----
+  // keyword/rekanan/customer/distributor sengaja diisi nilai yang sama —
+  // itu format yang sudah dipakai sheet lain yang gantung ke kolom ini,
+  // jadi TIDAK diubah.
+  const sheetPayload = {
+    tanggal: tanggalIso,
     pic_marsup: inpMarsup.value.trim(),
     pic_sales: namaSales,
     keyword: namaRs,
@@ -2559,10 +2628,6 @@ recordSubmitBtn.addEventListener('click', async () => {
     link: recLink.value.trim()
   };
 
-  recordSubmitBtn.disabled = true;
-  recordSubmitBtn.textContent = 'Mengirim…';
-  recordStatus.textContent = '';
-
   try {
     if (!GAS_WEBHOOK_URL || GAS_WEBHOOK_URL.startsWith('PASTE_URL')) {
       throw new Error('URL webhook Apps Script belum diisi di kode (GAS_WEBHOOK_URL).');
@@ -2570,32 +2635,28 @@ recordSubmitBtn.addEventListener('click', async () => {
     const res = await fetch(GAS_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight ke Apps Script
-      body: JSON.stringify(payload)
+      body: JSON.stringify(sheetPayload)
     });
     const result = await res.json();
     if (!result.ok) throw new Error(result.error || 'Gagal menyimpan ke sheet');
 
-    recordStatus.textContent = 'Berhasil dicatat ke Record Konversi ✓';
-    recordStatus.style.color = 'var(--success)';
-    // Konversi sudah direkam → sesi ini selesai, keluar dari daftar "Konversi Berjalan".
-    // Kalau sesi ini punya checklist Permintaan RS yang nempel, rekap tingkat
-    // pemenuhannya ikut dipastikan tersimpan di langkah yang sama — gak perlu
-    // klik "Record Sesi" terpisah lagi, satu tombol ini udah nutup keduanya.
-    if (currentSesiId) {
-      sesiFetch(`${SESI_TABLE}?id=eq.${currentSesiId}`, {
+    if (newRecordId) {
+      sesiFetch(`konversi_record?id=eq.${newRecordId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
+        body: JSON.stringify({ synced_to_sheet: true })
       }).catch(() => {});
     }
-    if (checklistPermintaanId) {
-      autoFinalizePermintaan().catch(() => {});
-    }
+
+    recordStatus.textContent = 'Berhasil dicatat & disinkronkan ke Sheet ✓';
+    recordStatus.style.color = 'var(--success)';
     setTimeout(() => recordModal.classList.remove('show'), 1200);
   } catch (err) {
-    recordStatus.textContent = 'Gagal: ' + err.message;
+    // Sheet gagal BUKAN berarti semuanya gagal — data sudah aman di Supabase.
+    recordStatus.textContent = 'Tersimpan di sistem ✓, tapi gagal sync ke Sheet: ' + err.message;
     recordStatus.style.color = 'var(--danger)';
     recordSubmitBtn.disabled = false;
-    recordSubmitBtn.textContent = 'Kirim ke Sheet';
+    recordSubmitBtn.textContent = 'Coba Sync ke Sheet Lagi';
+    recordSubmitBtn.dataset.retryRecordId = newRecordId || '';
   }
 });
 
@@ -2604,131 +2665,11 @@ recordSubmitBtn.addEventListener('click', async () => {
 // dan integrasi tampilan/sort stok ke hasil search
 // ══════════════════════════════════════════
 
-let stokParsedRows = null;  // hasil parse Excel yang siap diupload
-
-function openStokModal() {
-  stokStatusMsg.textContent = '';
-  // Satu login di gerbang awal sudah cukup buat seluruh app, termasuk modul ini.
-  // Kalau token ternyata sudah expired (jarang, tapi bisa terjadi di sesi lama),
-  // tendang balik ke gerbang login daripada nampilin form login kedua di sini.
-  if (!stokAccessToken) {
-    closeStokModal();
-    showGate('Sesi kamu habis, silakan masuk lagi.');
-    return;
-  }
-  stokModal.classList.add('show');
-}
-function closeStokModal() { stokModal.classList.remove('show'); }
-
-btnStok.addEventListener('click', openStokModal);
-stokCancelBtn2.addEventListener('click', closeStokModal);
-stokModal.addEventListener('click', (e) => { if (e.target === stokModal) closeStokModal(); });
-
-// ---- Parse file Excel (KODEASLI, NAMA BARANG, QTY) ----
-stokFile.addEventListener('change', async () => {
-  stokParsedRows = null;
-  stokUploadBtn.disabled = true;
-  stokPreview.style.display = 'none';
-  stokStatusMsg.textContent = '';
-
-  const file = stokFile.files[0];
-  if (!file) return;
-
-  try {
-    const buffer = await file.arrayBuffer();
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer);
-    const ws = wb.worksheets[0];
-
-    // cari kolom KODEASLI dan QTY dari baris header (case-insensitive)
-    const headerRow = ws.getRow(1);
-    let colKode = null, colQty = null;
-    headerRow.eachCell((cell, colNumber) => {
-      const v = String(cell.value || '').trim().toUpperCase();
-      if (v === 'KODEASLI' || v === 'KODE ASLI') colKode = colNumber;
-      if (v === 'QTY') colQty = colNumber;
-    });
-
-    if (!colKode || !colQty) {
-      throw new Error('Kolom KODEASLI dan/atau QTY tidak ditemukan di baris pertama file.');
-    }
-
-    const rows = [];
-    for (let r = 2; r <= ws.rowCount; r++) {
-      const row = ws.getRow(r);
-      const kodeAsli = String(row.getCell(colKode).value || '').trim();
-      const qtyRaw = row.getCell(colQty).value;
-      const qty = parseInt(qtyRaw, 10);
-      if (!kodeAsli) continue;
-      rows.push({ kode_asli: kodeAsli, qty: isNaN(qty) ? 0 : qty });
-    }
-
-    if (rows.length === 0) throw new Error('Tidak ada baris data yang valid di file ini.');
-
-    stokParsedRows = rows;
-    stokPreview.style.display = 'block';
-    stokPreview.textContent = `${rows.length} baris terbaca. Contoh: ` +
-      rows.slice(0, 5).map(r => `${r.kode_asli}=${r.qty}`).join(', ') +
-      (rows.length > 5 ? ', …' : '');
-    stokUploadBtn.disabled = false;
-  } catch (err) {
-    stokStatusMsg.textContent = 'Gagal baca file: ' + err.message;
-    stokStatusMsg.style.color = 'var(--danger)';
-  }
-});
-
-// ---- Upload (panggil replace_stok_produk pakai token login, bukan anon key) ----
-stokUploadBtn.addEventListener('click', async () => {
-  if (!stokParsedRows || !stokAccessToken) return;
-  if (!confirm(`Yakin timpa seluruh data stok dengan ${stokParsedRows.length} baris dari file ini?`)) return;
-
-  stokUploadBtn.disabled = true;
-  stokUploadBtn.textContent = 'Mengupload…';
-  stokStatusMsg.textContent = '';
-
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/replace_stok_produk`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': ANON_KEY,
-        'Authorization': 'Bearer ' + stokAccessToken
-      },
-      body: JSON.stringify({ rows: stokParsedRows })
-    });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || errData.hint || 'Gagal upload stok (cek apakah email kamu terdaftar di allowed_users)');
-    }
-
-    const result = await res.json();
-    stokStatusMsg.style.color = 'var(--success)';
-    let msg = `Berhasil! ${result.inserted} kode stok diperbarui.`;
-    if (result.skipped_count > 0) {
-      msg += ` ${result.skipped_count} kode DILEWATI karena belum terdaftar di master_produk: ` +
-        result.skipped_codes.slice(0, 15).join(', ') +
-        (result.skipped_codes.length > 15 ? `, dan ${result.skipped_codes.length - 15} lainnya…` : '');
-      stokStatusMsg.style.color = 'var(--danger)';
-    }
-    stokStatusMsg.textContent = msg;
-    if (result.skipped_count === 0) {
-      setTimeout(() => closeStokModal(), 1400);
-    }
-
-    // refresh badge stok di hasil search yang lagi tampil, kalau ada
-    if (lastResults && lastResults.length) {
-      await enrichResultsWithStok(lastResults);
-      applySort();
-      renderResults(lastResults);
-    }
-  } catch (err) {
-    stokStatusMsg.style.color = 'var(--danger)';
-    stokStatusMsg.textContent = 'Gagal: ' + err.message;
-  } finally {
-    stokUploadBtn.disabled = false;
-    stokUploadBtn.textContent = 'Upload & Timpa Stok';
-  }
-});
+// Upload/timpa stok sekarang jadi modul mandiri di stok.html (Modul 03 di
+// index) — divisi lain gak perlu lagi buka Konversian buat update stok
+// harian. Konversian tetap butuh status stok buat badge READY/INDENT di
+// hasil search, jadi bagian read-only (enrichResultsWithStok) di bawah ini
+// TETAP ada, cuma bagian upload/timpa-nya yang dipindah.
 
 // ---- Ambil status stok buat semua kode_asli yang muncul di hasil search ----
 async function enrichResultsWithStok(results) {
