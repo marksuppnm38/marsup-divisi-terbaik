@@ -141,6 +141,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .tipe-other{background:var(--surface-2);color:var(--text-secondary)}
 .badge-katalog-yes{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px}
 .badge-katalog-no{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px}
+.badge-jadi-order{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px;white-space:nowrap}
+.badge-tanpa-order{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px;white-space:nowrap}
 .rcard-meta{display:flex;flex-wrap:wrap;gap:3px 12px}
 .mi{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary)}
 .mi i{font-size:12px;color:var(--text-muted)}
@@ -286,6 +288,17 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .btn-export:disabled{background:var(--border-strong);cursor:not-allowed}
 .btn-clear-all{width:100%;height:30px;background:none;color:var(--text-muted);border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;cursor:pointer;margin-top:6px;transition:all .15s}
 .btn-clear-all:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-bg)}
+.btn-end-sesi{width:100%;height:32px;background:var(--surface);color:var(--text-secondary);border:1px solid var(--border-strong);border-radius:6px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
+.btn-end-sesi:hover:not(:disabled){color:var(--success);border-color:var(--success-border);background:var(--success-bg)}
+.btn-end-sesi:disabled{opacity:.5;cursor:not-allowed}
+
+/* TOAST */
+#toast-container{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{background:var(--text);color:var(--bg);font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.18);opacity:0;transform:translateY(8px);transition:opacity .25s ease,transform .25s ease;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast-success{background:var(--success);color:#fff}
+.toast-error{background:var(--danger);color:#fff}
+.toast i{font-size:15px}
 .btn-record{width:100%;height:38px;background:var(--success);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s;margin-top:8px}
 .btn-record:hover{filter:brightness(0.92)}
 .btn-record:disabled{background:var(--border-strong);cursor:not-allowed;filter:none}
@@ -378,7 +391,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   <button class="session-indicator empty" id="session-indicator" type="button" title="Klik untuk lihat daftar Konversi Berjalan">
     <span class="session-indicator-dot" id="session-indicator-dot"></span>
     <i class="ph ph-hospital"></i>
-    <span id="session-indicator-text">Belum ada sesi aktif</span>
+    <span id="session-indicator-text">Belum ada sesi — klik "Mulai Sesi Baru"</span>
   </button>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
@@ -395,6 +408,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       <div class="subtab-row">
         <button class="subtab-btn active" id="subtab-cari" type="button"><i class="ti ti-search"></i> Cari Produk</button>
         <button class="subtab-btn" id="subtab-sesi" type="button"><i class="ti ti-list-details"></i> Konversi Berjalan <span class="subtab-badge" id="sesi-badge" style="display:none">0</span></button>
+        <button class="subtab-btn" id="subtab-riwayat" type="button"><i class="ti ti-history"></i> Riwayat</button>
       </div>
       <div id="cari-controls">
         <div class="search-wrap">
@@ -431,7 +445,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
     </div>
     <div class="panel-body" id="panel-body-sesi" style="display:none">
       <div class="sesi-toolbar">
-        <button class="pr-add-clip-btn" id="btn-sesi-baru" type="button"><i class="ti ti-plus"></i> Konversi Baru</button>
+        <button class="pr-add-clip-btn" id="btn-sesi-baru" type="button"><i class="ti ti-plus"></i> Mulai Sesi Baru</button>
         <button class="toggle-btn" id="btn-sesi-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
       </div>
       <div id="sesi-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat sesi…</div>
@@ -441,6 +455,19 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
         <p>Belum ada konversi yang berjalan.<br>Mulai dari tab Cari Produk, sesi otomatis muncul di sini.</p>
       </div>
       <div id="sesi-list"></div>
+    </div>
+    <div class="panel-body" id="panel-body-riwayat" style="display:none">
+      <div class="sesi-toolbar">
+        <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center">Sesi yang sudah selesai — jadi order maupun enggak</span>
+        <button class="toggle-btn" id="btn-riwayat-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
+      </div>
+      <div id="riwayat-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat riwayat…</div>
+      <div id="riwayat-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
+      <div class="clip-empty" id="riwayat-list-empty" style="display:none">
+        <i class="ti ti-history"></i>
+        <p>Belum ada sesi yang selesai.<br>Sesi yang di-Record atau di-Selesaikan bakal muncul di sini.</p>
+      </div>
+      <div id="riwayat-list"></div>
     </div>
   </div>
 
@@ -512,6 +539,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       </button>
       <button class="btn-record" id="btn-record" disabled>
         <i class="ti ti-clipboard-check"></i> Record Konversi
+      </button>
+      <button class="btn-end-sesi" id="btn-end-sesi" type="button" disabled title="Tutup sesi ini tanpa Record — data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan">
+        <i class="ti ti-square-check"></i> Selesaikan Sesi
       </button>
       <button class="btn-clear-all" id="btn-clear-all">Hapus semua</button>
     </div>
@@ -1108,9 +1138,16 @@ let currentButuhBantuan = false;
 
 const subtabCari = document.getElementById('subtab-cari');
 const subtabSesi = document.getElementById('subtab-sesi');
+const subtabRiwayat = document.getElementById('subtab-riwayat');
 const cariControls = document.getElementById('cari-controls');
 const panelBodyCari = document.getElementById('panel-body-cari');
 const panelBodySesi = document.getElementById('panel-body-sesi');
+const panelBodyRiwayat = document.getElementById('panel-body-riwayat');
+const riwayatList = document.getElementById('riwayat-list');
+const riwayatListEmpty = document.getElementById('riwayat-list-empty');
+const riwayatListLoading = document.getElementById('riwayat-list-loading');
+const riwayatListError = document.getElementById('riwayat-list-error');
+const btnRiwayatRefresh = document.getElementById('btn-riwayat-refresh');
 const sesiBadge = document.getElementById('sesi-badge');
 const sesiList = document.getElementById('sesi-list');
 const sesiListEmpty = document.getElementById('sesi-list-empty');
@@ -1123,7 +1160,33 @@ const sesiSaveStatus = document.getElementById('sesi-save-status');
 const sessionIndicator = document.getElementById('session-indicator');
 const sessionIndicatorDot = document.getElementById('session-indicator-dot');
 const sessionIndicatorText = document.getElementById('session-indicator-text');
+const btnEndSesi = document.getElementById('btn-end-sesi');
+const toastContainer = document.getElementById('toast-container');
 const APP_TITLE_BASE = document.title; // "Conversion Workspace — PT Pionir Nusantara Manufacturing"
+
+// Notifikasi kecil yang muncul-hilang sendiri — dipakai buat kasih feedback instan
+// untuk aksi yang sebelumnya senyap (bikin sesi, selesaikan sesi), biar user gak
+// ragu-ragu apakah aksinya beneran kejadian atau enggak.
+function showToast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  const icon = type === 'error' ? 'ti-alert-circle' : 'ti-circle-check';
+  el.innerHTML = `<i class="ti ${icon}"></i><span></span>`;
+  el.querySelector('span').textContent = msg;
+  toastContainer.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, 2600);
+}
+
+// Tombol "Selesaikan Sesi" cuma boleh aktif kalau memang lagi ada sesi yang
+// berjalan di server (currentSesiId keisi) — jadi state-nya selalu nyambung
+// sama kenyataan, gak pernah nampilin tombol aktif buat sesi yang gak ada.
+function updateEndSesiBtnState() {
+  btnEndSesi.disabled = !currentSesiId;
+}
 
 function setSesiSavedStatus(text, isError) {
   sesiSaveStatus.textContent = text || '';
@@ -1191,6 +1254,8 @@ async function ensureSesi() {
   }
   const rows = await res.json();
   currentSesiId = rows[0].id;
+  updateEndSesiBtnState();
+  updateClipHeaderCompact(); // refresh indikator header (ikut currentSesiId, bukan cuma nama RS)
   return currentSesiId;
 }
 
@@ -1317,8 +1382,11 @@ btnButuhBantuan.addEventListener('click', async () => {
 });
 renderButuhBantuanBtn();
 
-// Mulai konversi baru dari nol (sesi lama tetap tersimpan, bisa dibuka lagi lewat daftar)
-function startNewSesi() {
+// Mulai konversi baru dari nol (sesi lama tetap tersimpan, bisa dibuka lagi lewat daftar).
+// Beda sama sebelumnya: begitu diklik, baris sesi langsung dibikin di server saat
+// itu juga (bukan nunggu user isi form/nambah produk dulu) — biar "Mulai Sesi Baru"
+// beneran berarti sesi udah mulai, dan langsung muncul di daftar Konversi Berjalan.
+async function startNewSesi() {
   if (clipboard.length && !confirm('Mulai konversi baru? Sesi yang sedang dibuka akan ditinggalkan — datanya tetap tersimpan, bisa dibuka lagi lewat daftar Konversi Berjalan.')) return;
   currentSesiId = null;
   currentButuhBantuan = false;
@@ -1332,22 +1400,73 @@ function startNewSesi() {
   renderButuhBantuanBtn();
   setSesiSavedStatus('');
   resetChecklistUI();
+  updateEndSesiBtnState();
   switchSubTab('cari');
+
+  btnSesiBaru.disabled = true;
+  try {
+    await ensureSesi();
+    updateEndSesiBtnState();
+    setSesiSavedStatus('Tersimpan ✓');
+    showToast('Sesi baru dibuat ✓');
+    loadSesiList();
+  } catch (err) {
+    showToast('Gagal bikin sesi baru: ' + err.message, 'error');
+  } finally {
+    btnSesiBaru.disabled = false;
+  }
 }
 btnSesiBaru.addEventListener('click', startNewSesi);
+
+// Nutup sesi yang lagi dibuka tanpa harus lewat Record — buat kasus sesi cuma
+// dipakai cek-cek/diskusi dan gak jadi ada transaksi, tapi user tetap mau
+// "beresin" biar gak numpuk di daftar Konversi Berjalan.
+btnEndSesi.addEventListener('click', async () => {
+  if (!currentSesiId) return;
+  const namaAktif = inpRs.value.trim() || '(Nama RS belum diisi)';
+  if (!confirm(`Selesaikan sesi "${namaAktif}"? Sesi akan keluar dari daftar Konversi Berjalan, tapi datanya tetap tersimpan.`)) return;
+  btnEndSesi.disabled = true;
+  try {
+    await sesiFetch(`${SESI_TABLE}?id=eq.${currentSesiId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
+    });
+    currentSesiId = null;
+    currentButuhBantuan = false;
+    clipboard = [];
+    inpRs.value = '';
+    inpSales.value = '';
+    updateClipboard();
+    renderResults(lastResults);
+    setClipHeaderCollapsed(false);
+    updateClipHeaderCompact();
+    renderButuhBantuanBtn();
+    setSesiSavedStatus('');
+    resetChecklistUI();
+    showToast('Sesi diselesaikan ✓');
+    loadSesiList();
+  } catch (err) {
+    showToast('Gagal selesaikan sesi: ' + err.message, 'error');
+  } finally {
+    updateEndSesiBtnState();
+  }
+});
 btnSesiRefresh.addEventListener('click', loadSesiList);
 
 function switchSubTab(tab) {
-  const isSesi = tab === 'sesi';
-  subtabCari.classList.toggle('active', !isSesi);
-  subtabSesi.classList.toggle('active', isSesi);
-  panelBodyCari.style.display = isSesi ? 'none' : 'block';
-  panelBodySesi.style.display = isSesi ? 'block' : 'none';
-  cariControls.style.display = isSesi ? 'none' : 'block';
-  if (isSesi) loadSesiList();
+  subtabCari.classList.toggle('active', tab === 'cari');
+  subtabSesi.classList.toggle('active', tab === 'sesi');
+  subtabRiwayat.classList.toggle('active', tab === 'riwayat');
+  panelBodyCari.style.display = tab === 'cari' ? 'block' : 'none';
+  panelBodySesi.style.display = tab === 'sesi' ? 'block' : 'none';
+  panelBodyRiwayat.style.display = tab === 'riwayat' ? 'block' : 'none';
+  cariControls.style.display = tab === 'cari' ? 'block' : 'none';
+  if (tab === 'sesi') loadSesiList();
+  if (tab === 'riwayat') loadRiwayatList();
 }
 subtabCari.addEventListener('click', () => switchSubTab('cari'));
 subtabSesi.addEventListener('click', () => switchSubTab('sesi'));
+subtabRiwayat.addEventListener('click', () => switchSubTab('riwayat'));
 
 function sesiTimeAgo(iso) {
   if (!iso) return '-';
@@ -1390,7 +1509,64 @@ function renderSesiCard(s) {
   </div>`;
 }
 
-// Ambil ringkasan Permintaan RS buat sekumpulan sesi sekaligus (1 panggilan RPC
+// Kartu riwayat: sesi yang statusnya 'selesai', apapun hasilnya. Dibedain visual
+// pake badge "Jadi Order" (kalau ada baris konversi_record nempel di sesi ini,
+// lewat kolom konversi_record.sesi_id) vs "Ditutup Tanpa Order" (kalau enggak —
+// artinya ditutup lewat "Selesaikan Sesi", bukan "Record Konversi"). Kalau sesi
+// ini udah pernah direvisi (>1 baris konversi_record), badge-nya nunjukin nomor
+// REV terakhir + berapa versi yang kesimpen semuanya.
+function renderRiwayatCard(s) {
+  const itemCount = (s.sesi_konversi_item && s.sesi_konversi_item[0] && s.sesi_konversi_item[0].count) || 0;
+  const records = s.konversi_record || [];
+  const latest = records.length ? records.reduce((a, b) => (b.revisi > a.revisi ? b : a)) : null;
+  const orderBadge = latest
+    ? `<span class="badge-jadi-order"><i class="ti ti-circle-check"></i> Jadi Order${latest.revisi > 0 ? ' · REV' + latest.revisi : ''}${latest.grand_total != null ? ' · Rp' + Number(latest.grand_total).toLocaleString('id-ID') : ''}</span>`
+    : `<span class="badge-tanpa-order"><i class="ti ti-square-off"></i> Ditutup Tanpa Order</span>`;
+  const versiChip = records.length > 1
+    ? `<span class="mi"><i class="ti ti-versions"></i><span>${records.length} versi tersimpan</span></span>`
+    : '';
+  return `<div class="rcard riwayat-card" data-id="${s.id}" style="position:relative">
+    <div class="rcard-top" style="padding-right:8px">
+      <div class="rcard-name">${s.nama_rs ? s.nama_rs : '(Nama RS belum diisi)'}</div>
+      ${orderBadge}
+    </div>
+    <div class="rcard-meta">
+      <span class="mi"><i class="ti ti-user"></i><span>PIC: ${s.pic_marsup || '-'}</span></span>
+      <span class="mi"><i class="ti ti-users"></i><span>Sales: ${s.nama_sales || '-'}</span></span>
+      <span class="mi"><i class="ti ti-package"></i><span>${itemCount} produk</span></span>
+      ${versiChip}
+      <span class="mi"><i class="ti ti-clock"></i><span>Selesai ${sesiTimeAgo(s.updated_at)}</span></span>
+    </div>
+  </div>`;
+}
+
+async function loadRiwayatList() {
+  riwayatListLoading.style.display = 'block';
+  riwayatListError.style.display = 'none';
+  riwayatListEmpty.style.display = 'none';
+  riwayatList.innerHTML = '';
+  try {
+    const res = await sesiFetch(`${SESI_TABLE}?status=eq.selesai&select=*,${SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi)&order=updated_at.desc&limit=100`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
+    }
+    const data = await res.json();
+    if (data.length === 0) { riwayatListEmpty.style.display = 'block'; return; }
+    riwayatList.innerHTML = data.map(renderRiwayatCard).join('');
+    riwayatList.querySelectorAll('.riwayat-card').forEach(card => {
+      card.addEventListener('click', () => openSesi(card.dataset.id));
+    });
+  } catch (err) {
+    riwayatListError.textContent = err.message;
+    riwayatListError.style.display = 'block';
+  } finally {
+    riwayatListLoading.style.display = 'none';
+  }
+}
+btnRiwayatRefresh.addEventListener('click', loadRiwayatList);
+
+
 // buat seluruh daftar), lalu tempel ke masing-masing baris sesi sebagai _permintaan.
 // Gagal di sini gak boleh gagalin daftar sesi — badge-nya optional.
 async function attachPermintaanSummary(sesiRows) {
@@ -1479,6 +1655,7 @@ async function deleteSesi(id, nama, btn) {
       setSesiSavedStatus('');
       updateClipHeaderCompact();
       resetChecklistUI();
+      updateEndSesiBtnState();
     }
     await loadSesiList();
   } catch (err) {
@@ -1505,6 +1682,7 @@ async function openSesi(id) {
     inpSales.value = sesi.nama_sales || '';
     if (sesi.pic_marsup) inpMarsup.value = sesi.pic_marsup;
     checklistPagu = (sesi.pagu != null) ? sesi.pagu : null;
+    updateEndSesiBtnState();
 
     clipboard = items.map(it => ({
       kode_produk: it.kode_produk, kode_asli: it.kode_asli, nama_produk: it.nama_produk,
@@ -1602,14 +1780,18 @@ function updateClipHeaderCompact() {
 // atau di-scroll) dan judul tab browser (biar gampang bedain kalau buka
 // beberapa tab untuk beberapa RS sekaligus).
 function updateSessionIndicatorAndTitle(rsRaw, salesRaw) {
-  const hasName = !!rsRaw;
-  sessionIndicator.classList.toggle('empty', !hasName);
-  sessionIndicator.classList.toggle('active', hasName);
-  if (hasName) {
-    sessionIndicatorText.textContent = salesRaw ? `${rsRaw} · ${salesRaw}` : rsRaw;
-    document.title = `${rsRaw} — Conversion Workspace`;
+  // Aktif/enggaknya indikator sekarang ngikutin currentSesiId (fakta di server),
+  // bukan cuma "ada nama RS yang diketik" — soalnya sesi bisa udah kebentuk
+  // duluan (lewat "Mulai Sesi Baru") sebelum nama RS-nya sempat diisi.
+  const hasSesi = !!currentSesiId;
+  sessionIndicator.classList.toggle('empty', !hasSesi);
+  sessionIndicator.classList.toggle('active', hasSesi);
+  if (hasSesi) {
+    const label = rsRaw ? (salesRaw ? `${rsRaw} · ${salesRaw}` : rsRaw) : 'Sesi baru (RS belum diisi)';
+    sessionIndicatorText.textContent = label;
+    document.title = rsRaw ? `${rsRaw} — Conversion Workspace` : APP_TITLE_BASE;
   } else {
-    sessionIndicatorText.textContent = 'Belum ada sesi aktif';
+    sessionIndicatorText.textContent = 'Belum ada sesi — klik "Mulai Sesi Baru"';
     document.title = APP_TITLE_BASE;
   }
 }
@@ -2071,7 +2253,28 @@ btnExport.addEventListener('click', async () => {
   const namaRs = inpRs.value.trim() || 'RS';
   const namaSales = inpSales.value.trim() || 'Sales';
   const tanggal = new Date().toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'});
-  const filename = `CONVERTED${modeSwasta?'-SWASTA':''}-${namaSales.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${namaRs.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${tanggal}.xlsx`;
+
+  // Sesi ini udah pernah di-Record sebelumnya? Kalau iya, file export dikasih
+  // suffix -REV{n} ngikutin nomor revisi yang BAKAL kepake kalau kamu Record
+  // sekarang (revisi terakhir + 1) — bukan revisi lama yang udah tersimpan.
+  // Ini disamain sama cara Record ngitung nomornya, biar nama file yang kamu
+  // export duluan (sebelum sempet Record) tetep konsisten sama yang bakal
+  // kesimpen nanti, bukan ketinggalan satu angka.
+  let revSuffix = '';
+  if (currentSesiId) {
+    try {
+      const revRes = await sesiFetch(`konversi_record?sesi_id=eq.${currentSesiId}&select=revisi&order=revisi.desc&limit=1`);
+      if (revRes.ok) {
+        const revRows = await revRes.json();
+        if (revRows.length) {
+          const revisiBerikutnya = (revRows[0].revisi || 0) + 1;
+          revSuffix = `-REV${revisiBerikutnya}`;
+        }
+      }
+    } catch { /* gagal cek revisi → export tetap jalan tanpa suffix, bukan blocking */ }
+  }
+
+  const filename = `CONVERTED${modeSwasta?'-SWASTA':''}-${namaSales.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${namaRs.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${tanggal}${revSuffix}.xlsx`;
 
   exportModal.classList.add('show');
   setProgress(0, 1, 'Menyiapkan data…');
@@ -2535,6 +2738,22 @@ recordSubmitBtn.addEventListener('click', async () => {
 
   // ---- Tahap 1: Supabase (fondasi, wajib sukses) ----
   try {
+    // Cek dulu apakah sesi ini udah pernah kerekam sebelumnya (mis. sesi lama
+    // yang di-reopen dari tab Riwayat lalu diubah lagi). Kalau iya, ini
+    // dianggap REVISI: record baru tetap di-INSERT (bukan nimpa yang lama —
+    // biar histori tiap versi kesimpen lengkap), tapi dikasih nomor revisi
+    // yang naik dari yang terakhir.
+    let revisiKe = 0;
+    if (currentSesiId) {
+      try {
+        const cekRes = await sesiFetch(`konversi_record?sesi_id=eq.${currentSesiId}&select=revisi&order=revisi.desc&limit=1`);
+        if (cekRes.ok) {
+          const cekRows = await cekRes.json();
+          if (cekRows.length) revisiKe = (cekRows[0].revisi || 0) + 1;
+        }
+      } catch { /* gagal cek → anggap revisi 0, fallback aman (bukan blocking) */ }
+    }
+
     const recordBody = {
       sesi_id: currentSesiId || null,
       permintaan_id: checklistPermintaanId || null,
@@ -2545,6 +2764,7 @@ recordSubmitBtn.addEventListener('click', async () => {
       pagu_total: (typeof checklistPagu !== 'undefined' ? checklistPagu : null),
       kategori: kategori,
       grand_total: grandTotal,
+      revisi: revisiKe,
       notes: recNotes.value.trim(),
       link: recLink.value.trim(),
       synced_to_sheet: false
@@ -2595,12 +2815,21 @@ recordSubmitBtn.addEventListener('click', async () => {
         method: 'PATCH',
         body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
       }).catch(() => {});
+      // currentSesiId SENGAJA tetap dipertahankan (bukan di-null-in) — kalau
+      // langsung di-null, Export yang diklik tepat setelah Record kehilangan
+      // pegangan buat ngecek nomor revisi (jadi filename-nya balik polos tanpa
+      // -REVx). Sesi tetap "kepegang" di layar sampai user eksplisit klik
+      // "Mulai Sesi Baru" atau buka sesi lain — statusnya sendiri udah 'selesai'
+      // di server, jadi tetap gak nyangkut di daftar "Konversi Berjalan".
+      updateEndSesiBtnState();
+      loadSesiList();
+      if (subtabRiwayat.classList.contains('active')) loadRiwayatList();
     }
     if (checklistPermintaanId) {
       autoFinalizePermintaan().catch(() => {});
     }
 
-    recordStatus.textContent = 'Tersimpan ✓ — menyinkronkan ke Sheet…';
+    recordStatus.textContent = (revisiKe > 0 ? `Tersimpan sebagai REV${revisiKe} ✓` : 'Tersimpan ✓') + ' — menyinkronkan ke Sheet…';
     recordStatus.style.color = 'var(--success)';
   } catch (err) {
     recordStatus.textContent = 'Gagal: ' + err.message;
@@ -3072,6 +3301,7 @@ async function callUpdatePermintaanItem(itemId, status, produkId, kodeProduk) {
   }
 }
 </script>
+<div id="toast-container"></div>
 </div><!-- /#app-root -->
 </body>
 </html>
