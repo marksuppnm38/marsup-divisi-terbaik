@@ -399,32 +399,67 @@ async function openDetail(kode){
   document.getElementById('dm-kode').textContent = kode;
   document.getElementById('dm-body').innerHTML = '<div class="detail-loading"><i class="ph ph-circle-notch spinner"></i> Memuat detail…</div>';
   detailOverlay.classList.add('show');
-  if (thumbUrl) {
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.onload = () => {
-    const canvas = document.getElementById('dm-thumb-canvas');
-    if (!canvas) return;
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const d2 = data.data;
-    const bgR = d2[0], bgG = d2[1], bgB = d2[2];
-    const threshold = 30;
-    for (let i = 0; i < d2.length; i += 4) {
-      if (Math.abs(d2[i]-bgR)<threshold && Math.abs(d2[i+1]-bgG)<threshold && Math.abs(d2[i+2]-bgB)<threshold) {
-        d2[i+3] = 0;
-      }
+  try {
+    const d = await rpc('get_produk_detail', {p_kode: kode});
+    if(!d){ document.getElementById('dm-body').innerHTML = '<div class="detail-loading">Produk tidak ditemukan.</div>'; return; }
+    document.getElementById('dm-title').textContent = d.nama_produk || '—';
+    document.getElementById('dm-kode').textContent = d.kode_produk;
+
+    const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
+    const mediaThumb = d.media ? d.media.find(m=>m.is_primary && m.url) || d.media.find(m=>m.url) : null;
+    const thumbUrl = mediaThumb?.url || (d.kode_asli ? THUMB_BASE + d.kode_asli + '.png' : null);
+
+    const hargaMap = {};
+    (d.harga||[]).forEach(h=>{ if(!hargaMap[h.jenis]) hargaMap[h.jenis]=h; });
+    const hargaHtml = `<div class="harga-grid">
+      ${['EKATALOG','UPLOAD','SWASTA'].map(j=>`
+        <div class="harga-box">
+          <div class="harga-box-label">${j==='EKATALOG'?'e-Katalog':j==='UPLOAD'?'Upload':j}</div>
+          <div class="harga-box-val">${hargaMap[j] ? rupiah(hargaMap[j].harga) : '—'}</div>
+          <div class="harga-box-tahun">${hargaMap[j] ? hargaMap[j].tahun : ''}</div>
+        </div>`).join('')}
+    </div>`;
+
+    document.getElementById('dm-body').innerHTML = `
+      <canvas id="dm-thumb-canvas" class="detail-thumb" style="${thumbUrl?'':'display:none'}"></canvas>
+      ${!thumbUrl ? `<div class="detail-thumb-placeholder"><i class="ph ph-image"></i> Tidak ada gambar</div>` : ''}
+      ${hargaHtml}
+      <div>
+        ${row('Tipe', `<span class="badge badge-${(d.tipe||'').toLowerCase()}">${d.tipe||'—'}</span>`)}
+        ${row('No. AKD', d.no_akd || '—')}
+        ${row('Kode KFA', d.kode_kfa ? `<span style="font-family:var(--mono)">${d.kode_kfa}</span>` : '—')}
+        ${row('Spesifikasi', d.spesifikasi || '—')}
+        ${row('Link v6', d.link_v6 ? `<a href="${d.link_v6}" target="_blank">Lihat di e-Katalog <i class="ph ph-arrow-square-out"></i></a>` : '—')}
+      </div>
+    `;
+
+    if (thumbUrl) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.getElementById('dm-thumb-canvas');
+        if (!canvas) return;
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const px = data.data;
+        const bgR = px[0], bgG = px[1], bgB = px[2];
+        for (let i = 0; i < px.length; i += 4) {
+          if (Math.abs(px[i]-bgR)<30 && Math.abs(px[i+1]-bgG)<30 && Math.abs(px[i+2]-bgB)<30) px[i+3] = 0;
+        }
+        ctx.putImageData(data, 0, 0);
+      };
+      img.onerror = () => {
+        const canvas = document.getElementById('dm-thumb-canvas');
+        if (canvas) canvas.style.display = 'none';
+      };
+      img.src = thumbUrl;
     }
-    ctx.putImageData(data, 0, 0);
-  };
-  img.onerror = () => {
-    const canvas = document.getElementById('dm-thumb-canvas');
-    if (canvas) canvas.style.display = 'none';
-  };
-  img.src = thumbUrl;
+  } catch(e){
+    document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${e.message}</div>`;
+  }
 }
   try {
     const d = await rpc('get_produk_detail', {p_kode: kode});
@@ -461,7 +496,6 @@ async function openDetail(kode){
   } catch(e){
     document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${e.message}</div>`;
   }
-}
 function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`; }
 async function initAuth() {
   const saved = readAuthSession();
