@@ -332,7 +332,20 @@ tr:hover td{background:var(--surface-2)}
 
 </main>
 </div>
-
+<div class="detail-modal-overlay" id="detail-modal-overlay">
+  <div class="detail-modal" id="detail-modal">
+    <div class="detail-modal-head">
+      <div>
+        <div class="detail-modal-title" id="dm-title">—</div>
+        <div class="detail-modal-sub" id="dm-kode">—</div>
+      </div>
+      <button class="detail-modal-close" id="dm-close">&times;</button>
+    </div>
+    <div class="detail-modal-body" id="dm-body">
+      <div class="detail-loading"><i class="ph ph-circle-notch spinner"></i> Memuat detail…</div>
+    </div>
+  </div>
+</div>
 <script>
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
@@ -771,19 +784,5 @@ async function loadEverything(){
 }
 initAuth();
 </script>
-<div class="detail-modal-overlay" id="detail-modal-overlay">
-  <div class="detail-modal" id="detail-modal">
-    <div class="detail-modal-head">
-      <div>
-        <div class="detail-modal-title" id="dm-title">—</div>
-        <div class="detail-modal-sub" id="dm-kode">—</div>
-      </div>
-      <button class="detail-modal-close" id="dm-close">&times;</button>
-    </div>
-    <div class="detail-modal-body" id="dm-body">
-      <div class="detail-loading"><i class="ph ph-circle-notch spinner"></i> Memuat detail…</div>
-    </div>
-  </div>
-</div>
 </body>
 </html>
