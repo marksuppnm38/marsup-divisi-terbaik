@@ -215,6 +215,19 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .pr-add-clip-btn{font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;border:1px solid var(--accent);background:var(--accent-bg);color:var(--accent-text);cursor:pointer;white-space:nowrap;font-family:inherit}
 .pr-add-clip-btn:hover{background:var(--accent);color:#fff}
 .pr-add-clip-btn:disabled{cursor:default;opacity:.7;background:var(--surface-2);color:var(--text-muted);border-color:var(--border)}
+.pr-review-box{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:4px}
+.pr-review-info{font-size:12.5px;color:var(--text-secondary);margin-bottom:10px}
+.pr-review-head{display:grid;grid-template-columns:2.2fr 0.8fr 1.2fr 28px;gap:8px;font-size:11px;color:var(--text-muted);padding:0 4px 6px}
+.pr-review-list{max-height:300px;overflow-y:auto;margin:0 -2px}
+.pr-review-row{display:grid;grid-template-columns:2.2fr 0.8fr 1.2fr 28px;gap:8px;align-items:center;padding:6px 2px;border-top:0.5px solid var(--border)}
+.pr-review-row input{width:100%;height:30px;padding:0 8px;font-size:12.5px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none}
+.pr-review-row input:focus{border-color:var(--accent)}
+.pr-review-row input::placeholder{color:var(--text-muted)}
+.pr-review-del{padding:4px;border:none;background:transparent;cursor:pointer;color:var(--danger);display:flex;align-items:center;justify-content:center;font-size:16px}
+.pr-review-del:hover{opacity:.7}
+.pr-review-empty{padding:16px 4px;text-align:center;color:var(--text-muted);font-size:12px}
+.pr-review-add-btn{width:100%;margin-top:10px;height:32px;border-radius:8px;border:1px dashed var(--border-strong);background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px}
+.pr-review-add-btn:hover{border-color:var(--accent);color:var(--accent-text)}
 
 /* KEBUTUHAN RS: section nempel di sidebar clip, bagian dari alur konversi yang sama */
 .clip-kebutuhan-section{flex-shrink:0;border-bottom:2px solid var(--border-strong);background:var(--accent-bg);display:flex;flex-direction:column;max-height:38%;overflow:hidden}
@@ -242,6 +255,15 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .kb-item-actions button{flex:1;font-size:11px;font-weight:600;padding:5px 8px;border-radius:6px;border:none;cursor:pointer;font-family:inherit}
 .kb-bisa-btn{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)!important}
 .kb-tidak-btn{background:var(--surface-2);color:var(--danger);border:1px solid var(--danger-border)!important}
+.kb-item-matched{font-size:10.5px;color:var(--text-muted);margin-top:2px}
+.kb-item-links{display:flex;gap:12px;margin-top:2px}
+.kb-item-links a{font-size:10.5px;cursor:pointer;color:var(--text-secondary);text-decoration:underline}
+.kb-item-links a.kb-batal-link{color:var(--danger)}
+.kb-picker select{width:100%;font-size:11.5px;padding:5px 6px;border-radius:6px;border:1px solid var(--border);font-family:inherit;background:var(--surface-2);color:var(--text);margin-bottom:6px}
+.kb-picker-actions{display:flex;gap:6px}
+.kb-picker-actions button{flex:1;font-size:11px;font-weight:600;padding:5px 8px;border-radius:6px;border:none;cursor:pointer;font-family:inherit}
+.kb-confirm-btn{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)!important}
+.kb-cancel-btn{background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border)!important}
 .kb-footer{flex-shrink:0;padding:8px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;background:var(--surface)}
 .kb-record-btn{background:var(--success);color:#fff;border:none;border-radius:8px;padding:8px 10px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px}
 .kb-record-btn:disabled{background:var(--border-strong);cursor:not-allowed}
@@ -710,7 +732,23 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 
       <div class="pr-actions">
         <button class="pr-cancel" id="pr-cancel-btn-2">Batal</button>
-        <button id="pr-submit-btn">Mulai Sesi &amp; Cek Satu-satu</button>
+        <button id="pr-submit-btn">Lanjut: Review Item</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Review item hasil parse — cek/edit sebelum benar-benar disimpan -->
+    <div id="pr-review-wrap" style="display:none;">
+      <div class="pr-review-box">
+        <div class="pr-review-info" id="pr-review-info">item terbaca — cek dan lengkapi sebelum disimpan</div>
+        <div class="pr-review-head">
+          <span>Item diminta</span><span>Qty</span><span>Pagu satuan</span><span></span>
+        </div>
+        <div class="pr-review-list" id="pr-review-rows"></div>
+        <button class="pr-review-add-btn" id="pr-review-add-btn" type="button"><i class="ti ti-plus"></i>Tambah baris manual</button>
+      </div>
+      <div class="pr-actions">
+        <button class="pr-cancel" id="pr-review-back-btn" type="button">Kembali edit</button>
+        <button id="pr-review-save-btn" type="button">Simpan &amp; mulai sesi</button>
       </div>
     </div>
 
@@ -1918,6 +1956,12 @@ const prTeks = document.getElementById('pr-teks');
 const prFile = document.getElementById('pr-file');
 const prSubmitBtn = document.getElementById('pr-submit-btn');
 const prStatusMsg = document.getElementById('pr-status-msg');
+const prReviewWrap = document.getElementById('pr-review-wrap');
+const prReviewInfo = document.getElementById('pr-review-info');
+const prReviewRows = document.getElementById('pr-review-rows');
+const prReviewAddBtn = document.getElementById('pr-review-add-btn');
+const prReviewBackBtn = document.getElementById('pr-review-back-btn');
+const prReviewSaveBtn = document.getElementById('pr-review-save-btn');
 const kbSection = document.getElementById('clip-kebutuhan-section');
 const kbTitle = document.getElementById('kb-title');
 const kbCount = document.getElementById('kb-count');
@@ -2580,6 +2624,92 @@ btnExport.addEventListener('click', async () => {
       wsSummary.getRow(r).getCell(6).numFmt = '#,##0';
     }
 
+    // ── SHEET: KEBUTUHAN RS ──
+    // Cuma dibikin kalau sesi ini emang punya Permintaan RS yang direcord.
+    // Formatnya niru workflow lama tim (Google Sheets): satu baris = satu item
+    // yang diminta RS, kolom Kode/Deskripsi/Harga keisi kalau item itu udah
+    // di-link ke produk clipboard lewat fitur "Bisa Dipenuhi". Kosong kalau
+    // belum di-link (baik karena belum dicek, atau ditandai tidak bisa).
+    if (checklistItems.length > 0) {
+      const wsKb = wb.addWorksheet('KEBUTUHAN RS');
+      wsKb.getRow(1).getCell(1).value = 'KEBUTUHAN RS';
+      wsKb.getRow(1).getCell(1).font = {bold:true, size:13};
+      wsKb.getRow(2).getCell(1).value = 'PT Pionir Nusantara Manufacturing';
+      wsKb.getRow(2).getCell(1).font = {italic:true, color:{argb:'FF4B5563'}};
+      wsKb.getRow(3).getCell(1).value = 'RS / Instansi'; wsKb.getRow(3).getCell(2).value = checklistNamaRs || namaRs;
+      wsKb.getRow(4).getCell(1).value = 'Sales';          wsKb.getRow(4).getCell(2).value = checklistSales || namaSales;
+      wsKb.getRow(5).getCell(1).value = 'Pagu';           wsKb.getRow(5).getCell(2).value = checklistPagu != null ? checklistPagu : '';
+      wsKb.getRow(6).getCell(1).value = '';
+
+      const kbHdrRow = wsKb.getRow(7);
+      const kbHeaders = ['No.','Item Diminta','Qty Diminta','Kode Produk','Deskripsi','Harga','Total','Status'];
+      kbHeaders.forEach((h,i) => {
+        const cell = kbHdrRow.getCell(i+1);
+        cell.value = h;
+        cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
+        cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF1D5BD4'}};
+        cell.alignment = {vertical:'middle', horizontal:'center'};
+        cell.border = {bottom:{style:'thin',color:{argb:'FFE2E4E9'}}};
+      });
+      kbHdrRow.height = 22;
+      wsKb.columns = [{width:5},{width:40},{width:12},{width:22},{width:38},{width:16},{width:16},{width:16}];
+
+      let kbRow = 8;
+      let kbGrandTotal = 0;
+      checklistItems.forEach((item, idx) => {
+        const matched = item.matched_kode_produk ? clipboard.find(c => c.kode_produk === item.matched_kode_produk) : null;
+        const hargaPakai = matched ? (modeSwasta ? (matched.harga_swasta || 0) : (matched.harga_ekat || 0)) : 0;
+        const totalHarga = matched ? hargaPakai * (item.qty_diminta || 1) : 0;
+        if (matched) kbGrandTotal += totalHarga;
+
+        const row = wsKb.getRow(kbRow);
+        row.getCell(1).value = idx + 1;
+        row.getCell(2).value = item.raw_text;
+        row.getCell(3).value = item.qty_diminta || '';
+        row.getCell(4).value = matched ? matched.kode_produk : '';
+        row.getCell(5).value = matched ? matched.nama_produk : '';
+        row.getCell(6).value = matched ? (hargaPakai || '') : '';
+        row.getCell(7).value = matched ? (totalHarga || '') : '';
+
+        const statusLabel = item.status === 'TERPENUHI' ? 'Bisa Dipenuhi'
+          : item.status === 'TIDAK_TERPENUHI' ? 'Tidak Bisa'
+          : 'Belum Dicek';
+        row.getCell(8).value = statusLabel;
+        row.getCell(8).alignment = {horizontal:'center', vertical:'middle'};
+        if (statusLabel === 'Bisa Dipenuhi') row.getCell(8).font = {color:{argb:'FF15803D'}, bold:true};
+        else if (statusLabel === 'Tidak Bisa') row.getCell(8).font = {color:{argb:'FFB91C1C'}, bold:true};
+        else row.getCell(8).font = {color:{argb:'FFB45309'}, bold:true};
+
+        if (idx % 2 === 0) {
+          Array.from({length:8}, (_,c)=>c+1).forEach(c => {
+            row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
+          });
+        }
+        row.alignment = {vertical:'middle', wrapText: true};
+        kbRow++;
+      });
+
+      const kbTotRow = wsKb.getRow(kbRow);
+      kbTotRow.getCell(5).value = 'TOTAL TERPENUHI';
+      kbTotRow.getCell(5).font = {bold:true};
+      kbTotRow.getCell(7).value = kbGrandTotal;
+      kbTotRow.getCell(7).font = {bold:true};
+      kbTotRow.getCell(7).numFmt = '#,##0';
+      kbRow++;
+
+      const doneCount = checklistItems.filter(i => i.status === 'TERPENUHI').length;
+      const totalCount = checklistItems.length;
+      const pct = totalCount > 0 ? Math.round((doneCount/totalCount)*1000)/10 : 0;
+      const kbRekapRow = wsKb.getRow(kbRow);
+      kbRekapRow.getCell(2).value = `Tingkat pemenuhan: ${pct}% (${doneCount}/${totalCount} item)`;
+      kbRekapRow.getCell(2).font = {italic:true, color:{argb:'FF4B5563'}};
+
+      for (let r = 8; r < kbRow - 1; r++) {
+        wsKb.getRow(r).getCell(6).numFmt = '#,##0';
+        wsKb.getRow(r).getCell(7).numFmt = '#,##0';
+      }
+    }
+
     // ── SHEETS PER SET ──
     for (const setItem of sets) {
       const items = setItemsMap[setItem.kode_produk] || [];
@@ -3164,6 +3294,9 @@ function openPrModal() {
   prStatusMsg.textContent = '';
   prTeksFromOcr = false;
   prShowTab('teks');
+  reviewItems = [];
+  prReviewWrap.style.display = 'none';
+  prFormWrap.style.display = '';
   if (!prTanggal.value) prTanggal.value = new Date().toISOString().slice(0,10);
 
   // Satu login di gerbang awal sudah cukup — kalau token expired, balik ke gerbang.
@@ -3322,8 +3455,105 @@ prSubmitBtn.addEventListener('click', async () => {
     return;
   }
 
-  prSubmitBtn.disabled = true;
-  prSubmitBtn.textContent = 'Menyimpan…';
+  // Belum manggil API sama sekali di sini — hasil parse dibawa dulu ke layar
+  // Review biar staff bisa cek/edit nama, qty, dan isi pagu satuan per item
+  // (opsional) sebelum benar-benar disimpan ke server.
+  reviewItems = items.map(it => ({ raw_text: it.raw_text, qty: it.qty, pagu_satuan: null }));
+  reviewSumber = sumber;
+  renderReviewRows();
+  prFormWrap.style.display = 'none';
+  prReviewWrap.style.display = '';
+});
+
+// ---- Step 2: Layar Review — edit manual sebelum submit_permintaan_rs ----
+let reviewItems = [];      // {raw_text, qty, pagu_satuan}
+let reviewSumber = 'TEKS';
+
+function escapeHtmlAttr(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderReviewRows() {
+  const labelSumber = reviewSumber === 'EXCEL' ? 'Excel' : reviewSumber === 'SCREENSHOT' ? 'screenshot' : 'teks';
+  prReviewInfo.textContent = `${reviewItems.length} item terbaca dari ${labelSumber} — cek dan lengkapi sebelum disimpan`;
+  prReviewRows.innerHTML = reviewItems.length ? reviewItems.map((it, idx) => `
+    <div class="pr-review-row" data-idx="${idx}">
+      <input class="pr-rv-nama" value="${escapeHtmlAttr(it.raw_text)}" placeholder="Nama item"/>
+      <input class="pr-rv-qty" inputmode="numeric" value="${it.qty != null ? it.qty : ''}" placeholder="Qty"/>
+      <input class="pr-rv-pagu" inputmode="numeric" value="${it.pagu_satuan != null ? Number(it.pagu_satuan).toLocaleString('id-ID') : ''}" placeholder="opsional"/>
+      <button type="button" class="pr-review-del" data-idx="${idx}" aria-label="Hapus baris"><i class="ti ti-trash"></i></button>
+    </div>
+  `).join('') : '<div class="pr-review-empty">Belum ada item. Tambah baris manual di bawah, atau klik "Kembali edit".</div>';
+}
+
+// Baca ulang isi input di DOM balik ke array reviewItems — dipanggil sebelum
+// nambah/hapus baris (biar re-render gak nge-hapus ketikan yang belum sempat
+// nyantol) dan sebelum submit final.
+function syncReviewItemsFromDom() {
+  const rows = prReviewRows.querySelectorAll('.pr-review-row');
+  rows.forEach((row) => {
+    const idx = parseInt(row.dataset.idx, 10);
+    if (!reviewItems[idx]) return;
+    const nama = row.querySelector('.pr-rv-nama').value.trim();
+    const qtyRaw = row.querySelector('.pr-rv-qty').value.trim();
+    const paguRaw = row.querySelector('.pr-rv-pagu').value;
+    reviewItems[idx] = {
+      raw_text: nama,
+      qty: qtyRaw ? parseInt(qtyRaw, 10) : null,
+      pagu_satuan: parsePaguValue(paguRaw)
+    };
+  });
+}
+
+// Format input Pagu satuan per baris jadi "150.000.000" sambil ngetik, sama
+// kayak field Pagu utama di atas.
+prReviewRows.addEventListener('input', (e) => {
+  if (e.target.classList.contains('pr-rv-pagu')) {
+    const digits = e.target.value.replace(/\D/g, '');
+    e.target.value = digits ? Number(digits).toLocaleString('id-ID') : '';
+  }
+});
+
+prReviewRows.addEventListener('click', (e) => {
+  const btn = e.target.closest('.pr-review-del');
+  if (!btn) return;
+  syncReviewItemsFromDom();
+  const idx = parseInt(btn.dataset.idx, 10);
+  reviewItems.splice(idx, 1);
+  renderReviewRows();
+});
+
+prReviewAddBtn.addEventListener('click', () => {
+  syncReviewItemsFromDom();
+  reviewItems.push({ raw_text: '', qty: null, pagu_satuan: null });
+  renderReviewRows();
+  const lastNama = prReviewRows.querySelector('.pr-review-row:last-child .pr-rv-nama');
+  if (lastNama) lastNama.focus();
+});
+
+// "Kembali edit" cuma balik ke form input (teks/excel/screenshot) — item hasil
+// parse yang lagi di-review dibuang, jadi kalau lanjut lagi nanti diparse ulang
+// dari input aslinya (bukan dari state review yang sempat diedit).
+prReviewBackBtn.addEventListener('click', () => {
+  prReviewWrap.style.display = 'none';
+  prFormWrap.style.display = '';
+});
+
+prReviewSaveBtn.addEventListener('click', async () => {
+  prStatusMsg.textContent = '';
+  syncReviewItemsFromDom();
+
+  // Baris manual yang ditambah tapi nama-nya gak jadi diisi, dibuang diam-diam
+  // (bukan error) — daripada ganjel submit gara-gara baris kosong.
+  const items = reviewItems.filter(it => it.raw_text);
+  if (items.length === 0) {
+    prStatusMsg.style.color = 'var(--danger)';
+    prStatusMsg.textContent = 'Gak ada item tersisa buat disimpan.';
+    return;
+  }
+
+  prReviewSaveBtn.disabled = true;
+  prReviewSaveBtn.textContent = 'Menyimpan…';
 
   try {
     // Permintaan RS ini nempel ke sesi konversi yang lagi aktif (bikin baru
@@ -3354,7 +3584,7 @@ prSubmitBtn.addEventListener('click', async () => {
         p_tanggal: prTanggal.value || null,
         p_nama_rs: prNamaRs.value.trim() || null,
         p_pic_sales: prPicSales.value.trim() || null,
-        p_sumber: sumber,
+        p_sumber: reviewSumber,
         p_pagu: parsePaguValue(prPagu.value),
         p_items: items,
         p_sesi_id: sesiId
@@ -3379,8 +3609,8 @@ prSubmitBtn.addEventListener('click', async () => {
     prStatusMsg.style.color = 'var(--danger)';
     prStatusMsg.textContent = 'Gagal: ' + err.message;
   } finally {
-    prSubmitBtn.disabled = false;
-    prSubmitBtn.textContent = 'Mulai Sesi & Cek Satu-satu';
+    prReviewSaveBtn.disabled = false;
+    prReviewSaveBtn.textContent = 'Simpan & mulai sesi';
   }
 });
 
@@ -3395,6 +3625,7 @@ var checklistNamaRs = '';
 var checklistSales = '';
 var checklistPagu = null;
 var checklistPermintaanId = null;
+var checklistPickingId = null; // id item yang lagi nampilin dropdown pilih produk (null = gak ada)
 
 function startChecklistSession(submitResult, namaRs, picSales, pagu) {
   checklistItems = Array.isArray(submitResult.items) ? submitResult.items : [];
@@ -3421,6 +3652,24 @@ function startChecklistSession(submitResult, namaRs, picSales, pagu) {
   kbSection.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
+// Opsi dropdown produk diambil dari clipboard sesi ini (bukan search baru) —
+// karena konteksnya emang produk yang lagi diproses di sesi konversi yang sama.
+function clipboardOptionsHtml(selectedKode) {
+  const opts = clipboard.map(c => {
+    const sel = c.kode_produk === selectedKode ? ' selected' : '';
+    return `<option value="${c.kode_produk}" data-produk-id="${c.produk_id||''}"${sel}>${c.kode_produk} — ${c.nama_produk}</option>`;
+  }).join('');
+  return `<option value="">Pilih dari daftar clipboard… (opsional)</option>${opts}`;
+}
+
+// Cari nama produk buat ditampilin di baris item yang udah TERPENUHI & ke-link
+// ke suatu produk. Kalau produknya kebetulan udah gak ada di clipboard (misal
+// dihapus lagi), tetep tampilin kode-nya aja tanpa nama.
+function namaProdukByKode(kode) {
+  const c = clipboard.find(c => c.kode_produk === kode);
+  return c ? c.nama_produk : null;
+}
+
 function renderChecklist() {
   const pending = checklistItems.filter(i => i.status === 'PENDING').length;
   const done = checklistItems.filter(i => i.status === 'TERPENUHI').length;
@@ -3438,40 +3687,132 @@ function renderChecklist() {
     const isPending = item.status === 'PENDING';
     const isDone = item.status === 'TERPENUHI';
     const isNa = item.status === 'TIDAK_TERPENUHI';
+    const isPicking = checklistPickingId === item.id;
     const cls = isDone ? 'terpenuhi' : isNa ? 'tidak-terpenuhi' : '';
+
     let sub = '';
     if (isDone) sub = `✓ Bisa dipenuhi`;
     else if (isNa) sub = `✕ Tidak bisa dipenuhi`;
 
-    return `<div class="kb-item ${cls}">
-      <div class="kb-item-text">${item.raw_text}${item.qty_diminta ? ' · qty ' + item.qty_diminta : ''}</div>
-      ${sub ? `<div class="kb-item-sub">${sub}</div>` : ''}
-      ${isPending ? `
+    let matchedHtml = '';
+    if (isDone && item.matched_kode_produk) {
+      const nama = namaProdukByKode(item.matched_kode_produk);
+      matchedHtml = `<div class="kb-item-matched">→ ${item.matched_kode_produk}${nama ? ' — ' + nama : ''}</div>`;
+    }
+
+    let bodyHtml;
+    if (isPicking) {
+      // Mode pilih produk: dropdown dari clipboard + Konfirmasi/Batal.
+      // Muncul baik dari klik "Bisa Dipenuhi" (item PENDING) maupun dari
+      // klik "Ubah produk" (item yang udah TERPENUHI).
+      bodyHtml = `
+        <div class="kb-picker">
+          <select data-picker-select="${item.id}">${clipboardOptionsHtml(item.matched_kode_produk)}</select>
+          <div class="kb-picker-actions">
+            <button class="kb-cancel-btn" data-action="pick-cancel" data-id="${item.id}">Batal</button>
+            <button class="kb-confirm-btn" data-action="pick-confirm" data-id="${item.id}">Konfirmasi</button>
+          </div>
+        </div>`;
+    } else if (isPending) {
+      bodyHtml = `
         <div class="kb-item-actions">
           <button class="kb-bisa-btn" data-action="bisa" data-id="${item.id}">✓ Bisa Dipenuhi</button>
           <button class="kb-tidak-btn" data-action="tidak" data-id="${item.id}">✕ Tidak Bisa</button>
-        </div>` : ''}
+        </div>`;
+    } else {
+      // Sudah dikonfirmasi (TERPENUHI/TIDAK_TERPENUHI): status kekunci, tapi
+      // tetep bisa diubah/dibatalkan lewat dua link kecil ini.
+      bodyHtml = `
+        <div class="kb-item-links">
+          ${isDone ? `<a data-action="change" data-id="${item.id}">Ubah produk</a>` : ''}
+          <a class="kb-batal-link" data-action="undo" data-id="${item.id}">Batal</a>
+        </div>`;
+    }
+
+    return `<div class="kb-item ${cls}">
+      <div class="kb-item-text">${item.raw_text}${item.qty_diminta ? ' · qty ' + item.qty_diminta : ''}${item.pagu_satuan != null ? ' · pagu satuan ' + rupiah(item.pagu_satuan) : ''}</div>
+      ${sub ? `<div class="kb-item-sub">${sub}</div>` : ''}
+      ${matchedHtml}
+      ${bodyHtml}
     </div>`;
   }).join('');
 }
 
 kbList.addEventListener('click', async (e) => {
+  const link = e.target.closest('a[data-action]');
   const btn = e.target.closest('button[data-action]');
-  if (!btn) return;
-  const itemId = parseInt(btn.dataset.id, 10);
-  const action = btn.dataset.action;
-  const status = action === 'bisa' ? 'TERPENUHI' : 'TIDAK_TERPENUHI';
+  const el = link || btn;
+  if (!el) return;
+  const itemId = parseInt(el.dataset.id, 10);
+  const action = el.dataset.action;
+  const item = checklistItems.find(i => i.id === itemId);
+  if (!item) return;
 
-  btn.closest('.kb-item-actions').querySelectorAll('button').forEach(b => b.disabled = true);
-  try {
-    await callUpdatePermintaanItem(itemId, status, null, null);
-    const item = checklistItems.find(i => i.id === itemId);
-    if (item) item.status = status;
+  if (action === 'bisa' || action === 'change') {
+    // Buka mode pilih produk, belum manggil API sama sekali.
+    checklistPickingId = itemId;
     renderChecklist();
-    autoFinalizePermintaan(); // rekap tingkat pemenuhan ke-update sendiri, gak perlu tombol terpisah
-  } catch (err) {
-    alert('Gagal update: ' + err.message);
+    return;
+  }
+
+  if (action === 'pick-cancel') {
+    checklistPickingId = null;
     renderChecklist();
+    return;
+  }
+
+  if (action === 'pick-confirm') {
+    const select = kbList.querySelector(`select[data-picker-select="${itemId}"]`);
+    const kodeProduk = select && select.value ? select.value : null;
+    const selectedOption = select ? select.selectedOptions[0] : null;
+    const produkId = selectedOption && selectedOption.dataset.produkId ? parseInt(selectedOption.dataset.produkId, 10) : null;
+
+    btn.disabled = true;
+    try {
+      await callUpdatePermintaanItem(itemId, 'TERPENUHI', produkId, kodeProduk);
+      item.status = 'TERPENUHI';
+      item.matched_produk_id = produkId;
+      item.matched_kode_produk = kodeProduk;
+      checklistPickingId = null;
+      renderChecklist();
+      autoFinalizePermintaan();
+    } catch (err) {
+      alert('Gagal update: ' + err.message);
+      renderChecklist();
+    }
+    return;
+  }
+
+  if (action === 'tidak') {
+    btn.closest('.kb-item-actions').querySelectorAll('button').forEach(b => b.disabled = true);
+    try {
+      await callUpdatePermintaanItem(itemId, 'TIDAK_TERPENUHI', null, null);
+      item.status = 'TIDAK_TERPENUHI';
+      item.matched_produk_id = null;
+      item.matched_kode_produk = null;
+      renderChecklist();
+      autoFinalizePermintaan();
+    } catch (err) {
+      alert('Gagal update: ' + err.message);
+      renderChecklist();
+    }
+    return;
+  }
+
+  if (action === 'undo') {
+    try {
+      await callUpdatePermintaanItem(itemId, 'PENDING', null, null);
+      item.status = 'PENDING';
+      item.matched_produk_id = null;
+      item.matched_kode_produk = null;
+      checklistPickingId = null;
+      renderChecklist();
+      autoFinalizePermintaan();
+    } catch (err) {
+      alert('Gagal membatalkan: ' + err.message);
+      renderChecklist();
+    }
+    return;
   }
 });
 
