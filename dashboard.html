@@ -482,18 +482,15 @@ function detectThumbBg(img) {
     canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0);
-    const px = ctx.getImageData(0, 0, 1, 1).data; // pojok kiri atas
+    const px = ctx.getImageData(0, 0, 1, 1).data;
     const brightness = (px[0] + px[1] + px[2]) / 3;
-    // background terang → multiply, background gelap → normal
     img.style.mixBlendMode = brightness > 128 ? 'multiply' : 'normal';
     if (brightness <= 128) {
       img.parentElement.style.background = 'transparent';
       img.parentElement.style.border = '1px solid var(--border)';
-      img.parentElement.style.borderRadius = '8px';
       img.parentElement.style.padding = '0';
     }
   } catch(e) {
-    // CORS block → fallback normal
     img.style.mixBlendMode = 'normal';
   }
 }
