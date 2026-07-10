@@ -426,6 +426,7 @@ async function openDetail(kode){
 
     const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
     const mediaThumb = d.media ? d.media.find(m=>m.is_primary && m.url) || d.media.find(m=>m.url) : null;
+    const thumbUrl = mediaThumb?.url || (d.kode_asli ? THUMB_BASE + d.kode_asli + '.png' : null);
     const thumbHtml = thumbUrl
   ? `<div id="dm-thumb-wrap" style="background:#fff;border-radius:8px;padding:8px;border:1px solid var(--border)">
        <img id="dm-thumb-img" src="${thumbUrl}" 
