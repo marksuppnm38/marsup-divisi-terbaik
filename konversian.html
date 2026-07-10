@@ -132,6 +132,13 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
 #sort-select{flex-shrink:0}
 #results{display:flex;flex-direction:column;gap:6px}
+#pagination{display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 0 6px}
+#pagination.hidden{display:none}
+.page-btn{height:30px;min-width:30px;padding:0 8px;font-size:12.5px;font-family:inherit;font-weight:500;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;transition:all .15s}
+.page-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent-text)}
+.page-btn:disabled{opacity:.4;cursor:not-allowed}
+.page-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.page-info{font-size:12px;color:var(--text-muted);padding:0 6px}
 .rcard{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color .15s,box-shadow .15s;position:relative}
 .rcard:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(29,91,212,.08)}
 .rcard.selected{border-color:var(--accent);background:var(--accent-bg)}
@@ -145,8 +152,11 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .tipe-unit{background:var(--accent-bg);color:var(--accent-text)}
 .tipe-set{background:var(--success-bg);color:var(--success)}
 .tipe-other{background:var(--surface-2);color:var(--text-secondary)}
-.badge-katalog-yes{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px}
+.badge-katalog-yes{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px;text-decoration:none;cursor:pointer;transition:filter .15s}
+.badge-katalog-yes:hover{filter:brightness(0.96);text-decoration:underline}
 .badge-katalog-no{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px}
+.btn-preview-gambar{font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-family:inherit;transition:all .15s}
+.btn-preview-gambar:hover{border-color:var(--accent);color:var(--accent-text)}
 .badge-jadi-order{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px;white-space:nowrap}
 .badge-tanpa-order{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px;white-space:nowrap}
 .rcard-meta{display:flex;flex-wrap:wrap;gap:3px 12px}
@@ -156,6 +166,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .mi.harga span{color:var(--success);font-weight:500}
 .mi.stok-ready span{color:var(--success);font-weight:500}
 .mi.stok-indent span{color:var(--danger);font-weight:500}
+.mi.stok-warn span{color:var(--warning);font-weight:500}
 .mi.stok-unknown span{color:var(--text-muted)}
 #btn-stok{margin-right:2px}
 .stok-modal-box{background:var(--surface);border-radius:12px;padding:22px 24px;width:90vw;max-width:420px;text-align:left}
@@ -455,6 +466,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
       <div id="loading"><i class="ti ti-loader-2"></i> Mencari…</div>
       <div id="empty"><i class="ti ti-search-off"></i><p>Produk tidak ditemukan.<br>Coba kata kunci lain.</p></div>
       <div id="results"></div>
+      <div id="pagination"></div>
     </div>
     <div class="panel-body" id="panel-body-sesi" style="display:none">
       <div class="sesi-toolbar">
@@ -730,6 +742,19 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   </div>
 </div>
 
+<div class="modal-overlay" id="gambar-modal">
+  <div class="modal-box" style="width:auto;max-width:90vw;padding:20px 20px 16px;text-align:center">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div class="modal-title" id="gambar-title" style="margin:0;text-align:left">Gambar Produk</div>
+      <button id="gambar-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1;flex-shrink:0">&times;</button>
+    </div>
+    <div id="gambar-body" style="min-width:220px;max-width:70vw;max-height:70vh;display:flex;align-items:center;justify-content:center">
+      <div id="gambar-status" style="font-size:13px;color:var(--text-muted);padding:24px 0">Memuat gambar…</div>
+      <img id="gambar-img" src="" alt="Gambar produk" style="display:none;max-width:100%;max-height:70vh;border-radius:8px;border:1px solid var(--border)"/>
+    </div>
+  </div>
+</div>
+
 
 <script>
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
@@ -875,6 +900,29 @@ const lampiranSaveBtn = document.getElementById('lampiran-save-btn');
 const lampiranGantiBtn = document.getElementById('lampiran-ganti-btn');
 document.getElementById('lampiran-close').addEventListener('click', () => lampiranModal.classList.remove('show'));
 lampiranModal.addEventListener('click', (e) => { if (e.target === lampiranModal) lampiranModal.classList.remove('show'); });
+
+// MODAL PREVIEW GAMBAR PRODUK (dipicu tombol mata di kartu hasil pencarian)
+const gambarModal = document.getElementById('gambar-modal');
+const gambarTitle = document.getElementById('gambar-title');
+const gambarStatus = document.getElementById('gambar-status');
+const gambarImg = document.getElementById('gambar-img');
+document.getElementById('gambar-close').addEventListener('click', () => gambarModal.classList.remove('show'));
+gambarModal.addEventListener('click', (e) => { if (e.target === gambarModal) gambarModal.classList.remove('show'); });
+
+function openGambarModal(kode_asli, kode_produk, nama_produk) {
+  const kodeForUrl = (kode_asli && kode_asli.trim()) ? kode_asli.trim() : kode_produk;
+  gambarTitle.textContent = nama_produk || 'Gambar Produk';
+  gambarImg.style.display = 'none';
+  gambarStatus.style.display = 'block';
+  gambarStatus.style.color = 'var(--text-muted)';
+  gambarStatus.textContent = 'Memuat gambar…';
+  gambarModal.classList.add('show');
+
+  const url = THUMB_BASE + kodeForUrl + '.png';
+  gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarImg.style.display = 'block'; };
+  gambarImg.onerror = () => { gambarStatus.style.color = 'var(--danger)'; gambarStatus.textContent = 'Gambar belum tersedia untuk produk ini.'; };
+  gambarImg.src = url;
+}
 
 let lampiranBucketFiles = null; // cache daftar file di bucket
 let lampiranCurrentProdukId = null;
@@ -1115,12 +1163,15 @@ let lastResults = [];
 let modeSwasta = false;
 let sortMode = 'relevance';
 let prioritizeLink = true; // produk yang ada link_v6 diprioritaskan (hanya berlaku saat mode e-katalog)
+const RESULTS_PER_PAGE = 20;
+let currentPage = 1;
 
 // ELEMENTS
 const searchInput = document.getElementById('search-input');
 const clearBtn = document.getElementById('clear-btn');
 const acBox = document.getElementById('autocomplete');
 const resultsEl = document.getElementById('results');
+const paginationEl = document.getElementById('pagination');
 const metaEl = document.getElementById('meta');
 const loadingEl = document.getElementById('loading');
 const emptyEl = document.getElementById('empty');
@@ -1918,15 +1969,26 @@ function rupiah(n) {
   return 'Rp ' + Number(n).toLocaleString('id-ID');
 }
 
+// MAX_THUMB_PX: dimensi maksimum sisi terpanjang thumbnail sebelum di-embed ke Excel.
+// Gambar di sheet cuma ditampilkan ±80x65px, jadi resolusi sumber (kadang 800px+/gambar
+// dari server) jauh lebih besar dari kebutuhan tampilan. Downscale di sini adalah
+// pengurang ukuran file paling besar karena berat PNG kira-kira sebanding kuadrat dimensi.
+const MAX_THUMB_PX = 240;
+
 async function removeBackground(base64) {
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
+      // hitung ukuran target, downscale kalau sumbernya lebih besar dari MAX_THUMB_PX
+      const scale = Math.min(1, MAX_THUMB_PX / Math.max(img.width, img.height));
+      const targetW = Math.max(1, Math.round(img.width * scale));
+      const targetH = Math.max(1, Math.round(img.height * scale));
+
       const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
+      canvas.width = targetW;
+      canvas.height = targetH;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, targetW, targetH);
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const d = data.data;
       // ambil warna pojok kiri atas sebagai warna background
@@ -2005,6 +2067,7 @@ async function runSearch() {
   await enrichResultsWithStok(lastResults);
   sortSelect.style.display = 'inline-block';
   applySort();
+  currentPage = 1;
   metaEl.textContent = data.length + ' produk ditemukan — klik untuk tambah ke clipboard';
   renderResults(lastResults);
 }
@@ -2058,18 +2121,31 @@ function applySort() {
 }
 
 function renderResults(data) {
-  resultsEl.innerHTML = data.map((r, i) => {
+  // clamp currentPage kalau data berubah (misal abis filter) jadi lebih pendek dari halaman aktif
+  const totalPages = Math.max(1, Math.ceil(data.length / RESULTS_PER_PAGE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+  const start = (currentPage - 1) * RESULTS_PER_PAGE;
+  const pageData = data.slice(start, start + RESULTS_PER_PAGE);
+
+  resultsEl.innerHTML = pageData.map((r, i) => {
     const inClip = clipboard.some(c => c.kode_produk === r.kode_produk);
     const isSet = r.tipe && r.tipe.toUpperCase() === 'SET';
     const tipeClass = isSet ? 'tipe-set' : (r.tipe && r.tipe.toUpperCase() === 'UNIT') ? 'tipe-unit' : 'tipe-other';
     const hargaTampil = modeSwasta ? r.harga_swasta : r.harga_ekat;
     const tahunTampil = modeSwasta ? r.tahun_harga_swasta : r.tahun_harga;
     const labelHarga = modeSwasta ? 'Harga Swasta' : 'Harga belum ada';
-    const stokBadge = r.stok_status === 'READY'
-      ? `<span class="mi stok-ready"><i class="ph ph-check-circle"></i><span>Ready · ${r.stok_qty} pcs</span></span>`
-      : r.stok_status === 'INDENT'
-        ? `<span class="mi stok-indent"><i class="ph ph-clock-countdown"></i><span>Indent${r.stok_qty ? ' · '+r.stok_qty+' pcs' : ''}</span></span>`
-        : `<span class="mi stok-unknown"><i class="ph ph-question"></i><span>Stok: -</span></span>`;
+    const stokBadge = isSet
+      ? (r.stok_status === 'READY'
+          ? `<span class="mi stok-ready"><i class="ph ph-check-circle"></i><span>Ready · bisa rakit ${r.stok_qty} set</span></span>`
+          : r.stok_status === 'INDENT'
+            ? `<span class="mi stok-indent"><i class="ph ph-clock-countdown"></i><span>Indent${r.stok_qty ? ' · bisa rakit '+r.stok_qty+' set' : ''}</span></span>`
+            : `<span class="mi stok-warn" title="${r.stok_komponen_terdata||0}/${r.stok_komponen_total||'?'} komponen sudah ada data stok"><i class="ph ph-warning-circle"></i><span>Data stok komponen blm lengkap</span></span>`)
+      : (r.stok_status === 'READY'
+          ? `<span class="mi stok-ready"><i class="ph ph-check-circle"></i><span>Ready · ${r.stok_qty} pcs</span></span>`
+          : r.stok_status === 'INDENT'
+            ? `<span class="mi stok-indent"><i class="ph ph-clock-countdown"></i><span>Indent${r.stok_qty ? ' · '+r.stok_qty+' pcs' : ''}</span></span>`
+            : `<span class="mi stok-unknown"><i class="ph ph-question"></i><span>Stok: -</span></span>`);
     return `<div class="rcard${inClip?' selected':''}" data-kode="${r.kode_produk}">
       <div class="rcard-top">
         <span class="rcard-name">${r.nama_produk||'—'}</span>
@@ -2082,14 +2158,19 @@ function renderResults(data) {
         ${hargaTampil?`<span class="mi harga"><i class="ti ti-coin-rupee"></i><span>${rupiah(hargaTampil)}${tahunTampil?' · '+tahunTampil:''}</span></span>`:`<span class="mi"><i class="ti ti-coin-rupee"></i><span style="color:var(--text-muted)">${modeSwasta?'Harga swasta belum ada':'Harga belum ada'}</span></span>`}
         ${stokBadge}
       </div>
-      <div style="margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:8px">
-        ${modeSwasta ? '<span></span>' : (r.link_v6
-          ?`<span class="badge-katalog-yes"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</span>`
-          :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
-        )}
-        ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
-        ${r.tipe==='UNIT'?`<button class="btn-lampiran" data-kode="${r.kode_produk}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>`:''}
-        ${!inClip?`<span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambah</span>`:''}
+      <div style="margin-top:6px;display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:8px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${modeSwasta ? '' : (r.link_v6
+            ?`<a href="${r.link_v6}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</a>`
+            :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
+          )}
+          <button class="btn-preview-gambar" data-kode="${r.kode_produk}" data-kode-asli="${r.kode_asli||''}" data-nama="${(r.nama_produk||'').replace(/"/g,'&quot;')}"><i class="ti ti-eye" style="font-size:12px"></i> Lihat Gambar</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
+          ${r.tipe==='UNIT'?`<button class="btn-lampiran" data-kode="${r.kode_produk}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>`:''}
+          ${!inClip?`<span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambah</span>`:''}
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -2100,6 +2181,61 @@ function renderResults(data) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       openLampiranModal(btn.dataset.kode);
+    });
+  });
+  resultsEl.querySelectorAll('[data-role="link-katalog"]').forEach(a => {
+    a.addEventListener('click', (e) => { e.stopPropagation(); });
+  });
+  resultsEl.querySelectorAll('.btn-preview-gambar').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openGambarModal(btn.dataset.kodeAsli, btn.dataset.kode, btn.dataset.nama);
+    });
+  });
+  renderPagination(data.length);
+}
+
+// PAGINATION
+function renderPagination(totalItems) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / RESULTS_PER_PAGE));
+  if (totalPages <= 1) { paginationEl.innerHTML = ''; paginationEl.classList.add('hidden'); return; }
+  paginationEl.classList.remove('hidden');
+
+  function pageBtn(p, label, disabled=false) {
+    const active = p === currentPage;
+    return `<button class="page-btn${active?' active':''}" data-page="${p}"${disabled?' disabled':''}>${label}</button>`;
+  }
+
+  // selalu tampilin halaman 1, halaman terakhir, dan sekitar halaman aktif; sisanya "…"
+  const pagesToShow = [...new Set([1, totalPages, currentPage-1, currentPage, currentPage+1])]
+    .filter(p => p >= 1 && p <= totalPages)
+    .sort((a,b) => a-b);
+
+  let numberBtns = '';
+  let prevP = null;
+  pagesToShow.forEach(p => {
+    if (prevP !== null && p - prevP > 1) numberBtns += `<span class="page-info">…</span>`;
+    numberBtns += pageBtn(p, p);
+    prevP = p;
+  });
+
+  const startItem = (currentPage - 1) * RESULTS_PER_PAGE + 1;
+  const endItem = Math.min(currentPage * RESULTS_PER_PAGE, totalItems);
+
+  paginationEl.innerHTML = `
+    <span class="page-info">${startItem}–${endItem} dari ${totalItems}</span>
+    ${pageBtn(currentPage - 1, '<i class="ti ti-chevron-left"></i>', currentPage === 1)}
+    ${numberBtns}
+    ${pageBtn(currentPage + 1, '<i class="ti ti-chevron-right"></i>', currentPage === totalPages)}
+  `;
+
+  paginationEl.querySelectorAll('.page-btn[data-page]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = parseInt(btn.dataset.page, 10);
+      if (!p || p < 1 || p > totalPages || p === currentPage) return;
+      currentPage = p;
+      renderResults(lastResults);
+      panelBodyCari.scrollTop = 0;
     });
   });
 }
@@ -2340,10 +2476,21 @@ btnExport.addEventListener('click', async () => {
     setProgress(kodesArr.length, kodesArr.length, 'Membuat file Excel…');
 
     // ── HELPER: ADD IMAGE TO SHEET ──
-    function addImg(ws, b64, row, col, w=80, h=80) {
+    // wb.addImage() menyimpan bytes gambar baru ke paket xlsx SETIAP kali dipanggil,
+    // bahkan kalau base64-nya sama persis. Karena banyak produk yang sama muncul
+    // berulang lintas set/lampiran, ini yang bikin file bengkak drastis saat "banyak
+    // set". Fix: cache imgId per kode_produk, panggil wb.addImage cuma sekali per kode.
+    const imgIdCache = {};
+    function addImg(ws, b64, row, col, w=80, h=80, cacheKey=null) {
       if (!b64) return;
       try {
-        const imgId = wb.addImage({ base64: b64, extension: 'png' });
+        let imgId;
+        if (cacheKey && imgIdCache[cacheKey] !== undefined) {
+          imgId = imgIdCache[cacheKey];
+        } else {
+          imgId = wb.addImage({ base64: b64, extension: 'png' });
+          if (cacheKey) imgIdCache[cacheKey] = imgId;
+        }
         ws.addImage(imgId, {
           tl: { col: col - 0.9, row: row - 0.9 },
           ext: { width: w, height: h }
@@ -2399,11 +2546,15 @@ btnExport.addEventListener('click', async () => {
         row.getCell(7).value = {text:'Lihat di e-Katalog', hyperlink: item.link_v6};
         row.getCell(7).font = {color:{argb:'FF1D4ED8'}, underline:true};
       }
-      const stokLabel = item.stok_status === 'READY' ? 'Ready' : item.stok_status === 'INDENT' ? 'Indent' : '-';
+      const stokLabel = item.stok_status === 'READY' ? 'Ready'
+        : item.stok_status === 'INDENT' ? 'Indent'
+        : item.stok_status === 'DATA_TIDAK_LENGKAP' ? 'Data blm lengkap'
+        : '-';
       row.getCell(stokColIdx).value = stokLabel;
       row.getCell(stokColIdx).alignment = {horizontal:'center', vertical:'middle'};
       if (stokLabel === 'Ready') row.getCell(stokColIdx).font = {color:{argb:'FF15803D'}, bold:true};
       else if (stokLabel === 'Indent') row.getCell(stokColIdx).font = {color:{argb:'FFB91C1C'}, bold:true};
+      else if (stokLabel === 'Data blm lengkap') row.getCell(stokColIdx).font = {color:{argb:'FFB45309'}, bold:true};
       // zebra
       const zebraCount = modeSwasta ? 7 : 8;
       if (idx % 2 === 0) {
@@ -2473,7 +2624,7 @@ btnExport.addEventListener('click', async () => {
           row.getCell(c).alignment = {vertical:'middle', horizontal: c===3?'left':'center', wrapText:true};
           if (idx % 2 === 0) row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
         });
-        addImg(ws, imgMap[si.kode_produk], dataRow, 5, 80, 65);
+        addImg(ws, imgMap[si.kode_produk], dataRow, 5, 80, 65, si.kode_produk);
       }
 
       // total
@@ -2517,7 +2668,7 @@ btnExport.addEventListener('click', async () => {
           row.getCell(c).alignment = {vertical:'middle', horizontal: c===3?'left':'center', wrapText:true};
           if (idx % 2 === 0) row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
         });
-        addImg(wsGambar, imgMap[item.kode_produk], dataRow, 5, 80, 65);
+        addImg(wsGambar, imgMap[item.kode_produk], dataRow, 5, 80, 65, item.kode_produk);
       }
     }
 
@@ -2609,6 +2760,9 @@ btnClearAll.addEventListener('click', () => {
 // RESET
 function reset() {
   resultsEl.innerHTML = '';
+  paginationEl.innerHTML = '';
+  paginationEl.classList.add('hidden');
+  currentPage = 1;
   metaEl.textContent = '';
   sortSelect.style.display = 'none';
   emptyEl.style.display = 'none';
@@ -2623,12 +2777,14 @@ tswasta.addEventListener('click', () => {
   modeSwasta = !modeSwasta;
   tswasta.classList.toggle('on', modeSwasta);
   applySort();
+  currentPage = 1;
   if (lastResults.length) renderResults(lastResults);
   updateClipboard();
 });
 sortSelect.addEventListener('change', () => {
   sortMode = sortSelect.value;
   applySort();
+  currentPage = 1;
   renderResults(lastResults);
 });
 tipeBtns.forEach(btn => {
@@ -2937,7 +3093,22 @@ recordSubmitBtn.addEventListener('click', async () => {
 // TETAP ada, cuma bagian upload/timpa-nya yang dipindah.
 
 // ---- Ambil status stok buat semua kode_asli yang muncul di hasil search ----
+// NOTE: SET gak punya baris di stok_produk (stoknya ditentukan dari komponen),
+// makanya dipisah query-nya: item biasa pakai v_stok_status (kode_asli), SET
+// pakai v_stok_status_set (kode_produk milik SET itu sendiri), lalu digabung
+// balik ke object `results` yang sama supaya badge/sort/export di hilir gak
+// perlu tau bedanya — cukup baca r.stok_status & r.stok_qty seperti biasa.
 async function enrichResultsWithStok(results) {
+  const nonSet = results.filter(r => !(r.tipe && r.tipe.toUpperCase() === 'SET'));
+  const setItems = results.filter(r => r.tipe && r.tipe.toUpperCase() === 'SET');
+
+  await Promise.all([
+    enrichNonSetStok(nonSet),
+    enrichSetStok(setItems)
+  ]);
+}
+
+async function enrichNonSetStok(results) {
   const kodeAsliList = [...new Set(results.map(r => r.kode_asli).filter(Boolean))];
   if (kodeAsliList.length === 0) return;
 
@@ -2955,6 +3126,31 @@ async function enrichResultsWithStok(results) {
       const s = r.kode_asli ? stokMap.get(r.kode_asli) : null;
       r.stok_qty = s ? s.qty : null;
       r.stok_status = s ? s.status : null; // null = belum ada data stok sama sekali buat kode ini
+    });
+  } catch { /* diamkan, stok cuma nice-to-have di tampilan search */ }
+}
+
+// ---- Ambil status stok rakitan buat semua produk tipe SET (bottleneck komponen) ----
+async function enrichSetStok(results) {
+  const kodeSetList = [...new Set(results.map(r => r.kode_produk).filter(Boolean))];
+  if (kodeSetList.length === 0) return;
+
+  try {
+    const inList = kodeSetList.map(k => `"${k.replace(/"/g,'')}"`).join(',');
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/v_stok_status_set?kode_produk=in.(${inList})&select=kode_produk,buildable_qty,status,jumlah_komponen,jumlah_komponen_terdata`,
+      { headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + ANON_KEY } }
+    );
+    if (!res.ok) return;
+    const stokData = await res.json();
+    const stokMap = new Map(stokData.map(s => [s.kode_produk, s]));
+
+    results.forEach(r => {
+      const s = stokMap.get(r.kode_produk);
+      r.stok_qty = s ? s.buildable_qty : null;         // dipakai bareng field yang sama kayak item biasa
+      r.stok_status = s ? s.status : 'DATA_TIDAK_LENGKAP'; // gak ada baris di view = komponen blm ke-cek sama sekali
+      r.stok_komponen_terdata = s ? s.jumlah_komponen_terdata : 0;
+      r.stok_komponen_total = s ? s.jumlah_komponen : null;
     });
   } catch { /* diamkan, stok cuma nice-to-have di tampilan search */ }
 }
