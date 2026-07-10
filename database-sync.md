@@ -1,97 +1,341 @@
-# Database Maintenance
+# DATABASE ARCHITECTURE
+## Robust Medical Instrument Database
 
-Dokumentasi proses maintenance database setelah update arsitektur sinkronisasi produk.
-
----
-
-# Struktur Sinkronisasi
-
-Semua data master berasal dari tabel **staging**.
-
-CSV tidak pernah di-import langsung ke tabel utama (`produk`, `produk_harga`, dll).
-
-Alur sinkronisasi:
-
-CSV
-↓
-stg_*
-↓
-sync_staging_to_produk()
-↓
-produk
-produk_harga
-produk_set_item
-master_produk
+Last Updated : July 2026
 
 ---
 
-# Daftar Tabel Staging
+# Overview
 
-| Tabel | Fungsi |
-|--------|--------|
-| stg_akd_satuan | Data instrument AKD |
-| stg_satuan_v6 | Data V6 Instrument |
-| stg_kfa_satuan | Mapping KFA & Cangkang |
-| stg_master_produk | Master Produk Vendor |
-| stg_list_set | Daftar Set |
-| stg_isi_set | Isi Set |
-| stg_unit_baru | Produk Unit |
+Database ini dibuat sebagai **single source of truth** untuk seluruh data produk Robust.
 
----
-
-# Workflow Update Database
-
-## 1. Kosongkan seluruh staging
-
-```sql
-TRUNCATE TABLE stg_akd_satuan;
-TRUNCATE TABLE stg_satuan_v6;
-TRUNCATE TABLE stg_kfa_satuan;
-TRUNCATE TABLE stg_master_produk;
-TRUNCATE TABLE stg_list_set;
-TRUNCATE TABLE stg_isi_set;
-TRUNCATE TABLE stg_unit_baru;
-```
-
----
-
-## 2. Upload seluruh CSV terbaru
-
-Upload ke masing-masing tabel staging.
-
-Pastikan:
-
-- delimiter benar
-- header sesuai
-- tidak ada error import
-
----
-
-## 3. Jalankan sinkronisasi
+Semua data berasal dari berbagai spreadsheet operasional perusahaan, kemudian diimport ke **staging table**, lalu disinkronkan ke database utama menggunakan function:
 
 ```sql
 SELECT sync_staging_to_produk();
 ```
 
-Function akan menjalankan seluruh proses secara otomatis.
+Tidak ada proses edit langsung ke tabel staging selain import CSV.
 
 ---
 
-# Yang Dikerjakan sync_staging_to_produk()
+# Arsitektur Database
+
+```
+Google Sheet
+      │
+      ▼
+ Export CSV
+      │
+      ▼
+ Staging Tables
+      │
+      ▼
+sync_staging_to_produk()
+      │
+      ▼
+ Main Tables
+      │
+      ▼
+ Search Function
+      │
+      ▼
+ Web Application
+```
+
+---
+
+# Konsep Database
+
+Database dibagi menjadi dua bagian besar.
+
+## 1. Staging
+
+Digunakan sebagai tempat import CSV.
+
+Semua tabel staging boleh dihapus isinya (TRUNCATE).
+
+Tidak ada data permanen di sini.
+
+Contoh:
+
+- stg_akd_satuan
+- stg_satuan_v6
+- stg_master_produk
+- stg_kfa_satuan
+- stg_unit_baru
+- stg_list_set
+- stg_isi_set
+
+---
+
+## 2. Main Database
+
+Merupakan database utama yang digunakan aplikasi.
+
+Data di tabel ini **tidak pernah dihapus saat update CSV**.
+
+Semua update dilakukan melalui fungsi sync.
+
+Tabel utama:
+
+- master_produk
+- produk
+- produk_harga
+- produk_set_item
+
+---
+
+# Relasi Antar Tabel
+
+## master_produk
+
+Master referensi berdasarkan:
+
+```
+kode_asli
+```
+
+Berisi informasi vendor seperti:
+
+- deskripsi vendor
+- family
+- sub family
+- manufacturer
+- capital
+
+Sumber data:
+
+```
+stg_master_produk
+```
+
+Digunakan untuk melengkapi data produk apabila data AKD kurang lengkap.
+
+---
+
+## produk
+
+Merupakan tabel utama seluruh item.
+
+Primary identifier:
+
+```
+kode_produk
+```
+
+Satu baris = satu produk.
+
+Tipe produk terdiri dari:
+
+- INSTRUMENT
+- UNIT
+- SET
+
+Semua pencarian aplikasi dilakukan ke tabel ini.
+
+---
+
+## produk_harga
+
+Relasi:
+
+```
+produk.id
+    │
+    ▼
+produk_harga.produk_id
+```
+
+Satu produk memiliki banyak harga.
+
+Contoh:
+
+```
+EKATALOG
+
+UPLOAD
+
+SWASTA
+```
+
+Harga selalu disimpan berdasarkan tahun.
+
+---
+
+## produk_set_item
+
+Relasi:
+
+```
+SET
+ │
+ ▼
+produk_set_item
+ │
+ ▼
+INSTRUMENT
+```
+
+Tabel ini menyimpan isi dari setiap set.
+
+Contoh:
+
+SET A
+
+↓
+
+Scissor
+
+↓
+
+Qty 2
+
+---
+
+# Alur Data
+
+## 1.
+
+Master Produk
+
+```
+stg_master_produk
+
+↓
+
+sync_master_produk()
+
+↓
+
+master_produk
+```
+
+---
+
+## 2.
+
+Instrument AKD
+
+```
+stg_akd_satuan
+
+↓
+
+produk
+```
+
+---
+
+## 3.
+
+Data V6
+
+```
+stg_satuan_v6
+
+↓
+
+Update:
+
+nama
+
+harga
+
+AKD
+
+berat
+
+spesifikasi
+
+status
+
+link
+```
+
+---
+
+## 4.
+
+KFA
+
+```
+stg_kfa_satuan
+
+↓
+
+produk
+
+↓
+
+kode_kfa
+
+kode_cangkang
+
+nama_cangkang
+```
+
+---
+
+## 5.
+
+Unit
+
+```
+stg_unit_baru
+
+↓
+
+Import UNIT baru
+
+↓
+
+Update data UNIT
+```
+
+---
+
+## 6.
+
+Set
+
+```
+stg_list_set
+
+↓
+
+Import SET
+
+↓
+
+stg_isi_set
+
+↓
+
+produk_set_item
+```
+
+---
+
+# Sync Process
+
+Semua sinkronisasi dilakukan melalui:
+
+```sql
+SELECT sync_staging_to_produk();
+```
+
+Function ini akan menjalankan:
 
 ## STEP 0
 
 Sync Master Produk
 
-Menjalankan
-
 ```
-sync_master_produk()
-```
+stg_master_produk
 
-untuk mengupdate tabel:
+↓
 
-```
 master_produk
 ```
 
@@ -101,132 +345,72 @@ master_produk
 
 Import Instrument Baru
 
-Source:
-
 ```
 stg_akd_satuan
-```
 
-Target:
+↓
 
-```
 produk
-```
-
-tipe:
-
-```
-INSTRUMENT
 ```
 
 ---
 
 ## STEP 2A
 
-Import Unit Baru
-
-Source:
+Import UNIT Baru
 
 ```
 stg_unit_baru
-```
 
-Target:
+↓
 
-```
 produk
-```
-
-tipe:
-
-```
-UNIT
 ```
 
 ---
 
 ## STEP 2B
 
-Import Set Baru
-
-Source:
+Import SET Baru
 
 ```
 stg_list_set
-```
 
-Target:
+↓
 
-```
 produk
-```
-
-tipe:
-
-```
-SET
 ```
 
 ---
 
 ## STEP 3
 
-Update data Instrument dari
+Update Instrument dari V6
 
-```
-stg_satuan_v6
-```
+Meliputi:
 
-Field yang diperbarui:
-
-- nama_produk
-- kode_asli
-- no_akd
-- kode_kfa
-- link_v6
-- berat_gram
+- nama
+- kode asli
+- AKD
+- berat
 - spesifikasi
-- status_v6
+- status
+- link
 
 ---
 
 ## STEP 4
 
-Update KFA & Cangkang
+Update
 
-Source
-
-```
-stg_kfa_satuan
-```
-
-Field:
-
-- kode_kfa
-- kode_cangkang
-- nama_cangkang
+- KFA
+- Cangkang
 
 ---
 
 ## STEP 5
 
-Update data Unit
-
-Source
-
-```
-stg_unit_baru
-```
-
-Field:
-
-- nama_produk
-- no_akd
-- kode_kfa
-- link_v6
-- berat_gram
-- spesifikasi
-- golongan
+Update UNIT
 
 ---
 
@@ -234,33 +418,13 @@ Field:
 
 Sync Harga
 
-Harga menggunakan tahun aktif dari
-
-```
-get_tahun_harga()
-```
-
-Jenis harga yang dibuat:
+Menghasilkan:
 
 - EKATALOG
 - UPLOAD
 - SWASTA
 
-Source:
-
-Instrument
-
-```
-stg_satuan_v6.harga_ekat
-```
-
-Unit
-
-```
-stg_unit_baru.harga_satuan
-```
-
-Target:
+Harga disimpan ke:
 
 ```
 produk_harga
@@ -272,13 +436,7 @@ produk_harga
 
 Sync Isi Set
 
-Source
-
-```
-stg_isi_set
-```
-
-Target
+Mengupdate:
 
 ```
 produk_set_item
@@ -286,118 +444,122 @@ produk_set_item
 
 ---
 
-# Return Value
+# Source of Truth
 
-Function mengembalikan JSON.
+| Data | Source |
+|--------|----------------|
+| Master Produk | stg_master_produk |
+| Instrument | stg_akd_satuan |
+| Detail Instrument | stg_satuan_v6 |
+| KFA | stg_kfa_satuan |
+| UNIT | stg_unit_baru |
+| SET | stg_list_set |
+| Isi SET | stg_isi_set |
+
+---
+
+# Cara Update Database
+
+## 1.
+
+Kosongkan staging yang akan diupdate.
 
 Contoh:
 
-```json
-{
-    "status":"OK",
-    "sync_time":"2026-07-10T06:29:38",
-    "tahun_harga":2026,
-    "master_produk":12018,
-    "produk_baru":0,
-    "produk_diupdate":18813,
-    "harga_disync":21714,
-    "set_disync":13875
-}
+```sql
+TRUNCATE stg_satuan_v6;
 ```
+
+Tidak perlu truncate semua tabel apabila hanya satu data yang berubah.
 
 ---
 
-# Catatan Penting
+## 2.
 
-## Tahun harga
+Import CSV terbaru.
 
-Tidak lagi menggunakan angka hardcode.
+CSV harus mengikuti struktur kolom tabel staging.
 
-Seluruh harga mengikuti:
+Tidak perlu mengikuti struktur tabel `produk`.
+
+---
+
+## 3.
+
+Jalankan:
 
 ```sql
-SELECT get_tahun_harga();
+SELECT sync_staging_to_produk();
 ```
 
 ---
 
-## Master Produk
+# Penting
 
-Selalu di-update terlebih dahulu sebelum sinkronisasi produk.
-
-Tidak perlu menjalankan `sync_master_produk()` secara manual.
-
----
-
-## Staging
-
-Staging boleh dikosongkan menggunakan:
-
-```sql
-TRUNCATE TABLE ...
-```
-
-setiap sebelum upload CSV baru.
-
-Data staging bukan data permanen.
-
----
-
-## Data Produksi
-
-Jangan pernah mengedit tabel:
+Jangan melakukan edit manual pada:
 
 - produk
 - produk_harga
 - produk_set_item
 
-secara manual kecuali memang diperlukan.
+Kecuali memang diperlukan untuk perbaikan data tertentu.
 
-Seluruh perubahan sebaiknya berasal dari file CSV lalu dilakukan sinkronisasi ulang.
-
----
-
-# Manual Update Link
-
-Apabila terdapat link Inaproc yang belum tersedia di CSV, update dapat dilakukan secara manual.
-
-Contoh:
-
-```sql
-UPDATE produk
-SET
-    link_v6='https://katalog.inaproc.id/...',
-    updated_at=NOW()
-WHERE
-    kode_produk='RB11-KE914-B018-U07'
-    AND tipe='INSTRUMENT';
-```
-
-atau
-
-```sql
-UPDATE produk
-SET
-    link_v6='https://katalog.inaproc.id/...',
-    updated_at=NOW()
-WHERE
-    kode_produk='BSC - 001'
-    AND tipe='UNIT';
-```
+Perubahan massal selalu dilakukan melalui staging + sync.
 
 ---
 
-# Ringkasan Workflow
+# Data Flow
 
 ```
-TRUNCATE staging
-        │
-        ▼
-Upload seluruh CSV
-        │
-        ▼
-SELECT sync_staging_to_produk();
-        │
-        ▼
-Database Production Updated
+Google Sheet
+
+↓
+
+CSV
+
+↓
+
+Staging
+
+↓
+
+sync_staging_to_produk()
+
+↓
+
+Main Database
+
+↓
+
+Search Function
+
+↓
+
+Website
 ```
+
+---
+
+# Filosofi Database
+
+Staging adalah tempat import.
+
+Main Database adalah sumber data aplikasi.
+
+CSV boleh berubah.
+
+Database utama tidak dihapus.
+
+Sync bertugas menyamakan keduanya secara aman menggunakan UPSERT.
+
+Dengan desain ini:
+
+✓ aman melakukan update berkali-kali
+
+✓ tidak kehilangan data
+
+✓ mudah rollback
+
+✓ scalable untuk data baru
+
+✓ aplikasi selalu membaca dari satu sumber data yang konsisten
