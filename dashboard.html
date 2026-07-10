@@ -426,13 +426,12 @@ async function openDetail(kode){
 
     const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
     const mediaThumb = d.media ? d.media.find(m=>m.is_primary && m.url) || d.media.find(m=>m.url) : null;
-    const thumbUrl = mediaThumb?.url || (d.kode_asli ? THUMB_BASE + d.kode_asli + '.png' : null);
-    // HAPUS canvas approach, ganti dengan img biasa
     const thumbHtml = thumbUrl
-  ? `<div style="background:#fff;border-radius:8px;padding:8px;border:1px solid var(--border)">
-       <img src="${thumbUrl}" 
-            style="width:100%;height:150px;object-fit:contain;display:block;mix-blend-mode:multiply"
-            onerror="this.parentElement.style.display='none'"/>
+  ? `<div id="dm-thumb-wrap" style="background:#fff;border-radius:8px;padding:8px;border:1px solid var(--border)">
+       <img id="dm-thumb-img" src="${thumbUrl}" 
+            style="width:100%;height:150px;object-fit:contain;display:block"
+            onerror="this.parentElement.style.display='none'"
+            onload="detectThumbBg(this)"/>
      </div>`
   : `<div class="detail-thumb-placeholder"><i class="ph ph-image"></i> Tidak ada gambar</div>`;
 
@@ -448,6 +447,18 @@ async function openDetail(kode){
     </div>`;
 
     document.getElementById('dm-body').innerHTML = `
+      ${thumbHtml}
+      ${hargaHtml}
+      <div>
+        ${row('Tipe', `<span class="badge badge-${(d.tipe||'').toLowerCase()}">${d.tipe||'—'}</span>`)}
+        ${row('No. AKD', d.no_akd || '—')}
+        ${row('Kode KFA', d.kode_kfa ? `<span style="font-family:var(--mono)">${d.kode_kfa}</span>` : '—')}
+        ${row('Spesifikasi', d.spesifikasi || '—')}
+        ${row('Link v6', d.link_v6 ? `<a href="${d.link_v6}" target="_blank">Lihat di e-Katalog <i class="ph ph-arrow-square-out"></i></a>` : '—')}
+      </div>
+    `;
+
+    document.getElementById('dm-body').innerHTML = `
       <canvas id="dm-thumb-canvas" class="detail-thumb" style="${thumbUrl?'':'display:none'}"></canvas>
       ${!thumbUrl ? `<div class="detail-thumb-placeholder"><i class="ph ph-image"></i> Tidak ada gambar</div>` : ''}
       ${hargaHtml}
@@ -461,6 +472,28 @@ async function openDetail(kode){
     `;
   } catch(e){
     document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${e.message}</div>`;
+  }
+}
+function detectThumbBg(img) {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const px = ctx.getImageData(0, 0, 1, 1).data; // pojok kiri atas
+    const brightness = (px[0] + px[1] + px[2]) / 3;
+    // background terang → multiply, background gelap → normal
+    img.style.mixBlendMode = brightness > 128 ? 'multiply' : 'normal';
+    if (brightness <= 128) {
+      img.parentElement.style.background = 'transparent';
+      img.parentElement.style.border = '1px solid var(--border)';
+      img.parentElement.style.borderRadius = '8px';
+      img.parentElement.style.padding = '0';
+    }
+  } catch(e) {
+    // CORS block → fallback normal
+    img.style.mixBlendMode = 'normal';
   }
 }
 function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`; }
