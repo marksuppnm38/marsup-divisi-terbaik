@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         KFA Alkes Automation - Pionir Group
 // @namespace    pionir-marsup
-// @version      1.9
+// @version      1.10
 // @description  Bantu automasi masukin SKU ke cangkang + validasi KFA di kamus-alkes.kemkes.go.id
 // @match        https://kamus-alkes.kemkes.go.id/*
 // @grant        none
@@ -52,6 +52,13 @@
   //     ada SKU yang GAGAL di tengah jalan, auto-lanjut ini BERHENTI
   //     otomatis (nggak maksa lanjut ke SKU berikutnya), biar kamu sempat
   //     cek manual dulu.
+  // 11. Buat mindahin hasil ke Google Sheets: klik "Copy Hasil (TSV)" di
+  //     panel -- ini nyalin daftar hasil (KODE_PRODUK, KODE_KFA, TIMESTAMP)
+  //     ke clipboard dalam format tab-separated. Tinggal buka Sheets, klik
+  //     cell kosong, Ctrl+V / Cmd+V -- otomatis kepecah per kolom & per
+  //     baris kayak paste dari Excel. Kalau browser nolak akses clipboard
+  //     otomatis, textarea "Preview hasil" di bawah tombol bakal muncul --
+  //     select-all manual (klik textarea-nya, Ctrl+A, Ctrl+C) dari situ.
   //
   // v1.3: Fix dropdown Brand di-portal keluar .modal (dicari via jarak ke
   //       input, isNearInput, bukan ancestry .modal).
@@ -86,6 +93,12 @@
   //       nyentang semuanya. Sekarang status ketiga checkbox disimpan di
   //       variabel terpisah (autoFlags) yang nggak ke-reset waktu panel
   //       digambar ulang, dan checkbox-nya sync dua arah ke variabel itu.
+  // v1.10: Tambah opsi export hasil sebagai TEKS PASTEABLE (tab-separated)
+  //       yang bisa langsung di-paste ke Google Sheets, sebagai alternatif
+  //       download CSV. Tombol baru "Copy Hasil (TSV)" nyalin ke clipboard
+  //       otomatis (navigator.clipboard, dengan fallback execCommand kalau
+  //       clipboard API diblokir), plus textarea "Preview hasil" yang bisa
+  //       di-select manual & Ctrl+C kalau copy otomatis gagal.
   // ============================================================
   const STORAGE_KEY = 'kfa_automation_queue_v1';
   const RESULTS_KEY = 'kfa_automation_results_v1';
@@ -710,6 +723,65 @@
     a.click();
     URL.revokeObjectURL(url);
   }
+  // ---------- v1.10: Export sebagai teks pasteable (TSV) buat Google Sheets ----------
+  // Tab-separated: kalau di-paste ke Sheets, tiap TAB otomatis jadi kolom
+  // baru dan tiap baris baru otomatis jadi row baru -- sama kayak nge-paste
+  // dari Excel.
+  function resultsToTSV() {
+    const results = loadResults();
+    const header = ['KODE_PRODUK', 'KODE_KFA', 'TIMESTAMP'];
+    const rows = [header, ...results.map((r) => [r.kodeProduk, r.kfaCode, r.timestamp])];
+    return rows.map((r) => r.join('\t')).join('\n');
+  }
+  function showTsvPreview(text) {
+    let box = document.getElementById('kfa-tsv-preview');
+    if (!box) return;
+    box.style.display = 'block';
+    box.value = text;
+    box.focus();
+    box.select();
+  }
+  async function copyResultsAsTSV() {
+    const results = loadResults();
+    if (!results.length) {
+      alert('Belum ada hasil buat di-copy.');
+      return;
+    }
+    const text = resultsToTSV();
+    let copied = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch (e) {
+      copied = false;
+    }
+    if (!copied) {
+      // Fallback lawas buat browser/situasi yang nolak Clipboard API
+      const tmp = document.createElement('textarea');
+      tmp.value = text;
+      tmp.style.position = 'fixed';
+      tmp.style.opacity = '0';
+      document.body.appendChild(tmp);
+      tmp.focus();
+      tmp.select();
+      try {
+        copied = document.execCommand('copy');
+      } catch (e) {
+        copied = false;
+      }
+      document.body.removeChild(tmp);
+    }
+    if (copied) {
+      log(`📋 ${results.length} baris hasil ke-copy ke clipboard (format TSV) -- tinggal paste (Ctrl+V) ke Google Sheets.`);
+    } else {
+      log('⚠️ Copy otomatis ke clipboard gagal (browser mungkin ngeblok). Textarea "Preview hasil" di panel udah ke-select otomatis -- tekan Ctrl+C (atau Cmd+C) manual dari situ.');
+    }
+    // Selalu tampilin preview-nya juga, biar ada jalan manual kalau copy
+    // otomatis gagal / user mau ngecek dulu isinya sebelum paste.
+    showTsvPreview(text);
+  }
   // ---------- Panel UI ----------
   let panelPos = { top: 70, left: null, right: 10 };
   let panelCollapsed = false;
@@ -793,7 +865,11 @@
         </div>
         <button id="kfa-run-assist" style="width:100%; margin-bottom:8px;">▶ (fallback) Isi field yang lagi kebuka</button>
         <hr>
-        <button id="kfa-export" style="width:100%; margin-bottom:4px;">⬇ Export Hasil CSV</button>
+        <div style="font-weight:bold; margin-bottom:4px;">Export Hasil</div>
+        <button id="kfa-export" style="width:100%; margin-bottom:4px;">⬇ Download CSV</button>
+        <button id="kfa-copy-tsv" style="width:100%; margin-bottom:4px;">📋 Copy Hasil (paste ke Google Sheets)</button>
+        <textarea id="kfa-tsv-preview" readonly rows="3" style="display:none; width:100%; box-sizing:border-box; font-size:10px; margin-bottom:8px;"
+          placeholder="Preview hasil (TSV) muncul di sini setelah klik Copy..."></textarea>
         <button id="kfa-clear" style="width:100%; margin-bottom:6px;">🗑 Reset Antrian & Hasil</button>
         <div style="font-weight:bold; margin-top:4px;">Log:</div>
         <div id="kfa-log" style="max-height:160px; overflow-y:auto; background:#f7f7f7; padding:4px; border:1px solid #ddd;"></div>
@@ -874,6 +950,7 @@
       await fillCurrentlyOpenField(kodeProduk);
     };
     document.getElementById('kfa-export').onclick = exportResultsCSV;
+    document.getElementById('kfa-copy-tsv').onclick = copyResultsAsTSV;
     document.getElementById('kfa-clear').onclick = () => {
       if (confirm('Yakin reset antrian & hasil? Ini tidak menghapus data di sistem KFA, cuma di panel ini.')) {
         localStorage.removeItem(STORAGE_KEY);
