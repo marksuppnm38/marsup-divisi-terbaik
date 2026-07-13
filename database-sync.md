@@ -1,168 +1,442 @@
-# Database Sync Workflow (V2)
+# DATABASE ARCHITECTURE
+## Robust Medical Instrument Database
 
-## Tujuan
-
-Menjadikan **Google Sheet sebagai source of truth** untuk data master produk.
-
-Supabase tidak lagi diupdate manual satu per satu, tetapi hanya melakukan sinkronisasi dari CSV hasil export Google Sheet.
-
-Dengan pendekatan ini:
-
-- tidak perlu menjalankan banyak query import
-- tidak perlu edit data langsung di tabel
-- produk baru otomatis masuk
-- produk lama otomatis update
-- harga otomatis update
-- komposisi SET otomatis update
-- frontend tetap memakai database yang sama
+Last Updated : July 2026
 
 ---
 
-# Source of Truth
+# Overview
 
+Database ini dibuat sebagai **single source of truth** untuk seluruh data produk Robust.
+
+Semua data berasal dari berbagai spreadsheet operasional perusahaan, kemudian diimport ke **staging table**, lalu disinkronkan ke database utama menggunakan function:
+
+```sql
+SELECT sync_staging_to_produk();
+```
+
+Tidak ada proses edit langsung ke tabel staging selain import CSV.
+
+---
+
+# Arsitektur Database
+
+```
 Google Sheet
+      │
+      ▼
+ Export CSV
+      │
+      ▼
+ Staging Tables
+      │
+      ▼
+sync_staging_to_produk()
+      │
+      ▼
+ Main Tables
+      │
+      ▼
+ Search Function
+      │
+      ▼
+ Web Application
+```
 
-Semua perubahan dilakukan di Google Sheet.
+---
+
+# Konsep Database
+
+Database dibagi menjadi dua bagian besar.
+
+## 1. Staging
+
+Digunakan sebagai tempat import CSV.
+
+Semua tabel staging boleh dihapus isinya (TRUNCATE).
+
+Tidak ada data permanen di sini.
 
 Contoh:
 
-- tambah produk
-- edit nama produk
-- edit AKD
-- edit KFA
-- edit spesifikasi
-- edit harga e-Katalog
-- edit isi SET
-
-Semuanya dilakukan di Google Sheet.
+- stg_akd_satuan
+- stg_satuan_v6
+- stg_master_produk
+- stg_kfa_satuan
+- stg_unit_baru
+- stg_list_set
+- stg_isi_set
 
 ---
 
-# Harga
+## 2. Main Database
 
-Harga e-Katalog menjadi satu-satunya source of truth.
+Merupakan database utama yang digunakan aplikasi.
 
-Rumus:
+Data di tabel ini **tidak pernah dihapus saat update CSV**.
 
-```
-Harga Upload = Harga E-Katalog / 1.11
+Semua update dilakukan melalui fungsi sync.
 
-Harga Swasta = Harga E-Katalog × 1.3
-```
+Tabel utama:
 
-Walaupun secara bisnis cukup satu harga, ketiga harga tetap disimpan di tabel `produk_harga` agar tetap kompatibel dengan sistem lama.
-
----
-
-# Workflow
-
-```
-Google Sheet
-      │
-      ▼
-Export CSV
-      │
-      ▼
-Upload ke staging table
-      │
-      ▼
-SELECT sync_produk_csv();
-      │
-      ▼
-Database otomatis sinkron
-```
+- master_produk
+- produk
+- produk_harga
+- produk_set_item
 
 ---
 
-# Staging Table
+# Relasi Antar Tabel
 
-CSV diupload ke tabel berikut.
+## master_produk
+
+Master referensi berdasarkan:
+
+```
+kode_asli
+```
+
+Berisi informasi vendor seperti:
+
+- deskripsi vendor
+- family
+- sub family
+- manufacturer
+- capital
+
+Sumber data:
+
+```
+stg_master_produk
+```
+
+Digunakan untuk melengkapi data produk apabila data AKD kurang lengkap.
+
+---
+
+## produk
+
+Merupakan tabel utama seluruh item.
+
+Primary identifier:
+
+```
+kode_produk
+```
+
+Satu baris = satu produk.
+
+Tipe produk terdiri dari:
+
+- INSTRUMENT
+- UNIT
+- SET
+
+Semua pencarian aplikasi dilakukan ke tabel ini.
+
+---
+
+## produk_harga
+
+Relasi:
+
+```
+produk.id
+    │
+    ▼
+produk_harga.produk_id
+```
+
+Satu produk memiliki banyak harga.
+
+Contoh:
+
+```
+EKATALOG
+
+UPLOAD
+
+SWASTA
+```
+
+Harga selalu disimpan berdasarkan tahun.
+
+---
+
+## produk_set_item
+
+Relasi:
+
+```
+SET
+ │
+ ▼
+produk_set_item
+ │
+ ▼
+INSTRUMENT
+```
+
+Tabel ini menyimpan isi dari setiap set.
+
+Contoh:
+
+SET A
+
+↓
+
+Scissor
+
+↓
+
+Qty 2
+
+---
+
+# Alur Data
+
+## 1.
+
+Master Produk
+
+```
+stg_master_produk
+
+↓
+
+sync_master_produk()
+
+↓
+
+master_produk
+```
+
+---
+
+## 2.
+
+Instrument AKD
 
 ```
 stg_akd_satuan
-stg_satuan_v6
-stg_list_set
-stg_isi_set
+
+↓
+
+produk
 ```
 
-Staging hanya berfungsi sebagai tempat sementara.
-
 ---
 
-# sync_produk_csv()
+## 3.
 
-Function ini menjadi pusat sinkronisasi.
+Data V6
 
-Sekali dijalankan akan melakukan:
-
-## 1. Tambah produk baru
-
-Jika kode produk belum ada
+```
+stg_satuan_v6
 
 ↓
 
-INSERT ke tabel produk
+Update:
+
+nama
+
+harga
+
+AKD
+
+berat
+
+spesifikasi
+
+status
+
+link
+```
 
 ---
 
-## 2. Update produk lama
+## 4.
 
-Jika kode produk sudah ada
+KFA
+
+```
+stg_kfa_satuan
 
 ↓
 
-UPDATE seluruh informasi terbaru
+produk
 
-misalnya:
+↓
+
+kode_kfa
+
+kode_cangkang
+
+nama_cangkang
+```
+
+---
+
+## 5.
+
+Unit
+
+```
+stg_unit_baru
+
+↓
+
+Import UNIT baru
+
+↓
+
+Update data UNIT
+```
+
+---
+
+## 6.
+
+Set
+
+```
+stg_list_set
+
+↓
+
+Import SET
+
+↓
+
+stg_isi_set
+
+↓
+
+produk_set_item
+```
+
+---
+
+# Sync Process
+
+Semua sinkronisasi dilakukan melalui:
+
+```sql
+SELECT sync_staging_to_produk();
+```
+
+Function ini akan menjalankan:
+
+## STEP 0
+
+Sync Master Produk
+
+```
+stg_master_produk
+
+↓
+
+master_produk
+```
+
+---
+
+## STEP 1
+
+Import Instrument Baru
+
+```
+stg_akd_satuan
+
+↓
+
+produk
+```
+
+---
+
+## STEP 2A
+
+Import UNIT Baru
+
+```
+stg_unit_baru
+
+↓
+
+produk
+```
+
+---
+
+## STEP 2B
+
+Import SET Baru
+
+```
+stg_list_set
+
+↓
+
+produk
+```
+
+---
+
+## STEP 3
+
+Update Instrument dari V6
+
+Meliputi:
 
 - nama
-- AKD
 - kode asli
-- KFA
-- link
-- spesifikasi
+- AKD
 - berat
+- spesifikasi
 - status
+- link
 
 ---
 
-## 3. Sinkron harga
+## STEP 4
 
-Harga akan otomatis disimpan ke
+Update
 
-```
-produk_harga
-```
+- KFA
+- Cangkang
 
-jenis:
+---
+
+## STEP 5
+
+Update UNIT
+
+---
+
+## STEP 6
+
+Sync Harga
+
+Menghasilkan:
 
 - EKATALOG
 - UPLOAD
 - SWASTA
 
-menggunakan rumus yang sudah ditentukan.
+Harga disimpan ke:
+
+```
+produk_harga
+```
 
 ---
 
-## 4. Sinkron SET
+## STEP 7
 
-Jika ada SET baru
+Sync Isi Set
 
-↓
-
-otomatis masuk ke tabel produk.
-
----
-
-## 5. Sinkron isi SET
-
-Data pada
-
-```
-stg_isi_set
-```
-
-akan mengupdate
+Mengupdate:
 
 ```
 produk_set_item
@@ -170,199 +444,74 @@ produk_set_item
 
 ---
 
-## 6. Search
+# Source of Truth
 
-Search tidak perlu diupdate manual.
-
-Trigger PostgreSQL akan memperbarui:
-
-```
-search_text
-
-search_tsv
-```
-
-secara otomatis.
+| Data | Source |
+|--------|----------------|
+| Master Produk | stg_master_produk |
+| Instrument | stg_akd_satuan |
+| Detail Instrument | stg_satuan_v6 |
+| KFA | stg_kfa_satuan |
+| UNIT | stg_unit_baru |
+| SET | stg_list_set |
+| Isi SET | stg_isi_set |
 
 ---
 
-# Contoh Workflow
+# Cara Update Database
 
-## Tambah Produk
+## 1.
 
-Google Sheet
+Kosongkan staging yang akan diupdate.
 
-↓
+Contoh:
 
-Tambah baris baru
-
-↓
-
-Export CSV
-
-↓
-
-Upload staging
-
-↓
-
-```
-SELECT sync_produk_csv();
+```sql
+TRUNCATE stg_satuan_v6;
 ```
 
-↓
-
-Produk baru otomatis muncul.
+Tidak perlu truncate semua tabel apabila hanya satu data yang berubah.
 
 ---
 
-## Edit Nama Produk
+## 2.
 
-Google Sheet
+Import CSV terbaru.
 
-↓
+CSV harus mengikuti struktur kolom tabel staging.
 
-Edit nama
-
-↓
-
-Export CSV
-
-↓
-
-Upload staging
-
-↓
-
-```
-SELECT sync_produk_csv();
-```
-
-↓
-
-Nama produk berubah.
+Tidak perlu mengikuti struktur tabel `produk`.
 
 ---
 
-## Edit Harga
+## 3.
 
-Google Sheet
+Jalankan:
 
-↓
-
-Edit Harga E-Katalog
-
-↓
-
-Export CSV
-
-↓
-
-Upload staging
-
-↓
-
+```sql
+SELECT sync_staging_to_produk();
 ```
-SELECT sync_produk_csv();
-```
-
-↓
-
-Harga otomatis ikut berubah.
 
 ---
 
-## Edit Isi SET
+# Penting
 
-Google Sheet
+Jangan melakukan edit manual pada:
 
-↓
+- produk
+- produk_harga
+- produk_set_item
 
-Edit komposisi
+Kecuali memang diperlukan untuk perbaikan data tertentu.
 
-↓
-
-Export CSV
-
-↓
-
-Upload staging
-
-↓
-
-```
-SELECT sync_produk_csv();
-```
-
-↓
-
-produk_set_item otomatis sinkron.
+Perubahan massal selalu dilakukan melalui staging + sync.
 
 ---
 
-# CRUD
-
-CRUD harian tidak lagi dilakukan langsung pada tabel.
-
-Semua perubahan berasal dari Google Sheet.
-
-Supabase hanya melakukan sinkronisasi.
+# Data Flow
 
 ```
 Google Sheet
-        ↓
-Export CSV
-        ↓
-Upload staging
-        ↓
-sync_produk_csv()
-        ↓
-Database
-```
-
----
-
-# Yang Sudah Selesai
-
-- Database V2
-- View CRUD
-- Sinkron produk
-- Sinkron harga
-- Sinkron SET
-- Sinkron isi SET
-- Search otomatis
-- Produk baru otomatis dibuat
-- Produk lama otomatis diupdate
-
----
-
-# Yang Masih Akan Dikerjakan
-
-## Soft Delete
-
-Jika suatu produk sudah tidak ada lagi di Google Sheet, jangan dihapus dari database.
-
-Lebih aman:
-
-```
-is_active = false
-```
-
-Dengan begitu:
-
-- histori tetap aman
-- relasi tidak rusak
-- produk lama tidak muncul di pencarian aktif
-
----
-
-# Prinsip Arsitektur
-
-Google Sheet
-
-↓
-
-Source of Truth
 
 ↓
 
@@ -374,14 +523,43 @@ Staging
 
 ↓
 
-sync_produk_csv()
+sync_staging_to_produk()
 
 ↓
 
-Supabase
+Main Database
 
 ↓
 
-Frontend
+Search Function
 
-Frontend **tidak bertugas menghitung atau menyinkronkan data**, tetapi hanya membaca data yang sudah tersinkronisasi dari database.
+↓
+
+Website
+```
+
+---
+
+# Filosofi Database
+
+Staging adalah tempat import.
+
+Main Database adalah sumber data aplikasi.
+
+CSV boleh berubah.
+
+Database utama tidak dihapus.
+
+Sync bertugas menyamakan keduanya secara aman menggunakan UPSERT.
+
+Dengan desain ini:
+
+✓ aman melakukan update berkali-kali
+
+✓ tidak kehilangan data
+
+✓ mudah rollback
+
+✓ scalable untuk data baru
+
+✓ aplikasi selalu membaca dari satu sumber data yang konsisten
