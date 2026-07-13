@@ -420,6 +420,7 @@ async function openDetail(kode){
   detailOverlay.classList.add('show');
   try {
     const d = await rpc('get_produk_detail', {p_kode: kode});
+    console.log('DATA:', d);
     if(!d){ document.getElementById('dm-body').innerHTML = '<div class="detail-loading">Produk tidak ditemukan.</div>'; return; }
     document.getElementById('dm-title').textContent = d.nama_produk || '—';
     document.getElementById('dm-kode').textContent = d.kode_produk;
@@ -427,13 +428,9 @@ async function openDetail(kode){
     const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
     const mediaThumb = d.media ? d.media.find(m=>m.is_primary && m.url) || d.media.find(m=>m.url) : null;
     const thumbUrl = mediaThumb?.url || (d.kode_asli ? THUMB_BASE + d.kode_asli + '.png' : null);
+    console.log('THUMB URL:', thumbUrl);
     const thumbHtml = thumbUrl
-  ? `<div id="dm-thumb-wrap" style="background:#fff;border-radius:8px;padding:8px;border:1px solid var(--border)">
-       <img id="dm-thumb-img" src="${thumbUrl}" 
-            style="width:100%;height:150px;object-fit:contain;display:block"
-            onerror="this.parentElement.style.display='none'"
-            onload="detectThumbBg(this)"/>
-     </div>`
+  ? `<canvas id="dm-thumb-canvas" class="detail-thumb"></canvas>`
   : `<div class="detail-thumb-placeholder"><i class="ph ph-image"></i> Tidak ada gambar</div>`;
 
     const hargaMap = {};
@@ -471,27 +468,57 @@ async function openDetail(kode){
         ${row('Link v6', d.link_v6 ? `<a href="${d.link_v6}" target="_blank">Lihat di e-Katalog <i class="ph ph-arrow-square-out"></i></a>` : '—')}
       </div>
     `;
+    if (thumbUrl) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.getElementById('dm-thumb-canvas');
+        if (!canvas) return;
+
+        // Upscale minimal 2x kalau gambar aslinya kecil, biar gak pecah waktu di-stretch CSS
+        const scale = Math.max(1, Math.min(3, Math.ceil(300 / Math.max(img.width, img.height))));
+        const w = img.width * scale, h = img.height * scale;
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+
+        try {
+  const data = ctx.getImageData(0, 0, w, h);
+  const px = data.data;
+
+  function edgeSample(x,y){ const i=(y*w+x)*4; return [px[i],px[i+1],px[i+2]]; }
+  const samples = [];
+  for (let x=0; x<w; x+=Math.max(1,Math.floor(w/20))){ samples.push(edgeSample(x,0)); samples.push(edgeSample(x,h-1)); }
+  for (let y=0; y<h; y+=Math.max(1,Math.floor(h/20))){ samples.push(edgeSample(0,y)); samples.push(edgeSample(w-1,y)); }
+  const bgR = Math.round(samples.reduce((s,c)=>s+c[0],0)/samples.length);
+  const bgG = Math.round(samples.reduce((s,c)=>s+c[1],0)/samples.length);
+  const bgB = Math.round(samples.reduce((s,c)=>s+c[2],0)/samples.length);
+
+  const threshold = 60;
+  for (let i = 0; i < px.length; i += 4) {
+    const dr = px[i]-bgR, dg = px[i+1]-bgG, db = px[i+2]-bgB;
+    const dist = Math.sqrt(dr*dr+dg*dg+db*db);
+    if (dist < threshold) {
+      const alpha = dist / threshold;
+      px[i+3] = Math.round(alpha * px[i+3]);
+    }
+  }
+  ctx.putImageData(data, 0, 0);
+} catch(bgErr) {
+  console.warn('Background removal skipped (CORS):', bgErr.message);
+}
+      };
+      img.onerror = () => {
+        const canvas = document.getElementById('dm-thumb-canvas');
+        if (canvas) canvas.style.display = 'none';
+      };
+      img.src = thumbUrl;
+    }
   } catch(e){
     document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${e.message}</div>`;
-  }
-}
-function detectThumbBg(img) {
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-    const px = ctx.getImageData(0, 0, 1, 1).data;
-    const brightness = (px[0] + px[1] + px[2]) / 3;
-    img.style.mixBlendMode = brightness > 128 ? 'multiply' : 'normal';
-    if (brightness <= 128) {
-      img.parentElement.style.background = 'transparent';
-      img.parentElement.style.border = '1px solid var(--border)';
-      img.parentElement.style.padding = '0';
-    }
-  } catch(e) {
-    img.style.mixBlendMode = 'normal';
   }
 }
 function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`; }
