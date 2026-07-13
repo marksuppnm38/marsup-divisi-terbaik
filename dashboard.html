@@ -147,6 +147,49 @@ main{max-width:1280px;margin:0 auto;padding:24px 20px 44px}
 .filter-select,.search-mini{height:28px;padding:0 8px;font-size:11.5px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface-2);color:var(--text);outline:none}
 .search-mini{width:190px}
 .search-mini:focus,.filter-select:focus{border-color:var(--accent);background:var(--surface)}
+.search-history{position:absolute;top:32px;left:0;right:0;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.1);z-index:50;display:none;overflow:hidden}
+.search-history.show{display:block}
+.search-history-item{padding:7px 12px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:7px;color:var(--text-secondary);border-bottom:1px solid var(--border)}
+.search-history-item:last-child{border-bottom:none}
+.search-history-item:hover{background:var(--accent-bg);color:var(--accent-text)}
+.search-history-item i{font-size:12px;color:var(--text-muted)}
+.search-history-clear{padding:6px 12px;font-size:10.5px;color:var(--text-muted);text-align:center;cursor:pointer;background:var(--surface-2)}
+.search-history-clear:hover{color:var(--danger)}
+
+.preset-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.preset-chip{height:26px;padding:0 10px;font-size:11px;font-family:inherit;border:1px dashed var(--border-strong);border-radius:20px;background:transparent;color:var(--text-muted);cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s}
+.preset-chip:hover{border-color:var(--accent);color:var(--accent-text)}
+.preset-chip .preset-x{margin-left:2px;font-size:11px;opacity:.6}
+.preset-chip .preset-x:hover{opacity:1;color:var(--danger)}
+.preset-save-btn{height:28px;padding:0 10px;font-size:11.5px;font-family:inherit;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.preset-save-btn:hover{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
+.insight-cards{display:grid;grid-template-columns:1.3fr 1fr;gap:12px;margin-bottom:26px}
+.insight-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+.insight-card-title{font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:7px}
+
+.trend-chart{display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 4px}
+.trend-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
+.trend-bar{width:100%;max-width:32px;background:var(--accent);border-radius:4px 4px 0 0;transition:height .5s ease;min-height:2px;position:relative}
+.trend-bar:hover{background:var(--accent-hover)}
+.trend-bar-tooltip{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--text);color:var(--surface);font-size:10px;padding:3px 7px;border-radius:5px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;margin-bottom:4px}
+.trend-bar:hover .trend-bar-tooltip{opacity:1}
+.trend-bar-label{font-size:9.5px;color:var(--text-muted);text-align:center}
+.trend-bar-label.today{color:var(--accent-text);font-weight:700}
+
+.leaderboard-list{display:flex;flex-direction:column;gap:8px}
+.lb-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--surface-2)}
+.lb-rank{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.lb-rank.r1{background:#fbbf24;color:#78350f}
+.lb-rank.r2{background:#cbd5e1;color:#334155}
+.lb-rank.r3{background:#fb923c;color:#7c2d12}
+.lb-rank.rn{background:var(--surface-3,var(--border));color:var(--text-muted)}
+.lb-info{flex:1;min-width:0}
+.lb-name{font-size:12px;font-weight:600;color:var(--text)}
+.lb-sub{font-size:10.5px;color:var(--text-muted)}
+.lb-value{font-size:12px;font-weight:700;font-family:var(--mono);color:var(--success);white-space:nowrap}
+.insight-empty{text-align:center;padding:24px;color:var(--text-muted);font-size:12px}
+
+@media(max-width:900px){ .insight-cards{grid-template-columns:1fr} }
 .search-wrap-mini{position:relative;display:inline-flex}
 i.search-spinner{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--accent);display:none !important}
 i.search-spinner.show{display:block !important}
@@ -189,6 +232,21 @@ tr.row-active td{background:var(--accent-bg)!important}
 @keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateY(8px)}}
 .copy-kode-btn{background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:inline-flex;align-items:center;font-size:11px;margin-left:4px;border-radius:4px}
 .copy-kode-btn:hover{color:var(--accent);background:var(--accent-bg)}
+.bulk-bar{display:none;align-items:center;gap:10px;padding:9px 16px;background:var(--accent-bg);border-bottom:1px solid var(--border)}
+.bulk-bar.show{display:flex}
+.bulk-bar-text{font-size:12px;color:var(--accent-text);font-weight:600}
+.bulk-bar-actions{margin-left:auto;display:flex;gap:8px}
+.bulk-btn{height:26px;padding:0 10px;font-size:11.5px;font-family:inherit;border:none;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.bulk-btn.export{background:var(--success);color:#fff}
+.bulk-btn.clear{background:var(--surface);color:var(--text-secondary);border:1px solid var(--border-strong)}
+.row-checkbox{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
+th.checkbox-col,td.checkbox-col{width:30px;text-align:center;padding-left:12px;padding-right:0}
+
+.inline-edit-input{width:100%;height:24px;padding:0 6px;font-size:11.5px;font-family:var(--mono);border:1px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--text);outline:none}
+.editable-cell{cursor:text;position:relative}
+.editable-cell:hover{background:var(--accent-bg)}
+.editable-cell .edit-hint{opacity:0;font-size:9px;color:var(--accent);margin-left:4px}
+.editable-cell:hover .edit-hint{opacity:1}
 .filter-count{font-size:9.5px;opacity:.75;font-family:var(--mono)}
 
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
@@ -311,7 +369,21 @@ tr.row-active td{background:var(--accent-bg)!important}
       </div>
     </div>
   </div>
-
+<div class="section-label"><i class="ph ph-trend-up"></i> Insight Konversi</div>
+  <div class="insight-cards">
+    <div class="insight-card">
+      <div class="insight-card-title"><i class="ph ph-chart-bar" style="color:var(--accent)"></i> Trend 7 Hari Terakhir</div>
+      <div id="trend-chart-box"><div class="skeleton" style="height:120px"></div></div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-card-title"><i class="ph ph-trophy" style="color:var(--warning)"></i> Leaderboard Sales (30 hari)</div>
+      <div id="leaderboard-box">
+        <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
+        <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
+        <div class="skeleton" style="height:38px"></div>
+      </div>
+    </div>
+  </div>
   <div class="section-label"><i class="ph ph-list"></i> Daftar Produk</div>
   <div class="table-section">
     <div class="table-header">
@@ -327,17 +399,30 @@ tr.row-active td{background:var(--accent-bg)!important}
           <option value="SET">Set</option>
           <option value="UNIT">Unit</option>
         </select>
-        <span class="search-wrap-mini">
-  <input class="search-mini" id="tbl-search" type="search" placeholder="Cari kode / nama…" oninput="onSearch()" style="padding-right:24px"/>
+        <span class="search-wrap-mini" style="position:relative">
+  <input class="search-mini" id="tbl-search" type="search" placeholder="Cari kode / nama…" oninput="onSearch()" onfocus="showSearchHistory()" style="padding-right:24px"/>
   <i class="ph ph-circle-notch spinner search-spinner" id="search-spinner"></i>
+  <div class="search-history" id="search-history"></div>
 </span>
+      </div>
+    </div>
+    <div class="table-header" style="border-top:none;padding-top:0">
+      <div class="preset-bar" id="preset-bar"></div>
+      <button class="preset-save-btn" onclick="savePreset()"><i class="ph ph-bookmark-simple"></i> Simpan Filter Ini</button>
+      </div>
+      <div class="bulk-bar" id="bulk-bar">
+      <span class="bulk-bar-text"><span id="bulk-count">0</span> produk dipilih</span>
+      <div class="bulk-bar-actions">
+        <button class="bulk-btn export" onclick="exportSelected()"><i class="ph ph-file-csv"></i> Export CSV</button>
+        <button class="bulk-btn clear" onclick="clearSelection()"><i class="ph ph-x"></i> Batal</button>
       </div>
     </div>
     <div class="table-scroll">
     <table>
         <thead>
-          <tr>
-            <th>Kode Produk</th>
+  <tr>
+    <th class="checkbox-col"><input type="checkbox" class="row-checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)"/></th>
+    <th>Kode Produk</th>
             <th>Nama Produk</th>
             <th>Tipe</th>
             <th>Harga e-Kat</th>
@@ -346,7 +431,7 @@ tr.row-active td{background:var(--accent-bg)!important}
           </tr>
         </thead>
         <tbody id="tbl-body">
-          <tr class="loading-row"><td colspan="6"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>
+          <tr class="loading-row"><td colspan="7"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>
         </tbody>
       </table>
     </div>
@@ -792,7 +877,7 @@ let searchDebounce = null;
 let pageCache = {};
 
 function cacheKey(page){
-  return `${currentFilter}|${currentTipe}|${currentSearch}|${page}`;
+  return `${Array.from(activeFilters).sort().join(',')}|${currentTipe}|${currentSearch}|${page}`;
 }
 function clearPageCache(){ pageCache = {}; }
 
@@ -800,11 +885,11 @@ async function fetchPage(page){
   const key = cacheKey(page);
   if (pageCache[key]) return pageCache[key];
   const result = await rpc('get_dashboard_produk', {
-    p_filter: currentFilter,
-    p_tipe: currentTipe || null,
-    p_search: currentSearch || null,
-    p_page: page,
-    p_page_size: PAGE_SIZE
+  p_filters: Array.from(activeFilters),
+  p_tipe: currentTipe || null,
+  p_search: currentSearch || null,
+  p_page: page,
+  p_page_size: PAGE_SIZE
   });
   pageCache[key] = result;
   return result;
@@ -829,19 +914,43 @@ function prefetchNextPage(total){
 async function loadTable(){
   const key = cacheKey(currentPage);
   if (!pageCache[key]) {
-    document.getElementById('tbl-body').innerHTML = '<tr class="loading-row"><td colspan="6"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>';
+    document.getElementById('tbl-body').innerHTML = '<tr class="loading-row"><td colspan="7"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>';
   }
   const result = await fetchPage(currentPage);
   renderTable(result.total || 0, result.rows || []);
   prefetchNextPage(result.total || 0);
 }
 
+async function fetchPage(page){
+  const key = cacheKey(page);
+  if (pageCache[key]) return pageCache[key];
+  const result = await rpc('get_dashboard_produk', {
+    p_filters: Array.from(activeFilters),
+    p_tipe: currentTipe || null,
+    p_search: currentSearch || null,
+    p_page: page,
+    p_page_size: PAGE_SIZE
+  });
+  pageCache[key] = result;
+  return result;
+}
+
+let activeFilters = new Set(['all']);
+
 function setFilter(f, el){
-  currentFilter = f;
+  if (f === 'all') {
+    activeFilters = new Set(['all']);
+  } else {
+    activeFilters.delete('all');
+    if (activeFilters.has(f)) activeFilters.delete(f);
+    else activeFilters.add(f);
+    if (activeFilters.size === 0) activeFilters.add('all');
+  }
   currentPage = 1;
   clearPageCache();
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', activeFilters.has(b.dataset.f));
+  });
   loadTable().catch(handleLoadError);
 }
 function setTipe(v){ currentTipe = v; currentPage = 1; clearPageCache(); loadTable().catch(handleLoadError); }
@@ -857,6 +966,7 @@ function onSearch(){
     clearPageCache();
     try {
       await loadTable();
+      if (currentSearch) addSearchHistory(currentSearch);
     } catch(err) {
       handleLoadError(err);
     } finally {
@@ -878,8 +988,11 @@ function renderTable(total, rows){
     document.getElementById('tbl-body').innerHTML = '<tr style="cursor:pointer" onclick="openDetail(${r.kode_produk})"><td colspan="6"><i class="ph ph-magnifying-glass" style="font-size:28px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
   } else {
     document.getElementById('tbl-body').innerHTML = rows.map(r => `
-      <tr style="cursor:pointer" data-kode="${r.kode_produk}" onclick="openDetail('${r.kode_produk}')">
-        <td><span class="kode-text">${r.kode_produk || '—'}</span><button class="copy-kode-btn" onclick="copyKode(event,'${r.kode_produk}')" title="Salin kode"><i class="ph ph-copy"></i></button></td>
+  <tr style="cursor:pointer" data-kode="${r.kode_produk}" onclick="openDetail('${r.kode_produk}')">
+    <td class="checkbox-col" onclick="event.stopPropagation()">
+      <input type="checkbox" class="row-checkbox" data-kode="${r.kode_produk}" data-row='${JSON.stringify(r).replace(/'/g,"&apos;")}' ${selectedRows.has(r.kode_produk)?'checked':''} onchange="toggleRowSelect(this,'${r.kode_produk}', ${JSON.stringify(r).replace(/"/g,'&quot;')})"/>
+    </td>
+    <td><span class="kode-text">${r.kode_produk || '—'}</span><button class="copy-kode-btn" onclick="copyKode(event,'${r.kode_produk}')" title="Salin kode"><i class="ph ph-copy"></i></button></td>
         <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.nama_produk || '—'}</td>
         <td><span class="badge ${tipeClass[r.tipe] || ''}">${r.tipe || '—'}</span></td>
         <td>${r.harga ? `<span style="font-family:var(--mono);font-size:11.5px;color:var(--success);font-weight:600">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="ph ph-x"></i> Belum ada</span>`}</td>
@@ -916,7 +1029,7 @@ function handleLoadError(err){
 async function loadEverything(){
   clearError();
   try {
-    await Promise.all([loadStats(), loadTable(), loadKonversiToday()]);
+    await Promise.all([loadStats(), loadTable(), loadKonversiToday(), loadTrend(), loadLeaderboard()]);
   } catch (err) {
     handleLoadError(err);
   }
@@ -949,6 +1062,208 @@ document.addEventListener('keydown', (e) => {
     }
   }
 });
+// ══════════════════════════════════════════
+// RIWAYAT PENCARIAN
+// ══════════════════════════════════════════
+const SEARCH_HISTORY_KEY = 'pnm_dashboard_search_history';
+function getSearchHistory(){
+  try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]'); } catch { return []; }
+}
+function addSearchHistory(term){
+  if (!term || term.length < 2) return;
+  let hist = getSearchHistory().filter(t => t.toLowerCase() !== term.toLowerCase());
+  hist.unshift(term);
+  hist = hist.slice(0, 5);
+  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(hist));
+}
+function clearSearchHistory(){
+  localStorage.removeItem(SEARCH_HISTORY_KEY);
+  document.getElementById('search-history').classList.remove('show');
+}
+function showSearchHistory(){
+  const hist = getSearchHistory();
+  const box = document.getElementById('search-history');
+  if (!hist.length) { box.classList.remove('show'); return; }
+  box.innerHTML = hist.map(t => `<div class="search-history-item" onclick="applySearchHistory('${t.replace(/'/g,"\\'")}')"><i class="ph ph-clock-counter-clockwise"></i> ${t}</div>`).join('')
+    + `<div class="search-history-clear" onclick="clearSearchHistory()">Hapus riwayat</div>`;
+  box.classList.add('show');
+}
+function applySearchHistory(term){
+  document.getElementById('tbl-search').value = term;
+  document.getElementById('search-history').classList.remove('show');
+  currentSearch = term;
+  currentPage = 1;
+  clearPageCache();
+  loadTable().catch(handleLoadError);
+}
+document.addEventListener('click', (e) => {
+  const box = document.getElementById('search-history');
+  if (box && !e.target.closest('.search-wrap-mini')) box.classList.remove('show');
+});
+
+// ══════════════════════════════════════════
+// PRESET FILTER TERSIMPAN
+// ══════════════════════════════════════════
+const PRESET_KEY = 'pnm_dashboard_presets';
+function getPresets(){
+  try { return JSON.parse(localStorage.getItem(PRESET_KEY) || '[]'); } catch { return []; }
+}
+function savePreset(){
+  const label = prompt('Nama preset ini (contoh: "Instrumen tanpa harga"):');
+  if (!label || !label.trim()) return;
+  const presets = getPresets();
+  presets.push({
+    label: label.trim(),
+    filter: currentFilter,
+    tipe: currentTipe,
+    search: currentSearch
+  });
+  localStorage.setItem(PRESET_KEY, JSON.stringify(presets));
+  renderPresets();
+  showToast(`Preset "${label.trim()}" tersimpan`);
+}
+function applyPreset(idx){
+  const presets = getPresets();
+  const p = presets[idx];
+  if (!p) return;
+  currentFilter = p.filter;
+  currentTipe = p.tipe;
+  currentSearch = p.search;
+  currentPage = 1;
+  clearPageCache();
+
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.f === p.filter));
+  document.getElementById('tipe-filter').value = p.tipe || '';
+  document.getElementById('tbl-search').value = p.search || '';
+
+  loadTable().catch(handleLoadError);
+}
+function deletePreset(e, idx){
+  e.stopPropagation();
+  const presets = getPresets();
+  presets.splice(idx, 1);
+  localStorage.setItem(PRESET_KEY, JSON.stringify(presets));
+  renderPresets();
+}
+function renderPresets(){
+  const presets = getPresets();
+  const bar = document.getElementById('preset-bar');
+  if (!presets.length) { bar.innerHTML = `<span style="font-size:11px;color:var(--text-muted)">Belum ada preset tersimpan</span>`; return; }
+  bar.innerHTML = presets.map((p, i) => `
+    <button class="preset-chip" onclick="applyPreset(${i})">
+      <i class="ph ph-bookmark-simple"></i> ${p.label}
+      <span class="preset-x" onclick="deletePreset(event,${i})"><i class="ph ph-x"></i></span>
+    </button>
+  `).join('');
+}
+renderPresets();
+// ══════════════════════════════════════════
+// BULK SELECTION & EXPORT CSV
+// ══════════════════════════════════════════
+let selectedRows = new Map(); // kode_produk -> row data
+
+function toggleRowSelect(cb, kode, rowData){
+  if (cb.checked) selectedRows.set(kode, rowData);
+  else selectedRows.delete(kode);
+  updateBulkBar();
+  document.getElementById('select-all-checkbox').checked =
+    document.querySelectorAll('.row-checkbox:not(#select-all-checkbox)').length > 0 &&
+    document.querySelectorAll('.row-checkbox:not(#select-all-checkbox):checked').length === document.querySelectorAll('.row-checkbox:not(#select-all-checkbox)').length;
+}
+function toggleSelectAll(masterCb){
+  document.querySelectorAll('#tbl-body .row-checkbox').forEach(cb => {
+    cb.checked = masterCb.checked;
+    const kode = cb.dataset.kode;
+    const rowData = JSON.parse(cb.dataset.row);
+    if (masterCb.checked) selectedRows.set(kode, rowData);
+    else selectedRows.delete(kode);
+  });
+  updateBulkBar();
+}
+function updateBulkBar(){
+  const bar = document.getElementById('bulk-bar');
+  const count = selectedRows.size;
+  document.getElementById('bulk-count').textContent = count;
+  bar.classList.toggle('show', count > 0);
+}
+function clearSelection(){
+  selectedRows.clear();
+  document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
+  updateBulkBar();
+}
+function exportSelected(){
+  if (!selectedRows.size) return;
+  const rows = Array.from(selectedRows.values());
+  const headers = ['Kode Produk','Nama Produk','Tipe','Harga e-Kat','Link v6','No. AKD'];
+  const csvRows = [headers.join(',')];
+  rows.forEach(r => {
+    const line = [
+      r.kode_produk || '',
+      `"${(r.nama_produk||'').replace(/"/g,'""')}"`,
+      r.tipe || '',
+      r.harga || '',
+      r.link_v6 || '',
+      r.no_akd || ''
+    ].join(',');
+    csvRows.push(line);
+  });
+  const csvContent = '\uFEFF' + csvRows.join('\n'); // BOM biar Excel baca UTF-8 dengan benar
+  const blob = new Blob([csvContent], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `produk-export-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`${rows.length} produk berhasil di-export`);
+}
+// ══════════════════════════════════════════
+// TREND 7 HARI + LEADERBOARD SALES
+// ══════════════════════════════════════════
+async function loadTrend(){
+  const data = await rpc('get_dashboard_trend_7hari', {});
+  const box = document.getElementById('trend-chart-box');
+  if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data konversi.</div>`; return; }
+
+  const maxVal = Math.max(...data.map(d=>d.jumlah), 1);
+  const todayStr = new Date().toISOString().slice(0,10);
+  const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+
+  box.innerHTML = `<div class="trend-chart">
+    ${data.map(d => {
+      const h = Math.round((d.jumlah / maxVal) * 100);
+      const isToday = d.tanggal === todayStr;
+      const dt = new Date(d.tanggal + 'T00:00:00');
+      const label = dayNames[dt.getDay()];
+      return `<div class="trend-bar-wrap">
+        <div class="trend-bar" style="height:${Math.max(h,3)}%">
+          <div class="trend-bar-tooltip">${fmt(d.jumlah)} order<br>${rupiah(d.total_value)}</div>
+        </div>
+        <div class="trend-bar-label${isToday?' today':''}">${label}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+async function loadLeaderboard(){
+  const data = await rpc('get_dashboard_leaderboard_sales', {p_days: 30});
+  const box = document.getElementById('leaderboard-box');
+  if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data sales.</div>`; return; }
+
+  const rankClass = (i) => i===0?'r1':i===1?'r2':i===2?'r3':'rn';
+  box.innerHTML = `<div class="leaderboard-list">
+    ${data.map((r,i) => `
+      <div class="lb-item">
+        <div class="lb-rank ${rankClass(i)}">${i+1}</div>
+        <div class="lb-info">
+          <div class="lb-name">${r.nama}</div>
+          <div class="lb-sub">${fmt(r.jumlah_order)} order</div>
+        </div>
+        <div class="lb-value">${rupiah(r.total_value)}</div>
+      </div>
+    `).join('')}
+  </div>`;
+}
 initAuth();
 </script>
 </body>
