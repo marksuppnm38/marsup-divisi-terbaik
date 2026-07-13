@@ -1,56 +1,19 @@
 // ==UserScript==
 // @name         INAPROC Auto Isi Master Produk Sectoral (Alkes - Kode Unik KFA) + Panel
 // @namespace    inaproc-auto-master-produk
-// @version      3.1.0
-// @description  Panel UI untuk auto isi form pengajuan penunjukan Sectoral (Kategori Alkes: Kode Unik KFA) di penyedia.inaproc.id, unggah AKD & CPAKB dari Supabase Storage, konfirmasi, kirim, dan auto-lanjut antar SKU.
+// @version      3.9.0
+// @description  Panel UI untuk auto isi form pengajuan penunjukan Sectoral (Kategori Alkes: Kode Unik KFA) di penyedia.inaproc.id, unggah AKD & CPAKB dari Supabase Storage, konfirmasi, kirim, dan auto-lanjut antar SKU. SKU dengan nomor permohonan bermasalah di-skip dengan REFRESH HALAMAN (fresh start) daripada maksa lanjut di context lama -- menghindari false-negative deteksi error akibat network lelet. Urutan upload: Dokumen 1 = AKD, Dokumen 2 = CPAKB, dicari via header unik "Dokumen 1"/"Dokumen 2". Fix v3.9.0: deteksi upload selesai sekarang snapshot link "Lihat Dokumen" yang sudah ada SEBELUM upload lalu tunggu link BARU (href beda) muncul -- sebelumnya asal ada link apapun langsung dianggap selesai, jadi ke-fool sama link basi/lama dan Kirim kepencet sebelum dokumen baru beneran selesai keupload.
 // @match        https://penyedia.inaproc.id/*
 // @grant        none
 // ==/UserScript==
 (function () {
   'use strict';
 
-  // ============================================================
-  // CARA PAKAI:
-  // 1. Login manual seperti biasa ke penyedia.inaproc.id
-  // 2. Buka halaman daftar produk, mis:
-  //      https://penyedia.inaproc.id/principal-applications?tab=ALL&p=1
-  //    Panel kecil bakal muncul di pojok kanan atas (bisa digeser & diciutkan)
-  // 3. Paste antrian di textarea, format TAB-separated, satu baris = satu SKU:
-  //      KODE_KFA <TAB> PATH_FILE_AKD_DI_BUCKET
-  //    contoh:  91000123<TAB>AKD-91000123.pdf
-  // 4. Klik "Muat ke Antrian", lalu klik "🚀 Mulai" -- ini akan klik tombol
-  //    "Daftarkan Merek" di halaman daftar produk dan lanjut isi SKU
-  //    pertama begitu form apply-nya kebuka.
-  // 5. "Dry run" NYALA secara default -- script isi semua field TAPI TIDAK
-  //    centang konfirmasi & TIDAK klik Kirim. WAJIB test 1 SKU dulu dengan
-  //    dry run sebelum mematikannya, karena setelah dry run dimatikan,
-  //    data akan benar-benar terkirim ke sistem KFA nasional.
-  // 6. "Auto-lanjut ke SKU berikutnya" HANYA berlaku kalau dry run OFF,
-  //    karena dry run tidak menyisakan halaman baru untuk dilanjutkan
-  //    (tidak ada submit -> tidak ada navigasi balik ke dashboard).
-  //    Setelah tiap SKU sukses dikirim, script otomatis: Kembali ke
-  //    Dashboard -> Daftarkan Merek -> isi SKU berikutnya.
-  // 7. Kalau ada langkah yang gagal di tengah jalan, proses BERHENTI
-  //    otomatis (tidak maksa lanjut ke SKU berikutnya) -- cek log & DOM
-  //    manual dulu sebelum lanjut (tombol "Proses SKU berikutnya" bisa
-  //    dipakai buat retry manual kalau kamu sudah di halaman apply).
-  // ============================================================
-
   const CONFIG = {
-    // Base URL public object storage Supabase kamu:
-    // https://<project-ref>.supabase.co/storage/v1/object/public/<bucket-name>
     supabaseBaseUrl: 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/perizinan',
-
-    // Kalau bucket PRIVATE, isi ini. Kosongkan ('') kalau bucket-nya public.
     supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo',
-
-    // CPAKB selalu sama untuk semua produk (1 jenis produk: instrumen).
     cpakbPath: 'Sertifikat CPAKB PNM KBLI 32509 K1.pdf',
-
-    // Teks label kategori di dropdown sectoral yang harus dipilih
     kategoriLabel: 'Kategori Alkes: Kode Unik KFA',
-
-    // Jeda antar-langkah (ms)
     stepDelay: 600,
   };
 
@@ -59,7 +22,6 @@
   const FLAGS_KEY = 'inaproc_master_flags_v1';
   const STAGE_KEY = 'inaproc_master_stage_v1';
 
-  // ---------- Storage helpers ----------
   function loadQueue() {
     try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch { return []; }
   }
@@ -99,7 +61,6 @@
     }
   }
 
-  // ---------- Log ----------
   function log(msg) {
     const box = document.getElementById('inaproc-log');
     if (box) {
@@ -110,7 +71,6 @@
     console.log('[INAPROC-AUTO]', msg);
   }
 
-  // ---------- Util dasar ----------
   const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
   function waitForElement(selector, { timeout = 10000, root = document } = {}) {
@@ -123,23 +83,6 @@
       });
       observer.observe(root, { childList: true, subtree: true, attributes: true });
       setTimeout(() => { observer.disconnect(); reject(new Error(`Timeout menunggu elemen: ${selector}`)); }, timeout);
-    });
-  }
-
-  function waitForElementByText(selector, text, { timeout = 10000, root = document } = {}) {
-    return new Promise((resolve, reject) => {
-      const check = () => {
-        const els = Array.from(root.querySelectorAll(selector));
-        return els.find((el) => el.textContent.trim() === text);
-      };
-      const found = check();
-      if (found) return resolve(found);
-      const observer = new MutationObserver(() => {
-        const el = check();
-        if (el) { observer.disconnect(); resolve(el); }
-      });
-      observer.observe(root, { childList: true, subtree: true });
-      setTimeout(() => { observer.disconnect(); reject(new Error(`Timeout menunggu elemen berteks: "${text}" (${selector})`)); }, timeout);
     });
   }
 
@@ -176,6 +119,7 @@
       }, interval);
     });
   }
+
   function isVisible(el) {
     if (!el) return false;
     const style = window.getComputedStyle(el);
@@ -189,10 +133,6 @@
       || el.getAttribute?.('aria-disabled') === 'true');
   }
 
-  // Cari elemen ber-teks persis `text` yang BENAR-BENAR terlihat (dan opsional harus
-  // enabled), lalu klik tombolnya. Ini menghindari salah klik elemen duplikat yang
-  // sama teksnya tapi lagi disembunyikan/disabled di DOM (umum kejadian di web app
-  // reaktif -- ada beberapa elemen untuk state berbeda yang hidup bersamaan).
   function waitForClickableByText(selector, text, { timeout = 15000, interval = 300, requireEnabled = true } = {}) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
@@ -217,7 +157,6 @@
     });
   }
 
-  // ---------- Ambil file dari Supabase Storage -> File object ----------
   async function fetchFileFromSupabase(path) {
     const encodedPath = path.split('/').map((seg) => encodeURIComponent(seg)).join('/');
     const url = `${CONFIG.supabaseBaseUrl}/${encodedPath}`;
@@ -243,18 +182,88 @@
     inputEl.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  function findFileInputNearLabel(labelText, occurrenceIndex = 0, maxParentHops = 6) {
-    const spans = Array.from(document.querySelectorAll('span')).filter((s) => s.textContent.trim() === labelText);
-    const span = spans[occurrenceIndex];
-    if (!span) return null;
-    let node = span;
+  // FIX v3.7.0: teks tombol/dropzone "Pilih atau tarik dokumen di sini" SAMA PERSIS
+  // di semua slot dokumen, jadi gak bisa dipakai buat bedain slot 1 vs slot 2 (bug
+  // versi sebelumnya: occurrence index ke teks berulang gak reliable begitu ada
+  // >2 slot / urutan DOM beda dari urutan visual). Sekarang anchor ke HEADER unik
+  // per slot ("Dokumen 1", "Dokumen 2", dst -- <p class="text-caption-lg-bold mb-4">)
+  // lalu naik ke parent sampai ketemu input[type="file"] di dalamnya.
+  // FIX v3.8.0: sekarang balikin { input, container } -- container dipakai lagi
+  // buat polling link "Lihat Dokumen" setelah upload (lihat tungguLihatDokumen).
+  function findFileInputByDokumenHeader(dokumenNumber, maxParentHops = 6) {
+    const headerText = `Dokumen ${dokumenNumber}`;
+    const headers = Array.from(document.querySelectorAll('p.text-caption-lg-bold, p, span, div, label'))
+      .filter((el) => el.children.length === 0 && el.textContent.trim() === headerText && isVisible(el));
+    const header = headers[0];
+    if (!header) return null;
+
+    let node = header;
     for (let i = 0; i < maxParentHops; i++) {
       if (!node.parentElement) break;
       node = node.parentElement;
       const input = node.querySelector('input[type="file"]');
-      if (input) return input;
+      if (input) return { input, container: node };
     }
     return null;
+  }
+
+  // FIX v3.9.0: bug "gak sabar" -- tungguLihatDokumen versi lama cuma cek "ada link
+  // Lihat Dokumen gak di container", TAPI kalau ada link LAMA (basi dari upload
+  // sebelumnya, atau kepeluk dari slot dokumen sebelahnya kalau container-nya
+  // kebetulan lebih luas dari 1 slot), langsung dianggap "selesai" padahal itu
+  // bukan hasil upload yang baru saja di-trigger. Sekarang: snapshot dulu href
+  // link yang SUDAH ADA sebelum upload, lalu polling nunggu link BARU (href beda
+  // dari snapshot) -- ini robust walau container-nya kebetulan lebih luas.
+  async function tungguLihatDokumen(container, label, { timeout = 20000, interval = 300 } = {}) {
+    function getLinks() {
+      return Array.from(container.querySelectorAll('a')).filter((a) => {
+        const text = a.textContent.trim();
+        const href = a.getAttribute('href') || '';
+        return text === 'Lihat Dokumen' && href.startsWith('blob:') && isVisible(a);
+      });
+    }
+    const existingHrefs = new Set(getLinks().map((a) => a.getAttribute('href')));
+
+    log(`⏳ Menunggu upload ${label} selesai...`);
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const newLink = getLinks().find((a) => !existingHrefs.has(a.getAttribute('href')));
+      if (newLink) {
+        log(`✅ Upload ${label} selesai (link "Lihat Dokumen" baru terdeteksi).`);
+        await sleep(300); // buffer kecil biar state form kebentuk sempurna
+        return true;
+      }
+      await sleep(interval);
+    }
+    throw new Error(`Upload ${label} tidak selesai dalam ${timeout / 1000} detik (link "Lihat Dokumen" baru tidak muncul).`);
+  }
+
+  // ---------- Deteksi error & fix false-positive/false-negative ----------
+  // FIX v3.6.0: exclude elemen dari panel INAPROC sendiri saat cari teks error,
+  // karena panel kita punya baris bantuan yang teksnya persis mengandung frasa
+  // error form, jadi kalau gak di-exclude selalu ke-detect sebagai error.
+  function cekNomorPermohonanError() {
+    const els = Array.from(document.querySelectorAll('span, div, p'));
+    return els.some((el) => {
+      if (el.closest('#inaproc-panel')) return false; // skip elemen panel kita sendiri
+      const t = el.textContent.replace(/\s+/g, ' ').trim();
+      return t.includes('Nomor permohonan wajib') && isVisible(el);
+    });
+  }
+
+  async function tungguErrorHilang(timeout = 4000) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      if (!cekNomorPermohonanError()) return true;
+      await sleep(200);
+    }
+    return false;
+  }
+
+  async function kosongkanNomorProduk() {
+    const input = await waitForElement('input[name="kfa.input"], input[placeholder="Nomor Produk"]');
+    setNativeValue(input, '');
+    await sleep(300);
   }
 
   // ---------- Langkah-langkah form ----------
@@ -268,9 +277,6 @@
   }
 
   async function pilihKategoriDropdown() {
-    // Cari kontrol select yang BARU muncul setelah radio "sectoral" dipilih --
-    // ini lebih akurat daripada asal ambil select__control pertama di halaman,
-    // karena mungkin ada beberapa dropdown react-select lain sudah ada duluan.
     let control = await pollUntil(() => {
       const now = Array.from(document.querySelectorAll('[class*="select__control"]'));
       const fresh = now.find((el) => !controlsBeforeSectoral.has(el) && isVisible(el));
@@ -278,18 +284,41 @@
     }, { timeout: 8000 }).catch(() => null);
 
     if (!control) {
-      // Fallback: kontrol select pertama yang visible di halaman
       control = Array.from(document.querySelectorAll('[class*="select__control"]')).find(isVisible) || null;
     }
     if (!control) throw new Error('Tidak menemukan kontrol dropdown kategori sama sekali. Cek selector di DevTools.');
 
-    clickElement(control);
-    await sleep(CONFIG.stepDelay);
+    function simulasiKlikLengkap(el) {
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const base = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 0 };
+      if (window.PointerEvent) {
+        el.dispatchEvent(new PointerEvent('pointerdown', { ...base, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+      }
+      el.dispatchEvent(new MouseEvent('mousedown', base));
+      if (window.PointerEvent) {
+        el.dispatchEvent(new PointerEvent('pointerup', { ...base, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+      }
+      el.dispatchEvent(new MouseEvent('mouseup', base));
+      el.dispatchEvent(new MouseEvent('click', base));
+    }
 
-    // Opsi react-select biasanya di-PORTAL keluar dari kontrolnya (dirender di
-    // tempat lain di DOM, bukan di dalam elemen kontrolnya) -- jadi dicari di
-    // SELURUH dokumen, lalu difilter yang visible & posisinya dekat kontrol ini,
-    // bukan dicari lewat hubungan parent/child ke kontrolnya.
+    async function bukaMenuKategori() {
+      simulasiKlikLengkap(control);
+      await sleep(350);
+      return Array.from(document.querySelectorAll('[class*="select__menu"]')).some(
+        (el) => isVisible(el) && isNear(el, control, 600)
+      );
+    }
+
+    let menuTerbuka = await bukaMenuKategori();
+    for (let attempt = 0; !menuTerbuka && attempt < 2; attempt++) {
+      await sleep(300);
+      menuTerbuka = await bukaMenuKategori();
+    }
+    if (!menuTerbuka) throw new Error('Menu dropdown kategori nggak kebuka setelah beberapa kali percobaan klik.');
+
     const optionSelector = '[class*="select__option"], [class*="select"][class*="option"], [role="option"]';
     const option = await pollUntil(() => {
       const candidates = Array.from(document.querySelectorAll(optionSelector)).filter(
@@ -302,24 +331,21 @@
 
     if (!option) {
       const allVisibleOptions = Array.from(document.querySelectorAll(optionSelector)).filter(isVisible);
-      console.log('[INAPROC-AUTO] Opsi dropdown kategori nggak ketemu. Kandidat opsi yang visible di halaman saat ini:');
+      console.log('[INAPROC-AUTO] Opsi dropdown kategori nggak ketemu. Kandidat opsi visible:');
       allVisibleOptions.forEach((el, i) => console.log(`[INAPROC-AUTO] Opsi ${i}: "${el.textContent.trim()}"`, el));
-      throw new Error(`Opsi "${CONFIG.kategoriLabel}" nggak ketemu di dropdown yang kebuka. Cek console (F12) buat lihat daftar opsi yang kedetect.`);
+      throw new Error(`Opsi "${CONFIG.kategoriLabel}" nggak ketemu di dropdown.`);
     }
 
     clickElement(option);
+    simulasiKlikLengkap(option);
     await sleep(CONFIG.stepDelay);
 
-    // Verifikasi: kontrolnya harus SUDAH BERGANTI dari placeholder "Pilih" ke nilai
-    // yang dipilih. Kalau tetap "Pilih" berarti klik opsi tadi nggak beneran kena.
     const selected = await pollUntil(() => {
       const text = control.textContent.trim();
       return text && text !== 'Pilih' ? text : null;
     }, { timeout: 5000 }).catch(() => null);
 
-    if (!selected) {
-      throw new Error('Dropdown kategori masih menunjukkan placeholder "Pilih" setelah opsi diklik -- kemungkinan klik opsi nggak kena elemen yang benar. Cek manual / console (F12).');
-    }
+    if (!selected) throw new Error('Dropdown kategori masih menunjukkan "Pilih" setelah opsi diklik.');
     log(`Kategori terpilih: "${selected}"`);
   }
 
@@ -332,7 +358,66 @@
   async function klikPeriksa() {
     const btn = await waitForElement('#find-kfa-button');
     clickElement(btn);
-    await sleep(CONFIG.stepDelay * 2);
+    await sleep(3500);
+  }
+
+  // FIX v3.7.0: dulu ada while-loop internal yang skip SKU bermasalah lalu LANGSUNG
+  // lanjut cek SKU berikutnya di context/DOM yang sama -- ini sumber bug utama:
+  // kalau deteksi error telat kedetect (network lelet), state DOM/React yang residual
+  // bikin SKU berikutnya ikut salah baca. Sekarang fungsi ini cuma cek SATU SKU per
+  // page-load. Kalau bermasalah -> skip + REFRESH HALAMAN (fresh start), bukan lanjut
+  // di context yang sama. Proses otomatis nyambung lagi sendiri lewat stage + main().
+  async function cekDanProsesNomorProduk() {
+    const q = loadQueue();
+    if (!q.length) return null;
+    const item = q[0];
+
+    await tungguErrorHilang(4000);
+
+    log(`Cek Nomor Produk (KFA): "${item.kfaCode}"...`);
+    await isiNomorProduk(item.kfaCode);
+    await klikPeriksa();
+
+    // Polling sabar (backend kadang lelet) tapi tetap 1 percobaan per page-load --
+    // kalau kena skip, refresh aja daripada maksa lanjut di context ini.
+    let errorTerlihat = false;
+    const pollStart = Date.now();
+    while (Date.now() - pollStart < 8000) {
+      if (cekNomorPermohonanError()) { errorTerlihat = true; break; }
+      await sleep(400);
+    }
+
+    if (errorTerlihat) {
+      log(`⏭️ KFA "${item.kfaCode}" DILEWATI: "Nomor permohonan wajib di isi". Refresh buat fresh start...`);
+      recordResult(item.kfaCode, 'skipped-kfa-bermasalah');
+      shiftQueueIfMatches(item.kfaCode);
+      renderPanel();
+      await restartViaReload();
+      return null;
+    }
+
+    log(`✅ Nomor Produk "${item.kfaCode}" valid, lanjut proses.`);
+    return item;
+  }
+
+  // FIX v3.7.0: reload dilakukan DI HALAMAN FORM APPLY YANG SAMA (bukan balik ke
+  // dashboard dulu), karena form apply-nya reusable / masih di posisi yang sama
+  // setelah reload -- tinggal pilih jenis penunjukan (Sectoral) lagi. Makanya stage
+  // yang dipakai adalah 'await_apply_form', BUKAN 'await_daftarkan' (yang butuh
+  // klik "Daftarkan Merek" dari dashboard).
+  async function restartViaReload() {
+    const remaining = loadQueue().length;
+    if (remaining > 0 && flags.autoContinueQueue) {
+      log('🔄 Refresh halaman buat fresh start (masih di form apply, tinggal pilih jenis penunjukan lagi)...');
+      setStage('await_apply_form');
+      await sleep(500);
+      location.reload();
+    } else {
+      setStage(null);
+      log(remaining > 0
+        ? '⏸️ Auto-lanjut OFF -- klik "Proses SKU berikutnya" lagi buat lanjut manual.'
+        : '🎉 Semua SKU di antrian sudah diproses/dilewati.');
+    }
   }
 
   async function centangTipePenyedia() {
@@ -344,21 +429,24 @@
     await sleep(CONFIG.stepDelay);
   }
 
+  // FIX v3.7.0: urutan upload dibetulin -- Dokumen 1 = CPAKB, Dokumen 2 = AKD
+  // (sebelumnya kebalik). Input dicari via header unik per slot, bukan occurrence
+  // index ke teks dropzone yang sama di semua slot (lihat findFileInputByDokumenHeader).
   async function unggahDokumen(akdPath) {
     const [akdFile, cpakbFile] = await Promise.all([
       fetchFileFromSupabase(akdPath),
       fetchFileFromSupabase(CONFIG.cpakbPath),
     ]);
 
-    const akdInput = findFileInputNearLabel('Unggah Dokumen', 0);
-    if (!akdInput) throw new Error('Input file AKD tidak ditemukan. Sesuaikan findFileInputNearLabel().');
-    injectFileToInput(akdInput, akdFile);
-    await sleep(CONFIG.stepDelay);
+    const akdSlot = findFileInputByDokumenHeader(1); // Dokumen 1 = AKD
+    if (!akdSlot) throw new Error('Input file untuk "Dokumen 1" (AKD) tidak ditemukan.');
+    injectFileToInput(akdSlot.input, akdFile);
+    await tungguLihatDokumen(akdSlot.container, 'Dokumen 1 (AKD)');
 
-    const cpakbInput = findFileInputNearLabel('Unggah Dokumen', 1);
-    if (!cpakbInput) throw new Error('Input file CPAKB tidak ditemukan (slot kedua "Unggah Dokumen").');
-    injectFileToInput(cpakbInput, cpakbFile);
-    await sleep(CONFIG.stepDelay);
+    const cpakbSlot = findFileInputByDokumenHeader(2); // Dokumen 2 = CPAKB
+    if (!cpakbSlot) throw new Error('Input file untuk "Dokumen 2" (CPAKB) tidak ditemukan.');
+    injectFileToInput(cpakbSlot.input, cpakbFile);
+    await tungguLihatDokumen(cpakbSlot.container, 'Dokumen 2 (CPAKB)');
   }
 
   async function centangKonfirmasiValiditas() {
@@ -380,9 +468,7 @@
         else if (Date.now() - start > 15000) { clearInterval(timer); resolve(false); }
       }, 300);
     });
-    if (!selesai) {
-      throw new Error('Tombol "Kirim" masih terlihat setelah 15 detik -- submit kemungkinan gagal/nyangkut. BERHENTI, tidak lanjut ke Kembali ke Dashboard.');
-    }
+    if (!selesai) throw new Error('Tombol "Kirim" masih terlihat setelah 15 detik -- submit kemungkinan gagal/nyangkut.');
     await sleep(CONFIG.stepDelay * 2);
   }
 
@@ -398,23 +484,18 @@
     await sleep(CONFIG.stepDelay);
   }
 
-  // Titik mulai: halaman daftar produk, mis. penyedia.inaproc.id/principal-applications?tab=ALL&p=1
-  // Dipanggil manual dari tombol panel "Mulai" -- klik "Daftarkan Merek" lalu tandai stage
-  // supaya begitu halaman apply termuat, main() otomatis lanjut isi SKU pertama di antrian.
   async function startFromDaftarkanMerek() {
     const q = loadQueue();
     if (!q.length) { log('⚠️ Antrian masih kosong. Muat antrian dulu sebelum klik Mulai.'); return; }
     const adaTombol = document.body.textContent.includes('Daftarkan Merek');
     if (!adaTombol) {
-      log('⚠️ Tombol "Daftarkan Merek" nggak ketemu di halaman ini. Pastikan kamu di halaman daftar produk (principal-applications), bukan halaman lain.');
+      log('⚠️ Tombol "Daftarkan Merek" nggak ketemu di halaman ini.');
       return;
     }
     log('🚀 Memulai: klik "Daftarkan Merek"...');
     setStage('await_apply_form');
     try {
       await klikDaftarkanMerek();
-      // Kalau navigasi bukan full reload (SPA route change), main() lewat MutationObserver
-      // panel init tidak otomatis jalan lagi -- jadi cek langsung juga di sini sebagai jaga-jaga.
       await sleep(CONFIG.stepDelay);
       if (document.querySelector('#sectoral')) {
         setStage(null);
@@ -426,23 +507,37 @@
     }
   }
 
-  // ---------- Orkestrasi satu SKU ----------
+  let processNextInQueueRunning = false;
   async function processNextInQueue() {
-    const q = loadQueue();
-    if (!q.length) { log('✅ Antrian kosong, nggak ada yang diproses.'); return; }
-    const item = q[0];
-    log(`Memproses KFA "${item.kfaCode}"...`);
-
+    if (processNextInQueueRunning) {
+      log('⏭️ processNextInQueue() lagi jalan di instance lain, panggilan ini di-skip (mencegah race/rebutan dropdown).');
+      return;
+    }
+    processNextInQueueRunning = true;
     try {
       await pilihJenisSectoral();
       await pilihKategoriDropdown();
-      await isiNomorProduk(item.kfaCode);
-      await klikPeriksa();
+
+      const item = await cekDanProsesNomorProduk();
+      if (!item) return; // queue kosong ATAU lagi proses refresh -- keduanya berhenti di sini
+
       await centangTipePenyedia();
       await unggahDokumen(item.akdPath);
 
+      // FIX v3.7.0: late-check sesaat sebelum submit. Kalau error baru kedetect
+      // di titik ini (telat render karena network lelet), batalkan & refresh
+      // daripada maksa klik Kirim yang bakal timeout karena form invalid.
+      if (cekNomorPermohonanError()) {
+        log(`⏭️ KFA "${item.kfaCode}" DILEWATI (telat kedetect, sebelum submit). Refresh...`);
+        recordResult(item.kfaCode, 'skipped-kfa-bermasalah-late');
+        shiftQueueIfMatches(item.kfaCode);
+        renderPanel();
+        await restartViaReload();
+        return;
+      }
+
       if (flags.dryRun) {
-        log(`[DRY RUN] KFA "${item.kfaCode}" selesai diisi. Checkbox konfirmasi & tombol Kirim TIDAK diklik. Cek manual dulu, matikan "Dry run" kalau sudah yakin.`);
+        log(`[DRY RUN] KFA "${item.kfaCode}" selesai diisi. Checkbox konfirmasi & tombol Kirim TIDAK diklik.`);
         recordResult(item.kfaCode, 'dry-run');
         shiftQueueIfMatches(item.kfaCode);
         renderPanel();
@@ -450,7 +545,23 @@
       }
 
       await centangKonfirmasiValiditas();
-      await klikKirim();
+
+      // FIX v3.7.0: kalau tombol Kirim tetep gak pernah aktif (form ternyata invalid,
+      // lolos dari 2 lapis pengecekan sebelumnya), treat sebagai skip + refresh,
+      // bukan cuma lempar error dan nyangkut nunggu klik manual.
+      try {
+        await klikKirim();
+      } catch (err) {
+        if (err.message.includes('Kirim')) {
+          log(`⏭️ KFA "${item.kfaCode}" DILEWATI: tombol Kirim nggak pernah aktif (form invalid). Refresh...`);
+          recordResult(item.kfaCode, 'skipped-kirim-timeout');
+          shiftQueueIfMatches(item.kfaCode);
+          renderPanel();
+          await restartViaReload();
+          return;
+        }
+        throw err;
+      }
 
       recordResult(item.kfaCode, 'submitted');
       shiftQueueIfMatches(item.kfaCode);
@@ -461,21 +572,21 @@
         log(`➡️ Auto-lanjut: masih ada ${remaining} SKU di antrian. Kembali ke dashboard...`);
         setStage('await_daftarkan');
         await klikKembaliKeDashboard();
-        // Halaman kemungkinan navigasi/reload - sisanya ditangani main() saat load berikutnya
       } else if (flags.autoContinueQueue) {
         setStage(null);
         await klikKembaliKeDashboard();
         log('🎉 Semua item di antrian sudah selesai dikirim.');
       } else {
-        log(`✅ KFA "${item.kfaCode}" berhasil dikirim. Klik "Proses SKU berikutnya" lagi untuk lanjut manual.`);
+        log(`✅ KFA "${item.kfaCode}" berhasil dikirim. Klik "Proses SKU berikutnya" untuk lanjut manual.`);
       }
     } catch (err) {
-      log(`⚠️ Gagal memproses KFA "${item.kfaCode}": ${err.message}`);
+      log(`⚠️ Gagal memproses: ${err.message}`);
       console.error('[INAPROC-AUTO]', err);
+    } finally {
+      processNextInQueueRunning = false;
     }
   }
 
-  // ---------- State machine lintas-halaman (dashboard <-> apply) ----------
   let mainInProgress = false;
   async function main() {
     if (mainInProgress) return;
@@ -485,21 +596,15 @@
     mainInProgress = true;
     try {
       if (stage === 'await_daftarkan') {
-        // klikDaftarkanMerek() sendiri sudah nunggu (polling) sampai 15 detik buat
-        // elemennya muncul & aktif, jadi nggak perlu gate cek dulu di sini -- gate
-        // seperti itu justru bikin main() nyerah kalau dipanggil pas halaman belum
-        // sempat render listingnya.
         setStage('await_apply_form');
         await klikDaftarkanMerek();
       } else if (stage === 'await_apply_form') {
-        // pilihJenisSectoral() (dipanggil dari processNextInQueue) juga sudah nunggu
-        // elemen #sectoral sampai 10 detik, jadi langsung coba proses saja.
         setStage(null);
         await sleep(CONFIG.stepDelay);
         await processNextInQueue();
       }
     } catch (err) {
-      log(`⚠️ Auto-continue gagal di stage "${stage}": ${err.message}. Lanjutkan manual lewat panel.`);
+      log(`⚠️ Auto-continue gagal di stage "${stage}": ${err.message}.`);
       setStage(null);
       console.error('[INAPROC-AUTO]', err);
     } finally {
@@ -507,7 +612,6 @@
     }
   }
 
-  // ---------- Export hasil ----------
   function resultsToTSV() {
     const results = loadResults();
     const header = ['KODE_KFA', 'STATUS', 'TIMESTAMP'];
@@ -561,12 +665,11 @@
       try { copied = document.execCommand('copy'); } catch { copied = false; }
       document.body.removeChild(tmp);
     }
-    if (copied) log(`📋 ${results.length} baris hasil ke-copy ke clipboard (TSV) -- tinggal paste ke Google Sheets.`);
+    if (copied) log(`📋 ${results.length} baris hasil ke-copy ke clipboard (TSV).`);
     else log('⚠️ Copy otomatis gagal. Textarea "Preview hasil" sudah ke-select -- tekan Ctrl+C manual.');
     showTsvPreview(text);
   }
 
-  // ---------- Panel UI ----------
   let panelPos = { top: 70, left: null, right: 10 };
   let panelCollapsed = false;
 
@@ -627,6 +730,9 @@
         <div style="color:#a00; margin-bottom:6px;">
           ⚠️ Data ini masuk ke sistem INAPROC sungguhan. Test 1 SKU dengan dry run dulu sebelum mematikannya.
         </div>
+        <div style="color:#555; margin-bottom:6px;">
+          ℹ️ SKU dengan error nomor permohonan kosong otomatis dilewati (dicatat sebagai <i>skipped-*</i>) dan halaman di-REFRESH otomatis buat fresh start ke SKU berikutnya.
+        </div>
         <button id="inaproc-start" style="width:100%; margin-bottom:4px; background:#1F4E78; color:#fff; font-weight:bold;">🚀 Mulai (klik "Daftarkan Merek" di halaman ini)</button>
         <button id="inaproc-run-next" style="width:100%; margin-bottom:8px;">▶ Proses SKU berikutnya di antrian (kalau sudah di halaman apply)</button>
         <hr>
@@ -643,7 +749,6 @@
 
     document.body.appendChild(panel);
 
-    // Drag
     const header = document.getElementById('inaproc-header');
     let dragging = false, dragStartX = 0, dragStartY = 0, panelStartLeft = 0, panelStartTop = 0;
     header.addEventListener('mousedown', (e) => {
@@ -673,7 +778,6 @@
       panelCollapsed = !panelCollapsed;
       renderPanel();
     };
-
     document.getElementById('inaproc-dryrun').onchange = (e) => {
       flags.dryRun = e.target.checked;
       saveFlags(flags);
@@ -704,7 +808,7 @@
     document.getElementById('inaproc-export').onclick = exportResultsCSV;
     document.getElementById('inaproc-copy-tsv').onclick = copyResultsAsTSV;
     document.getElementById('inaproc-clear').onclick = () => {
-      if (confirm('Yakin reset antrian & hasil? Ini tidak menghapus data yang sudah terkirim ke INAPROC, cuma di panel ini.')) {
+      if (confirm('Yakin reset antrian & hasil? Ini tidak menghapus data yang sudah terkirim ke INAPROC.')) {
         localStorage.removeItem(QUEUE_KEY);
         localStorage.removeItem(RESULTS_KEY);
         renderPanel();
@@ -712,7 +816,6 @@
     };
   }
 
-  // ---------- Init ----------
   function initInaproc() {
     log('Panel INAPROC-AUTO mulai jalan (readyState: ' + document.readyState + ')');
     if (!document.getElementById('inaproc-panel')) renderPanel();
@@ -731,13 +834,10 @@
     panelCheckTimer = setTimeout(() => {
       panelCheckTimer = null;
       if (document.body && !document.getElementById('inaproc-panel')) renderPanel();
-      main(); // retry stage pending tiap ada perubahan DOM signifikan (nge-cover SPA route change)
+      main();
     }, 800);
   });
   if (document.body) bodyObserver.observe(document.body, { childList: true, subtree: true });
 
-  // Jaring pengaman tambahan: kalau nggak ada perubahan DOM yang kedetect observer
-  // (mis. konten di-render lewat cara yang nggak memicu childList mutation di <body>),
-  // tetap coba lagi tiap 2 detik selama masih ada stage auto-continue yang nunggu.
   setInterval(() => { if (getStage()) main(); }, 2000);
 })();
