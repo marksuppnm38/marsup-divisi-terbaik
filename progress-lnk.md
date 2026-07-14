@@ -10,7 +10,8 @@
 | 2 | Navigation module (masuk ke form Tambah Produk) | ✅ Selesai |
 | 3 | FormFiller — Section 1 (Isi Dasar) + Section 5 (Bisnis), field yang selector-nya sudah pasti | ✅ Selesai (parsial — 3 sub-field di-stub, lihat catatan) |
 | 3.1 | UI Panel — textarea "Load Queue" (gak perlu lagi isi queue lewat console) | ✅ Selesai |
-| 4 | Merek (switch + search), Kode KBKI (search modal), Daftar Produk Sektoral (async select) | ⬜ Belum — butuh 1x observasi live |
+| 4a | Merek — isi nomor konstan + klik "Periksa" | ✅ Selesai (lihat catatan verifikasi) |
+| 4b | Kode KBKI (search modal), Daftar Produk Sektoral (async select) | ⬜ Belum — butuh 1x observasi live |
 | 5 | Upload Foto Produk (wiring ke File object asli, sekarang cuma helper generik) | ⬜ Belum — butuh sumber file (Task 8 Supabase) |
 | 6 | Section 2 — TKDN (search box awal, modal hasil sudah confirmed dari `tkdn.htm`) | ⬜ Belum — butuh observasi live search box + tombol "Ya Simpan" |
 | 7 | Section 3 — SNI (switch/dropdown, kemungkinan simpel) | ⬜ Belum |
@@ -39,7 +40,13 @@
 2. **Kode KBKI** — tombol `#form-product-kbki-select` diklik untuk buka, tapi UI list/search hasil klik belum ke-capture. Sama, di-log warning + berhenti.
 3. **Daftar Produk Sektoral** — react-select tanpa id stabil (id-nya random per render `react-select-_r_3m_-*`), dan belum tahu apakah searchable-by-Kode-Produk atau dropdown biasa. Di-anchor pakai `findRowByHeading('Daftar Produk Sektoral')` tapi belum diisi otomatis, cuma di-log posisi containernya buat verifikasi manual.
 
-Karena 3 hal ini di section yang sama (`isi_dasar`), untuk sekarang **`FormFiller.isiDasar()` berhenti (return early) begitu sampai ke Merek**, TIDAK lanjut ke Nama Produk/Kategori/dst dulu — jadi urutan eksekusi di kode sengaja ditaruh Merek/KBKI/Sektoral DULUAN supaya begitu ketemu blocker, User langsung tahu dan bisa kasih observasi HTML tambahan, sebelum waktu kebuang test field lain yang sebenarnya udah pasti jalan.
+Karena 2 hal ini (KBKI, Sektoral) ada di section yang sama (`isi_dasar`), `FormFiller.isiDasar()` masih berhenti (return early) begitu sampai ke KBKI — Merek sudah tidak lagi jadi blocker sejak Task 4a.
+
+## Detail Task 4a (baru selesai) — Merek
+
+Jamal kasih outerHTML: input nomor `#form-product-brand-application-number-input` (name `brand.input`) + tombol `#form-product-check-brand-btn` ("Periksa"). Nilainya konstan: `DID2023107469` (masuk `CONFIG.constants.merkNomor`).
+
+`FormFiller.fillMerek()` sekarang: nyalain switch (kalau belum) → isi nomor konstan → klik "Periksa" → tunggu 800ms. **Catatan:** belum ada konfirmasi apakah ada langkah lanjutan sesudah klik "Periksa" (mis. modal konfirmasi kayak TKDN) — makanya tetap ada `Logger.warning` supaya diverifikasi visual pas dry-run pertama, bukan diam-diam dianggap pasti tuntas. Kalau ternyata ada langkah lanjutan, tinggal kasih outerHTML-nya.
 
 ## Detail Task 3.1 (baru selesai)
 
@@ -55,11 +62,11 @@ Parser (`QueueManager.parseFromText`) validasi per baris — baris yang field wa
 
 **Catatan:** format tab-separated ini masih sementara/manual (Opsi A-style), bakal digantikan/dilengkapi stage `fetch_data` dari Supabase di Task 8 sesuai keputusan arsitektur Opsi B. Kolom `kategoriLvl1-3`/`harga`/`stok`/`satuan`/`berat` kemungkinan besar nanti ke-auto-fill dari situ, jadi textarea-nya bisa disederhanakan lagi tinggal `kodeProduk` + `kbki` aja.
 
-## Yang dibutuhkan dari Jamal buat lanjut ke Task 4
+## Yang dibutuhkan dari Jamal buat lanjut ke Task 4b
 
-1. Buka form Tambah Produk, klik switch Merek → screenshot / outerHTML apa yang muncul (search box? modal? dropdown list kode merek?)
-2. Klik `#form-product-kbki-select` → sama, outerHTML yang muncul
-3. Klik field "Daftar Produk Sektoral" → apakah searchable (ketik lalu muncul opsi) atau dropdown list biasa, dan apakah nyari-nya pakai Kode Produk
+1. Klik `#form-product-kbki-select` → outerHTML apa yang muncul (search box? list? modal?)
+2. Klik field "Daftar Produk Sektoral" → apakah searchable (ketik lalu muncul opsi) atau dropdown list biasa, dan apakah nyari-nya pakai Kode Produk
+3. (Opsional, kalau sempat verifikasi) konfirmasi apakah klik "Periksa" di Merek beneran gak ada langkah lanjutan
 
 ## Yang dibutuhkan dari Jamal buat Task 8 (Supabase)
 
