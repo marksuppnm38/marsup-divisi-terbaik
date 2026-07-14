@@ -9,6 +9,7 @@
 | 1 | Framework/pondasi (CONFIG, Storage, State, Logger, QueueManager, StageManager, DomHelper, UIPanel, Main) | ✅ Selesai |
 | 2 | Navigation module (masuk ke form Tambah Produk) | ✅ Selesai |
 | 3 | FormFiller — Section 1 (Isi Dasar) + Section 5 (Bisnis), field yang selector-nya sudah pasti | ✅ Selesai (parsial — 3 sub-field di-stub, lihat catatan) |
+| 3.1 | UI Panel — textarea "Load Queue" (gak perlu lagi isi queue lewat console) | ✅ Selesai |
 | 4 | Merek (switch + search), Kode KBKI (search modal), Daftar Produk Sektoral (async select) | ⬜ Belum — butuh 1x observasi live |
 | 5 | Upload Foto Produk (wiring ke File object asli, sekarang cuma helper generik) | ⬜ Belum — butuh sumber file (Task 8 Supabase) |
 | 6 | Section 2 — TKDN (search box awal, modal hasil sudah confirmed dari `tkdn.htm`) | ⬜ Belum — butuh observasi live search box + tombol "Ya Simpan" |
@@ -39,6 +40,20 @@
 3. **Daftar Produk Sektoral** — react-select tanpa id stabil (id-nya random per render `react-select-_r_3m_-*`), dan belum tahu apakah searchable-by-Kode-Produk atau dropdown biasa. Di-anchor pakai `findRowByHeading('Daftar Produk Sektoral')` tapi belum diisi otomatis, cuma di-log posisi containernya buat verifikasi manual.
 
 Karena 3 hal ini di section yang sama (`isi_dasar`), untuk sekarang **`FormFiller.isiDasar()` berhenti (return early) begitu sampai ke Merek**, TIDAK lanjut ke Nama Produk/Kategori/dst dulu — jadi urutan eksekusi di kode sengaja ditaruh Merek/KBKI/Sektoral DULUAN supaya begitu ketemu blocker, User langsung tahu dan bisa kasih observasi HTML tambahan, sebelum waktu kebuang test field lain yang sebenarnya udah pasti jalan.
+
+## Detail Task 3.1 (baru selesai)
+
+Ditambahkan textarea + tombol "Load Queue dari Textarea" di panel, jadi gak perlu lagi `window.__INAPROC_V6__.QueueManager.setQueue([...])` lewat console.
+
+**Format 1 baris per SKU, kolom dipisah TAB (bukan spasi):**
+```
+kodeProduk<TAB>kbki<TAB>kategoriLvl1<TAB>kategoriLvl2<TAB>kategoriLvl3<TAB>namaProduk<TAB>deskripsi<TAB>harga<TAB>stok<TAB>satuan<TAB>berat<TAB>minPembelian<TAB>jenisPajak
+```
+Wajib diisi: `kodeProduk`, `kategoriLvl1-3`, `namaProduk`, `harga`, `stok`, `satuan`, `berat`. Sisanya (`kbki`, `deskripsi`, `minPembelian`, `jenisPajak`) boleh kosong. Hover ikon "?" di panel buat lihat urutan kolom kalau lupa.
+
+Parser (`QueueManager.parseFromText`) validasi per baris — baris yang field wajibnya kosong di-skip + di-log error, TIDAK bikin seluruh load gagal (baris lain yang valid tetap masuk).
+
+**Catatan:** format tab-separated ini masih sementara/manual (Opsi A-style), bakal digantikan/dilengkapi stage `fetch_data` dari Supabase di Task 8 sesuai keputusan arsitektur Opsi B. Kolom `kategoriLvl1-3`/`harga`/`stok`/`satuan`/`berat` kemungkinan besar nanti ke-auto-fill dari situ, jadi textarea-nya bisa disederhanakan lagi tinggal `kodeProduk` + `kbki` aja.
 
 ## Yang dibutuhkan dari Jamal buat lanjut ke Task 4
 

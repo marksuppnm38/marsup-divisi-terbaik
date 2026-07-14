@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         INAPROC Upload Produk V6 (Task 3 - FormFiller Isi Dasar + Bisnis)
+// @name         INAPROC Upload Produk V6 (Task 3.1 - FormFiller Isi Dasar + Bisnis + Queue UI)
 // @namespace    inaproc-upload-produk-v6
-// @version      0.3.0
-// @description  Task 1: framework/pondasi. Task 2: modul Navigation. Task 3: FormFiller Section 1 (Isi Dasar) + Section 5 (Bisnis) untuk field yang selector-nya sudah pasti. Field Merek/KBKI/Daftar Produk Sektoral sengaja di-stub (butuh observasi live), belum ada TKDN/SNI/Spesifikasi/Lampiran/Simpan.
+// @version      0.3.1
+// @description  Task 1: framework/pondasi. Task 2: modul Navigation. Task 3: FormFiller Section 1 (Isi Dasar) + Section 5 (Bisnis) untuk field yang selector-nya sudah pasti. Task 3.1: textarea Load Queue di panel (gak perlu console lagi). Field Merek/KBKI/Daftar Produk Sektoral sengaja di-stub (butuh observasi live), belum ada TKDN/SNI/Spesifikasi/Lampiran/Simpan.
 // @author       you
 // @match        https://penyedia.inaproc.id/products
 // @match        https://penyedia.inaproc.id/products/add
@@ -21,7 +21,7 @@
   // #region CONFIG
   // =====================================================================
   const CONFIG = {
-    version: '0.3.0',
+    version: '0.3.1',
     debug: true,
     dryRun: true,       // Task 3: masih dryRun secara default -- klik Simpan belum ada sama sekali (Task 11)
     autoContinue: false,
@@ -287,6 +287,49 @@
     },
     size() {
       return STATE.queue.length;
+    },
+    // Kolom tab-separated, urutan HARUS persis ini:
+    // kodeProduk | kbki | kategoriLvl1 | kategoriLvl2 | kategoriLvl3 | namaProduk
+    // | deskripsi | harga | stok | satuan | berat | minPembelian | jenisPajak
+    QUEUE_COLUMNS: [
+      'kodeProduk', 'kbki', 'kategoriLvl1', 'kategoriLvl2', 'kategoriLvl3',
+      'namaProduk', 'deskripsi', 'harga', 'stok', 'satuan', 'berat',
+      'minPembelian', 'jenisPajak',
+    ],
+    // Field yang wajib diisi supaya baris dianggap valid (field lain boleh
+    // kosong -- misal kbki, karena bagian itu masih stub di Task 3).
+    REQUIRED_COLUMNS: ['kodeProduk', 'kategoriLvl1', 'kategoriLvl2', 'kategoriLvl3', 'namaProduk', 'harga', 'stok', 'satuan', 'berat'],
+    parseFromText(text) {
+      const lines = String(text || '')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+      const items = [];
+      const errors = [];
+      lines.forEach((line, idx) => {
+        const cols = line.split('\t').map((c) => c.trim());
+        const raw = {};
+        this.QUEUE_COLUMNS.forEach((key, i) => { raw[key] = cols[i] !== undefined ? cols[i] : ''; });
+        const missing = this.REQUIRED_COLUMNS.filter((key) => !raw[key]);
+        if (missing.length > 0) {
+          errors.push(`Baris ${idx + 1}: field wajib kosong -> ${missing.join(', ')}`);
+          return;
+        }
+        items.push({
+          kodeProduk: raw.kodeProduk,
+          kbki: raw.kbki || null,
+          kategori: [raw.kategoriLvl1, raw.kategoriLvl2, raw.kategoriLvl3],
+          namaProduk: raw.namaProduk,
+          deskripsi: raw.deskripsi || '',
+          harga: Number(raw.harga.replace(/[^\d.-]/g, '')) || 0,
+          stok: Number(raw.stok.replace(/[^\d.-]/g, '')) || 0,
+          satuan: raw.satuan,
+          berat: Number(raw.berat.replace(/[^\d.-]/g, '')) || 0,
+          minPembelian: raw.minPembelian ? (Number(raw.minPembelian.replace(/[^\d.-]/g, '')) || 1) : 1,
+          jenisPajak: raw.jenisPajak || null,
+        });
+      });
+      return { items, errors, totalLines: lines.length };
     },
   };
   // #endregion QUEUE MANAGER
@@ -949,6 +992,39 @@
           width: 100%;
           margin-top: 6px;
         }
+        #inaproc-v6-panel .iv6-queue-section {
+          margin-top: 8px;
+          border-top: 1px solid #333;
+          padding-top: 8px;
+        }
+        #inaproc-v6-panel .iv6-queue-label {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 4px;
+        }
+        #inaproc-v6-panel .iv6-queue-hint {
+          opacity: 0.55;
+          font-size: 10px;
+          cursor: help;
+        }
+        #inaproc-v6-panel textarea#iv6-queue-input {
+          width: 100%;
+          box-sizing: border-box;
+          height: 70px;
+          background: #111;
+          color: #f0f0f0;
+          border: 1px solid #3a3a3a;
+          border-radius: 4px;
+          font-family: monospace;
+          font-size: 10px;
+          padding: 6px;
+          resize: vertical;
+        }
+        #inaproc-v6-panel .iv6-btn-load-queue {
+          width: 100%;
+          margin-top: 6px;
+        }
       `;
       document.head.appendChild(style);
       const root = document.createElement('div');
@@ -959,6 +1035,14 @@
           <span class="iv6-version">v${CONFIG.version}</span>
         </div>
         <div class="iv6-body">
+          <div class="iv6-queue-section">
+            <div class="iv6-queue-label">
+              <span class="iv6-label">Queue (tab-separated, 1 baris/SKU)</span>
+              <span class="iv6-queue-hint" title="Urutan kolom (pisah pakai TAB, bukan spasi):&#10;kodeProduk | kbki | kategoriLvl1 | kategoriLvl2 | kategoriLvl3 | namaProduk | deskripsi | harga | stok | satuan | berat | minPembelian | jenisPajak&#10;&#10;Wajib diisi: kodeProduk, kategoriLvl1-3, namaProduk, harga, stok, satuan, berat.&#10;kbki/deskripsi/minPembelian/jenisPajak boleh kosong.">?</span>
+            </div>
+            <textarea id="iv6-queue-input" placeholder="RB00123&#9;4815013019 - ...&#9;Alat Kesehatan&#9;Peralatan Bedah...&#9;Peralatan Bedah&#9;ROBUST Gunting...&#9;Deskripsi...&#9;150000&#9;10&#9;Pcs&#9;500&#9;1&#9;PPN 11%"></textarea>
+            <button class="iv6-btn-load-queue" id="iv6-btn-load-queue">Load Queue dari Textarea</button>
+          </div>
           <div class="iv6-row"><span class="iv6-label">Status</span><span id="iv6-status">Idle</span></div>
           <div class="iv6-row"><span class="iv6-label">Stage</span><span id="iv6-stage">idle</span></div>
           <div class="iv6-row"><span class="iv6-label">SKU</span><span id="iv6-sku">-</span></div>
@@ -976,6 +1060,8 @@
       document.body.appendChild(root);
       this._root = root;
       this._els = {
+        queueInput: root.querySelector('#iv6-queue-input'),
+        btnLoadQueue: root.querySelector('#iv6-btn-load-queue'),
         status: root.querySelector('#iv6-status'),
         stage: root.querySelector('#iv6-stage'),
         sku: root.querySelector('#iv6-sku'),
@@ -999,6 +1085,29 @@
       this._els.btnResume.addEventListener('click', () => Main.resume());
       this._els.btnStop.addEventListener('click', () => Main.stop());
       this._els.btnExport.addEventListener('click', () => this._exportLog());
+      this._els.btnLoadQueue.addEventListener('click', () => this._loadQueueFromTextarea());
+    },
+    _loadQueueFromTextarea() {
+      const text = this._els.queueInput.value;
+      if (!text || !text.trim()) {
+        Logger.warning('Textarea queue masih kosong.');
+        return;
+      }
+      const { items, errors, totalLines } = QueueManager.parseFromText(text);
+      if (errors.length > 0) {
+        errors.forEach((msg) => Logger.error(`Parse queue gagal -- ${msg}`));
+      }
+      if (items.length === 0) {
+        Logger.error(`Load Queue gagal: 0 dari ${totalLines} baris valid. Cek format kolom (harus TAB, bukan spasi).`);
+        return;
+      }
+      QueueManager.setQueue(items);
+      STATE.currentSku = null;
+      this.refresh();
+      Logger.success(`Load Queue berhasil: ${items.length} dari ${totalLines} baris valid dimuat.`);
+      if (errors.length > 0) {
+        Logger.warning(`${errors.length} baris dilewati karena gagal parse -- lihat pesan error di atas.`);
+      }
     },
     _exportLog() {
       const text = Logger.exportAsText();
@@ -1077,9 +1186,8 @@
       STATE.results = Storage.load(STORAGE_KEYS.RESULT_KEY, []);
       UIPanel.create();
       Logger.success(
-        'Framework siap. Navigation + FormFiller (Isi Dasar & Bisnis) siap, menunggu Start (Task 3). ' +
-        'Isi queue dulu lewat console: window.__INAPROC_V6__.QueueManager.setQueue([...]) sebelum Start ' +
-        '(belum ada UI textarea di panel, itu nanti pas Task 4+ kalau format queue sudah final).'
+        'Framework siap. Navigation + FormFiller (Isi Dasar & Bisnis) siap. Isi queue di textarea panel ' +
+        '(klik "?" buat lihat urutan kolom) lalu klik "Load Queue dari Textarea" sebelum Start.'
       );
     },
     async start() {
@@ -1094,7 +1202,7 @@
 
       Logger.info(`Validasi Queue: ${QueueManager.size()} item pada queue.`);
       if (QueueManager.isEmpty()) {
-        Logger.error('Queue kosong. Isi dulu lewat window.__INAPROC_V6__.QueueManager.setQueue([...]).');
+        Logger.error('Queue kosong. Isi textarea queue di panel lalu klik "Load Queue dari Textarea" dulu.');
         this.stop();
         return;
       }
