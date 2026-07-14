@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         INAPROC Upload Produk V6 (Task 3.1 - FormFiller Isi Dasar + Bisnis + Queue UI)
+// @name         INAPROC Upload Produk V6 (Task 4a - Merek implemented)
 // @namespace    inaproc-upload-produk-v6
-// @version      0.3.1
-// @description  Task 1: framework/pondasi. Task 2: modul Navigation. Task 3: FormFiller Section 1 (Isi Dasar) + Section 5 (Bisnis) untuk field yang selector-nya sudah pasti. Task 3.1: textarea Load Queue di panel (gak perlu console lagi). Field Merek/KBKI/Daftar Produk Sektoral sengaja di-stub (butuh observasi live), belum ada TKDN/SNI/Spesifikasi/Lampiran/Simpan.
+// @version      0.4.0
+// @description  Task 1: framework/pondasi. Task 2: Navigation. Task 3: FormFiller Section 1 (Isi Dasar) + Section 5 (Bisnis). Task 3.1: textarea Load Queue di panel. Task 4a: Merek (isi nomor konstan + klik Periksa) sudah diimplementasi. KBKI & Daftar Produk Sektoral masih stub, belum ada TKDN/SNI/Spesifikasi/Lampiran/Simpan.
 // @author       you
 // @match        https://penyedia.inaproc.id/products
 // @match        https://penyedia.inaproc.id/products/add
@@ -21,7 +21,7 @@
   // #region CONFIG
   // =====================================================================
   const CONFIG = {
-    version: '0.3.1',
+    version: '0.4.0',
     debug: true,
     dryRun: true,       // Task 3: masih dryRun secara default -- klik Simpan belum ada sama sekali (Task 11)
     autoContinue: false,
@@ -45,7 +45,9 @@
     // yang ditandai [BELUM TERVERIFIKASI].
     formSelectors: {
       // --- Section 1: Isi Dasar ---
-      merekSwitch: '#form-product-brand-isActive-switch',            // [BELUM TERVERIFIKASI apa yg muncul sesudah di-on]
+      merekSwitch: '#form-product-brand-isActive-switch',
+      merekInput: '#form-product-brand-application-number-input',
+      merekCheckBtn: '#form-product-check-brand-btn',
       kbkiButton: '#form-product-kbki-select',                       // [BELUM TERVERIFIKASI apa yg muncul sesudah diklik]
       daftarProdukSektoralHeading: 'Daftar Produk Sektoral',          // [BELUM TERVERIFIKASI perilaku search-nya]
       kategoriTrigger: '#form-product-category-select',
@@ -68,6 +70,11 @@
       minPembelianInput: '#form-product-min-purchase-input',
       jenisPajakSelect: '#ppnPercentage-select',
       preOrderSwitch: '#form-product-preorder-isActive-switch',
+    },
+
+    // Nilai konstan (bukan per-SKU, hardcode di sini per keputusan Jamal).
+    constants: {
+      merkNomor: 'DID2023107469', // selalu konstan, isi field "Merek" + klik "Periksa"
     },
 
     // Nilai default field react-select yang SUDAH BENAR di form (statement
@@ -643,8 +650,12 @@
     // Section 1: Isi Dasar
     // -------------------------------------------------------------
 
-    // [STUB - butuh observasi live, lihat progress.md]
-    // Cuma toggle switch, TIDAK menebak UI search yang muncul sesudahnya.
+    // Merek: switch di-on -> isi nomor konstan -> klik "Periksa".
+    // CATATAN: belum ada konfirmasi apakah ada langkah lanjutan sesudah
+    // "Periksa" (mis. modal konfirmasi kayak TKDN). Jamal bilang nilainya
+    // selalu konstan & prosesnya cuma isi+periksa, jadi diasumsikan selesai
+    // di situ -- tapi tetap di-log WARNING supaya diverifikasi visual pas
+    // dry-run pertama, bukan diam-diam dianggap pasti benar.
     async fillMerek() {
       const sw = await DomHelper.waitForElement(CONFIG.formSelectors.merekSwitch);
       if (!sw.checked) {
@@ -652,11 +663,19 @@
         DomHelper.dispatchClick(sw);
         await DomHelper.sleep(300);
       }
+      const input = await DomHelper.waitForElement(CONFIG.formSelectors.merekInput);
+      DomHelper.setNativeValue(input, CONFIG.constants.merkNomor);
+      DomHelper.dispatchInput(input);
+      await DomHelper.sleep(200);
+      const btn = await DomHelper.waitForElement(CONFIG.formSelectors.merekCheckBtn);
+      DomHelper.dispatchClick(btn);
+      await DomHelper.sleep(800); // beri waktu request "Periksa" selesai
+      Logger.success(`Merek diisi & diperiksa: ${CONFIG.constants.merkNomor}`);
       Logger.warning(
-        'STUB: switch Merek sudah di-on, tapi UI search/pilih kode merek sesudahnya BELUM diimplementasikan ' +
-        '(belum ada outerHTML referensinya). Cek manual di browser, lalu kirim outerHTML-nya supaya Task 4 bisa lanjut.'
+        'Belum ada konfirmasi apakah ada langkah lanjutan sesudah klik "Periksa" (mis. modal konfirmasi). ' +
+        'Verifikasi visual dulu di dry-run pertama -- kalau ternyata ada langkah lanjutan, kirim outerHTML-nya.'
       );
-      return 'NEEDS_MANUAL_REVIEW';
+      return 'OK';
     },
 
     // [STUB - butuh observasi live, lihat progress.md]
@@ -802,12 +821,7 @@
       // Sengaja duluan: field yang masih STUB. Kalau salah satu butuh
       // review manual, proses berhenti di sini SEBELUM buang waktu ngisi
       // field lain yang sebenarnya sudah pasti jalan (lihat progress.md).
-      const merekResult = await this.fillMerek();
-      if (merekResult === 'NEEDS_MANUAL_REVIEW') {
-        StageManager.setStage('isi_dasar');
-        UIPanel.setStatusText('PAUSED: Merek butuh review manual (lihat log)');
-        return 'PAUSED_MEREK';
-      }
+      await this.fillMerek();
       const kbkiResult = await this.fillKbki(item);
       if (kbkiResult === 'NEEDS_MANUAL_REVIEW') {
         UIPanel.setStatusText('PAUSED: KBKI butuh review manual (lihat log)');
