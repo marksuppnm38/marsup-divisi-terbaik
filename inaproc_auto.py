@@ -194,7 +194,15 @@ def run(queue_path: str, results_path: str, dry_run: bool, profile_dir: str, hea
     log(f"Antrian dimuat: {len(items)} SKU.")
 
     with sync_playwright() as p:
-        ctx = p.chromium.launch_persistent_context(profile_dir, headless=headless)
+        # ponytail: pakai Chrome asli (channel="chrome") + matiin flag automation --
+        # Chromium bundled Playwright gampang kedeteksi jadi bot (navigator.webdriver),
+        # yang bikin tombol login/captcha situs diam-diam disable/gagal.
+        ctx = p.chromium.launch_persistent_context(
+            profile_dir,
+            headless=headless,
+            channel="chrome",
+            args=["--disable-blink-features=AutomationControlled"],
+        )
         page = ctx.new_page()
         page.goto(BASE_URL)
 
