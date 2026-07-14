@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         INAPROC Upload Produk V6 (Task 4a - Merek implemented)
+// @name         INAPROC Upload Produk V6 (v0.7.1 - fix TKDN row race condition)
 // @namespace    inaproc-upload-produk-v6
-// @version      0.4.0
-// @description  Task 1: framework/pondasi. Task 2: Navigation. Task 3: FormFiller Section 1 (Isi Dasar) + Section 5 (Bisnis). Task 3.1: textarea Load Queue di panel. Task 4a: Merek (isi nomor konstan + klik Periksa) sudah diimplementasi. KBKI & Daftar Produk Sektoral masih stub, belum ada TKDN/SNI/Spesifikasi/Lampiran/Simpan.
+// @version      0.7.1
+// @description  Task 1: framework/pondasi. Task 2: Navigation. Task 3: FormFiller Section 1 (Isi Dasar) + Section 5 (Bisnis). Task 3.1: textarea Load Queue di panel. Task 4a: Merek. Task 4b: KBKI + Daftar Produk Sektoral. v0.5.0: reorder Kategori sebelum TKDN. v0.7.0: Task 6 (TKDN) diimplementasikan penuh -- nomor sertifikat konstan, klik "Cari TKDN" navigasi ke halaman hasil terpisah, pilih radio, klik Simpan. stopAfterStage default balik ke "bisnis" -- proses sekarang jalan otomatis penuh dari Kategori sampai Bisnis.
 // @author       you
 // @match        https://penyedia.inaproc.id/products
 // @match        https://penyedia.inaproc.id/products/add
+// @match        https://penyedia.inaproc.id/products/*
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -21,17 +22,19 @@
   // #region CONFIG
   // =====================================================================
   const CONFIG = {
-    version: '0.4.0',
+    version: '0.7.1',
     debug: true,
-    dryRun: true,       // Task 3: masih dryRun secara default -- klik Simpan belum ada sama sekali (Task 11)
+    dryRun: true,       // masih dryRun secara default -- klik Simpan belum ada sama sekali (Task 11)
     autoContinue: false,
     retryLimit: 3,
     waitTimeout: 10000,     // ms
     pollingInterval: 300,   // ms
     targetUrl: 'https://penyedia.inaproc.id/products',
-    // Stage terakhir yang boleh dijalankan otomatis oleh Main.start() pada
-    // Task ini. Stage sesudahnya (tkdn, sni, spesifikasi, upload, save)
-    // belum diimplementasikan -- lihat progress.md.
+    // REORDER STRATEGI (v0.5.0): Kategori diisi PALING AWAL di dalam
+    // isi_dasar (sebelum Merek/KBKI/Sektoral), lalu lanjut ke stage 'tkdn'.
+    // Task 6 (TKDN) sudah diimplementasikan (v0.7.0) -- stopAfterStage
+    // default sekarang 'bisnis' lagi supaya proses jalan otomatis penuh:
+    // Kategori -> TKDN -> sisa Isi Dasar -> Bisnis -> stop.
     stopAfterStage: 'bisnis',
     // Selector Task 2 (Navigation).
     selectors: {
@@ -40,16 +43,16 @@
     },
     addProductUrlPart: '/products/add',
 
-    // Selector Task 3 (Isi Dasar + Bisnis). Semua sudah diverifikasi
-    // langsung dari outerHTML form Tambah Produk (bukan tebakan), KECUALI
-    // yang ditandai [BELUM TERVERIFIKASI].
+    // Selector Task 3 (Isi Dasar + Bisnis) + Task 4b (KBKI, Sektoral).
+    // Semua sudah diverifikasi dari outerHTML/screenshot form Tambah Produk
+    // (bukan tebakan).
     formSelectors: {
       // --- Section 1: Isi Dasar ---
       merekSwitch: '#form-product-brand-isActive-switch',
       merekInput: '#form-product-brand-application-number-input',
       merekCheckBtn: '#form-product-check-brand-btn',
-      kbkiButton: '#form-product-kbki-select',                       // [BELUM TERVERIFIKASI apa yg muncul sesudah diklik]
-      daftarProdukSektoralHeading: 'Daftar Produk Sektoral',          // [BELUM TERVERIFIKASI perilaku search-nya]
+      kbkiButton: '#form-product-kbki-select',                       // Task 4b: membuka react-select ".select__..." (search by kode)
+      daftarProdukSektoralHeading: 'Daftar Produk Sektoral',          // Task 4b: react-select searchable by kode produk
       kategoriTrigger: '#form-product-category-select',
       kategoriKolomList: 'ul.custom-scrollbar',                      // ada 1-3 elemen tergantung berapa level sudah dipilih
       namaProdukInput: '#form-product-name-input',
@@ -70,11 +73,26 @@
       minPembelianInput: '#form-product-min-purchase-input',
       jenisPajakSelect: '#ppnPercentage-select',
       preOrderSwitch: '#form-product-preorder-isActive-switch',
+
+      // --- Section 2: TKDN (Task 6) ---
+      // Klik "Cari TKDN" membawa ke halaman/route TKDN TERPISAH (bukan
+      // modal overlay) -- header-navigation & layout beda total dari form
+      // Tambah Produk, terkonfirmasi dari snapshot tkdn.htm. Ini alasan
+      // kenapa scroll balik ke atas begitu "Simpan" diklik: itu memang
+      // navigasi balik ke halaman form, bukan modal yang ditutup.
+      tkdnSwitch: '#form-product-tkdn-switch',                       // default CHECKED begitu form dibuka
+      tkdnKeywordInput: '#form-product-tkdn-keyword-input',
+      tkdnSearchBtn: '#form-product-tkdn-search-btn-new',            // "Cari TKDN"
+      tkdnResultRow: 'tr[data-test="table-row-data"]',               // di halaman hasil TKDN
+      tkdnResultRadio: 'input[type="radio"]',                        // di dalam tkdnResultRow
+      tkdnSubmitBtn: '#tkdn-submit-btn',                             // "Simpan" di halaman hasil TKDN
+      tkdnCancelBtn: '#tkdn-cancel-btn',                             // "Kembali" (belum dipakai)
     },
 
     // Nilai konstan (bukan per-SKU, hardcode di sini per keputusan Jamal).
     constants: {
       merkNomor: 'DID2023107469', // selalu konstan, isi field "Merek" + klik "Periksa"
+      tkdnNomor: '6722/TKDN/IK/VII/2024', // selalu konstan, isi field pencarian TKDN + klik "Cari TKDN"
     },
 
     // Nilai default field react-select yang SUDAH BENAR di form (statement
@@ -651,11 +669,8 @@
     // -------------------------------------------------------------
 
     // Merek: switch di-on -> isi nomor konstan -> klik "Periksa".
-    // CATATAN: belum ada konfirmasi apakah ada langkah lanjutan sesudah
-    // "Periksa" (mis. modal konfirmasi kayak TKDN). Jamal bilang nilainya
-    // selalu konstan & prosesnya cuma isi+periksa, jadi diasumsikan selesai
-    // di situ -- tapi tetap di-log WARNING supaya diverifikasi visual pas
-    // dry-run pertama, bukan diam-diam dianggap pasti benar.
+    // Dikonfirmasi (Task 4b): TIDAK ADA langkah lanjutan sesudah "Periksa"
+    // berhasil (bukan modal konfirmasi seperti TKDN) -- selesai di situ.
     async fillMerek() {
       const sw = await DomHelper.waitForElement(CONFIG.formSelectors.merekSwitch);
       if (!sw.checked) {
@@ -671,37 +686,69 @@
       DomHelper.dispatchClick(btn);
       await DomHelper.sleep(800); // beri waktu request "Periksa" selesai
       Logger.success(`Merek diisi & diperiksa: ${CONFIG.constants.merkNomor}`);
-      Logger.warning(
-        'Belum ada konfirmasi apakah ada langkah lanjutan sesudah klik "Periksa" (mis. modal konfirmasi). ' +
-        'Verifikasi visual dulu di dry-run pertama -- kalau ternyata ada langkah lanjutan, kirim outerHTML-nya.'
-      );
       return 'OK';
     },
 
-    // [STUB - butuh observasi live, lihat progress.md]
+    // Kode KBKI (Task 4b): klik tombol pemicu #form-product-kbki-select
+    // membuka menu react-select (classNamePrefix "select__", sama seperti
+    // Satuan Produk / Jenis Pajak) -- opsinya berbentuk
+    // <span class="select__option-label">{kode} - {deskripsi}</span>.
+    // Cari & isi input pencarian, filter dengan kode KBKI, klik opsi yang
+    // teksnya diawali kode tersebut.
     async fillKbki(item) {
+      if (!item.kbki) {
+        Logger.warning('fillKbki: item.kbki kosong pada queue. Field ini Wajib -- isi manual sebelum Simpan.');
+        return 'OK';
+      }
+      const kode = String(item.kbki).trim();
       const btn = await DomHelper.waitForElement(CONFIG.formSelectors.kbkiButton);
       DomHelper.dispatchClick(btn);
-      await DomHelper.sleep(300);
-      Logger.warning(
-        `STUB: tombol Kode KBKI sudah diklik (target isi: "${item.kbki || '(kosong)'}"), tapi UI list/search ` +
-        'hasil klik BELUM diimplementasikan. Cek manual di browser, lalu kirim outerHTML-nya supaya Task 4 bisa lanjut.'
-      );
-      return 'NEEDS_MANUAL_REVIEW';
+
+      const input = await DomHelper.waitForElement('.select__input', { timeout: 5000 }).catch(() => null);
+      if (input) {
+        DomHelper.setNativeValue(input, kode);
+        DomHelper.dispatchInput(input);
+      }
+
+      const option = await DomHelper.pollUntil(() => {
+        const opts = Array.from(document.querySelectorAll('.select__option'));
+        return (
+          opts.find((o) => o.textContent.trim().startsWith(kode)) ||
+          opts.find((o) => o.textContent.trim().includes(kode))
+        );
+      }, { timeout: CONFIG.waitTimeout }).catch(() => null);
+
+      if (!option) {
+        Logger.error(`fillKbki: opsi KBKI "${kode}" tidak ditemukan di menu pencarian.`);
+        return 'NEEDS_MANUAL_REVIEW';
+      }
+      DomHelper.dispatchClick(option);
+      await DomHelper.sleep(200);
+      Logger.success(`Kode KBKI terisi: ${kode}`);
+      return 'OK';
     },
 
-    // [STUB - butuh observasi live, lihat progress.md]
+    // Daftar Produk Sektoral (Task 4b): react-select yang searchable pakai
+    // Kode Produk -- opsi ditampilkan "Nama Produk (Kode1, Kode2, Brand)".
+    // Dianchor by heading (id-nya random per render), lalu pakai
+    // ReactSelectHelper.select() yang match exact ATAU includes -- karena
+    // item.kodeProduk pasti muncul sebagai substring di textContent opsi
+    // (di dalam tanda kurung), fallback "includes" akan menangkapnya.
     async fillDaftarProdukSektoral(item) {
       const row = DomHelper.findRowByHeading(CONFIG.formSelectors.daftarProdukSektoralHeading);
       if (!row) {
         Logger.error('Daftar Produk Sektoral: row tidak ditemukan sama sekali.');
         return 'NOT_FOUND';
       }
-      Logger.warning(
-        `STUB: container Daftar Produk Sektoral ketemu, tapi belum tahu apakah searchable-by-Kode-Produk ` +
-        `atau dropdown list biasa (target: "${item.kodeProduk}"). Belum diisi otomatis. Cek manual di browser.`
-      );
-      return 'NEEDS_MANUAL_REVIEW';
+      const container = row.querySelector('.css-b62m3t-container') || row;
+      try {
+        await ReactSelectHelper.select(container, item.kodeProduk);
+        Logger.success(`Daftar Produk Sektoral terisi (match kode produk): ${item.kodeProduk}`);
+        return 'OK';
+      } catch (e) {
+        Logger.error(`fillDaftarProdukSektoral gagal: ${e.message}`);
+        return 'NEEDS_MANUAL_REVIEW';
+      }
     },
 
     async fillKategori(item) {
@@ -815,8 +862,28 @@
       return uploaded;
     },
 
-    async isiDasar(item) {
-      Logger.info(`=== Mulai isi Section 1 (Isi Dasar) untuk SKU ${item.kodeProduk} ===`);
+    // FASE 1 (sebelum TKDN): HANYA Kategori.
+    // Sengaja dipisah & dijalankan paling awal -- lihat catatan
+    // "REORDER STRATEGI" di CONFIG. Field lain (Merek/KBKI/Sektoral/Nama/
+    // Foto/Deskripsi) ditunda ke isiDasarPostTkdn() supaya tidak ada yang
+    // "diganggu" render ulang saat modal wizard TKDN disimpan (page
+    // scroll balik ke atas).
+    async isiDasarPreTkdn(item) {
+      Logger.info(`=== Mulai isi Section 1 (Isi Dasar) - fase pre-TKDN untuk SKU ${item.kodeProduk} ===`);
+      const kategoriOk = await this.fillKategori(item);
+      if (!kategoriOk) {
+        Logger.error('fillKategori gagal, proses dihentikan sebelum lanjut ke TKDN.');
+        return 'FAILED_KATEGORI';
+      }
+      Logger.success('=== Fase pre-TKDN selesai (Kategori terisi). Lanjut ke stage TKDN. ===');
+      return 'OK';
+    },
+
+    // FASE 2 (sesudah TKDN): sisa field Section 1 -- Merek, KBKI,
+    // Daftar Produk Sektoral, Nama Produk, Foto, Deskripsi, verifikasi
+    // default. Dipanggil setelah stage 'tkdn' selesai (Task 6).
+    async isiDasarPostTkdn(item) {
+      Logger.info(`=== Lanjut isi Section 1 (Isi Dasar) - fase post-TKDN untuk SKU ${item.kodeProduk} ===`);
 
       // Sengaja duluan: field yang masih STUB. Kalau salah satu butuh
       // review manual, proses berhenti di sini SEBELUM buang waktu ngisi
@@ -833,14 +900,106 @@
         return 'PAUSED_SEKTORAL';
       }
 
-      // Field yang sudah pasti selector-nya:
-      await this.fillKategori(item);
       await this.fillNamaProduk(item);
       await this.fillFotoProduk(item);
       await this.fillDeskripsi(item);
       await this.verifyDefaultLocalStatements();
 
-      Logger.success('=== Section 1 (Isi Dasar) selesai (kecuali bagian yang masih stub) ===');
+      Logger.success('=== Section 1 (Isi Dasar) selesai sepenuhnya (kecuali bagian yang masih stub) ===');
+      return 'OK';
+    },
+
+    // TKDN (Task 6): nomor sertifikat KONSTAN (bukan per-SKU, sama seperti
+    // Merek) -- "6722/TKDN/IK/VII/2024" (CONFIG.constants.tkdnNomor).
+    // Flow: pastikan switch ON -> isi nomor -> klik "Cari TKDN" -> ini
+    // navigasi ke halaman hasil TKDN TERPISAH (bukan modal) -- tunggu
+    // tabel hasil muncul -> pilih radio baris pertama -> klik "Simpan" ->
+    // tunggu sampai kembali ke form Tambah Produk.
+    async fillTkdn(item) {
+      const nomor = CONFIG.constants.tkdnNomor;
+
+      const sw = await DomHelper.waitForElement(CONFIG.formSelectors.tkdnSwitch);
+      if (!sw.checked) {
+        Logger.info('Mengaktifkan switch TKDN...');
+        DomHelper.dispatchClick(sw);
+        await DomHelper.sleep(300);
+      } else {
+        Logger.debug('Switch TKDN sudah aktif (default form).');
+      }
+
+      const input = await DomHelper.waitForElement(CONFIG.formSelectors.tkdnKeywordInput);
+      DomHelper.setNativeValue(input, nomor);
+      DomHelper.dispatchInput(input);
+      await DomHelper.sleep(200);
+
+      const searchBtn = await DomHelper.waitForElement(CONFIG.formSelectors.tkdnSearchBtn);
+      Logger.info(`Mencari TKDN dengan nomor: ${nomor}`);
+      DomHelper.dispatchClick(searchBtn);
+
+      // Klik "Cari TKDN" pindah ke halaman/route hasil TKDN (terkonfirmasi
+      // bukan modal overlay) -- tunggu sampai tombol "Simpan" di halaman
+      // itu muncul, bukan cuma nunggu timeout tetap.
+      const submitBtnInitial = await DomHelper
+        .waitForElement(CONFIG.formSelectors.tkdnSubmitBtn, { timeout: CONFIG.waitTimeout })
+        .catch(() => null);
+      if (!submitBtnInitial) {
+        Logger.error('fillTkdn: halaman hasil TKDN (tombol "Simpan") tidak muncul setelah "Cari TKDN".');
+        return 'NEEDS_MANUAL_REVIEW';
+      }
+
+      // PENTING: tombol "Simpan" itu bagian dari shell halaman dan muncul
+      // duluan -- baris hasil pencarian di-render belakangan (async fetch
+      // ke API). Jadi HARUS di-poll terpisah, bukan diasumsikan sudah ada
+      // begitu tombol "Simpan" ketemu (race condition, sempat gagal saat
+      // dry-run pertama).
+      const rowsFound = await DomHelper
+        .pollUntil(() => {
+          const rows = document.querySelectorAll(CONFIG.formSelectors.tkdnResultRow);
+          return rows.length > 0 ? rows : null;
+        }, { timeout: CONFIG.waitTimeout })
+        .catch(() => null);
+
+      if (!rowsFound) {
+        Logger.error('fillTkdn: tidak ada baris hasil TKDN muncul dalam waktu tunggu (kemungkinan nomor tidak ditemukan).');
+        return 'NEEDS_MANUAL_REVIEW';
+      }
+      const rows = Array.from(rowsFound);
+      if (rows.length > 1) {
+        Logger.warning(
+          `fillTkdn: ditemukan ${rows.length} baris hasil TKDN (biasanya 1). Otomatis pilih baris pertama -- ` +
+          'verifikasi manual disarankan kalau ini tidak sesuai ekspektasi.'
+        );
+      }
+      const radio = rows[0].querySelector(CONFIG.formSelectors.tkdnResultRadio);
+      if (!radio) {
+        Logger.error('fillTkdn: radio button tidak ditemukan di baris hasil pertama.');
+        return 'NEEDS_MANUAL_REVIEW';
+      }
+      DomHelper.dispatchClick(radio);
+      await DomHelper.sleep(200);
+
+      // Re-query tombol "Simpan" (bukan pakai referensi lama) -- React
+      // kemungkinan re-render subtree ini begitu hasil pencarian masuk,
+      // jadi node lama bisa saja sudah detached dari DOM.
+      const submitBtn = document.querySelector(CONFIG.formSelectors.tkdnSubmitBtn) || submitBtnInitial;
+      Logger.info('Klik "Simpan" TKDN...');
+      DomHelper.dispatchClick(submitBtn);
+
+      // Sesudah Simpan, halaman kembali ke form Tambah Produk (scroll ke
+      // atas -- ini navigasi balik, bukan modal ditutup). Tunggu sampai
+      // form Tambah Produk kelihatan lagi sebelum lanjut ke fase post-TKDN.
+      const backOk = await DomHelper
+        .pollUntil(() => Navigation.isProductForm(), { timeout: CONFIG.waitTimeout })
+        .then(() => true)
+        .catch(() => false);
+      if (!backOk) {
+        Logger.warning(
+          'fillTkdn: tidak yakin sudah kembali ke form Tambah Produk setelah Simpan -- lanjut saja, ' +
+          'tapi verifikasi manual dianjurkan.'
+        );
+      }
+
+      Logger.success(`TKDN terisi & disimpan (nomor: ${nomor}).`);
       return 'OK';
     },
 
@@ -1233,10 +1392,11 @@
         }
         if (!STATE.isRunning) return; // sempat di-stop() user
 
+        // --- Fase pre-TKDN: hanya Kategori (lihat CONFIG "REORDER STRATEGI") ---
         StageManager.setStage('isi_dasar');
-        const dasarResult = await FormFiller.isiDasar(item);
-        if (dasarResult !== 'OK') {
-          Logger.warning(`isiDasar berhenti dengan status "${dasarResult}". Proses dihentikan, cek log di atas.`);
+        const preResult = await FormFiller.isiDasarPreTkdn(item);
+        if (preResult !== 'OK') {
+          Logger.warning(`isiDasarPreTkdn berhenti dengan status "${preResult}". Proses dihentikan, cek log di atas.`);
           this.stop();
           return;
         }
@@ -1248,12 +1408,44 @@
           return;
         }
 
+        // --- Checkpoint TKDN ---
+        StageManager.setStage('tkdn');
+
+        if (CONFIG.stopAfterStage === 'tkdn') {
+          Logger.warning(
+            'Berhenti di checkpoint TKDN (default, sesuai stopAfterStage). Kategori sudah terisi. ' +
+            'Isi TKDN manual dulu di browser (jangan lupa "Ya Simpan" kalau ada konfirmasi), lalu setelah ' +
+            'Task 6 (fillTkdn) selesai diimplementasikan, ganti CONFIG.stopAfterStage supaya proses lanjut otomatis.'
+          );
+          UIPanel.setStatusText('PAUSED: isi TKDN manual dulu (lihat log)');
+          this.stop();
+          return;
+        }
+
+        const tkdnResult = await FormFiller.fillTkdn(item);
+        if (tkdnResult === 'NEEDS_MANUAL_REVIEW') {
+          UIPanel.setStatusText('PAUSED: TKDN butuh review manual (lihat log)');
+          this.stop();
+          return;
+        }
+        if (!STATE.isRunning) return;
+
+        // --- Fase post-TKDN: sisa Section 1 (Merek, KBKI, Sektoral, Nama, Foto, Deskripsi) ---
+        StageManager.setStage('isi_dasar');
+        const postResult = await FormFiller.isiDasarPostTkdn(item);
+        if (postResult !== 'OK') {
+          Logger.warning(`isiDasarPostTkdn berhenti dengan status "${postResult}". Proses dihentikan, cek log di atas.`);
+          this.stop();
+          return;
+        }
+        if (!STATE.isRunning) return;
+
         StageManager.setStage('bisnis');
         await FormFiller.isiBisnis(item);
 
         Logger.success(
-          'Section 1 & 5 selesai diisi (field yang sudah pasti). Stage TKDN/SNI/Spesifikasi/Lampiran/Simpan ' +
-          'belum diimplementasikan (Task 4 dst) -- proses berhenti di sini sesuai stopAfterStage.'
+          'Section 1 & 5 selesai diisi (field yang sudah pasti). Stage SNI/Spesifikasi/Lampiran/Simpan ' +
+          'belum diimplementasikan -- proses berhenti di sini sesuai stopAfterStage.'
         );
       } catch (e) {
         Logger.error('Proses melempar error tak terduga.', { reason: e && e.message, stack: e && e.stack });
