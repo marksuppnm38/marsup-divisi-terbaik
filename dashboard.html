@@ -163,9 +163,33 @@ main{max-width:1280px;margin:0 auto;padding:24px 20px 44px}
 .preset-chip .preset-x:hover{opacity:1;color:var(--danger)}
 .preset-save-btn{height:28px;padding:0 10px;font-size:11.5px;font-family:inherit;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
 .preset-save-btn:hover{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
-.insight-cards{display:grid;grid-template-columns:1.3fr 1fr;gap:12px;margin-bottom:26px;align-items:start}
 .insight-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
 .insight-card-title{font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:7px}
+
+.insight-grid{display:flex;gap:12px;margin-bottom:26px;align-items:stretch}
+.insight-col-left{display:flex;flex-direction:column;gap:12px;flex:2;min-width:0}
+.insight-card-tall{display:flex;flex-direction:column;flex:1;min-width:0}
+.insight-card-tall #leaderboard-box{flex:1;overflow-y:auto}
+
+@media(max-width:900px){
+  .insight-grid{grid-template-columns:1fr}
+  .insight-card-tall{grid-row:auto;max-height:none}
+}
+
+.donut-wrap-flex{display:flex;align-items:center;gap:20px}
+.donut-svg{flex-shrink:0}
+.donut-legend-list{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}
+.donut-legend-item{display:flex;align-items:center;gap:8px;font-size:12px}
+.donut-legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.donut-legend-label{flex:1;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.donut-legend-val{font-family:var(--mono);font-weight:600;font-size:11.5px;color:var(--text)}
+.donut-legend-pct{font-size:10px;color:var(--text-muted);margin-left:3px}
+
+.linechart-svg{width:100%;height:150px;overflow:visible}
+.linechart-tooltip-dot{cursor:pointer}
+.linechart-tooltip-dot:hover{r:5}
+
+@media(max-width:900px){ .insight-cards-row2{grid-template-columns:1fr} }
 
 .trend-chart{display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 4px}
 .trend-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
@@ -371,11 +395,22 @@ th.checkbox-col,td.checkbox-col{width:30px;text-align:center;padding-left:12px;p
   </div>
 <div class="section-label"><i class="ph ph-trend-up"></i> Insight Konversi</div>
   <div class="insight-cards">
-    <div class="insight-card">
-      <div class="insight-card-title"><i class="ph ph-chart-bar" style="color:var(--accent)"></i> Trend 7 Hari Terakhir</div>
-      <div id="trend-chart-box"><div class="skeleton" style="height:120px"></div></div>
+<div class="insight-grid">
+    <div class="insight-col-left">
+      <div class="insight-card">
+        <div class="insight-card-title"><i class="ph ph-chart-bar" style="color:var(--accent)"></i> Trend 7 Hari Terakhir</div>
+        <div id="trend-chart-box"><div class="skeleton" style="height:120px"></div></div>
+      </div>
+      <div class="insight-card">
+        <div class="insight-card-title"><i class="ph ph-chart-line" style="color:var(--success)"></i> Trend Value Harian (7 hari)</div>
+        <div id="linechart-box"><div class="skeleton" style="height:150px"></div></div>
+      </div>
+      <div class="insight-card">
+        <div class="insight-card-title"><i class="ph ph-chart-donut" style="color:var(--purple)"></i> Distribusi Kategori (30 hari)</div>
+        <div id="donut-chart-box"><div class="skeleton" style="height:140px"></div></div>
+      </div>
     </div>
-    <div class="insight-card">
+    <div class="insight-card insight-card-tall">
       <div class="insight-card-title"><i class="ph ph-trophy" style="color:var(--warning)"></i> Leaderboard Sales (30 hari)</div>
       <div id="leaderboard-box">
         <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
@@ -1029,7 +1064,7 @@ function handleLoadError(err){
 async function loadEverything(){
   clearError();
   try {
-    await Promise.all([loadStats(), loadTable(), loadKonversiToday(), loadTrend(), loadLeaderboard()]);
+    await Promise.all([loadStats(), loadTable(), loadKonversiToday(), loadTrend(), loadLeaderboard(), loadKategoriDonut(), loadValueLineChart()]);
   } catch (err) {
     handleLoadError(err);
   }
@@ -1263,6 +1298,89 @@ async function loadLeaderboard(){
       </div>
     `).join('')}
   </div>`;
+}
+// ══════════════════════════════════════════
+// DONUT CHART KATEGORI + LINE CHART VALUE
+// ══════════════════════════════════════════
+const DONUT_COLORS = ['#2563eb','#16a34a','#7c3aed','#d97706','#dc2626','#0d9488'];
+
+async function loadKategoriDonut(){
+  const data = await rpc('get_dashboard_kategori_distribusi', {p_days: 30});
+  const box = document.getElementById('donut-chart-box');
+  if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data kategori.</div>`; return; }
+
+  const total = data.reduce((s,d)=>s+d.jumlah,0);
+  const R = 45, CX = 55, CY = 55, STROKE = 18;
+  const circumference = 2 * Math.PI * R;
+  let offset = 0;
+
+  const segments = data.map((d, i) => {
+    const pct = d.jumlah / total;
+    const dash = pct * circumference;
+    const seg = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${DONUT_COLORS[i % DONUT_COLORS.length]}" stroke-width="${STROKE}"
+      stroke-dasharray="${dash} ${circumference-dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${CX} ${CY})"
+      style="transition:stroke-dasharray .6s ease"><title>${d.kategori}: ${fmt(d.jumlah)} (${Math.round(pct*100)}%)</title></circle>`;
+    offset += dash;
+    return seg;
+  }).join('');
+
+  const legend = data.map((d,i) => `
+    <div class="donut-legend-item">
+      <span class="donut-legend-dot" style="background:${DONUT_COLORS[i % DONUT_COLORS.length]}"></span>
+      <span class="donut-legend-label">${d.kategori}</span>
+      <span class="donut-legend-val">${fmt(d.jumlah)}</span>
+      <span class="donut-legend-pct">${Math.round(d.jumlah/total*100)}%</span>
+    </div>
+  `).join('');
+
+  box.innerHTML = `<div class="donut-wrap-flex">
+    <svg class="donut-svg" width="110" height="110" viewBox="0 0 110 110">${segments}</svg>
+    <div class="donut-legend-list">${legend}</div>
+  </div>`;
+}
+
+async function loadValueLineChart(){
+  const data = await rpc('get_dashboard_trend_7hari', {});
+  const box = document.getElementById('linechart-box');
+  if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data konversi.</div>`; return; }
+
+  const W = 600, H = 140, PAD = 24;
+  const maxVal = Math.max(...data.map(d=>d.total_value), 1);
+  const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+  const n = data.length;
+  const stepX = (W - PAD*2) / (n - 1 || 1);
+
+  const points = data.map((d,i) => {
+    const x = PAD + i * stepX;
+    const y = H - PAD - ((d.total_value / maxVal) * (H - PAD*2));
+    return {x, y, ...d};
+  });
+
+  const pathD = points.map((p,i) => `${i===0?'M':'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const areaD = pathD + ` L ${points[points.length-1].x.toFixed(1)} ${H-PAD} L ${points[0].x.toFixed(1)} ${H-PAD} Z`;
+
+  const dots = points.map(p => {
+    const dt = new Date(p.tanggal + 'T00:00:00');
+    const label = dayNames[dt.getDay()];
+    return `<g>
+      <circle class="linechart-tooltip-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="var(--success)">
+        <title>${label}, ${p.tanggal}: ${rupiah(p.total_value)}</title>
+      </circle>
+      <text x="${p.x.toFixed(1)}" y="${H-4}" font-size="9.5" fill="var(--text-muted)" text-anchor="middle">${label}</text>
+    </g>`;
+  }).join('');
+
+  box.innerHTML = `<svg class="linechart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="lineFade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--success)" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="var(--success)" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <path d="${areaD}" fill="url(#lineFade)"/>
+    <path d="${pathD}" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}
+  </svg>`;
 }
 initAuth();
 </script>
