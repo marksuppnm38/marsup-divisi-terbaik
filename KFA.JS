@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         KFA Alkes Automation - Pionir Group
 // @namespace    pionir-marsup
-// @version      1.10
+// @version      1.16
 // @description  Bantu automasi masukin SKU ke cangkang + validasi KFA di kamus-alkes.kemkes.go.id
 // @match        https://kamus-alkes.kemkes.go.id/*
 // @grant        none
@@ -59,6 +59,15 @@
   //     baris kayak paste dari Excel. Kalau browser nolak akses clipboard
   //     otomatis, textarea "Preview hasil" di bawah tombol bakal muncul --
   //     select-all manual (klik textarea-nya, Ctrl+A, Ctrl+C) dari situ.
+  // 12. (BARU v1.11) Website KFA ini basically Odoo yang berat -- tiap kali
+  //     ada request ke server, biasanya muncul overlay abu-abu gelap
+  //     ("blockUI") nutupin seluruh halaman sampai request-nya kelar. Ini
+  //     WAJAR dan BUKAN error. Script sekarang otomatis NUNGGUIN overlay
+  //     ini ilang (dan mastiin beneran ilang, bukan cuma kedip sebentar)
+  //     sebelum lanjut ke langkah berikutnya, jadi nggak gampang "keburu"
+  //     cek elemen yang belum siap. Prioritas sekarang BERHASIL, bukan
+  //     CEPAT -- kalau internet/server lagi lemot, script bakal nungguin
+  //     lebih lama daripada langsung nyerah.
   //
   // v1.3: Fix dropdown Brand di-portal keluar .modal (dicari via jarak ke
   //       input, isNearInput, bukan ancestry .modal).
@@ -99,9 +108,160 @@
   //       otomatis (navigator.clipboard, dengan fallback execCommand kalau
   //       clipboard API diblokir), plus textarea "Preview hasil" yang bisa
   //       di-select manual & Ctrl+C kalau copy otomatis gagal.
+  // v1.11: FOKUS UTAMA -- ngatasin kegagalan yang sebenernya cuma soal
+  //       loading Odoo yang berat/unpredictable (overlay "blockUI" abu-abu
+  //       yang nutupin halaman pas ada request ke server), bukan error
+  //       beneran. Perubahan:
+  //       (a) Tambah deteksi blockUI (isBlockUIVisible) + waitForBlockUIClear
+  //           yang nunggu overlay-nya ilang dan STABIL ilang (nggak keitung
+  //           beres kalau cuma kedip sebentar di antara beberapa request
+  //           yang berantai).
+  //       (b) waitFor() inti sekarang "pause" hitungan timeout-nya selama
+  //           blockUI aktif -- jadi waktu nunggu loading nggak lagi ikut
+  //           makan jatah timeout & bikin dianggap gagal padahal cuma lemot.
+  //       (c) Ditambahin settleAfterAction() yang dipanggil setelah klik2
+  //           yang biasanya mancing request ke server (Edit, Next, Get NIE,
+  //           Validate, Save, pindah tab) -- nunggu overlay muncul-hilang
+  //           dulu sebelum script lanjut meriksa elemen berikutnya, biar
+  //           nggak baca DOM yang lagi setengah jadi.
+  //       (d) Step2 yang paling sering kena imbas timing (isi autocomplete
+  //           Brand/Type/Tags, nunggu tombol Next/Validate siap) sekarang
+  //           di-bungkus withRetry -- otomatis dicoba ulang 1-2x (nunggu
+  //           blockUI beres dulu tiap retry) sebelum beneran nyerah &
+  //           nyuruh cek manual.
+  //       (e) Semua timeout utama dinaikin cukup jauh dari versi
+  //           sebelumnya (lihat CONFIG di bawah) -- prioritasnya sekarang
+  //           BERHASIL, bukan CEPAT, karena situs KFA emang lambat.
+  //       (f) Nggak ada perubahan di logika keamanan/guardrail (auto-lanjut
+  //           tetap berhenti kalau ada kegagalan asli, auto-validate/
+  //           auto-save tetap default OFF, dst) -- yang berubah cuma cara
+  //           script mengenali "masih loading" vs "beneran gagal".
+  // v1.12: Tambah tombol "⏭ Skip SKU pertama di antrian" di panel. Kalau
+  //       ada SKU yang mau dilewatin (misal ternyata invalid / mau dicek
+  //       belakangan), user tinggal klik tombol ini -- SKU itu digeser
+  //       keluar dari antrian (SAMA kayak kalau berhasil), TAPI dicatat di
+  //       hasil dengan KODE_KFA = "SKIPPED_BY_USER" (bukan kode KFA asli),
+  //       jadi kelihatan jelas di export CSV/TSV mana yang beneran
+  //       berhasil vs mana yang di-skip manual. Ada konfirmasi (confirm
+  //       dialog) dulu sebelum skip beneran jalan, biar nggak kepencet
+  //       nggak sengaja. Kalau "Auto-lanjut ke SKU berikutnya" dicentang,
+  //       setelah skip script otomatis lanjut ke SKU berikutnya di
+  //       antrian (skip dianggap "selesai", bukan kegagalan).
+  // v1.13: Fix KHUSUS buat Proses A -- widget many2many tag di baris
+  //       "Tipe (Type)" ternyata KELIHATAN read-only kalau di-klik lewat
+  //       container-nya (yang dipakai script sebelumnya), padahal manual
+  //       harus klik PERSIS di kotak input TERAKHIR (posisinya setelah
+  //       tag/chip yang udah ada) baru beneran ke-aktifin buat ngetik.
+  //       Perubahan:
+  //       (a) activateTagsInputForEditing() -- cari input PALING TERAKHIR
+  //           di dalam widget INI SAJA (bukan query global, biar nggak
+  //           kepencet input attribute/row lain), lalu kirim urutan event
+  //           mouse lengkap (mousedown -> focus -> mouseup -> click),
+  //           karena widget ini kadang cuma dengerin mousedown buat lepas
+  //           dari state read-only-nya. Dibungkus withRetry -- kalau
+  //           attempt pertama masih kebaca disabled/readonly, dicolek
+  //           sekali lagi.
+  //       (b) findAutocompleteTarget() -- SEBELUMNYA kalau nggak ada
+  //           match persis, script asal pilih item PERTAMA di daftar
+  //           autocomplete (items[0]). Ini BAHAYA karena bisa jadi fuzzy
+  //           match yang salah, atau nyiptain tag baru ("Create "...")
+  //           dengan teks yang beda dikit dari yang diminta -- dan tag
+  //           itu bakal NEMPEL PERMANEN di sistem KFA nasional. Sekarang
+  //           script CUMA mau lanjut kalau: (1) ada item yang isinya
+  //           PERSIS sama kayak kode yang diminta, ATAU (2) ada opsi
+  //           "Create "KODE_PERSIS_SAMA"" (dengan teks di dalam tanda
+  //           kutip PERSIS sama). Di luar itu, script BERHENTI & minta
+  //           cek manual -- nggak nebak-nebak lagi.
+  //       (c) Log sekarang bilang jelas kalau script bakal BIKIN tag
+  //           BARU (bukan milih yang udah ada), biar user sadar ini aksi
+  //           yang nempel permanen ke sistem nasional.
+  // v1.14: Fix lanjutan dari v1.13 setelah ketauan dari log console kalau
+  //       widget many2many tag ini TERNYATA nggak punya <input> SAMA
+  //       SEKALI di DOM sampai user klik PERSIS di celah kosong setelah
+  //       tag terakhir -- input-nya baru di-render Odoo ON-DEMAND abis
+  //       klik itu kena sasaran (v1.13 masih asumsi input-nya udah ada &
+  //       cuma perlu "diaktifin", makanya tetep gagal). Sekarang:
+  //       (a) Hitung titik koordinat yang tepat (sedikit di kanan tag
+  //           terakhir, di baris yang sama; atau ujung kiri container
+  //           kalau belum ada tag), lalu pakai document.elementFromPoint
+  //           buat nemuin elemen ASLI di titik itu -- biar klik-nya
+  //           seakurat mungkin kayak klik mouse beneran (bukan asal
+  //           dispatch ke tagsField).
+  //       (b) BARU SETELAH klik itu, di-waitFor (bukan sleep tebakan)
+  //           sampai Odoo beneran ngerender <input> baru -- karena
+  //           sebelumnya emang belum ada, jadi nggak ada gunanya dicek
+  //           langsung sinkron.
+  //       (c) Kalau tetap gagal, script nge-print titik koordinat +
+  //           elemen yang kena klik ke console (F12), biar gampang
+  //           didiagnosis kalau ternyata posisi klik-nya masih meleset.
+  // v1.15: Fix bug NYATA yang ketauan dari log -- di attempt retry ke-2/3,
+  //       titik klik yang dihitung jadi {x:-4, y:0} (jelas salah). Ini
+  //       tandanya reference `tagsField` yang dipegang script udah STALE
+  //       (ke-detach dari DOM) setelah attempt pertama, karena Owl/Odoo
+  //       ngeganti total node widget many2many ini abis kena
+  //       klik/interaksi apapun -- getBoundingClientRect() ke elemen yang
+  //       udah detached selalu balikin rect kosong semua nol. Perubahan:
+  //       (a) activateTagsInputForEditing() sekarang nerima `attributeRow`
+  //           (elemen <tr>, jauh lebih jarang di-ganti-total sama Owl
+  //           dibanding div widget di dalamnya) dan RE-QUERY tagsField
+  //           dari situ SETIAP KALI dipanggil -- termasuk tiap retry --
+  //           bukan pakai reference lama yang di-cache di luar.
+  //       (b) Ditambah focus() langsung lewat JS API sebelum dispatch
+  //           event mouse (focus() SELALU beneran jalan biarpun dipanggil
+  //           dari script, beda sama dispatchEvent yang browser kadang
+  //           nggak jalanin default action-nya kalau bukan event asli).
+  //       (c) Ditambah dispatch PointerEvent (pointerdown/pointerup) di
+  //           samping MouseEvent, plus detail:1 & button:0 di semua
+  //           event -- buat jaga2 kalau widget-nya dengerin pointer event
+  //           atau ngecek detail count, bukan cuma mouse event polos.
+  //       (d) CATATAN JUJUR: kalau widget ini ternyata emang gantungin ke
+  //           perilaku browser yang CUMA jalan buat klik mouse ASLI
+  //           (trusted event) -- bukan buat event yang di-dispatch lewat
+  //           script -- maka ini BATAS TEKNIS BROWSER yang nggak bisa
+  //           ditembus dari sisi script manapun (ini bukan bug yang bisa
+  //           di-fix lewat kode lagi). Kalau masih gagal setelah fix ini,
+  //           jalur manual (klik PERSIS di kotak kosong + Alt+Enter, yang
+  //           udah kebukti jalan) jadi jalur normal/permanen buat step
+  //           ini, bukan lagi dianggap "sementara sampai ke-fix".
+  // v1.16: Dua fix berdasarkan feedback abis Proses A beneran berhasil
+  //       jalan (input + save manual jalan, tapi antrian nggak geser):
+  //       (a) BUG NYATA -- tombol "Proses A" di panel SEBELUMNYA cuma
+  //           manggil runProsesA() doang TANPA geser antrian sama sekali,
+  //           jadi counter-nya nggak pernah maju walaupun SKU-nya beneran
+  //           berhasil diinput. Sekarang ada processNextInQueueForProsesA()
+  //           yang geser antrian abis sukses (persis kayak Proses B), plus
+  //           "Auto-lanjut" (checkbox yang sama) sekarang juga berlaku
+  //           buat Proses A -- abis 1 SKU sukses diinput sebagai tag,
+  //           otomatis lanjut ke SKU berikutnya di antrian TANPA save di
+  //           antaranya, cocok buat numpuk banyak SKU jadi tag ke
+  //           cangkang yang sama.
+  //       (b) Sesuai saran user -- save tiap 1 SKU itu boros (blockUI
+  //           muncul tiap kali, Save-nya sendiri lemot). Auto-save
+  //           SEKARANG DILEPAS dari Proses A -- Proses A cuma nambahin
+  //           tag ke widget (belum di-save), checkbox "Auto-klik Save"
+  //           sekarang CUMA berlaku buat Proses B. Ditambah tombol baru
+  //           "💾 Save Sekarang" di panel buat commit SEMUA tag yang udah
+  //           ketumpuk, dipencet SEKALI aja abis numpuk sebanyak yang
+  //           diinginkan (bukan tiap 1 SKU).
   // ============================================================
   const STORAGE_KEY = 'kfa_automation_queue_v1';
   const RESULTS_KEY = 'kfa_automation_results_v1';
+  // ---------- Konfigurasi (v1.11) ----------
+  // Semua angka di sini bisa diubah kalau perlu -- dinaikin dari versi
+  // sebelumnya karena prioritas sekarang "pasti berhasil" bukan "cepat".
+  const CONFIG = {
+    BLOCKUI_STABLE_MS: 500,       // overlay harus ilang STABIL segini lama baru dianggap beres
+    BLOCKUI_MAX_WAIT_MS: 45000,   // maksimal nungguin overlay ilang sebelum nyerah & minta cek manual
+    AUTOCOMPLETE_TIMEOUT_MS: 20000,
+    MODAL_TIMEOUT_MS: 20000,
+    NEXT_BUTTON_TIMEOUT_MS: 20000,
+    VALIDATE_VISIBLE_TIMEOUT_MS: 25000,
+    VALIDATE_ENABLED_TIMEOUT_MS: 25000,
+    VALIDATE_DONE_TIMEOUT_MS: 30000,
+    KFA_CODE_TIMEOUT_MS: 30000,
+    MANUAL_VALIDATE_TIMEOUT_MS: 300000, // nungguin user klik Validate manual (5 menit, sama kayak sebelumnya)
+    RETRY_COUNT: 2, // berapa kali retry otomatis buat step2 yang rawan ketiban loading
+  };
   // ---------- Helpers ----------
   function log(msg) {
     const box = document.getElementById('kfa-log');
@@ -115,20 +275,117 @@
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
-  function waitFor(checkFn, { timeout = 8000, interval = 150 } = {}) {
+  // v1.11: waitFor sekarang "pause" hitungan timeout selama blockUI aktif.
+  // Sebelumnya, kalau server lemot & overlay muncul lama, waktu itu ikut
+  // kepotong dari jatah timeout -- jadi step yang sebenernya cuma lemot
+  // gampang ke-anggap gagal. Sekarang waktu blockUI aktif nggak dihitung.
+  function waitFor(checkFn, { timeout = 8000, interval = 150, pauseOnBlockUI = true } = {}) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
+      let blockedAccum = 0;
+      let lastTick = Date.now();
       const timer = setInterval(() => {
-        const result = checkFn();
+        const now = Date.now();
+        const dt = now - lastTick;
+        lastTick = now;
+        if (pauseOnBlockUI && isBlockUIVisible()) {
+          blockedAccum += dt;
+          return; // lagi loading -- jangan dulu evaluasi checkFn, jangan dulu itung ke timeout
+        }
+        let result;
+        try {
+          result = checkFn();
+        } catch (e) {
+          result = null;
+        }
         if (result) {
           clearInterval(timer);
           resolve(result);
-        } else if (Date.now() - start > timeout) {
+        } else if (now - start - blockedAccum > timeout) {
           clearInterval(timer);
           reject(new Error('waitFor timeout: ' + checkFn.toString().slice(0, 80)));
         }
       }, interval);
     });
+  }
+  // v1.11: deteksi overlay loading "blockUI" (dipakai jQuery BlockUI plugin,
+  // umum di Odoo). Nggak pakai isVisible() biasa karena overlay ini kadang
+  // computed style-nya "aneh" (mis. opacity di-set lewat inline style tapi
+  // display tetap block) -- di sini kita cek langsung display/visibility +
+  // ukuran elemen di layar.
+  function isBlockUIVisible() {
+    const overlays = document.querySelectorAll('.blockUI.blockOverlay, .blockUI, .o_blockUI');
+    return Array.from(overlays).some((el) => {
+      const style = window.getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+  }
+  // v1.11: nungguin overlay blockUI ilang, dan mastiin dia ilang STABIL
+  // (nggak keitung beres kalau cuma kedip bentar di antara beberapa request
+  // yang nembak berantai -- pola ini sering kejadian pas Odoo ngerjain
+  // beberapa RPC beruntun buat satu aksi user).
+  async function waitForBlockUIClear({
+    timeout = CONFIG.BLOCKUI_MAX_WAIT_MS,
+    stableFor = CONFIG.BLOCKUI_STABLE_MS,
+    logIfWaiting = true,
+  } = {}) {
+    const start = Date.now();
+    let clearSince = null;
+    let loggedWaiting = false;
+    while (Date.now() - start < timeout) {
+      if (!isBlockUIVisible()) {
+        if (!clearSince) clearSince = Date.now();
+        if (Date.now() - clearSince >= stableFor) return true;
+      } else {
+        if (logIfWaiting && !loggedWaiting) {
+          log('⏳ Halaman lagi loading (overlay blockUI kedetect)... nungguin beres dulu sebelum lanjut, ini wajar & bukan error.');
+          loggedWaiting = true;
+        }
+        clearSince = null;
+      }
+      await sleep(150);
+    }
+    return false;
+  }
+  // v1.11: dipanggil setelah aksi yang biasanya mancing request ke server
+  // (Edit, Next, Get NIE, Validate, Save, pindah tab). Kasih jeda dikit
+  // dulu (siapa tau overlay-nya baru mau muncul), lalu nungguin sampai
+  // beneran clear, biar step berikutnya nggak baca DOM yang lagi
+  // setengah jadi / stale.
+  async function settleAfterAction(label = '') {
+    await sleep(200);
+    const cleared = await waitForBlockUIClear();
+    if (!cleared) {
+      log(`⚠️ Overlay loading nggak ilang2 setelah ditunggu lama${label ? ` (setelah "${label}")` : ''}. Kemungkinan halaman nyangkut / request gagal diam-diam / koneksi lemot banget. Cek manual, jangan lanjut otomatis.`);
+    }
+    return cleared;
+  }
+  // v1.11: bungkus step2 yang paling rawan ketiban timing/loading (isi
+  // autocomplete, nunggu tombol siap, dst) -- kalau attempt pertama gagal,
+  // nunggu blockUI beres dulu, kasih jeda, terus coba lagi (maksimal
+  // CONFIG.RETRY_COUNT kali) sebelum beneran dianggap gagal. Ini BUKAN
+  // buat nutupin error asli -- kalau emang gagal terus setelah semua
+  // retry, tetap dianggap gagal & alur normal (berhenti, minta cek
+  // manual) tetap jalan seperti biasa.
+  async function withRetry(fn, { retries = CONFIG.RETRY_COUNT, label = 'step' } = {}) {
+    let lastResult = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (attempt > 0) {
+        log(`🔁 Retry ${attempt}/${retries} buat "${label}" (kemungkinan attempt sebelumnya ketiban loading/overlay)...`);
+        await waitForBlockUIClear();
+        await sleep(400);
+      }
+      try {
+        lastResult = await fn();
+      } catch (e) {
+        console.log(`[KFA-AUTO] Error di step "${label}" (attempt ${attempt}):`, e);
+        lastResult = null;
+      }
+      if (lastResult) return lastResult;
+    }
+    return lastResult;
   }
   function isValidKfaCode(text) {
     if (!text) return false;
@@ -207,7 +464,135 @@
     const vGap = Math.min(Math.abs(r.top - ir.bottom), Math.abs(ir.top - r.bottom));
     return vGap < maxDist;
   }
+  // v1.13: SEBELUMNYA kalau nggak ada match persis di daftar autocomplete,
+  // script asal milih item PERTAMA (items[0]). Itu bahaya -- bisa kepencet
+  // fuzzy match yang salah, atau nyiptain tag baru ("Create "...") dengan
+  // teks yang beda dikit dari yang diminta, dan tag itu NEMPEL PERMANEN
+  // di sistem KFA nasional. Sekarang cuma ada 2 kondisi yang diterima:
+  // (1) ada item yang isinya PERSIS sama kayak `text`, atau
+  // (2) ada opsi "Create "TEKS_PERSIS_SAMA"" -- ini valid buat Proses A
+  //     (kode SKU emang belum terdaftar & harus dibikin baru), TAPI cuma
+  //     diterima kalau teks di dalam kutipnya PERSIS sama, biar nggak
+  //     kepencet bikin tag dengan typo.
+  // Di luar 2 kondisi itu, return null -- caller HARUS berhenti & minta
+  // cek manual, bukan nebak-nebak.
+  function findAutocompleteTarget(items, text) {
+    const norm = (s) => s.replace(/\s+/g, ' ').trim();
+    const exact = items.find((li) => norm(li.textContent) === text);
+    if (exact) return { target: exact, isCreate: false };
+    const createExact = items.find((li) => {
+      const t = norm(li.textContent);
+      return t === `Create "${text}"` || t === `Create "${text}"...` || t === `Buat "${text}"`;
+    });
+    if (createExact) return { target: createExact, isCreate: true };
+    return { target: null, isCreate: false };
+  }
+  // v1.13/v1.14: Aktifin input "nambah tag baru" di widget many2many_tags
+  // Odoo (mis. baris "Tipe (Type)"). PENTING (ketauan dari log console):
+  // widget ini TIDAK punya <input> di DOM sama sekali sampai user klik
+  // PERSIS di celah kosong SETELAH tag/chip terakhir -- input-nya baru
+  // di-render Odoo ON-DEMAND abis klik itu kena sasaran. Jadi:
+  // 1) Cari titik koordinat yang tepat: sedikit di sebelah kanan tag
+  //    terakhir, di baris (row) yang sama -- ini konvensi Odoo
+  //    many2many_tags, kalau nggak ada tag sama sekali klik di ujung
+  //    kiri container.
+  // 2) Pakai document.elementFromPoint(x, y) buat nemuin elemen ASLI di
+  //    titik itu (bukan asal dispatch ke tagsField), biar klik-nya
+  //    seakurat mungkin kayak klik mouse beneran -- soalnya kemungkinan
+  //    widget ini ngecek posisi klik (bukan cuma target/type event) buat
+  //    mutusin apa masuk mode edit atau nggak.
+  // 3) Kirim urutan event mouse LENGKAP (mousedown -> mouseup -> click)
+  //    di titik itu.
+  // 4) BARU SETELAH klik, tunggu (waitFor, bukan sleep tebakan) sampai
+  //    Odoo beneran nge-render <input> baru di dalam widget ini -- karena
+  //    input-nya emang nggak ada sebelum klik, jadi nggak ada gunanya
+  //    dicek langsung sinkron kayak versi sebelumnya.
+  function getLastTagsInput(tagsField) {
+    const candidates = Array.from(
+      tagsField.querySelectorAll('input[type="text"], input.ui-autocomplete-input, input.o_input')
+    );
+    return candidates[candidates.length - 1] || null;
+  }
+  function computeTagsClickPoint(tagsField) {
+    const containerRect = tagsField.getBoundingClientRect();
+    const badges = Array.from(tagsField.querySelectorAll('.badge, .o_tag'));
+    const lastBadge = badges[badges.length - 1];
+    if (lastBadge) {
+      const r = lastBadge.getBoundingClientRect();
+      // Klik tepat di sebelah kanan tag terakhir, di baris yang sama --
+      // dibatasin biar nggak keluar dari lebar container (kalau tag
+      // terakhir udah mepet ujung kanan).
+      const x = Math.min(r.right + 8, containerRect.right - 4);
+      const y = r.top + r.height / 2;
+      return { x, y };
+    }
+    // Belum ada tag sama sekali -- klik aja di ujung kiri container.
+    return { x: containerRect.left + 8, y: containerRect.top + containerRect.height / 2 };
+  }
+  async function activateTagsInputForEditing(attributeRow) {
+    // v1.14b: SELALU re-query tagsField yang FRESH dari attributeRow tiap
+    // kali fungsi ini dipanggil (termasuk tiap retry) -- JANGAN pakai
+    // reference lama yang di-cache di luar, karena Owl/Odoo bisa
+    // ngeganti total node div widget ini abis interaksi apapun.
+    const tagsField = attributeRow.querySelector('.o_field_many2manytags, .o_field_widget[name="value_ids"]');
+    if (!tagsField || !tagsField.isConnected) {
+      log('⚠️ Widget tag "Tipe (Type)" nggak ketemu lagi di baris ini (mungkin abis di-render ulang sama halamannya). Cek manual.');
+      return null;
+    }
+    // Kalau kebetulan input-nya UDAH ada & aktif (mis. sisa dari attempt
+    // sebelumnya), langsung pakai -- nggak perlu klik ulang.
+    let input = getLastTagsInput(tagsField);
+    if (input && !input.disabled && !input.readOnly) {
+      input.focus();
+      return input;
+    }
+    const { x, y } = computeTagsClickPoint(tagsField);
+    const clickTarget = document.elementFromPoint(x, y) || tagsField;
+    // v1.14b: coba beberapa cara "ngebuka" widget ini sekaligus dalam
+    // satu attempt, karena kita nggak tau pasti widget ini dengerin apa
+    // (click biasa? pointer event? butuh fokus dulu baru klik?):
+    // 1) focus() langsung lewat JS API (INI SELALU jalan beneran, nggak
+    //    kayak dispatchEvent yang kadang nggak trigger default action
+    //    browser -- jadi kalau elemen/ancestor-nya focusable, ini paling
+    //    reliable).
+    if (typeof clickTarget.focus === 'function') {
+      clickTarget.focus();
+    }
+    // 2) Urutan pointer + mouse event lengkap, detail:1 (biar kebaca
+    //    sebagai "klik asli ke-1" oleh handler yang ngecek e.detail),
+    //    di titik koordinat yang bener.
+    const fire = (Ctor, type) => clickTarget.dispatchEvent(new Ctor(type, {
+      bubbles: true, cancelable: true, composed: true, view: window,
+      clientX: x, clientY: y, button: 0, detail: 1,
+    }));
+    try { fire(PointerEvent, 'pointerdown'); } catch (e) { /* browser lama tanpa PointerEvent */ }
+    fire(MouseEvent, 'mousedown');
+    try { fire(PointerEvent, 'pointerup'); } catch (e) { /* no-op */ }
+    fire(MouseEvent, 'mouseup');
+    fire(MouseEvent, 'click');
+    // Input-nya baru muncul SETELAH klik ini (kalau berhasil) -- jadi
+    // WAJIB ditunggu (bukan sleep tebakan), karena Odoo ngerender-nya
+    // on-demand.
+    input = await waitFor(() => getLastTagsInput(attributeRow.querySelector('.o_field_many2manytags, .o_field_widget[name="value_ids"]') || tagsField), {
+      timeout: CONFIG.AUTOCOMPLETE_TIMEOUT_MS,
+    }).catch(() => null);
+    if (!input) {
+      log('⚠️ Klik di celah kosong setelah tag terakhir belum berhasil mancing input baru muncul. Titik yang diklik script saya print ke console (F12) beserta elemen yang kena.');
+      console.log('[KFA-AUTO] Titik klik:', { x, y }, '| Elemen yang kena (elementFromPoint):', clickTarget);
+      console.log('[KFA-AUTO] HTML widget tags saat ini:', tagsField.outerHTML.slice(0, 800));
+      return null;
+    }
+    input.focus();
+    if (input.disabled || input.readOnly) {
+      return null;
+    }
+    return input;
+  }
   async function fillAutocomplete(inputEl, text) {
+    // v1.11: mastiin nggak lagi ada overlay loading sebelum mulai ngetik --
+    // banyak kegagalan "autocomplete nggak muncul" sebenernya karena widget
+    // many2many-nya masih proses render/fetch pas kita udah mulai ngetik.
+    await waitForBlockUIClear({ logIfWaiting: false });
     inputEl.focus();
     const before = collectCandidateMenus(document);
     setNativeValue(inputEl, text);
@@ -216,7 +601,7 @@
     let menu = await waitFor(() => {
       const m = document.querySelector('.ui-autocomplete:not([style*="display: none"]), .ui-autocomplete-menu:not([style*="display: none"])');
       return m && m.querySelectorAll('li').length && isNearInput(m, inputEl) ? m : null;
-    }, { timeout: 3000 }).catch(() => null);
+    }, { timeout: CONFIG.AUTOCOMPLETE_TIMEOUT_MS }).catch(() => null);
     if (!menu) {
       menu = await waitFor(() => {
         const now = collectCandidateMenus(document);
@@ -227,7 +612,7 @@
           }
         }
         return null;
-      }, { timeout: 4000 }).catch(() => null);
+      }, { timeout: CONFIG.AUTOCOMPLETE_TIMEOUT_MS }).catch(() => null);
     }
     if (!menu) {
       log(`⚠️ Autocomplete nggak muncul buat "${text}" -- cek manual.`);
@@ -241,10 +626,20 @@
       return false;
     }
     const items = Array.from(menu.querySelectorAll('li, [role="option"], .dropdown-item'));
-    const exact = items.find((li) => li.textContent.trim() === text);
-    const target = exact || items[0];
-    if (!target) return false;
+    const { target, isCreate } = findAutocompleteTarget(items, text);
+    if (!target) {
+      log(`⚠️ Nggak nemu item autocomplete yang PERSIS cocok buat "${text}" (bukan exact match, bukan juga opsi "Create" dengan teks persis sama) -- script SENGAJA berhenti di sini daripada nebak, biar nggak salah pilih/nyiptain tag yang salah. Daftar opsi yang muncul saya print ke console (F12).`);
+      console.log(`[KFA-AUTO] Opsi autocomplete yang muncul buat "${text}":`, items.map((li) => li.textContent.trim()));
+      return false;
+    }
+    if (isCreate) {
+      log(`📌 "${text}" belum terdaftar -- script bakal BIKIN tag/value BARU dengan teks ini (nempel permanen ke sistem KFA nasional). Kalau ini nggak diinginkan, batalin/cek manual sekarang.`);
+    }
     (target.querySelector('a') || target).click();
+    // v1.11: milih item dari autocomplete kadang mancing RPC kecil
+    // (misalnya validasi tag baru) -- kasih kesempatan overlay itu
+    // muncul-hilang sebelum kita anggap step ini beres.
+    await settleAfterAction(`pilih "${text}" dari autocomplete`);
     return true;
   }
   let lastFocusedInput = null;
@@ -287,7 +682,7 @@
       log('⚠️ Tombol Edit nggak ketemu. Pastikan kamu di halaman cangkang (tab Variants) dulu.');
       return false;
     }
-    await sleep(600);
+    await settleAfterAction('klik Edit');
     document.activeElement?.blur();
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     document.body.click();
@@ -302,7 +697,7 @@
           return headerText.includes('attribute') && headerText.includes('value');
         }) || null
       );
-    }).catch(() => null);
+    }, { timeout: CONFIG.MODAL_TIMEOUT_MS }).catch(() => null);
     if (!attributeTable) {
       log('⚠️ Tabel attribute (Attribute/Required/Values) nggak ketemu -- pastikan kamu di tab Variants.');
       return false;
@@ -340,26 +735,51 @@
     }
     await sleep(200);
     document.activeElement?.blur();
-    tagsField.click();
-    await sleep(300);
-    const input = await waitFor(() =>
-      tagsField.querySelector('input.ui-autocomplete-input, input[type="text"]')
-    ).catch(() => null);
+    // v1.14b: PENTING -- widget many2many ini di-re-render sama Owl/Odoo
+    // pas kena klik/interaksi, jadi node `tagsField` yang kita pegang di
+    // sini BISA JADI STALE (udah kepisah dari DOM) abis attempt pertama.
+    // Ini kebukti dari log: attempt ke-2/3 koordinat kliknya jadi
+    // {x:-4, y:0} -- itu tandanya getBoundingClientRect() dipanggil ke
+    // elemen yang UDAH KE-DETACH (selalu balikin rect kosong semua nol).
+    // Makanya sekarang activateTagsInputForEditing() nerima `attributeRow`
+    // (elemen <tr>, yang jauh lebih jarang di-replace total sama Owl
+    // dibanding div widget di dalamnya) dan RE-QUERY tagsField-nya dari
+    // situ tiap kali dipanggil -- bukan pakai reference lama yang
+    // di-cache di luar.
+    const input = await withRetry(() => activateTagsInputForEditing(attributeRow), {
+      label: 'aktifin input tag "Tipe (Type)" buat diketik',
+    });
     if (!input) {
-      log('⚠️ Input buat nambah tag di baris "Tipe (Type)" nggak muncul setelah klik field. Coba klik manual dulu di area kosong setelah tag terakhir buat mancing inputnya (lalu pakai tombol "Isi field yang lagi kebuka" di bawah), atau cek apakah field-nya readonly.');
+      // v1.14b: jujur soal batasannya -- browser cuma jalanin beberapa
+      // "default action" (kayak focus-follows-click di elemen custom)
+      // buat event yang BENERAN dari mouse asli (trusted), bukan yang
+      // di-dispatch lewat script. Kalau widget-nya emang gantungin ke
+      // perilaku itu (bukan cuma dengerin event click biasa), script
+      // MEMANG nggak bisa nembus ini -- ini batas teknis browser, bukan
+      // bug yang bisa di-fix lewat kode. Jalur manual (klik + Alt+Enter)
+      // di bawah ini yang jadi jalur normal buat kasus ini.
+      log('⚠️ Widget tag "Tipe (Type)" nggak berhasil dibuka lewat script setelah beberapa kali dicoba -- kemungkinan widget ini emang butuh klik mouse ASLI (browser sengaja nggak jalanin beberapa perilaku default buat klik yang di-dispatch lewat script, ini batasan browser bukan bug). Klik MANUAL PERSIS di kotak kosong setelah tag terakhir (sampai kursor kedip-kedip beneran), lalu tekan Alt+Enter (kode SKU-nya udah otomatis keisi di kotak "Isi field yang lagi kebuka" di panel) buat lanjutin dari situ.');
       return false;
     }
-    const ok = await fillAutocomplete(input, kodeProduk);
+    // v1.11: widget many2many tag ini yang paling sering "berat" -- bungkus
+    // withRetry biar kalau attempt pertama ketiban loading/timing, script
+    // otomatis coba lagi sebelum nyerah.
+    const ok = await withRetry(() => fillAutocomplete(input, kodeProduk), {
+      label: `isi tag "Tipe (Type)" = "${kodeProduk}"`,
+    });
     if (!ok) {
-      log(`⚠️ "${kodeProduk}" nggak ketemu di autocomplete tag "Tipe (Type)" -- kemungkinan kode belum terdaftar di sistem KFA sama sekali. Cek manual.`);
+      log(`⚠️ "${kodeProduk}" nggak ketemu di autocomplete tag "Tipe (Type)" (udah dicoba beberapa kali) -- kemungkinan kode belum terdaftar di sistem KFA sama sekali. Cek manual.`);
       return false;
     }
     await sleep(500);
-    log(`✅ "${kodeProduk}" berhasil ditambah ke daftar tag "Tipe (Type)". Klik Save manual untuk commit, atau centang auto-save di panel.`);
-    if (autoFlags.autosave) {
-      clickByText('button', 'Save', { visibleOnly: true });
-      log('💾 Save di-klik otomatis.');
-    }
+    // v1.16: SEBELUMNYA di sini auto-klik Save tiap SATU SKU berhasil
+    // diinput -- boros, karena Save di Odoo ini berat/lemot (blockUI
+    // muncul tiap kali). Sekarang Proses A CUMA nambahin tag ke widget
+    // (belum di-save) -- SENGAJA -- biar bisa numpuk banyak SKU dulu ke
+    // cangkang yang sama, baru Save SEKALI di akhir buat semuanya
+    // (pakai "Auto-lanjut" biar bisa jalan berturut-turut, atau klik
+    // tombol "💾 Save Sekarang" di panel kapanpun mau commit).
+    log(`✅ "${kodeProduk}" berhasil ditambah ke daftar tag "Tipe (Type)" (BELUM di-save). Lanjut ke SKU berikutnya dulu kalau mau numpuk banyak, atau klik "💾 Save Sekarang" di panel buat commit semua tag yang udah diinput.`);
     return true;
   }
   // ============================================================
@@ -380,12 +800,15 @@
       return;
     }
     log(`(Alt+Enter) Ketik & pilih "${kodeProduk}" di field yang lagi fokus...`);
-    const ok = await fillAutocomplete(active, kodeProduk);
+    const ok = await withRetry(() => fillAutocomplete(active, kodeProduk), {
+      label: `Alt+Enter isi "${kodeProduk}"`,
+    });
     if (ok) {
       log(`✅ "${kodeProduk}" berhasil dipilih via Alt+Enter.`);
       if (autoFlags.autosave) {
         await sleep(300);
         if (clickByText('button', 'Save', { visibleOnly: true })) {
+          await settleAfterAction('klik Save (Alt+Enter)');
           log('💾 Save di-klik otomatis.');
         } else {
           log('⚠️ Auto-save aktif tapi tombol Save nggak ketemu -- save manual ya.');
@@ -399,7 +822,7 @@
         renderPanel();
       }
     } else {
-      log(`⚠️ "${kodeProduk}" nggak ketemu di autocomplete field ini. Cek manual.`);
+      log(`⚠️ "${kodeProduk}" nggak ketemu di autocomplete field ini (udah dicoba beberapa kali). Cek manual.`);
     }
   }, true);
   async function fillCurrentlyOpenField(kodeProduk) {
@@ -418,9 +841,11 @@
       return false;
     }
     log(`Ketik & pilih "${kodeProduk}" di field yang barusan kamu klik manual...`);
-    const ok = await fillAutocomplete(input, kodeProduk);
+    const ok = await withRetry(() => fillAutocomplete(input, kodeProduk), {
+      label: `isi field manual "${kodeProduk}"`,
+    });
     if (!ok) {
-      log(`⚠️ "${kodeProduk}" nggak ketemu di autocomplete field ini -- cek apakah field yang kedetect emang field yang dimaksud, atau kode belum terdaftar. Cek manual.`);
+      log(`⚠️ "${kodeProduk}" nggak ketemu di autocomplete field ini (udah dicoba beberapa kali) -- cek apakah field yang kedetect emang field yang dimaksud, atau kode belum terdaftar. Cek manual.`);
       return false;
     }
     log(`✅ "${kodeProduk}" berhasil dipilih di field yang dibuka manual.`);
@@ -441,58 +866,61 @@
       log('⚠️ Tombol "Configure Product" / "Reconfigure Product" nggak ketemu.');
       return null;
     }
-    await sleep(700);
+    await settleAfterAction('klik Configure/Reconfigure Product');
     if (!usingReconfigure) {
       const nextBtn1 = await waitFor(() =>
         document.querySelector('button[name="action_next_step"]')
-      ).catch(() => null);
+      , { timeout: CONFIG.NEXT_BUTTON_TIMEOUT_MS }).catch(() => null);
       if (!nextBtn1) {
         log('⚠️ Tombol Next pertama nggak ketemu di modal.');
         return null;
       }
       nextBtn1.click();
-      await sleep(700);
+      await settleAfterAction('klik Next pertama');
     }
     const modalInputs = await waitFor(() => {
       const inputs = document.querySelectorAll('.modal .o_input.ui-autocomplete-input');
       return inputs.length >= 2 ? inputs : null;
-    }).catch(() => null);
+    }, { timeout: CONFIG.MODAL_TIMEOUT_MS }).catch(() => null);
     if (!modalInputs) {
       log('⚠️ Input Brand/Type nggak ketemu di modal.');
       return null;
     }
     if (brand) {
-      const brandOk = await fillAutocomplete(modalInputs[0], brand);
+      const brandOk = await withRetry(() => fillAutocomplete(modalInputs[0], brand), {
+        label: `isi Brand = "${brand}"`,
+      });
       if (!brandOk) {
-        log(`⚠️ Brand "${brand}" nggak ketemu/gagal dipilih di modal -- BERHENTI di sini, TIDAK lanjut klik Next, biar nggak kebuat produk dengan Brand kosong. Cek manual, atau pastikan brand ini valid.`);
+        log(`⚠️ Brand "${brand}" nggak ketemu/gagal dipilih di modal (udah dicoba beberapa kali) -- BERHENTI di sini, TIDAK lanjut klik Next, biar nggak kebuat produk dengan Brand kosong. Cek manual, atau pastikan brand ini valid.`);
         return null;
       }
-      await sleep(400);
     }
-    const typeOk = await fillAutocomplete(modalInputs[1], kodeProduk);
+    const typeOk = await withRetry(() => fillAutocomplete(modalInputs[1], kodeProduk), {
+      label: `isi Type = "${kodeProduk}"`,
+    });
     if (!typeOk) {
-      log(`⚠️ Type "${kodeProduk}" nggak ketemu/gagal dipilih di modal -- BERHENTI di sini, TIDAK lanjut klik Next, biar nggak kebuat produk dengan Type kosong. Kemungkinan kode ini belum ke-save sebagai value "Tipe (Type)" (jalanin & Save Proses A dulu buat SKU ini), atau cek manual.`);
+      log(`⚠️ Type "${kodeProduk}" nggak ketemu/gagal dipilih di modal (udah dicoba beberapa kali) -- BERHENTI di sini, TIDAK lanjut klik Next, biar nggak kebuat produk dengan Type kosong. Kemungkinan kode ini belum ke-save sebagai value "Tipe (Type)" (jalanin & Save Proses A dulu buat SKU ini), atau cek manual.`);
       return null;
     }
-    await sleep(400);
     const nextBtn2 = await waitFor(() => {
       const btn = document.querySelector('button[name="action_next_step"]');
       return btn && !btn.disabled && !btn.classList.contains('disabled') ? btn : null;
-    }, { timeout: 5000 }).catch(() => null);
+    }, { timeout: CONFIG.NEXT_BUTTON_TIMEOUT_MS }).catch(() => null);
     if (!nextBtn2) {
       log('⚠️ Tombol Next kedua nggak ketemu / nggak pernah aktif (mungkin masih nunggu validasi field Brand/Type). Cek manual.');
       return null;
     }
     const modalBeforeNext2 = nextBtn2.closest('.modal');
     nextBtn2.click();
+    await settleAfterAction('klik Next kedua');
     const modalGone = await waitFor(() => {
       return !modalBeforeNext2 || !modalBeforeNext2.isConnected;
-    }, { timeout: 6000 }).catch(() => false);
+    }, { timeout: CONFIG.MODAL_TIMEOUT_MS }).catch(() => false);
     if (!modalGone) {
       log(`⚠️ Modal wizard kelihatannya masih kebuka setelah Next kedua diklik (mungkin ada validasi yang gagal diam-diam). URL saat ini: ${location.href}. Cek manual, jangan lanjut otomatis.`);
       return null;
     }
-    await sleep(800);
+    await sleep(500);
     let tabFound = clickByText('a', 'Program dan Kemandirian', { visibleOnly: true });
     if (!tabFound) {
       const fallbackTab = Array.from(document.querySelectorAll('a.nav-link, a[data-toggle="tab"]'))
@@ -509,13 +937,15 @@
       navLinks.forEach((a, i) => console.log(`[KFA-AUTO] Tab ${i}: text="${a.textContent.trim()}" href="${a.getAttribute('href')}" visible=${isVisible(a)}`, a));
       return null;
     }
-    await sleep(400);
+    await settleAfterAction('pindah tab Program dan Kemandirian');
     if (!clickByText('button', 'Edit', { visibleOnly: true })) {
       log('⚠️ Tombol Edit di halaman variant nggak ketemu.');
       return null;
     }
-    await sleep(500);
-    const nieInput = await waitFor(() => document.querySelector('input[name="nie"]')).catch(() => null);
+    await settleAfterAction('klik Edit (Proses B)');
+    const nieInput = await waitFor(() => document.querySelector('input[name="nie"]'), {
+      timeout: CONFIG.MODAL_TIMEOUT_MS,
+    }).catch(() => null);
     const tkdnInput = document.querySelector('input[name="score_tkdn"]');
     if (!nieInput || !tkdnInput) {
       log('⚠️ Field NIE/TKDN nggak ketemu.');
@@ -531,14 +961,17 @@
       return null;
     }
     log('⏳ Nunggu data Regalkes ke-fetch...');
-    await sleep(2500);
-    // v1.7: jangan asumsi tombol Validate udah siap begitu sleep 2.5 detik
-    // lewat -- tunggu betulan sampai tombol Validate KELIHATAN, biar
-    // klik-nya nggak nyasar ke elemen "Validate" lain yang tersembunyi.
+    await settleAfterAction('klik Get NIE REGALKES');
+    // v1.11: sebelumnya ada sleep(2500) tebakan di sini -- diganti total
+    // sama settleAfterAction() di atas (nunggu blockUI beneran clear),
+    // jadi nggak nebak2 lagi durasi fetch Regalkes-nya.
     log('⏳ Nunggu tombol Validate beneran siap/kelihatan...');
-    const validateReady = await waitFor(() => hasVisibleValidateButton(), { timeout: 10000, interval: 300 }).catch(() => false);
+    const validateReady = await waitFor(() => hasVisibleValidateButton(), {
+      timeout: CONFIG.VALIDATE_VISIBLE_TIMEOUT_MS,
+      interval: 300,
+    }).catch(() => false);
     if (!validateReady) {
-      log('⚠️ Tombol Validate nggak pernah kelihatan setelah Get NIE REGALKES (ditunggu 10 detik). Kemungkinan fetch Regalkes gagal/lambat, atau NIE-nya nggak valid. Cek manual, JANGAN dianggap sukses.');
+      log(`⚠️ Tombol Validate nggak pernah kelihatan setelah Get NIE REGALKES (ditunggu ${Math.round(CONFIG.VALIDATE_VISIBLE_TIMEOUT_MS / 1000)} detik, di luar waktu loading). Kemungkinan fetch Regalkes gagal, atau NIE-nya nggak valid. Cek manual, JANGAN dianggap sukses.`);
       return null;
     }
     if (!autoFlags.autovalidate) {
@@ -549,15 +982,23 @@
     // sering nampilin tombol lebih dulu, baru enable-nya nyusul setelah
     // field lain (mis. TKDN) atau hasil fetch Regalkes selesai divalidasi.
     // Tunggu sampai visible DAN nggak disabled, baru klik langsung ke
-    // elemen tombolnya.
+    // elemen tombolnya. Dibungkus withRetry (v1.11) karena ini juga
+    // rawan ketiban timing loading Odoo yang berat.
     log('⏳ Mastiin tombol Validate enabled (nggak abu-abu)...');
-    const validateBtn = await waitFor(() => {
-      const btn = getVisibleValidateButtonEl();
-      return btn && !isBtnDisabled(btn) ? btn : null;
-    }, { timeout: 10000, interval: 300 }).catch(() => null);
+    const validateBtn = await withRetry(
+      () =>
+        waitFor(
+          () => {
+            const btn = getVisibleValidateButtonEl();
+            return btn && !isBtnDisabled(btn) ? btn : null;
+          },
+          { timeout: CONFIG.VALIDATE_ENABLED_TIMEOUT_MS, interval: 300 }
+        ).catch(() => null),
+      { label: 'tunggu tombol Validate enabled' }
+    );
     if (!validateBtn) {
       const stuckBtn = getVisibleValidateButtonEl();
-      log('⚠️ Tombol Validate kelihatan tapi TETAP disabled setelah ditunggu 10 detik -- kemungkinan ada field wajib lain yang belum valid (cek TKDN/NIE atau field lain di tab ini). Detail elemen saya print ke console (F12), dan field yang ke-mark invalid oleh Odoo (kalau ada) juga saya list. Cek manual, JANGAN dianggap sukses.');
+      log(`⚠️ Tombol Validate kelihatan tapi TETAP disabled setelah ditunggu lama (di luar waktu loading) -- kemungkinan ada field wajib lain yang belum valid (cek TKDN/NIE atau field lain di tab ini). Detail elemen saya print ke console (F12), dan field yang ke-mark invalid oleh Odoo (kalau ada) juga saya list. Cek manual, JANGAN dianggap sukses.`);
       if (stuckBtn) {
         console.log('[KFA-AUTO] Elemen tombol Validate yang macet (disabled):', stuckBtn, stuckBtn.outerHTML.slice(0, 400));
       }
@@ -572,9 +1013,13 @@
     }
     validateBtn.click();
     log('⏳ Nunggu proses validasi selesai (nungguin tombol Validate ilang/berubah)...');
-    const validateDone = await waitFor(() => !hasVisibleValidateButton(), { timeout: 15000, interval: 400 }).catch(() => false);
+    await settleAfterAction('klik Validate');
+    const validateDone = await waitFor(() => !hasVisibleValidateButton(), {
+      timeout: CONFIG.VALIDATE_DONE_TIMEOUT_MS,
+      interval: 400,
+    }).catch(() => false);
     if (!validateDone) {
-      log('⚠️ Tombol Validate masih kelihatan setelah ditunggu 15 detik -- kemungkinan validasi gagal/nyangkut. Cek manual, JANGAN dianggap sukses.');
+      log(`⚠️ Tombol Validate masih kelihatan setelah ditunggu lama (di luar waktu loading) -- kemungkinan validasi gagal/nyangkut. Cek manual, JANGAN dianggap sukses.`);
       return null;
     }
     await sleep(500);
@@ -585,19 +1030,20 @@
       navLinks.forEach((a, i) => console.log(`[KFA-AUTO] Tab ${i}: text="${a.textContent.trim()}" href="${a.getAttribute('href')}" visible=${isVisible(a)}`, a));
       return null;
     }
-    await sleep(500);
+    await settleAfterAction('pindah tab Informasi Farmalkes');
     const kfaCode = await waitFor(() => {
       const el = document.querySelector('span[name="kfa_pa_code"]');
       const text = el?.textContent.trim();
       return isValidKfaCode(text) ? text : null;
-    }, { timeout: 15000, interval: 400 }).catch(() => null);
+    }, { timeout: CONFIG.KFA_CODE_TIMEOUT_MS, interval: 400 }).catch(() => null);
     if (!kfaCode) {
-      log('⚠️ Kode KFA (PA) belum muncul (masih kosong/placeholder "/" setelah ditunggu) -- kemungkinan validasi gagal atau butuh waktu lebih lama. Cek manual, JANGAN dianggap sukses.');
+      log('⚠️ Kode KFA (PA) belum muncul (masih kosong/placeholder "/" setelah ditunggu, di luar waktu loading) -- kemungkinan validasi gagal atau butuh waktu lebih lama. Cek manual, JANGAN dianggap sukses.');
       return null;
     }
     log(`🎉 Kode KFA (PA) buat "${kodeProduk}": ${kfaCode}`);
     if (autoFlags.autosave) {
       clickByText('button', 'Save', { visibleOnly: true });
+      await settleAfterAction('klik Save akhir');
       log('💾 Save akhir di-klik otomatis.');
     } else {
       log('⏸️ Klik Save manual untuk commit hasil ini.');
@@ -617,30 +1063,31 @@
     log(`👀 Nunggu kamu klik Validate manual buat "${item.kodeProduk}"...`);
     const validated = await waitFor(() => {
       return !hasVisibleValidateButton() ? true : null;
-    }, { timeout: 300000, interval: 1000 }).catch(() => false);
+    }, { timeout: CONFIG.MANUAL_VALIDATE_TIMEOUT_MS, interval: 1000 }).catch(() => false);
     if (!validated) {
       log(`⚠️ Nunggu Validate buat "${item.kodeProduk}" kelamaan (5 menit) / nggak terdeteksi selesai. Antrian TIDAK digeser otomatis -- cek manual, lanjutin sendiri kalau perlu.`);
       return false;
     }
     log('✅ Validate kedetect selesai. Buka tab "Informasi Farmalkes" & nungguin kode KFA...');
-    await sleep(800);
+    await settleAfterAction('setelah Validate manual');
     if (!clickByText('a', 'Informasi Farmalkes', { visibleOnly: true })) {
       log('⚠️ Tab "Informasi Farmalkes" nggak ketemu setelah Validate. Cek manual -- hasil TIDAK dicatat & antrian TIDAK digeser.');
       return false;
     }
-    await sleep(500);
+    await settleAfterAction('pindah tab Informasi Farmalkes (manual)');
     const kfaCode = await waitFor(() => {
       const el = document.querySelector('span[name="kfa_pa_code"]');
       const text = el?.textContent.trim();
       return isValidKfaCode(text) ? text : null;
-    }, { timeout: 15000, interval: 500 }).catch(() => null);
+    }, { timeout: CONFIG.KFA_CODE_TIMEOUT_MS, interval: 500 }).catch(() => null);
     if (!kfaCode) {
-      log(`⚠️ Kode KFA (PA) buat "${item.kodeProduk}" masih kosong/placeholder "/" setelah ditunggu 15 detik. Kemungkinan Validate belum beneran sukses. Cek manual -- hasil TIDAK dicatat & antrian TIDAK digeser.`);
+      log(`⚠️ Kode KFA (PA) buat "${item.kodeProduk}" masih kosong/placeholder "/" setelah ditunggu (di luar waktu loading). Kemungkinan Validate belum beneran sukses. Cek manual -- hasil TIDAK dicatat & antrian TIDAK digeser.`);
       return false;
     }
     log(`🎉 Kode KFA (PA) buat "${item.kodeProduk}" terdeteksi: ${kfaCode}`);
     if (autoFlags.autosave) {
       if (clickByText('button', 'Save', { visibleOnly: true })) {
+        await settleAfterAction('klik Save (watcher)');
         log('💾 Save di-klik otomatis.');
       } else {
         log('⚠️ Auto-save aktif tapi tombol Save nggak ketemu -- save manual ya (antrian tetap digeser).');
@@ -659,6 +1106,47 @@
     }
     renderPanel();
     return true;
+  }
+  // ============================================================
+  // v1.16: QUEUE RUNNER buat PROSES A -- SEBELUMNYA tombol "Proses A" di
+  // panel cuma manggil runProsesA() doang TANPA geser antrian sama sekali
+  // (bug nyata -- counter antrian nggak pernah maju walau SKU-nya
+  // beneran berhasil diinput). Sekarang ada satu titik masuk yang: geser
+  // antrian abis sukses, DAN (kalau "Auto-lanjut" dicentang) otomatis
+  // nyambung ke SKU berikutnya -- cocok buat numpuk banyak SKU sebagai
+  // tag ke cangkang yang SAMA sebelum Save sekali di akhir. Berhenti
+  // otomatis kalau ada kegagalan, sama kayak queue runner Proses B.
+  // ============================================================
+  async function processNextInQueueForProsesA() {
+    const q = loadQueue();
+    if (!q.length) {
+      log('✅ Antrian kosong, nggak ada yang diproses (Proses A).');
+      return;
+    }
+    const item = q[0];
+    const success = await runProsesA(item.kodeProduk);
+    if (success) {
+      const qNow = loadQueue();
+      if (qNow.length && qNow[0].kodeProduk === item.kodeProduk) {
+        qNow.shift();
+        saveQueue(qNow);
+        renderPanel();
+        log(`➡️ Antrian digeser (Proses A). Sisa: ${qNow.length} SKU.`);
+      }
+      maybeAutoContinueA();
+    } else {
+      log('⛔ Proses A gagal/berhenti di tengah jalan -- auto-lanjut (Proses A) DIHENTIKAN. Perbaiki masalahnya dulu (atau pakai jalur manual klik + Alt+Enter) sebelum lanjut ke SKU berikutnya.');
+    }
+  }
+  function maybeAutoContinueA() {
+    if (!autoFlags.autonext) return;
+    const q = loadQueue();
+    if (!q.length) {
+      log('✅ Antrian habis (Proses A). Jangan lupa klik "💾 Save Sekarang" di panel buat commit semua tag yang udah diinput kalau belum di-save.');
+      return;
+    }
+    log(`➡️ Auto-lanjut Proses A ke SKU berikutnya: "${q[0].kodeProduk}"...`);
+    setTimeout(processNextInQueueForProsesA, 1200);
   }
   // ============================================================
   // QUEUE RUNNER: satu titik masuk buat proses 1 SKU, dan (kalau
@@ -694,6 +1182,33 @@
     } else {
       log('⛔ Proses B gagal/berhenti di tengah jalan -- auto-lanjut DIHENTIKAN. Perbaiki masalahnya dulu, jangan lanjut ke SKU berikutnya sebelum SKU ini beres.');
     }
+  }
+  // ============================================================
+  // v1.12: SKIP SKU -- user bisa lewatin SKU pertama di antrian secara
+  // manual (misal ternyata invalid / mau dicek belakangan). SKU-nya
+  // digeser keluar dari antrian SAMA kayak kalau berhasil, tapi dicatat
+  // di hasil dengan kfaCode = "SKIPPED_BY_USER" biar jelas kebedain dari
+  // yang beneran dapet kode KFA pas di-export.
+  // ============================================================
+  function skipFirstInQueue() {
+    const q = loadQueue();
+    if (!q.length) {
+      alert('Antrian kosong, nggak ada yang bisa di-skip.');
+      return;
+    }
+    const item = q[0];
+    const confirmed = confirm(`Yakin skip SKU "${item.kodeProduk}"?\n\nSKU ini bakal digeser keluar dari antrian & dicatat di hasil sebagai "SKIPPED_BY_USER" (bukan kode KFA asli). Ini TIDAK ngerubah apa2 di sistem KFA, cuma di panel/antrian ini.`);
+    if (!confirmed) return;
+    q.shift();
+    saveQueue(q);
+    const results = loadResults();
+    results.push({ kodeProduk: item.kodeProduk, kfaCode: 'SKIPPED_BY_USER', timestamp: new Date().toISOString() });
+    saveResults(results);
+    log(`⏭️ SKU "${item.kodeProduk}" di-skip manual oleh user. Dicatat di hasil sebagai SKIPPED_BY_USER. Sisa antrian: ${q.length} SKU.`);
+    renderPanel();
+    // Skip dianggap "selesai" (bukan kegagalan) -- kalau auto-lanjut
+    // dicentang, boleh langsung nyambung ke SKU berikutnya.
+    maybeAutoContinue();
   }
   function maybeAutoContinue() {
     if (!autoFlags.autonext) return;
@@ -840,7 +1355,7 @@
           <input type="checkbox" id="kfa-autovalidate" ${autoFlags.autovalidate ? 'checked' : ''}> Auto-klik Validate
         </label>
         <label style="display:block; margin-bottom:4px;">
-          <input type="checkbox" id="kfa-autosave" ${autoFlags.autosave ? 'checked' : ''}> Auto-klik Save
+          <input type="checkbox" id="kfa-autosave" ${autoFlags.autosave ? 'checked' : ''}> Auto-klik Save (cuma buat Proses B -- Proses A sengaja nggak ikut auto-save, pakai "💾 Save Sekarang" buat commit batch-nya)
         </label>
         <label style="display:block; margin-bottom:6px;">
           <input type="checkbox" id="kfa-autonext" ${autoFlags.autonext ? 'checked' : ''}> Auto-lanjut ke SKU berikutnya
@@ -849,10 +1364,12 @@
           ⚠️ Data masuk ke sistem KFA nasional. Test 1 SKU manual dulu (semua checkbox OFF) sebelum aktifin auto-validate/save/lanjut.
         </div>
         <div style="color:#1F4E78; margin-bottom:6px; font-style:italic;">
-          💡 "Auto-lanjut" bikin script proses SKU demi SKU sendiri abis satu berhasil -- otomatis BERHENTI kalau ada yang gagal, nggak maksa lanjut.
+          💡 Website ini sering nunjukin overlay abu-abu (loading) yang lama & nggak keprediksi -- script SEKARANG sengaja nungguin overlay itu ilang dulu sebelum lanjut (bukan asal jalan cepat), jadi kalau keliatan diem sebentar pas ada tulisan "lagi loading" di log, itu emang lagi nungguin server, bukan macet.
         </div>
         <button id="kfa-run-a" style="width:100%; margin-bottom:4px;">▶ Proses A: Masukin SKU pertama di antrian ke cangkang ini</button>
-        <button id="kfa-run-b" style="width:100%; margin-bottom:8px;">▶ Proses B: Validasi SKU pertama di antrian</button>
+        <button id="kfa-save-now" style="width:100%; margin-bottom:4px; background:#e6f4ea; border:1px solid #1e7e34; color:#155724;">💾 Save Sekarang (commit semua tag Proses A)</button>
+        <button id="kfa-run-b" style="width:100%; margin-bottom:4px;">▶ Proses B: Validasi SKU pertama di antrian</button>
+        <button id="kfa-skip" style="width:100%; margin-bottom:8px; background:#fff3cd; border:1px solid #d39e00; color:#7a5c00;">⏭ Skip SKU pertama di antrian</button>
         <hr>
         <div style="font-weight:bold; margin-bottom:4px;">Bantuan: isi field yang lagi kebuka manual</div>
         <div style="color:#555; margin-bottom:4px;">
@@ -936,13 +1453,30 @@
       log(`Antrian dimuat: ${items.length} SKU.`);
       renderPanel();
     };
-    document.getElementById('kfa-run-a').onclick = async () => {
-      const q = loadQueue();
-      if (!q.length) return alert('Antrian kosong.');
-      await runProsesA(q[0].kodeProduk);
+    document.getElementById('kfa-run-a').onclick = () => {
+      // v1.16: SEBELUMNYA di sini langsung manggil runProsesA() doang
+      // tanpa geser antrian -- bug, counter-nya nggak pernah maju.
+      // Sekarang lewat processNextInQueueForProsesA() yang geser antrian
+      // abis sukses & (kalau Auto-lanjut dicentang) otomatis nyambung ke
+      // SKU berikutnya buat numpuk banyak tag ke cangkang yang sama.
+      processNextInQueueForProsesA();
+    };
+    document.getElementById('kfa-save-now').onclick = async () => {
+      // v1.16: tombol buat commit SEKALI di akhir, setelah numpuk
+      // beberapa/banyak tag SKU lewat Proses A -- bukan save tiap 1 SKU.
+      if (!clickByText('button', 'Save', { visibleOnly: true })) {
+        alert('Tombol Save nggak ketemu / nggak kelihatan saat ini. Pastikan kamu masih di halaman cangkang yang lagi diedit.');
+        return;
+      }
+      log('💾 Save diklik manual -- nungguin proses commit selesai...');
+      await settleAfterAction('klik Save Sekarang (Proses A, batch)');
+      log('✅ Save selesai. Semua tag yang udah diinput di widget ini sekarang ke-commit.');
     };
     document.getElementById('kfa-run-b').onclick = () => {
       processNextInQueue();
+    };
+    document.getElementById('kfa-skip').onclick = () => {
+      skipFirstInQueue();
     };
     document.getElementById('kfa-run-assist').onclick = async () => {
       const kodeProduk = document.getElementById('kfa-assist-input').value.trim();
