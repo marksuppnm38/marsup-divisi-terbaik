@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         KFA Alkes Automation - Pionir Group
 // @namespace    pionir-marsup
-// @version      1.16
+// @version      1.18
 // @description  Bantu automasi masukin SKU ke cangkang + validasi KFA di kamus-alkes.kemkes.go.id
 // @match        https://kamus-alkes.kemkes.go.id/*
 // @grant        none
@@ -243,9 +243,54 @@
   //           "💾 Save Sekarang" di panel buat commit SEMUA tag yang udah
   //           ketumpuk, dipencet SEKALI aja abis numpuk sebanyak yang
   //           diinginkan (bukan tiap 1 SKU).
+  // v1.17: Disederhanain sesuai maunya user -- "input input input" terus
+  //       otomatis, checkbox nggak perlu dipikirin lagi:
+  //       (a) Proses A SEKARANG SELALU lanjut otomatis ke SKU berikutnya
+  //           begitu satu SKU berhasil ditambah sebagai tag -- nggak
+  //           gantung ke checkbox "Auto-lanjut" lagi (checkbox itu
+  //           sekarang CUMA berlaku buat Proses B). Tombol "Proses A" di
+  //           panel diklik SEKALI, terus dia jalan sampai antrian abis
+  //           atau ketemu kegagalan ASLI (bukan duplikat).
+  //       (b) DETEKSI DUPLIKAT -- Proses A itu sendiri nggak pernah
+  //           munculin modal/window apapun di alur normalnya. Jadi kalau
+  //           ADA window/dialog kelihatan abis kita milih tag (mis. abis
+  //           milih opsi "Create"), itu dianggap SINYAL DUPLIKAT (kode
+  //           udah kepake/terdaftar). SKU itu otomatis di-SKIP (dicatat
+  //           di hasil sebagai SKIPPED_DUPLICATE, BUKAN kode KFA asli),
+  //           dialognya ditutup, terus halaman di-REFRESH (soalnya widget
+  //           yang abis ketimpuk dialog error suka nyangkut & susah
+  //           dipulihin tanpa refresh) -- dan abis refresh, script
+  //           OTOMATIS lanjut lagi dari SKU berikutnya di antrian (nggak
+  //           perlu klik apa2), lewat flag AUTORESUME_PROSES_A_KEY yang
+  //           dibaca pas script mulai jalan ulang.
+  //       (c) CATATAN: selector modal-nya (`.modal.show, .o_dialog, ...`)
+  //           masih tebakan umum karena bentuk PERSIS window duplikatnya
+  //           belum pernah dilihat -- kalau ternyata beda / nggak
+  //           kedetect, share HTML-nya biar bisa disesuaikan presisi.
+  //       (d) Auto-save (kalau dicentang) sekarang jalan SEKALI aja abis
+  //           SELURUH antrian abis diproses (bukan per-item, bukan juga
+  //           harus diklik manual) -- "centang Auto-save, klik Proses A,
+  //           selesai".
+  // v1.18: Fix BUG NYATA yang ketauan dari log batch: SKU pertama sukses
+  //       (tag ketambah, antrian digeser), tapi SKU KEDUA langsung gagal
+  //       dengan pesan "Tombol Edit nggak ketemu". Penyebabnya: Proses A
+  //       SENGAJA nggak Save di antara SKU (biar bisa numpuk banyak tag
+  //       dulu), jadi abis SKU pertama, form-nya MASIH dalam mode EDIT --
+  //       tombol "Edit" udah nggak ada lagi (kegantiin Save/Discard), tapi
+  //       kode sebelumnya SELALU maksa nyari tombol Edit di awal setiap
+  //       SKU dan langsung nganggep gagal kalau nggak ketemu. Sekarang:
+  //       kalau tombol Edit nggak ketemu, dicek dulu apa form-nya emang
+  //       udah dalam mode edit (Save/Discard kelihatan) -- kalau iya,
+  //       dianggap WAJAR (lanjutan dari SKU sebelumnya di batch yang
+  //       sama), bukan kegagalan, dan proses lanjut seperti biasa tanpa
+  //       klik Edit lagi.
   // ============================================================
   const STORAGE_KEY = 'kfa_automation_queue_v1';
   const RESULTS_KEY = 'kfa_automation_results_v1';
+  // v1.17: flag buat nandain "abis reload ini, lanjutin Proses A otomatis"
+  // -- dipasang sesaat sebelum location.reload() pas ketemu duplikat, dan
+  // dibaca+dihapus lagi pas script mulai jalan ulang abis reload.
+  const AUTORESUME_PROSES_A_KEY = 'kfa_autoresume_prosesA_v1';
   // ---------- Konfigurasi (v1.11) ----------
   // Semua angka di sini bisa diubah kalau perlu -- dinaikin dari versi
   // sebelumnya karena prioritas sekarang "pasti berhasil" bukan "cepat".
@@ -307,6 +352,40 @@
         }
       }, interval);
     });
+  }
+  // v1.17: deteksi window/modal/dialog yang NGGAK DIHARAPKAN muncul di
+  // tengah Proses A. Proses A itu sendiri emang nggak pernah munculin
+  // modal apapun di alur normalnya (beda sama Proses B yang punya wizard
+  // modal Configure/Reconfigure Product) -- jadi kalau ADA modal/dialog
+  // kelihatan abis kita milih tag, itu paling mungkin window error/
+  // konflik dari Odoo (mis. kode yang mau dibikin ternyata udah ada /
+  // duplikat). Selector-nya sengaja digeneralisir (bootstrap .modal.show
+  // ATAU Owl .o_dialog) karena bentuk pastinya belum diketahui -- kalau
+  // ternyata beda, gampang disesuaikan di sini.
+  function getUnexpectedModals() {
+    const modals = document.querySelectorAll('.modal.show, .o_dialog, .modal[style*="display: block"], .modal[style*="display:block"]');
+    return Array.from(modals).filter(isVisible);
+  }
+  function isUnexpectedModalVisible() {
+    return getUnexpectedModals().length > 0;
+  }
+  function getUnexpectedModalText() {
+    const modals = getUnexpectedModals();
+    if (!modals.length) return '';
+    return modals[0].textContent.replace(/\s+/g, ' ').trim().slice(0, 300);
+  }
+  function dismissUnexpectedModal() {
+    const modals = getUnexpectedModals();
+    if (!modals.length) return false;
+    const modal = modals[0];
+    // Cari tombol yang KELIHATAN di dalam modal ini (biasanya "Ok" /
+    // "Close" / "Tutup") -- ambil yang pertama ketemu.
+    const btn = Array.from(modal.querySelectorAll('button')).find((b) => isVisible(b));
+    if (btn) {
+      btn.click();
+      return true;
+    }
+    return false;
   }
   // v1.11: deteksi overlay loading "blockUI" (dipakai jQuery BlockUI plugin,
   // umum di Odoo). Nggak pakai isVisible() biasa karena overlay ini kadang
@@ -438,6 +517,19 @@
     if (clickTarget.disabled || clickTarget.classList?.contains('disabled')) return false;
     clickTarget.click();
     return true;
+  }
+  // v1.18: cek doang (TANPA nge-klik) apakah ada tombol dengan teks
+  // tertentu yang kelihatan -- dipakai buat ngecek "lagi dalam mode edit
+  // apa nggak" (tombol Save/Discard kelihatan = lagi edit) tanpa resiko
+  // nge-klik sesuatu yang nggak diinginkan.
+  function hasVisibleButtonText(selector, text) {
+    const norm = (s) => s.replace(/\s+/g, ' ').trim();
+    const target = norm(text);
+    const els = Array.from(document.querySelectorAll(selector));
+    return els.some((el) => {
+      const t = norm(el.textContent);
+      return (t === target || t.includes(target)) && isVisible(el.closest('button') || el);
+    });
   }
   function collectCandidateMenus(root = document) {
     const selectors = [
@@ -678,11 +770,25 @@
   // ============================================================
   async function runProsesA(kodeProduk) {
     log(`Proses A: masukin "${kodeProduk}" ke cangkang...`);
-    if (!clickByText('button', 'Edit', { visibleOnly: true })) {
-      log('⚠️ Tombol Edit nggak ketemu. Pastikan kamu di halaman cangkang (tab Variants) dulu.');
-      return false;
+    // v1.18: FIX BUG -- sebelumnya di sini SELALU maksa ada tombol "Edit"
+    // buat diklik. Itu keliru buat SKU ke-2/3/dst dalam satu batch,
+    // karena Proses A SENGAJA nggak Save di antara SKU (numpuk banyak
+    // tag dulu baru Save di akhir) -- jadi form-nya masih dalam mode
+    // EDIT dari SKU sebelumnya, dan tombol "Edit" udah nggak ada lagi
+    // (kegantiin sama Save/Discard). Sekarang: kalau tombol Edit ketemu,
+    // klik seperti biasa; kalau nggak ketemu TAPI ternyata form udah
+    // dalam mode edit (Save/Discard kelihatan), anggap itu WAJAR --
+    // lanjutin aja, JANGAN dianggap gagal.
+    if (clickByText('button', 'Edit', { visibleOnly: true })) {
+      await settleAfterAction('klik Edit');
+    } else {
+      const alreadyEditing = hasVisibleButtonText('button', 'Save') || hasVisibleButtonText('button', 'Discard');
+      if (!alreadyEditing) {
+        log('⚠️ Tombol Edit nggak ketemu, dan form ini kelihatannya juga BUKAN lagi dalam mode edit. Pastikan kamu di halaman cangkang (tab Variants) dulu.');
+        return false;
+      }
+      log('ℹ️ Tombol Edit nggak ada, tapi form ini emang udah dalam mode edit (lanjutan numpuk tag dari SKU sebelumnya di batch ini) -- lanjut tanpa klik Edit lagi.');
     }
-    await settleAfterAction('klik Edit');
     document.activeElement?.blur();
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     document.body.click();
@@ -770,6 +876,20 @@
     if (!ok) {
       log(`⚠️ "${kodeProduk}" nggak ketemu di autocomplete tag "Tipe (Type)" (udah dicoba beberapa kali) -- kemungkinan kode belum terdaftar di sistem KFA sama sekali. Cek manual.`);
       return false;
+    }
+    // v1.17: abis milih tag (apalagi kalau itu opsi "Create"), Odoo kadang
+    // butuh sesaat buat validasi ke server -- kalau kodenya ternyata
+    // DUPLIKAT/udah kepake, ini biasanya munculin window/dialog error.
+    // Proses A itu sendiri emang nggak pernah munculin modal apapun di
+    // alur normalnya, jadi modal APAPUN yang kelihatan di titik ini
+    // dianggap sinyal duplikat -- bukan dianggap gagal biasa, tapi
+    // di-skip otomatis sama caller (lihat processNextInQueueForProsesA).
+    await sleep(400);
+    if (isUnexpectedModalVisible()) {
+      const modalText = getUnexpectedModalText();
+      log(`⚠️ Muncul window/dialog yang nggak diharapkan abis milih "${kodeProduk}" -- kemungkinan ini DUPLIKAT (kode udah terdaftar). Isi dialognya: "${modalText}"`);
+      dismissUnexpectedModal();
+      return 'DUPLICATE';
     }
     await sleep(500);
     // v1.16: SEBELUMNYA di sini auto-klik Save tiap SATU SKU berhasil
@@ -1108,24 +1228,60 @@
     return true;
   }
   // ============================================================
-  // v1.16: QUEUE RUNNER buat PROSES A -- SEBELUMNYA tombol "Proses A" di
-  // panel cuma manggil runProsesA() doang TANPA geser antrian sama sekali
-  // (bug nyata -- counter antrian nggak pernah maju walau SKU-nya
-  // beneran berhasil diinput). Sekarang ada satu titik masuk yang: geser
-  // antrian abis sukses, DAN (kalau "Auto-lanjut" dicentang) otomatis
-  // nyambung ke SKU berikutnya -- cocok buat numpuk banyak SKU sebagai
-  // tag ke cangkang yang SAMA sebelum Save sekali di akhir. Berhenti
-  // otomatis kalau ada kegagalan, sama kayak queue runner Proses B.
+  // v1.17: QUEUE RUNNER buat PROSES A -- disederhanain sesuai maunya user:
+  // "input input input" terus sampai antrian habis atau ketemu kegagalan
+  // ASLI (bukan gantung ke checkbox "Auto-lanjut" lagi -- itu sekarang
+  // CUMA buat Proses B). Tiga hasil yang mungkin dari runProsesA():
+  //  - true         -> sukses, tag ketambah, GESER antrian, lanjut TERUS
+  //                    otomatis ke SKU berikutnya (nggak nunggu apa2).
+  //  - 'DUPLICATE'  -> muncul window/dialog nggak terduga abis milih tag
+  //                    (dianggap kode ini duplikat/udah kepake). SKU ini
+  //                    di-skip (dicatat SKIPPED_DUPLICATE di hasil, GESER
+  //                    antrian), lalu halaman di-REFRESH (soalnya widget
+  //                    yang abis ketimpuk dialog error suka nyangkut) dan
+  //                    otomatis LANJUT dari SKU berikutnya abis refresh
+  //                    (lewat AUTORESUME_PROSES_A_KEY, dibaca di initKFA).
+  //  - false        -> kegagalan ASLI (bukan duplikat) -- proses OTOMATIS
+  //                    BERHENTI di sini, TIDAK lanjut/refresh sendiri,
+  //                    biar bisa dicek manual dulu.
+  // Begitu antrian abis (sukses semua/di-skip semua), kalau "Auto-klik
+  // Save" dicentang, Save di-klik SEKALI aja buat commit seluruh batch.
   // ============================================================
   async function processNextInQueueForProsesA() {
     const q = loadQueue();
     if (!q.length) {
-      log('✅ Antrian kosong, nggak ada yang diproses (Proses A).');
+      log('✅ Antrian abis -- semua SKU sudah diproses (Proses A).');
+      if (autoFlags.autosave) {
+        log('💾 Auto-save dicentang -- nyimpen semua tag yang udah ketumpuk sekarang...');
+        if (clickByText('button', 'Save', { visibleOnly: true })) {
+          await settleAfterAction('auto-save akhir batch Proses A');
+          log('✅ Save otomatis selesai. Semua tag ke-commit.');
+        } else {
+          log('⚠️ Auto-save dicentang tapi tombol Save nggak ketemu/nggak kelihatan -- save manual ya lewat "💾 Save Sekarang".');
+        }
+      } else {
+        log('⏸️ Belum di-save. Klik "💾 Save Sekarang" buat commit semua tag, atau centang "Auto-klik Save" biar otomatis kesave abis antrian habis.');
+      }
       return;
     }
     const item = q[0];
-    const success = await runProsesA(item.kodeProduk);
-    if (success) {
+    const result = await runProsesA(item.kodeProduk);
+    if (result === 'DUPLICATE') {
+      const qNow = loadQueue();
+      if (qNow.length && qNow[0].kodeProduk === item.kodeProduk) {
+        qNow.shift();
+        saveQueue(qNow);
+      }
+      const results = loadResults();
+      results.push({ kodeProduk: item.kodeProduk, kfaCode: 'SKIPPED_DUPLICATE', timestamp: new Date().toISOString() });
+      saveResults(results);
+      log(`⏭️ "${item.kodeProduk}" dianggap DUPLIKAT -- di-skip & dicatat sebagai SKIPPED_DUPLICATE. Refresh halaman buat lanjutin dari SKU berikutnya...`);
+      localStorage.setItem(AUTORESUME_PROSES_A_KEY, '1');
+      await sleep(600);
+      location.reload();
+      return;
+    }
+    if (result) {
       const qNow = loadQueue();
       if (qNow.length && qNow[0].kodeProduk === item.kodeProduk) {
         qNow.shift();
@@ -1133,20 +1289,10 @@
         renderPanel();
         log(`➡️ Antrian digeser (Proses A). Sisa: ${qNow.length} SKU.`);
       }
-      maybeAutoContinueA();
+      setTimeout(processNextInQueueForProsesA, 800);
     } else {
-      log('⛔ Proses A gagal/berhenti di tengah jalan -- auto-lanjut (Proses A) DIHENTIKAN. Perbaiki masalahnya dulu (atau pakai jalur manual klik + Alt+Enter) sebelum lanjut ke SKU berikutnya.');
+      log('⛔ Proses A gagal/berhenti di tengah jalan (BUKAN duplikat) -- proses OTOMATIS DIHENTIKAN. Cek manual / pakai jalur klik+Alt+Enter dulu sebelum lanjut ke SKU berikutnya.');
     }
-  }
-  function maybeAutoContinueA() {
-    if (!autoFlags.autonext) return;
-    const q = loadQueue();
-    if (!q.length) {
-      log('✅ Antrian habis (Proses A). Jangan lupa klik "💾 Save Sekarang" di panel buat commit semua tag yang udah diinput kalau belum di-save.');
-      return;
-    }
-    log(`➡️ Auto-lanjut Proses A ke SKU berikutnya: "${q[0].kodeProduk}"...`);
-    setTimeout(processNextInQueueForProsesA, 1200);
   }
   // ============================================================
   // QUEUE RUNNER: satu titik masuk buat proses 1 SKU, dan (kalau
@@ -1358,7 +1504,7 @@
           <input type="checkbox" id="kfa-autosave" ${autoFlags.autosave ? 'checked' : ''}> Auto-klik Save (cuma buat Proses B -- Proses A sengaja nggak ikut auto-save, pakai "💾 Save Sekarang" buat commit batch-nya)
         </label>
         <label style="display:block; margin-bottom:6px;">
-          <input type="checkbox" id="kfa-autonext" ${autoFlags.autonext ? 'checked' : ''}> Auto-lanjut ke SKU berikutnya
+          <input type="checkbox" id="kfa-autonext" ${autoFlags.autonext ? 'checked' : ''}> Auto-lanjut ke SKU berikutnya (cuma buat Proses B -- Proses A SELALU otomatis lanjut sampai antrian habis/ketemu gagal beneran)
         </label>
         <div style="color:#a00; margin-bottom:6px;">
           ⚠️ Data masuk ke sistem KFA nasional. Test 1 SKU manual dulu (semua checkbox OFF) sebelum aktifin auto-validate/save/lanjut.
@@ -1366,7 +1512,7 @@
         <div style="color:#1F4E78; margin-bottom:6px; font-style:italic;">
           💡 Website ini sering nunjukin overlay abu-abu (loading) yang lama & nggak keprediksi -- script SEKARANG sengaja nungguin overlay itu ilang dulu sebelum lanjut (bukan asal jalan cepat), jadi kalau keliatan diem sebentar pas ada tulisan "lagi loading" di log, itu emang lagi nungguin server, bukan macet.
         </div>
-        <button id="kfa-run-a" style="width:100%; margin-bottom:4px;">▶ Proses A: Masukin SKU pertama di antrian ke cangkang ini</button>
+        <button id="kfa-run-a" style="width:100%; margin-bottom:4px;">▶ Proses A: Proses SEMUA SKU di antrian ke cangkang ini (otomatis, skip duplikat)</button>
         <button id="kfa-save-now" style="width:100%; margin-bottom:4px; background:#e6f4ea; border:1px solid #1e7e34; color:#155724;">💾 Save Sekarang (commit semua tag Proses A)</button>
         <button id="kfa-run-b" style="width:100%; margin-bottom:4px;">▶ Proses B: Validasi SKU pertama di antrian</button>
         <button id="kfa-skip" style="width:100%; margin-bottom:8px; background:#fff3cd; border:1px solid #d39e00; color:#7a5c00;">⏭ Skip SKU pertama di antrian</button>
@@ -1500,6 +1646,17 @@
       return;
     }
     renderPanel();
+    // v1.17: kalau flag ini ke-set, artinya halaman baru aja di-refresh
+    // OTOMATIS gara2 ketemu duplikat di Proses A -- lanjutin lagi dari
+    // SKU berikutnya di antrian (yang duplikatnya udah ke-skip sebelum
+    // reload) TANPA perlu klik tombol apapun. Kasih jeda cukup panjang
+    // dulu (2.5 detik) biar halaman/SPA-nya beneran kelar render sebelum
+    // script mulai cari-cari elemen.
+    if (localStorage.getItem(AUTORESUME_PROSES_A_KEY)) {
+      localStorage.removeItem(AUTORESUME_PROSES_A_KEY);
+      log('🔄 Halaman baru aja di-refresh otomatis (abis skip duplikat di Proses A) -- lanjutin Proses A dari SKU berikutnya di antrian...');
+      setTimeout(() => processNextInQueueForProsesA(), 2500);
+    }
   }
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     setTimeout(initKFA, 1000);
