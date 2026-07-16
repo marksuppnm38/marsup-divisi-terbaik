@@ -2012,23 +2012,7 @@ function rupiah(n) {
   if (!n && n !== 0) return '—';
   return 'Rp ' + Number(n).toLocaleString('id-ID');
 }
-function copyProdukToClipboard(kode) {
-  const r = lastResults.find(x => x.kode_produk === kode);
-  if (!r) return;
-  const harga = modeSwasta ? r.harga_swasta : r.harga_ekat;
-  const lines = [
-    r.kode_produk || '-',
-    r.nama_produk || '-',
-    harga ? rupiah(harga) : 'Harga belum ada',
-    r.link_v6 || ''
-  ].filter(Boolean);
-  const text = lines.join('\n');
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('Disalin ke clipboard ✓');
-  }).catch(() => {
-    showToast('Gagal menyalin, coba lagi', 'error');
-  });
-}
+
 // MAX_THUMB_PX: dimensi maksimum sisi terpanjang thumbnail sebelum di-embed ke Excel.
 // Gambar di sheet cuma ditampilkan ±80x65px, jadi resolusi sumber (kadang 800px+/gambar
 // dari server) jauh lebih besar dari kebutuhan tampilan. Downscale di sini adalah
@@ -2224,7 +2208,7 @@ function renderResults(data) {
             ?`<a href="${r.link_v6}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</a>`
             :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
           )}
-          <button class="btn-preview-gambar" data-kode="${r.kode_produk}" data-kode-asli="${r.kode_asli||''}" data-nama="${(r.nama_produk||'').replace(/"/g,'&quot;')}"><i class="ti ti-eye" style="font-size:12px"></i> Lihat Gambar</button>
+          <button class="btn-preview-gambar btn-lihat-gambar" data-kode="${r.kode_produk}" data-kode-asli="${r.kode_asli||''}" data-nama="${(r.nama_produk||'').replace(/"/g,'&quot;')}"><i class="ti ti-eye" style="font-size:12px"></i> Lihat Gambar</button>
           <button class="btn-preview-gambar btn-copy-produk" data-kode="${r.kode_produk}"><i class="ti ti-copy" style="font-size:12px"></i> Copy</button>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -2247,13 +2231,59 @@ function renderResults(data) {
   resultsEl.querySelectorAll('[data-role="link-katalog"]').forEach(a => {
     a.addEventListener('click', (e) => { e.stopPropagation(); });
   });
-  resultsEl.querySelectorAll('.btn-preview-gambar').forEach(btn => {
+  resultsEl.querySelectorAll('.btn-lihat-gambar').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       openGambarModal(btn.dataset.kodeAsli, btn.dataset.kode, btn.dataset.nama);
     });
   });
+  resultsEl.querySelectorAll('.btn-copy-produk').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyProdukToClipboard(btn.dataset.kode);
+    });
+  });
   renderPagination(data.length);
+}
+
+// COPY SATU PRODUK: kode, deskripsi, harga, link — siap paste ke WA
+function copyProdukToClipboard(kode) {
+  const r = lastResults.find(x => x.kode_produk === kode);
+  if (!r) return;
+  const harga = modeSwasta ? r.harga_swasta : r.harga_ekat;
+  const lines = [
+    r.kode_produk || '-',
+    r.nama_produk || '-',
+    harga ? rupiah(harga) : 'Harga belum ada',
+    r.link_v6 || ''
+  ].filter(Boolean);
+  const text = lines.join('\n');
+
+  function fallbackCopy(str) {
+    const ta = document.createElement('textarea');
+    ta.value = str;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Disalin ke clipboard ✓');
+    }).catch(() => {
+      if (fallbackCopy(text)) showToast('Disalin ke clipboard ✓');
+      else showToast('Gagal menyalin, coba lagi', 'error');
+    });
+  } else {
+    if (fallbackCopy(text)) showToast('Disalin ke clipboard ✓');
+    else showToast('Gagal menyalin, coba lagi', 'error');
+  }
 }
 
 // PAGINATION
