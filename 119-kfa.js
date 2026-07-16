@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         KFA Alkes Automation - Pionir Group
 // @namespace    pionir-marsup
-// @version      1.19
+// @version      1.21
 // @description  Bantu automasi masukin SKU ke cangkang + validasi KFA di kamus-alkes.kemkes.go.id
 // @match        https://kamus-alkes.kemkes.go.id/*
 // @grant        none
@@ -68,6 +68,28 @@
   //     cek elemen yang belum siap. Prioritas sekarang BERHASIL, bukan
   //     CEPAT -- kalau internet/server lagi lemot, script bakal nungguin
   //     lebih lama daripada langsung nyerah.
+  // 13. (BARU v1.20) Abis Proses A ketemu duplikat & halaman di-refresh
+  //     otomatis, script SEKARANG otomatis balik dulu ke tab "Variants"
+  //     sebelum lanjut ke SKU berikutnya (soalnya abis reload, halaman
+  //     biasanya mendarat di tab pertama/default, bukan di tab Variants
+  //     tempat tabel attribute "Tipe (Type)" berada). Nggak perlu klik
+  //     apa-apa manual -- ini jalan otomatis sebagai bagian dari alur
+  //     resume abis refresh.
+  // 14. (BARU v1.21) Dua fix berdasarkan feedback dari pemakaian nyata:
+  //     (a) Abis refresh gara-gara duplikat, kalau webnya lemot, tab
+  //         "Variants" bisa BENERAN BELUM ADA di halaman sama sekali (bukan
+  //         cuma belum kelihatan) pas pertama kali dicek -- sekarang script
+  //         NUNGGUIN sampai 60 detik, ngecek berkala tiap ~0.4 detik, dan
+  //         ngasih log tiap 5 detik biar kamu tau dia masih nyoba (bukan
+  //         macet), bukan cuma sekali cek lalu langsung nyerah.
+  //     (b) Pas isi widget "Tipe (Type)" (many2many tags), kalau klik
+  //         pertama di celah kosong meleset (mis. halaman masih setengah
+  //         render), SEBELUMNYA script cuma diem nunggu sampai 20 detik
+  //         penuh baru dianggap gagal ("kayak melamun"). Sekarang script
+  //         ngulang klik-nya tiap ~3 detik SELAMA masih nunggu, jadi kalau
+  //         percobaan pertama meleset, percobaan ke-2/3/dst masih sempat
+  //         jalan dalam jendela waktu yang sama -- lebih cepat pulih &
+  //         lebih jelas keliatan di log dia masih kerja.
   //
   // v1.3: Fix dropdown Brand di-portal keluar .modal (dicari via jarak ke
   //       input, isNearInput, bukan ancestry .modal).
@@ -308,6 +330,61 @@
   //       detik, baru dikasih tau "mungkin macet, cek console". Ini
   //       murni indikator visual, TIDAK mengubah logika retry/timeout
   //       yang udah ada.
+  // v1.20: Fix permintaan user -- abis Proses A ketemu duplikat & halaman
+  //       di-refresh otomatis (lihat v1.17b), script SEBELUMNYA langsung
+  //       manggil processNextInQueueForProsesA() tanpa mastiin dulu ada
+  //       di tab "Variants". Karena abis reload browser biasanya mendarat
+  //       di tab pertama/default (bukan Variants), pencarian tabel
+  //       attribute "Tipe (Type)" bisa gagal / salah baca DOM. Sekarang:
+  //       (a) Tambah resumeProsesAAfterReload() -- dipanggil dari initKFA
+  //           pas AUTORESUME_PROSES_A_KEY kedetect. Fungsi ini klik dulu
+  //           tab "Variants" (dicari via clickByText('a', 'Variants', ...)
+  //           -- konsisten sama pola pencarian tab lain di script ini,
+  //           lebih tahan banting daripada posisi absolut karena nggak
+  //           gantung ke jumlah/urutan div di sekitarnya), NUNGGU halaman
+  //           settle (settleAfterAction), BARU manggil
+  //           processNextInQueueForProsesA() buat lanjut ke SKU
+  //           berikutnya di antrian (duplikat sebelumnya udah di-skip &
+  //           digeser keluar dari antrian SEBELUM reload terjadi, jadi
+  //           otomatis yang diproses berikutnya emang SKU selanjutnya).
+  //       (b) Kalau clickByText by teks gagal ketemu tab "Variants" (mis.
+  //           teksnya beda di suatu kondisi), ada FALLBACK ke xpath
+  //           absolut spesifik yang dikonfirmasi user
+  //           (VARIANTS_TAB_FALLBACK_XPATH) sebagai jaring pengaman
+  //           terakhir -- BUKAN cara utama, karena xpath posisi absolut
+  //           lebih rapuh terhadap perubahan kecil di layout halaman.
+  //       (c) Kalau DUA-DUANYA gagal (teks maupun xpath fallback), script
+  //           BERHENTI dengan jelas (bukan asal lanjut nebak di tab yang
+  //           salah) -- konsisten sama prinsip guardrail lain di script
+  //           ini.
+  // v1.21: Dua fix dari feedback pemakaian nyata:
+  //       (a) BUG NYATA -- resumeProsesAAfterReload() (v1.20) cuma NGECEK
+  //           SEKALI apa tab "Variants" ada (baik via teks maupun xpath
+  //           fallback), lalu kalau nggak ketemu LANGSUNG nyerah. Padahal
+  //           kalau webnya lemot abis refresh, tab itu BENERAN BELUM ADA
+  //           di DOM sama sekali di detik-detik awal (bukan cuma belum
+  //           "keliatan") -- jadi sering ke-anggap gagal padahal cuma
+  //           kecepetan ngecek. Sekarang ada waitForVariantsTabAndClick()
+  //           yang NGULANG ngecek+nyoba klik (teks dulu, lalu fallback
+  //           xpath) tiap ~0.4 detik sampai maksimal 60 detik (dipause
+  //           kalau lagi ada overlay blockUI), dengan log progres tiap 5
+  //           detik biar jelas kelihatan dia masih nyoba, bukan macet.
+  //           Baru kalau BENERAN 60 detik penuh nggak ketemu, dianggap
+  //           gagal & minta cek manual.
+  //       (b) BUG NYATA -- activateTagsInputForEditing() (widget many2many
+  //           "Tipe (Type)") SEBELUMNYA cuma klik SEKALI di celah kosong,
+  //           lalu diem nunggu input-nya muncul sampai AUTOCOMPLETE_TIMEOUT_MS
+  //           (20 detik) penuh sebelum dianggap gagal -- kalau klik
+  //           pertama itu meleset (mis. widget-nya masih setengah render),
+  //           ya nunggu 20 detik itu sia-sia ("kayak melamun") padahal
+  //           tinggal diklik ulang aja. Sekarang di dalam jendela waktu
+  //           yang SAMA (masih AUTOCOMPLETE_TIMEOUT_MS), script NGULANG
+  //           klik-nya tiap ~3 detik (CONFIG.TAGS_INPUT_RECLICK_INTERVAL_MS)
+  //           sambil terus ngecek apa input-nya udah muncul -- jadi kalau
+  //           klik pertama meleset, percobaan ke-2/3/dst masih sempat
+  //           jalan dalam jendela waktu yang sama, bukan cuma satu
+  //           kesempatan lalu nunggu diam. Tiap percobaan klik dicatat ke
+  //           log biar kelihatan jelas dia masih kerja.
   // ============================================================
   const STORAGE_KEY = 'kfa_automation_queue_v1';
   const RESULTS_KEY = 'kfa_automation_results_v1';
@@ -315,6 +392,13 @@
   // -- dipasang sesaat sebelum location.reload() pas ketemu duplikat, dan
   // dibaca+dihapus lagi pas script mulai jalan ulang abis reload.
   const AUTORESUME_PROSES_A_KEY = 'kfa_autoresume_prosesA_v1';
+  // v1.20: fallback xpath absolut buat tab "Variants" -- CUMA dipakai
+  // kalau pencarian by teks ("Variants") gagal ketemu. Dikonfirmasi user
+  // dari inspect elemen langsung, tapi tetap fallback (bukan cara utama)
+  // karena xpath posisi absolut rawan berubah kalau ada elemen lain yang
+  // nambah/ilang di layout sebelum tab ini.
+  const VARIANTS_TAB_FALLBACK_XPATH =
+    '/html/body/div[4]/div/div[2]/div/div[1]/div[2]/div[5]/div[1]/ul/li[5]/a';
   // ---------- Konfigurasi (v1.11) ----------
   // Semua angka di sini bisa diubah kalau perlu -- dinaikin dari versi
   // sebelumnya karena prioritas sekarang "pasti berhasil" bukan "cepat".
@@ -342,6 +426,23 @@
     // v1.19: ambang "dianggap mungkin macet" di status bar kalau nggak
     // ada log baru & nggak ada overlay loading yang kedetect.
     STATUS_STALL_WARNING_MS: 30000,
+    // v1.20: waktu tunggu di tab "Variants" (klik via teks / fallback
+    // xpath) buat nungguin tab ke-load elemennya sebelum lanjut nyari
+    // tabel attribute.
+    VARIANTS_TAB_TIMEOUT_MS: 20000,
+    // v1.21: dipakai waitForVariantsTabAndClick() -- abis refresh (mis.
+    // gara2 duplikat di Proses A), tab "Variants" bisa BENERAN BELUM ADA
+    // di DOM sama sekali di detik-detik awal kalau webnya lemot. Sekarang
+    // ditunggu (dicoba ulang berkala) sampai maksimal segini lama sebelum
+    // dianggap gagal, dengan log progres tiap VARIANTS_TAB_LOG_INTERVAL_MS.
+    VARIANTS_TAB_WAIT_TIMEOUT_MS: 60000,
+    VARIANTS_TAB_LOG_INTERVAL_MS: 5000,
+    // v1.21: dipakai activateTagsInputForEditing() -- selama masih di
+    // dalam jendela AUTOCOMPLETE_TIMEOUT_MS, klik di celah kosong widget
+    // "Tipe (Type)" diulang tiap sekian ms (bukan cuma sekali lalu diem
+    // nunggu penuh), biar kalau klik pertama meleset masih sempat
+    // dicoba ulang beberapa kali dalam jendela waktu yang sama.
+    TAGS_INPUT_RECLICK_INTERVAL_MS: 3000,
   };
   // ---------- v1.19: status hidup buat panel (jawaban "jalan apa nggak") ----------
   // scriptStatus di-update tiap ada log() atau tiap ganti tahap proses.
@@ -667,26 +768,6 @@
     if (createExact) return { target: createExact, isCreate: true };
     return { target: null, isCreate: false };
   }
-  // v1.13/v1.14: Aktifin input "nambah tag baru" di widget many2many_tags
-  // Odoo (mis. baris "Tipe (Type)"). PENTING (ketauan dari log console):
-  // widget ini TIDAK punya <input> di DOM sama sekali sampai user klik
-  // PERSIS di celah kosong SETELAH tag/chip terakhir -- input-nya baru
-  // di-render Odoo ON-DEMAND abis klik itu kena sasaran. Jadi:
-  // 1) Cari titik koordinat yang tepat: sedikit di sebelah kanan tag
-  //    terakhir, di baris (row) yang sama -- ini konvensi Odoo
-  //    many2many_tags, kalau nggak ada tag sama sekali klik di ujung
-  //    kiri container.
-  // 2) Pakai document.elementFromPoint(x, y) buat nemuin elemen ASLI di
-  //    titik itu (bukan asal dispatch ke tagsField), biar klik-nya
-  //    seakurat mungkin kayak klik mouse beneran -- soalnya kemungkinan
-  //    widget ini ngecek posisi klik (bukan cuma target/type event) buat
-  //    mutusin apa masuk mode edit atau nggak.
-  // 3) Kirim urutan event mouse LENGKAP (mousedown -> mouseup -> click)
-  //    di titik itu.
-  // 4) BARU SETELAH klik, tunggu (waitFor, bukan sleep tebakan) sampai
-  //    Odoo beneran nge-render <input> baru di dalam widget ini -- karena
-  //    input-nya emang nggak ada sebelum klik, jadi nggak ada gunanya
-  //    dicek langsung sinkron kayak versi sebelumnya.
   function getLastTagsInput(tagsField) {
     const candidates = Array.from(
       tagsField.querySelectorAll('input[type="text"], input.ui-autocomplete-input, input.o_input')
@@ -709,12 +790,29 @@
     // Belum ada tag sama sekali -- klik aja di ujung kiri container.
     return { x: containerRect.left + 8, y: containerRect.top + containerRect.height / 2 };
   }
+  // v1.13/v1.14/v1.15: Aktifin input "nambah tag baru" di widget
+  // many2many_tags Odoo (mis. baris "Tipe (Type)"). Widget ini TIDAK
+  // punya <input> di DOM sama sekali sampai user klik PERSIS di celah
+  // kosong SETELAH tag/chip terakhir -- input-nya baru di-render Odoo
+  // ON-DEMAND abis klik itu kena sasaran. `attributeRow` (elemen <tr>)
+  // di-re-query tiap saat karena Owl/Odoo bisa ngeganti total node div
+  // widget ini abis interaksi apapun (reference lama gampang stale).
+  //
+  // v1.21 FIX: SEBELUMNYA fungsi ini klik SEKALI lalu nunggu (waitFor)
+  // sampai AUTOCOMPLETE_TIMEOUT_MS (20 detik) PENUH sebelum dianggap
+  // gagal -- kalau klik pertama itu meleset (mis. widget-nya masih
+  // setengah render abis pindah SKU), 20 detik itu kebuang percuma cuma
+  // buat nunggu ("kayak melamun") padahal tinggal diklik ulang aja.
+  // Sekarang DI DALAM jendela waktu yang SAMA (masih AUTOCOMPLETE_TIMEOUT_MS),
+  // klik-nya DIULANG tiap CONFIG.TAGS_INPUT_RECLICK_INTERVAL_MS (~3 detik)
+  // sambil terus mantau apa inputnya udah muncul -- kalau attempt ke-1
+  // meleset, attempt ke-2/3/dst masih sempat jalan tanpa nambah waktu
+  // tunggu total. Tiap percobaan klik dicatat ke log biar user tau ini
+  // masih aktif nyoba, bukan macet.
   async function activateTagsInputForEditing(attributeRow) {
-    // v1.14b: SELALU re-query tagsField yang FRESH dari attributeRow tiap
-    // kali fungsi ini dipanggil (termasuk tiap retry) -- JANGAN pakai
-    // reference lama yang di-cache di luar, karena Owl/Odoo bisa
-    // ngeganti total node div widget ini abis interaksi apapun.
-    const tagsField = attributeRow.querySelector('.o_field_many2manytags, .o_field_widget[name="value_ids"]');
+    const getFreshTagsField = () =>
+      attributeRow.querySelector('.o_field_many2manytags, .o_field_widget[name="value_ids"]');
+    let tagsField = getFreshTagsField();
     if (!tagsField || !tagsField.isConnected) {
       log('⚠️ Widget tag "Tipe (Type)" nggak ketemu lagi di baris ini (mungkin abis di-render ulang sama halamannya). Cek manual.');
       return null;
@@ -726,47 +824,62 @@
       input.focus();
       return input;
     }
-    const { x, y } = computeTagsClickPoint(tagsField);
-    const clickTarget = document.elementFromPoint(x, y) || tagsField;
-    // v1.14b: coba beberapa cara "ngebuka" widget ini sekaligus dalam
-    // satu attempt, karena kita nggak tau pasti widget ini dengerin apa
-    // (click biasa? pointer event? butuh fokus dulu baru klik?):
-    // 1) focus() langsung lewat JS API (INI SELALU jalan beneran, nggak
-    //    kayak dispatchEvent yang kadang nggak trigger default action
-    //    browser -- jadi kalau elemen/ancestor-nya focusable, ini paling
-    //    reliable).
-    if (typeof clickTarget.focus === 'function') {
-      clickTarget.focus();
+    const start = Date.now();
+    let lastClickAt = 0;
+    let clickAttempt = 0;
+    let lastClickInfo = null;
+    while (Date.now() - start < CONFIG.AUTOCOMPLETE_TIMEOUT_MS) {
+      // Re-query tiap iterasi -- node widget-nya bisa ke-replace total.
+      tagsField = getFreshTagsField();
+      if (!tagsField || !tagsField.isConnected) {
+        await sleep(250);
+        continue;
+      }
+      if (Date.now() - lastClickAt >= CONFIG.TAGS_INPUT_RECLICK_INTERVAL_MS) {
+        lastClickAt = Date.now();
+        clickAttempt += 1;
+        const { x, y } = computeTagsClickPoint(tagsField);
+        const clickTarget = document.elementFromPoint(x, y) || tagsField;
+        lastClickInfo = { x, y, clickTarget };
+        // Beberapa cara "ngebuka" widget ini sekaligus dalam satu klik,
+        // karena kita nggak tau pasti widget ini dengerin apa (click
+        // biasa? pointer event? butuh fokus dulu baru klik?):
+        // 1) focus() langsung lewat JS API (SELALU beneran jalan
+        //    biarpun dipanggil dari script, beda sama dispatchEvent yang
+        //    browser kadang nggak jalanin default action-nya).
+        if (typeof clickTarget.focus === 'function') {
+          clickTarget.focus();
+        }
+        // 2) Urutan pointer + mouse event lengkap, detail:1, di titik
+        //    koordinat yang tepat (sedikit di kanan tag terakhir).
+        const fire = (Ctor, type) => clickTarget.dispatchEvent(new Ctor(type, {
+          bubbles: true, cancelable: true, composed: true, view: window,
+          clientX: x, clientY: y, button: 0, detail: 1,
+        }));
+        try { fire(PointerEvent, 'pointerdown'); } catch (e) { /* browser lama tanpa PointerEvent */ }
+        fire(MouseEvent, 'mousedown');
+        try { fire(PointerEvent, 'pointerup'); } catch (e) { /* no-op */ }
+        fire(MouseEvent, 'mouseup');
+        fire(MouseEvent, 'click');
+        log(`🖱️ Klik di celah kosong widget "Tipe (Type)" (percobaan ke-${clickAttempt})...`);
+      }
+      input = getLastTagsInput(tagsField);
+      if (input && input.isConnected) {
+        input.focus();
+        if (!input.disabled && !input.readOnly) {
+          return input;
+        }
+      }
+      await sleep(200);
     }
-    // 2) Urutan pointer + mouse event lengkap, detail:1 (biar kebaca
-    //    sebagai "klik asli ke-1" oleh handler yang ngecek e.detail),
-    //    di titik koordinat yang bener.
-    const fire = (Ctor, type) => clickTarget.dispatchEvent(new Ctor(type, {
-      bubbles: true, cancelable: true, composed: true, view: window,
-      clientX: x, clientY: y, button: 0, detail: 1,
-    }));
-    try { fire(PointerEvent, 'pointerdown'); } catch (e) { /* browser lama tanpa PointerEvent */ }
-    fire(MouseEvent, 'mousedown');
-    try { fire(PointerEvent, 'pointerup'); } catch (e) { /* no-op */ }
-    fire(MouseEvent, 'mouseup');
-    fire(MouseEvent, 'click');
-    // Input-nya baru muncul SETELAH klik ini (kalau berhasil) -- jadi
-    // WAJIB ditunggu (bukan sleep tebakan), karena Odoo ngerender-nya
-    // on-demand.
-    input = await waitFor(() => getLastTagsInput(attributeRow.querySelector('.o_field_many2manytags, .o_field_widget[name="value_ids"]') || tagsField), {
-      timeout: CONFIG.AUTOCOMPLETE_TIMEOUT_MS,
-    }).catch(() => null);
-    if (!input) {
-      log('⚠️ Klik di celah kosong setelah tag terakhir belum berhasil mancing input baru muncul. Titik yang diklik script saya print ke console (F12) beserta elemen yang kena.');
-      console.log('[KFA-AUTO] Titik klik:', { x, y }, '| Elemen yang kena (elementFromPoint):', clickTarget);
+    log(`⚠️ Klik berulang (${clickAttempt}x) di celah kosong setelah tag terakhir belum berhasil mancing input baru muncul, dalam ${Math.round(CONFIG.AUTOCOMPLETE_TIMEOUT_MS / 1000)} detik. Titik klik terakhir & elemen yang kena saya print ke console (F12).`);
+    if (lastClickInfo) {
+      console.log('[KFA-AUTO] Titik klik terakhir:', { x: lastClickInfo.x, y: lastClickInfo.y }, '| Elemen yang kena (elementFromPoint):', lastClickInfo.clickTarget);
+    }
+    if (tagsField) {
       console.log('[KFA-AUTO] HTML widget tags saat ini:', tagsField.outerHTML.slice(0, 800));
-      return null;
     }
-    input.focus();
-    if (input.disabled || input.readOnly) {
-      return null;
-    }
-    return input;
+    return null;
   }
   async function fillAutocomplete(inputEl, text) {
     // v1.11: mastiin nggak lagi ada overlay loading sebelum mulai ngetik --
@@ -940,20 +1053,16 @@
     }
     await sleep(200);
     document.activeElement?.blur();
-    // v1.14b: PENTING -- widget many2many ini di-re-render sama Owl/Odoo
-    // pas kena klik/interaksi, jadi node `tagsField` yang kita pegang di
-    // sini BISA JADI STALE (udah kepisah dari DOM) abis attempt pertama.
-    // Ini kebukti dari log: attempt ke-2/3 koordinat kliknya jadi
-    // {x:-4, y:0} -- itu tandanya getBoundingClientRect() dipanggil ke
-    // elemen yang UDAH KE-DETACH (selalu balikin rect kosong semua nol).
-    // Makanya sekarang activateTagsInputForEditing() nerima `attributeRow`
-    // (elemen <tr>, yang jauh lebih jarang di-replace total sama Owl
-    // dibanding div widget di dalamnya) dan RE-QUERY tagsField-nya dari
-    // situ tiap kali dipanggil -- bukan pakai reference lama yang
-    // di-cache di luar.
-    // v1.19: naikin jumlah retry KHUSUS step ini (PROSES_A_RETRY_COUNT,
-    // lebih gigih dari RETRY_COUNT umum) karena widget "Tipe (Type)" ini
-    // yang paling sering keserempet overlay loading di cangkang crowded.
+    // v1.15/v1.21: PENTING -- widget many2many ini di-re-render sama
+    // Owl/Odoo pas kena klik/interaksi, jadi node `tagsField` yang kita
+    // pegang di sini BISA JADI STALE (udah kepisah dari DOM) abis attempt
+    // pertama. Makanya activateTagsInputForEditing() nerima `attributeRow`
+    // (elemen <tr>, jauh lebih jarang di-replace total sama Owl) dan
+    // RE-QUERY tagsField-nya dari situ tiap iterasi -- bukan pakai
+    // reference lama yang di-cache di luar. Sejak v1.21, fungsi ini juga
+    // NGULANG klik-nya sendiri tiap ~3 detik di dalam jendela
+    // AUTOCOMPLETE_TIMEOUT_MS, jadi withRetry di sini cuma jadi lapisan
+    // tambahan kalau seluruh jendela itu abis tanpa hasil.
     setStatus('Proses A: buka input tag "Tipe (Type)"', kodeProduk);
     const input = await withRetry(() => activateTagsInputForEditing(attributeRow), {
       retries: CONFIG.PROSES_A_RETRY_COUNT,
@@ -968,7 +1077,7 @@
       // MEMANG nggak bisa nembus ini -- ini batas teknis browser, bukan
       // bug yang bisa di-fix lewat kode. Jalur manual (klik + Alt+Enter)
       // di bawah ini yang jadi jalur normal buat kasus ini.
-      log('⚠️ Widget tag "Tipe (Type)" nggak berhasil dibuka lewat script setelah beberapa kali dicoba -- kemungkinan widget ini emang butuh klik mouse ASLI (browser sengaja nggak jalanin beberapa perilaku default buat klik yang di-dispatch lewat script, ini batasan browser bukan bug). Klik MANUAL PERSIS di kotak kosong setelah tag terakhir (sampai kursor kedip-kedip beneran), lalu tekan Alt+Enter (kode SKU-nya udah otomatis keisi di kotak "Isi field yang lagi kebuka" di panel) buat lanjutin dari situ.');
+      log('⚠️ Widget tag "Tipe (Type)" nggak berhasil dibuka lewat script setelah beberapa kali dicoba (termasuk klik berulang di dalam) -- kemungkinan widget ini emang butuh klik mouse ASLI (browser sengaja nggak jalanin beberapa perilaku default buat klik yang di-dispatch lewat script, ini batasan browser bukan bug). Klik MANUAL PERSIS di kotak kosong setelah tag terakhir (sampai kursor kedip-kedip beneran), lalu tekan Alt+Enter (kode SKU-nya udah otomatis keisi di kotak "Isi field yang lagi kebuka" di panel) buat lanjutin dari situ.');
       return false;
     }
     // v1.11/v1.19: widget many2many tag ini yang paling sering "berat" --
@@ -1465,6 +1574,85 @@
     }
   }
   // ============================================================
+  // v1.20/v1.21: RESUME PROSES A ABIS AUTO-REFRESH (karena duplikat)
+  // ============================================================
+  // Abis Proses A ketemu duplikat, halaman di-REFRESH otomatis (lihat
+  // catatan di processNextInQueueForProsesA). Begitu halaman selesai
+  // reload, browser biasanya mendarat di tab PERTAMA/default -- BUKAN
+  // di tab "Variants" tempat tabel attribute "Tipe (Type)" berada.
+  //
+  // v1.21 FIX: SEBELUMNYA (v1.20) script cuma NGECEK SEKALI apakah tab
+  // "Variants" ada, lalu kalau nggak ketemu langsung nyerah. Padahal
+  // kalau webnya lemot abis refresh, tab itu BENERAN BELUM ADA di DOM
+  // sama sekali di detik-detik awal (bukan cuma "belum kelihatan") --
+  // jadi sering ke-anggap gagal padahal cuma kecepetan ngecek. Sekarang
+  // waitForVariantsTabAndClick() NGULANG ngecek+nyoba klik (teks dulu,
+  // fallback xpath kalau teks gagal) tiap ~0.4 detik sampai maksimal 60
+  // detik (VARIANTS_TAB_WAIT_TIMEOUT_MS), dipause kalau lagi ada overlay
+  // blockUI, dengan log progres tiap 5 detik.
+  function getVariantsTabByFallbackXPath() {
+    try {
+      const result = document.evaluate(
+        VARIANTS_TAB_FALLBACK_XPATH, document, null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE, null
+      );
+      return result.singleNodeValue;
+    } catch (e) {
+      console.log('[KFA-AUTO] Gagal evaluasi fallback xpath tab Variants:', e);
+      return null;
+    }
+  }
+  async function waitForVariantsTabAndClick({
+    timeout = CONFIG.VARIANTS_TAB_WAIT_TIMEOUT_MS,
+    logInterval = CONFIG.VARIANTS_TAB_LOG_INTERVAL_MS,
+  } = {}) {
+    const start = Date.now();
+    let lastLogAt = 0;
+    while (Date.now() - start < timeout) {
+      // Kalau lagi ada overlay loading, jangan dulu ngitung/nyoba --
+      // tunggu dulu sampai clear, biar nggak kepencet nyari elemen di
+      // DOM yang lagi setengah render.
+      if (isBlockUIVisible()) {
+        await sleep(300);
+        continue;
+      }
+      if (clickByText('a', 'Variants', { visibleOnly: true })) {
+        log('✅ Tab "Variants" ketemu & diklik via teks.');
+        return true;
+      }
+      const el = getVariantsTabByFallbackXPath();
+      if (el && isVisible(el)) {
+        el.click();
+        log('✅ Tab "Variants" ketemu & diklik via fallback xpath.');
+        return true;
+      }
+      const elapsed = Date.now() - start;
+      if (elapsed - lastLogAt >= logInterval) {
+        lastLogAt = elapsed;
+        log(`⏳ Masih nunggu tab "Variants" muncul di halaman (${Math.round(elapsed / 1000)} detik)... halaman kemungkinan masih lemot ngeload abis refresh, ini wajar, terus dicoba sampai ${Math.round(timeout / 1000)} detik.`);
+      }
+      await sleep(400);
+    }
+    return false;
+  }
+  async function resumeProsesAAfterReload() {
+    setStatus('Proses A: balik ke tab Variants abis refresh', null);
+    log(`🔄 Nyoba balik ke tab "Variants" dulu sebelum lanjut Proses A (ditunggu sampai ${Math.round(CONFIG.VARIANTS_TAB_WAIT_TIMEOUT_MS / 1000)} detik kalau halamannya masih lemot ngeload abis refresh, bukan cuma sekali cek langsung nyerah)...`);
+    const clicked = await waitForVariantsTabAndClick();
+    if (!clicked) {
+      log(`⚠️ Tab "Variants" nggak pernah ketemu (baik via teks maupun fallback xpath) setelah ditunggu ${Math.round(CONFIG.VARIANTS_TAB_WAIT_TIMEOUT_MS / 1000)} detik penuh -- Proses A TIDAK dilanjutkan otomatis, biar nggak salah baca DOM di tab yang keliru. Klik manual ke tab Variants, lalu klik tombol "▶ Proses A" di panel buat lanjut dari SKU berikutnya di antrian.`);
+      setIdle('Berhenti (tab Variants nggak ketemu abis refresh)');
+      return;
+    }
+    // Tunggu halaman settle (overlay loading ilang) dulu abis pindah tab,
+    // biar nggak langsung nyari tabel attribute di DOM yang masih
+    // setengah render abis klik tab.
+    await settleAfterAction('klik tab Variants abis refresh');
+    await sleep(400);
+    log('➡️ Lanjut Proses A dari SKU berikutnya di antrian...');
+    processNextInQueueForProsesA();
+  }
+  // ============================================================
   // QUEUE RUNNER: satu titik masuk buat proses 1 SKU, dan (kalau
   // "Auto-lanjut ke SKU berikutnya" dicentang) otomatis nyambung ke SKU
   // berikutnya selama masih sukses. Berhenti otomatis kalau ada kegagalan
@@ -1850,13 +2038,17 @@
     // v1.17: kalau flag ini ke-set, artinya halaman baru aja di-refresh
     // OTOMATIS gara2 ketemu duplikat di Proses A -- lanjutin lagi dari
     // SKU berikutnya di antrian (yang duplikatnya udah ke-skip sebelum
-    // reload) TANPA perlu klik tombol apapun. Kasih jeda cukup panjang
-    // dulu (2.5 detik) biar halaman/SPA-nya beneran kelar render sebelum
-    // script mulai cari-cari elemen.
+    // reload) TANPA perlu klik tombol apapun.
+    // v1.21: jeda awal sebelum manggil resumeProsesAAfterReload() nggak
+    // perlu lama2 lagi -- fungsi itu sendiri sekarang udah NGULANG
+    // ngecek+nyoba klik tab Variants sampai 60 detik (lihat
+    // waitForVariantsTabAndClick), jadi nggak perlu nebak durasi loading
+    // di sini. Jeda kecil ini cuma buat kasih kesempatan script/panel
+    // sendiri kelar ke-render dulu.
     if (localStorage.getItem(AUTORESUME_PROSES_A_KEY)) {
       localStorage.removeItem(AUTORESUME_PROSES_A_KEY);
-      log('🔄 Halaman baru aja di-refresh otomatis (abis skip duplikat di Proses A) -- lanjutin Proses A dari SKU berikutnya di antrian...');
-      setTimeout(() => processNextInQueueForProsesA(), 2500);
+      log('🔄 Halaman baru aja di-refresh otomatis (abis skip duplikat di Proses A) -- balik ke tab "Variants" dulu (ditunggu sampai halaman beneran kelar loading), baru lanjutin Proses A dari SKU berikutnya di antrian...');
+      setTimeout(() => resumeProsesAAfterReload(), 800);
     }
   }
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
