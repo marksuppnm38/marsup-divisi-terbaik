@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         INAPROC Auto Isi Master Produk Sectoral (Alkes - Kode Unik KFA) + Panel
 // @namespace    inaproc-auto-master-produk
-// @version      3.10.0
-// @description  Panel UI untuk auto isi form pengajuan penunjukan Sectoral (Kategori Alkes: Kode Unik KFA) di penyedia.inaproc.id, unggah AKD & CPAKB dari Supabase Storage, konfirmasi, kirim, dan auto-lanjut antar SKU. v3.10.0: (1) tombol Jeda/Lanjutkan & Stop di panel -- checkpoint-based (berhenti di antara SKU / sebelum reload, bukan motong di tengah upload, biar form gak ketinggalan state setengah jadi). (2) Deteksi error/warning diperluas -- bukan cuma teks persis "Nomor permohonan wajib" tapi juga elemen berstyle error/warning/danger dan kata kunci umum (tidak valid, gagal, dst). (3) SKU yang di-skip karena error/warning sekarang di-REQUEUE ke akhir antrian (retry, max 2x) alih-alih langsung dianggap selesai/dilewati permanen -- baru ditandai gagal permanen kalau udah gagal berkali-kali.
+// @version      3.11.1
+// @description  Panel UI untuk auto isi form pengajuan penunjukan Sectoral (Kategori Alkes: Kode Unik KFA) di penyedia.inaproc.id, unggah AKD & CPAKB dari Supabase Storage, konfirmasi, kirim, dan auto-lanjut antar SKU. v3.10.0: (1) tombol Jeda/Lanjutkan & Stop di panel -- checkpoint-based (berhenti di antara SKU / sebelum reload, bukan motong di tengah upload, biar form gak ketinggalan state setengah jadi). (2) Deteksi error/warning diperluas -- bukan cuma teks persis "Nomor permohonan wajib" tapi juga elemen berstyle error/warning/danger dan kata kunci umum (tidak valid, gagal, dst). (3) SKU yang di-skip karena error/warning sekarang di-REQUEUE ke akhir antrian (retry, max 2x) alih-alih langsung dianggap selesai/dilewati permanen -- baru ditandai gagal permanen kalau udah gagal berkali-kali. v3.11.0: deteksi error SERVER (Internal Server Error/500/502/dst) dipisah dari error validasi SKU -- ini infra yang lelet/rusak, bukan salah SKU-nya, jadi SKU saat ini TIDAK di-requeue/dihitung retry. Yang terjadi malah full restart: reload halaman lalu ulang dari awal mulai dari klik "Daftarkan Merek". v3.11.1: fix -- "Sesi Anda telah berakhir" gak ke-cover keyword server-error sebelumnya, sekarang masuk. tungguLihatDokumen() (nunggu upload dokumen selesai) sekarang ngecek server-error/sesi-berakhir tiap poll, gagal cepat & restart total daripada nunggu 20 detik penuh baru nyerah.
 // @match        https://penyedia.inaproc.id/*
 // @grant        none
 // ==/UserScript==
@@ -42,6 +42,14 @@
   }
   function saveFlags(f) { localStorage.setItem(FLAGS_KEY, JSON.stringify(f)); }
   let flags = loadFlags();
+  document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    log('⚠️ Tab jadi background — browser bakal throttle timer, proses bisa telat/timeout. Tetap di tab ini selama proses jalan.');
+  } else if (document.visibilityState === 'visible') {
+    log('👁️ Tab aktif lagi.');
+    if (getStage() && !flags.paused) main();
+  }
+});
   function getStage() { return localStorage.getItem(STAGE_KEY) || null; }
   function setStage(stage) {
     if (stage === null) localStorage.removeItem(STAGE_KEY);
@@ -207,6 +215,11 @@
     log(`⏳ Menunggu upload ${label} selesai...`);
     const start = Date.now();
     while (Date.now() - start < timeout) {
+      // Gagal cepat kalau server error / sesi berakhir kedeteksi -- daripada nunggu
+      // 20 detik penuh baru nyerah lewat timeout generik di bawah.
+      if (cekServerError()) {
+        throw new Error(`SERVER_ERROR terdeteksi saat menunggu upload ${label}.`);
+      }
       const newLink = getLinks().find((a) => !existingHrefs.has(a.getAttribute('href')));
       if (newLink) {
         log(`✅ Upload ${label} selesai (link "Lihat Dokumen" baru terdeteksi).`);
@@ -236,6 +249,27 @@
       const cls = (el.className && typeof el.className === 'string') ? el.className : '';
       const beridentitasError = /error|invalid|danger|warning/i.test(cls);
       return beridentitasError && raw.length > 3;
+    });
+  }
+  // Error SERVER (infra lelet/rusak) dipisah dari error validasi SKU di atas --
+  // ini bukan salah SKU-nya, jadi gak boleh ikut dihitung sebagai percobaan gagal
+  // buat SKU tsb. Cukup keyword match (gak pakai heuristik class error/warning
+  // yang dipakai cekPesanBermasalah, karena itu bisa kena elemen form biasa).
+  const SERVER_ERROR_KEYWORDS = [
+    'internal server error', 'terjadi kesalahan pada server', 'kesalahan server',
+    'server error', 'bad gateway', 'service unavailable', '500 error',
+    'error 500', 'error 502', 'error 503', 'gateway timeout',
+    'sesi anda telah berakhir', 'sesi telah berakhir', 'sesi berakhir', 'muat ulang halaman',
+  ];
+  function cekServerError() {
+    const els = Array.from(document.querySelectorAll('body, body *'));
+    return els.some((el) => {
+      if (el.closest('#inaproc-panel')) return false;
+      if (el.children.length > 0) return false; // cuma leaf node biar gak scan gabungan teks gede
+      if (!isVisible(el)) return false;
+      const t = el.textContent.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (!t || t.length > 200) return false;
+      return SERVER_ERROR_KEYWORDS.some((k) => t.includes(k));
     });
   }
   async function tungguErrorHilang(timeout = 4000) {
@@ -341,10 +375,16 @@
     await isiNomorProduk(item.kfaCode);
     await klikPeriksa();
     let errorTerlihat = false;
+    let serverErrorTerlihat = false;
     const pollStart = Date.now();
     while (Date.now() - pollStart < 8000) {
+      if (cekServerError()) { serverErrorTerlihat = true; break; }
       if (cekPesanBermasalah()) { errorTerlihat = true; break; }
       await sleep(400);
+    }
+    if (serverErrorTerlihat) {
+      await restartTotalKeDaftarkanMerek('Server error terdeteksi setelah klik Periksa');
+      return null;
     }
     if (errorTerlihat) {
       requeueAtBackOrDrop(item, 'DILEWATI: ada pesan error/warning di form', 'skipped-kfa-bermasalah');
@@ -354,6 +394,16 @@
     }
     log(`✅ Nomor Produk "${item.kfaCode}" valid, lanjut proses.`);
     return item;
+  }
+  // Server error -> bukan salah SKU, jadi antrian TIDAK diubah (item saat ini
+  // tetap di depan, dicoba lagi dari nol setelah restart). Beda dari
+  // restartViaReload yang stage-nya 'await_apply_form' (asumsi masih di form
+  // apply) -- ini balik ke 'await_daftarkan' biar re-klik "Daftarkan Merek" juga.
+  async function restartTotalKeDaftarkanMerek(alasan) {
+    log(`🛑 ${alasan} -- ini infra, bukan salah SKU. Restart total dari "Daftarkan Merek" (SKU saat ini TETAP di antrian, gak dihitung retry)...`);
+    setStage('await_daftarkan');
+    await sleep(500);
+    location.reload();
   }
   async function restartViaReload() {
     const remaining = loadQueue().length;
@@ -465,6 +515,10 @@
       if (!item) return; // queue kosong ATAU lagi proses refresh/jeda -- keduanya berhenti di sini
       await centangTipePenyedia();
       await unggahDokumen(item.akdPath);
+      if (cekServerError()) {
+        await restartTotalKeDaftarkanMerek('Server error terdeteksi sebelum submit');
+        return;
+      }
       if (cekPesanBermasalah()) {
         requeueAtBackOrDrop(item, 'DILEWATI (telat kedeteksi, sebelum submit)', 'skipped-kfa-bermasalah-late');
         renderPanel();
@@ -482,6 +536,10 @@
       try {
         await klikKirim();
       } catch (err) {
+        if (cekServerError()) {
+          await restartTotalKeDaftarkanMerek('Server error terdeteksi saat/setelah klik Kirim');
+          return;
+        }
         if (err.message.includes('Kirim')) {
           requeueAtBackOrDrop(item, 'DILEWATI: tombol Kirim nggak pernah aktif (form invalid)', 'skipped-kirim-timeout');
           renderPanel();
@@ -509,6 +567,10 @@
         log(`✅ KFA "${item.kfaCode}" berhasil dikirim. Klik "Proses SKU berikutnya" untuk lanjut manual.`);
       }
     } catch (err) {
+      if (cekServerError()) {
+        await restartTotalKeDaftarkanMerek(`Server error terdeteksi setelah error lain (${err.message})`);
+        return;
+      }
       log(`⚠️ Gagal memproses: ${err.message}`);
       console.error('[INAPROC-AUTO]', err);
     } finally {
@@ -675,6 +737,9 @@
         </div>
         <div style="color:#555; margin-bottom:6px;">
           ℹ️ SKU dengan error/warning di form otomatis di-skip dan dimasukkan ulang ke akhir antrian (retry, maks ${CONFIG.maxRetry}x) sebelum ditandai gagal permanen. Halaman di-refresh otomatis buat fresh start ke SKU berikutnya.
+        </div>
+        <div style="color:#555; margin-bottom:6px;">
+          ℹ️ Kalau ketemu error SERVER (Internal Server Error/500/dst), itu dianggap masalah infra bukan salah SKU -- otomatis restart TOTAL dari tombol "Daftarkan Merek", SKU yang lagi diproses tetap di antrian (gak dihitung retry).
         </div>
         <button id="inaproc-start" style="width:100%; margin-bottom:4px; background:#1F4E78; color:#fff; font-weight:bold;">🚀 Mulai (klik "Daftarkan Merek" di halaman ini)</button>
         <button id="inaproc-run-next" style="width:100%; margin-bottom:4px;">▶ Proses SKU berikutnya di antrian (kalau sudah di halaman apply)</button>
