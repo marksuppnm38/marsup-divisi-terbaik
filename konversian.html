@@ -1632,7 +1632,7 @@ function renderRiwayatCard(s) {
   const orderBadge = latest
     ? `<span class="badge-jadi-order"><i class="ti ti-circle-check"></i> Jadi Order${latest.revisi > 0 ? ' · REV' + latest.revisi : ''}${latest.grand_total != null ? ' · Rp' + Number(latest.grand_total).toLocaleString('id-ID') : ''}</span>`
     : `<span class="badge-tanpa-order"><i class="ti ti-square-off"></i> Ditutup Tanpa Order</span>`;
-  const versiChip = records.length >
+  const versiChip = records.length > 1
     ? `<span class="mi"><i class="ti ti-versions"></i><span>${records.length} versi tersimpan</span></span>`
     : '';
   return `<div class="rcard riwayat-card" data-id="${s.id}" style="position:relative">
