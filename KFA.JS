@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         KFA Alkes Automation - Pionir Group
 // @namespace    pionir-marsup
-// @version      1.18
+// @version      1.21
 // @description  Bantu automasi masukin SKU ke cangkang + validasi KFA di kamus-alkes.kemkes.go.id
 // @match        https://kamus-alkes.kemkes.go.id/*
 // @grant        none
@@ -68,6 +68,28 @@
   //     cek elemen yang belum siap. Prioritas sekarang BERHASIL, bukan
   //     CEPAT -- kalau internet/server lagi lemot, script bakal nungguin
   //     lebih lama daripada langsung nyerah.
+  // 13. (BARU v1.20) Abis Proses A ketemu duplikat & halaman di-refresh
+  //     otomatis, script SEKARANG otomatis balik dulu ke tab "Variants"
+  //     sebelum lanjut ke SKU berikutnya (soalnya abis reload, halaman
+  //     biasanya mendarat di tab pertama/default, bukan di tab Variants
+  //     tempat tabel attribute "Tipe (Type)" berada). Nggak perlu klik
+  //     apa-apa manual -- ini jalan otomatis sebagai bagian dari alur
+  //     resume abis refresh.
+  // 14. (BARU v1.21) Dua fix berdasarkan feedback dari pemakaian nyata:
+  //     (a) Abis refresh gara-gara duplikat, kalau webnya lemot, tab
+  //         "Variants" bisa BENERAN BELUM ADA di halaman sama sekali (bukan
+  //         cuma belum kelihatan) pas pertama kali dicek -- sekarang script
+  //         NUNGGUIN sampai 60 detik, ngecek berkala tiap ~0.4 detik, dan
+  //         ngasih log tiap 5 detik biar kamu tau dia masih nyoba (bukan
+  //         macet), bukan cuma sekali cek lalu langsung nyerah.
+  //     (b) Pas isi widget "Tipe (Type)" (many2many tags), kalau klik
+  //         pertama di celah kosong meleset (mis. halaman masih setengah
+  //         render), SEBELUMNYA script cuma diem nunggu sampai 20 detik
+  //         penuh baru dianggap gagal ("kayak melamun"). Sekarang script
+  //         ngulang klik-nya tiap ~3 detik SELAMA masih nunggu, jadi kalau
+  //         percobaan pertama meleset, percobaan ke-2/3/dst masih sempat
+  //         jalan dalam jendela waktu yang sama -- lebih cepat pulih &
+  //         lebih jelas keliatan di log dia masih kerja.
   //
   // v1.3: Fix dropdown Brand di-portal keluar .modal (dicari via jarak ke
   //       input, isNearInput, bukan ancestry .modal).
@@ -284,6 +306,85 @@
   //       dianggap WAJAR (lanjutan dari SKU sebelumnya di batch yang
   //       sama), bukan kegagalan, dan proses lanjut seperti biasa tanpa
   //       klik Edit lagi.
+  // v1.19: Fokus permintaan user: (1) di cangkang yang crowded/lemot,
+  //       Proses A jangan gampang nyerah -- perbanyak & perpanjang retry
+  //       KHUSUS buat langkah widget many2many "Tipe (Type)" (paling
+  //       sering keserempet overlay loading), termasuk pencarian tabel
+  //       attribute-nya sendiri (sebelumnya cuma 1x percobaan tanpa
+  //       retry). (2) Auto-save tiap N SKU (default 5) SELAMA Proses A
+  //       jalan -- jaga-jaga kalau cangkang lemot/nyangkut di tengah
+  //       jalan, progress yang udah ketumpuk nggak ilang percuma. Kalau
+  //       Proses A berhenti karena kegagalan ASLI, dan ada tag yang belum
+  //       ke-save, script SEKARANG otomatis nyoba Save dulu sebelum
+  //       beneran berhenti (safety-save), supaya kegagalan di SKU
+  //       terakhir nggak nge-buang progress SKU-SKU sebelumnya yang udah
+  //       benar. (3) Tombol "⏹ Stop" buat interupsi batch yang lagi
+  //       jalan secara aman (nunggu step yang lagi jalan kelar dulu, baru
+  //       berhenti -- bukan potong di tengah aksi). (4) STATUS BAR hidup
+  //       di panel (titik berdenyut + teks + hitungan detik sejak
+  //       aktivitas terakhir) yang di-update tiap 500ms LEPAS dari
+  //       eksekusi script -- ini jawaban buat "bingung ini jalan apa
+  //       nggak pas KFA-nya lemot": kalau overlay loading kedetect,
+  //       status bar bilang jelas "server lagi loading (wajar)"; kalau
+  //       nggak ada overlay tapi juga nggak ada log baru lebih dari 30
+  //       detik, baru dikasih tau "mungkin macet, cek console". Ini
+  //       murni indikator visual, TIDAK mengubah logika retry/timeout
+  //       yang udah ada.
+  // v1.20: Fix permintaan user -- abis Proses A ketemu duplikat & halaman
+  //       di-refresh otomatis (lihat v1.17b), script SEBELUMNYA langsung
+  //       manggil processNextInQueueForProsesA() tanpa mastiin dulu ada
+  //       di tab "Variants". Karena abis reload browser biasanya mendarat
+  //       di tab pertama/default (bukan Variants), pencarian tabel
+  //       attribute "Tipe (Type)" bisa gagal / salah baca DOM. Sekarang:
+  //       (a) Tambah resumeProsesAAfterReload() -- dipanggil dari initKFA
+  //           pas AUTORESUME_PROSES_A_KEY kedetect. Fungsi ini klik dulu
+  //           tab "Variants" (dicari via clickByText('a', 'Variants', ...)
+  //           -- konsisten sama pola pencarian tab lain di script ini,
+  //           lebih tahan banting daripada posisi absolut karena nggak
+  //           gantung ke jumlah/urutan div di sekitarnya), NUNGGU halaman
+  //           settle (settleAfterAction), BARU manggil
+  //           processNextInQueueForProsesA() buat lanjut ke SKU
+  //           berikutnya di antrian (duplikat sebelumnya udah di-skip &
+  //           digeser keluar dari antrian SEBELUM reload terjadi, jadi
+  //           otomatis yang diproses berikutnya emang SKU selanjutnya).
+  //       (b) Kalau clickByText by teks gagal ketemu tab "Variants" (mis.
+  //           teksnya beda di suatu kondisi), ada FALLBACK ke xpath
+  //           absolut spesifik yang dikonfirmasi user
+  //           (VARIANTS_TAB_FALLBACK_XPATH) sebagai jaring pengaman
+  //           terakhir -- BUKAN cara utama, karena xpath posisi absolut
+  //           lebih rapuh terhadap perubahan kecil di layout halaman.
+  //       (c) Kalau DUA-DUANYA gagal (teks maupun xpath fallback), script
+  //           BERHENTI dengan jelas (bukan asal lanjut nebak di tab yang
+  //           salah) -- konsisten sama prinsip guardrail lain di script
+  //           ini.
+  // v1.21: Dua fix dari feedback pemakaian nyata:
+  //       (a) BUG NYATA -- resumeProsesAAfterReload() (v1.20) cuma NGECEK
+  //           SEKALI apa tab "Variants" ada (baik via teks maupun xpath
+  //           fallback), lalu kalau nggak ketemu LANGSUNG nyerah. Padahal
+  //           kalau webnya lemot abis refresh, tab itu BENERAN BELUM ADA
+  //           di DOM sama sekali di detik-detik awal (bukan cuma belum
+  //           "keliatan") -- jadi sering ke-anggap gagal padahal cuma
+  //           kecepetan ngecek. Sekarang ada waitForVariantsTabAndClick()
+  //           yang NGULANG ngecek+nyoba klik (teks dulu, lalu fallback
+  //           xpath) tiap ~0.4 detik sampai maksimal 60 detik (dipause
+  //           kalau lagi ada overlay blockUI), dengan log progres tiap 5
+  //           detik biar jelas kelihatan dia masih nyoba, bukan macet.
+  //           Baru kalau BENERAN 60 detik penuh nggak ketemu, dianggap
+  //           gagal & minta cek manual.
+  //       (b) BUG NYATA -- activateTagsInputForEditing() (widget many2many
+  //           "Tipe (Type)") SEBELUMNYA cuma klik SEKALI di celah kosong,
+  //           lalu diem nunggu input-nya muncul sampai AUTOCOMPLETE_TIMEOUT_MS
+  //           (20 detik) penuh sebelum dianggap gagal -- kalau klik
+  //           pertama itu meleset (mis. widget-nya masih setengah render),
+  //           ya nunggu 20 detik itu sia-sia ("kayak melamun") padahal
+  //           tinggal diklik ulang aja. Sekarang di dalam jendela waktu
+  //           yang SAMA (masih AUTOCOMPLETE_TIMEOUT_MS), script NGULANG
+  //           klik-nya tiap ~3 detik (CONFIG.TAGS_INPUT_RECLICK_INTERVAL_MS)
+  //           sambil terus ngecek apa input-nya udah muncul -- jadi kalau
+  //           klik pertama meleset, percobaan ke-2/3/dst masih sempat
+  //           jalan dalam jendela waktu yang sama, bukan cuma satu
+  //           kesempatan lalu nunggu diam. Tiap percobaan klik dicatat ke
+  //           log biar kelihatan jelas dia masih kerja.
   // ============================================================
   const STORAGE_KEY = 'kfa_automation_queue_v1';
   const RESULTS_KEY = 'kfa_automation_results_v1';
@@ -291,6 +392,13 @@
   // -- dipasang sesaat sebelum location.reload() pas ketemu duplikat, dan
   // dibaca+dihapus lagi pas script mulai jalan ulang abis reload.
   const AUTORESUME_PROSES_A_KEY = 'kfa_autoresume_prosesA_v1';
+  // v1.20: fallback xpath absolut buat tab "Variants" -- CUMA dipakai
+  // kalau pencarian by teks ("Variants") gagal ketemu. Dikonfirmasi user
+  // dari inspect elemen langsung, tapi tetap fallback (bukan cara utama)
+  // karena xpath posisi absolut rawan berubah kalau ada elemen lain yang
+  // nambah/ilang di layout sebelum tab ini.
+  const VARIANTS_TAB_FALLBACK_XPATH =
+    '/html/body/div[4]/div/div[2]/div/div[1]/div[2]/div[5]/div[1]/ul/li[5]/a';
   // ---------- Konfigurasi (v1.11) ----------
   // Semua angka di sini bisa diubah kalau perlu -- dinaikin dari versi
   // sebelumnya karena prioritas sekarang "pasti berhasil" bukan "cepat".
@@ -306,9 +414,89 @@
     KFA_CODE_TIMEOUT_MS: 30000,
     MANUAL_VALIDATE_TIMEOUT_MS: 300000, // nungguin user klik Validate manual (5 menit, sama kayak sebelumnya)
     RETRY_COUNT: 2, // berapa kali retry otomatis buat step2 yang rawan ketiban loading
+    // v1.19: retry KHUSUS Proses A (widget "Tipe (Type)" + tabel
+    // attribute-nya) -- dibikin lebih gigih daripada RETRY_COUNT umum,
+    // karena ini step yang paling sering keserempet cangkang crowded.
+    PROSES_A_RETRY_COUNT: 5,
+    PROSES_A_TABLE_TIMEOUT_MS: 30000,
+    // v1.19: auto-save tiap sekian SKU sukses selama Proses A jalan, biar
+    // kalau di tengah batch cangkangnya nyangkut/lemot parah, progress
+    // yang udah ketumpuk nggak ilang percuma.
+    PROSES_A_AUTOSAVE_EVERY: 5,
+    // v1.19: ambang "dianggap mungkin macet" di status bar kalau nggak
+    // ada log baru & nggak ada overlay loading yang kedetect.
+    STATUS_STALL_WARNING_MS: 30000,
+    // v1.20: waktu tunggu di tab "Variants" (klik via teks / fallback
+    // xpath) buat nungguin tab ke-load elemennya sebelum lanjut nyari
+    // tabel attribute.
+    VARIANTS_TAB_TIMEOUT_MS: 20000,
+    // v1.21: dipakai waitForVariantsTabAndClick() -- abis refresh (mis.
+    // gara2 duplikat di Proses A), tab "Variants" bisa BENERAN BELUM ADA
+    // di DOM sama sekali di detik-detik awal kalau webnya lemot. Sekarang
+    // ditunggu (dicoba ulang berkala) sampai maksimal segini lama sebelum
+    // dianggap gagal, dengan log progres tiap VARIANTS_TAB_LOG_INTERVAL_MS.
+    VARIANTS_TAB_WAIT_TIMEOUT_MS: 60000,
+    VARIANTS_TAB_LOG_INTERVAL_MS: 5000,
+    // v1.21: dipakai activateTagsInputForEditing() -- selama masih di
+    // dalam jendela AUTOCOMPLETE_TIMEOUT_MS, klik di celah kosong widget
+    // "Tipe (Type)" diulang tiap sekian ms (bukan cuma sekali lalu diem
+    // nunggu penuh), biar kalau klik pertama meleset masih sempat
+    // dicoba ulang beberapa kali dalam jendela waktu yang sama.
+    TAGS_INPUT_RECLICK_INTERVAL_MS: 3000,
   };
+  // ---------- v1.19: status hidup buat panel (jawaban "jalan apa nggak") ----------
+  // scriptStatus di-update tiap ada log() atau tiap ganti tahap proses.
+  // updateStatusBar() jalan lewat setInterval TERPISAH dari eksekusi
+  // script utama, jadi walaupun lagi nungguin overlay/loading lama,
+  // status bar tetap "hidup" & ngasih tau kondisi terkini -- bukan cuma
+  // diem kayak nggak ada apa2 yang kejadian.
+  let scriptStatus = { running: false, label: 'Idle', sku: null, lastActivity: Date.now() };
+  let stopRequested = false;
+  function setStatus(label, sku) {
+    scriptStatus.running = true;
+    scriptStatus.label = label;
+    if (sku !== undefined) scriptStatus.sku = sku;
+    scriptStatus.lastActivity = Date.now();
+    updateStatusBar();
+  }
+  function setIdle(label = 'Idle') {
+    scriptStatus.running = false;
+    scriptStatus.label = label;
+    scriptStatus.sku = null;
+    scriptStatus.lastActivity = Date.now();
+    updateStatusBar();
+  }
+  function updateStatusBar() {
+    const dot = document.getElementById('kfa-status-dot');
+    const text = document.getElementById('kfa-status-text');
+    if (!dot || !text) return;
+    const secs = Math.floor((Date.now() - scriptStatus.lastActivity) / 1000);
+    const blocked = isBlockUIVisible();
+    let color = '#999';
+    let msg;
+    if (!scriptStatus.running) {
+      color = '#999';
+      msg = `⏸ ${scriptStatus.label}`;
+    } else if (blocked) {
+      color = '#ffc107';
+      msg = `⏳ Server KFA lagi loading (overlay kedetect) -- wajar, nunggu aja...`;
+    } else if (secs > CONFIG.STATUS_STALL_WARNING_MS / 1000) {
+      color = '#dc3545';
+      msg = `⚠️ Nggak ada aktivitas ${secs}d & nggak ada overlay loading -- mungkin macet, cek Log/Console (F12)`;
+    } else {
+      color = '#28a745';
+      msg = `🟢 Jalan (${scriptStatus.label}) -- aktivitas terakhir ${secs}d lalu`;
+    }
+    if (scriptStatus.sku) msg += ` | SKU: ${scriptStatus.sku}`;
+    dot.style.color = color;
+    dot.style.textShadow = scriptStatus.running ? `0 0 6px ${color}` : 'none';
+    text.textContent = msg;
+    text.style.color = color;
+  }
+  setInterval(updateStatusBar, 500);
   // ---------- Helpers ----------
   function log(msg) {
+    scriptStatus.lastActivity = Date.now();
     const box = document.getElementById('kfa-log');
     if (box) {
       const line = document.createElement('div');
@@ -316,6 +504,7 @@
       box.prepend(line);
     }
     console.log('[KFA-AUTO]', msg);
+    updateStatusBar();
   }
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -579,26 +768,6 @@
     if (createExact) return { target: createExact, isCreate: true };
     return { target: null, isCreate: false };
   }
-  // v1.13/v1.14: Aktifin input "nambah tag baru" di widget many2many_tags
-  // Odoo (mis. baris "Tipe (Type)"). PENTING (ketauan dari log console):
-  // widget ini TIDAK punya <input> di DOM sama sekali sampai user klik
-  // PERSIS di celah kosong SETELAH tag/chip terakhir -- input-nya baru
-  // di-render Odoo ON-DEMAND abis klik itu kena sasaran. Jadi:
-  // 1) Cari titik koordinat yang tepat: sedikit di sebelah kanan tag
-  //    terakhir, di baris (row) yang sama -- ini konvensi Odoo
-  //    many2many_tags, kalau nggak ada tag sama sekali klik di ujung
-  //    kiri container.
-  // 2) Pakai document.elementFromPoint(x, y) buat nemuin elemen ASLI di
-  //    titik itu (bukan asal dispatch ke tagsField), biar klik-nya
-  //    seakurat mungkin kayak klik mouse beneran -- soalnya kemungkinan
-  //    widget ini ngecek posisi klik (bukan cuma target/type event) buat
-  //    mutusin apa masuk mode edit atau nggak.
-  // 3) Kirim urutan event mouse LENGKAP (mousedown -> mouseup -> click)
-  //    di titik itu.
-  // 4) BARU SETELAH klik, tunggu (waitFor, bukan sleep tebakan) sampai
-  //    Odoo beneran nge-render <input> baru di dalam widget ini -- karena
-  //    input-nya emang nggak ada sebelum klik, jadi nggak ada gunanya
-  //    dicek langsung sinkron kayak versi sebelumnya.
   function getLastTagsInput(tagsField) {
     const candidates = Array.from(
       tagsField.querySelectorAll('input[type="text"], input.ui-autocomplete-input, input.o_input')
@@ -621,12 +790,29 @@
     // Belum ada tag sama sekali -- klik aja di ujung kiri container.
     return { x: containerRect.left + 8, y: containerRect.top + containerRect.height / 2 };
   }
+  // v1.13/v1.14/v1.15: Aktifin input "nambah tag baru" di widget
+  // many2many_tags Odoo (mis. baris "Tipe (Type)"). Widget ini TIDAK
+  // punya <input> di DOM sama sekali sampai user klik PERSIS di celah
+  // kosong SETELAH tag/chip terakhir -- input-nya baru di-render Odoo
+  // ON-DEMAND abis klik itu kena sasaran. `attributeRow` (elemen <tr>)
+  // di-re-query tiap saat karena Owl/Odoo bisa ngeganti total node div
+  // widget ini abis interaksi apapun (reference lama gampang stale).
+  //
+  // v1.21 FIX: SEBELUMNYA fungsi ini klik SEKALI lalu nunggu (waitFor)
+  // sampai AUTOCOMPLETE_TIMEOUT_MS (20 detik) PENUH sebelum dianggap
+  // gagal -- kalau klik pertama itu meleset (mis. widget-nya masih
+  // setengah render abis pindah SKU), 20 detik itu kebuang percuma cuma
+  // buat nunggu ("kayak melamun") padahal tinggal diklik ulang aja.
+  // Sekarang DI DALAM jendela waktu yang SAMA (masih AUTOCOMPLETE_TIMEOUT_MS),
+  // klik-nya DIULANG tiap CONFIG.TAGS_INPUT_RECLICK_INTERVAL_MS (~3 detik)
+  // sambil terus mantau apa inputnya udah muncul -- kalau attempt ke-1
+  // meleset, attempt ke-2/3/dst masih sempat jalan tanpa nambah waktu
+  // tunggu total. Tiap percobaan klik dicatat ke log biar user tau ini
+  // masih aktif nyoba, bukan macet.
   async function activateTagsInputForEditing(attributeRow) {
-    // v1.14b: SELALU re-query tagsField yang FRESH dari attributeRow tiap
-    // kali fungsi ini dipanggil (termasuk tiap retry) -- JANGAN pakai
-    // reference lama yang di-cache di luar, karena Owl/Odoo bisa
-    // ngeganti total node div widget ini abis interaksi apapun.
-    const tagsField = attributeRow.querySelector('.o_field_many2manytags, .o_field_widget[name="value_ids"]');
+    const getFreshTagsField = () =>
+      attributeRow.querySelector('.o_field_many2manytags, .o_field_widget[name="value_ids"]');
+    let tagsField = getFreshTagsField();
     if (!tagsField || !tagsField.isConnected) {
       log('⚠️ Widget tag "Tipe (Type)" nggak ketemu lagi di baris ini (mungkin abis di-render ulang sama halamannya). Cek manual.');
       return null;
@@ -638,47 +824,62 @@
       input.focus();
       return input;
     }
-    const { x, y } = computeTagsClickPoint(tagsField);
-    const clickTarget = document.elementFromPoint(x, y) || tagsField;
-    // v1.14b: coba beberapa cara "ngebuka" widget ini sekaligus dalam
-    // satu attempt, karena kita nggak tau pasti widget ini dengerin apa
-    // (click biasa? pointer event? butuh fokus dulu baru klik?):
-    // 1) focus() langsung lewat JS API (INI SELALU jalan beneran, nggak
-    //    kayak dispatchEvent yang kadang nggak trigger default action
-    //    browser -- jadi kalau elemen/ancestor-nya focusable, ini paling
-    //    reliable).
-    if (typeof clickTarget.focus === 'function') {
-      clickTarget.focus();
+    const start = Date.now();
+    let lastClickAt = 0;
+    let clickAttempt = 0;
+    let lastClickInfo = null;
+    while (Date.now() - start < CONFIG.AUTOCOMPLETE_TIMEOUT_MS) {
+      // Re-query tiap iterasi -- node widget-nya bisa ke-replace total.
+      tagsField = getFreshTagsField();
+      if (!tagsField || !tagsField.isConnected) {
+        await sleep(250);
+        continue;
+      }
+      if (Date.now() - lastClickAt >= CONFIG.TAGS_INPUT_RECLICK_INTERVAL_MS) {
+        lastClickAt = Date.now();
+        clickAttempt += 1;
+        const { x, y } = computeTagsClickPoint(tagsField);
+        const clickTarget = document.elementFromPoint(x, y) || tagsField;
+        lastClickInfo = { x, y, clickTarget };
+        // Beberapa cara "ngebuka" widget ini sekaligus dalam satu klik,
+        // karena kita nggak tau pasti widget ini dengerin apa (click
+        // biasa? pointer event? butuh fokus dulu baru klik?):
+        // 1) focus() langsung lewat JS API (SELALU beneran jalan
+        //    biarpun dipanggil dari script, beda sama dispatchEvent yang
+        //    browser kadang nggak jalanin default action-nya).
+        if (typeof clickTarget.focus === 'function') {
+          clickTarget.focus();
+        }
+        // 2) Urutan pointer + mouse event lengkap, detail:1, di titik
+        //    koordinat yang tepat (sedikit di kanan tag terakhir).
+        const fire = (Ctor, type) => clickTarget.dispatchEvent(new Ctor(type, {
+          bubbles: true, cancelable: true, composed: true, view: window,
+          clientX: x, clientY: y, button: 0, detail: 1,
+        }));
+        try { fire(PointerEvent, 'pointerdown'); } catch (e) { /* browser lama tanpa PointerEvent */ }
+        fire(MouseEvent, 'mousedown');
+        try { fire(PointerEvent, 'pointerup'); } catch (e) { /* no-op */ }
+        fire(MouseEvent, 'mouseup');
+        fire(MouseEvent, 'click');
+        log(`🖱️ Klik di celah kosong widget "Tipe (Type)" (percobaan ke-${clickAttempt})...`);
+      }
+      input = getLastTagsInput(tagsField);
+      if (input && input.isConnected) {
+        input.focus();
+        if (!input.disabled && !input.readOnly) {
+          return input;
+        }
+      }
+      await sleep(200);
     }
-    // 2) Urutan pointer + mouse event lengkap, detail:1 (biar kebaca
-    //    sebagai "klik asli ke-1" oleh handler yang ngecek e.detail),
-    //    di titik koordinat yang bener.
-    const fire = (Ctor, type) => clickTarget.dispatchEvent(new Ctor(type, {
-      bubbles: true, cancelable: true, composed: true, view: window,
-      clientX: x, clientY: y, button: 0, detail: 1,
-    }));
-    try { fire(PointerEvent, 'pointerdown'); } catch (e) { /* browser lama tanpa PointerEvent */ }
-    fire(MouseEvent, 'mousedown');
-    try { fire(PointerEvent, 'pointerup'); } catch (e) { /* no-op */ }
-    fire(MouseEvent, 'mouseup');
-    fire(MouseEvent, 'click');
-    // Input-nya baru muncul SETELAH klik ini (kalau berhasil) -- jadi
-    // WAJIB ditunggu (bukan sleep tebakan), karena Odoo ngerender-nya
-    // on-demand.
-    input = await waitFor(() => getLastTagsInput(attributeRow.querySelector('.o_field_many2manytags, .o_field_widget[name="value_ids"]') || tagsField), {
-      timeout: CONFIG.AUTOCOMPLETE_TIMEOUT_MS,
-    }).catch(() => null);
-    if (!input) {
-      log('⚠️ Klik di celah kosong setelah tag terakhir belum berhasil mancing input baru muncul. Titik yang diklik script saya print ke console (F12) beserta elemen yang kena.');
-      console.log('[KFA-AUTO] Titik klik:', { x, y }, '| Elemen yang kena (elementFromPoint):', clickTarget);
+    log(`⚠️ Klik berulang (${clickAttempt}x) di celah kosong setelah tag terakhir belum berhasil mancing input baru muncul, dalam ${Math.round(CONFIG.AUTOCOMPLETE_TIMEOUT_MS / 1000)} detik. Titik klik terakhir & elemen yang kena saya print ke console (F12).`);
+    if (lastClickInfo) {
+      console.log('[KFA-AUTO] Titik klik terakhir:', { x: lastClickInfo.x, y: lastClickInfo.y }, '| Elemen yang kena (elementFromPoint):', lastClickInfo.clickTarget);
+    }
+    if (tagsField) {
       console.log('[KFA-AUTO] HTML widget tags saat ini:', tagsField.outerHTML.slice(0, 800));
-      return null;
     }
-    input.focus();
-    if (input.disabled || input.readOnly) {
-      return null;
-    }
-    return input;
+    return null;
   }
   async function fillAutocomplete(inputEl, text) {
     // v1.11: mastiin nggak lagi ada overlay loading sebelum mulai ngetik --
@@ -770,12 +971,13 @@
   // ============================================================
   async function runProsesA(kodeProduk) {
     log(`Proses A: masukin "${kodeProduk}" ke cangkang...`);
+    setStatus('Proses A: buka form / cek mode edit', kodeProduk);
     // v1.18: FIX BUG -- sebelumnya di sini SELALU maksa ada tombol "Edit"
     // buat diklik. Itu keliru buat SKU ke-2/3/dst dalam satu batch,
     // karena Proses A SENGAJA nggak Save di antara SKU (numpuk banyak
     // tag dulu baru Save di akhir) -- jadi form-nya masih dalam mode
     // EDIT dari SKU sebelumnya, dan tombol "Edit" udah nggak ada lagi
-    // (kegantiin sama Save/Discard). Sekarang: kalau tombol Edit ketemu,
+    // (kegantiin Save/Discard). Sekarang: kalau tombol Edit ketemu,
     // klik seperti biasa; kalau nggak ketemu TAPI ternyata form udah
     // dalam mode edit (Save/Discard kelihatan), anggap itu WAJAR --
     // lanjutin aja, JANGAN dianggap gagal.
@@ -793,7 +995,14 @@
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     document.body.click();
     await sleep(300);
-    const attributeTable = await waitFor(() => {
+    // v1.19: SEBELUMNYA pencarian tabel attribute ini cuma 1x percobaan
+    // (waitFor biasa, langsung nyerah kalau timeout). Di cangkang yang
+    // crowded/lemot ini ternyata bisa telat render cukup lama -- jadi
+    // sekarang dibungkus withRetry (PROSES_A_RETRY_COUNT kali) dengan
+    // timeout yang lebih panjang per percobaan, plus log progres tiap
+    // retry biar user tau ini masih "nyoba", bukan diem/macet.
+    setStatus('Proses A: nyari tabel attribute (Variants)', kodeProduk);
+    const attributeTable = await withRetry(() => waitFor(() => {
       const tables = Array.from(document.querySelectorAll('table'));
       return (
         tables.find((table) => {
@@ -803,9 +1012,12 @@
           return headerText.includes('attribute') && headerText.includes('value');
         }) || null
       );
-    }, { timeout: CONFIG.MODAL_TIMEOUT_MS }).catch(() => null);
+    }, { timeout: CONFIG.PROSES_A_TABLE_TIMEOUT_MS }).catch(() => null), {
+      retries: CONFIG.PROSES_A_RETRY_COUNT,
+      label: 'nyari tabel attribute (Variants)',
+    });
     if (!attributeTable) {
-      log('⚠️ Tabel attribute (Attribute/Required/Values) nggak ketemu -- pastikan kamu di tab Variants.');
+      log('⚠️ Tabel attribute (Attribute/Required/Values) nggak ketemu setelah dicoba berkali-kali -- pastikan kamu di tab Variants.');
       return false;
     }
     const attributeRow = Array.from(attributeTable.querySelectorAll('tbody tr, tr')).find((tr) => {
@@ -841,18 +1053,19 @@
     }
     await sleep(200);
     document.activeElement?.blur();
-    // v1.14b: PENTING -- widget many2many ini di-re-render sama Owl/Odoo
-    // pas kena klik/interaksi, jadi node `tagsField` yang kita pegang di
-    // sini BISA JADI STALE (udah kepisah dari DOM) abis attempt pertama.
-    // Ini kebukti dari log: attempt ke-2/3 koordinat kliknya jadi
-    // {x:-4, y:0} -- itu tandanya getBoundingClientRect() dipanggil ke
-    // elemen yang UDAH KE-DETACH (selalu balikin rect kosong semua nol).
-    // Makanya sekarang activateTagsInputForEditing() nerima `attributeRow`
-    // (elemen <tr>, yang jauh lebih jarang di-replace total sama Owl
-    // dibanding div widget di dalamnya) dan RE-QUERY tagsField-nya dari
-    // situ tiap kali dipanggil -- bukan pakai reference lama yang
-    // di-cache di luar.
+    // v1.15/v1.21: PENTING -- widget many2many ini di-re-render sama
+    // Owl/Odoo pas kena klik/interaksi, jadi node `tagsField` yang kita
+    // pegang di sini BISA JADI STALE (udah kepisah dari DOM) abis attempt
+    // pertama. Makanya activateTagsInputForEditing() nerima `attributeRow`
+    // (elemen <tr>, jauh lebih jarang di-replace total sama Owl) dan
+    // RE-QUERY tagsField-nya dari situ tiap iterasi -- bukan pakai
+    // reference lama yang di-cache di luar. Sejak v1.21, fungsi ini juga
+    // NGULANG klik-nya sendiri tiap ~3 detik di dalam jendela
+    // AUTOCOMPLETE_TIMEOUT_MS, jadi withRetry di sini cuma jadi lapisan
+    // tambahan kalau seluruh jendela itu abis tanpa hasil.
+    setStatus('Proses A: buka input tag "Tipe (Type)"', kodeProduk);
     const input = await withRetry(() => activateTagsInputForEditing(attributeRow), {
+      retries: CONFIG.PROSES_A_RETRY_COUNT,
       label: 'aktifin input tag "Tipe (Type)" buat diketik',
     });
     if (!input) {
@@ -864,13 +1077,16 @@
       // MEMANG nggak bisa nembus ini -- ini batas teknis browser, bukan
       // bug yang bisa di-fix lewat kode. Jalur manual (klik + Alt+Enter)
       // di bawah ini yang jadi jalur normal buat kasus ini.
-      log('⚠️ Widget tag "Tipe (Type)" nggak berhasil dibuka lewat script setelah beberapa kali dicoba -- kemungkinan widget ini emang butuh klik mouse ASLI (browser sengaja nggak jalanin beberapa perilaku default buat klik yang di-dispatch lewat script, ini batasan browser bukan bug). Klik MANUAL PERSIS di kotak kosong setelah tag terakhir (sampai kursor kedip-kedip beneran), lalu tekan Alt+Enter (kode SKU-nya udah otomatis keisi di kotak "Isi field yang lagi kebuka" di panel) buat lanjutin dari situ.');
+      log('⚠️ Widget tag "Tipe (Type)" nggak berhasil dibuka lewat script setelah beberapa kali dicoba (termasuk klik berulang di dalam) -- kemungkinan widget ini emang butuh klik mouse ASLI (browser sengaja nggak jalanin beberapa perilaku default buat klik yang di-dispatch lewat script, ini batasan browser bukan bug). Klik MANUAL PERSIS di kotak kosong setelah tag terakhir (sampai kursor kedip-kedip beneran), lalu tekan Alt+Enter (kode SKU-nya udah otomatis keisi di kotak "Isi field yang lagi kebuka" di panel) buat lanjutin dari situ.');
       return false;
     }
-    // v1.11: widget many2many tag ini yang paling sering "berat" -- bungkus
-    // withRetry biar kalau attempt pertama ketiban loading/timing, script
-    // otomatis coba lagi sebelum nyerah.
+    // v1.11/v1.19: widget many2many tag ini yang paling sering "berat" --
+    // bungkus withRetry (pakai jatah retry Proses A yang lebih gigih)
+    // biar kalau attempt pertama ketiban loading/timing, script otomatis
+    // coba lagi sebelum nyerah.
+    setStatus(`Proses A: isi tag "${kodeProduk}"`, kodeProduk);
     const ok = await withRetry(() => fillAutocomplete(input, kodeProduk), {
+      retries: CONFIG.PROSES_A_RETRY_COUNT,
       label: `isi tag "Tipe (Type)" = "${kodeProduk}"`,
     });
     if (!ok) {
@@ -894,11 +1110,9 @@
     await sleep(500);
     // v1.16: SEBELUMNYA di sini auto-klik Save tiap SATU SKU berhasil
     // diinput -- boros, karena Save di Odoo ini berat/lemot (blockUI
-    // muncul tiap kali). Sekarang Proses A CUMA nambahin tag ke widget
-    // (belum di-save) -- SENGAJA -- biar bisa numpuk banyak SKU dulu ke
-    // cangkang yang sama, baru Save SEKALI di akhir buat semuanya
-    // (pakai "Auto-lanjut" biar bisa jalan berturut-turut, atau klik
-    // tombol "💾 Save Sekarang" di panel kapanpun mau commit).
+    // muncul tiap kali). Proses A CUMA nambahin tag ke widget (belum
+    // di-save di sini) -- yang ngurusin auto-save periodik tiap N SKU
+    // (v1.19) ada di processNextInQueueForProsesA, bukan di fungsi ini.
     log(`✅ "${kodeProduk}" berhasil ditambah ke daftar tag "Tipe (Type)" (BELUM di-save). Lanjut ke SKU berikutnya dulu kalau mau numpuk banyak, atau klik "💾 Save Sekarang" di panel buat commit semua tag yang udah diinput.`);
     return true;
   }
@@ -976,6 +1190,7 @@
   // ============================================================
   async function runProsesB({ kodeProduk, brand, nie, tkdn }) {
     log(`Proses B: konfigurasi produk "${kodeProduk}"...`);
+    setStatus('Proses B: konfigurasi produk', kodeProduk);
     let usingReconfigure = false;
     if (clickByText('span', 'Configure Product', { visibleOnly: true })) {
       usingReconfigure = false;
@@ -1246,25 +1461,62 @@
   //                    biar bisa dicek manual dulu.
   // Begitu antrian abis (sukses semua/di-skip semua), kalau "Auto-klik
   // Save" dicentang, Save di-klik SEKALI aja buat commit seluruh batch.
+  //
+  // v1.19: dua tambahan penting:
+  //  - AUTO-SAVE PERIODIK tiap CONFIG.PROSES_A_AUTOSAVE_EVERY (default 5)
+  //    SKU sukses -- supaya kalau cangkang lemot/nyangkut di tengah batch
+  //    yang panjang, progress yang udah ketumpuk nggak ilang percuma.
+  //    Ini jalan LEPAS dari checkbox "Auto-klik Save" (yang itu cuma
+  //    ngatur save di AKHIR seluruh antrian / buat Proses B) -- dikontrol
+  //    checkbox terpisah "Auto-save tiap N SKU" yang defaultnya NYALA.
+  //  - SAFETY-SAVE kalau berhenti karena kegagalan ASLI: kalau ada tag
+  //    yang udah ketumpuk tapi belum ke-save pas proses berhenti, script
+  //    nyoba Save dulu sebelum beneran berhenti, biar SKU-SKU sebelumnya
+  //    yang udah bener nggak ikut ilang gara-gara SKU terakhir gagal.
+  //  - STOP button: cek stopRequested di awal tiap iterasi (bukan potong
+  //    di tengah satu SKU yang lagi jalan -- nunggu SKU itu kelar dulu,
+  //    baru berhenti di titik yang aman).
   // ============================================================
+  let prosesA_pendingSaveCount = 0;
+  async function safetySaveProsesA(reason) {
+    if (prosesA_pendingSaveCount <= 0) return;
+    log(`💾 Safety-save: nyoba nyimpen ${prosesA_pendingSaveCount} tag yang udah ketumpuk (${reason})...`);
+    setStatus('Proses A: safety-save', null);
+    if (clickByText('button', 'Save', { visibleOnly: true })) {
+      await settleAfterAction('safety-save Proses A');
+      log('✅ Safety-save selesai. Tag yang udah bener sejauh ini ke-commit, nggak ikut ilang.');
+      prosesA_pendingSaveCount = 0;
+    } else {
+      log('⚠️ Safety-save nggak nemu tombol Save yang kelihatan -- kemungkinan bukan lagi mode edit, atau memang belum ada tag yang ketumpuk. Cek manual.');
+    }
+  }
   async function processNextInQueueForProsesA() {
+    if (stopRequested) {
+      log('⏹ Stop diminta user -- Proses A berhenti di titik aman (sebelum mulai SKU berikutnya).');
+      await safetySaveProsesA('berhenti karena tombol Stop');
+      setIdle('Dihentikan user (Stop)');
+      return;
+    }
     const q = loadQueue();
     if (!q.length) {
       log('✅ Antrian abis -- semua SKU sudah diproses (Proses A).');
-      if (autoFlags.autosave) {
-        log('💾 Auto-save dicentang -- nyimpen semua tag yang udah ketumpuk sekarang...');
+      if (autoFlags.autosave || prosesA_pendingSaveCount > 0) {
+        log('💾 Nyimpen semua tag yang udah ketumpuk di batch ini...');
         if (clickByText('button', 'Save', { visibleOnly: true })) {
           await settleAfterAction('auto-save akhir batch Proses A');
           log('✅ Save otomatis selesai. Semua tag ke-commit.');
+          prosesA_pendingSaveCount = 0;
         } else {
-          log('⚠️ Auto-save dicentang tapi tombol Save nggak ketemu/nggak kelihatan -- save manual ya lewat "💾 Save Sekarang".');
+          log('⚠️ Tombol Save nggak ketemu/nggak kelihatan -- save manual ya lewat "💾 Save Sekarang".');
         }
       } else {
         log('⏸️ Belum di-save. Klik "💾 Save Sekarang" buat commit semua tag, atau centang "Auto-klik Save" biar otomatis kesave abis antrian habis.');
       }
+      setIdle('Selesai (antrian habis)');
       return;
     }
     const item = q[0];
+    setStatus(`Proses A: mulai SKU (sisa ${q.length})`, item.kodeProduk);
     const result = await runProsesA(item.kodeProduk);
     if (result === 'DUPLICATE') {
       const qNow = loadQueue();
@@ -1276,6 +1528,10 @@
       results.push({ kodeProduk: item.kodeProduk, kfaCode: 'SKIPPED_DUPLICATE', timestamp: new Date().toISOString() });
       saveResults(results);
       log(`⏭️ "${item.kodeProduk}" dianggap DUPLIKAT -- di-skip & dicatat sebagai SKIPPED_DUPLICATE. Refresh halaman buat lanjutin dari SKU berikutnya...`);
+      // v1.19: refresh bakal ngilangin tag yang belum ke-save -- safety-
+      // save dulu kalau ada progress yang ketumpuk, biar nggak ilang
+      // gara-gara refresh ini.
+      await safetySaveProsesA('sebelum refresh karena duplikat');
       localStorage.setItem(AUTORESUME_PROSES_A_KEY, '1');
       await sleep(600);
       location.reload();
@@ -1289,10 +1545,112 @@
         renderPanel();
         log(`➡️ Antrian digeser (Proses A). Sisa: ${qNow.length} SKU.`);
       }
+      prosesA_pendingSaveCount += 1;
+      // v1.19: auto-save periodik tiap N SKU sukses (default 5), biar
+      // progress nggak numpuk kelamaan & rawan ilang kalau cangkangnya
+      // nyangkut/lemot parah di tengah batch panjang. Ini LEPAS dari
+      // checkbox "Auto-klik Save" -- dikontrol checkbox "Auto-save tiap
+      // N SKU" sendiri (default nyala).
+      if (autoFlags.autosave5 && prosesA_pendingSaveCount >= CONFIG.PROSES_A_AUTOSAVE_EVERY) {
+        log(`💾 Udah numpuk ${prosesA_pendingSaveCount} tag -- auto-save periodik (tiap ${CONFIG.PROSES_A_AUTOSAVE_EVERY} SKU) jalan sekarang biar progress aman...`);
+        setStatus('Proses A: auto-save periodik', item.kodeProduk);
+        if (clickByText('button', 'Save', { visibleOnly: true })) {
+          await settleAfterAction('auto-save periodik Proses A');
+          log('✅ Auto-save periodik selesai.');
+          prosesA_pendingSaveCount = 0;
+        } else {
+          log('⚠️ Auto-save periodik nggak nemu tombol Save -- lanjut proses, tapi progress belum ke-save, coba "💾 Save Sekarang" manual kalau perlu.');
+        }
+      }
       setTimeout(processNextInQueueForProsesA, 800);
     } else {
       log('⛔ Proses A gagal/berhenti di tengah jalan (BUKAN duplikat) -- proses OTOMATIS DIHENTIKAN. Cek manual / pakai jalur klik+Alt+Enter dulu sebelum lanjut ke SKU berikutnya.');
+      // v1.19: sebelum beneran berhenti, coba safety-save dulu kalau ada
+      // tag yang udah ketumpuk dari SKU-SKU sebelumnya di batch ini --
+      // jangan sampai kegagalan di SKU terakhir nge-buang progress yang
+      // udah benar sebelumnya.
+      await safetySaveProsesA('SKU gagal, amanin progress sebelumnya');
+      setIdle('Berhenti karena kegagalan (cek manual)');
     }
+  }
+  // ============================================================
+  // v1.20/v1.21: RESUME PROSES A ABIS AUTO-REFRESH (karena duplikat)
+  // ============================================================
+  // Abis Proses A ketemu duplikat, halaman di-REFRESH otomatis (lihat
+  // catatan di processNextInQueueForProsesA). Begitu halaman selesai
+  // reload, browser biasanya mendarat di tab PERTAMA/default -- BUKAN
+  // di tab "Variants" tempat tabel attribute "Tipe (Type)" berada.
+  //
+  // v1.21 FIX: SEBELUMNYA (v1.20) script cuma NGECEK SEKALI apakah tab
+  // "Variants" ada, lalu kalau nggak ketemu langsung nyerah. Padahal
+  // kalau webnya lemot abis refresh, tab itu BENERAN BELUM ADA di DOM
+  // sama sekali di detik-detik awal (bukan cuma "belum kelihatan") --
+  // jadi sering ke-anggap gagal padahal cuma kecepetan ngecek. Sekarang
+  // waitForVariantsTabAndClick() NGULANG ngecek+nyoba klik (teks dulu,
+  // fallback xpath kalau teks gagal) tiap ~0.4 detik sampai maksimal 60
+  // detik (VARIANTS_TAB_WAIT_TIMEOUT_MS), dipause kalau lagi ada overlay
+  // blockUI, dengan log progres tiap 5 detik.
+  function getVariantsTabByFallbackXPath() {
+    try {
+      const result = document.evaluate(
+        VARIANTS_TAB_FALLBACK_XPATH, document, null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE, null
+      );
+      return result.singleNodeValue;
+    } catch (e) {
+      console.log('[KFA-AUTO] Gagal evaluasi fallback xpath tab Variants:', e);
+      return null;
+    }
+  }
+  async function waitForVariantsTabAndClick({
+    timeout = CONFIG.VARIANTS_TAB_WAIT_TIMEOUT_MS,
+    logInterval = CONFIG.VARIANTS_TAB_LOG_INTERVAL_MS,
+  } = {}) {
+    const start = Date.now();
+    let lastLogAt = 0;
+    while (Date.now() - start < timeout) {
+      // Kalau lagi ada overlay loading, jangan dulu ngitung/nyoba --
+      // tunggu dulu sampai clear, biar nggak kepencet nyari elemen di
+      // DOM yang lagi setengah render.
+      if (isBlockUIVisible()) {
+        await sleep(300);
+        continue;
+      }
+      if (clickByText('a', 'Variants', { visibleOnly: true })) {
+        log('✅ Tab "Variants" ketemu & diklik via teks.');
+        return true;
+      }
+      const el = getVariantsTabByFallbackXPath();
+      if (el && isVisible(el)) {
+        el.click();
+        log('✅ Tab "Variants" ketemu & diklik via fallback xpath.');
+        return true;
+      }
+      const elapsed = Date.now() - start;
+      if (elapsed - lastLogAt >= logInterval) {
+        lastLogAt = elapsed;
+        log(`⏳ Masih nunggu tab "Variants" muncul di halaman (${Math.round(elapsed / 1000)} detik)... halaman kemungkinan masih lemot ngeload abis refresh, ini wajar, terus dicoba sampai ${Math.round(timeout / 1000)} detik.`);
+      }
+      await sleep(400);
+    }
+    return false;
+  }
+  async function resumeProsesAAfterReload() {
+    setStatus('Proses A: balik ke tab Variants abis refresh', null);
+    log(`🔄 Nyoba balik ke tab "Variants" dulu sebelum lanjut Proses A (ditunggu sampai ${Math.round(CONFIG.VARIANTS_TAB_WAIT_TIMEOUT_MS / 1000)} detik kalau halamannya masih lemot ngeload abis refresh, bukan cuma sekali cek langsung nyerah)...`);
+    const clicked = await waitForVariantsTabAndClick();
+    if (!clicked) {
+      log(`⚠️ Tab "Variants" nggak pernah ketemu (baik via teks maupun fallback xpath) setelah ditunggu ${Math.round(CONFIG.VARIANTS_TAB_WAIT_TIMEOUT_MS / 1000)} detik penuh -- Proses A TIDAK dilanjutkan otomatis, biar nggak salah baca DOM di tab yang keliru. Klik manual ke tab Variants, lalu klik tombol "▶ Proses A" di panel buat lanjut dari SKU berikutnya di antrian.`);
+      setIdle('Berhenti (tab Variants nggak ketemu abis refresh)');
+      return;
+    }
+    // Tunggu halaman settle (overlay loading ilang) dulu abis pindah tab,
+    // biar nggak langsung nyari tabel attribute di DOM yang masih
+    // setengah render abis klik tab.
+    await settleAfterAction('klik tab Variants abis refresh');
+    await sleep(400);
+    log('➡️ Lanjut Proses A dari SKU berikutnya di antrian...');
+    processNextInQueueForProsesA();
   }
   // ============================================================
   // QUEUE RUNNER: satu titik masuk buat proses 1 SKU, dan (kalau
@@ -1314,6 +1672,7 @@
         maybeAutoContinue();
       } else {
         log('⛔ Auto-lanjut DIHENTIKAN karena SKU ini gagal/nggak terdeteksi selesai. Cek manual dulu sebelum lanjut.');
+        setIdle('Berhenti (Proses B gagal)');
       }
       return;
     }
@@ -1327,6 +1686,7 @@
       maybeAutoContinue();
     } else {
       log('⛔ Proses B gagal/berhenti di tengah jalan -- auto-lanjut DIHENTIKAN. Perbaiki masalahnya dulu, jangan lanjut ke SKU berikutnya sebelum SKU ini beres.');
+      setIdle('Berhenti (Proses B gagal)');
     }
   }
   // ============================================================
@@ -1451,7 +1811,10 @@
   // geser antrian, dst) -- kalau statusnya cuma dibaca dari DOM, tiap kali
   // panel digambar ulang checkbox-nya balik ke unchecked dan auto-lanjut
   // jadi berhenti diam-diam padahal user udah nyentang semuanya.
-  let autoFlags = { autovalidate: false, autosave: false, autonext: false };
+  // v1.19: tambah autosave5 (default NYALA -- ini fitur jaga-jaga, beda
+  // dari checkbox lain yang defaultnya OFF sampai user yakin alurnya
+  // stabil).
+  let autoFlags = { autovalidate: false, autosave: false, autonext: false, autosave5: true };
   function parseQueueInput(text) {
     return text
       .trim()
@@ -1490,6 +1853,10 @@
         </span>
       </div>
       <div id="kfa-body" style="padding: 10px; ${panelCollapsed ? 'display:none;' : ''}">
+        <div id="kfa-status-bar" style="margin-bottom:8px; padding:6px 8px; background:#f0f2f5; border-radius:4px; border:1px solid #ddd; display:flex; align-items:center; gap:6px;">
+          <span id="kfa-status-dot" style="font-size:14px; line-height:1;">●</span>
+          <span id="kfa-status-text" style="font-size:11px; font-weight:bold;">⏸ Idle</span>
+        </div>
         <div style="margin-bottom:6px; color:#555;">
           Antrian: <b>${queue.length}</b> SKU | Hasil terkumpul: <b>${results.length}</b>
         </div>
@@ -1501,7 +1868,10 @@
           <input type="checkbox" id="kfa-autovalidate" ${autoFlags.autovalidate ? 'checked' : ''}> Auto-klik Validate
         </label>
         <label style="display:block; margin-bottom:4px;">
-          <input type="checkbox" id="kfa-autosave" ${autoFlags.autosave ? 'checked' : ''}> Auto-klik Save (cuma buat Proses B -- Proses A sengaja nggak ikut auto-save, pakai "💾 Save Sekarang" buat commit batch-nya)
+          <input type="checkbox" id="kfa-autosave" ${autoFlags.autosave ? 'checked' : ''}> Auto-klik Save (cuma buat Proses B, & buat commit akhir batch Proses A -- lihat juga "Auto-save tiap N SKU" di bawah)
+        </label>
+        <label style="display:block; margin-bottom:4px;">
+          <input type="checkbox" id="kfa-autosave5" ${autoFlags.autosave5 ? 'checked' : ''}> Auto-save tiap ${CONFIG.PROSES_A_AUTOSAVE_EVERY} SKU sukses di Proses A (jaga-jaga kalau cangkang lemot/nyangkut, biar progress nggak ilang)
         </label>
         <label style="display:block; margin-bottom:6px;">
           <input type="checkbox" id="kfa-autonext" ${autoFlags.autonext ? 'checked' : ''}> Auto-lanjut ke SKU berikutnya (cuma buat Proses B -- Proses A SELALU otomatis lanjut sampai antrian habis/ketemu gagal beneran)
@@ -1510,9 +1880,10 @@
           ⚠️ Data masuk ke sistem KFA nasional. Test 1 SKU manual dulu (semua checkbox OFF) sebelum aktifin auto-validate/save/lanjut.
         </div>
         <div style="color:#1F4E78; margin-bottom:6px; font-style:italic;">
-          💡 Website ini sering nunjukin overlay abu-abu (loading) yang lama & nggak keprediksi -- script SEKARANG sengaja nungguin overlay itu ilang dulu sebelum lanjut (bukan asal jalan cepat), jadi kalau keliatan diem sebentar pas ada tulisan "lagi loading" di log, itu emang lagi nungguin server, bukan macet.
+          💡 Website ini sering nunjukin overlay abu-abu (loading) yang lama & nggak keprediksi -- script SEKARANG sengaja nungguin overlay itu ilang dulu sebelum lanjut (bukan asal jalan cepat), jadi kalau keliatan diem sebentar pas ada tulisan "lagi loading" di log, itu emang lagi nungguin server, bukan macet. Liat kotak status di atas buat tau kondisi terkini kapan aja.
         </div>
-        <button id="kfa-run-a" style="width:100%; margin-bottom:4px;">▶ Proses A: Proses SEMUA SKU di antrian ke cangkang ini (otomatis, skip duplikat)</button>
+        <button id="kfa-run-a" style="width:100%; margin-bottom:4px;">▶ Proses A: Proses SEMUA SKU di antrian ke cangkang ini (otomatis, skip duplikat, gigih walau lemot)</button>
+        <button id="kfa-stop" style="width:100%; margin-bottom:4px; background:#f8d7da; border:1px solid #dc3545; color:#721c24;">⏹ Stop (berhenti di titik aman + safety-save)</button>
         <button id="kfa-save-now" style="width:100%; margin-bottom:4px; background:#e6f4ea; border:1px solid #1e7e34; color:#155724;">💾 Save Sekarang (commit semua tag Proses A)</button>
         <button id="kfa-run-b" style="width:100%; margin-bottom:4px;">▶ Proses B: Validasi SKU pertama di antrian</button>
         <button id="kfa-skip" style="width:100%; margin-bottom:8px; background:#fff3cd; border:1px solid #d39e00; color:#7a5c00;">⏭ Skip SKU pertama di antrian</button>
@@ -1539,6 +1910,7 @@
       </div>
     `;
     document.body.appendChild(panel);
+    updateStatusBar();
     const header = document.getElementById('kfa-header');
     let dragging = false;
     let dragStartX = 0;
@@ -1579,6 +1951,9 @@
     document.getElementById('kfa-autosave').onchange = (e) => {
       autoFlags.autosave = e.target.checked;
     };
+    document.getElementById('kfa-autosave5').onchange = (e) => {
+      autoFlags.autosave5 = e.target.checked;
+    };
     document.getElementById('kfa-autonext').onchange = (e) => {
       autoFlags.autonext = e.target.checked;
     };
@@ -1605,7 +1980,20 @@
       // Sekarang lewat processNextInQueueForProsesA() yang geser antrian
       // abis sukses & (kalau Auto-lanjut dicentang) otomatis nyambung ke
       // SKU berikutnya buat numpuk banyak tag ke cangkang yang sama.
+      // v1.19: reset stopRequested & counter save tiap kali batch baru
+      // dimulai dari tombol ini, biar Stop sebelumnya nggak nyangkut ke
+      // batch yang baru.
+      stopRequested = false;
+      prosesA_pendingSaveCount = 0;
       processNextInQueueForProsesA();
+    };
+    document.getElementById('kfa-stop').onclick = () => {
+      // v1.19: minta berhenti di titik aman -- BUKAN potong paksa di
+      // tengah satu SKU yang lagi jalan (biar nggak ninggalin DOM/state
+      // setengah jadi). Dicek di awal tiap iterasi
+      // processNextInQueueForProsesA(), abis SKU yang lagi jalan kelar.
+      stopRequested = true;
+      log('⏹ Stop diminta -- bakal berhenti abis SKU yang lagi diproses sekarang kelar (bukan potong paksa di tengah), plus safety-save kalau ada progress yang belum ke-save.');
     };
     document.getElementById('kfa-save-now').onclick = async () => {
       // v1.16: tombol buat commit SEKALI di akhir, setelah numpuk
@@ -1617,6 +2005,7 @@
       log('💾 Save diklik manual -- nungguin proses commit selesai...');
       await settleAfterAction('klik Save Sekarang (Proses A, batch)');
       log('✅ Save selesai. Semua tag yang udah diinput di widget ini sekarang ke-commit.');
+      prosesA_pendingSaveCount = 0;
     };
     document.getElementById('kfa-run-b').onclick = () => {
       processNextInQueue();
@@ -1649,13 +2038,17 @@
     // v1.17: kalau flag ini ke-set, artinya halaman baru aja di-refresh
     // OTOMATIS gara2 ketemu duplikat di Proses A -- lanjutin lagi dari
     // SKU berikutnya di antrian (yang duplikatnya udah ke-skip sebelum
-    // reload) TANPA perlu klik tombol apapun. Kasih jeda cukup panjang
-    // dulu (2.5 detik) biar halaman/SPA-nya beneran kelar render sebelum
-    // script mulai cari-cari elemen.
+    // reload) TANPA perlu klik tombol apapun.
+    // v1.21: jeda awal sebelum manggil resumeProsesAAfterReload() nggak
+    // perlu lama2 lagi -- fungsi itu sendiri sekarang udah NGULANG
+    // ngecek+nyoba klik tab Variants sampai 60 detik (lihat
+    // waitForVariantsTabAndClick), jadi nggak perlu nebak durasi loading
+    // di sini. Jeda kecil ini cuma buat kasih kesempatan script/panel
+    // sendiri kelar ke-render dulu.
     if (localStorage.getItem(AUTORESUME_PROSES_A_KEY)) {
       localStorage.removeItem(AUTORESUME_PROSES_A_KEY);
-      log('🔄 Halaman baru aja di-refresh otomatis (abis skip duplikat di Proses A) -- lanjutin Proses A dari SKU berikutnya di antrian...');
-      setTimeout(() => processNextInQueueForProsesA(), 2500);
+      log('🔄 Halaman baru aja di-refresh otomatis (abis skip duplikat di Proses A) -- balik ke tab "Variants" dulu (ditunggu sampai halaman beneran kelar loading), baru lanjutin Proses A dari SKU berikutnya di antrian...');
+      setTimeout(() => resumeProsesAAfterReload(), 800);
     }
   }
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
