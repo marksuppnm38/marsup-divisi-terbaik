@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         KFA Alkes Automation - Pionir Group
 // @namespace    pionir-marsup
-// @version      1.21
+// @version      1.22
 // @description  Bantu automasi masukin SKU ke cangkang + validasi KFA di kamus-alkes.kemkes.go.id
 // @match        https://kamus-alkes.kemkes.go.id/*
 // @grant        none
@@ -581,6 +581,24 @@
   // computed style-nya "aneh" (mis. opacity di-set lewat inline style tapi
   // display tetap block) -- di sini kita cek langsung display/visibility +
   // ukuran elemen di layar.
+
+  async function closeModalSafely() {
+    const modal = document.querySelector('.modal.show, .modal[style*="display: block"], .modal[style*="display:block"]');
+    if (!modal) return true;
+    const discardBtn = Array.from(modal.querySelectorAll('button')).find((b) =>
+      isVisible(b) && /discard|cancel|batal|close/i.test(b.textContent)
+    );
+    if (discardBtn) {
+      discardBtn.click();
+    } else {
+      const closeX = modal.querySelector('.close, [aria-label="Close"], .btn-close');
+      if (closeX && isVisible(closeX)) closeX.click();
+      else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    }
+    await settleAfterAction('nutup modal (fallback ke Proses A)');
+    await sleep(400);
+    return true;
+  }
   function isBlockUIVisible() {
     const overlays = document.querySelectorAll('.blockUI.blockOverlay, .blockUI, .o_blockUI');
     return Array.from(overlays).some((el) => {
@@ -1188,7 +1206,7 @@
   // ============================================================
   // PROSES B
   // ============================================================
-  async function runProsesB({ kodeProduk, brand, nie, tkdn }) {
+  async function runProsesB({ kodeProduk, brand, nie, tkdn }, retryAfterProsesA = false) {
     log(`Proses B: konfigurasi produk "${kodeProduk}"...`);
     setStatus('Proses B: konfigurasi produk', kodeProduk);
     let usingReconfigure = false;
@@ -1233,9 +1251,32 @@
     const typeOk = await withRetry(() => fillAutocomplete(modalInputs[1], kodeProduk), {
       label: `isi Type = "${kodeProduk}"`,
     });
+
     if (!typeOk) {
-      log(`⚠️ Type "${kodeProduk}" nggak ketemu/gagal dipilih di modal (udah dicoba beberapa kali) -- BERHENTI di sini, TIDAK lanjut klik Next, biar nggak kebuat produk dengan Type kosong. Kemungkinan kode ini belum ke-save sebagai value "Tipe (Type)" (jalanin & Save Proses A dulu buat SKU ini), atau cek manual.`);
-      return null;
+      if (retryAfterProsesA) {
+        log(`⛔ Type "${kodeProduk}" TETAP nggak ketemu di modal setelah Proses A otomatis dijalanin & di-save -- ini kegagalan asli. Cek manual.`);
+        return null;
+      }
+      log(`ℹ️ Type "${kodeProduk}" belum kedaftar -- otomatis jalanin Proses A dulu (tambah tag + Save) sebelum nyoba isi Type lagi...`);
+      setStatus('Auto: Proses A dulu (Type belum kedaftar)', kodeProduk);
+      const closed = await closeModalSafely();
+      if (!closed) { log('⚠️ Gagal nutup modal wizard. Cek manual.'); return null; }
+      const wentToVariants = await waitForVariantsTabAndClick();
+      if (!wentToVariants) { log('⚠️ Nggak bisa balik ke tab "Variants". Cek manual.'); return null; }
+      await settleAfterAction('balik ke tab Variants buat fallback Proses A');
+      const prosesAResult = await runProsesA(kodeProduk);
+      if (prosesAResult !== true) {
+        log(`⚠️ Fallback Proses A buat "${kodeProduk}" gagal (${prosesAResult === 'DUPLICATE' ? 'duplikat' : 'error'}). Cek manual.`);
+        return null;
+      }
+      log('💾 Save tag hasil fallback Proses A sebelum lanjut...');
+      if (!clickByText('button', 'Save', { visibleOnly: true })) {
+        log('⚠️ Tombol Save nggak ketemu. Cek manual, tag belum ke-commit.');
+        return null;
+      }
+      await settleAfterAction('Save fallback Proses A');
+      log(`🔁 Ulang Proses B buat "${kodeProduk}" dari awal...`);
+      return runProsesB({ kodeProduk, brand, nie, tkdn }, true);
     }
     const nextBtn2 = await waitFor(() => {
       const btn = document.querySelector('button[name="action_next_step"]');
@@ -1659,6 +1700,11 @@
   // di step manapun -- TIDAK maksa lanjut biar bisa dicek manual dulu.
   // ============================================================
   async function processNextInQueue() {
+    if (stopRequested) {
+      log('⏹ Stop diminta user -- berhenti di titik aman.');
+      setIdle('Dihentikan user (Stop)');
+      return;
+    }
     const q = loadQueue();
     if (!q.length) {
       log('✅ Antrian kosong, nggak ada yang diproses.');
@@ -1718,6 +1764,7 @@
   }
   function maybeAutoContinue() {
     if (!autoFlags.autonext) return;
+    if (stopRequested) { log('⏹ Stop diminta -- auto-lanjut dihentikan.'); return; }
     const q = loadQueue();
     if (!q.length) {
       log('✅ Antrian habis, auto-lanjut selesai.');
@@ -1874,7 +1921,7 @@
           <input type="checkbox" id="kfa-autosave5" ${autoFlags.autosave5 ? 'checked' : ''}> Auto-save tiap ${CONFIG.PROSES_A_AUTOSAVE_EVERY} SKU sukses di Proses A (jaga-jaga kalau cangkang lemot/nyangkut, biar progress nggak ilang)
         </label>
         <label style="display:block; margin-bottom:6px;">
-          <input type="checkbox" id="kfa-autonext" ${autoFlags.autonext ? 'checked' : ''}> Auto-lanjut ke SKU berikutnya (cuma buat Proses B -- Proses A SELALU otomatis lanjut sampai antrian habis/ketemu gagal beneran)
+          <input type="checkbox" id="kfa-autonext" ${autoFlags.autonext ? 'checked' : ''}> Auto-lanjut ke SKU berikutnya setelah sukses
         </label>
         <div style="color:#a00; margin-bottom:6px;">
           ⚠️ Data masuk ke sistem KFA nasional. Test 1 SKU manual dulu (semua checkbox OFF) sebelum aktifin auto-validate/save/lanjut.
@@ -1882,10 +1929,8 @@
         <div style="color:#1F4E78; margin-bottom:6px; font-style:italic;">
           💡 Website ini sering nunjukin overlay abu-abu (loading) yang lama & nggak keprediksi -- script SEKARANG sengaja nungguin overlay itu ilang dulu sebelum lanjut (bukan asal jalan cepat), jadi kalau keliatan diem sebentar pas ada tulisan "lagi loading" di log, itu emang lagi nungguin server, bukan macet. Liat kotak status di atas buat tau kondisi terkini kapan aja.
         </div>
-        <button id="kfa-run-a" style="width:100%; margin-bottom:4px;">▶ Proses A: Proses SEMUA SKU di antrian ke cangkang ini (otomatis, skip duplikat, gigih walau lemot)</button>
-        <button id="kfa-stop" style="width:100%; margin-bottom:4px; background:#f8d7da; border:1px solid #dc3545; color:#721c24;">⏹ Stop (berhenti di titik aman + safety-save)</button>
-        <button id="kfa-save-now" style="width:100%; margin-bottom:4px; background:#e6f4ea; border:1px solid #1e7e34; color:#155724;">💾 Save Sekarang (commit semua tag Proses A)</button>
-        <button id="kfa-run-b" style="width:100%; margin-bottom:4px;">▶ Proses B: Validasi SKU pertama di antrian</button>
+        <button id="kfa-run-b" style="width:100%; margin-bottom:4px; background:#1F4E78; color:#fff; font-weight:bold;">▶ Proses SKU pertama di antrian (otomatis isi Tipe/Type kalau belum kedaftar, lalu validasi)</button>
+        <button id="kfa-stop" style="width:100%; margin-bottom:4px; background:#f8d7da; border:1px solid #dc3545; color:#721c24;">⏹ Stop (berhenti di titik aman)</button>
         <button id="kfa-skip" style="width:100%; margin-bottom:8px; background:#fff3cd; border:1px solid #d39e00; color:#7a5c00;">⏭ Skip SKU pertama di antrian</button>
         <hr>
         <div style="font-weight:bold; margin-bottom:4px;">Bantuan: isi field yang lagi kebuka manual</div>
@@ -1974,40 +2019,13 @@
       log(`Antrian dimuat: ${items.length} SKU.`);
       renderPanel();
     };
-    document.getElementById('kfa-run-a').onclick = () => {
-      // v1.16: SEBELUMNYA di sini langsung manggil runProsesA() doang
-      // tanpa geser antrian -- bug, counter-nya nggak pernah maju.
-      // Sekarang lewat processNextInQueueForProsesA() yang geser antrian
-      // abis sukses & (kalau Auto-lanjut dicentang) otomatis nyambung ke
-      // SKU berikutnya buat numpuk banyak tag ke cangkang yang sama.
-      // v1.19: reset stopRequested & counter save tiap kali batch baru
-      // dimulai dari tombol ini, biar Stop sebelumnya nggak nyangkut ke
-      // batch yang baru.
-      stopRequested = false;
-      prosesA_pendingSaveCount = 0;
-      processNextInQueueForProsesA();
-    };
     document.getElementById('kfa-stop').onclick = () => {
-      // v1.19: minta berhenti di titik aman -- BUKAN potong paksa di
-      // tengah satu SKU yang lagi jalan (biar nggak ninggalin DOM/state
-      // setengah jadi). Dicek di awal tiap iterasi
-      // processNextInQueueForProsesA(), abis SKU yang lagi jalan kelar.
       stopRequested = true;
-      log('⏹ Stop diminta -- bakal berhenti abis SKU yang lagi diproses sekarang kelar (bukan potong paksa di tengah), plus safety-save kalau ada progress yang belum ke-save.');
+      log('⏹ Stop diminta -- bakal berhenti abis SKU yang lagi diproses sekarang kelar.');
     };
-    document.getElementById('kfa-save-now').onclick = async () => {
-      // v1.16: tombol buat commit SEKALI di akhir, setelah numpuk
-      // beberapa/banyak tag SKU lewat Proses A -- bukan save tiap 1 SKU.
-      if (!clickByText('button', 'Save', { visibleOnly: true })) {
-        alert('Tombol Save nggak ketemu / nggak kelihatan saat ini. Pastikan kamu masih di halaman cangkang yang lagi diedit.');
-        return;
-      }
-      log('💾 Save diklik manual -- nungguin proses commit selesai...');
-      await settleAfterAction('klik Save Sekarang (Proses A, batch)');
-      log('✅ Save selesai. Semua tag yang udah diinput di widget ini sekarang ke-commit.');
-      prosesA_pendingSaveCount = 0;
-    };
+
     document.getElementById('kfa-run-b').onclick = () => {
+      stopRequested = false;
       processNextInQueue();
     };
     document.getElementById('kfa-skip').onclick = () => {
