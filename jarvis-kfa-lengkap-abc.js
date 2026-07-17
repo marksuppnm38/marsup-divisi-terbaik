@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         KFA Alkes Automation - Pionir Group
 // @namespace    pionir-marsup
-// @version      1.22
+// @version      1.28
 // @description  Bantu automasi masukin SKU ke cangkang + validasi KFA di kamus-alkes.kemkes.go.id
 // @match        https://kamus-alkes.kemkes.go.id/*
 // @grant        none
@@ -90,301 +90,83 @@
   //         percobaan pertama meleset, percobaan ke-2/3/dst masih sempat
   //         jalan dalam jendela waktu yang sama -- lebih cepat pulih &
   //         lebih jelas keliatan di log dia masih kerja.
-  //
-  // v1.3: Fix dropdown Brand di-portal keluar .modal (dicari via jarak ke
-  //       input, isNearInput, bukan ancestry .modal).
-  // v1.3.1: Fix Next kedua diklik sebelum enabled + nunggu modal beneran
-  //       hilang sebelum lanjut cari tab.
-  // v1.4: Fix kode KFA "/" ketangkep sebagai sukses -- sekarang wajib bukan
-  //       placeholder kosong (isValidKfaCode) + watcher buat Validate manual.
-  // v1.5: Fix Validate ketabrak tab Informasi Farmalkes (nunggu tombol
-  //       Validate ilang dulu, bukan sleep tebakan) + dukungan tombol
-  //       "Reconfigure Product".
-  // v1.6: Tambah opsi "Auto-lanjut ke SKU berikutnya" -- abis 1 SKU sukses,
-  //       otomatis proses SKU berikutnya di antrian sendiri (berhenti kalau
-  //       ada yang gagal). Berlaku baik di jalur auto-validate maupun jalur
-  //       Validate manual (watcher).
-  // v1.7: Fix clickByText bisa nge-klik elemen "Validate" (atau tombol lain)
-  //       yang SAMA TEKSNYA tapi lagi tersembunyi/disabled di DOM (umum di
-  //       Odoo -- ada elemen duplikat state lain). Sekarang clickByText bisa
-  //       difilter visibleOnly, dan alur Validate nunggu tombolnya beneran
-  //       visible dulu (bukan asumsi siap begitu Get NIE selesai) sebelum
-  //       diklik. Tombol Edit/Save/Get NIE/Configure-Reconfigure Product
-  //       juga dipaksa visibleOnly biar nggak salah klik elemen tersembunyi.
-  // v1.8: Fix lanjutan -- tombol Validate bisa KELIHATAN tapi masih
-  //       DISABLED sesaat (nunggu field lain/hasil fetch Regalkes beres).
-  //       Sekarang nunggu sampai tombolnya visible DAN enabled (bukan cuma
-  //       visible) sebelum diklik. Kalau tetap disabled setelah 10 detik,
-  //       script berhenti & print detail elemen + field yang invalid ke
-  //       console (F12) biar gampang didiagnosis penyebabnya.
-  // v1.9: Fix BESAR -- checkbox "Auto validate/Auto save/Auto-lanjut" balik
-  //       ke UNCHECKED tiap kali panel digambar ulang (renderPanel() jalan
-  //       berkali-kali di tengah proses: abis Save, abis geser antrian,
-  //       dst), sehingga auto-lanjut berhenti diam-diam padahal user udah
-  //       nyentang semuanya. Sekarang status ketiga checkbox disimpan di
-  //       variabel terpisah (autoFlags) yang nggak ke-reset waktu panel
-  //       digambar ulang, dan checkbox-nya sync dua arah ke variabel itu.
-  // v1.10: Tambah opsi export hasil sebagai TEKS PASTEABLE (tab-separated)
-  //       yang bisa langsung di-paste ke Google Sheets, sebagai alternatif
-  //       download CSV. Tombol baru "Copy Hasil (TSV)" nyalin ke clipboard
-  //       otomatis (navigator.clipboard, dengan fallback execCommand kalau
-  //       clipboard API diblokir), plus textarea "Preview hasil" yang bisa
-  //       di-select manual & Ctrl+C kalau copy otomatis gagal.
-  // v1.11: FOKUS UTAMA -- ngatasin kegagalan yang sebenernya cuma soal
-  //       loading Odoo yang berat/unpredictable (overlay "blockUI" abu-abu
-  //       yang nutupin halaman pas ada request ke server), bukan error
-  //       beneran. Perubahan:
-  //       (a) Tambah deteksi blockUI (isBlockUIVisible) + waitForBlockUIClear
-  //           yang nunggu overlay-nya ilang dan STABIL ilang (nggak keitung
-  //           beres kalau cuma kedip sebentar di antara beberapa request
-  //           yang berantai).
-  //       (b) waitFor() inti sekarang "pause" hitungan timeout-nya selama
-  //           blockUI aktif -- jadi waktu nunggu loading nggak lagi ikut
-  //           makan jatah timeout & bikin dianggap gagal padahal cuma lemot.
-  //       (c) Ditambahin settleAfterAction() yang dipanggil setelah klik2
-  //           yang biasanya mancing request ke server (Edit, Next, Get NIE,
-  //           Validate, Save, pindah tab) -- nunggu overlay muncul-hilang
-  //           dulu sebelum script lanjut meriksa elemen berikutnya, biar
-  //           nggak baca DOM yang lagi setengah jadi.
-  //       (d) Step2 yang paling sering kena imbas timing (isi autocomplete
-  //           Brand/Type/Tags, nunggu tombol Next/Validate siap) sekarang
-  //           di-bungkus withRetry -- otomatis dicoba ulang 1-2x (nunggu
-  //           blockUI beres dulu tiap retry) sebelum beneran nyerah &
-  //           nyuruh cek manual.
-  //       (e) Semua timeout utama dinaikin cukup jauh dari versi
-  //           sebelumnya (lihat CONFIG di bawah) -- prioritasnya sekarang
-  //           BERHASIL, bukan CEPAT, karena situs KFA emang lambat.
-  //       (f) Nggak ada perubahan di logika keamanan/guardrail (auto-lanjut
-  //           tetap berhenti kalau ada kegagalan asli, auto-validate/
-  //           auto-save tetap default OFF, dst) -- yang berubah cuma cara
-  //           script mengenali "masih loading" vs "beneran gagal".
-  // v1.12: Tambah tombol "⏭ Skip SKU pertama di antrian" di panel. Kalau
-  //       ada SKU yang mau dilewatin (misal ternyata invalid / mau dicek
-  //       belakangan), user tinggal klik tombol ini -- SKU itu digeser
-  //       keluar dari antrian (SAMA kayak kalau berhasil), TAPI dicatat di
-  //       hasil dengan KODE_KFA = "SKIPPED_BY_USER" (bukan kode KFA asli),
-  //       jadi kelihatan jelas di export CSV/TSV mana yang beneran
-  //       berhasil vs mana yang di-skip manual. Ada konfirmasi (confirm
-  //       dialog) dulu sebelum skip beneran jalan, biar nggak kepencet
-  //       nggak sengaja. Kalau "Auto-lanjut ke SKU berikutnya" dicentang,
-  //       setelah skip script otomatis lanjut ke SKU berikutnya di
-  //       antrian (skip dianggap "selesai", bukan kegagalan).
-  // v1.13: Fix KHUSUS buat Proses A -- widget many2many tag di baris
-  //       "Tipe (Type)" ternyata KELIHATAN read-only kalau di-klik lewat
-  //       container-nya (yang dipakai script sebelumnya), padahal manual
-  //       harus klik PERSIS di kotak input TERAKHIR (posisinya setelah
-  //       tag/chip yang udah ada) baru beneran ke-aktifin buat ngetik.
-  //       Perubahan:
-  //       (a) activateTagsInputForEditing() -- cari input PALING TERAKHIR
-  //           di dalam widget INI SAJA (bukan query global, biar nggak
-  //           kepencet input attribute/row lain), lalu kirim urutan event
-  //           mouse lengkap (mousedown -> focus -> mouseup -> click),
-  //           karena widget ini kadang cuma dengerin mousedown buat lepas
-  //           dari state read-only-nya. Dibungkus withRetry -- kalau
-  //           attempt pertama masih kebaca disabled/readonly, dicolek
-  //           sekali lagi.
-  //       (b) findAutocompleteTarget() -- SEBELUMNYA kalau nggak ada
-  //           match persis, script asal pilih item PERTAMA di daftar
-  //           autocomplete (items[0]). Ini BAHAYA karena bisa jadi fuzzy
-  //           match yang salah, atau nyiptain tag baru ("Create "...")
-  //           dengan teks yang beda dikit dari yang diminta -- dan tag
-  //           itu bakal NEMPEL PERMANEN di sistem KFA nasional. Sekarang
-  //           script CUMA mau lanjut kalau: (1) ada item yang isinya
-  //           PERSIS sama kayak kode yang diminta, ATAU (2) ada opsi
-  //           "Create "KODE_PERSIS_SAMA"" (dengan teks di dalam tanda
-  //           kutip PERSIS sama). Di luar itu, script BERHENTI & minta
-  //           cek manual -- nggak nebak-nebak lagi.
-  //       (c) Log sekarang bilang jelas kalau script bakal BIKIN tag
-  //           BARU (bukan milih yang udah ada), biar user sadar ini aksi
-  //           yang nempel permanen ke sistem nasional.
-  // v1.14: Fix lanjutan dari v1.13 setelah ketauan dari log console kalau
-  //       widget many2many tag ini TERNYATA nggak punya <input> SAMA
-  //       SEKALI di DOM sampai user klik PERSIS di celah kosong setelah
-  //       tag terakhir -- input-nya baru di-render Odoo ON-DEMAND abis
-  //       klik itu kena sasaran (v1.13 masih asumsi input-nya udah ada &
-  //       cuma perlu "diaktifin", makanya tetep gagal). Sekarang:
-  //       (a) Hitung titik koordinat yang tepat (sedikit di kanan tag
-  //           terakhir, di baris yang sama; atau ujung kiri container
-  //           kalau belum ada tag), lalu pakai document.elementFromPoint
-  //           buat nemuin elemen ASLI di titik itu -- biar klik-nya
-  //           seakurat mungkin kayak klik mouse beneran (bukan asal
-  //           dispatch ke tagsField).
-  //       (b) BARU SETELAH klik itu, di-waitFor (bukan sleep tebakan)
-  //           sampai Odoo beneran ngerender <input> baru -- karena
-  //           sebelumnya emang belum ada, jadi nggak ada gunanya dicek
-  //           langsung sinkron.
-  //       (c) Kalau tetap gagal, script nge-print titik koordinat +
-  //           elemen yang kena klik ke console (F12), biar gampang
-  //           didiagnosis kalau ternyata posisi klik-nya masih meleset.
-  // v1.15: Fix bug NYATA yang ketauan dari log -- di attempt retry ke-2/3,
-  //       titik klik yang dihitung jadi {x:-4, y:0} (jelas salah). Ini
-  //       tandanya reference `tagsField` yang dipegang script udah STALE
-  //       (ke-detach dari DOM) setelah attempt pertama, karena Owl/Odoo
-  //       ngeganti total node widget many2many ini abis kena
-  //       klik/interaksi apapun -- getBoundingClientRect() ke elemen yang
-  //       udah detached selalu balikin rect kosong semua nol. Perubahan:
-  //       (a) activateTagsInputForEditing() sekarang nerima `attributeRow`
-  //           (elemen <tr>, jauh lebih jarang di-ganti-total sama Owl
-  //           dibanding div widget di dalamnya) dan RE-QUERY tagsField
-  //           dari situ SETIAP KALI dipanggil -- termasuk tiap retry --
-  //           bukan pakai reference lama yang di-cache di luar.
-  //       (b) Ditambah focus() langsung lewat JS API sebelum dispatch
-  //           event mouse (focus() SELALU beneran jalan biarpun dipanggil
-  //           dari script, beda sama dispatchEvent yang browser kadang
-  //           nggak jalanin default action-nya kalau bukan event asli).
-  //       (c) Ditambah dispatch PointerEvent (pointerdown/pointerup) di
-  //           samping MouseEvent, plus detail:1 & button:0 di semua
-  //           event -- buat jaga2 kalau widget-nya dengerin pointer event
-  //           atau ngecek detail count, bukan cuma mouse event polos.
-  //       (d) CATATAN JUJUR: kalau widget ini ternyata emang gantungin ke
-  //           perilaku browser yang CUMA jalan buat klik mouse ASLI
-  //           (trusted event) -- bukan buat event yang di-dispatch lewat
-  //           script -- maka ini BATAS TEKNIS BROWSER yang nggak bisa
-  //           ditembus dari sisi script manapun (ini bukan bug yang bisa
-  //           di-fix lewat kode lagi). Kalau masih gagal setelah fix ini,
-  //           jalur manual (klik PERSIS di kotak kosong + Alt+Enter, yang
-  //           udah kebukti jalan) jadi jalur normal/permanen buat step
-  //           ini, bukan lagi dianggap "sementara sampai ke-fix".
-  // v1.16: Dua fix berdasarkan feedback abis Proses A beneran berhasil
-  //       jalan (input + save manual jalan, tapi antrian nggak geser):
-  //       (a) BUG NYATA -- tombol "Proses A" di panel SEBELUMNYA cuma
-  //           manggil runProsesA() doang TANPA geser antrian sama sekali,
-  //           jadi counter-nya nggak pernah maju walaupun SKU-nya beneran
-  //           berhasil diinput. Sekarang ada processNextInQueueForProsesA()
-  //           yang geser antrian abis sukses (persis kayak Proses B), plus
-  //           "Auto-lanjut" (checkbox yang sama) sekarang juga berlaku
-  //           buat Proses A -- abis 1 SKU sukses diinput sebagai tag,
-  //           otomatis lanjut ke SKU berikutnya di antrian TANPA save di
-  //           antaranya, cocok buat numpuk banyak SKU jadi tag ke
-  //           cangkang yang sama.
-  //       (b) Sesuai saran user -- save tiap 1 SKU itu boros (blockUI
-  //           muncul tiap kali, Save-nya sendiri lemot). Auto-save
-  //           SEKARANG DILEPAS dari Proses A -- Proses A cuma nambahin
-  //           tag ke widget (belum di-save), checkbox "Auto-klik Save"
-  //           sekarang CUMA berlaku buat Proses B. Ditambah tombol baru
-  //           "💾 Save Sekarang" di panel buat commit SEMUA tag yang udah
-  //           ketumpuk, dipencet SEKALI aja abis numpuk sebanyak yang
-  //           diinginkan (bukan tiap 1 SKU).
-  // v1.17: Disederhanain sesuai maunya user -- "input input input" terus
-  //       otomatis, checkbox nggak perlu dipikirin lagi:
-  //       (a) Proses A SEKARANG SELALU lanjut otomatis ke SKU berikutnya
-  //           begitu satu SKU berhasil ditambah sebagai tag -- nggak
-  //           gantung ke checkbox "Auto-lanjut" lagi (checkbox itu
-  //           sekarang CUMA berlaku buat Proses B). Tombol "Proses A" di
-  //           panel diklik SEKALI, terus dia jalan sampai antrian abis
-  //           atau ketemu kegagalan ASLI (bukan duplikat).
-  //       (b) DETEKSI DUPLIKAT -- Proses A itu sendiri nggak pernah
-  //           munculin modal/window apapun di alur normalnya. Jadi kalau
-  //           ADA window/dialog kelihatan abis kita milih tag (mis. abis
-  //           milih opsi "Create"), itu dianggap SINYAL DUPLIKAT (kode
-  //           udah kepake/terdaftar). SKU itu otomatis di-SKIP (dicatat
-  //           di hasil sebagai SKIPPED_DUPLICATE, BUKAN kode KFA asli),
-  //           dialognya ditutup, terus halaman di-REFRESH (soalnya widget
-  //           yang abis ketimpuk dialog error suka nyangkut & susah
-  //           dipulihin tanpa refresh) -- dan abis refresh, script
-  //           OTOMATIS lanjut lagi dari SKU berikutnya di antrian (nggak
-  //           perlu klik apa2), lewat flag AUTORESUME_PROSES_A_KEY yang
-  //           dibaca pas script mulai jalan ulang.
-  //       (c) CATATAN: selector modal-nya (`.modal.show, .o_dialog, ...`)
-  //           masih tebakan umum karena bentuk PERSIS window duplikatnya
-  //           belum pernah dilihat -- kalau ternyata beda / nggak
-  //           kedetect, share HTML-nya biar bisa disesuaikan presisi.
-  //       (d) Auto-save (kalau dicentang) sekarang jalan SEKALI aja abis
-  //           SELURUH antrian abis diproses (bukan per-item, bukan juga
-  //           harus diklik manual) -- "centang Auto-save, klik Proses A,
-  //           selesai".
-  // v1.18: Fix BUG NYATA yang ketauan dari log batch: SKU pertama sukses
-  //       (tag ketambah, antrian digeser), tapi SKU KEDUA langsung gagal
-  //       dengan pesan "Tombol Edit nggak ketemu". Penyebabnya: Proses A
-  //       SENGAJA nggak Save di antara SKU (biar bisa numpuk banyak tag
-  //       dulu), jadi abis SKU pertama, form-nya MASIH dalam mode EDIT --
-  //       tombol "Edit" udah nggak ada lagi (kegantiin Save/Discard), tapi
-  //       kode sebelumnya SELALU maksa nyari tombol Edit di awal setiap
-  //       SKU dan langsung nganggep gagal kalau nggak ketemu. Sekarang:
-  //       kalau tombol Edit nggak ketemu, dicek dulu apa form-nya emang
-  //       udah dalam mode edit (Save/Discard kelihatan) -- kalau iya,
-  //       dianggap WAJAR (lanjutan dari SKU sebelumnya di batch yang
-  //       sama), bukan kegagalan, dan proses lanjut seperti biasa tanpa
-  //       klik Edit lagi.
-  // v1.19: Fokus permintaan user: (1) di cangkang yang crowded/lemot,
-  //       Proses A jangan gampang nyerah -- perbanyak & perpanjang retry
-  //       KHUSUS buat langkah widget many2many "Tipe (Type)" (paling
-  //       sering keserempet overlay loading), termasuk pencarian tabel
-  //       attribute-nya sendiri (sebelumnya cuma 1x percobaan tanpa
-  //       retry). (2) Auto-save tiap N SKU (default 5) SELAMA Proses A
-  //       jalan -- jaga-jaga kalau cangkang lemot/nyangkut di tengah
-  //       jalan, progress yang udah ketumpuk nggak ilang percuma. Kalau
-  //       Proses A berhenti karena kegagalan ASLI, dan ada tag yang belum
-  //       ke-save, script SEKARANG otomatis nyoba Save dulu sebelum
-  //       beneran berhenti (safety-save), supaya kegagalan di SKU
-  //       terakhir nggak nge-buang progress SKU-SKU sebelumnya yang udah
-  //       benar. (3) Tombol "⏹ Stop" buat interupsi batch yang lagi
-  //       jalan secara aman (nunggu step yang lagi jalan kelar dulu, baru
-  //       berhenti -- bukan potong di tengah aksi). (4) STATUS BAR hidup
-  //       di panel (titik berdenyut + teks + hitungan detik sejak
-  //       aktivitas terakhir) yang di-update tiap 500ms LEPAS dari
-  //       eksekusi script -- ini jawaban buat "bingung ini jalan apa
-  //       nggak pas KFA-nya lemot": kalau overlay loading kedetect,
-  //       status bar bilang jelas "server lagi loading (wajar)"; kalau
-  //       nggak ada overlay tapi juga nggak ada log baru lebih dari 30
-  //       detik, baru dikasih tau "mungkin macet, cek console". Ini
-  //       murni indikator visual, TIDAK mengubah logika retry/timeout
-  //       yang udah ada.
-  // v1.20: Fix permintaan user -- abis Proses A ketemu duplikat & halaman
-  //       di-refresh otomatis (lihat v1.17b), script SEBELUMNYA langsung
-  //       manggil processNextInQueueForProsesA() tanpa mastiin dulu ada
-  //       di tab "Variants". Karena abis reload browser biasanya mendarat
-  //       di tab pertama/default (bukan Variants), pencarian tabel
-  //       attribute "Tipe (Type)" bisa gagal / salah baca DOM. Sekarang:
-  //       (a) Tambah resumeProsesAAfterReload() -- dipanggil dari initKFA
-  //           pas AUTORESUME_PROSES_A_KEY kedetect. Fungsi ini klik dulu
-  //           tab "Variants" (dicari via clickByText('a', 'Variants', ...)
-  //           -- konsisten sama pola pencarian tab lain di script ini,
-  //           lebih tahan banting daripada posisi absolut karena nggak
-  //           gantung ke jumlah/urutan div di sekitarnya), NUNGGU halaman
-  //           settle (settleAfterAction), BARU manggil
-  //           processNextInQueueForProsesA() buat lanjut ke SKU
-  //           berikutnya di antrian (duplikat sebelumnya udah di-skip &
-  //           digeser keluar dari antrian SEBELUM reload terjadi, jadi
-  //           otomatis yang diproses berikutnya emang SKU selanjutnya).
-  //       (b) Kalau clickByText by teks gagal ketemu tab "Variants" (mis.
-  //           teksnya beda di suatu kondisi), ada FALLBACK ke xpath
-  //           absolut spesifik yang dikonfirmasi user
-  //           (VARIANTS_TAB_FALLBACK_XPATH) sebagai jaring pengaman
-  //           terakhir -- BUKAN cara utama, karena xpath posisi absolut
-  //           lebih rapuh terhadap perubahan kecil di layout halaman.
-  //       (c) Kalau DUA-DUANYA gagal (teks maupun xpath fallback), script
-  //           BERHENTI dengan jelas (bukan asal lanjut nebak di tab yang
-  //           salah) -- konsisten sama prinsip guardrail lain di script
-  //           ini.
-  // v1.21: Dua fix dari feedback pemakaian nyata:
-  //       (a) BUG NYATA -- resumeProsesAAfterReload() (v1.20) cuma NGECEK
-  //           SEKALI apa tab "Variants" ada (baik via teks maupun xpath
-  //           fallback), lalu kalau nggak ketemu LANGSUNG nyerah. Padahal
-  //           kalau webnya lemot abis refresh, tab itu BENERAN BELUM ADA
-  //           di DOM sama sekali di detik-detik awal (bukan cuma belum
-  //           "keliatan") -- jadi sering ke-anggap gagal padahal cuma
-  //           kecepetan ngecek. Sekarang ada waitForVariantsTabAndClick()
-  //           yang NGULANG ngecek+nyoba klik (teks dulu, lalu fallback
-  //           xpath) tiap ~0.4 detik sampai maksimal 60 detik (dipause
-  //           kalau lagi ada overlay blockUI), dengan log progres tiap 5
-  //           detik biar jelas kelihatan dia masih nyoba, bukan macet.
-  //           Baru kalau BENERAN 60 detik penuh nggak ketemu, dianggap
-  //           gagal & minta cek manual.
-  //       (b) BUG NYATA -- activateTagsInputForEditing() (widget many2many
-  //           "Tipe (Type)") SEBELUMNYA cuma klik SEKALI di celah kosong,
-  //           lalu diem nunggu input-nya muncul sampai AUTOCOMPLETE_TIMEOUT_MS
-  //           (20 detik) penuh sebelum dianggap gagal -- kalau klik
-  //           pertama itu meleset (mis. widget-nya masih setengah render),
-  //           ya nunggu 20 detik itu sia-sia ("kayak melamun") padahal
-  //           tinggal diklik ulang aja. Sekarang di dalam jendela waktu
-  //           yang SAMA (masih AUTOCOMPLETE_TIMEOUT_MS), script NGULANG
-  //           klik-nya tiap ~3 detik (CONFIG.TAGS_INPUT_RECLICK_INTERVAL_MS)
-  //           sambil terus ngecek apa input-nya udah muncul -- jadi kalau
-  //           klik pertama meleset, percobaan ke-2/3/dst masih sempat
-  //           jalan dalam jendela waktu yang sama, bukan cuma satu
-  //           kesempatan lalu nunggu diam. Tiap percobaan klik dicatat ke
-  //           log biar kelihatan jelas dia masih kerja.
+  // 15. (BARU v1.22) Ditambah PROSES C -- gabungan Proses A + Proses B per
+  //     SKU (bukan batch semua-A-dulu-baru-semua-B). Buat tiap SKU di
+  //     antrian: script ngecek dulu apakah SKU itu UDAH ada di daftar tag
+  //     "Tipe (Type)" cangkang ini (persis kayak Ctrl+F manual yang biasa
+  //     kamu lakuin). Kalau UDAH ada -> langsung Proses B. Kalau BELUM ->
+  //     Proses A dulu, Save (wajib, karena Type di wizard Proses B cuma
+  //     bisa milih value yang udah ke-save), baru lanjut Proses B. Abis
+  //     SKU itu kelar (dapet kode KFA), BARU geser ke SKU berikutnya di
+  //     antrian dan ulangi dari awal (cek cangkang lagi, dst). Klik tombol
+  //     "▶ Proses C" SEKALI, dia jalan sampai antrian abis atau ketemu
+  //     kegagalan asli. Tombol "Proses A" & "Proses B" yang lama TETAP ADA
+  //     kalau kamu masih mau jalanin manual terpisah / mode batch lama.
+  // 16. (BARU v1.24) Fix Proses C keburu ngeklik "Configure Product" abis
+  //     Save. Detail ada di catatan v1.24 di bawah -- ringkasnya: sekarang
+  //     script BENERAN nungguin tombol Configure/Reconfigure Product itu
+  //     KELIATAN dulu di halaman (bisa nunggu s/d 20 detik, dicoba
+  //     berkala), bukan cuma sekali cek langsung nyerah kalau belum ada.
+  // 17. (BARU v1.25) Fix BUG LOGIKA di Proses C: abis Proses B kelar
+  //     (masuk ke wizard "Configure Product", isi Brand/Type, isi NIE/TKDN,
+  //     Validate, dst), halaman itu MENDARAT DI HALAMAN VARIAN/PRODUK
+  //     SPESIFIK -- BUKAN lagi di halaman cangkang (template) tempat tabel
+  //     attribute "Tipe (Type)" berada. Jadi kalau Proses C langsung loncat
+  //     cek cangkang buat SKU berikutnya di halaman itu, checkSkuInCangkang()
+  //     nggak bakal nemu tabelnya (salah halaman), dan hasilnya bisa salah
+  //     baca / nyangkut. Sekarang, SETIAP KALI abis Proses B kelar (baik
+  //     sukses lewat auto-validate maupun lewat Validate manual), Proses C
+  //     WAJIB "pulang" dulu ke halaman cangkang lewat breadcrumb (link
+  //     breadcrumb kedua di baris judul), BARU cari & klik tab "Variants"
+  //     (pakai fungsi waitForVariantsTabAndClick yang udah ada), SEBELUM
+  //     lanjut ke SKU berikutnya di antrian. Kalau breadcrumb-nya nggak
+  //     ketemu (misalnya kebetulan udah di halaman cangkang), dianggap
+  //     wajar & langsung lanjut cari tab Variants aja. Kalau tab Variants
+  //     tetap nggak ketemu setelah itu, Proses C BERHENTI (bukan lanjut
+  //     nebak di halaman yang salah).
+  // 18. (BARU v1.26) Fix "kecepetan" abis klik Save sebelum Proses B (di
+  //     dalam Proses C): SEBELUMNYA abis klik tombol Save, script cuma
+  //     nunggu overlay blockUI ilang (settleAfterAction) lalu LANGSUNG
+  //     nganggep Save kelar & lanjut nyari tombol "Configure Product" /
+  //     "Reconfigure Product". Masalahnya, di web Odoo yang berat ini,
+  //     overlay-nya kadang ilang DULUAN sebelum form beneran selesai
+  //     re-render dari mode Edit (tombol Save/Discard kelihatan) balik ke
+  //     mode read-only (tombol Configure/Reconfigure Product kelihatan) --
+  //     jadi script sempet "kosong" beberapa saat dan gagal nemu tombol
+  //     manapun, dikira gagal padahal cuma kepagian. Sekarang DITAMBAH
+  //     langkah eksplisit: SETELAH klik Save & overlay ilang, script
+  //     NUNGGUIN dulu sampai tombol "Save" itu sendiri BENERAN ILANG dari
+  //     layar (nandain form udah balik ke mode read-only), BARU baru
+  //     nyari/klik tombol Configure/Reconfigure Product. Ini dipasang di
+  //     titik "Save WAJIB sebelum Proses B" di dalam Proses C. Sebagai
+  //     lapisan tambahan (bukan pengganti), waitForConfigureOrReconfigureButton()
+  //     juga sekarang punya fallback xpath absolut buat tombol Configure/
+  //     Reconfigure Product (dikonfirmasi user dari inspect elemen
+  //     langsung: /html/body/div[4]/div/div[2]/div/div[1]/div[1]/div[1]/button[8]/span),
+  //     dipakai HANYA kalau pencarian by teks gagal -- sama pola-nya kayak
+  //     fallback xpath tab Variants yang udah ada.
+  // 19. (BARU v1.27) FIX BUG PENTING: waitForSaveButtonGone() (v1.26)
+  //     sering ke-anggap gagal PADAHAL tombol Save di form Odoo udah
+  //     beneran ilang & ganti jadi "Configure Product". Penyebabnya:
+  //     hasVisibleButtonText('button', 'Save') nyari ke SEMUA <button>
+  //     di document, TERMASUK tombol panel script sendiri -- yaitu
+  //     "💾 Save Sekarang (commit semua tag Proses A)". Karena teks itu
+  //     MENGANDUNG kata "Save" dan panelnya selalu kelihatan di layar,
+  //     pengecekan ini SELALU balik true, nggak peduli kondisi form di
+  //     halaman Odoo-nya gimana. Sekarang hasVisibleButtonText() DAN
+  //     clickByText() sama-sama exclude elemen di dalam #kfa-panel dari
+  //     pencarian, jadi cuma baca tombol di halaman Odoo yang beneran,
+  //     bukan tombol panel sendiri.
+  // 20. (BARU v1.28) FIX LOGIKA TIMEOUT di waitForSaveButtonGone(),
+  //     waitForConfigureOrReconfigureButton(), dan waitForVariantsTabAndClick():
+  //     Sebelumnya ketiga fungsi ini menghitung elapsed time mentah (now - start)
+  //     tanpa mengakumulasi waktu saat blockUI aktif, padahal loop-nya sengaja
+  //     skip evaluasi selama blockUI nongol. Akibatnya, kalau overlay muncul
+  //     lama (25-30 detik) karena server lemot, waktu itu tetap terpotong dari
+  //     jatah timeout dan fungsi bisa menyerah lebih cepat, padahal setelah
+  //     overlay hilang elemen yang dicari sudah dalam kondisi yang diharapkan.
+  //     Sekarang ketiga fungsi menggunakan blockedAccum (sama seperti waitFor())
+  //     sehingga waktu blockUI tidak dihitung dalam timeout.
   // ============================================================
   const STORAGE_KEY = 'kfa_automation_queue_v1';
   const RESULTS_KEY = 'kfa_automation_results_v1';
@@ -392,6 +174,10 @@
   // -- dipasang sesaat sebelum location.reload() pas ketemu duplikat, dan
   // dibaca+dihapus lagi pas script mulai jalan ulang abis reload.
   const AUTORESUME_PROSES_A_KEY = 'kfa_autoresume_prosesA_v1';
+  // v1.22: flag yang sama tapi buat Proses C (gabungan A+B per-SKU) --
+  // dipisah dari punya Proses A biar initKFA tau harus resume ke runner
+  // yang mana (processNextInQueueForProsesA vs processNextInQueueForProsesC).
+  const AUTORESUME_PROSES_C_KEY = 'kfa_autoresume_prosesC_v1';
   // v1.20: fallback xpath absolut buat tab "Variants" -- CUMA dipakai
   // kalau pencarian by teks ("Variants") gagal ketemu. Dikonfirmasi user
   // dari inspect elemen langsung, tapi tetap fallback (bukan cara utama)
@@ -399,6 +185,23 @@
   // nambah/ilang di layout sebelum tab ini.
   const VARIANTS_TAB_FALLBACK_XPATH =
     '/html/body/div[4]/div/div[2]/div/div[1]/div[2]/div[5]/div[1]/ul/li[5]/a';
+  // v1.25: xpath absolut buat link breadcrumb "balik ke cangkang" --
+  // dipakai KHUSUS di Proses C, abis Proses B kelar (Proses B loncat ke
+  // halaman varian/produk spesifik lewat wizard "Configure Product",
+  // BUKAN lagi di halaman cangkang/template). Dikonfirmasi user dari
+  // inspect elemen langsung. Ini breadcrumb item kedua di baris judul
+  // halaman (item pertama biasanya nama modul/menu, item kedua nama
+  // cangkang/template-nya).
+  const BREADCRUMB_PARENT_XPATH =
+    '/html/body/div[4]/div/div[1]/div[1]/div[1]/ol/li[2]/a';
+  // v1.26: fallback xpath absolut buat tombol "Configure Product" /
+  // "Reconfigure Product" -- CUMA dipakai kalau pencarian by teks
+  // ("Configure Product" / "Reconfigure Product") gagal ketemu. Sama
+  // pola-nya kayak VARIANTS_TAB_FALLBACK_XPATH: fallback, bukan cara
+  // utama, karena posisi absolut rawan berubah. Dikonfirmasi user dari
+  // inspect elemen langsung.
+  const CONFIGURE_PRODUCT_BUTTON_FALLBACK_XPATH =
+    '/html/body/div[4]/div/div[2]/div/div[1]/div[1]/div[1]/button[8]/span';
   // ---------- Konfigurasi (v1.11) ----------
   // Semua angka di sini bisa diubah kalau perlu -- dinaikin dari versi
   // sebelumnya karena prioritas sekarang "pasti berhasil" bukan "cepat".
@@ -443,6 +246,20 @@
     // nunggu penuh), biar kalau klik pertama meleset masih sempat
     // dicoba ulang beberapa kali dalam jendela waktu yang sama.
     TAGS_INPUT_RECLICK_INTERVAL_MS: 3000,
+    // v1.24: dipakai waitForConfigureOrReconfigureButton() -- interval
+    // antar log progres selama nungguin tombol Configure/Reconfigure
+    // Product muncul abis Save (biar kelihatan masih nyoba, bukan macet).
+    CONFIGURE_BUTTON_LOG_INTERVAL_MS: 3000,
+    // v1.25: dipakai returnToShellAndVariantsTab() -- jeda kecil abis
+    // klik breadcrumb balik ke cangkang, sebelum nyoba cari tab Variants.
+    BREADCRUMB_CLICK_SETTLE_MS: 300,
+    // v1.26: dipakai waitForSaveButtonGone() -- abis klik Save (WAJIB
+    // sebelum Proses B di dalam Proses C), berapa lama maksimal nungguin
+    // tombol "Save" itu sendiri BENERAN ILANG (nandain form udah balik
+    // ke mode read-only, siap nampilin Configure/Reconfigure Product)
+    // sebelum dianggap nyangkut & minta cek manual.
+    SAVE_BUTTON_GONE_TIMEOUT_MS: 30000,
+    SAVE_BUTTON_GONE_LOG_INTERVAL_MS: 3000,
   };
   // ---------- v1.19: status hidup buat panel (jawaban "jalan apa nggak") ----------
   // scriptStatus di-update tiap ada log() atau tiap ganti tahap proses.
@@ -581,24 +398,6 @@
   // computed style-nya "aneh" (mis. opacity di-set lewat inline style tapi
   // display tetap block) -- di sini kita cek langsung display/visibility +
   // ukuran elemen di layar.
-
-  async function closeModalSafely() {
-    const modal = document.querySelector('.modal.show, .modal[style*="display: block"], .modal[style*="display:block"]');
-    if (!modal) return true;
-    const discardBtn = Array.from(modal.querySelectorAll('button')).find((b) =>
-      isVisible(b) && /discard|cancel|batal|close/i.test(b.textContent)
-    );
-    if (discardBtn) {
-      discardBtn.click();
-    } else {
-      const closeX = modal.querySelector('.close, [aria-label="Close"], .btn-close');
-      if (closeX && isVisible(closeX)) closeX.click();
-      else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    }
-    await settleAfterAction('nutup modal (fallback ke Proses A)');
-    await sleep(400);
-    return true;
-  }
   function isBlockUIVisible() {
     const overlays = document.querySelectorAll('.blockUI.blockOverlay, .blockUI, .o_blockUI');
     return Array.from(overlays).some((el) => {
@@ -711,7 +510,14 @@
   function clickByText(selector, text, { visibleOnly = false } = {}) {
     const norm = (s) => s.replace(/\s+/g, ' ').trim();
     const target = norm(text);
-    let els = Array.from(document.querySelectorAll(selector));
+    // v1.27: SELALU exclude elemen di dalam panel script sendiri
+    // (#kfa-panel) dari pencarian ini. Sebelumnya kalau exact match di
+    // halaman Odoo nggak ketemu, fallback pencarian "includes" bisa
+    // ketiban tombol PANEL SENDIRI (mis. "💾 Save Sekarang (commit
+    // semua tag Proses A)" ikut ke-match kalau nyari teks "Save") dan
+    // KEKLIK SALAH -- bahaya karena bisa nge-trigger aksi panel yang
+    // nggak dimaksud sama sekali di titik itu.
+    let els = Array.from(document.querySelectorAll(selector)).filter((el) => !el.closest('#kfa-panel'));
     if (visibleOnly) {
       els = els.filter((el) => isVisible(el.closest('button') || el));
     }
@@ -732,7 +538,18 @@
   function hasVisibleButtonText(selector, text) {
     const norm = (s) => s.replace(/\s+/g, ' ').trim();
     const target = norm(text);
-    const els = Array.from(document.querySelectorAll(selector));
+    // v1.27 FIX (BUG PENTING): SEBELUMNYA fungsi ini nyari SEMUA elemen
+    // yang cocok selector di SELURUH document -- termasuk tombol PANEL
+    // SCRIPT SENDIRI (mis. "💾 Save Sekarang (commit semua tag Proses
+    // A)"). Karena teks itu MENGANDUNG kata "Save" (match via
+    // t.includes(target)) dan panelnya SELALU kelihatan di layar,
+    // hasVisibleButtonText('button', 'Save') SELALU balik true --
+    // biarpun tombol "Save" di form Odoo udah beneran ilang & ganti
+    // jadi "Configure Product". Ini bikin waitForSaveButtonGone() (dan
+    // pengecekan "alreadyEditing" di runProsesA) salah baca terus,
+    // dikira form masih mode edit padahal udah beres. Sekarang elemen
+    // di dalam #kfa-panel di-exclude dari pencarian ini.
+    const els = Array.from(document.querySelectorAll(selector)).filter((el) => !el.closest('#kfa-panel'));
     return els.some((el) => {
       const t = norm(el.textContent);
       return (t === target || t.includes(target)) && isVisible(el.closest('button') || el);
@@ -985,6 +802,65 @@
     localStorage.setItem(RESULTS_KEY, JSON.stringify(r));
   }
   // ============================================================
+  // v1.22: CEK CANGKANG -- fungsi buat ngegantiin kebiasaan Ctrl+F
+  // manual user. Ngecek daftar tag "Tipe (Type)" yang UDAH ADA di
+  // cangkang yang lagi dibuka, terus bandingin PERSIS ke kode SKU yang
+  // lagi diproses. Sengaja baca DOM tampilan biasa (nggak perlu mode
+  // Edit dulu) karena widget many2many tags Odoo tetap nampilin badge
+  // tag yang udah tersimpan walau lagi READ-ONLY (view mode).
+  //
+  // v1.25 CATATAN: fungsi ini CUMA jalan bener kalau halamannya emang
+  // lagi di halaman CANGKANG (template) di tab Variants -- BUKAN di
+  // halaman varian/produk spesifik hasil wizard Proses B. Lihat
+  // returnToShellAndVariantsTab() di bawah buat mastiin ini sebelum
+  // fungsi ini dipanggil di Proses C.
+  // ============================================================
+  function findTipeAttributeRowNow() {
+    const tables = Array.from(document.querySelectorAll('table'));
+    const table = tables.find((t) => {
+      const headerText = t.querySelector('thead')?.textContent.toLowerCase()
+        || t.rows[0]?.textContent.toLowerCase()
+        || '';
+      return headerText.includes('attribute') && headerText.includes('value');
+    });
+    if (!table) return null;
+    const row = Array.from(table.querySelectorAll('tbody tr, tr')).find((tr) => {
+      const cells = Array.from(tr.querySelectorAll('td'));
+      return cells.some((cell) => {
+        const text = cell.textContent.trim().toLowerCase();
+        return text.startsWith('tipe') || text.startsWith('type');
+      });
+    });
+    return row || null;
+  }
+  async function waitForTipeAttributeRow(timeout = CONFIG.PROSES_A_TABLE_TIMEOUT_MS) {
+    return waitFor(() => findTipeAttributeRowNow(), { timeout }).catch(() => null);
+  }
+  function getExistingTypeTagsText(attributeRow) {
+    if (!attributeRow) return [];
+    const tagsField = attributeRow.querySelector('.o_field_many2manytags, .o_field_widget[name="value_ids"]');
+    if (!tagsField) return [];
+    // Odoo biasanya nyimpen teks label tag di span .o_tag_badge_text
+    // (terpisah dari tombol "x" buat hapus tag) -- prioritasin itu kalau
+    // ada, biar teksnya bersih (nggak ketumpuk simbol hapus).
+    const badgeLabels = Array.from(tagsField.querySelectorAll('.o_tag_badge_text'));
+    if (badgeLabels.length) {
+      return badgeLabels.map((el) => el.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    }
+    const badges = Array.from(tagsField.querySelectorAll('.o_tag, .badge'));
+    return badges
+      .map((b) => b.textContent.replace(/\s+/g, ' ').trim().replace(/[×xX]\s*$/, '').trim())
+      .filter(Boolean);
+  }
+  // Return value: true (udah ada), false (belum ada), null (nggak bisa
+  // mastiin -- tabel attribute-nya nggak ketemu).
+  async function checkSkuInCangkang(kodeProduk) {
+    const row = await waitForTipeAttributeRow();
+    if (!row) return null;
+    const tags = getExistingTypeTagsText(row);
+    return tags.includes(kodeProduk);
+  }
+  // ============================================================
   // PROSES A
   // ============================================================
   async function runProsesA(kodeProduk) {
@@ -1093,8 +969,8 @@
       // di-dispatch lewat script. Kalau widget-nya emang gantungin ke
       // perilaku itu (bukan cuma dengerin event click biasa), script
       // MEMANG nggak bisa nembus ini -- ini batas teknis browser, bukan
-      // bug yang bisa di-fix lewat kode. Jalur manual (klik + Alt+Enter)
-      // di bawah ini yang jadi jalur normal buat kasus ini.
+      // bug yang bisa di-fix lewat kode lagi. Jalur manual (klik +
+      // Alt+Enter) di bawah ini yang jadi jalur normal buat kasus ini.
       log('⚠️ Widget tag "Tipe (Type)" nggak berhasil dibuka lewat script setelah beberapa kali dicoba (termasuk klik berulang di dalam) -- kemungkinan widget ini emang butuh klik mouse ASLI (browser sengaja nggak jalanin beberapa perilaku default buat klik yang di-dispatch lewat script, ini batasan browser bukan bug). Klik MANUAL PERSIS di kotak kosong setelah tag terakhir (sampai kursor kedip-kedip beneran), lalu tekan Alt+Enter (kode SKU-nya udah otomatis keisi di kotak "Isi field yang lagi kebuka" di panel) buat lanjutin dari situ.');
       return false;
     }
@@ -1204,20 +1080,127 @@
     return true;
   }
   // ============================================================
+  // v1.26: nunggu tombol "Save" BENERAN ILANG dari layar -- dipakai abis
+  // klik Save (WAJIB sebelum Proses B di dalam Proses C), buat mastiin
+  // form udah beneran balik ke mode read-only sebelum nyari tombol
+  // Configure/Reconfigure Product. Overlay blockUI ilang duluan BUKAN
+  // jaminan form-nya udah selesai re-render dari mode Edit -- ini step
+  // terpisah yang khusus nungguin tombol Save sendiri yang ilang.
+  // v1.28 FIX: waktu blockUI tidak dihitung dalam timeout.
+  // ============================================================
+  async function waitForSaveButtonGone({
+    timeout = CONFIG.SAVE_BUTTON_GONE_TIMEOUT_MS,
+    logInterval = CONFIG.SAVE_BUTTON_GONE_LOG_INTERVAL_MS,
+  } = {}) {
+    const start = Date.now();
+    let blockedAccum = 0;
+    let lastTick = Date.now();
+    let lastLogAt = 0;
+    while (true) {
+      const now = Date.now();
+      const dt = now - lastTick;
+      lastTick = now;
+      if (isBlockUIVisible()) {
+        blockedAccum += dt;
+        await sleep(200);
+        continue;
+      }
+      if (!hasVisibleButtonText('button', 'Save')) {
+        return true;
+      }
+      const elapsed = now - start - blockedAccum;
+      if (elapsed > timeout) {
+        return false;
+      }
+      if (elapsed - lastLogAt >= logInterval) {
+        lastLogAt = elapsed;
+        log(`⏳ Nunggu tombol "Save" beneran ilang dari layar (${Math.round(elapsed / 1000)}d, di luar waktu loading)... form masih kelihatan dalam mode edit, belum aman buat nyari Configure/Reconfigure Product, ini wajar kalau server lagi lemot.`);
+      }
+      await sleep(250);
+    }
+  }
+  // ============================================================
+  // v1.24/v1.26: nunggu tombol "Configure Product" / "Reconfigure Product"
+  // BENER-BENER muncul & bisa diklik. SEBELUMNYA (sebelum v1.24) Proses B
+  // cuma nge-clickByText SEKALI doang di awal -- kalau abis Save form-nya
+  // belum sempat re-render ke mode read-only (yang makan waktu SEDIKIT
+  // LEBIH LAMA daripada overlay blockUI ilang & stabil), tombol ini
+  // belum ada di DOM, dan script langsung dianggap gagal padahal cuma
+  // belum sempat muncul. Sekarang diulang ngecek (bukan sekali cek),
+  // dipause kalau lagi ada overlay blockUI, dengan log progres tiap
+  // CONFIG.CONFIGURE_BUTTON_LOG_INTERVAL_MS biar kelihatan masih nyoba.
+  // v1.26: ditambah fallback xpath absolut (CONFIGURE_PRODUCT_BUTTON_FALLBACK_XPATH)
+  // buat kasus di mana teks "Configure Product"/"Reconfigure Product"
+  // gagal ke-match by text (mis. whitespace/markup di dalam span beda
+  // dari yang diharapkan) -- CUMA dicoba kalau pencarian by teks gagal,
+  // sama pola-nya kayak fallback tab Variants.
+  // v1.28 FIX: waktu blockUI tidak dihitung dalam timeout.
+  // ============================================================
+  async function waitForConfigureOrReconfigureButton(timeout = CONFIG.NEXT_BUTTON_TIMEOUT_MS) {
+    const start = Date.now();
+    let blockedAccum = 0;
+    let lastTick = Date.now();
+    let lastLogAt = 0;
+    while (true) {
+      const now = Date.now();
+      const dt = now - lastTick;
+      lastTick = now;
+      if (isBlockUIVisible()) {
+        blockedAccum += dt;
+        await sleep(200);
+        continue;
+      }
+      if (clickByText('span', 'Configure Product', { visibleOnly: true })) {
+        return { clicked: true, usingReconfigure: false };
+      }
+      if (clickByText('span', 'Reconfigure Product', { visibleOnly: true })) {
+        return { clicked: true, usingReconfigure: true };
+      }
+      // v1.26: fallback xpath -- CUMA dicoba kalau by-text di atas gagal.
+      const fallbackEl = getElementByXPath(CONFIGURE_PRODUCT_BUTTON_FALLBACK_XPATH);
+      if (fallbackEl && isVisible(fallbackEl)) {
+        const btn = fallbackEl.closest('button') || fallbackEl;
+        if (!btn.disabled && !btn.classList?.contains('disabled')) {
+          const text = fallbackEl.textContent.replace(/\s+/g, ' ').trim();
+          const usingReconfigure = text.toLowerCase().includes('reconfigure');
+          log(`ℹ️ Tombol Configure/Reconfigure Product ketemu via fallback xpath (teks: "${text}").`);
+          btn.click();
+          return { clicked: true, usingReconfigure };
+        }
+      }
+      const elapsed = now - start - blockedAccum;
+      if (elapsed > timeout) {
+        return { clicked: false };
+      }
+      if (elapsed - lastLogAt >= CONFIG.CONFIGURE_BUTTON_LOG_INTERVAL_MS) {
+        lastLogAt = elapsed;
+        log(`⏳ Nunggu tombol "Configure Product" / "Reconfigure Product" muncul (${Math.round(elapsed / 1000)}d, di luar waktu loading)... biasanya baru kelihatan sesaat setelah Save/reload kelar (form perlu re-render ke mode read-only dulu), ini wajar.`);
+      }
+      await sleep(300);
+    }
+  }
+  // ============================================================
   // PROSES B
   // ============================================================
-  async function runProsesB({ kodeProduk, brand, nie, tkdn }, retryAfterProsesA = false) {
+  async function runProsesB({ kodeProduk, brand, nie, tkdn }) {
     log(`Proses B: konfigurasi produk "${kodeProduk}"...`);
-    setStatus('Proses B: konfigurasi produk', kodeProduk);
-    let usingReconfigure = false;
-    if (clickByText('span', 'Configure Product', { visibleOnly: true })) {
-      usingReconfigure = false;
-    } else if (clickByText('span', 'Reconfigure Product', { visibleOnly: true })) {
-      usingReconfigure = true;
-      log('i️ Pakai "Reconfigure Product" (cangkang ini udah pernah dikonfigurasi sebelumnya).');
-    } else {
-      log('⚠️ Tombol "Configure Product" / "Reconfigure Product" nggak ketemu.');
+    setStatus('Proses B: nunggu tombol Configure/Reconfigure Product', kodeProduk);
+    // v1.24/v1.26: SEBELUMNYA di sini cuma clickByText 1x doang buat
+    // masing2 tombol lalu langsung nyerah kalau nggak ketemu -- diganti
+    // pakai waitForConfigureOrReconfigureButton() yang NGULANG ngecek
+    // sampai NEXT_BUTTON_TIMEOUT_MS (+fallback xpath), biar nggak keburu
+    // gagal pas dipanggil tepat setelah Save (form-nya butuh sesaat buat
+    // re-render ke mode read-only sebelum tombol ini muncul). Lapisan
+    // "beneran nunggu Save ilang dulu" yang utama ada di caller (lihat
+    // processNextInQueueForProsesC, titik "Save WAJIB sebelum Proses B").
+    const cfgResult = await waitForConfigureOrReconfigureButton();
+    if (!cfgResult.clicked) {
+      log(`⚠️ Tombol "Configure Product" / "Reconfigure Product" nggak pernah muncul setelah ditunggu ${Math.round(CONFIG.NEXT_BUTTON_TIMEOUT_MS / 1000)} detik (di luar waktu loading). Cek manual -- pastikan Save sebelumnya beneran kelar & kamu di halaman/tab yang benar.`);
       return null;
+    }
+    let usingReconfigure = cfgResult.usingReconfigure;
+    if (usingReconfigure) {
+      log('i️ Pakai "Reconfigure Product" (cangkang ini udah pernah dikonfigurasi sebelumnya).');
     }
     await settleAfterAction('klik Configure/Reconfigure Product');
     if (!usingReconfigure) {
@@ -1251,32 +1234,9 @@
     const typeOk = await withRetry(() => fillAutocomplete(modalInputs[1], kodeProduk), {
       label: `isi Type = "${kodeProduk}"`,
     });
-
     if (!typeOk) {
-      if (retryAfterProsesA) {
-        log(`⛔ Type "${kodeProduk}" TETAP nggak ketemu di modal setelah Proses A otomatis dijalanin & di-save -- ini kegagalan asli. Cek manual.`);
-        return null;
-      }
-      log(`ℹ️ Type "${kodeProduk}" belum kedaftar -- otomatis jalanin Proses A dulu (tambah tag + Save) sebelum nyoba isi Type lagi...`);
-      setStatus('Auto: Proses A dulu (Type belum kedaftar)', kodeProduk);
-      const closed = await closeModalSafely();
-      if (!closed) { log('⚠️ Gagal nutup modal wizard. Cek manual.'); return null; }
-      const wentToVariants = await waitForVariantsTabAndClick();
-      if (!wentToVariants) { log('⚠️ Nggak bisa balik ke tab "Variants". Cek manual.'); return null; }
-      await settleAfterAction('balik ke tab Variants buat fallback Proses A');
-      const prosesAResult = await runProsesA(kodeProduk);
-      if (prosesAResult !== true) {
-        log(`⚠️ Fallback Proses A buat "${kodeProduk}" gagal (${prosesAResult === 'DUPLICATE' ? 'duplikat' : 'error'}). Cek manual.`);
-        return null;
-      }
-      log('💾 Save tag hasil fallback Proses A sebelum lanjut...');
-      if (!clickByText('button', 'Save', { visibleOnly: true })) {
-        log('⚠️ Tombol Save nggak ketemu. Cek manual, tag belum ke-commit.');
-        return null;
-      }
-      await settleAfterAction('Save fallback Proses A');
-      log(`🔁 Ulang Proses B buat "${kodeProduk}" dari awal...`);
-      return runProsesB({ kodeProduk, brand, nie, tkdn }, true);
+      log(`⚠️ Type "${kodeProduk}" nggak ketemu/gagal dipilih di modal (udah dicoba beberapa kali) -- BERHENTI di sini, TIDAK lanjut klik Next, biar nggak kebuat produk dengan Type kosong. Kemungkinan kode ini belum ke-save sebagai value "Tipe (Type)" (jalanin & Save Proses A dulu buat SKU ini), atau cek manual.`);
+      return null;
     }
     const nextBtn2 = await waitFor(() => {
       const btn = document.querySelector('button[name="action_next_step"]');
@@ -1631,29 +1591,37 @@
   // fallback xpath kalau teks gagal) tiap ~0.4 detik sampai maksimal 60
   // detik (VARIANTS_TAB_WAIT_TIMEOUT_MS), dipause kalau lagi ada overlay
   // blockUI, dengan log progres tiap 5 detik.
-  function getVariantsTabByFallbackXPath() {
+  // v1.28 FIX: waktu blockUI tidak dihitung dalam timeout.
+  // ============================================================
+  function getElementByXPath(xpath) {
     try {
       const result = document.evaluate(
-        VARIANTS_TAB_FALLBACK_XPATH, document, null,
+        xpath, document, null,
         XPathResult.FIRST_ORDERED_NODE_TYPE, null
       );
       return result.singleNodeValue;
     } catch (e) {
-      console.log('[KFA-AUTO] Gagal evaluasi fallback xpath tab Variants:', e);
+      console.log('[KFA-AUTO] Gagal evaluasi xpath:', xpath, e);
       return null;
     }
+  }
+  function getVariantsTabByFallbackXPath() {
+    return getElementByXPath(VARIANTS_TAB_FALLBACK_XPATH);
   }
   async function waitForVariantsTabAndClick({
     timeout = CONFIG.VARIANTS_TAB_WAIT_TIMEOUT_MS,
     logInterval = CONFIG.VARIANTS_TAB_LOG_INTERVAL_MS,
   } = {}) {
     const start = Date.now();
+    let blockedAccum = 0;
+    let lastTick = Date.now();
     let lastLogAt = 0;
-    while (Date.now() - start < timeout) {
-      // Kalau lagi ada overlay loading, jangan dulu ngitung/nyoba --
-      // tunggu dulu sampai clear, biar nggak kepencet nyari elemen di
-      // DOM yang lagi setengah render.
+    while (true) {
+      const now = Date.now();
+      const dt = now - lastTick;
+      lastTick = now;
       if (isBlockUIVisible()) {
+        blockedAccum += dt;
         await sleep(300);
         continue;
       }
@@ -1667,14 +1635,47 @@
         log('✅ Tab "Variants" ketemu & diklik via fallback xpath.');
         return true;
       }
-      const elapsed = Date.now() - start;
+      const elapsed = now - start - blockedAccum;
+      if (elapsed > timeout) {
+        return false;
+      }
       if (elapsed - lastLogAt >= logInterval) {
         lastLogAt = elapsed;
-        log(`⏳ Masih nunggu tab "Variants" muncul di halaman (${Math.round(elapsed / 1000)} detik)... halaman kemungkinan masih lemot ngeload abis refresh, ini wajar, terus dicoba sampai ${Math.round(timeout / 1000)} detik.`);
+        log(`⏳ Masih nunggu tab "Variants" muncul di halaman (${Math.round(elapsed / 1000)} detik, di luar waktu loading)... halaman kemungkinan masih lemot ngeload, ini wajar, terus dicoba sampai ${Math.round(timeout / 1000)} detik.`);
       }
       await sleep(400);
     }
-    return false;
+  }
+  // ============================================================
+  // v1.25: PULANG KE CANGKANG (breadcrumb) + tab Variants -- dipakai di
+  // Proses C SETIAP KALI abis Proses B kelar (baik sukses lewat
+  // auto-validate maupun lewat Validate manual), SEBELUM cek cangkang
+  // buat SKU berikutnya. Alasannya: wizard "Configure Product" di Proses
+  // B loncat ke halaman VARIAN/PRODUK SPESIFIK, bukan lagi di halaman
+  // CANGKANG (template) tempat tabel attribute "Tipe (Type)" berada --
+  // jadi checkSkuInCangkang() nggak bisa dipanggil langsung dari situ.
+  // Kalau breadcrumb-nya nggak ketemu/nggak kelihatan (misalnya kebetulan
+  // udah di halaman cangkang), itu dianggap WAJAR -- langsung lanjut cari
+  // tab Variants aja (BUKAN dianggap gagal).
+  // ============================================================
+  async function returnToShellAndVariantsTab() {
+    log('🔙 Balik ke halaman cangkang (breadcrumb) dulu sebelum cek cangkang buat SKU berikutnya...');
+    setStatus('Proses C: balik ke cangkang (breadcrumb)', null);
+    const breadcrumbLink = getElementByXPath(BREADCRUMB_PARENT_XPATH);
+    if (breadcrumbLink && isVisible(breadcrumbLink)) {
+      breadcrumbLink.click();
+      await sleep(CONFIG.BREADCRUMB_CLICK_SETTLE_MS);
+      await settleAfterAction('klik breadcrumb balik ke cangkang');
+    } else {
+      log('ℹ️ Breadcrumb balik ke cangkang nggak ketemu/nggak kelihatan (kemungkinan udah di halaman cangkang) -- lanjut cari tab Variants langsung.');
+    }
+    const clicked = await waitForVariantsTabAndClick();
+    if (!clicked) {
+      log(`⚠️ Tab "Variants" nggak ketemu setelah balik ke breadcrumb cangkang (ditunggu sampai ${Math.round(CONFIG.VARIANTS_TAB_WAIT_TIMEOUT_MS / 1000)} detik). Proses C BERHENTI -- cek manual, pastikan kamu balik ke halaman cangkang yang benar.`);
+      return false;
+    }
+    await settleAfterAction('pindah tab Variants (Proses C, balik dari Proses B)');
+    return true;
   }
   async function resumeProsesAAfterReload() {
     setStatus('Proses A: balik ke tab Variants abis refresh', null);
@@ -1694,17 +1695,170 @@
     processNextInQueueForProsesA();
   }
   // ============================================================
+  // v1.22: PROSES C -- gabungan Proses A + Proses B, per-SKU (bukan
+  // batch semua-A-dulu-baru-semua-B). Buat SKU pertama di antrian:
+  //   1. Cek dulu apakah SKU ini UDAH ada di daftar tag "Tipe (Type)"
+  //      cangkang ini (checkSkuInCangkang -- ngegantiin kebiasaan
+  //      Ctrl+F manual user).
+  //   2. Kalau SUDAH ada -> langsung Proses B (skip Proses A).
+  //   3. Kalau BELUM ada -> Proses A dulu, WAJIB Save (Type di wizard
+  //      Proses B cuma bisa milih value yang udah ke-save), baru lanjut
+  //      Proses B.
+  //   4. Abis SKU ini kelar (dapet kode KFA / di-skip krn duplikat),
+  //      BARU geser ke SKU berikutnya di antrian & ulangi dari langkah 1.
+  // Berhenti otomatis kalau ketemu kegagalan ASLI di step manapun, sama
+  // kayak prinsip Proses A/B yang udah ada.
+  //
+  // v1.25 FIX: langkah 4 SEKARANG WAJIB lewat returnToShellAndVariantsTab()
+  // dulu (breadcrumb -> tab Variants) SEBELUM balik ke langkah 1 buat SKU
+  // berikutnya -- soalnya abis Proses B (langkah 3), halaman udah nggak
+  // lagi di halaman cangkang. Tanpa ini, checkSkuInCangkang() di langkah 1
+  // buat SKU berikutnya bisa salah baca DOM / gagal nemu tabelnya.
+  //
+  // v1.26 FIX: langkah 3 (Save WAJIB sebelum Proses B) SEKARANG nunggu
+  // tombol "Save" itu sendiri BENERAN ILANG dulu (bukan cuma nunggu
+  // overlay blockUI ilang) sebelum ngelanjut ke Proses B -- lihat
+  // waitForSaveButtonGone(). Ini nutup celah di mana overlay ilang
+  // duluan tapi form belum sempet re-render balik ke mode read-only,
+  // yang bikin runProsesB() nyari tombol Configure/Reconfigure Product
+  // kepagian & gagal.
+  // ============================================================
+  async function processNextInQueueForProsesC() {
+    if (stopRequested) {
+      log('⏹ Stop diminta user -- Proses C berhenti di titik aman.');
+      setIdle('Dihentikan user (Stop)');
+      return;
+    }
+    const q = loadQueue();
+    if (!q.length) {
+      log('✅ Antrian abis -- semua SKU sudah diproses (Proses C).');
+      setIdle('Selesai (antrian habis, Proses C)');
+      return;
+    }
+    const item = q[0];
+    setStatus(`Proses C: cek cangkang (sisa ${q.length})`, item.kodeProduk);
+    log(`🔍 Proses C: ngecek apakah "${item.kodeProduk}" udah ada di daftar tag "Tipe (Type)" cangkang ini (kayak Ctrl+F manual)...`);
+    const found = await checkSkuInCangkang(item.kodeProduk);
+    if (found === null) {
+      log(`⚠️ Proses C: nggak bisa mastiin apakah "${item.kodeProduk}" udah ada di cangkang -- tabel attribute "Tipe (Type)" nggak ketemu (pastikan kamu di tab Variants dulu). BERHENTI, cek manual.`);
+      setIdle('Berhenti (Proses C: gagal cek cangkang)');
+      return;
+    }
+    if (found) {
+      log(`ℹ️ "${item.kodeProduk}" SUDAH ada di daftar Tipe (Type) cangkang ini -- lewatin Proses A, langsung Proses B.`);
+    } else {
+      log(`➕ "${item.kodeProduk}" BELUM ada di cangkang -- jalanin Proses A dulu...`);
+      setStatus('Proses C: Proses A', item.kodeProduk);
+      const resultA = await runProsesA(item.kodeProduk);
+      if (resultA === 'DUPLICATE') {
+        const qNow = loadQueue();
+        if (qNow.length && qNow[0].kodeProduk === item.kodeProduk) {
+          qNow.shift();
+          saveQueue(qNow);
+        }
+        const results = loadResults();
+        results.push({ kodeProduk: item.kodeProduk, kfaCode: 'SKIPPED_DUPLICATE', timestamp: new Date().toISOString() });
+        saveResults(results);
+        log(`⏭️ "${item.kodeProduk}" dianggap DUPLIKAT pas Proses A (di dalam Proses C) -- di-skip & dicatat SKIPPED_DUPLICATE. Refresh halaman buat lanjut dari SKU berikutnya...`);
+        localStorage.setItem(AUTORESUME_PROSES_C_KEY, '1');
+        await sleep(600);
+        location.reload();
+        return;
+      }
+      if (!resultA) {
+        log(`⛔ Proses A gagal buat "${item.kodeProduk}" (di dalam Proses C) -- proses OTOMATIS DIHENTIKAN. Cek manual sebelum lanjut.`);
+        setIdle('Berhenti (Proses C: Proses A gagal)');
+        return;
+      }
+      log('💾 Save dulu (WAJIB) sebelum Proses B -- field Type di wizard Proses B cuma bisa milih value yang udah ke-save...');
+      setStatus('Proses C: save sebelum Proses B', item.kodeProduk);
+      if (!clickByText('button', 'Save', { visibleOnly: true })) {
+        log(`⚠️ Tombol Save nggak ketemu abis Proses A (di dalam Proses C) -- tag "${item.kodeProduk}" udah ketambah tapi BELUM ke-save. BERHENTI, save manual dulu sebelum lanjut.`);
+        setIdle('Berhenti (Proses C: save sebelum Proses B gagal)');
+        return;
+      }
+      await settleAfterAction('save sebelum Proses B (Proses C)');
+      // v1.26: JANGAN langsung anggap Save kelar cuma karena overlay
+      // blockUI-nya udah ilang -- overlay bisa ilang DULUAN sebelum form
+      // beneran selesai re-render dari mode Edit (tombol Save/Discard)
+      // balik ke mode read-only (tombol Configure/Reconfigure Product).
+      // Nunggu eksplisit sampai tombol "Save" itu sendiri BENERAN ILANG
+      // dari layar, baru dianggap aman buat lanjut ke Proses B.
+      setStatus('Proses C: nunggu tombol Save beneran ilang', item.kodeProduk);
+      const saveGone = await waitForSaveButtonGone();
+      if (!saveGone) {
+        log(`⚠️ Tombol "Save" masih kelihatan setelah ditunggu ${Math.round(CONFIG.SAVE_BUTTON_GONE_TIMEOUT_MS / 1000)} detik (di luar waktu loading) -- form kemungkinan nyangkut/gagal balik ke mode read-only. BERHENTI, cek manual dulu (jangan lanjut ke Proses B di halaman yang mungkin masih mode edit).`);
+        setIdle('Berhenti (Proses C: tombol Save nggak ilang-ilang setelah save)');
+        return;
+      }
+      log('✅ Save berhasil (tombol Save udah ilang, form balik ke mode read-only) -- lanjut Proses B...');
+    }
+    setStatus('Proses C: Proses B', item.kodeProduk);
+    const kfaCode = await runProsesB(item);
+    if (kfaCode === 'PAUSED_BEFORE_VALIDATE') {
+      const success = await watchForManualValidateAndFinish(item);
+      if (success) {
+        // v1.25: WAJIB pulang ke cangkang dulu (breadcrumb -> tab
+        // Variants) sebelum lanjut ke SKU berikutnya -- lihat catatan
+        // returnToShellAndVariantsTab() di atas.
+        const backOk = await returnToShellAndVariantsTab();
+        if (!backOk) {
+          setIdle('Berhenti (Proses C: gagal balik ke cangkang setelah Validate manual)');
+          return;
+        }
+        log('➡️ Proses C lanjut ke SKU berikutnya...');
+        setTimeout(processNextInQueueForProsesC, 1000);
+      } else {
+        log('⛔ Proses C DIHENTIKAN -- Proses B gagal/nggak terdeteksi selesai buat SKU ini. Cek manual dulu sebelum lanjut.');
+        setIdle('Berhenti (Proses C: Proses B gagal)');
+      }
+      return;
+    }
+    if (kfaCode) {
+      const qNow = loadQueue();
+      if (qNow.length && qNow[0].kodeProduk === item.kodeProduk) {
+        qNow.shift();
+        saveQueue(qNow);
+        renderPanel();
+        log(`➡️ Antrian digeser (Proses C). Sisa: ${qNow.length} SKU.`);
+      }
+      // v1.25: WAJIB pulang ke cangkang dulu (breadcrumb -> tab Variants)
+      // sebelum lanjut ke SKU berikutnya -- lihat catatan
+      // returnToShellAndVariantsTab() di atas. Ini yang sebelumnya HILANG
+      // dan bikin Proses C loncat cek cangkang di halaman yang salah.
+      const backOk = await returnToShellAndVariantsTab();
+      if (!backOk) {
+        setIdle('Berhenti (Proses C: gagal balik ke cangkang setelah Proses B)');
+        return;
+      }
+      log('➡️ Lanjut ke SKU berikutnya...');
+      setTimeout(processNextInQueueForProsesC, 1000);
+    } else {
+      log('⛔ Proses B gagal/berhenti di tengah jalan (di dalam Proses C) -- proses OTOMATIS DIHENTIKAN. Cek manual dulu sebelum lanjut ke SKU berikutnya.');
+      setIdle('Berhenti (Proses C: Proses B gagal)');
+    }
+  }
+  async function resumeProsesCAfterReload() {
+    setStatus('Proses C: balik ke tab Variants abis refresh', null);
+    log(`🔄 (Proses C) Nyoba balik ke tab "Variants" dulu sebelum lanjut (ditunggu sampai ${Math.round(CONFIG.VARIANTS_TAB_WAIT_TIMEOUT_MS / 1000)} detik kalau halamannya masih lemot ngeload abis refresh, bukan cuma sekali cek langsung nyerah)...`);
+    const clicked = await waitForVariantsTabAndClick();
+    if (!clicked) {
+      log(`⚠️ Tab "Variants" nggak pernah ketemu setelah ditunggu lama -- Proses C TIDAK dilanjutkan otomatis. Klik manual ke tab Variants, lalu klik "▶ Proses C" lagi buat lanjut dari SKU berikutnya di antrian.`);
+      setIdle('Berhenti (tab Variants nggak ketemu abis refresh, Proses C)');
+      return;
+    }
+    await settleAfterAction('klik tab Variants abis refresh (Proses C)');
+    await sleep(400);
+    log('➡️ Lanjut Proses C dari SKU berikutnya di antrian...');
+    processNextInQueueForProsesC();
+  }
+  // ============================================================
   // QUEUE RUNNER: satu titik masuk buat proses 1 SKU, dan (kalau
   // "Auto-lanjut ke SKU berikutnya" dicentang) otomatis nyambung ke SKU
   // berikutnya selama masih sukses. Berhenti otomatis kalau ada kegagalan
   // di step manapun -- TIDAK maksa lanjut biar bisa dicek manual dulu.
   // ============================================================
   async function processNextInQueue() {
-    if (stopRequested) {
-      log('⏹ Stop diminta user -- berhenti di titik aman.');
-      setIdle('Dihentikan user (Stop)');
-      return;
-    }
     const q = loadQueue();
     if (!q.length) {
       log('✅ Antrian kosong, nggak ada yang diproses.');
@@ -1764,7 +1918,6 @@
   }
   function maybeAutoContinue() {
     if (!autoFlags.autonext) return;
-    if (stopRequested) { log('⏹ Stop diminta -- auto-lanjut dihentikan.'); return; }
     const q = loadQueue();
     if (!q.length) {
       log('✅ Antrian habis, auto-lanjut selesai.');
@@ -1921,7 +2074,7 @@
           <input type="checkbox" id="kfa-autosave5" ${autoFlags.autosave5 ? 'checked' : ''}> Auto-save tiap ${CONFIG.PROSES_A_AUTOSAVE_EVERY} SKU sukses di Proses A (jaga-jaga kalau cangkang lemot/nyangkut, biar progress nggak ilang)
         </label>
         <label style="display:block; margin-bottom:6px;">
-          <input type="checkbox" id="kfa-autonext" ${autoFlags.autonext ? 'checked' : ''}> Auto-lanjut ke SKU berikutnya setelah sukses
+          <input type="checkbox" id="kfa-autonext" ${autoFlags.autonext ? 'checked' : ''}> Auto-lanjut ke SKU berikutnya (cuma buat Proses B -- Proses A & Proses C SELALU otomatis lanjut sampai antrian habis/ketemu gagal beneran)
         </label>
         <div style="color:#a00; margin-bottom:6px;">
           ⚠️ Data masuk ke sistem KFA nasional. Test 1 SKU manual dulu (semua checkbox OFF) sebelum aktifin auto-validate/save/lanjut.
@@ -1929,8 +2082,16 @@
         <div style="color:#1F4E78; margin-bottom:6px; font-style:italic;">
           💡 Website ini sering nunjukin overlay abu-abu (loading) yang lama & nggak keprediksi -- script SEKARANG sengaja nungguin overlay itu ilang dulu sebelum lanjut (bukan asal jalan cepat), jadi kalau keliatan diem sebentar pas ada tulisan "lagi loading" di log, itu emang lagi nungguin server, bukan macet. Liat kotak status di atas buat tau kondisi terkini kapan aja.
         </div>
-        <button id="kfa-run-b" style="width:100%; margin-bottom:4px; background:#1F4E78; color:#fff; font-weight:bold;">▶ Proses SKU pertama di antrian (otomatis isi Tipe/Type kalau belum kedaftar, lalu validasi)</button>
-        <button id="kfa-stop" style="width:100%; margin-bottom:4px; background:#f8d7da; border:1px solid #dc3545; color:#721c24;">⏹ Stop (berhenti di titik aman)</button>
+        <button id="kfa-run-c" style="width:100%; margin-bottom:4px; background:#1F4E78; color:#fff; font-weight:bold;">▶ Proses C: SKU per SKU (cek cangkang dulu -> A+Save+B -> pulang ke cangkang -> ulangi)</button>
+        <div style="color:#555; margin-bottom:8px; font-size:10.5px;">
+          Proses C = gabungan A+B per SKU. Tiap SKU: dicek dulu apa udah ada di cangkang (kayak Ctrl+F). Kalau udah ada, langsung Proses B. Kalau belum, Proses A + Save dulu baru Proses B. Abis Proses B kelar, script otomatis "pulang" dulu ke halaman cangkang (breadcrumb) & balik ke tab Variants sebelum ngecek SKU berikutnya.
+        </div>
+        <hr>
+        <div style="font-weight:bold; margin-bottom:4px; color:#555;">Mode lama (terpisah manual)</div>
+        <button id="kfa-run-a" style="width:100%; margin-bottom:4px;">▶ Proses A saja: proses SEMUA SKU antrian ke cangkang ini (tag doang, skip duplikat, gigih walau lemot)</button>
+        <button id="kfa-stop" style="width:100%; margin-bottom:4px; background:#f8d7da; border:1px solid #dc3545; color:#721c24;">⏹ Stop (berhenti di titik aman + safety-save)</button>
+        <button id="kfa-save-now" style="width:100%; margin-bottom:4px; background:#e6f4ea; border:1px solid #1e7e34; color:#155724;">💾 Save Sekarang (commit semua tag Proses A)</button>
+        <button id="kfa-run-b" style="width:100%; margin-bottom:4px;">▶ Proses B saja: validasi SKU pertama di antrian (asumsi Type udah ke-save)</button>
         <button id="kfa-skip" style="width:100%; margin-bottom:8px; background:#fff3cd; border:1px solid #d39e00; color:#7a5c00;">⏭ Skip SKU pertama di antrian</button>
         <hr>
         <div style="font-weight:bold; margin-bottom:4px;">Bantuan: isi field yang lagi kebuka manual</div>
@@ -2019,13 +2180,49 @@
       log(`Antrian dimuat: ${items.length} SKU.`);
       renderPanel();
     };
-    document.getElementById('kfa-stop').onclick = () => {
-      stopRequested = true;
-      log('⏹ Stop diminta -- bakal berhenti abis SKU yang lagi diproses sekarang kelar.');
-    };
-
-    document.getElementById('kfa-run-b').onclick = () => {
+    document.getElementById('kfa-run-c').onclick = () => {
+      // v1.22: reset stopRequested & counter save tiap kali batch baru
+      // dimulai dari tombol ini, biar Stop sebelumnya nggak nyangkut ke
+      // batch yang baru.
       stopRequested = false;
+      prosesA_pendingSaveCount = 0;
+      processNextInQueueForProsesC();
+    };
+    document.getElementById('kfa-run-a').onclick = () => {
+      // v1.16: SEBELUMNYA di sini langsung manggil runProsesA() doang
+      // tanpa geser antrian -- bug, counter-nya nggak pernah maju.
+      // Sekarang lewat processNextInQueueForProsesA() yang geser antrian
+      // abis sukses & (kalau Auto-lanjut dicentang) otomatis nyambung ke
+      // SKU berikutnya buat numpuk banyak tag ke cangkang yang sama.
+      // v1.19: reset stopRequested & counter save tiap kali batch baru
+      // dimulai dari tombol ini, biar Stop sebelumnya nggak nyangkut ke
+      // batch yang baru.
+      stopRequested = false;
+      prosesA_pendingSaveCount = 0;
+      processNextInQueueForProsesA();
+    };
+    document.getElementById('kfa-stop').onclick = () => {
+      // v1.19: minta berhenti di titik aman -- BUKAN potong paksa di
+      // tengah satu SKU yang lagi jalan (biar nggak ninggalin DOM/state
+      // setengah jadi). Berlaku buat Proses A maupun Proses C -- dicek
+      // di awal tiap iterasi masing2 runner, abis SKU yang lagi jalan
+      // kelar.
+      stopRequested = true;
+      log('⏹ Stop diminta -- bakal berhenti abis SKU yang lagi diproses sekarang kelar (bukan potong paksa di tengah), plus safety-save kalau ada progress yang belum ke-save.');
+    };
+    document.getElementById('kfa-save-now').onclick = async () => {
+      // v1.16: tombol buat commit SEKALI di akhir, setelah numpuk
+      // beberapa/banyak tag SKU lewat Proses A -- bukan save tiap 1 SKU.
+      if (!clickByText('button', 'Save', { visibleOnly: true })) {
+        alert('Tombol Save nggak ketemu / nggak kelihatan saat ini. Pastikan kamu masih di halaman cangkang yang lagi diedit.');
+        return;
+      }
+      log('💾 Save diklik manual -- nungguin proses commit selesai...');
+      await settleAfterAction('klik Save Sekarang (Proses A, batch)');
+      log('✅ Save selesai. Semua tag yang udah diinput di widget ini sekarang ke-commit.');
+      prosesA_pendingSaveCount = 0;
+    };
+    document.getElementById('kfa-run-b').onclick = () => {
       processNextInQueue();
     };
     document.getElementById('kfa-skip').onclick = () => {
@@ -2067,6 +2264,14 @@
       localStorage.removeItem(AUTORESUME_PROSES_A_KEY);
       log('🔄 Halaman baru aja di-refresh otomatis (abis skip duplikat di Proses A) -- balik ke tab "Variants" dulu (ditunggu sampai halaman beneran kelar loading), baru lanjutin Proses A dari SKU berikutnya di antrian...');
       setTimeout(() => resumeProsesAAfterReload(), 800);
+    }
+    // v1.22: sama kayak di atas, tapi buat Proses C (flag terpisah biar
+    // resume ke runner yang bener -- processNextInQueueForProsesC, bukan
+    // processNextInQueueForProsesA).
+    if (localStorage.getItem(AUTORESUME_PROSES_C_KEY)) {
+      localStorage.removeItem(AUTORESUME_PROSES_C_KEY);
+      log('🔄 Halaman baru aja di-refresh otomatis (abis skip duplikat di Proses C) -- balik ke tab "Variants" dulu, baru lanjutin Proses C dari SKU berikutnya di antrian...');
+      setTimeout(() => resumeProsesCAfterReload(), 800);
     }
   }
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
