@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         INAPROC Auto Isi Master Produk Sectoral (Alkes - Kode Unik KFA) + Panel
 // @namespace    inaproc-auto-master-produk
-// @version      3.11.1
-// @description  Panel UI untuk auto isi form pengajuan penunjukan Sectoral (Kategori Alkes: Kode Unik KFA) di penyedia.inaproc.id, unggah AKD & CPAKB dari Supabase Storage, konfirmasi, kirim, dan auto-lanjut antar SKU. v3.10.0: (1) tombol Jeda/Lanjutkan & Stop di panel -- checkpoint-based (berhenti di antara SKU / sebelum reload, bukan motong di tengah upload, biar form gak ketinggalan state setengah jadi). (2) Deteksi error/warning diperluas -- bukan cuma teks persis "Nomor permohonan wajib" tapi juga elemen berstyle error/warning/danger dan kata kunci umum (tidak valid, gagal, dst). (3) SKU yang di-skip karena error/warning sekarang di-REQUEUE ke akhir antrian (retry, max 2x) alih-alih langsung dianggap selesai/dilewati permanen -- baru ditandai gagal permanen kalau udah gagal berkali-kali. v3.11.0: deteksi error SERVER (Internal Server Error/500/502/dst) dipisah dari error validasi SKU -- ini infra yang lelet/rusak, bukan salah SKU-nya, jadi SKU saat ini TIDAK di-requeue/dihitung retry. Yang terjadi malah full restart: reload halaman lalu ulang dari awal mulai dari klik "Daftarkan Merek". v3.11.1: fix -- "Sesi Anda telah berakhir" gak ke-cover keyword server-error sebelumnya, sekarang masuk. tungguLihatDokumen() (nunggu upload dokumen selesai) sekarang ngecek server-error/sesi-berakhir tiap poll, gagal cepat & restart total daripada nunggu 20 detik penuh baru nyerah.
+// @version      3.14.0
+// @description  Panel UI untuk auto isi form pengajuan penunjukan Sectoral (Kategori Alkes: Kode Unik KFA) di penyedia.inaproc.id, unggah AKD & CPAKB dari Supabase Storage, konfirmasi, kirim, dan auto-lanjut antar SKU. v3.10.0: (1) tombol Jeda/Lanjutkan & Stop di panel -- checkpoint-based (berhenti di antara SKU / sebelum reload, bukan motong di tengah upload, biar form gak ketinggalan state setengah jadi). (2) Deteksi error/warning diperluas -- bukan cuma teks persis "Nomor permohonan wajib" tapi juga elemen berstyle error/warning/danger dan kata kunci umum (tidak valid, gagal, dst). (3) SKU yang di-skip karena error/warning sekarang di-REQUEUE ke akhir antrian (retry, max 2x) alih-alih langsung dianggap selesai/dilewati permanen -- baru ditandai gagal permanen kalau udah gagal berkali-kali. v3.11.0: deteksi error SERVER (Internal Server Error/500/502/dst) dipisah dari error validasi SKU -- ini infra yang lelet/rusak, bukan salah SKU-nya, jadi SKU saat ini TIDAK di-requeue/dihitung retry. Yang terjadi malah full restart: reload halaman lalu ulang dari awal mulai dari klik "Daftarkan Merek". v3.11.1: fix -- "Sesi Anda telah berakhir" gak ke-cover keyword server-error sebelumnya, sekarang masuk. tungguLihatDokumen() (nunggu upload dokumen selesai) sekarang ngecek server-error/sesi-berakhir tiap poll, gagal cepat & restart total daripada nunggu 20 detik penuh baru nyerah. v3.13.0: (1) pilihKategoriDropdown() ditulis ulang -- kontrol diidentifikasi dari teks ancestor "Kategori" (bukan tebak-tebakan before/after diff), dibungkus retry 3x penuh (bukan cuma retry buka-menu), plus fallback ketik ke search box kalau opsi gak ke-render (virtualized list) -- ini buat kasus "stuck" di pemilihan kategori. (2) Delay setelah klik Periksa sekarang polling early-exit (berhenti begitu ada error ATAU form udah lanjut ke checkbox Pemilik Merek), bukan nunggu fixed 3500ms+8000ms penuh -- kasus normal jauh lebih cepat. v3.14.0: fitur Google Drive (v3.12.0-3.13.1) DICABUT -- AKD balik diambil dari Supabase seperti semula. @grant balik ke none (gak butuh sandboxed context lagi, gak perlu update permission).
 // @match        https://penyedia.inaproc.id/*
 // @grant        none
 // ==/UserScript==
@@ -42,14 +42,6 @@
   }
   function saveFlags(f) { localStorage.setItem(FLAGS_KEY, JSON.stringify(f)); }
   let flags = loadFlags();
-  document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    log('⚠️ Tab jadi background — browser bakal throttle timer, proses bisa telat/timeout. Tetap di tab ini selama proses jalan.');
-  } else if (document.visibilityState === 'visible') {
-    log('👁️ Tab aktif lagi.');
-    if (getStage() && !flags.paused) main();
-  }
-});
   function getStage() { return localStorage.getItem(STAGE_KEY) || null; }
   function setStage(stage) {
     if (stage === null) localStorage.removeItem(STAGE_KEY);
@@ -293,68 +285,110 @@
     if (!radio.checked) clickElement(radio);
     await sleep(CONFIG.stepDelay);
   }
+  // v3.13.0: dulu kontrol dropdown kategori ditebak dari "select__control yang
+  // baru muncul setelah pilih Sectoral" (before/after Set-diff) -- gampang salah
+  // ambil kalau lebih dari satu dropdown muncul bersamaan / timing-nya meleset,
+  // dan itu sumber paling mungkin dari kasus "stuck" di kategori. Sekarang
+  // diidentifikasi dari TEKS ANCESTOR yang mengandung "Kategori" (jauh lebih
+  // reliable), before/after diff cuma jadi fallback. Seluruh alur (buka menu ->
+  // cari opsi -> klik -> verifikasi) juga dibungkus retry 3x penuh -- kalau
+  // gagal di step manapun, Escape + coba dari awal lagi, bukan langsung nyerah.
+  function simulasiKlikLengkap(el) {
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const base = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 0 };
+    if (window.PointerEvent) {
+      el.dispatchEvent(new PointerEvent('pointerdown', { ...base, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+    }
+    el.dispatchEvent(new MouseEvent('mousedown', base));
+    if (window.PointerEvent) {
+      el.dispatchEvent(new PointerEvent('pointerup', { ...base, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+    }
+    el.dispatchEvent(new MouseEvent('mouseup', base));
+    el.dispatchEvent(new MouseEvent('click', base));
+  }
+  function tutupMenuDropdown() {
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+  }
   async function pilihKategoriDropdown() {
-    let control = await pollUntil(() => {
-      const now = Array.from(document.querySelectorAll('[class*="select__control"]'));
-      const fresh = now.find((el) => !controlsBeforeSectoral.has(el) && isVisible(el));
-      return fresh || null;
-    }, { timeout: 8000 }).catch(() => null);
-    if (!control) {
-      control = Array.from(document.querySelectorAll('[class*="select__control"]')).find(isVisible) || null;
-    }
-    if (!control) throw new Error('Tidak menemukan kontrol dropdown kategori sama sekali. Cek selector di DevTools.');
-    function simulasiKlikLengkap(el) {
-      const rect = el.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const base = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 0 };
-      if (window.PointerEvent) {
-        el.dispatchEvent(new PointerEvent('pointerdown', { ...base, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+    function controlTerlihatSepertiKategori(el) {
+      let node = el;
+      for (let i = 0; i < 6 && node; i++) {
+        if ((node.textContent || '').toLowerCase().includes('kategori')) return true;
+        node = node.parentElement;
       }
-      el.dispatchEvent(new MouseEvent('mousedown', base));
-      if (window.PointerEvent) {
-        el.dispatchEvent(new PointerEvent('pointerup', { ...base, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
-      }
-      el.dispatchEvent(new MouseEvent('mouseup', base));
-      el.dispatchEvent(new MouseEvent('click', base));
+      return false;
     }
-    async function bukaMenuKategori() {
-      simulasiKlikLengkap(control);
-      await sleep(350);
-      return Array.from(document.querySelectorAll('[class*="select__menu"]')).some(
-        (el) => isVisible(el) && isNear(el, control, 600)
-      );
+    function cariControlKategori() {
+      const semua = Array.from(document.querySelectorAll('[class*="select__control"]')).filter(isVisible);
+      const kandidat = semua.filter(controlTerlihatSepertiKategori);
+      if (kandidat.length) return kandidat[0];
+      const fresh = semua.find((el) => !controlsBeforeSectoral.has(el));
+      return fresh || semua[0] || null;
     }
-    let menuTerbuka = await bukaMenuKategori();
-    for (let attempt = 0; !menuTerbuka && attempt < 2; attempt++) {
-      await sleep(300);
-      menuTerbuka = await bukaMenuKategori();
-    }
-    if (!menuTerbuka) throw new Error('Menu dropdown kategori nggak kebuka setelah beberapa kali percobaan klik.');
     const optionSelector = '[class*="select__option"], [class*="select"][class*="option"], [role="option"]';
-    const option = await pollUntil(() => {
+    function cariOptionKategori(control) {
       const candidates = Array.from(document.querySelectorAll(optionSelector)).filter(
         (el) => isVisible(el) && isNear(el, control, 600)
       );
       if (!candidates.length) return null;
       const exact = candidates.find((el) => el.textContent.trim() === CONFIG.kategoriLabel);
       return exact || candidates.find((el) => el.textContent.includes(CONFIG.kategoriLabel)) || null;
-    }, { timeout: 8000 }).catch(() => null);
-    if (!option) {
-      const allVisibleOptions = Array.from(document.querySelectorAll(optionSelector)).filter(isVisible);
-      console.log('[INAPROC-AUTO] Opsi dropdown kategori nggak ketemu. Kandidat opsi visible:');
-      allVisibleOptions.forEach((el, i) => console.log(`[INAPROC-AUTO] Opsi ${i}: "${el.textContent.trim()}"`, el));
-      throw new Error(`Opsi "${CONFIG.kategoriLabel}" nggak ketemu di dropdown.`);
     }
-    clickElement(option);
-    simulasiKlikLengkap(option);
-    await sleep(CONFIG.stepDelay);
-    const selected = await pollUntil(() => {
-      const text = control.textContent.trim();
-      return text && text !== 'Pilih' ? text : null;
-    }, { timeout: 5000 }).catch(() => null);
-    if (!selected) throw new Error('Dropdown kategori masih menunjukkan "Pilih" setelah opsi diklik.');
-    log(`Kategori terpilih: "${selected}"`);
+    async function bukaMenuKategori(control) {
+      simulasiKlikLengkap(control);
+      await sleep(350);
+      return Array.from(document.querySelectorAll('[class*="select__menu"]')).some(
+        (el) => isVisible(el) && isNear(el, control, 600)
+      );
+    }
+    const MAX_ATTEMPT = 3;
+    for (let attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
+      const control = cariControlKategori();
+      if (!control) {
+        log(`⚠️ Kontrol dropdown kategori belum ketemu (percobaan ${attempt}/${MAX_ATTEMPT})...`);
+        await sleep(500);
+        continue;
+      }
+      let menuTerbuka = await bukaMenuKategori(control);
+      if (!menuTerbuka) { await sleep(300); menuTerbuka = await bukaMenuKategori(control); }
+      if (!menuTerbuka) {
+        log(`⚠️ Menu kategori gak kebuka (percobaan ${attempt}/${MAX_ATTEMPT}), coba lagi...`);
+        tutupMenuDropdown();
+        await sleep(400);
+        continue;
+      }
+      let option = await pollUntil(() => cariOptionKategori(control), { timeout: 5000 }).catch(() => null);
+      if (!option) {
+        // Fallback: ketik ke search input react-select buat memfilter opsi --
+        // berguna kalau daftarnya di-virtualize dan opsi target belum ke-render.
+        const searchInput = control.querySelector('input');
+        if (searchInput) {
+          setNativeValue(searchInput, 'KFA');
+          option = await pollUntil(() => cariOptionKategori(control), { timeout: 4000 }).catch(() => null);
+        }
+      }
+      if (!option) {
+        log(`⚠️ Opsi "${CONFIG.kategoriLabel}" gak ketemu (percobaan ${attempt}/${MAX_ATTEMPT}), tutup & coba lagi...`);
+        tutupMenuDropdown();
+        await sleep(400);
+        continue;
+      }
+      clickElement(option);
+      simulasiKlikLengkap(option);
+      await sleep(CONFIG.stepDelay);
+      const selected = await pollUntil(() => {
+        const text = control.textContent.trim();
+        return text && text !== 'Pilih' ? text : null;
+      }, { timeout: 5000 }).catch(() => null);
+      if (selected) {
+        log(`Kategori terpilih: "${selected}"`);
+        return;
+      }
+      log(`⚠️ Dropdown kategori masih nunjukin "Pilih" setelah opsi diklik (percobaan ${attempt}/${MAX_ATTEMPT}).`);
+    }
+    throw new Error(`Gagal pilih kategori "${CONFIG.kategoriLabel}" setelah ${MAX_ATTEMPT}x percobaan.`);
   }
   async function isiNomorProduk(kfaCode) {
     const input = await waitForElement('input[name="kfa.input"], input[placeholder="Nomor Produk"]');
@@ -364,8 +398,15 @@
   async function klikPeriksa() {
     const btn = await waitForElement('#find-kfa-button');
     clickElement(btn);
-    await sleep(3500);
+    await sleep(400); // jeda kecil doang biar React sempat mulai proses klik
   }
+  // v3.13.0: dulu nunggu fixed 3500ms + polling 8000ms PENUH (cuma break kalau
+  // ketemu ERROR, gak ada jalan keluar cepat kalau sukses) -- total sampai
+  // ~11.5 detik walau form-nya udah valid dalam 1 detik. Sekarang polling
+  // berhenti begitu SALAH SATU dari 3 kondisi ketemu duluan: error, server
+  // error, atau tandanya form udah lanjut (checkbox "Pemilik Merek" muncul --
+  // itu langkah berikutnya yang sama persis dipakai centangTipePenyedia()).
+  // Kasus normal jadi jauh lebih cepat, kasus lambat tetap ada batas aman 10 detik.
   async function cekDanProsesNomorProduk() {
     const q = loadQueue();
     if (!q.length) return null;
@@ -374,24 +415,28 @@
     log(`Cek Nomor Produk (KFA): "${item.kfaCode}"...`);
     await isiNomorProduk(item.kfaCode);
     await klikPeriksa();
-    let errorTerlihat = false;
-    let serverErrorTerlihat = false;
+    let hasil = null; // 'server-error' | 'error' | 'siap' | null (timeout)
     const pollStart = Date.now();
-    while (Date.now() - pollStart < 8000) {
-      if (cekServerError()) { serverErrorTerlihat = true; break; }
-      if (cekPesanBermasalah()) { errorTerlihat = true; break; }
-      await sleep(400);
+    while (Date.now() - pollStart < 10000) {
+      if (cekServerError()) { hasil = 'server-error'; break; }
+      if (cekPesanBermasalah()) { hasil = 'error'; break; }
+      const pemilikMerek = document.querySelector('input[label="Pemilik Merek"]');
+      if (pemilikMerek && isVisible(pemilikMerek)) { hasil = 'siap'; break; }
+      await sleep(250);
     }
-    if (serverErrorTerlihat) {
+    if (hasil === 'server-error') {
       await restartTotalKeDaftarkanMerek('Server error terdeteksi setelah klik Periksa');
       return null;
     }
-    if (errorTerlihat) {
+    if (hasil === 'error') {
       requeueAtBackOrDrop(item, 'DILEWATI: ada pesan error/warning di form', 'skipped-kfa-bermasalah');
       renderPanel();
       await restartViaReload();
       return null;
     }
+    // hasil === 'siap' ATAU timeout habis tanpa error kedeteksi -- keduanya
+    // lanjut proses; centangTipePenyedia() punya waitForElement sendiri buat
+    // jaga-jaga kalau kasus timeout ternyata belum benar-benar siap.
     log(`✅ Nomor Produk "${item.kfaCode}" valid, lanjut proses.`);
     return item;
   }
