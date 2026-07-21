@@ -1,0 +1,18 @@
+Cara pakai:
+
+Pastikan kamu di halaman my-competition halaman 1, tabel sudah tampil
+Paste & jalankan script di atas (ini otomatis inisialisasi penyimpanan)
+Klik tombol halaman 2 di pagination
+Jalankan lagi baris collectCurrentPage(); saja (tidak perlu paste ulang semuanya)
+Ulangi sampai halaman 15 — tiap kali pindah halaman, jalankan collectCurrentPage();
+Setelah halaman 15 selesai, cek totalnya: console.log(window.__allCompetitionPairs.size) — harusnya sama dengan total kompetisi kamu
+
+Setelah semua 15 halaman terkumpul, jalankan script export final ini (pakai data yang sudah terkumpul di window.__allCompetitionPairs):
+
+
+
+
+Penting:
+
+rscToken di script terakhir harus token terbaru — ambil dari salah satu URL detail terbaru yang kamu klik (parameter _rsc=...), bukan yang lama, karena token itu bisa expired
+Kalau collectCurrentPage() menemukan 0 kompetisi baru di suatu halaman, cek dulu selector a[href*="..."] cocok atau tidak — kirim saya potongan HTML salah satu baris tabel (klik kanan link kompetisi di halaman → Inspect) kalau ternyata gagal, saya sesuaikan selectornya
