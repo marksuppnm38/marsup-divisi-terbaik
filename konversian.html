@@ -2256,8 +2256,10 @@ function copyProdukToClipboard(kode) {
     r.nama_produk || '-',
     harga ? rupiah(harga) : 'Harga belum ada',
     r.link_v6 || ''
-  ].filter(Boolean);
-  const text = lines.join('\n');
+  ];
+  const text = lines.join('\t'); // <- ganti '\n' jadi '\t' biar menyamping di spreadsheet
+  navigator.clipboard.writeText(text);
+}
 
   function fallbackCopy(str) {
     const ta = document.createElement('textarea');
