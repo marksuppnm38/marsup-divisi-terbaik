@@ -2257,9 +2257,7 @@ function copyProdukToClipboard(kode) {
     harga ? rupiah(harga) : 'Harga belum ada',
     r.link_v6 || ''
   ];
-  const text = lines.join('\t'); // <- ganti '\n' jadi '\t' biar menyamping di spreadsheet
-  navigator.clipboard.writeText(text);
-}
+  const text = lines.join('\t');
 
   function fallbackCopy(str) {
     const ta = document.createElement('textarea');
@@ -2286,8 +2284,7 @@ function copyProdukToClipboard(kode) {
     if (fallbackCopy(text)) showToast('Disalin ke clipboard ✓');
     else showToast('Gagal menyalin, coba lagi', 'error');
   }
-
-
+} // <- INI PENUTUP FUNCTION-NYA, PASTIKAN ADA
 // PAGINATION
 function renderPagination(totalItems) {
   const totalPages = Math.max(1, Math.ceil(totalItems / RESULTS_PER_PAGE));
