@@ -331,7 +331,8 @@ table.skip-table tr:last-child td{border-bottom:none}
           <h2>Recent Activity</h2>
           <p>Riwayat upload stok dari seluruh divisi.</p>
         </div>
-        <div class="card-head-action">
+        <div class="card-head-action" style="display:flex;gap:8px">
+          <button class="mini-btn" id="refresh-history-btn" title="Muat ulang riwayat"><i class="ph ph-arrow-clockwise"></i>Refresh</button>
           <button class="mini-btn" id="show-more-btn" style="display:none">Lihat Semua <i class="ph ph-caret-right"></i></button>
         </div>
       </div>
@@ -414,6 +415,7 @@ function showApp() {
   authGate.style.display = 'none';
   appRoot.style.display = 'block';
   renderLastStatus();
+  historyShowAll = false;
   renderHistory();
 }
 function showGate(msg) {
@@ -667,6 +669,18 @@ async function renderHistory(){
 document.getElementById('show-more-btn').addEventListener('click', () => {
   historyShowAll = !historyShowAll;
   renderHistory();
+});
+const refreshHistoryBtn = document.getElementById('refresh-history-btn');
+refreshHistoryBtn.addEventListener('click', async () => {
+  refreshHistoryBtn.disabled = true;
+  refreshHistoryBtn.innerHTML = '<i class="ph ph-arrow-clockwise" style="animation:spin .7s linear infinite"></i>Refresh';
+  try {
+    await renderLastStatus();
+    await renderHistory();
+  } finally {
+    refreshHistoryBtn.disabled = false;
+    refreshHistoryBtn.innerHTML = '<i class="ph ph-arrow-clockwise"></i>Refresh';
+  }
 });
 // ══════════════════════════════════════════
 // PARSE FILE
