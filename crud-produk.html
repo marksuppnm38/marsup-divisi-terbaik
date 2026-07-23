@@ -151,11 +151,36 @@ tbody tr.clickable:hover{background:var(--surface-2)}
 .harga-add{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-top:10px;align-items:end}
 .harga-add .btn{height:34px}
 
+.media-add{display:grid;grid-template-columns:1fr 1fr 1fr auto auto;gap:8px;margin-top:10px;align-items:end}
+.media-add .f.full{grid-column:1/3}
+.media-add .btn{height:34px}
+.media-link{color:var(--accent);text-decoration:none;font-size:12.5px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
+.media-link:hover{text-decoration:underline}
+.badge-primary{background:var(--accent-bg);color:var(--accent-text)}
+
 .modal-actions{display:flex;justify-content:space-between;margin-top:22px;padding-top:14px;border-top:1px solid var(--border)}
 
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:11px 18px;border-radius:8px;font-size:12.5px;z-index:100;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
 .toast.error{background:var(--danger)}
+
+/* LOG AKTIVITAS */
+.log-modal{max-width:720px}
+.log-toolbar{display:flex;gap:8px;align-items:end;margin-bottom:14px;flex-wrap:wrap}
+.log-toolbar .f{min-width:150px}
+.log-list{display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow-y:auto}
+.log-entry{border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.log-entry-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.log-action{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.03em}
+.log-action.INSERT{background:var(--success-bg);color:var(--success)}
+.log-action.UPDATE{background:var(--accent-bg);color:var(--accent-text)}
+.log-action.DELETE{background:var(--danger-bg);color:var(--danger)}
+.log-table{font-family:var(--mono);font-size:11.5px;color:var(--text-secondary);background:var(--surface-2);padding:2px 8px;border-radius:6px}
+.log-summary{font-size:13px;margin-top:6px}
+.log-meta{font-size:11.5px;color:var(--text-muted);margin-top:4px}
+.log-diff-toggle{font-size:11.5px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;margin-top:6px;font-family:inherit}
+.log-diff{display:none;margin-top:8px;background:var(--surface-2);border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;word-break:break-word}
+.log-diff.open{display:block}
 </style>
 </head>
 <body>
@@ -168,6 +193,7 @@ tbody tr.clickable:hover{background:var(--surface-2)}
       <div class="brand-sub">PNM · SMY · METO</div>
     </div>
   </div>
+  <button class="theme-toggle" id="logToggle" title="Log Aktivitas" style="margin-right:6px;"><i class="ti ti-history"></i></button>
   <button class="theme-toggle" id="themeToggle"><i class="ti ti-moon"></i></button>
 </header>
 
@@ -320,6 +346,34 @@ tbody tr.clickable:hover{background:var(--surface-2)}
       </div>
     </div>
 
+    <div id="mediaSection" style="display:none;">
+      <div class="sec-label">Brosur & Gambar</div>
+      <div class="table-card">
+        <table>
+          <thead><tr><th>Jenis</th><th>Judul</th><th>URL</th><th>Utama</th><th></th></tr></thead>
+          <tbody id="mediaTableBody">
+            <tr><td colspan="5" style="color:var(--text-muted);padding:14px;">Belum ada media</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="media-add">
+        <div class="f"><label>Jenis</label>
+          <select id="md_jenis">
+            <option value="brosur">Brosur</option>
+            <option value="gambar">Gambar</option>
+          </select>
+        </div>
+        <div class="f"><label>Judul</label><input type="text" id="md_judul" placeholder="Judul singkat"/></div>
+        <div class="f full"><label>URL</label><input type="text" id="md_url" placeholder="https://..."/></div>
+        <div class="f"><label>Urutan</label><input type="number" id="md_urutan" value="1" min="1"/></div>
+        <div class="check-row" style="margin-top:20px;">
+          <input type="checkbox" id="md_primary"/>
+          <label for="md_primary">Jadikan utama</label>
+        </div>
+        <button class="btn btn-ghost" id="addMediaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-danger-ghost" id="deleteBtn" style="display:none;"><i class="ti ti-trash"></i> Hapus Produk</button>
       <div style="display:flex;gap:8px;">
@@ -331,6 +385,48 @@ tbody tr.clickable:hover{background:var(--surface-2)}
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- LOG AKTIVITAS MODAL -->
+<div class="modal-overlay" id="logModalOverlay">
+  <div class="modal-card log-modal">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Log Aktivitas</div>
+        <div class="modal-sub">Riwayat tambah/ubah/hapus di produk, harga, media & master produk</div>
+      </div>
+      <button class="modal-close" id="logModalCloseBtn"><i class="ti ti-x"></i></button>
+    </div>
+
+    <div class="log-toolbar">
+      <div class="f"><label>Tanggal</label><input type="date" id="log_tanggal"/></div>
+      <div class="f">
+        <label>Tabel</label>
+        <select id="log_table">
+          <option value="">Semua tabel</option>
+          <option value="produk">produk</option>
+          <option value="produk_harga">produk_harga</option>
+          <option value="produk_media">produk_media</option>
+          <option value="master_produk">master_produk</option>
+        </select>
+      </div>
+      <div class="f">
+        <label>Aksi</label>
+        <select id="log_action">
+          <option value="">Semua aksi</option>
+          <option value="INSERT">Tambah</option>
+          <option value="UPDATE">Ubah</option>
+          <option value="DELETE">Hapus</option>
+        </select>
+      </div>
+      <button class="btn btn-ghost" id="log_refresh"><i class="ti ti-refresh"></i> Muat ulang</button>
+    </div>
+
+    <div class="log-list" id="logList">
+      <div style="color:var(--text-muted);padding:14px;">Memuat log...</div>
+    </div>
+  </div>
+</div>
+
 
 <script>
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
@@ -503,11 +599,106 @@ sb.auth.getSession().then(({ data: { session } }) => {
 });
 
 // ================================================================
+// LOG AKTIVITAS
+// ================================================================
+const logToggle = document.getElementById('logToggle');
+const logModalOverlay = document.getElementById('logModalOverlay');
+const logModalCloseBtn = document.getElementById('logModalCloseBtn');
+const logList = document.getElementById('logList');
+const logTanggal = document.getElementById('log_tanggal');
+const logTableSel = document.getElementById('log_table');
+const logActionSel = document.getElementById('log_action');
+
+function todayLocalISO(){
+  const d = new Date();
+  const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
+}
+
+logToggle.addEventListener('click', () => {
+  if (!logTanggal.value) logTanggal.value = todayLocalISO();
+  logModalOverlay.classList.add('open');
+  loadAuditLog();
+});
+logModalCloseBtn.addEventListener('click', () => logModalOverlay.classList.remove('open'));
+logModalOverlay.addEventListener('click', e => { if (e.target === logModalOverlay) logModalOverlay.classList.remove('open'); });
+document.getElementById('log_refresh').addEventListener('click', loadAuditLog);
+logTanggal.addEventListener('change', loadAuditLog);
+logTableSel.addEventListener('change', loadAuditLog);
+logActionSel.addEventListener('change', loadAuditLog);
+
+const LOG_TABLE_LABELS = {
+  produk: 'produk', produk_harga: 'harga', produk_media: 'media', master_produk: 'master produk'
+};
+const LOG_ACTION_LABELS = { INSERT: 'Tambah', UPDATE: 'Ubah', DELETE: 'Hapus' };
+
+async function loadAuditLog(){
+  logList.innerHTML = '<div style="color:var(--text-muted);padding:14px;">Memuat log...</div>';
+  const tgl = logTanggal.value || todayLocalISO();
+  const start = tgl + 'T00:00:00';
+  const endDate = new Date(tgl + 'T00:00:00'); endDate.setDate(endDate.getDate() + 1);
+  const end = endDate.toISOString().slice(0, 19);
+
+  let query = sb.from('audit_log').select('*')
+    .gte('changed_at', start).lt('changed_at', end)
+    .order('changed_at', { ascending: false })
+    .limit(200);
+  if (logTableSel.value) query = query.eq('table_name', logTableSel.value);
+  if (logActionSel.value) query = query.eq('action', logActionSel.value);
+
+  const { data, error } = await query;
+  if (error) { logList.innerHTML = `<div style="color:var(--danger);padding:14px;">Gagal memuat log: ${escapeHtml(error.message)}</div>`; return; }
+  if (!data || data.length === 0) { logList.innerHTML = '<div style="color:var(--text-muted);padding:14px;">Tidak ada aktivitas pada tanggal ini.</div>'; return; }
+
+  logList.innerHTML = '';
+  data.forEach((row, idx) => {
+    const el = document.createElement('div');
+    el.className = 'log-entry';
+    const jam = new Date(row.changed_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    el.innerHTML = `
+      <div class="log-entry-top">
+        <span class="log-action ${row.action}">${LOG_ACTION_LABELS[row.action] || row.action}</span>
+        <span class="log-table">${LOG_TABLE_LABELS[row.table_name] || row.table_name}</span>
+        <span class="log-meta">${jam} · ${escapeHtml(row.changed_by || 'tidak diketahui')}</span>
+      </div>
+      <div class="log-summary">${buildLogSummary(row)}</div>
+      <button class="log-diff-toggle" data-idx="${idx}">Lihat detail</button>
+      <div class="log-diff" id="logdiff-${idx}">${escapeHtml(JSON.stringify({ before: row.old_data, sesudah: row.new_data }, null, 2))}</div>
+    `;
+    el.querySelector('.log-diff-toggle').addEventListener('click', e => {
+      const diffEl = document.getElementById('logdiff-' + idx);
+      diffEl.classList.toggle('open');
+      e.target.textContent = diffEl.classList.contains('open') ? 'Sembunyikan detail' : 'Lihat detail';
+    });
+    logList.appendChild(el);
+  });
+}
+
+function buildLogSummary(row){
+  const label = LOG_TABLE_LABELS[row.table_name] || row.table_name;
+  const idText = row.record_id ? `<span class="kode-cell">${escapeHtml(row.record_id)}</span>` : '';
+  if (row.action === 'INSERT') {
+    const nama = row.new_data?.nama_produk || row.new_data?.judul || row.new_data?.deskripsi_vendor || '';
+    return `Menambahkan ${label} ${idText}${nama ? ' — ' + escapeHtml(nama) : ''}`;
+  }
+  if (row.action === 'DELETE') {
+    const nama = row.old_data?.nama_produk || row.old_data?.judul || '';
+    return `Menghapus ${label} ${idText}${nama ? ' — ' + escapeHtml(nama) : ''}`;
+  }
+  // UPDATE: sebutkan field apa saja yang berubah
+  const before = row.old_data || {}, after = row.new_data || {};
+  const changed = Object.keys(after).filter(k => JSON.stringify(before[k]) !== JSON.stringify(after[k]) && k !== 'updated_at');
+  const fieldsText = changed.length ? changed.slice(0, 4).join(', ') + (changed.length > 4 ? `, +${changed.length - 4} lainnya` : '') : 'tidak ada field berubah';
+  return `Mengubah ${label} ${idText} — field: ${escapeHtml(fieldsText)}`;
+}
+
+// ================================================================
 // CRUD PRODUK + HARGA
 // ================================================================
 let currentProdukId = null;
 let masterExists = false;
 let hargaRows = [];
+let mediaRows = [];
 
 function showToast(msg, isError){
   const t = document.getElementById('toast');
@@ -567,6 +758,7 @@ const modalOverlay = document.getElementById('modalOverlay');
 const modalTitle = document.getElementById('modalTitle');
 const modalSub = document.getElementById('modalSub');
 const hargaSection = document.getElementById('hargaSection');
+const mediaSection = document.getElementById('mediaSection');
 const deleteBtn = document.getElementById('deleteBtn');
 
 document.getElementById('addBtn').addEventListener('click', openAdd);
@@ -588,6 +780,13 @@ function resetForm(){
   masterExists = false;
   hargaRows = [];
   renderHargaTable();
+  mediaRows = [];
+  renderMediaTable();
+  document.getElementById('md_judul').value = '';
+  document.getElementById('md_url').value = '';
+  document.getElementById('md_urutan').value = 1;
+  document.getElementById('md_primary').checked = false;
+  document.getElementById('md_jenis').value = 'brosur';
 }
 
 function openAdd(){
@@ -596,6 +795,7 @@ function openAdd(){
   modalTitle.textContent = 'Tambah Produk';
   modalSub.textContent = 'Isi data produk baru';
   hargaSection.style.display = 'none';
+  mediaSection.style.display = 'none';
   deleteBtn.style.display = 'none';
   modalOverlay.classList.add('open');
 }
@@ -606,6 +806,7 @@ async function openEdit(produkId){
   modalTitle.textContent = 'Edit Produk';
   modalSub.textContent = 'Memuat data...';
   hargaSection.style.display = 'block';
+  mediaSection.style.display = 'block';
   deleteBtn.style.display = 'inline-flex';
   modalOverlay.classList.add('open');
 
@@ -631,6 +832,7 @@ async function openEdit(produkId){
 
   if (p.kode_asli) await cekMaster(p.kode_asli, true);
   await loadHarga(produkId);
+  await loadMedia(produkId);
 }
 
 // ---- Master produk lookup ----
@@ -730,6 +932,65 @@ async function deleteHarga(id){
   loadHarga(currentProdukId);
 }
 
+// ---- Media (brosur & gambar) ----
+async function loadMedia(produkId){
+  const { data, error } = await sb.from('produk_media').select('*').eq('produk_id', produkId).order('urutan', { ascending: true });
+  if (error) { showToast('Gagal memuat media: ' + error.message, true); return; }
+  mediaRows = data || [];
+  renderMediaTable();
+}
+
+function renderMediaTable(){
+  const tbody = document.getElementById('mediaTableBody');
+  if (mediaRows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--text-muted);padding:14px;">Belum ada media</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = '';
+  mediaRows.forEach(m => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(m.jenis)}</td>
+      <td>${escapeHtml(m.judul || '—')}</td>
+      <td><a class="media-link" href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${escapeHtml(m.url)}</a></td>
+      <td>${m.is_primary ? '<span class="badge badge-primary">Utama</span>' : '—'}</td>
+      <td><button class="btn btn-danger-ghost btn-sm" data-id="${m.id}"><i class="ti ti-trash"></i></button></td>
+    `;
+    tr.querySelector('button').addEventListener('click', () => deleteMedia(m.id));
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('addMediaBtn').addEventListener('click', async () => {
+  if (!currentProdukId) { showToast('Simpan data produk dulu sebelum menambah media', true); return; }
+  const jenis = document.getElementById('md_jenis').value;
+  const judul = document.getElementById('md_judul').value.trim();
+  const url = document.getElementById('md_url').value.trim();
+  const urutan = parseInt(document.getElementById('md_urutan').value, 10) || 1;
+  const is_primary = document.getElementById('md_primary').checked;
+  if (!url) { showToast('URL wajib diisi', true); return; }
+
+  const { error } = await sb.from('produk_media').insert({
+    produk_id: currentProdukId, jenis, judul: judul || null, url, urutan, is_primary
+  });
+  if (error) { showToast('Gagal tambah media: ' + error.message, true); return; }
+
+  document.getElementById('md_judul').value = '';
+  document.getElementById('md_url').value = '';
+  document.getElementById('md_urutan').value = 1;
+  document.getElementById('md_primary').checked = false;
+  showToast('Media ditambahkan');
+  loadMedia(currentProdukId);
+});
+
+async function deleteMedia(id){
+  if (!confirm('Hapus media ini?')) return;
+  const { error } = await sb.from('produk_media').delete().eq('id', id);
+  if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
+  showToast('Media dihapus');
+  loadMedia(currentProdukId);
+}
+
 // ---- Save produk ----
 document.getElementById('saveBtn').addEventListener('click', async () => {
   const kodeAsli = document.getElementById('f_kode_asli').value.trim();
@@ -738,35 +999,15 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
   if (!kodeProduk || !tipe) { showToast('Kode Produk dan Tipe wajib diisi', true); return; }
 
   if (kodeAsli) {
-    // Selalu cek ulang ke database sebelum simpan, jangan andalkan status
-    // "masterExists" dari klik tombol Cek sebelumnya (bisa aja user belum klik,
-    // atau kode_asli diketik ulang setelah cek terakhir).
-    const { data: existingMaster, error: checkErr } = await sb
-      .from('master_produk').select('kode_asli').eq('kode_asli', kodeAsli).maybeSingle();
-    if (checkErr) { showToast('Gagal cek master_produk: ' + checkErr.message, true); return; }
-    masterExists = !!existingMaster;
-  }
-
-  if (kodeAsli && !masterExists) {
-    const { error: mErr } = await sb.from('master_produk').insert({
+    const { error: mErr } = await sb.from('master_produk').upsert({
       kode_asli: kodeAsli,
       deskripsi_vendor: document.getElementById('m_deskripsi_vendor').value || null,
       family: document.getElementById('m_family').value || null,
       sub_family: document.getElementById('m_sub_family').value || null,
       manufacturer: document.getElementById('m_manufacturer').value || null,
       capital: document.getElementById('m_capital').value || null
-    });
-    if (mErr) { showToast('Gagal membuat master_produk: ' + mErr.message, true); return; }
-    masterExists = true;
-  } else if (kodeAsli && masterExists) {
-    const { error: uErr } = await sb.from('master_produk').update({
-      deskripsi_vendor: document.getElementById('m_deskripsi_vendor').value || null,
-      family: document.getElementById('m_family').value || null,
-      sub_family: document.getElementById('m_sub_family').value || null,
-      manufacturer: document.getElementById('m_manufacturer').value || null,
-      capital: document.getElementById('m_capital').value || null
-    }).eq('kode_asli', kodeAsli);
-    if (uErr) { showToast('Gagal update master_produk: ' + uErr.message, true); return; }
+    }, { onConflict: 'kode_asli' });
+    if (mErr) { showToast('Gagal menyimpan master_produk: ' + mErr.message, true); return; }
   }
 
   const payload = {
@@ -798,17 +1039,19 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
   showToast(currentProdukId ? 'Produk diperbarui' : 'Produk ditambahkan');
   currentProdukId = result.data.id;
   hargaSection.style.display = 'block';
+  mediaSection.style.display = 'block';
   deleteBtn.style.display = 'inline-flex';
   modalTitle.textContent = 'Edit Produk';
   modalSub.textContent = 'Kode: ' + result.data.kode_produk;
   await loadHarga(currentProdukId);
+  await loadMedia(currentProdukId);
   loadProduk();
 });
 
 // ---- Delete produk ----
 deleteBtn.addEventListener('click', async () => {
   if (!currentProdukId) return;
-  if (!confirm('Hapus produk ini? Data harga terkait juga sebaiknya dicek manual.')) return;
+  if (!confirm('Hapus produk ini? Data harga dan media terkait juga sebaiknya dicek manual.')) return;
   const { error } = await sb.from('produk').delete().eq('id', currentProdukId);
   if (error) { showToast('Gagal hapus produk: ' + error.message, true); return; }
   showToast('Produk dihapus');
