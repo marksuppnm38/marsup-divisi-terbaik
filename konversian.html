@@ -455,6 +455,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
         <button class="subtab-btn active" id="subtab-cari" type="button"><i class="ti ti-search"></i> Cari Produk</button>
         <button class="subtab-btn" id="subtab-sesi" type="button"><i class="ti ti-list-details"></i> Konversi Berjalan <span class="subtab-badge" id="sesi-badge" style="display:none">0</span></button>
         <button class="subtab-btn" id="subtab-riwayat" type="button"><i class="ti ti-history"></i> Riwayat</button>
+        <button class="subtab-btn" id="subtab-converter" type="button"><i class="ti ti-clipboard-copy"></i> Converter</button>
       </div>
       <div id="cari-controls">
         <div class="search-wrap">
@@ -515,6 +516,25 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
         <p>Belum ada sesi yang selesai.<br>Sesi yang di-Record atau di-Selesaikan bakal muncul di sini.</p>
       </div>
       <div id="riwayat-list"></div>
+    </div>
+    <div class="panel-body" id="panel-body-converter" style="display:none">
+      <div class="sesi-toolbar">
+        <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center">Paste kode + nama produk (dipisah tab, 1 baris = 1 produk) — dicocokkan exact ke katalog, langsung masuk clipboard</span>
+      </div>
+      <div style="padding:10px 12px 0">
+        <textarea id="conv-input" placeholder="RB999-KE921-B99-U238&#9;WSD S.
+RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;font-family:var(--mono);font-size:12px;line-height:1.5;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text);resize:vertical"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="pr-add-clip-btn" id="btn-conv-proses" type="button"><i class="ti ti-list-search"></i> Proses &amp; Cocokkan</button>
+          <button class="toggle-btn" id="btn-conv-retry-err" type="button" style="display:none"><i class="ti ti-refresh"></i> Proses Ulang yang Error</button>
+          <button class="toggle-btn" id="btn-conv-clear" type="button"><i class="ti ti-eraser"></i> Bersihkan</button>
+        </div>
+        <div id="conv-status" style="font-size:11.5px;color:var(--text-muted);margin-top:8px;min-height:16px"></div>
+      </div>
+      <div id="conv-results" style="padding:0 12px 8px"></div>
+      <div id="conv-actions" style="display:none;padding:0 12px 12px">
+        <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang Dicentang ke Clipboard</button>
+      </div>
     </div>
   </div>
 
@@ -1249,10 +1269,12 @@ let currentButuhBantuan = false;
 const subtabCari = document.getElementById('subtab-cari');
 const subtabSesi = document.getElementById('subtab-sesi');
 const subtabRiwayat = document.getElementById('subtab-riwayat');
+const subtabConverter = document.getElementById('subtab-converter');
 const cariControls = document.getElementById('cari-controls');
 const panelBodyCari = document.getElementById('panel-body-cari');
 const panelBodySesi = document.getElementById('panel-body-sesi');
 const panelBodyRiwayat = document.getElementById('panel-body-riwayat');
+const panelBodyConverter = document.getElementById('panel-body-converter');
 const riwayatList = document.getElementById('riwayat-list');
 const riwayatListEmpty = document.getElementById('riwayat-list-empty');
 const riwayatListLoading = document.getElementById('riwayat-list-loading');
@@ -1567,9 +1589,11 @@ function switchSubTab(tab) {
   subtabCari.classList.toggle('active', tab === 'cari');
   subtabSesi.classList.toggle('active', tab === 'sesi');
   subtabRiwayat.classList.toggle('active', tab === 'riwayat');
+  subtabConverter.classList.toggle('active', tab === 'converter');
   panelBodyCari.style.display = tab === 'cari' ? 'block' : 'none';
   panelBodySesi.style.display = tab === 'sesi' ? 'block' : 'none';
   panelBodyRiwayat.style.display = tab === 'riwayat' ? 'block' : 'none';
+  panelBodyConverter.style.display = tab === 'converter' ? 'block' : 'none';
   cariControls.style.display = tab === 'cari' ? 'block' : 'none';
   if (tab === 'sesi') loadSesiList();
   if (tab === 'riwayat') loadRiwayatList();
@@ -1577,6 +1601,7 @@ function switchSubTab(tab) {
 subtabCari.addEventListener('click', () => switchSubTab('cari'));
 subtabSesi.addEventListener('click', () => switchSubTab('sesi'));
 subtabRiwayat.addEventListener('click', () => switchSubTab('riwayat'));
+subtabConverter.addEventListener('click', () => switchSubTab('converter'));
 
 function sesiTimeAgo(iso) {
   if (!iso) return '-';
@@ -3330,6 +3355,204 @@ async function enrichSetStok(results) {
     });
   } catch { /* diamkan, stok cuma nice-to-have di tampilan search */ }
 }
+
+// ══════════════════════════════════════════
+// MODUL CONVERTER: paste daftar "kode<TAB>nama" (kode asli & deskripsi dari RS),
+// dicocokkan EXACT ke katalog (lewat RPC search_produk_dengan_harga per kode —
+// gak perlu RPC baru, tinggal exact-filter hasilnya di JS), lalu produk yang
+// cocok langsung bisa ditambahkan ke clipboard sesi aktif seperti klik hasil
+// pencarian biasa. Ujungnya tetap pakai alur Export/Record yang sudah ada.
+// ══════════════════════════════════════════
+const convInput = document.getElementById('conv-input');
+const convStatus = document.getElementById('conv-status');
+const convResultsEl = document.getElementById('conv-results');
+const convActions = document.getElementById('conv-actions');
+const btnConvProses = document.getElementById('btn-conv-proses');
+const btnConvRetryErr = document.getElementById('btn-conv-retry-err');
+const btnConvClear = document.getElementById('btn-conv-clear');
+const btnConvAddAll = document.getElementById('btn-conv-add-all');
+let convRows = [];
+
+function parseConverterLine(line) {
+  const idx = line.indexOf('\t');
+  if (idx !== -1) {
+    return { kode: line.slice(0, idx).trim(), nama_input: line.slice(idx + 1).trim() };
+  }
+  // Fallback kalau tab kepencet jadi spasi pas paste (1 spasi pun cukup) —
+  // aman karena kode produk kita gak pernah punya spasi di dalamnya.
+  const m = line.match(/^(\S+)\s+(.+)$/);
+  if (m) return { kode: m[1].trim(), nama_input: m[2].trim() };
+  return { kode: line.trim(), nama_input: '' };
+}
+
+function renderConvResults(rows) {
+  convResultsEl.innerHTML = rows.map((r, i) => {
+    let badge, color, sub = '';
+    if (r.status === 'exact') { badge = '✅ Cocok'; color = 'var(--success)'; }
+    else if (r.status === 'code_found_name_diff') {
+      badge = '⚠️ Kode ketemu, nama beda';
+      color = 'var(--warning)';
+      sub = `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Input: "${escapeHtmlAttr(r.nama_input)}" · Katalog: "${escapeHtmlAttr(r.produk.nama_produk)}"</div>`;
+    } else if (r.status === 'error') {
+      badge = '🔄 Error / timeout — belum sempat dicek';
+      color = 'var(--warning)';
+      sub = `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${escapeHtmlAttr(r.errMsg || '')}</div>`;
+    } else { badge = '❌ Tidak ditemukan'; color = 'var(--danger)'; }
+    const disabled = r.produk ? '' : 'disabled';
+    const checked = r.produk ? 'checked' : '';
+    return `<div class="clip-item" style="align-items:flex-start">
+      <input type="checkbox" class="conv-check" data-idx="${i}" ${checked} ${disabled} style="margin-top:4px"/>
+      <div class="clip-item-info" style="margin-left:8px">
+        <div class="clip-item-name">${escapeHtmlAttr(r.produk ? r.produk.nama_produk : r.nama_input || '(tanpa nama)')}</div>
+        <div class="clip-item-meta">
+          <span class="clip-item-code">${escapeHtmlAttr(r.kode)}</span>
+          <span style="color:${color};font-size:11px">${badge}</span>
+        </div>
+        ${sub}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Satu pencocokan kode → produk, dengan 1x retry otomatis kalau RPC-nya
+// timeout (backend search_produk_dengan_harga kadang timeout buat query
+// tertentu — beda kasus dari "genuinely not found"). Kalau retry juga gagal,
+// ditandai 'error' (bukan 'not_found') biar bisa diproses ulang belakangan.
+async function matchOneKode(kode, nama_input) {
+  const row = { kode, nama_input, status: 'not_found', produk: null, errMsg: null };
+  if (!kode) return row;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { data, error } = await rpc('search_produk_dengan_harga', { q: kode, p_tipe: null, only_akd: false, only_kfa: false });
+      if (error) {
+        const msg = error.message || JSON.stringify(error);
+        if ((msg.includes('timeout') || msg.includes('canceling')) && attempt === 0) continue; // retry sekali
+        row.status = 'error';
+        row.errMsg = msg;
+        return row;
+      }
+      if (data && data.length) {
+        const exact = data.find(r => r.kode_produk && r.kode_produk.toLowerCase() === kode.toLowerCase());
+        if (exact) {
+          row.produk = exact;
+          const namaKatalog = (exact.nama_produk || '').trim().toLowerCase();
+          const namaInputNorm = nama_input.trim().toLowerCase();
+          row.status = (!namaInputNorm || namaKatalog === namaInputNorm) ? 'exact' : 'code_found_name_diff';
+        }
+      }
+      return row;
+    } catch (e) {
+      if (attempt === 0) continue;
+      row.status = 'error';
+      row.errMsg = e.message;
+      return row;
+    }
+  }
+  return row;
+}
+
+async function finishConvBatch(rows) {
+  const foundProduk = rows.filter(r => r.produk).map(r => r.produk);
+  if (foundProduk.length) {
+    convStatus.textContent = 'Mengambil status stok…';
+    await enrichResultsWithStok(foundProduk);
+  }
+  convRows = rows;
+  renderConvResults(rows);
+  const nExact = rows.filter(r => r.status === 'exact').length;
+  const nDiff = rows.filter(r => r.status === 'code_found_name_diff').length;
+  const nErr = rows.filter(r => r.status === 'error').length;
+  const nNotFound = rows.filter(r => r.status === 'not_found').length;
+  convStatus.textContent = `Selesai — ${nExact} cocok penuh, ${nDiff} kode ketemu (nama beda), ${nNotFound} tidak ditemukan`
+    + (nErr ? `, ${nErr} error/timeout (klik "Proses Ulang yang Error").` : '.');
+  convActions.style.display = foundProduk.length ? 'block' : 'none';
+  btnConvRetryErr.style.display = nErr ? 'inline-flex' : 'none';
+}
+
+async function processConverter() {
+  const lines = convInput.value.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim());
+  if (!lines.length) return;
+  btnConvProses.disabled = true;
+  btnConvRetryErr.style.display = 'none';
+  convActions.style.display = 'none';
+  convResultsEl.innerHTML = '';
+  const parsed = lines.map(parseConverterLine);
+  const rows = [];
+  for (let i = 0; i < parsed.length; i++) {
+    convStatus.textContent = `Mencocokkan ${i + 1} / ${parsed.length} — ${parsed[i].kode}`;
+    rows.push(await matchOneKode(parsed[i].kode, parsed[i].nama_input));
+  }
+  await finishConvBatch(rows);
+  btnConvProses.disabled = false;
+}
+
+btnConvProses.addEventListener('click', processConverter);
+btnConvRetryErr.addEventListener('click', async () => {
+  const errIdxs = convRows.map((r, i) => r.status === 'error' ? i : -1).filter(i => i >= 0);
+  if (!errIdxs.length) return;
+  btnConvRetryErr.disabled = true;
+  for (let n = 0; n < errIdxs.length; n++) {
+    const i = errIdxs[n];
+    convStatus.textContent = `Mengulang ${n + 1} / ${errIdxs.length} — ${convRows[i].kode}`;
+    convRows[i] = await matchOneKode(convRows[i].kode, convRows[i].nama_input);
+  }
+  await finishConvBatch(convRows);
+  btnConvRetryErr.disabled = false;
+});
+btnConvClear.addEventListener('click', () => {
+  convInput.value = '';
+  convResultsEl.innerHTML = '';
+  convStatus.textContent = '';
+  convActions.style.display = 'none';
+  btnConvRetryErr.style.display = 'none';
+  convRows = [];
+});
+
+btnConvAddAll.addEventListener('click', async () => {
+  btnConvAddAll.disabled = true;
+  try {
+    // Pastikan sesi kebuat/kepake SEKALI dulu di sini, sebelum loop nambahin
+    // item — kalau enggak, tiap item bisa manggil ensureSesi() hampir bareng
+    // dan masing-masing bikin sesi barunya sendiri (race condition → numpuk
+    // sesi kosong di "Konversi Berjalan").
+    await ensureSesi();
+    const checks = [...convResultsEl.querySelectorAll('.conv-check')];
+    let added = 0, skipped = 0;
+    for (const chk of checks) {
+      if (!chk.checked) continue;
+      const row = convRows[parseInt(chk.dataset.idx, 10)];
+      if (!row || !row.produk) continue;
+      const r = row.produk;
+      if (clipboard.some(c => c.kode_produk === r.kode_produk)) { skipped++; continue; }
+      const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
+      const newItem = {
+        kode_produk: r.kode_produk,
+        kode_asli: r.kode_asli || null,
+        nama_produk: r.nama_produk,
+        tipe: r.tipe,
+        is_set: isSet,
+        produk_id: r.id || null,
+        no_akd: r.no_akd,
+        kode_kfa: r.kode_kfa,
+        link_v6: r.link_v6,
+        harga_ekat: r.harga_ekat || null,
+        tahun_harga: r.tahun_harga || null,
+        harga_swasta: r.harga_swasta || null,
+        tahun_harga_swasta: r.tahun_harga_swasta || null,
+        stok_status: r.stok_status || null,
+        stok_qty: r.stok_qty ?? null,
+        qty: 1
+      };
+      clipboard.push(newItem);
+      await persistAddItem(newItem); // ditunggu satu-satu biar gak ada race lain & gak nge-flood API
+      added++;
+    }
+    updateClipboard();
+    showToast(`${added} produk ditambahkan ke clipboard` + (skipped ? `, ${skipped} sudah ada di clipboard` : ''), added > 0 ? 'success' : 'error');
+  } finally {
+    btnConvAddAll.disabled = false;
+  }
+});
 
 // ══════════════════════════════════════════
 // MODUL PERMINTAAN RS: catat permintaan (teks/Excel), cocokkan ke katalog,
