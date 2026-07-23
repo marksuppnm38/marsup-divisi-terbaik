@@ -603,12 +603,17 @@ function trimTransparentPadding(dataUrl){
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
         const { data } = ctx.getImageData(0, 0, cw, ch);
+        const WHITE_THRESHOLD = 245; // pixel dianggap "background putih" kalau RGB semua di atas ini
         let minX = cw, minY = ch, maxX = -1, maxY = -1;
         for (let yy = 0; yy < ch; yy++) {
           const rowOff = yy * cw * 4;
           for (let xx = 0; xx < cw; xx++) {
-            const alpha = data[rowOff + xx*4 + 3];
-            if (alpha > 10) {
+            const off = rowOff + xx*4;
+            const alpha = data[off + 3];
+            const r = data[off], g = data[off+1], b = data[off+2];
+            const isTransparent = alpha <= 10;
+            const isWhiteish = r >= WHITE_THRESHOLD && g >= WHITE_THRESHOLD && b >= WHITE_THRESHOLD;
+            if (!isTransparent && !isWhiteish) {
               if (xx < minX) minX = xx;
               if (xx > maxX) maxX = xx;
               if (yy < minY) minY = yy;
@@ -617,6 +622,22 @@ function trimTransparentPadding(dataUrl){
           }
         }
         if (maxX < 0) { resolve({dataUrl, w: cw, h: ch}); return; } // nothing found, keep original
+
+        // refine: some source files have a "noise tail" — a stretch of very sparse,
+        // near-invisible non-white pixels (antialiasing/compression fuzz) that extends the
+        // bbox far past where the actual visible artwork ends. A plain any-pixel bbox includes
+        // that empty-looking tail, which then shows up as dead space when the crop is scaled up.
+        // Walk each edge inward while its row/column density stays below a small threshold,
+        // stopping at the first row/column with real content.
+        const rowDensity = (yy) => { let c = 0; const off = yy*cw*4; for (let xx = minX; xx <= maxX; xx++){ const i=off+xx*4; if (data[i+3] > 10 && !(data[i] >= WHITE_THRESHOLD && data[i+1] >= WHITE_THRESHOLD && data[i+2] >= WHITE_THRESHOLD)) c++; } return c; };
+        const colDensity = (xx) => { let c = 0; for (let yy = minY; yy <= maxY; yy++){ const i=(yy*cw+xx)*4; if (data[i+3] > 10 && !(data[i] >= WHITE_THRESHOLD && data[i+1] >= WHITE_THRESHOLD && data[i+2] >= WHITE_THRESHOLD)) c++; } return c; };
+        const rowMin = Math.max(3, 0.04 * (maxX - minX + 1));
+        const colMin = Math.max(3, 0.04 * (maxY - minY + 1));
+        while (minY < maxY && rowDensity(minY) < rowMin) minY++;
+        while (maxY > minY && rowDensity(maxY) < rowMin) maxY--;
+        while (minX < maxX && colDensity(minX) < colMin) minX++;
+        while (maxX > minX && colDensity(maxX) < colMin) maxX--;
+
         const pad = 3; // keep a tiny breathing margin so the crop doesn't look clipped
         const sx = Math.max(0, minX - pad);
         const sy = Math.max(0, minY - pad);
@@ -624,7 +645,19 @@ function trimTransparentPadding(dataUrl){
         const sh = Math.min(ch - sy, (maxY - minY + 1) + pad*2);
         const out = document.createElement('canvas');
         out.width = sw; out.height = sh;
-        out.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+        // kalau background asalnya opaque (bukan transparan), keluarin transparan supaya
+        // bisa ditumpuk di belakang teks tanpa nutup apa-apa selain goresan tanda tangannya
+        const outCtx = out.getContext('2d');
+        outCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+        const outData = outCtx.getImageData(0, 0, sw, sh);
+        const od = outData.data;
+        for (let i = 0; i < od.length; i += 4) {
+          const r = od[i], g = od[i+1], b = od[i+2];
+          if (r >= WHITE_THRESHOLD && g >= WHITE_THRESHOLD && b >= WHITE_THRESHOLD) {
+            od[i+3] = 0; // putih -> transparan
+          }
+        }
+        outCtx.putImageData(outData, 0, 0);
         resolve({ dataUrl: out.toDataURL('image/png'), w: sw, h: sh });
       } catch (e) {
         resolve({ dataUrl, w: img.naturalWidth || 1, h: img.naturalHeight || 1 });
@@ -744,9 +777,19 @@ const footerUploader = setupAssetUpload('upload-zone-footer','file-footer','uplo
 // karena beda-beda per sales, bukan per perusahaan.
 const inpCompany = document.getElementById('inp-company');
 
-function loadCompanyAsset(dataUrl, uploader, label, widthOverride){
+function loadCompanyAsset(dataUrl, uploader, label, widthOverride, trim){
   uploader.clearAsset();
   if (!dataUrl) return;
+  if (trim) {
+    // sama seperti upload manual: buang padding transparan/putih di sekitar konten asli,
+    // supaya rasio w/h yang dipakai buat layout ttd mencerminkan ukuran GAMBAR ASLINYA,
+    // bukan ukuran kanvas PNG-nya yang sering jauh lebih besar dari isinya.
+    trimTransparentPadding(dataUrl).then(asset => {
+      uploader.applyAsset(asset, label);
+      if (widthOverride) widthOverride();
+    });
+    return;
+  }
   const img = new Image();
   img.onload = () => {
     uploader.applyAsset({dataUrl, w: img.naturalWidth, h: img.naturalHeight}, label);
@@ -776,7 +819,7 @@ function applyCompanyProfile(key){
   // auto-load (bukan upload manual sales), baru dikosongkan. Upload manual sales tidak pernah ditimpa.
   if (company.defaultSignature) {
     loadCompanyAsset(company.defaultSignature, signUploader, `Tanda tangan default — ${company.label}`,
-      () => { signatureLoadedAsDefault = true; });
+      () => { signatureLoadedAsDefault = true; }, true);
   } else if (signatureLoadedAsDefault) {
     signUploader.clearAsset();
     signatureLoadedAsDefault = false;
@@ -1282,7 +1325,15 @@ async function generateSph(){
     const closingLines = doc.splitTextToSize(closingText, tableW);
     const closingH = closingLines.length * 5.5 + 14;
     const sigW = parseFloat(document.getElementById('inp-sign-width').value) || 32;
-    const signBlockH = 4 + (signatureAsset ? ((signatureAsset.h/signatureAsset.w)*sigW) : 22) + 6;
+    const NAME_GAP = 14; // jarak minimum "Marketing," -> nama sales
+    const SIG_TOP_OFFSET = 3; // jarak dari baseline "Marketing," ke bagian atas gambar ttd — gambar SELALU mulai di BAWAH label, tidak pernah naik ke atasnya
+    const sigHForLayout = signatureAsset ? ((signatureAsset.h/signatureAsset.w) * sigW) : 0;
+    // gambar ttd ditempatkan di BAWAH label "Marketing," (di celah menuju nama), bukan di atasnya.
+    // Kalau tanda tangannya tinggi, celah label->nama ikut melebar secukupnya biar gambar tetap
+    // muat pas di antara label & nama, tanpa pernah menutup/menaiki teks "Marketing,".
+    const gapNeeded = signatureAsset ? (SIG_TOP_OFFSET + sigHForLayout + 2) : 0;
+    const nameGapActual = Math.max(signatureAsset ? NAME_GAP : 20, gapNeeded);
+    const signBlockH = nameGapActual + 10;
     const totalClosingBlockH = ketentuanH + closingH + signBlockH;
 
     if (y + totalClosingBlockH > safeBottom) {
@@ -1298,20 +1349,22 @@ async function generateSph(){
 
     // signature block — column right-edge stays anchored to the page margin regardless of sign width,
     // so a wider/narrower signature never overflows off the page edge
+    // gambar tanda tangan digambar DULU (di belakang), teks digambar belakangan (di atas)
+    // supaya background tanda tangan nggak nutup tulisan, dan tanda tangan bisa overlap/lebih besar
     const signColW = Math.max(sigW, 40);
     const signColX = PAGE_W - MARGIN_X - signColW;
-    doc.text('Marketing,', signColX, y);
-    y += 4;
+    const labelY = y;
+    const nameY = labelY + nameGapActual; // celah label->nama, melebar otomatis kalau ttd tinggi
     if (signatureAsset) {
-      const sigH = (signatureAsset.h / signatureAsset.w) * sigW;
-      try { doc.addImage(signatureAsset.dataUrl, 'PNG', signColX, y, sigW, sigH); } catch(e){}
-      y += sigH + 2;
-    } else {
-      y += 20;
+      const sigH = sigHForLayout;
+      const sigY = labelY + SIG_TOP_OFFSET; // anchor ke BAWAH label — gambar selalu jatuh di celah menuju nama, tidak pernah menaiki "Marketing,"
+      try { doc.addImage(signatureAsset.dataUrl, 'PNG', signColX, sigY, sigW, sigH); } catch(e){}
     }
+    doc.text('Marketing,', signColX, labelY);
     doc.setFont('helvetica','bold');
-    doc.text(namaSales, signColX, y);
+    doc.text(namaSales, signColX, nameY);
     doc.setFont('helvetica','normal');
+    y = nameY + 2;
 
     setProgress(50, 'Menyusun halaman lampiran rincian item…');
 
