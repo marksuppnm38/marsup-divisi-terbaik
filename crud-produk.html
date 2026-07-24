@@ -76,6 +76,7 @@ kbd{font-family:var(--font-mono);font-size:10.5px;background:var(--surface-3);bo
 .sidebar{width:var(--sidebar-w);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 12px}
 .sb-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 20px}
 .sb-logo{width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.logo{width:30px;height:30px;object-fit:contain;flex-shrink:0}
 .sb-brand-title{font-family:var(--font-display);font-weight:700;font-size:14px;line-height:1.2}
 .sb-brand-sub{font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono)}
 .sb-nav{display:flex;flex-direction:column;gap:2px}
@@ -177,6 +178,15 @@ tbody tr.clickable:hover{background:var(--surface-2)}
 .modal-title{font-family:var(--font-display);font-size:16px;font-weight:700}
 .modal-sub{font-size:12px;color:var(--text-muted);margin-top:2px;font-family:var(--font-mono)}
 .modal-close{background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:2px}
+.mac-traffic{display:flex;gap:8px;margin-bottom:16px}
+.mac-dot{width:12px;height:12px;border-radius:50%;border:none;padding:0;cursor:default;position:relative}
+.mac-dot.red{background:#FF5F57;cursor:pointer}
+.mac-dot.yellow{background:#FEBC2E}
+.mac-dot.green{background:#28C840}
+.mac-dot.red:hover::after{content:'×';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;line-height:1;color:#6b0f0c;font-weight:700}
+.theme-switch{width:50px;height:27px;border-radius:20px;background:var(--surface-3);border:1px solid var(--border-strong);position:relative;cursor:pointer;flex-shrink:0}
+.theme-switch .knob{position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;transition:transform .18s ease;font-size:12px;color:var(--amber)}
+body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var(--accent-strong)}
 
 .sec-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin:20px 0 10px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
 .sec-label:first-of-type{border-top:none;padding-top:0;margin-top:14px}
@@ -198,7 +208,7 @@ tbody tr.clickable:hover{background:var(--surface-2)}
 .lookup-msg.found{color:var(--teal-ok-text)}
 .lookup-msg.notfound{color:var(--amber-text)}
 
-.harga-add{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-top:10px;align-items:end}
+.harga-add{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px;margin-top:10px;align-items:end}
 .harga-add .btn{height:34px}
 .media-add{display:grid;grid-template-columns:1fr 1fr 1fr auto auto;gap:8px;margin-top:10px;align-items:end}
 .media-add .f.full{grid-column:1/3}
@@ -263,6 +273,38 @@ tbody tr.clickable:hover{background:var(--surface-2)}
 .log-diff{display:none;margin-top:8px;background:var(--surface-2);border-radius:6px;padding:8px 10px;font-family:var(--font-mono);font-size:11.5px;white-space:pre-wrap;word-break:break-word}
 .log-diff.open{display:block}
 
+/* ================= SET MANAGEMENT ================= */
+.set-list-row{display:flex;align-items:center;gap:14px;padding:13px 16px;border:1px solid var(--border);border-radius:9px;background:var(--surface);cursor:pointer;margin-bottom:8px}
+.set-list-row:hover{border-color:var(--accent)}
+.set-list-row .sl-kode{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);min-width:150px}
+.set-list-row .sl-nama{font-weight:600;font-size:13.5px;flex:1;min-width:0}
+.set-list-row .sl-meta{font-size:11.5px;color:var(--text-muted);font-family:var(--font-mono);white-space:nowrap}
+
+.set-back{display:flex;align-items:center;gap:6px;color:var(--text-muted);font-size:12.5px;cursor:pointer;margin-bottom:14px;width:fit-content}
+.set-back:hover{color:var(--text)}
+.set-detail-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+.set-detail-title{font-family:var(--font-display);font-weight:800;font-size:21px}
+.set-detail-meta{display:flex;gap:14px;align-items:center;margin-top:6px;font-size:12.5px;color:var(--text-muted);flex-wrap:wrap}
+.set-detail-meta b{color:var(--text);font-family:var(--font-mono);font-weight:600}
+
+.set-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:18px}
+.set-tab{background:none;border:none;padding:10px 14px;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;font-family:inherit}
+.set-tab.active{color:var(--accent-text);border-bottom-color:var(--accent)}
+.set-tab-panel{display:none}
+.set-tab-panel.active{display:block}
+
+.comp-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface)}
+.comp-row .cr-kode{font-family:var(--font-mono);font-size:10.5px;color:var(--text-muted);width:150px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.comp-row .cr-nama{flex:1;min-width:0;font-size:13px;cursor:pointer}
+.comp-row .cr-nama:hover{color:var(--accent-text)}
+.comp-row .cr-qty{width:64px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;text-align:center;font-family:var(--font-mono);font-size:13px;background:var(--surface);color:var(--text)}
+.comp-row .cr-qty.saved{animation:qtySaved .6s ease}
+@keyframes qtySaved{0%{border-color:var(--teal-ok);background:var(--teal-ok-bg)}100%{border-color:var(--border-strong);background:var(--surface)}}
+.comp-row .cr-del{background:none;border:none;color:var(--rust);cursor:pointer;font-size:15px;padding:2px;flex-shrink:0}
+.comp-add{margin-top:14px}
+.comp-summary{display:flex;gap:18px;margin-bottom:14px;font-size:12.5px;color:var(--text-muted)}
+.comp-summary b{color:var(--text);font-family:var(--font-mono)}
+
 /* ================= STUB VIEW ================= */
 .stub-box{background:var(--surface);border:1px dashed var(--border-strong);border-radius:var(--radius);padding:50px 30px;text-align:center;color:var(--text-muted)}
 .stub-box i{font-size:26px;margin-bottom:10px;display:block}
@@ -301,7 +343,7 @@ tbody tr.clickable:hover{background:var(--surface-2)}
 <div class="shell" id="appWrap" style="display:none;">
   <aside class="sidebar">
     <div class="sb-brand">
-      <div class="sb-logo"><i class="ti ti-stethoscope"></i></div>
+      <img src="assets/logo-mark-pnm.png" alt="PNM Logo" class="logo">
       <div>
         <div class="sb-brand-title">Robust Catalog</div>
         <div class="sb-brand-sub">PNM · SMY · METO</div>
@@ -310,13 +352,13 @@ tbody tr.clickable:hover{background:var(--surface-2)}
     <nav class="sb-nav">
       <button class="sb-item" data-view="dashboard"><i class="ti ti-layout-dashboard"></i> Dashboard <span class="soon">segera</span></button>
       <button class="sb-item active" data-view="produk"><i class="ti ti-package"></i> Produk</button>
+      <button class="sb-item" data-view="set"><i class="ti ti-stack-2"></i> Set Management</button>
       <button class="sb-item" data-view="akd"><i class="ti ti-shield-check"></i> AKD <span class="soon">segera</span></button>
       <button class="sb-item" data-view="bulk"><i class="ti ti-table"></i> Bulk Edit <span class="soon">segera</span></button>
     </nav>
     <div class="sb-spacer"></div>
     <div class="sb-foot">
       <button class="sb-item" id="logToggle"><i class="ti ti-history"></i> Log Aktivitas</button>
-      <button class="sb-item" id="themeToggle"><i class="ti ti-moon"></i> <span id="themeLabel">Mode Gelap</span></button>
       <div class="sb-user"><i class="ti ti-user-circle"></i><span id="userEmailLabel"></span></div>
       <button class="sb-item" id="logoutBtn"><i class="ti ti-logout"></i> Keluar</button>
     </div>
@@ -325,6 +367,7 @@ tbody tr.clickable:hover{background:var(--surface-2)}
   <main class="main">
     <div class="topbar">
       <button class="cmdk-trigger" id="cmdkTrigger"><i class="ti ti-search"></i><span>Cari kode produk atau nama...</span><kbd>⌘K</kbd></button>
+      <div class="theme-switch" id="themeToggle" title="Ganti tema"><div class="knob"><i class="ti ti-sun" id="themeIcon"></i></div></div>
       <div class="topbar-actions">
         <div class="view-toggle">
           <button id="viewTableBtn" class="active" title="Tampilan tabel"><i class="ti ti-list"></i></button>
@@ -360,6 +403,89 @@ tbody tr.clickable:hover{background:var(--surface-2)}
     <div class="content" id="viewDashboard" style="display:none;">
       <div class="stub-box"><i class="ti ti-layout-dashboard"></i><b>Dashboard menyusul</b>Ringkasan status AKD, KFA, dan data yang perlu ditindaklanjuti — modul berikutnya.</div>
     </div>
+    <!-- SET MANAGEMENT VIEW -->
+    <div class="content" id="viewSet" style="display:none;">
+      <div id="setListWrap">
+        <div class="content-head">
+          <div>
+            <div class="content-title">Set Management</div>
+            <div class="content-sub" id="setListCount">Memuat...</div>
+          </div>
+          <button class="btn btn-accent" id="addSetBtn"><i class="ti ti-plus"></i> Set Baru</button>
+        </div>
+        <div id="setListBody"></div>
+      </div>
+
+      <div id="setDetailWrap" style="display:none;">
+        <div class="set-back" id="setBackBtn"><i class="ti ti-arrow-left"></i> Kembali ke daftar set</div>
+        <div class="set-detail-head">
+          <div>
+            <div class="set-detail-title" id="setDetailNama">—</div>
+            <div class="set-detail-meta">
+              <span class="kode-cell" id="setDetailKode"></span>
+              <span><b id="setDetailJumlahItem">0</b> item</span>
+              <span><b id="setDetailQty">0</b> total qty</span>
+              <span id="setDetailHarga">Belum ada harga</span>
+              <span id="setDetailSeal"></span>
+            </div>
+          </div>
+          <button class="btn btn-ghost" id="editSetOverviewBtn"><i class="ti ti-pencil"></i> Edit Info Dasar</button>
+        </div>
+
+        <div class="set-tabs">
+          <button class="set-tab active" data-tab="composition">Composition</button>
+          <button class="set-tab" data-tab="pricing">Pricing</button>
+          <button class="set-tab" data-tab="akd">AKD</button>
+          <button class="set-tab" data-tab="history">History</button>
+        </div>
+
+        <div class="set-tab-panel active" id="tab-composition">
+          <div class="comp-summary">
+            <span>Jenis item: <b id="compJumlahJenis">0</b></span>
+            <span>Total qty: <b id="compTotalQty">0</b></span>
+            <span>Estimasi berat: <b id="compEstBerat">0 g</b></span>
+          </div>
+          <div id="compList"></div>
+          <div class="comp-add">
+            <label class="field-label">Tambah item (cari instrumen/unit)</label>
+            <input type="text" class="field-input" id="compSearchInput" placeholder="Ketik nama atau kode produk..."/>
+            <div class="akd-results" id="compSearchResults"></div>
+          </div>
+        </div>
+
+        <div class="set-tab-panel" id="tab-pricing">
+          <div class="table-card">
+            <table>
+              <thead><tr><th>Tahun</th><th>Jenis</th><th>Harga</th><th></th></tr></thead>
+              <tbody id="setHargaTableBody"><tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr></tbody>
+            </table>
+          </div>
+          <div class="harga-add">
+            <div class="f"><label>Tahun</label><input type="number" id="sh_tahun" placeholder="2026"/></div>
+            <div class="f"><label>Harga EKATALOG (Rp)</label><input type="number" step="any" id="sh_harga" placeholder="0"/></div>
+            <button class="btn btn-ghost" id="addSetHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
+          </div>
+          <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG.</div>
+        </div>
+
+        <div class="set-tab-panel" id="tab-akd">
+          <div class="akd-box" style="display:block;">
+            <div class="akd-current" id="setAkdCurrentList"></div>
+            <div class="akd-search-wrap">
+              <input type="text" class="field-input" id="setAkdSearchInput" placeholder="Cari nomor AKD atau nama set..." style="padding:8px 10px;font-size:12.5px;"/>
+              <div class="akd-results" id="setAkdResults"></div>
+            </div>
+            <div class="akd-hint">Pencarian dibatasi ke AKD tipe "set".</div>
+          </div>
+        </div>
+
+        <div class="set-tab-panel" id="tab-history">
+          <div id="setHistoryList" style="display:flex;flex-direction:column;gap:8px;"></div>
+          <button class="btn btn-ghost btn-sm" id="openFullLogFromSetBtn" style="margin-top:10px;"><i class="ti ti-external-link"></i> Buka Log Aktivitas Lengkap</button>
+        </div>
+      </div>
+    </div>
+
     <div class="content" id="viewAkd" style="display:none;">
       <div class="stub-box"><i class="ti ti-shield-check"></i><b>Browser AKD menyusul</b>Untuk sekarang, kelola relasi AKD lewat tombol "Kelola AKD" di form edit produk.</div>
     </div>
@@ -373,6 +499,11 @@ tbody tr.clickable:hover{background:var(--surface-2)}
 <div class="cmdk-overlay" id="cmdkOverlay">
   <div class="cmdk-box">
     <div class="cmdk-input-wrap">
+      <div class="mac-traffic" style="margin-bottom:0;">
+        <button class="mac-dot red" id="cmdkCloseBtn" title="Tutup"></button>
+        <span class="mac-dot yellow"></span>
+        <span class="mac-dot green"></span>
+      </div>
       <i class="ti ti-search"></i>
       <input type="text" class="cmdk-input" id="cmdkInput" placeholder="Cari kode produk atau nama..."/>
     </div>
@@ -390,12 +521,16 @@ tbody tr.clickable:hover{background:var(--surface-2)}
 <!-- MODAL FORM -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal-card">
+    <div class="mac-traffic">
+      <button class="mac-dot red" id="modalCloseBtn" title="Tutup"></button>
+      <span class="mac-dot yellow"></span>
+      <span class="mac-dot green"></span>
+    </div>
     <div class="modal-head">
       <div>
         <div class="modal-title" id="modalTitle">Tambah Produk</div>
         <div class="modal-sub" id="modalSub">Isi data produk baru</div>
       </div>
-      <button class="modal-close" id="modalCloseBtn"><i class="ti ti-x"></i></button>
     </div>
 
     <div class="sec-label">Kode Asli / Master Produk</div>
@@ -472,17 +607,10 @@ tbody tr.clickable:hover{background:var(--surface-2)}
       </div>
       <div class="harga-add">
         <div class="f"><label>Tahun</label><input type="number" id="h_tahun" placeholder="2026"/></div>
-        <div class="f"><label>Jenis</label>
-          <select id="h_jenis">
-            <option value="EKATALOG">EKATALOG</option>
-            <option value="SWASTA">SWASTA</option>
-            <option value="UPLOAD">UPLOAD</option>
-            <option value="__custom__">Lainnya...</option>
-          </select>
-        </div>
-        <div class="f"><label>Harga (Rp)</label><input type="number" step="any" id="h_harga" placeholder="0"/></div>
+        <div class="f"><label>Harga EKATALOG (Rp)</label><input type="number" step="any" id="h_harga" placeholder="0"/></div>
         <button class="btn btn-ghost" id="addHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
       </div>
+      <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG.</div>
     </div>
 
     <div id="mediaSection" style="display:none;">
@@ -528,12 +656,16 @@ tbody tr.clickable:hover{background:var(--surface-2)}
 <!-- LOG AKTIVITAS MODAL -->
 <div class="modal-overlay" id="logModalOverlay">
   <div class="modal-card log-modal">
+    <div class="mac-traffic">
+      <button class="mac-dot red" id="logModalCloseBtn" title="Tutup"></button>
+      <span class="mac-dot yellow"></span>
+      <span class="mac-dot green"></span>
+    </div>
     <div class="modal-head">
       <div>
         <div class="modal-title">Log Aktivitas</div>
-        <div class="modal-sub">Riwayat tambah/ubah/hapus di produk, harga, media & master produk</div>
+        <div class="modal-sub">Riwayat tambah/ubah/hapus di produk, harga, media, AKD & set</div>
       </div>
-      <button class="modal-close" id="logModalCloseBtn"><i class="ti ti-x"></i></button>
     </div>
 
     <div class="log-toolbar">
@@ -547,6 +679,7 @@ tbody tr.clickable:hover{background:var(--surface-2)}
           <option value="produk_media">produk_media</option>
           <option value="master_produk">master_produk</option>
           <option value="produk_akd">produk_akd</option>
+          <option value="produk_set_item">produk_set_item</option>
         </select>
       </div>
       <div class="f">
@@ -587,11 +720,10 @@ const TIPE_TO_AKD = { INSTRUMENT: 'satuan', SET: 'set', UNIT: 'unit' };
 
 // ---- Theme toggle ----
 const themeToggle = document.getElementById('themeToggle');
-const themeLabel = document.getElementById('themeLabel');
+const themeIcon = document.getElementById('themeIcon');
 function applyTheme(t){
   document.body.setAttribute('data-theme', t);
-  themeToggle.querySelector('i').className = t === 'dark' ? 'ti ti-sun' : 'ti ti-moon';
-  themeLabel.textContent = t === 'dark' ? 'Mode Terang' : 'Mode Gelap';
+  themeIcon.className = t === 'dark' ? 'ti ti-moon' : 'ti ti-sun';
   localStorage.setItem('theme', t);
 }
 applyTheme(localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
@@ -604,7 +736,7 @@ document.querySelectorAll('.sb-item[data-view]').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.sb-item[data-view]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    ['produk','dashboard','akd','bulk'].forEach(v => {
+    ['produk','dashboard','set','akd','bulk'].forEach(v => {
       document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === btn.dataset.view) ? 'block' : 'none';
     });
   });
@@ -675,7 +807,7 @@ sb.auth.onAuthStateChange((event, session) => {
 
 // ---- Log Aktivitas ----
 const LOG_ACTION_LABELS = { INSERT: 'Tambah', UPDATE: 'Ubah', DELETE: 'Hapus' };
-const LOG_TABLE_LABELS = { produk: 'Produk', produk_harga: 'Harga', produk_media: 'Media', master_produk: 'Master Produk', produk_akd: 'Relasi AKD' };
+const LOG_TABLE_LABELS = { produk: 'Produk', produk_harga: 'Harga', produk_media: 'Media', master_produk: 'Master Produk', produk_akd: 'Relasi AKD', produk_set_item: 'Komposisi Set' };
 const logModalOverlay = document.getElementById('logModalOverlay');
 document.getElementById('logToggle').addEventListener('click', () => { logModalOverlay.classList.add('open'); loadLog(); });
 document.getElementById('logModalCloseBtn').addEventListener('click', () => logModalOverlay.classList.remove('open'));
@@ -831,7 +963,7 @@ async function loadProduk(q){
       <td>${sealHtml(p.status_akd)}</td>
       <td style="text-align:right;color:var(--text-muted);">${p.is_active ? '' : '<i class="ti ti-eye-off" title="Nonaktif"></i>'}</td>
     `;
-    tr.addEventListener('click', () => openEdit(p.id));
+    tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     tableBody.appendChild(tr);
 
     const card = document.createElement('div');
@@ -841,7 +973,7 @@ async function loadProduk(q){
       <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}</div>
       <div class="pc-foot"><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}</div>
     `;
-    card.addEventListener('click', () => openEdit(p.id));
+    card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     cardWrap.appendChild(card);
   });
 }
@@ -871,6 +1003,7 @@ function openCmdk(){
 function closeCmdk(){ cmdkOverlay.classList.remove('open'); }
 cmdkTrigger.addEventListener('click', openCmdk);
 cmdkOverlay.addEventListener('click', e => { if (e.target === cmdkOverlay) closeCmdk(); });
+document.getElementById('cmdkCloseBtn').addEventListener('click', closeCmdk);
 
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openCmdk(); }
@@ -907,7 +1040,7 @@ async function selectCmdkResult(idx){
   const { data, error } = await sb.from('produk').select('id').eq('kode_produk', r.kode_produk).single();
   if (error || !data) { showToast('Gagal membuka produk', true); return; }
   closeCmdk();
-  openEdit(data.id);
+  if (r.tipe === 'SET') { goToSetDetail(data.id); } else { openEdit(data.id); }
 }
 cmdkInput.addEventListener('keydown', e => {
   if (e.key === 'ArrowDown') { e.preventDefault(); cmdkActiveIdx = Math.min(cmdkActiveIdx + 1, cmdkResults.length - 1); renderCmdkList(); }
@@ -1156,29 +1289,39 @@ function renderHargaTable(){
     tbody.appendChild(tr);
   });
 }
-document.getElementById('h_jenis').addEventListener('change', e => {
-  if (e.target.value === '__custom__') {
-    const custom = prompt('Masukkan jenis harga baru:');
-    if (custom) {
-      const opt = document.createElement('option');
-      opt.value = custom.toUpperCase();
-      opt.textContent = custom.toUpperCase();
-      opt.selected = true;
-      e.target.insertBefore(opt, e.target.lastElementChild);
-    } else { e.target.value = 'EKATALOG'; }
+// ---- Hitung & simpan 3 jenis harga sekaligus dari Harga EKATALOG ----
+// SWASTA = EKATALOG x 1.3 ; UPLOAD = EKATALOG / 1.11 (sesuai rumus yang sudah dipakai tim)
+async function upsertHargaDariEkat(produkId, tahun, hargaEkat){
+  const rows = [
+    { jenis: 'EKATALOG', harga: Math.round(hargaEkat) },
+    { jenis: 'SWASTA', harga: Math.round(hargaEkat * 1.3) },
+    { jenis: 'UPLOAD', harga: Math.round(hargaEkat / 1.11) }
+  ];
+  for (const r of rows) {
+    const { data: existing, error: findErr } = await sb.from('produk_harga')
+      .select('id').eq('produk_id', produkId).eq('tahun', tahun).eq('jenis', r.jenis).maybeSingle();
+    if (findErr) { showToast('Gagal cek harga ' + r.jenis + ': ' + findErr.message, true); return false; }
+    if (existing) {
+      const { error } = await sb.from('produk_harga').update({ harga: r.harga }).eq('id', existing.id);
+      if (error) { showToast('Gagal update harga ' + r.jenis + ': ' + error.message, true); return false; }
+    } else {
+      const { error } = await sb.from('produk_harga').insert({ produk_id: produkId, tahun, jenis: r.jenis, harga: r.harga });
+      if (error) { showToast('Gagal tambah harga ' + r.jenis + ': ' + error.message, true); return false; }
+    }
   }
-});
+  return true;
+}
+
 document.getElementById('addHargaBtn').addEventListener('click', async () => {
   if (!currentProdukId) { showToast('Simpan data produk dulu sebelum menambah harga', true); return; }
   const tahun = parseInt(document.getElementById('h_tahun').value, 10);
-  const jenis = document.getElementById('h_jenis').value;
-  const harga = parseFloat(document.getElementById('h_harga').value);
-  if (!tahun || !jenis || isNaN(harga)) { showToast('Lengkapi tahun, jenis, dan harga', true); return; }
-  const { error } = await sb.from('produk_harga').insert({ produk_id: currentProdukId, tahun, jenis, harga });
-  if (error) { showToast('Gagal tambah harga: ' + error.message, true); return; }
+  const hargaEkat = parseFloat(document.getElementById('h_harga').value);
+  if (!tahun || isNaN(hargaEkat)) { showToast('Lengkapi tahun dan harga EKATALOG', true); return; }
+  const ok = await upsertHargaDariEkat(currentProdukId, tahun, hargaEkat);
+  if (!ok) return;
   document.getElementById('h_tahun').value = '';
   document.getElementById('h_harga').value = '';
-  showToast('Harga ditambahkan');
+  showToast('Harga EKATALOG, SWASTA & UPLOAD tersimpan');
   loadHarga(currentProdukId);
 });
 async function deleteHarga(id){
@@ -1298,6 +1441,342 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
   await loadMedia(currentProdukId);
   await loadAkdLinks(currentProdukId, tipe);
   loadProduk();
+});
+
+// ================================================================
+// SET MANAGEMENT
+// ================================================================
+let currentSetId = null;
+let currentSetKode = '';
+let compRows = [];
+
+async function goToSetDetail(produkId){
+  document.querySelectorAll('.sb-item[data-view]').forEach(b => b.classList.remove('active'));
+  document.querySelector('.sb-item[data-view="set"]').classList.add('active');
+  ['produk','dashboard','set','akd','bulk'].forEach(v => {
+    document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === 'set') ? 'block' : 'none';
+  });
+  const { data: p, error } = await sb.from('produk').select('id, kode_produk').eq('id', produkId).single();
+  if (error || !p) { showToast('Gagal membuka set', true); return; }
+  document.getElementById('setListWrap').style.display = 'none';
+  document.getElementById('setDetailWrap').style.display = 'block';
+  openSetDetail(p.id, p.kode_produk);
+}
+
+document.getElementById('addSetBtn').addEventListener('click', () => {
+  openAdd();
+  document.getElementById('f_tipe').value = 'SET';
+});
+
+async function loadSetList(){
+  const wrap = document.getElementById('setListBody');
+  wrap.innerHTML = '<div style="color:var(--text-muted);padding:14px;">Memuat...</div>';
+  const { data, error } = await sb.from('produk_set_ringkasan').select('*').order('kode_produk');
+  if (error) { wrap.innerHTML = `<div style="color:var(--rust);padding:14px;">Gagal memuat: ${escapeHtml(error.message)}</div>`; return; }
+  document.getElementById('setListCount').textContent = (data || []).length + ' set produk';
+  if (!data || data.length === 0) { wrap.innerHTML = '<div class="stub-box">Belum ada produk tipe SET.</div>'; return; }
+  wrap.innerHTML = '';
+  data.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'set-list-row';
+    row.innerHTML = `
+      <span class="sl-kode">${escapeHtml(s.kode_produk)}</span>
+      <span class="sl-nama">${escapeHtml(s.nama_produk || '—')}</span>
+      <span class="sl-meta">${s.jumlah_jenis_item || 0} item · qty ${s.total_qty || 0}</span>
+      ${sealHtml(s.status_akd)}
+    `;
+    row.addEventListener('click', () => openSetDetail(s.set_id, s.kode_produk));
+    wrap.appendChild(row);
+  });
+}
+
+document.getElementById('setBackBtn').addEventListener('click', () => {
+  document.getElementById('setDetailWrap').style.display = 'none';
+  document.getElementById('setListWrap').style.display = 'block';
+  loadSetList();
+});
+
+async function openSetDetail(setId, kodeProduk){
+  currentSetId = setId;
+  currentSetKode = kodeProduk;
+  document.getElementById('setListWrap').style.display = 'none';
+  document.getElementById('setDetailWrap').style.display = 'block';
+  switchSetTab('composition');
+  await refreshSetHeader();
+  await loadComposition();
+  await loadSetHarga();
+  await loadSetAkd();
+  await loadSetHistory();
+}
+
+async function refreshSetHeader(){
+  const { data: p } = await sb.from('produk').select('*').eq('id', currentSetId).single();
+  if (!p) return;
+  document.getElementById('setDetailNama').textContent = p.nama_produk || p.kode_produk;
+  document.getElementById('setDetailKode').textContent = p.kode_produk;
+  document.getElementById('setDetailSeal').innerHTML = sealHtml(p.status_akd);
+
+  const { data: ring } = await sb.from('produk_set_ringkasan').select('*').eq('set_id', currentSetId).maybeSingle();
+  document.getElementById('setDetailJumlahItem').textContent = ring?.jumlah_jenis_item || 0;
+  document.getElementById('setDetailQty').textContent = ring?.total_qty || 0;
+
+  const { data: hargaRow } = await sb.from('produk_harga').select('harga, jenis, tahun').eq('produk_id', currentSetId)
+    .order('tahun', { ascending: false }).limit(1).maybeSingle();
+  document.getElementById('setDetailHarga').textContent = hargaRow ? `Rp ${Number(hargaRow.harga).toLocaleString('id-ID')} (${hargaRow.jenis} ${hargaRow.tahun})` : 'Belum ada harga';
+}
+
+document.getElementById('editSetOverviewBtn').addEventListener('click', () => openEdit(currentSetId));
+
+// ---- Tabs ----
+document.querySelectorAll('.set-tab').forEach(btn => {
+  btn.addEventListener('click', () => switchSetTab(btn.dataset.tab));
+});
+function switchSetTab(tab){
+  document.querySelectorAll('.set-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.set-tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+}
+
+// ---- Composition ----
+async function loadComposition(){
+  const { data, error } = await sb.from('produk_set_item')
+    .select('id, qty, produk_id, item:produk_id(id, kode_produk, nama_produk, berat_gram)')
+    .eq('set_id', currentSetId);
+  if (error) { document.getElementById('compList').innerHTML = `<div style="color:var(--rust);">Gagal memuat: ${escapeHtml(error.message)}</div>`; return; }
+  compRows = (data || []).sort((a,b) => (a.item?.nama_produk || '').localeCompare(b.item?.nama_produk || ''));
+  renderComposition();
+}
+function renderComposition(){
+  const wrap = document.getElementById('compList');
+  document.getElementById('compJumlahJenis').textContent = compRows.length;
+  const totalQty = compRows.reduce((s,r) => s + (r.qty || 0), 0);
+  document.getElementById('compTotalQty').textContent = totalQty;
+  const estBerat = compRows.reduce((s,r) => s + ((r.item?.berat_gram || 0) * (r.qty || 0)), 0);
+  document.getElementById('compEstBerat').textContent = estBerat.toLocaleString('id-ID') + ' g';
+
+  if (compRows.length === 0) { wrap.innerHTML = '<div class="akd-empty">Belum ada item di set ini.</div>'; return; }
+  wrap.innerHTML = '';
+  compRows.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'comp-row';
+    row.innerHTML = `
+      <span class="cr-kode">${escapeHtml(r.item?.kode_produk || '—')}</span>
+      <span class="cr-nama" data-id="${r.item?.id}">${escapeHtml(r.item?.nama_produk || '—')}</span>
+      <input type="number" class="cr-qty" value="${r.qty}" min="1" data-item-row="${r.id}"/>
+      <button class="cr-del" data-item-row="${r.id}"><i class="ti ti-x"></i></button>
+    `;
+    row.querySelector('.cr-nama').addEventListener('click', () => { if (r.item?.id) openEdit(r.item.id); });
+    const qtyInput = row.querySelector('.cr-qty');
+    let lastValue = r.qty;
+    async function commitQty(){
+      const val = parseInt(qtyInput.value, 10);
+      if (!val || val < 1) {
+        if (confirm('Qty kosong/0 — hapus item ini dari set?')) { deleteCompItem(r.id); }
+        else { qtyInput.value = lastValue; }
+        return;
+      }
+      if (val === lastValue) return;
+      const { error } = await sb.from('produk_set_item').update({ qty: val }).eq('id', r.id);
+      if (error) { showToast('Gagal update qty: ' + error.message, true); qtyInput.value = lastValue; return; }
+      lastValue = val;
+      r.qty = val;
+      qtyInput.classList.add('saved');
+      setTimeout(() => qtyInput.classList.remove('saved'), 600);
+      renderComposition();
+      refreshSetHeader();
+    }
+    qtyInput.addEventListener('blur', commitQty);
+    qtyInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { qtyInput.blur(); }
+      if (e.key === 'Escape') { qtyInput.value = lastValue; qtyInput.blur(); }
+    });
+    row.querySelector('.cr-del').addEventListener('click', () => {
+      if (confirm('Hapus item ini dari set?')) deleteCompItem(r.id);
+    });
+    wrap.appendChild(row);
+  });
+}
+async function deleteCompItem(rowId){
+  const { error } = await sb.from('produk_set_item').delete().eq('id', rowId);
+  if (error) { showToast('Gagal hapus item: ' + error.message, true); return; }
+  showToast('Item dihapus dari set');
+  await loadComposition();
+  await refreshSetHeader();
+}
+
+let compSearchTimer = null;
+document.getElementById('compSearchInput').addEventListener('input', () => {
+  clearTimeout(compSearchTimer);
+  const q = document.getElementById('compSearchInput').value.trim();
+  const resEl = document.getElementById('compSearchResults');
+  if (!q) { resEl.innerHTML = ''; return; }
+  compSearchTimer = setTimeout(async () => {
+    const { data, error } = await sb.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
+    if (error) { resEl.innerHTML = `<div class="akd-empty">Gagal mencari: ${escapeHtml(error.message)}</div>`; return; }
+    const filtered = (data || []).filter(r => r.tipe !== 'SET').slice(0, 10);
+    if (filtered.length === 0) { resEl.innerHTML = '<div class="akd-empty">Tidak ditemukan (SET tidak bisa jadi isi set lain).</div>'; return; }
+    resEl.innerHTML = '';
+    filtered.forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'akd-result-row';
+      row.innerHTML = `<span class="ar-no">${escapeHtml(r.kode_produk)}</span><span class="ar-nama">${escapeHtml(r.nama_produk || '')}</span><span class="tipe-chip">${escapeHtml(r.tipe)}</span>`;
+      row.addEventListener('click', () => addCompItem(r.kode_produk));
+      resEl.appendChild(row);
+    });
+  }, 250);
+});
+async function addCompItem(kodeProduk){
+  const { data: item, error: itemErr } = await sb.from('produk').select('id').eq('kode_produk', kodeProduk).single();
+  if (itemErr || !item) { showToast('Gagal menemukan produk', true); return; }
+  const { error } = await sb.from('produk_set_item').insert({ set_id: currentSetId, produk_id: item.id, qty: 1 });
+  if (error) {
+    if (error.code === '23505') { showToast('Item ini sudah ada di set'); return; }
+    showToast('Gagal tambah item: ' + error.message, true); return;
+  }
+  showToast('Item ditambahkan, atur qty-nya di daftar');
+  document.getElementById('compSearchInput').value = '';
+  document.getElementById('compSearchResults').innerHTML = '';
+  await loadComposition();
+  await refreshSetHeader();
+}
+
+// ---- Pricing (tab, terpisah dari modal generic) ----
+async function loadSetHarga(){
+  const { data, error } = await sb.from('produk_harga').select('*').eq('produk_id', currentSetId).order('tahun', { ascending: false });
+  const tbody = document.getElementById('setHargaTableBody');
+  if (error) { tbody.innerHTML = `<tr><td colspan="4">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+  if (!data || data.length === 0) { tbody.innerHTML = `<tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr>`; return; }
+  tbody.innerHTML = '';
+  data.forEach(h => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${h.tahun}</td><td>${escapeHtml(h.jenis)}</td><td>Rp ${Number(h.harga).toLocaleString('id-ID')}</td>
+      <td><button class="btn btn-danger-ghost btn-sm" data-id="${h.id}"><i class="ti ti-trash"></i></button></td>`;
+    tr.querySelector('button').addEventListener('click', async () => {
+      if (!confirm('Hapus baris harga ini?')) return;
+      const { error: delErr } = await sb.from('produk_harga').delete().eq('id', h.id);
+      if (delErr) { showToast('Gagal hapus: ' + delErr.message, true); return; }
+      showToast('Harga dihapus'); loadSetHarga(); refreshSetHeader();
+    });
+    tbody.appendChild(tr);
+  });
+}
+document.getElementById('addSetHargaBtn').addEventListener('click', async () => {
+  const tahun = parseInt(document.getElementById('sh_tahun').value, 10);
+  const hargaEkat = parseFloat(document.getElementById('sh_harga').value);
+  if (!tahun || isNaN(hargaEkat)) { showToast('Lengkapi tahun dan harga EKATALOG', true); return; }
+  const ok = await upsertHargaDariEkat(currentSetId, tahun, hargaEkat);
+  if (!ok) return;
+  document.getElementById('sh_tahun').value = ''; document.getElementById('sh_harga').value = '';
+  showToast('Harga EKATALOG, SWASTA & UPLOAD tersimpan'); loadSetHarga(); refreshSetHeader();
+});
+
+// ---- AKD (tab, terpisah dari modal generic) ----
+let setAkdLinks = [];
+async function loadSetAkd(){
+  const { data, error } = await sb.from('produk_akd').select('akd_id, akd:akd_id(id, no_akd, nama_akd, tipe_akd)').eq('produk_id', currentSetId);
+  if (error) return;
+  setAkdLinks = (data || []).map(r => r.akd).filter(Boolean);
+  renderSetAkd();
+}
+function renderSetAkd(){
+  const el = document.getElementById('setAkdCurrentList');
+  if (setAkdLinks.length === 0) { el.innerHTML = '<div class="akd-empty">Belum ada AKD terhubung ke set ini.</div>'; return; }
+  el.innerHTML = '';
+  setAkdLinks.forEach(a => {
+    const chip = document.createElement('div');
+    chip.className = 'akd-chip';
+    chip.innerHTML = `<span class="ac-no">${escapeHtml(a.no_akd)}</span><span class="ac-nama">${escapeHtml(a.nama_akd || '')}</span><button title="Lepas relasi"><i class="ti ti-x"></i></button>`;
+    chip.querySelector('button').addEventListener('click', async () => {
+      if (!confirm('Lepas relasi AKD ini dari set?')) return;
+      const { error } = await sb.from('produk_akd').delete().eq('produk_id', currentSetId).eq('akd_id', a.id);
+      if (error) { showToast('Gagal melepas: ' + error.message, true); return; }
+      showToast('Relasi AKD dilepas'); loadSetAkd(); refreshSetHeader();
+    });
+    el.appendChild(chip);
+  });
+}
+let setAkdSearchTimer = null;
+document.getElementById('setAkdSearchInput').addEventListener('input', () => {
+  clearTimeout(setAkdSearchTimer);
+  const q = document.getElementById('setAkdSearchInput').value.trim();
+  const resEl = document.getElementById('setAkdResults');
+  if (!q) { resEl.innerHTML = ''; return; }
+  setAkdSearchTimer = setTimeout(async () => {
+    const { data, error } = await sb.from('akd').select('id, no_akd, nama_akd').eq('tipe_akd', 'set').or(`no_akd.ilike.%${q}%,nama_akd.ilike.%${q}%`).limit(15);
+    if (error) { resEl.innerHTML = `<div class="akd-empty">Gagal mencari: ${escapeHtml(error.message)}</div>`; return; }
+    if (!data || data.length === 0) { resEl.innerHTML = '<div class="akd-empty">Tidak ditemukan.</div>'; return; }
+    resEl.innerHTML = '';
+    data.forEach(a => {
+      const row = document.createElement('div');
+      row.className = 'akd-result-row';
+      row.innerHTML = `<span class="ar-no">${escapeHtml(a.no_akd)}</span><span class="ar-nama">${escapeHtml(a.nama_akd || '')}</span>`;
+      row.addEventListener('click', async () => {
+        const { error: linkErr } = await sb.from('produk_akd').insert({ produk_id: currentSetId, akd_id: a.id, is_primary: true });
+        if (linkErr) { if (linkErr.code === '23505') { showToast('Sudah terhubung'); return; } showToast('Gagal: ' + linkErr.message, true); return; }
+        showToast('AKD terhubung');
+        document.getElementById('setAkdSearchInput').value = ''; resEl.innerHTML = '';
+        loadSetAkd(); refreshSetHeader();
+      });
+      resEl.appendChild(row);
+    });
+  }, 250);
+});
+
+// ---- History (tab, best-effort — level produk; detail item/harga/AKD ada di Log global) ----
+async function loadSetHistory(){
+  const wrap = document.getElementById('setHistoryList');
+  wrap.innerHTML = '<div style="color:var(--text-muted);">Memuat...</div>';
+  const { data, error } = await sb.from('audit_log').select('*').eq('table_name', 'produk').eq('record_id', currentSetKode).order('changed_at', { ascending: false }).limit(30);
+  if (error) { wrap.innerHTML = `<div style="color:var(--rust);">Gagal memuat: ${escapeHtml(error.message)}</div>`; return; }
+  if (!data || data.length === 0) { wrap.innerHTML = '<div class="akd-empty">Belum ada riwayat perubahan level produk untuk set ini.</div>'; return; }
+  wrap.innerHTML = '';
+  data.forEach(row => {
+    const el = document.createElement('div');
+    el.className = 'log-entry';
+    const jam = new Date(row.changed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+    el.innerHTML = `<div class="log-entry-top"><span class="log-action ${row.action}">${LOG_ACTION_LABELS[row.action] || row.action}</span><span class="log-meta">${jam} · ${escapeHtml(row.changed_by || 'tidak diketahui')}</span></div>
+      <div class="log-summary">${buildLogSummary(row)}</div>`;
+    wrap.appendChild(el);
+  });
+}
+document.getElementById('openFullLogFromSetBtn').addEventListener('click', () => {
+  document.getElementById('log_table').value = 'produk_set_item';
+  logModalOverlay.classList.add('open');
+  loadLog();
+});
+
+// ---- Sesuaikan modal generic: sembunyikan Harga & AKD kelola kalau tipe SET ----
+const _origOpenEdit = openEdit;
+window.openEdit = async function(produkId){
+  await _origOpenEdit(produkId);
+  const tipe = document.getElementById('f_tipe').value;
+  if (tipe === 'SET') {
+    hargaSection.style.display = 'none';
+    toggleAkdBoxBtn.style.display = 'none';
+    akdBox.style.display = 'none';
+    document.getElementById('akdHint').textContent = '';
+    if (!document.getElementById('setRedirectNote')) {
+      const note = document.createElement('div');
+      note.id = 'setRedirectNote';
+      note.className = 'akd-hint';
+      note.style.marginTop = '4px';
+      note.innerHTML = 'Harga & AKD untuk SET dikelola di halaman <b>Set Management</b>, bukan di sini.';
+      toggleAkdBoxBtn.parentElement.appendChild(note);
+    }
+  } else {
+    const note = document.getElementById('setRedirectNote');
+    if (note) note.remove();
+    toggleAkdBoxBtn.style.display = 'inline-flex';
+  }
+};
+
+// ---- Route klik SET dari Produk list & command palette ke Set Management ----
+const _origLoadProdukRowClick = null; // handled inline below via monkey-patch approach not needed; see loadProduk edits
+
+// ---- Muat awal saat pertama masuk view Set (lazy) ----
+document.querySelector('.sb-item[data-view="set"]').addEventListener('click', () => {
+  if (!document.getElementById('setDetailWrap') || document.getElementById('setDetailWrap').style.display === 'none') {
+    loadSetList();
+  }
 });
 
 // ---- Delete produk ----
