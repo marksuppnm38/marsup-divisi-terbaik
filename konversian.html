@@ -625,6 +625,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
           <tbody id="dict-table-body"></tbody>
         </table>
       </div>
+      <div id="dict-pagination" style="display:none;align-items:center;justify-content:center;gap:6px;padding:14px 0 6px"></div>
     </div>
   </div>
 
@@ -647,7 +648,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         </div>
         <div class="form-group">
           <label>Nama Sales</label>
-          <input id="inp-sales" type="text" placeholder="Nama sales"/>
+          <input id="inp-sales" type="text" placeholder="Nama sales" list="sales-datalist" autocomplete="off"/>
         </div>
         <div class="form-group">
           <label>PIC Marsup (kamu)</label>
@@ -802,8 +803,11 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       <div class="pr-row2">
         <div class="pr-field">
           <label>PIC Sales</label>
-          <input type="text" id="pr-pic-sales" placeholder="Nama sales"/>
+          <input type="text" id="pr-pic-sales" placeholder="Nama sales" list="sales-datalist" autocomplete="off"/>
         </div>
+        <!-- Satu datalist dipakai bareng oleh #inp-sales dan #pr-pic-sales, diisi dari
+             tabel `sales` (master, sudah dinormalisasi) lewat loadSalesOptions(). -->
+        <datalist id="sales-datalist"></datalist>
         <div class="pr-field">
           <label>Pagu (Rp)</label>
           <input type="text" inputmode="numeric" id="pr-pagu" placeholder="cth: 150.000.000"/>
@@ -950,6 +954,27 @@ function showApp() {
   authGate.style.display = 'none';
   appRoot.style.display = 'flex';
   openSesiFromUrlIfAny();
+  loadSalesOptions();
+}
+
+// Isi datalist "Nama Sales" dari tabel master `sales` (via RPC get_sales_aktif,
+// security definer — bukan select langsung ke tabel, karena tabel sales pakai
+// RLS dan query REST langsung lewat token user bisa kefilter kosong tanpa
+// error kalau belum ada policy buat role 'authenticated'). Tujuannya nyegah
+// varian ejaan/kapitalisasi baru (mis. "LEO" vs "Leo") terbentuk di
+// konversi_record.pic_sales / sesi_konversi.nama_sales: user masih bisa ketik
+// bebas, tapi begitu nama yang benar sudah terdaftar, browser akan
+// menyarankan ejaan itu duluan lewat autocomplete <datalist>.
+async function loadSalesOptions() {
+  try {
+    const { data, error } = await rpc('get_sales_aktif', {});
+    if (error || !Array.isArray(data)) return; // gagal diam-diam, gak boleh blocking alur konversi
+    const dl = document.getElementById('sales-datalist');
+    if (!dl) return;
+    dl.innerHTML = data.map(r => `<option value="${String(r.nama).replace(/"/g, '&quot;')}">`).join('');
+  } catch {
+    // koneksi gagal / token belum siap — biarkan, field tetap bisa dipakai manual
+  }
 }
 // Kalau app dibuka lewat link yang dikirim dari tombol "Minta Bantuan" (format
 // ?sesi=<id>), langsung pindah ke tab Konversi Berjalan dan buka sesinya —
@@ -3763,15 +3788,91 @@ prSsRunBtn.addEventListener('click', async () => {
   }
 });
 
-// ---- Parsing teks paste: 1 baris = 1 item, qty boleh di depan atau belakang ----
+// ---- Blocklist baris yang jelas BUKAN nama produk (header tabel yang ke-copy
+// ikut, basa-basi/salam chat). Dipakai buat nyaring otomatis pas paste teks WA.
+// EXACT MATCH setelah dirapikan — bukan "mengandung" — supaya nama produk yang
+// kebetulan memuat kata ini (mis. "SC SET") tidak ikut kesaring.
+const PR_NOISE_WORDS = new Set([
+  'NO', 'NO.', 'NAMA', 'NAMA BARANG', 'NAMA ITEM', 'ITEM', 'BARANG',
+  'QTY', 'QUANTITY', 'JUMLAH', 'JML', 'HARGA', 'SATUAN', 'KETERANGAN',
+  'TOTAL', 'TANGGAL', 'TGL', 'PERIHAL', 'SUBJEK', 'LAMPIRAN', 'NO ITEM',
+  'ASSALAMUALAIKUM', 'ASSALAMUALAIKUM WR WB', 'WAALAIKUMSALAM',
+  'TERIMA KASIH', 'MAKASIH', 'THANKS', 'THANK YOU',
+  'SIAP', 'NOTED', 'OK', 'OKE', 'OKAY', 'BAIK', 'IYA', 'YA',
+  'MOHON DICEK', 'MOHON DIBANTU', 'MOHON BANTUANNYA',
+  'SELAMAT PAGI', 'SELAMAT SIANG', 'SELAMAT SORE', 'SELAMAT MALAM'
+]);
+
+function prIsNoiseLine(text) {
+  const norm = text.toUpperCase().replace(/\s+/g, ' ').trim().replace(/[.,;:]+$/, '');
+  if (!norm) return true;
+  if (!/[A-Za-z]/.test(norm)) return true; // cuma angka/simbol, gak ada huruf sama sekali
+  return PR_NOISE_WORDS.has(norm);
+}
+
+// Harga singkat ala chat: "134 JT" -> 134000000, "150rb"/"150 ribu" -> 150000,
+// "134.000.000" (sudah lengkap, gak ada singkatan) -> 134000000 apa adanya.
+function prParsePriceShorthand(str) {
+  const m = (str || '').trim().match(/^([\d.,]+)\s*(jt|juta|rb|ribu|k)?$/i);
+  if (!m) return null;
+  const digits = m[1].replace(/[.,]/g, ''); // titik/koma dianggap pemisah ribuan
+  let val = parseInt(digits, 10);
+  if (isNaN(val)) return null;
+  const suffix = (m[2] || '').toLowerCase();
+  if (suffix === 'jt' || suffix === 'juta') val *= 1000000;
+  else if (suffix === 'rb' || suffix === 'ribu' || suffix === 'k') val *= 1000;
+  return val;
+}
+
+// ---- Parsing teks paste: 1 baris = 1 item, qty boleh di depan/belakang/nempel
+// ke kata satuan, harga boleh nempel pakai "@". Baris yang jelas bukan nama
+// produk (header tabel, basa-basi chat, baris kosong angka/simbol doang)
+// otomatis disaring — TAPI dilaporkan jumlahnya, bukan diam-diam dibuang,
+// biar staff tetap sadar kalau ada baris yang "hilang" dari hasil paste. ----
 function parseTeksPermintaan(teks) {
-  return teks.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
-    let m = line.match(/^(\d+)\s*[xX]?\s*(.+)$/); // "10 Trocar" atau "10x Trocar"
-    if (m) return { raw_text: m[2].trim(), qty: parseInt(m[1], 10) };
-    m = line.match(/^(.+?)\s+(\d+)$/); // "Trocar 10"
-    if (m) return { raw_text: m[1].trim(), qty: parseInt(m[2], 10) };
-    return { raw_text: line, qty: null }; // gak ketemu angka, qty kosong
-  });
+  const skipped = [];
+  const items = teks.split('\n').map(line => line.trim()).filter(Boolean).map(rawLine => {
+    let line = rawLine;
+
+    // 1. Nomor urut list ("1. ", "2) ") — INI BUKAN qty, cuma nomor urut.
+    //    Dipisah dari deteksi qty asli di bawah, supaya "1. Trocar 5mm" tidak
+    //    kekunci qty=1 buat setiap baris hanya karena nomor urutnya kebetulan "1".
+    line = line.replace(/^\d+[.)]\s+/, '');
+
+    // 2. Bullet WA yang suka ke-copy ikut pas paste ("* ", "- ", "• ", dst)
+    line = line.replace(/^[*\-•●▪‣·]+\s*/, '').trim();
+
+    let qty = null;
+    let pagu_satuan = null;
+
+    // 3. Harga nempel pakai "@", contoh "BED ICU 2 UNIT@ 134 JT"
+    const hargaMatch = line.match(/@\s*([\d.,]+\s*(?:jt|juta|rb|ribu|k)?)/i);
+    if (hargaMatch) {
+      pagu_satuan = prParsePriceShorthand(hargaMatch[1]);
+      line = line.slice(0, hargaMatch.index).trim();
+    }
+
+    // 4. Qty nempel ke kata satuan, contoh "2 UNIT", "3 SET", "5 PCS"
+    let m = line.match(/(\d+)\s*(UNIT|SET|PCS|BUAH|BOX|PAK|LUSIN)\b\.?/i);
+    if (m) {
+      qty = parseInt(m[1], 10);
+      line = (line.slice(0, m.index) + ' ' + line.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim();
+    } else {
+      // 5. Qty di depan ("10 Trocar" / "10x Trocar") atau di belakang ("Trocar 10")
+      m = line.match(/^(\d+)\s*[xX]?\s*(.+)$/);
+      if (m) { qty = parseInt(m[1], 10); line = m[2].trim(); }
+      else {
+        m = line.match(/^(.+?)\s+(\d+)$/);
+        if (m) { qty = parseInt(m[2], 10); line = m[1].trim(); }
+      }
+    }
+
+    if (prIsNoiseLine(line)) { skipped.push(rawLine); return null; }
+    return { raw_text: line, qty, pagu_satuan };
+  }).filter(Boolean);
+
+  items._skipped = skipped; // info baris yang disaring, dibaca sama pemanggil
+  return items;
 }
 
 // ---- Parsing Excel: cari kolom nama barang & qty secara fleksibel ----
@@ -3827,8 +3928,16 @@ prSubmitBtn.addEventListener('click', async () => {
     return;
   }
 
+  // Baris yang otomatis disaring pas parsing teks WA (header tabel, basa-basi,
+  // dsb.) — dilaporkan ke staff, bukan diam-diam hilang. Kalau ternyata ada
+  // yang kesaring padahal itu nama produk beneran, staff bisa tambah manual
+  // lewat "+ Tambah baris" di layar Review.
+  reviewSkipped = items._skipped || [];
+
   if (items.length === 0) {
-    prStatusMsg.textContent = 'Gak ada baris permintaan yang terbaca.';
+    prStatusMsg.textContent = reviewSkipped.length
+      ? `Semua ${reviewSkipped.length} baris kebaca sebagai noise (header/basa-basi), gak ada nama produk yang kedeteksi.`
+      : 'Gak ada baris permintaan yang terbaca.';
     prStatusMsg.style.color = 'var(--danger)';
     return;
   }
@@ -3836,7 +3945,7 @@ prSubmitBtn.addEventListener('click', async () => {
   // Belum manggil API sama sekali di sini — hasil parse dibawa dulu ke layar
   // Review biar staff bisa cek/edit nama, qty, dan isi pagu satuan per item
   // (opsional) sebelum benar-benar disimpan ke server.
-  reviewItems = items.map(it => ({ raw_text: it.raw_text, qty: it.qty, pagu_satuan: null }));
+  reviewItems = items.map(it => ({ raw_text: it.raw_text, qty: it.qty, pagu_satuan: it.pagu_satuan ?? null }));
   reviewSumber = sumber;
   renderReviewRows();
   prFormWrap.style.display = 'none';
@@ -3846,6 +3955,7 @@ prSubmitBtn.addEventListener('click', async () => {
 // ---- Step 2: Layar Review — edit manual sebelum submit_permintaan_rs ----
 let reviewItems = [];      // {raw_text, qty, pagu_satuan}
 let reviewSumber = 'TEKS';
+let reviewSkipped = [];    // baris mentah yang otomatis disaring pas parsing (info doang, ditampilkan)
 
 function escapeHtmlAttr(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -3853,7 +3963,11 @@ function escapeHtmlAttr(s) {
 
 function renderReviewRows() {
   const labelSumber = reviewSumber === 'EXCEL' ? 'Excel' : reviewSumber === 'SCREENSHOT' ? 'screenshot' : 'teks';
-  prReviewInfo.textContent = `${reviewItems.length} item terbaca dari ${labelSumber} — cek dan lengkapi sebelum disimpan`;
+  let info = `${reviewItems.length} item terbaca dari ${labelSumber} — cek dan lengkapi sebelum disimpan`;
+  if (reviewSkipped.length) {
+    info += `. ${reviewSkipped.length} baris disaring otomatis (bukan nama produk — header/basa-basi/simbol lepas): "${reviewSkipped.slice(0, 3).map(s => escapeHtmlAttr(s)).join('", "')}"${reviewSkipped.length > 3 ? ', dst.' : ''}`;
+  }
+  prReviewInfo.innerHTML = info;
   prReviewRows.innerHTML = reviewItems.length ? reviewItems.map((it, idx) => `
     <div class="pr-review-row" data-idx="${idx}">
       <input class="pr-rv-nama" value="${escapeHtmlAttr(it.raw_text)}" placeholder="Nama item"/>
@@ -4278,6 +4392,11 @@ const dictModalClose = document.getElementById('dict-modal-close');
 const dictModalLoading = document.getElementById('dict-modal-loading');
 const dictModalError = document.getElementById('dict-modal-error');
 const dictModalList = document.getElementById('dict-modal-list');
+const dictPaginationEl = document.getElementById('dict-pagination');
+
+const DICT_PAGE_SIZE = 20;
+let dictCurrentPage = 1;
+let dictLastTotal = 0;
 
 let dictStatsLoaded = false;
 let dictSearchDebounce = null;
@@ -4337,38 +4456,91 @@ async function loadDictionary() {
 
   try {
     const { data, error } = await rpc('get_dictionary_summary', {
-      p_search, p_filter, p_sort, p_limit: 500, p_offset: 0
+      p_search, p_filter, p_sort,
+      p_limit: DICT_PAGE_SIZE,
+      p_offset: (dictCurrentPage - 1) * DICT_PAGE_SIZE
     });
     if (error) throw new Error(error.message || error.hint || 'Gagal memuat dictionary');
+    dictLastTotal = (data && data.length) ? Number(data[0].total_count) : 0;
     if (!data || data.length === 0) {
       dictEmpty.style.display = 'block';
+      renderDictPagination();
       return;
     }
     const frag = document.createDocumentFragment();
     data.forEach(row => frag.appendChild(renderDictRow(row)));
     dictTableBody.appendChild(frag);
     dictTableWrap.style.display = 'block';
+    renderDictPagination();
   } catch (err) {
     dictError.textContent = err.message;
     dictError.style.display = 'block';
+    dictLastTotal = 0;
+    renderDictPagination();
   } finally {
     dictLoading.style.display = 'none';
   }
+}
+
+// Kontrol halaman Dictionary — pola sama kayak renderPagination() di tab Cari
+// Produk, cuma versi ringkas (elemen sendiri, gak ganggu state pagination Cari Produk).
+function renderDictPagination() {
+  const totalPages = Math.max(1, Math.ceil(dictLastTotal / DICT_PAGE_SIZE));
+  if (totalPages <= 1) { dictPaginationEl.innerHTML = ''; dictPaginationEl.style.display = 'none'; return; }
+  dictPaginationEl.style.display = 'flex';
+
+  function pageBtn(p, label, disabled = false) {
+    const active = p === dictCurrentPage;
+    return `<button class="page-btn${active ? ' active' : ''}" data-page="${p}"${disabled ? ' disabled' : ''}>${label}</button>`;
+  }
+
+  const pagesToShow = [...new Set([1, totalPages, dictCurrentPage - 1, dictCurrentPage, dictCurrentPage + 1])]
+    .filter(p => p >= 1 && p <= totalPages)
+    .sort((a, b) => a - b);
+
+  let numberBtns = '';
+  let prevP = null;
+  pagesToShow.forEach(p => {
+    if (prevP !== null && p - prevP > 1) numberBtns += `<span class="page-info">…</span>`;
+    numberBtns += pageBtn(p, p);
+    prevP = p;
+  });
+
+  const startItem = (dictCurrentPage - 1) * DICT_PAGE_SIZE + 1;
+  const endItem = Math.min(dictCurrentPage * DICT_PAGE_SIZE, dictLastTotal);
+
+  dictPaginationEl.innerHTML = `
+    <span class="page-info">${startItem}–${endItem} dari ${dictLastTotal}</span>
+    ${pageBtn(dictCurrentPage - 1, '<i class="ti ti-chevron-left"></i>', dictCurrentPage === 1)}
+    ${numberBtns}
+    ${pageBtn(dictCurrentPage + 1, '<i class="ti ti-chevron-right"></i>', dictCurrentPage === totalPages)}
+  `;
+
+  dictPaginationEl.querySelectorAll('.page-btn[data-page]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = parseInt(btn.dataset.page, 10);
+      if (!p || p < 1 || p > totalPages || p === dictCurrentPage) return;
+      dictCurrentPage = p;
+      loadDictionary();
+      dictTableWrap.scrollIntoView({ block: 'nearest' });
+    });
+  });
 }
 
 // Search realtime, di-debounce biar gak nembak RPC tiap ketikan huruf.
 dictSearchInput.addEventListener('input', () => {
   dictClearBtn.style.display = dictSearchInput.value ? 'block' : 'none';
   clearTimeout(dictSearchDebounce);
-  dictSearchDebounce = setTimeout(loadDictionary, 300);
+  dictSearchDebounce = setTimeout(() => { dictCurrentPage = 1; loadDictionary(); }, 300);
 });
 dictClearBtn.addEventListener('click', () => {
   dictSearchInput.value = '';
   dictClearBtn.style.display = 'none';
+  dictCurrentPage = 1;
   loadDictionary();
 });
-dictFilterSelect.addEventListener('change', loadDictionary);
-dictSortSelect.addEventListener('change', loadDictionary);
+dictFilterSelect.addEventListener('change', () => { dictCurrentPage = 1; loadDictionary(); });
+dictSortSelect.addEventListener('change', () => { dictCurrentPage = 1; loadDictionary(); });
 btnDictRefresh.addEventListener('click', () => { dictStatsLoaded = false; loadDictionary(); });
 
 async function openDictionaryDetail(istilah) {
