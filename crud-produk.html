@@ -434,7 +434,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
     <div class="topbar">
       <div class="top-search">
         <i class="ti ti-search"></i>
-        <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama... (filter langsung di daftar)"/>
+        <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama.."/>
         <button class="clear-btn" id="topSearchClear" title="Bersihkan"><i class="ti ti-x"></i></button>
       </div>
       <button class="cmdk-launch" id="cmdkTrigger" title="Buka pencarian cepat lintas halaman"><i class="ti ti-command"></i> Spotlight <kbd>⌘K</kbd></button>
@@ -1241,7 +1241,9 @@ async function loadProduk(q, page){
     total = count || 0;
   }
 
-  produkCount.textContent = total + ' produk' + (qq ? ` untuk "${qq}"` : ' (terbaru diubah)');
+produkCount.textContent = qq
+  ? `${total} produk untuk "${qq}"`
+  : `${total} produk`;
   renderPgBar(document.getElementById('produkPagination'), {
     page: produkPage, pageSize: PRODUK_PAGE_SIZE, total,
     onPageChange: (p) => loadProduk(qq, p)
