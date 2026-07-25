@@ -120,6 +120,35 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .subtab-btn:hover{color:var(--text)}
 .subtab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
 .subtab-badge{background:var(--danger);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;line-height:1.4}
+
+/* ===== DICTIONARY (fitur baru — histori istilah customer) ===== */
+.dict-stats-row{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.dict-stat-card{flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.dict-stat-label{font-size:11px;color:var(--text-muted);margin-bottom:4px}
+.dict-stat-value{font-size:20px;font-weight:600;color:var(--text)}
+.dict-toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.dict-toolbar .search-wrap{flex:1;min-width:180px;margin-bottom:0}
+.dict-badge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;letter-spacing:.02em}
+.dict-badge.consistent{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
+.dict-badge.multiple{background:var(--warning-bg);color:var(--warning);border:1px solid var(--warning-border)}
+.dict-table-wrap{border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.dict-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.dict-table thead th{text-align:left;padding:9px 12px;background:var(--surface-2);color:var(--text-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--border)}
+.dict-table tbody tr{cursor:pointer;border-bottom:1px solid var(--border);transition:background .12s}
+.dict-table tbody tr:last-child{border-bottom:none}
+.dict-table tbody tr:hover{background:var(--accent-bg)}
+.dict-table td{padding:9px 12px;vertical-align:middle}
+.dict-table td.dict-col-freq{font-family:var(--mono);text-align:right;color:var(--text-secondary)}
+.dict-table td.dict-col-time{color:var(--text-muted);font-size:11.5px;white-space:nowrap}
+.dict-term{font-weight:600}
+.dict-detail-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border)}
+.dict-detail-row:last-child{border-bottom:none}
+.dict-detail-produk{font-size:13px;font-weight:500}
+.dict-detail-kode{font-size:11px;color:var(--text-muted);font-family:var(--mono)}
+.dict-detail-freq{text-align:right;font-family:var(--mono);font-size:13px;color:var(--text)}
+.dict-detail-pct{font-size:11px;color:var(--text-muted)}
+.dict-detail-bar-wrap{width:100%;height:5px;background:var(--surface-2);border-radius:3px;margin-top:4px;overflow:hidden}
+.dict-detail-bar{height:100%;background:var(--accent)}
 .sesi-toolbar{display:flex;gap:8px;margin-bottom:10px}
 .sesi-toolbar #btn-sesi-baru{flex:1}
 #btn-butuh-bantuan.on{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-border);border-radius:6px}
@@ -456,6 +485,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
         <button class="subtab-btn" id="subtab-sesi" type="button"><i class="ti ti-list-details"></i> Konversi Berjalan <span class="subtab-badge" id="sesi-badge" style="display:none">0</span></button>
         <button class="subtab-btn" id="subtab-riwayat" type="button"><i class="ti ti-history"></i> Riwayat</button>
         <button class="subtab-btn" id="subtab-converter" type="button"><i class="ti ti-clipboard-copy"></i> Converter</button>
+        <button class="subtab-btn" id="subtab-dictionary" type="button"><i class="ti ti-book-2"></i> Dictionary</button>
       </div>
       <div id="cari-controls">
         <div class="search-wrap">
@@ -534,6 +564,66 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       <div id="conv-results" style="padding:0 12px 8px"></div>
       <div id="conv-actions" style="display:none;padding:0 12px 12px">
         <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang Dicentang ke Clipboard</button>
+      </div>
+    </div>
+
+    <!-- ===== DICTIONARY: histori istilah customer vs produk Robust yang dipilih.
+         Murni baca data historis (bukan AI). Berdiri sendiri, tidak menyentuh
+         logic Search / Konversi / Riwayat / Converter yang sudah ada. ===== -->
+    <div class="panel-body" id="panel-body-dictionary" style="display:none">
+      <div class="dict-stats-row">
+        <div class="dict-stat-card">
+          <div class="dict-stat-label">Total Istilah Customer Unik</div>
+          <div class="dict-stat-value" id="dict-stat-istilah">—</div>
+        </div>
+        <div class="dict-stat-card">
+          <div class="dict-stat-label">Total Produk Pernah Dipilih</div>
+          <div class="dict-stat-value" id="dict-stat-produk">—</div>
+        </div>
+        <div class="dict-stat-card">
+          <div class="dict-stat-label">Total Alias</div>
+          <div class="dict-stat-value" id="dict-stat-alias">—</div>
+        </div>
+      </div>
+
+      <div class="dict-toolbar">
+        <div class="search-wrap">
+          <i class="ti ti-search"></i>
+          <input id="dict-search-input" type="search" placeholder="Cari istilah customer, kode produk, atau nama produk…" autocomplete="off" style="width:100%;height:36px;padding:0 34px;font-size:13px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none"/>
+          <button class="clear-btn" id="dict-clear-btn"><i class="ti ti-x"></i></button>
+        </div>
+        <select class="filter-select" id="dict-filter-select" title="Filter status">
+          <option value="semua">Semua</option>
+          <option value="consistent">Consistent</option>
+          <option value="multiple">Multiple</option>
+        </select>
+        <select class="filter-select" id="dict-sort-select" title="Urutkan">
+          <option value="frekuensi">Frekuensi terbanyak</option>
+          <option value="alphabet">Alphabet</option>
+          <option value="terbaru">Terbaru digunakan</option>
+        </select>
+        <button class="toggle-btn" id="btn-dict-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
+      </div>
+
+      <div id="dict-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat dictionary…</div>
+      <div id="dict-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
+      <div class="clip-empty" id="dict-empty" style="display:none">
+        <i class="ti ti-book-2"></i>
+        <p>Belum ada data dictionary.<br>Dictionary otomatis terisi setiap kali item permintaan RS ditandai "TERPENUHI".</p>
+      </div>
+
+      <div class="dict-table-wrap" id="dict-table-wrap" style="display:none">
+        <table class="dict-table">
+          <thead>
+            <tr>
+              <th>Istilah Customer</th>
+              <th>Status</th>
+              <th style="text-align:right">Frekuensi</th>
+              <th>Terakhir Dipakai</th>
+            </tr>
+          </thead>
+          <tbody id="dict-table-body"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -797,6 +887,19 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       <button id="lampiran-save-btn" style="font-size:12px;padding:6px 12px;border-radius:8px;border:none;background:var(--success);color:#fff;cursor:pointer;white-space:nowrap">Simpan</button>
     </div>
     <div id="lampiran-pages" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dictionary-modal">
+  <div class="modal-box" style="width:90vw;max-width:520px;max-height:82vh;overflow-y:auto;text-align:left;padding:20px 24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div class="modal-title" id="dict-modal-title" style="margin:0">Istilah</div>
+      <button id="dict-modal-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
+    </div>
+    <div class="modal-sub" id="dict-modal-sub" style="margin-bottom:14px">Pernah dipilih menjadi produk berikut, diurutkan dari yang paling sering.</div>
+    <div id="dict-modal-loading" style="display:none;text-align:center;padding:20px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat detail…</div>
+    <div id="dict-modal-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px"></div>
+    <div id="dict-modal-list"></div>
   </div>
 </div>
 
@@ -1270,11 +1373,13 @@ const subtabCari = document.getElementById('subtab-cari');
 const subtabSesi = document.getElementById('subtab-sesi');
 const subtabRiwayat = document.getElementById('subtab-riwayat');
 const subtabConverter = document.getElementById('subtab-converter');
+const subtabDictionary = document.getElementById('subtab-dictionary');
 const cariControls = document.getElementById('cari-controls');
 const panelBodyCari = document.getElementById('panel-body-cari');
 const panelBodySesi = document.getElementById('panel-body-sesi');
 const panelBodyRiwayat = document.getElementById('panel-body-riwayat');
 const panelBodyConverter = document.getElementById('panel-body-converter');
+const panelBodyDictionary = document.getElementById('panel-body-dictionary');
 const riwayatList = document.getElementById('riwayat-list');
 const riwayatListEmpty = document.getElementById('riwayat-list-empty');
 const riwayatListLoading = document.getElementById('riwayat-list-loading');
@@ -1590,18 +1695,22 @@ function switchSubTab(tab) {
   subtabSesi.classList.toggle('active', tab === 'sesi');
   subtabRiwayat.classList.toggle('active', tab === 'riwayat');
   subtabConverter.classList.toggle('active', tab === 'converter');
+  subtabDictionary.classList.toggle('active', tab === 'dictionary');
   panelBodyCari.style.display = tab === 'cari' ? 'block' : 'none';
   panelBodySesi.style.display = tab === 'sesi' ? 'block' : 'none';
   panelBodyRiwayat.style.display = tab === 'riwayat' ? 'block' : 'none';
   panelBodyConverter.style.display = tab === 'converter' ? 'block' : 'none';
+  panelBodyDictionary.style.display = tab === 'dictionary' ? 'block' : 'none';
   cariControls.style.display = tab === 'cari' ? 'block' : 'none';
   if (tab === 'sesi') loadSesiList();
   if (tab === 'riwayat') loadRiwayatList();
+  if (tab === 'dictionary') loadDictionary();
 }
 subtabCari.addEventListener('click', () => switchSubTab('cari'));
 subtabSesi.addEventListener('click', () => switchSubTab('sesi'));
 subtabRiwayat.addEventListener('click', () => switchSubTab('riwayat'));
 subtabConverter.addEventListener('click', () => switchSubTab('converter'));
+subtabDictionary.addEventListener('click', () => switchSubTab('dictionary'));
 
 function sesiTimeAgo(iso) {
   if (!iso) return '-';
@@ -4142,6 +4251,166 @@ async function autoFinalizePermintaan() {
     kbRecordStatus.textContent = 'Gagal simpan rekap otomatis (gak masalah, dicoba lagi pas item berikutnya ditandai)';
   }
 }
+
+// ══════════════════════════════════════════
+// DICTIONARY ISTILAH CUSTOMER (fitur baru)
+// Murni baca histori dari tabel permintaan_item lewat RPC Supabase
+// (get_dictionary_stats, get_dictionary_summary, get_dictionary_detail).
+// Tidak ada AI/fuzzy — normalisasi teks dilakukan di database (lihat SQL).
+// Berdiri sendiri, tidak menyentuh logic Search/Konversi/Riwayat/Converter.
+// ══════════════════════════════════════════
+const dictSearchInput = document.getElementById('dict-search-input');
+const dictClearBtn = document.getElementById('dict-clear-btn');
+const dictFilterSelect = document.getElementById('dict-filter-select');
+const dictSortSelect = document.getElementById('dict-sort-select');
+const btnDictRefresh = document.getElementById('btn-dict-refresh');
+const dictLoading = document.getElementById('dict-loading');
+const dictError = document.getElementById('dict-error');
+const dictEmpty = document.getElementById('dict-empty');
+const dictTableWrap = document.getElementById('dict-table-wrap');
+const dictTableBody = document.getElementById('dict-table-body');
+const dictStatIstilah = document.getElementById('dict-stat-istilah');
+const dictStatProduk = document.getElementById('dict-stat-produk');
+const dictStatAlias = document.getElementById('dict-stat-alias');
+const dictModal = document.getElementById('dictionary-modal');
+const dictModalTitle = document.getElementById('dict-modal-title');
+const dictModalClose = document.getElementById('dict-modal-close');
+const dictModalLoading = document.getElementById('dict-modal-loading');
+const dictModalError = document.getElementById('dict-modal-error');
+const dictModalList = document.getElementById('dict-modal-list');
+
+let dictStatsLoaded = false;
+let dictSearchDebounce = null;
+
+// Statistik cuma perlu dimuat sekali per sesi tab (angka historis, jarang berubah
+// dalam satu waktu buka aplikasi) — tapi tetap ikut di-refresh kalau tombol Refresh ditekan.
+async function loadDictionaryStats() {
+  const { data, error } = await rpc('get_dictionary_stats', {});
+  if (error || !data || !data.length) {
+    dictStatIstilah.textContent = '—';
+    dictStatProduk.textContent = '—';
+    dictStatAlias.textContent = '—';
+    return;
+  }
+  const s = data[0];
+  dictStatIstilah.textContent = (s.total_istilah_unik ?? 0).toLocaleString('id-ID');
+  dictStatProduk.textContent = (s.total_produk_dipilih ?? 0).toLocaleString('id-ID');
+  dictStatAlias.textContent = (s.total_alias ?? 0).toLocaleString('id-ID');
+}
+
+function dictBadgeHtml(status) {
+  return status === 'MULTIPLE'
+    ? `<span class="dict-badge multiple">MULTIPLE</span>`
+    : `<span class="dict-badge consistent">CONSISTENT</span>`;
+}
+
+function dictFormatTanggal(iso) {
+  if (!iso) return '-';
+  return new Date(iso).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) + ' · ' + sesiTimeAgo(iso);
+}
+
+function renderDictRow(row) {
+  const tr = document.createElement('tr');
+  tr.dataset.istilah = row.istilah_customer;
+  tr.innerHTML = `
+    <td class="dict-term">${escapeHtmlAttr(row.istilah_customer)}</td>
+    <td>${dictBadgeHtml(row.status)}</td>
+    <td class="dict-col-freq">${Number(row.total_frekuensi).toLocaleString('id-ID')}×</td>
+    <td class="dict-col-time">${dictFormatTanggal(row.terakhir_dipakai)}</td>
+  `;
+  tr.addEventListener('click', () => openDictionaryDetail(row.istilah_customer));
+  return tr;
+}
+
+async function loadDictionary() {
+  if (!dictStatsLoaded) { dictStatsLoaded = true; loadDictionaryStats(); }
+
+  dictLoading.style.display = 'block';
+  dictError.style.display = 'none';
+  dictEmpty.style.display = 'none';
+  dictTableWrap.style.display = 'none';
+  dictTableBody.innerHTML = '';
+
+  const p_search = dictSearchInput.value.trim() || null;
+  const p_filter = dictFilterSelect.value;
+  const p_sort = dictSortSelect.value;
+
+  try {
+    const { data, error } = await rpc('get_dictionary_summary', {
+      p_search, p_filter, p_sort, p_limit: 500, p_offset: 0
+    });
+    if (error) throw new Error(error.message || error.hint || 'Gagal memuat dictionary');
+    if (!data || data.length === 0) {
+      dictEmpty.style.display = 'block';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    data.forEach(row => frag.appendChild(renderDictRow(row)));
+    dictTableBody.appendChild(frag);
+    dictTableWrap.style.display = 'block';
+  } catch (err) {
+    dictError.textContent = err.message;
+    dictError.style.display = 'block';
+  } finally {
+    dictLoading.style.display = 'none';
+  }
+}
+
+// Search realtime, di-debounce biar gak nembak RPC tiap ketikan huruf.
+dictSearchInput.addEventListener('input', () => {
+  dictClearBtn.style.display = dictSearchInput.value ? 'block' : 'none';
+  clearTimeout(dictSearchDebounce);
+  dictSearchDebounce = setTimeout(loadDictionary, 300);
+});
+dictClearBtn.addEventListener('click', () => {
+  dictSearchInput.value = '';
+  dictClearBtn.style.display = 'none';
+  loadDictionary();
+});
+dictFilterSelect.addEventListener('change', loadDictionary);
+dictSortSelect.addEventListener('change', loadDictionary);
+btnDictRefresh.addEventListener('click', () => { dictStatsLoaded = false; loadDictionary(); });
+
+async function openDictionaryDetail(istilah) {
+  dictModalTitle.textContent = istilah;
+  dictModalList.innerHTML = '';
+  dictModalError.style.display = 'none';
+  dictModalLoading.style.display = 'block';
+  dictModal.classList.add('show');
+
+  try {
+    const { data, error } = await rpc('get_dictionary_detail', { p_istilah: istilah });
+    if (error) throw new Error(error.message || error.hint || 'Gagal memuat detail istilah');
+    if (!data || data.length === 0) {
+      dictModalList.innerHTML = '<div style="padding:16px 0;text-align:center;color:var(--text-muted);font-size:13px">Tidak ada data.</div>';
+      return;
+    }
+    // Sudah terurut dari server berdasarkan frekuensi terbesar (JANGAN diurutkan ulang —
+    // satu istilah customer memang wajar punya beberapa produk Robust, ini bukan error).
+    dictModalList.innerHTML = data.map(d => `
+      <div class="dict-detail-row" style="display:block">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div>
+            <div class="dict-detail-produk">${escapeHtmlAttr(d.nama_produk || '(nama produk tidak tersedia)')}</div>
+            <div class="dict-detail-kode">${escapeHtmlAttr(d.kode_produk || '-')}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div class="dict-detail-freq">${Number(d.jumlah_pemakaian).toLocaleString('id-ID')}×</div>
+            <div class="dict-detail-pct">${d.persentase != null ? d.persentase + '%' : ''}</div>
+          </div>
+        </div>
+        <div class="dict-detail-bar-wrap"><div class="dict-detail-bar" style="width:${d.persentase != null ? d.persentase : 0}%"></div></div>
+      </div>
+    `).join('');
+  } catch (err) {
+    dictModalError.textContent = err.message;
+    dictModalError.style.display = 'block';
+  } finally {
+    dictModalLoading.style.display = 'none';
+  }
+}
+dictModalClose.addEventListener('click', () => dictModal.classList.remove('show'));
+dictModal.addEventListener('click', (e) => { if (e.target === dictModal) dictModal.classList.remove('show'); });
 
 async function callUpdatePermintaanItem(itemId, status, produkId, kodeProduk) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/update_permintaan_item`, {
