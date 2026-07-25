@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/tabler-icons.min.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -93,9 +93,13 @@ kbd{font-family:var(--font-mono);font-size:10.5px;background:var(--surface-3);bo
 
 .main{flex:1;min-width:0;display:flex;flex-direction:column}
 .topbar{display:flex;align-items:center;gap:10px;padding:14px 22px;border-bottom:1px solid var(--border);background:var(--surface)}
-.cmdk-trigger{flex:1;max-width:420px;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:9px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-muted);font-size:13px;cursor:pointer;font-family:inherit}
-.cmdk-trigger i{font-size:15px}
-.cmdk-trigger span{flex:1;text-align:left}
+.top-search{flex:1;max-width:420px;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:9px;border:1px solid var(--border-strong);background:var(--surface-2)}
+.top-search i{font-size:15px;color:var(--text-muted);flex-shrink:0}
+.top-search input{flex:1;border:none;outline:none;background:none;color:var(--text);font-size:13px;font-family:inherit}
+.top-search input::placeholder{color:var(--text-muted)}
+.top-search .clear-btn{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0;font-size:14px;display:none}
+.cmdk-launch{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text-muted);font-size:11.5px;cursor:pointer;font-family:inherit;flex-shrink:0}
+.cmdk-launch:hover{background:var(--surface-2)}
 .topbar-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
 .view-toggle{display:flex;border:1px solid var(--border-strong);border-radius:8px;overflow:hidden}
 .view-toggle button{background:var(--surface);border:none;color:var(--text-muted);padding:7px 10px;cursor:pointer;font-size:14px;line-height:0}
@@ -209,6 +213,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
 .lookup-msg.notfound{color:var(--amber-text)}
 
 .harga-add{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px;margin-top:10px;align-items:end}
+.harga-add.harga-add-set{grid-template-columns:0.7fr 1fr auto auto}
 .harga-add .btn{height:34px}
 .media-add{display:grid;grid-template-columns:1fr 1fr 1fr auto auto;gap:8px;margin-top:10px;align-items:end}
 .media-add .f.full{grid-column:1/3}
@@ -300,10 +305,33 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
 .comp-row .cr-qty{width:64px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;text-align:center;font-family:var(--font-mono);font-size:13px;background:var(--surface);color:var(--text)}
 .comp-row .cr-qty.saved{animation:qtySaved .6s ease}
 @keyframes qtySaved{0%{border-color:var(--teal-ok);background:var(--teal-ok-bg)}100%{border-color:var(--border-strong);background:var(--surface)}}
-.comp-row .cr-del{background:none;border:none;color:var(--rust);cursor:pointer;font-size:15px;padding:2px;flex-shrink:0}
+.comp-row .cr-del{background:var(--rust-bg);border:1px solid var(--rust);color:var(--rust);cursor:pointer;font-size:14px;font-weight:700;line-height:1;width:26px;height:26px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.comp-row .cr-del:hover{background:var(--rust);color:#fff}
 .comp-add{margin-top:14px}
 .comp-summary{display:flex;gap:18px;margin-bottom:14px;font-size:12.5px;color:var(--text-muted)}
 .comp-summary b{color:var(--text);font-family:var(--font-mono)}
+
+/* ================= BULK EDIT ================= */
+.bulk-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:18px}
+.bulk-tab{background:none;border:none;padding:10px 14px;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;font-family:inherit}
+.bulk-tab.active{color:var(--accent-text);border-bottom-color:var(--accent)}
+.bulk-panel{display:none}
+.bulk-panel.active{display:block}
+.paste-area{width:100%;min-height:150px;padding:12px;border:1.5px dashed var(--border-strong);border-radius:9px;background:var(--surface);color:var(--text);font-family:var(--font-mono);font-size:12px;resize:vertical}
+.paste-area:focus{outline:none;border-color:var(--accent);border-style:solid}
+.paste-hint{font-size:12px;color:var(--text-muted);margin:8px 0 14px;line-height:1.5}
+.paste-hint code{background:var(--surface-2);padding:1px 5px;border-radius:4px;font-family:var(--font-mono);font-size:11px}
+.bulk-actions{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+.bulk-summary{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;font-size:12.5px}
+.bulk-summary .ok{color:var(--teal-ok-text)}
+.bulk-summary .warn{color:var(--rust-text)}
+.preview-table-wrap{max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:9px}
+.preview-table-wrap table{font-size:12px}
+.preview-table-wrap th{position:sticky;top:0;z-index:1}
+.row-status{font-size:10.5px;padding:2px 7px;border-radius:20px;font-family:var(--font-mono);white-space:nowrap}
+.row-status.ok{background:var(--teal-ok-bg);color:var(--teal-ok-text)}
+.row-status.err{background:var(--rust-bg);color:var(--rust-text)}
+.check-row-inline{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-secondary)}
 
 /* ================= STUB VIEW ================= */
 .stub-box{background:var(--surface);border:1px dashed var(--border-strong);border-radius:var(--radius);padding:50px 30px;text-align:center;color:var(--text-muted)}
@@ -354,7 +382,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
       <button class="sb-item active" data-view="produk"><i class="ti ti-package"></i> Produk</button>
       <button class="sb-item" data-view="set"><i class="ti ti-stack-2"></i> Set Management</button>
       <button class="sb-item" data-view="akd"><i class="ti ti-shield-check"></i> AKD <span class="soon">segera</span></button>
-      <button class="sb-item" data-view="bulk"><i class="ti ti-table"></i> Bulk Edit <span class="soon">segera</span></button>
+      <button class="sb-item" data-view="bulk"><i class="ti ti-table"></i> Bulk Edit</button>
     </nav>
     <div class="sb-spacer"></div>
     <div class="sb-foot">
@@ -366,7 +394,12 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
 
   <main class="main">
     <div class="topbar">
-      <button class="cmdk-trigger" id="cmdkTrigger"><i class="ti ti-search"></i><span>Cari kode produk atau nama...</span><kbd>⌘K</kbd></button>
+      <div class="top-search">
+        <i class="ti ti-search"></i>
+        <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama... (filter langsung di daftar)"/>
+        <button class="clear-btn" id="topSearchClear" title="Bersihkan"><i class="ti ti-x"></i></button>
+      </div>
+      <button class="cmdk-launch" id="cmdkTrigger" title="Buka pencarian cepat lintas halaman"><i class="ti ti-command"></i> Loncat cepat <kbd>⌘K</kbd></button>
       <div class="theme-switch" id="themeToggle" title="Ganti tema"><div class="knob"><i class="ti ti-sun" id="themeIcon"></i></div></div>
       <div class="topbar-actions">
         <div class="view-toggle">
@@ -451,6 +484,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
             <input type="text" class="field-input" id="compSearchInput" placeholder="Ketik nama atau kode produk..."/>
             <div class="akd-results" id="compSearchResults"></div>
           </div>
+          <div class="akd-hint" style="margin-top:10px;"><i class="ti ti-device-floppy"></i> Perubahan (tambah/hapus item, ubah qty) tersimpan otomatis ke database — tidak ada tombol Simpan terpisah.</div>
         </div>
 
         <div class="set-tab-panel" id="tab-pricing">
@@ -460,12 +494,13 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
               <tbody id="setHargaTableBody"><tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr></tbody>
             </table>
           </div>
-          <div class="harga-add">
+          <div class="harga-add harga-add-set">
             <div class="f"><label>Tahun</label><input type="number" id="sh_tahun" placeholder="2026"/></div>
             <div class="f"><label>Harga EKATALOG (Rp)</label><input type="number" step="any" id="sh_harga" placeholder="0"/></div>
+            <button class="btn btn-ghost" id="hitungKomposisiBtn" type="button" title="Isi otomatis dari jumlah (harga item × qty)"><i class="ti ti-calculator"></i> Hitung dari Komposisi</button>
             <button class="btn btn-ghost" id="addSetHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
           </div>
-          <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG.</div>
+          <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG. "Hitung dari Komposisi" cuma mengisi kotak — kamu tetap bisa timpa manual (mis. buat pas-kan pagu) sebelum klik Tambah.</div>
         </div>
 
         <div class="set-tab-panel" id="tab-akd">
@@ -490,7 +525,99 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
       <div class="stub-box"><i class="ti ti-shield-check"></i><b>Browser AKD menyusul</b>Untuk sekarang, kelola relasi AKD lewat tombol "Kelola AKD" di form edit produk.</div>
     </div>
     <div class="content" id="viewBulk" style="display:none;">
-      <div class="stub-box"><i class="ti ti-table"></i><b>Bulk Edit menyusul</b>Update harga/AKD/KFA massal — modul berikutnya.</div>
+      <div class="content-head">
+        <div>
+          <div class="content-title">Bulk Edit</div>
+          <div class="content-sub">Paste data langsung dari Excel/Google Sheets, preview dulu sebelum diproses</div>
+        </div>
+      </div>
+
+      <div class="bulk-tabs">
+        <button class="bulk-tab active" data-bulk="harga">Harga Massal</button>
+        <button class="bulk-tab" data-bulk="komposisi">Komposisi Set Massal</button>
+        <button class="bulk-tab" data-bulk="link">Link V6 Massal</button>
+        <button class="bulk-tab" data-bulk="inaproc">INAPROC Tracker</button>
+      </div>
+
+      <!-- BULK HARGA -->
+      <div class="bulk-panel active" id="bulk-harga">
+        <div class="paste-hint">
+          Paste tanpa header, tab-separated, 3 kolom per baris: <code>kode_produk</code> — <code>tahun</code> — <code>harga_ekat</code>.
+          SWASTA (×1,3) &amp; UPLOAD (÷1,11) dihitung otomatis. Bisa langsung select+copy dari Excel/Sheets.
+        </div>
+        <textarea class="paste-area" id="bulkHargaPaste" placeholder="RB999-KE921-B99-U667&#9;2026&#9;1500000&#10;RB10-KE130-B003-U07&#9;2026&#9;250000"></textarea>
+        <div class="bulk-actions">
+          <button class="btn btn-ghost" id="bulkHargaPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
+          <button class="btn btn-accent" id="bulkHargaProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+        </div>
+        <div class="bulk-summary" id="bulkHargaSummary"></div>
+        <div class="preview-table-wrap" id="bulkHargaPreviewWrap" style="display:none;">
+          <table>
+            <thead><tr><th>Kode Produk</th><th>Nama</th><th>Tahun</th><th>EKATALOG</th><th>SWASTA (auto)</th><th>UPLOAD (auto)</th><th>Status</th></tr></thead>
+            <tbody id="bulkHargaPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- BULK KOMPOSISI SET -->
+      <div class="bulk-panel" id="bulk-komposisi">
+        <div class="paste-hint">
+          Paste tanpa header, tab-separated, 5 kolom per baris: <code>kode_set</code> — <code>nama_set</code> (diabaikan, cuma buat kamu baca) — <code>kode_item</code> — <code>nama_item</code> (diabaikan) — <code>qty</code>.
+          Bisa langsung paste dari sheet Rincian Set kamu apa adanya.
+        </div>
+        <textarea class="paste-area" id="bulkKompPaste" placeholder="RB999-KE921-B99-U667&#9;BASIC SPINE LAMINECTOMY S.&#9;RB10-KE130-B003-U07&#9;SCALPEL HANDLE, NO. 3, 12 CM&#9;1"></textarea>
+        <div class="bulk-actions">
+          <button class="btn btn-ghost" id="bulkKompPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
+          <label class="check-row-inline"><input type="checkbox" id="bulkKompTimpaMode"/> Mode Timpa Total (hapus item lama yang tidak disebut di paste ini, per SET yang muncul)</label>
+          <button class="btn btn-accent" id="bulkKompProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+        </div>
+        <div class="bulk-summary" id="bulkKompSummary"></div>
+        <div class="preview-table-wrap" id="bulkKompPreviewWrap" style="display:none;">
+          <table>
+            <thead><tr><th>Kode Set</th><th>Kode Item</th><th>Nama Item</th><th>Qty</th><th>Status</th></tr></thead>
+            <tbody id="bulkKompPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- BULK LINK V6 -->
+      <div class="bulk-panel" id="bulk-link">
+        <div class="paste-hint">
+          Paste tanpa header, tab-separated, 2 kolom per baris: <code>kode_produk</code> — <code>link_v6</code> (URL e-katalog).
+        </div>
+        <textarea class="paste-area" id="bulkLinkPaste" placeholder="RB999-KE921-B99-U667&#9;https://e-katalog.lkpp.go.id/produk/xxxxx"></textarea>
+        <div class="bulk-actions">
+          <button class="btn btn-ghost" id="bulkLinkPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
+          <button class="btn btn-accent" id="bulkLinkProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+        </div>
+        <div class="bulk-summary" id="bulkLinkSummary"></div>
+        <div class="preview-table-wrap" id="bulkLinkPreviewWrap" style="display:none;">
+          <table>
+            <thead><tr><th>Kode Produk</th><th>Nama</th><th>Link Lama</th><th>Link Baru</th><th>Status</th></tr></thead>
+            <tbody id="bulkLinkPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- BULK INAPROC TRACKER -->
+      <div class="bulk-panel" id="bulk-inaproc">
+        <div class="paste-hint">
+          Paste tanpa header, tab-separated, 7 kolom persis hasil curl INAPROC kamu: <code>No</code> — <code>Nama</code> — <code>Kategori</code> — <code>Nomor Permohonan</code> — <code>Tgl Pengajuan</code> — <code>Status</code> — <code>Alasan Ditolak</code>.
+          Kode produk otomatis diambil dari dalam kurung di kolom Nama. Paste ulang aman — data lama (berdasarkan Nomor Permohonan) akan di-update, bukan dobel.
+        </div>
+        <textarea class="paste-area" id="bulkInaprocPaste" placeholder="1&#9;Dental operative unit (RB-KRC-DTC.07-U01, ROBUST)&#9;Alat Kesehatan&#9;33190423&#9;10 Juli 2026&#9;Menunggu Persetujuan&#9;"></textarea>
+        <div class="bulk-actions">
+          <button class="btn btn-ghost" id="bulkInaprocPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
+          <button class="btn btn-accent" id="bulkInaprocProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+        </div>
+        <div class="bulk-summary" id="bulkInaprocSummary"></div>
+        <div class="preview-table-wrap" id="bulkInaprocPreviewWrap" style="display:none;">
+          <table>
+            <thead><tr><th>No. Permohonan</th><th>Kode Terbaca</th><th>Nama</th><th>Tgl</th><th>Status</th><th>Match Produk</th></tr></thead>
+            <tbody id="bulkInaprocPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </main>
 </div>
@@ -570,6 +697,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
       <div class="f"><label>Berat (gram)</label><input type="number" step="any" id="f_berat_gram"/></div>
       <div class="f"><label>Status V6</label><input type="text" id="f_status_v6"/></div>
       <div class="f"><label>Link V6</label><input type="text" id="f_link_v6"/></div>
+      <div class="f full" id="inaprocIndikator" style="display:none;"></div>
       <div class="f full"><label>Spesifikasi</label><textarea id="f_spesifikasi"></textarea></div>
       <div class="f full check-row">
         <input type="checkbox" id="f_is_active" checked/>
@@ -718,6 +846,21 @@ function sealHtml(status){
 }
 const TIPE_TO_AKD = { INSTRUMENT: 'satuan', SET: 'set', UNIT: 'unit' };
 
+function renderInaprocIndikator(statusInaproc, linkV6){
+  const el = document.getElementById('inaprocIndikator');
+  if (!statusInaproc) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  let cls = 'seal-null', label = statusInaproc;
+  if (statusInaproc === 'Disetujui') cls = 'seal-terhubung';
+  else if (statusInaproc === 'Ditolak') cls = 'seal-belum_diajukan';
+  else if (statusInaproc === 'Menunggu Persetujuan') cls = 'seal-belum_firm';
+  let extra = '';
+  if (statusInaproc === 'Disetujui' && !linkV6) {
+    extra = ' <span style="color:var(--rust-text);font-size:11.5px;">— sudah disetujui INAPROC, belum ada Link V6, siap dibuatkan!</span>';
+  }
+  el.innerHTML = `<span style="font-size:11px;color:var(--text-muted);">Status INAPROC:</span> <span class="seal ${cls}">${escapeHtml(label)}</span>${extra}`;
+}
+
 // ---- Theme toggle ----
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon = document.getElementById('themeIcon');
@@ -732,14 +875,14 @@ themeToggle.addEventListener('click', () => {
 });
 
 // ---- Sidebar nav (stub views) ----
-document.querySelectorAll('.sb-item[data-view]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.sb-item[data-view]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    ['produk','dashboard','set','akd','bulk'].forEach(v => {
-      document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === btn.dataset.view) ? 'block' : 'none';
-    });
+function switchView(view){
+  document.querySelectorAll('.sb-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  ['produk','dashboard','set','akd','bulk'].forEach(v => {
+    document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
+}
+document.querySelectorAll('.sb-item[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
 
 // ---- Auth elements ----
@@ -912,6 +1055,24 @@ viewCardBtn.addEventListener('click', () => setView('card'));
 setView(currentView);
 
 let lastQuery = '';
+let topSearchTimer = null;
+const topSearchInput = document.getElementById('topSearchInput');
+const topSearchClear = document.getElementById('topSearchClear');
+topSearchInput.addEventListener('input', () => {
+  clearTimeout(topSearchTimer);
+  topSearchClear.style.display = topSearchInput.value ? 'block' : 'none';
+  topSearchTimer = setTimeout(() => {
+    switchView('produk');
+    loadProduk(topSearchInput.value);
+  }, 300);
+});
+topSearchClear.addEventListener('click', () => {
+  topSearchInput.value = '';
+  topSearchClear.style.display = 'none';
+  loadProduk('');
+  topSearchInput.focus();
+});
+
 async function loadProduk(q){
   q = (q ?? lastQuery ?? '').trim();
   lastQuery = q;
@@ -1064,6 +1225,7 @@ modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) clo
 function closeModal(){ modalOverlay.classList.remove('open'); }
 
 function resetForm(){
+  document.getElementById('inaprocIndikator').style.display = 'none';
   ['f_kode_asli','f_kode_produk','f_nama_produk','f_no_akd','f_masa_berlaku','f_golongan',
    'f_kode_kfa','f_kode_cangkang','f_nama_cangkang','f_berat_gram','f_status_v6','f_link_v6',
    'f_spesifikasi','m_deskripsi_vendor','m_family','m_sub_family','m_manufacturer','m_capital'
@@ -1127,6 +1289,7 @@ async function openEdit(produkId){
   document.getElementById('f_berat_gram').value = p.berat_gram ?? '';
   document.getElementById('f_status_v6').value = p.status_v6 || '';
   document.getElementById('f_link_v6').value = p.link_v6 || '';
+  renderInaprocIndikator(p.status_inaproc, p.link_v6);
   document.getElementById('f_spesifikasi').value = p.spesifikasi || '';
   document.getElementById('f_is_active').checked = !!p.is_active;
   document.getElementById('akdSealHolder').innerHTML = sealHtml(p.status_akd);
@@ -1449,13 +1612,10 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
 let currentSetId = null;
 let currentSetKode = '';
 let compRows = [];
+let lastAddedItemRowId = null;
 
 async function goToSetDetail(produkId){
-  document.querySelectorAll('.sb-item[data-view]').forEach(b => b.classList.remove('active'));
-  document.querySelector('.sb-item[data-view="set"]').classList.add('active');
-  ['produk','dashboard','set','akd','bulk'].forEach(v => {
-    document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === 'set') ? 'block' : 'none';
-  });
+  switchView('set');
   const { data: p, error } = await sb.from('produk').select('id, kode_produk').eq('id', produkId).single();
   if (error || !p) { showToast('Gagal membuka set', true); return; }
   document.getElementById('setListWrap').style.display = 'none';
@@ -1558,20 +1718,27 @@ function renderComposition(){
   compRows.forEach(r => {
     const row = document.createElement('div');
     row.className = 'comp-row';
+    row.dataset.rowId = r.id;
     row.innerHTML = `
       <span class="cr-kode">${escapeHtml(r.item?.kode_produk || '—')}</span>
       <span class="cr-nama" data-id="${r.item?.id}">${escapeHtml(r.item?.nama_produk || '—')}</span>
       <input type="number" class="cr-qty" value="${r.qty}" min="1" data-item-row="${r.id}"/>
-      <button class="cr-del" data-item-row="${r.id}"><i class="ti ti-x"></i></button>
+      <span class="cr-saved-tag" style="display:none;font-size:10.5px;color:var(--teal-ok-text);"><i class="ti ti-check"></i></span>
+      <button class="cr-del" data-item-row="${r.id}" title="Hapus item ini">×</button>
     `;
     row.querySelector('.cr-nama').addEventListener('click', () => { if (r.item?.id) openEdit(r.item.id); });
     const qtyInput = row.querySelector('.cr-qty');
+    const savedTag = row.querySelector('.cr-saved-tag');
     let lastValue = r.qty;
-    async function commitQty(){
+    let qtyDebounceTimer = null;
+
+    async function commitQty(fromDebounce){
       const val = parseInt(qtyInput.value, 10);
       if (!val || val < 1) {
-        if (confirm('Qty kosong/0 — hapus item ini dari set?')) { deleteCompItem(r.id); }
-        else { qtyInput.value = lastValue; }
+        if (!fromDebounce) {
+          if (confirm('Qty kosong/0 — hapus item ini dari set?')) { deleteCompItem(r.id); }
+          else { qtyInput.value = lastValue; }
+        }
         return;
       }
       if (val === lastValue) return;
@@ -1580,20 +1747,38 @@ function renderComposition(){
       lastValue = val;
       r.qty = val;
       qtyInput.classList.add('saved');
-      setTimeout(() => qtyInput.classList.remove('saved'), 600);
-      renderComposition();
+      savedTag.style.display = 'inline';
+      setTimeout(() => { qtyInput.classList.remove('saved'); savedTag.style.display = 'none'; }, 1200);
+      document.getElementById('compTotalQty').textContent = compRows.reduce((s,x) => s + (x.qty || 0), 0);
+      document.getElementById('compEstBerat').textContent = compRows.reduce((s,x) => s + ((x.item?.berat_gram || 0) * (x.qty || 0)), 0).toLocaleString('id-ID') + ' g';
       refreshSetHeader();
     }
-    qtyInput.addEventListener('blur', commitQty);
+    // autosave debounced tiap ketik (jaring pengaman kalau user pindah halaman tanpa blur)
+    qtyInput.addEventListener('input', () => {
+      clearTimeout(qtyDebounceTimer);
+      qtyDebounceTimer = setTimeout(() => commitQty(true), 700);
+    });
+    qtyInput.addEventListener('blur', () => { clearTimeout(qtyDebounceTimer); commitQty(false); });
     qtyInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { qtyInput.blur(); }
-      if (e.key === 'Escape') { qtyInput.value = lastValue; qtyInput.blur(); }
+      if (e.key === 'Enter') { clearTimeout(qtyDebounceTimer); qtyInput.blur(); }
+      if (e.key === 'Escape') { clearTimeout(qtyDebounceTimer); qtyInput.value = lastValue; qtyInput.blur(); }
     });
     row.querySelector('.cr-del').addEventListener('click', () => {
       if (confirm('Hapus item ini dari set?')) deleteCompItem(r.id);
     });
     wrap.appendChild(row);
   });
+
+  if (lastAddedItemRowId) {
+    const el = wrap.querySelector(`[data-row-id="${lastAddedItemRowId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'background .3s ease';
+      el.style.background = 'var(--teal-ok-bg)';
+      setTimeout(() => { el.style.background = ''; }, 1500);
+    }
+    lastAddedItemRowId = null;
+  }
 }
 async function deleteCompItem(rowId){
   const { error } = await sb.from('produk_set_item').delete().eq('id', rowId);
@@ -1627,14 +1812,15 @@ document.getElementById('compSearchInput').addEventListener('input', () => {
 async function addCompItem(kodeProduk){
   const { data: item, error: itemErr } = await sb.from('produk').select('id').eq('kode_produk', kodeProduk).single();
   if (itemErr || !item) { showToast('Gagal menemukan produk', true); return; }
-  const { error } = await sb.from('produk_set_item').insert({ set_id: currentSetId, produk_id: item.id, qty: 1 });
+  const { data: inserted, error } = await sb.from('produk_set_item').insert({ set_id: currentSetId, produk_id: item.id, qty: 1 }).select('id').single();
   if (error) {
     if (error.code === '23505') { showToast('Item ini sudah ada di set'); return; }
     showToast('Gagal tambah item: ' + error.message, true); return;
   }
-  showToast('Item ditambahkan, atur qty-nya di daftar');
+  showToast('Item ditambahkan (qty default 1) — atur angkanya di daftar kalau perlu');
   document.getElementById('compSearchInput').value = '';
   document.getElementById('compSearchResults').innerHTML = '';
+  lastAddedItemRowId = inserted?.id ?? null;
   await loadComposition();
   await refreshSetHeader();
 }
@@ -1659,6 +1845,23 @@ async function loadSetHarga(){
     tbody.appendChild(tr);
   });
 }
+document.getElementById('hitungKomposisiBtn').addEventListener('click', async () => {
+  if (compRows.length === 0) { showToast('Belum ada item di komposisi set ini', true); return; }
+  let total = 0;
+  let itemTanpaHarga = [];
+  for (const r of compRows) {
+    const { data: hargaItem } = await sb.from('produk_harga').select('harga').eq('produk_id', r.produk_id).eq('jenis', 'EKATALOG')
+      .order('tahun', { ascending: false }).limit(1).maybeSingle();
+    if (hargaItem) { total += hargaItem.harga * r.qty; }
+    else { itemTanpaHarga.push(r.item?.nama_produk || r.item?.kode_produk || 'item'); }
+  }
+  document.getElementById('sh_harga').value = Math.round(total);
+  if (itemTanpaHarga.length > 0) {
+    showToast(`Dihitung, tapi ${itemTanpaHarga.length} item belum punya harga EKATALOG (tidak ikut terhitung): ${itemTanpaHarga.slice(0,3).join(', ')}${itemTanpaHarga.length>3?', ...':''}`, true);
+  } else {
+    showToast('Harga terisi dari total komposisi — masih bisa diedit manual sebelum disimpan');
+  }
+});
 document.getElementById('addSetHargaBtn').addEventListener('click', async () => {
   const tahun = parseInt(document.getElementById('sh_tahun').value, 10);
   const hargaEkat = parseFloat(document.getElementById('sh_harga').value);
@@ -1777,6 +1980,346 @@ document.querySelector('.sb-item[data-view="set"]').addEventListener('click', ()
   if (!document.getElementById('setDetailWrap') || document.getElementById('setDetailWrap').style.display === 'none') {
     loadSetList();
   }
+});
+
+// ================================================================
+// BULK EDIT
+// ================================================================
+document.querySelectorAll('.bulk-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.bulk-tab').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.bulk-panel').forEach(p => p.classList.toggle('active', p.id === 'bulk-' + btn.dataset.bulk));
+  });
+});
+
+function parsePasteLines(raw){
+  return raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim() !== '').map(l => l.split('\t').map(c => c.trim()));
+}
+
+// ---- BULK HARGA ----
+let bulkHargaRows = [];
+document.getElementById('bulkHargaPreviewBtn').addEventListener('click', async () => {
+  const lines = parsePasteLines(document.getElementById('bulkHargaPaste').value);
+  if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
+  const kodeSet = [...new Set(lines.map(l => l[0]).filter(Boolean))];
+  const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk, nama_produk').in('kode_produk', kodeSet);
+  if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
+  const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
+
+  bulkHargaRows = lines.map(l => {
+    const [kode, tahunStr, hargaStr] = l;
+    const tahun = parseInt(tahunStr, 10);
+    const hargaEkat = parseFloat((hargaStr || '').replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.'));
+    const produk = byKode[kode];
+    let status = 'ok', msg = 'Siap diproses';
+    if (!kode) { status = 'err'; msg = 'Kode produk kosong'; }
+    else if (!produk) { status = 'err'; msg = 'Kode produk tidak ditemukan'; }
+    else if (!tahun) { status = 'err'; msg = 'Tahun tidak valid'; }
+    else if (isNaN(hargaEkat)) { status = 'err'; msg = 'Harga tidak valid'; }
+    return { kode, tahun, hargaEkat, produk, status, msg };
+  });
+
+  renderBulkHargaPreview();
+});
+function renderBulkHargaPreview(){
+  const wrap = document.getElementById('bulkHargaPreviewWrap');
+  const body = document.getElementById('bulkHargaPreviewBody');
+  const summary = document.getElementById('bulkHargaSummary');
+  const okCount = bulkHargaRows.filter(r => r.status === 'ok').length;
+  const errCount = bulkHargaRows.length - okCount;
+  summary.innerHTML = `<span class="ok">${okCount} baris siap diproses</span>${errCount ? `<span class="warn">${errCount} baris bermasalah (tidak ikut diproses)</span>` : ''}`;
+  wrap.style.display = 'block';
+  body.innerHTML = '';
+  bulkHargaRows.forEach(r => {
+    const tr = document.createElement('tr');
+    const swasta = !isNaN(r.hargaEkat) ? Math.round(r.hargaEkat * 1.3) : '—';
+    const upload = !isNaN(r.hargaEkat) ? Math.round(r.hargaEkat / 1.11) : '—';
+    tr.innerHTML = `
+      <td class="kode-cell">${escapeHtml(r.kode)}</td>
+      <td>${escapeHtml(r.produk?.nama_produk || '—')}</td>
+      <td>${r.tahun || '—'}</td>
+      <td>${!isNaN(r.hargaEkat) ? 'Rp ' + r.hargaEkat.toLocaleString('id-ID') : '—'}</td>
+      <td>${typeof swasta === 'number' ? 'Rp ' + swasta.toLocaleString('id-ID') : swasta}</td>
+      <td>${typeof upload === 'number' ? 'Rp ' + upload.toLocaleString('id-ID') : upload}</td>
+      <td><span class="row-status ${r.status}">${r.status === 'ok' ? 'Siap' : r.msg}</span></td>
+    `;
+    body.appendChild(tr);
+  });
+  document.getElementById('bulkHargaProsesBtn').style.display = okCount > 0 ? 'inline-flex' : 'none';
+}
+document.getElementById('bulkHargaProsesBtn').addEventListener('click', async () => {
+  const rows = bulkHargaRows.filter(r => r.status === 'ok');
+  if (rows.length === 0) return;
+  const btn = document.getElementById('bulkHargaProsesBtn');
+  btn.disabled = true;
+  let sukses = 0, gagal = 0;
+  for (const r of rows) {
+    const ok = await upsertHargaDariEkat(r.produk.id, r.tahun, r.hargaEkat);
+    if (ok) sukses++; else gagal++;
+  }
+  btn.disabled = false;
+  showToast(`Selesai — ${sukses} produk ter-update${gagal ? `, ${gagal} gagal` : ''}`, gagal > 0);
+  document.getElementById('bulkHargaPaste').value = '';
+  document.getElementById('bulkHargaPreviewWrap').style.display = 'none';
+  document.getElementById('bulkHargaSummary').innerHTML = '';
+  btn.style.display = 'none';
+  bulkHargaRows = [];
+  loadProduk();
+});
+
+// ---- BULK KOMPOSISI SET ----
+let bulkKompRows = [];
+document.getElementById('bulkKompPreviewBtn').addEventListener('click', async () => {
+  const lines = parsePasteLines(document.getElementById('bulkKompPaste').value);
+  if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
+  const kodeSetList = [...new Set(lines.map(l => l[0]).filter(Boolean))];
+  const kodeItemList = [...new Set(lines.map(l => l[2]).filter(Boolean))];
+  const allKode = [...new Set([...kodeSetList, ...kodeItemList])];
+  const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk, tipe').in('kode_produk', allKode);
+  if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
+  const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
+
+  bulkKompRows = lines.map(l => {
+    const [kodeSet, , kodeItem, namaItem, qtyStr] = l;
+    const qty = parseInt(qtyStr, 10);
+    const setProduk = byKode[kodeSet];
+    const itemProduk = byKode[kodeItem];
+    let status = 'ok', msg = 'Siap diproses';
+    if (!kodeSet || !kodeItem) { status = 'err'; msg = 'Kode set/item kosong'; }
+    else if (!setProduk) { status = 'err'; msg = 'Kode set tidak ditemukan'; }
+    else if (setProduk.tipe !== 'SET') { status = 'err'; msg = 'Kode set bukan tipe SET'; }
+    else if (!itemProduk) { status = 'err'; msg = 'Kode item tidak ditemukan'; }
+    else if (itemProduk.tipe === 'SET') { status = 'err'; msg = 'Item tidak boleh SET (nested)'; }
+    else if (!qty || qty < 1) { status = 'err'; msg = 'Qty tidak valid'; }
+    return { kodeSet, kodeItem, namaItem, qty, setProduk, itemProduk, status, msg };
+  });
+
+  renderBulkKompPreview();
+});
+function renderBulkKompPreview(){
+  const wrap = document.getElementById('bulkKompPreviewWrap');
+  const body = document.getElementById('bulkKompPreviewBody');
+  const summary = document.getElementById('bulkKompSummary');
+  const okCount = bulkKompRows.filter(r => r.status === 'ok').length;
+  const errCount = bulkKompRows.length - okCount;
+  const setCount = new Set(bulkKompRows.filter(r => r.status === 'ok').map(r => r.kodeSet)).size;
+  summary.innerHTML = `<span class="ok">${okCount} baris siap (${setCount} set berbeda)</span>${errCount ? `<span class="warn">${errCount} baris bermasalah (tidak ikut diproses)</span>` : ''}`;
+  wrap.style.display = 'block';
+  body.innerHTML = '';
+  bulkKompRows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="kode-cell">${escapeHtml(r.kodeSet)}</td>
+      <td class="kode-cell">${escapeHtml(r.kodeItem)}</td>
+      <td>${escapeHtml(r.namaItem || r.itemProduk?.nama_produk || '—')}</td>
+      <td>${r.qty || '—'}</td>
+      <td><span class="row-status ${r.status}">${r.status === 'ok' ? 'Siap' : r.msg}</span></td>
+    `;
+    body.appendChild(tr);
+  });
+  document.getElementById('bulkKompProsesBtn').style.display = okCount > 0 ? 'inline-flex' : 'none';
+}
+document.getElementById('bulkKompProsesBtn').addEventListener('click', async () => {
+  const rows = bulkKompRows.filter(r => r.status === 'ok');
+  if (rows.length === 0) return;
+  const timpaMode = document.getElementById('bulkKompTimpaMode').checked;
+  const btn = document.getElementById('bulkKompProsesBtn');
+  btn.disabled = true;
+
+  const bySet = {};
+  rows.forEach(r => { (bySet[r.setProduk.id] = bySet[r.setProduk.id] || []).push(r); });
+
+  let sukses = 0, gagal = 0;
+  for (const setId of Object.keys(bySet)) {
+    const itemRows = bySet[setId];
+    if (timpaMode) {
+      const { error: delErr } = await sb.from('produk_set_item').delete().eq('set_id', setId);
+      if (delErr) { showToast('Gagal timpa komposisi ' + itemRows[0].kodeSet + ': ' + delErr.message, true); gagal += itemRows.length; continue; }
+    }
+    for (const r of itemRows) {
+      if (timpaMode) {
+        const { error } = await sb.from('produk_set_item').insert({ set_id: setId, produk_id: r.itemProduk.id, qty: r.qty });
+        if (error) { gagal++; } else { sukses++; }
+      } else {
+        const { data: existing } = await sb.from('produk_set_item').select('id').eq('set_id', setId).eq('produk_id', r.itemProduk.id).maybeSingle();
+        if (existing) {
+          const { error } = await sb.from('produk_set_item').update({ qty: r.qty }).eq('id', existing.id);
+          if (error) { gagal++; } else { sukses++; }
+        } else {
+          const { error } = await sb.from('produk_set_item').insert({ set_id: setId, produk_id: r.itemProduk.id, qty: r.qty });
+          if (error) { gagal++; } else { sukses++; }
+        }
+      }
+    }
+  }
+  btn.disabled = false;
+  showToast(`Selesai — ${sukses} baris komposisi tersimpan${gagal ? `, ${gagal} gagal` : ''} (${Object.keys(bySet).length} set)`, gagal > 0);
+  document.getElementById('bulkKompPaste').value = '';
+  document.getElementById('bulkKompPreviewWrap').style.display = 'none';
+  document.getElementById('bulkKompSummary').innerHTML = '';
+  btn.style.display = 'none';
+  bulkKompRows = [];
+});
+
+// ---- BULK LINK V6 ----
+let bulkLinkRows = [];
+document.getElementById('bulkLinkPreviewBtn').addEventListener('click', async () => {
+  const lines = parsePasteLines(document.getElementById('bulkLinkPaste').value);
+  if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
+  const kodeSet = [...new Set(lines.map(l => l[0]).filter(Boolean))];
+  const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk, nama_produk, link_v6').in('kode_produk', kodeSet);
+  if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
+  const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
+
+  bulkLinkRows = lines.map(l => {
+    const [kode, link] = l;
+    const produk = byKode[kode];
+    let status = 'ok', msg = 'Siap diproses';
+    if (!kode) { status = 'err'; msg = 'Kode produk kosong'; }
+    else if (!produk) { status = 'err'; msg = 'Kode produk tidak ditemukan'; }
+    else if (!link) { status = 'err'; msg = 'Link kosong'; }
+    return { kode, link, produk, status, msg };
+  });
+  renderBulkLinkPreview();
+});
+function renderBulkLinkPreview(){
+  const wrap = document.getElementById('bulkLinkPreviewWrap');
+  const body = document.getElementById('bulkLinkPreviewBody');
+  const summary = document.getElementById('bulkLinkSummary');
+  const okCount = bulkLinkRows.filter(r => r.status === 'ok').length;
+  const errCount = bulkLinkRows.length - okCount;
+  summary.innerHTML = `<span class="ok">${okCount} baris siap diproses</span>${errCount ? `<span class="warn">${errCount} baris bermasalah (tidak ikut diproses)</span>` : ''}`;
+  wrap.style.display = 'block';
+  body.innerHTML = '';
+  bulkLinkRows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="kode-cell">${escapeHtml(r.kode)}</td>
+      <td>${escapeHtml(r.produk?.nama_produk || '—')}</td>
+      <td class="media-link" style="max-width:180px;">${escapeHtml(r.produk?.link_v6 || '—')}</td>
+      <td class="media-link" style="max-width:180px;">${escapeHtml(r.link || '—')}</td>
+      <td><span class="row-status ${r.status}">${r.status === 'ok' ? 'Siap' : r.msg}</span></td>
+    `;
+    body.appendChild(tr);
+  });
+  document.getElementById('bulkLinkProsesBtn').style.display = okCount > 0 ? 'inline-flex' : 'none';
+}
+document.getElementById('bulkLinkProsesBtn').addEventListener('click', async () => {
+  const rows = bulkLinkRows.filter(r => r.status === 'ok');
+  if (rows.length === 0) return;
+  const btn = document.getElementById('bulkLinkProsesBtn');
+  btn.disabled = true;
+  let sukses = 0, gagal = 0;
+  for (const r of rows) {
+    const { error } = await sb.from('produk').update({ link_v6: r.link }).eq('id', r.produk.id);
+    if (error) gagal++; else sukses++;
+  }
+  btn.disabled = false;
+  showToast(`Selesai — ${sukses} link ter-update${gagal ? `, ${gagal} gagal` : ''}`, gagal > 0);
+  document.getElementById('bulkLinkPaste').value = '';
+  document.getElementById('bulkLinkPreviewWrap').style.display = 'none';
+  document.getElementById('bulkLinkSummary').innerHTML = '';
+  btn.style.display = 'none';
+  bulkLinkRows = [];
+  loadProduk();
+});
+
+// ---- BULK INAPROC TRACKER ----
+const BULAN_INDO = { januari:1, februari:2, maret:3, april:4, mei:5, juni:6, juli:7, agustus:8, september:9, oktober:10, november:11, desember:12 };
+function parseTglIndo(txt){
+  if (!txt) return null;
+  const parts = txt.trim().toLowerCase().split(/\s+/);
+  if (parts.length !== 3) return null;
+  const bulan = BULAN_INDO[parts[1]];
+  if (!bulan) return null;
+  const tgl = parseInt(parts[0], 10), tahun = parseInt(parts[2], 10);
+  if (!tgl || !tahun) return null;
+  return `${tahun}-${String(bulan).padStart(2,'0')}-${String(tgl).padStart(2,'0')}`;
+}
+function extractKodeDariNama(namaRaw){
+  if (!namaRaw) return null;
+  const m = namaRaw.match(/\(([^,)]+),/);
+  return m ? m[1].trim() : null;
+}
+
+let bulkInaprocRows = [];
+document.getElementById('bulkInaprocPreviewBtn').addEventListener('click', async () => {
+  const lines = parsePasteLines(document.getElementById('bulkInaprocPaste').value);
+  if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
+
+  const parsed = lines.map(l => {
+    const [, nama, kategori, nomorPermohonan, tglStr, status, alasan] = l;
+    const kode = extractKodeDariNama(nama);
+    const tgl = parseTglIndo(tglStr);
+    return { nama, kategori, nomorPermohonan, tgl, status, alasan: alasan || null, kode };
+  });
+
+  const kodeList = [...new Set(parsed.map(p => p.kode).filter(Boolean))];
+  const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk').in('kode_produk', kodeList);
+  if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
+  const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
+
+  bulkInaprocRows = parsed.map(p => {
+    const produk = byKode[p.kode];
+    let status_ = 'ok', msg = 'Siap diproses';
+    if (!p.nomorPermohonan) { status_ = 'err'; msg = 'Nomor permohonan kosong'; }
+    else if (!p.kode) { status_ = 'err'; msg = 'Kode produk tidak terbaca dari Nama'; }
+    else if (!produk) { status_ = 'err'; msg = 'Kode produk tidak ditemukan di database'; }
+    else if (!p.status) { status_ = 'err'; msg = 'Status kosong'; }
+    return { ...p, produk, status_, msg };
+  });
+  renderBulkInaprocPreview();
+});
+function renderBulkInaprocPreview(){
+  const wrap = document.getElementById('bulkInaprocPreviewWrap');
+  const body = document.getElementById('bulkInaprocPreviewBody');
+  const summary = document.getElementById('bulkInaprocSummary');
+  const okCount = bulkInaprocRows.filter(r => r.status_ === 'ok').length;
+  const errCount = bulkInaprocRows.length - okCount;
+  summary.innerHTML = `<span class="ok">${okCount} baris siap diproses</span>${errCount ? `<span class="warn">${errCount} baris bermasalah (tidak ikut diproses)</span>` : ''}`;
+  wrap.style.display = 'block';
+  body.innerHTML = '';
+  bulkInaprocRows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="kode-cell">${escapeHtml(r.nomorPermohonan)}</td>
+      <td class="kode-cell">${escapeHtml(r.kode || '—')}</td>
+      <td>${escapeHtml(r.nama || '—')}</td>
+      <td>${escapeHtml(r.tgl || '—')}</td>
+      <td>${escapeHtml(r.status || '—')}</td>
+      <td><span class="row-status ${r.status_}">${r.status_ === 'ok' ? 'Ketemu produknya' : r.msg}</span></td>
+    `;
+    body.appendChild(tr);
+  });
+  document.getElementById('bulkInaprocProsesBtn').style.display = okCount > 0 ? 'inline-flex' : 'none';
+}
+document.getElementById('bulkInaprocProsesBtn').addEventListener('click', async () => {
+  const rows = bulkInaprocRows.filter(r => r.status_ === 'ok');
+  if (rows.length === 0) return;
+  const btn = document.getElementById('bulkInaprocProsesBtn');
+  btn.disabled = true;
+  let sukses = 0, gagal = 0;
+  for (const r of rows) {
+    const { error } = await sb.from('inaproc_pengajuan').upsert({
+      nomor_permohonan: r.nomorPermohonan,
+      nama_raw: r.nama,
+      kode_produk_terbaca: r.kode,
+      produk_id: r.produk.id,
+      kategori: r.kategori || null,
+      tgl_pengajuan: r.tgl,
+      status: r.status,
+      alasan_ditolak: r.alasan
+    }, { onConflict: 'nomor_permohonan' });
+    if (error) gagal++; else sukses++;
+  }
+  btn.disabled = false;
+  showToast(`Selesai — ${sukses} pengajuan tersimpan${gagal ? `, ${gagal} gagal` : ''}`, gagal > 0);
+  document.getElementById('bulkInaprocPaste').value = '';
+  document.getElementById('bulkInaprocPreviewWrap').style.display = 'none';
+  document.getElementById('bulkInaprocSummary').innerHTML = '';
+  btn.style.display = 'none';
+  bulkInaprocRows = [];
+  loadProduk();
 });
 
 // ---- Delete produk ----
