@@ -6,203 +6,226 @@
 <title>Pionir Group — Tools</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --paper: #F6F3EC;
-    --ink: #20242B;
-    --navy: #1C2B45;
-    --rust: #B5502E;
-    --teal: #3F6E6A;
-    --line: #D9D2C2;
-    --line-soft: #E7E2D5;
+    --bg: #F6F7FA;
+    --surface: #FFFFFF;
+    --border: #E5E8EE;
+    --text: #101828;
+    --text-muted: #667085;
+    --navy: #1B2A4A;
+    --navy-hover: #263A63;
+    --blue: #2563EB;
+    --blue-soft: #EEF3FF;
+    --green: #16A34A;
+    --green-soft: #EAF7EE;
+    --gray-soft: #F1F2F5;
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
+  }
+
+  [data-theme="dark"] {
+    --bg: #12151C;
+    --surface: #1A1E27;
+    --border: #2A2F3A;
+    --text: #F0F1F5;
+    --text-muted: #9AA1AF;
+    --navy: #3B5A9A;
+    --navy-hover: #4A6BB0;
+    --blue: #5B8DEF;
+    --blue-soft: #1E2A45;
+    --green: #3CCB6F;
+    --green-soft: #16281D;
+    --gray-soft: #232733;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    background: var(--paper);
-    color: var(--ink);
-    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
     min-height: 100vh;
-    background-image:
-      linear-gradient(var(--line-soft) 1px, transparent 1px),
-      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
-    background-size: 32px 32px;
-    background-position: -1px -1px;
+    transition: background 0.15s ease, color 0.15s ease;
   }
 
   .wrap {
-    max-width: 880px;
+    max-width: 920px;
     margin: 0 auto;
-    padding: 56px 24px 80px;
+    padding: 32px 24px 64px;
   }
 
   header {
-    border-bottom: 2px solid var(--ink);
-    padding-bottom: 20px;
-    margin-bottom: 8px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .brand-eyebrow {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--rust);
-    margin-bottom: 8px;
-  }
-
-  h1 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
-    font-size: clamp(32px, 5vw, 44px);
-    letter-spacing: -0.01em;
-    color: var(--navy);
-    line-height: 1.05;
-  }
-
-  .meta {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    color: var(--ink);
-    opacity: 0.55;
-    text-align: right;
-  }
-
-  .board-label {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink);
-    opacity: 0.45;
-    margin: 40px 0 16px;
-  }
-
-  .tickets {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-
-  .ticket {
-    position: relative;
-    display: flex;
-    align-items: stretch;
-    background: #FFFDF8;
-    border: 1.5px solid var(--ink);
-    text-decoration: none;
-    color: var(--ink);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    box-shadow: 4px 4px 0 var(--line);
-  }
-
-  .ticket:hover {
-    transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 var(--rust);
-  }
-
-  .ticket:active {
-    transform: translate(0, 0);
-    box-shadow: 2px 2px 0 var(--line);
-  }
-
-  .ticket-stub {
-    flex: 0 0 88px;
-    background: var(--navy);
-    color: var(--paper);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    letter-spacing: 0.08em;
-    writing-mode: vertical-rl;
-    text-transform: uppercase;
-    border-right: 1.5px dashed var(--paper);
-    position: relative;
-  }
-
-  .ticket-stub::before,
-  .ticket-stub::after {
-    content: '';
-    position: absolute;
-    width: 14px;
-    height: 14px;
-    background: var(--paper);
-    border-radius: 50%;
-    right: -7px;
-  }
-  .ticket-stub::before { top: -7px; }
-  .ticket-stub::after { bottom: -7px; }
-
-  .ticket-body {
-    flex: 1;
-    padding: 20px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 16px;
     flex-wrap: wrap;
+    padding-bottom: 20px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
   }
 
-  .ticket-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 20px;
-    color: var(--navy);
-    margin-bottom: 4px;
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
-  .ticket-desc {
-    font-size: 14px;
-    color: var(--ink);
-    opacity: 0.7;
-    max-width: 46ch;
+  .brand img {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    border-radius: 8px;
   }
 
-  .ticket-status {
+  .brand-text h1 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .brand-text p {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .breadcrumb {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.1em;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  .theme-toggle {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+
+  .theme-toggle svg { width: 16px; height: 16px; }
+
+  .section-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    padding: 5px 10px;
-    border: 1.5px solid var(--teal);
-    color: var(--teal);
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+
+  .modules {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .module {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    text-decoration: none;
+    color: var(--text);
+    box-shadow: var(--shadow);
+    transition: border-color 0.15s ease, transform 0.1s ease;
+  }
+
+  .module:hover {
+    border-color: var(--blue);
+    transform: translateY(-1px);
+  }
+
+  .module-icon {
+    flex: 0 0 42px;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: var(--blue-soft);
+    color: var(--blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .module-icon svg { width: 20px; height: 20px; }
+
+  .module-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .module-title {
+    font-size: 15.5px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+
+  .module-desc {
+    font-size: 13.5px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .status {
+    flex: 0 0 auto;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 999px;
     white-space: nowrap;
-    transform: rotate(-2deg);
   }
 
-  .ticket-status.soon {
-    border-color: var(--ink);
-    color: var(--ink);
-    opacity: 0.45;
+  .status.live {
+    color: var(--green);
+    background: var(--green-soft);
   }
 
-  .ticket.disabled {
-    opacity: 0.55;
+  .status.soon {
+    color: var(--text-muted);
+    background: var(--gray-soft);
+  }
+
+  .module.disabled {
     pointer-events: none;
-    box-shadow: 4px 4px 0 var(--line-soft);
-  }
-
-  .ticket.disabled .ticket-stub {
-    background: #8A8A82;
+    opacity: 0.6;
   }
 
   footer {
-    margin-top: 56px;
-    padding-top: 20px;
-    border-top: 1px solid var(--line);
+    margin-top: 40px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11px;
-    color: var(--ink);
-    opacity: 0.45;
+    color: var(--text-muted);
     display: flex;
     justify-content: space-between;
     flex-wrap: wrap;
@@ -210,77 +233,87 @@
   }
 
   @media (max-width: 520px) {
-    .ticket-stub { flex-basis: 60px; font-size: 10px; }
-    .ticket-body { padding: 16px 18px; }
-    .meta { text-align: left; }
+    .header-right { width: 100%; justify-content: space-between; }
+    .breadcrumb { text-align: left; }
+    .module { padding: 16px; }
+    .module-icon { flex-basis: 36px; width: 36px; height: 36px; }
   }
 </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <div>
-        <div class="brand-eyebrow">Pionir Group · Internal</div>
-        <h1>Tools Manifest</h1>
+      <div class="brand">
+        <img src="assets/logo-mark-pnm.png" alt="PNUM logo">
+        <div class="brand-text">
+          <h1>Tools Manifest</h1>
+          <p>Pionir Group · Internal</p>
+        </div>
       </div>
-      <div class="meta">SMY / PNM / METO<br>marketing &amp; sales ops</div>
+      <div class="header-right">
+        <div class="breadcrumb">Pionir Group — PNM / SMY / METO<br>marketing &amp; sales ops</div>
+        <button class="theme-toggle" id="themeToggle" aria-label="Ganti tema" title="Ganti tema">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
     </header>
 
-    <div class="board-label">Modul Aktif</div>
-    <div class="tickets">
-      <a class="ticket" href="/konversian.html">
-        <div class="ticket-stub">Modul 01</div>
-        <div class="ticket-body">
-          <div>
-            <div class="ticket-title">Konversi</div>
-            <div class="ticket-desc">Cari produk, susun harga, dan export ke Excel dengan gambar.</div>
-          </div>
-          <div class="ticket-status">Live</div>
+    <div class="section-label">Modul Aktif</div>
+    <div class="modules">
+
+      <a class="module" href="/konversian.html">
+        <div class="module-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
         </div>
+        <div class="module-body">
+          <div class="module-title">Konversi</div>
+          <div class="module-desc">Cari produk, susun harga, dan export ke Excel dengan gambar.</div>
+        </div>
+        <div class="status live">Live</div>
       </a>
 
-      <a class="ticket" href="/generatesph.html">
-        <div class="ticket-stub">Modul 02</div>
-        <div class="ticket-body">
-          <div>
-            <div class="ticket-title">SPH Generator</div>
-            <div class="ticket-desc">Buat Surat Penawaran Harga dari sheet SUMMARY, lengkap dengan lampiran.</div>
-          </div>
-          <div class="ticket-status">Live</div>
+      <a class="module" href="/generatesph.html">
+        <div class="module-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M9 11h2"/></svg>
         </div>
+        <div class="module-body">
+          <div class="module-title">SPH Generator</div>
+          <div class="module-desc">Buat Surat Penawaran Harga dari sheet SUMMARY, lengkap dengan lampiran.</div>
+        </div>
+        <div class="status live">Live</div>
       </a>
 
-      <a class="ticket" href="/stok.html">
-        <div class="ticket-stub">Modul 03</div>
-        <div class="ticket-body">
-          <div>
-            <div class="ticket-title">Stok</div>
-            <div class="ticket-desc">Upload &amp; timpa data stok harian — bisa dipakai divisi mana pun, gak perlu buka Konversian.</div>
-          </div>
-          <div class="ticket-status">Live</div>
+      <a class="module" href="/stok.html">
+        <div class="module-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg>
         </div>
+        <div class="module-body">
+          <div class="module-title">Stok</div>
+          <div class="module-desc">Upload &amp; timpa data stok harian — bisa dipakai divisi mana pun, gak perlu buka Konversian.</div>
+        </div>
+        <div class="status live">Live</div>
       </a>
 
-      <a class="ticket" href="/crud-produk.html">
-        <div class="ticket-stub">Modul 04</div>
-        <div class="ticket-body">
-          <div>
-            <div class="ticket-title">CRUD Produk</div>
-            <div class="ticket-desc">Edit data produk, harga, dan deskripsi.</div>
-          </div>
-          <div class="ticket-status">Live</div>
+      <a class="module" href="/crud-produk.html">
+        <div class="module-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
         </div>
+        <div class="module-body">
+          <div class="module-title">CRUD Produk</div>
+          <div class="module-desc">Edit data produk, harga, dan deskripsi.</div>
+        </div>
+        <div class="status live">Live</div>
       </a>
 
-      <a class="ticket" href="/dashboard.html">
-        <div class="ticket-stub">Modul 05</div>
-        <div class="ticket-body">
-          <div>
-            <div class="ticket-title">Dashboard</div>
-            <div class="ticket-desc">Ringkasan penjualan dan aktivitas tim lintas perusahaan.</div>
-          </div>
-          <div class="ticket-status">Live</div>
+      <a class="module" href="/dashboard.html">
+        <div class="module-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
         </div>
+        <div class="module-body">
+          <div class="module-title">Dashboard</div>
+          <div class="module-desc">Ringkasan penjualan dan aktivitas tim lintas perusahaan.</div>
+        </div>
+        <div class="status live">Live</div>
       </a>
 
     </div>
@@ -290,5 +323,27 @@
       <span>Diperbarui manual via Vercel CLI</span>
     </footer>
   </div>
+
+  <script>
+    (function () {
+      const root = document.documentElement;
+      const toggle = document.getElementById('themeToggle');
+      const stored = localStorage.getItem('pnum-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const initial = stored || (prefersDark ? 'dark' : 'light');
+      if (initial === 'dark') root.setAttribute('data-theme', 'dark');
+
+      toggle.addEventListener('click', function () {
+        const isDark = root.getAttribute('data-theme') === 'dark';
+        if (isDark) {
+          root.removeAttribute('data-theme');
+          localStorage.setItem('pnum-theme', 'light');
+        } else {
+          root.setAttribute('data-theme', 'dark');
+          localStorage.setItem('pnum-theme', 'dark');
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
