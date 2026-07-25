@@ -73,23 +73,38 @@ kbd{font-family:var(--font-mono);font-size:10.5px;background:var(--surface-3);bo
 
 /* ================= SHELL ================= */
 .shell{display:flex;min-height:100vh}
-.sidebar{width:var(--sidebar-w);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 12px}
+.sidebar{width:var(--sidebar-w);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 12px;position:relative;transition:width .18s ease,padding .18s ease}
 .sb-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 20px}
 .sb-logo{width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
 .logo{width:30px;height:30px;object-fit:contain;flex-shrink:0}
 .sb-brand-title{font-family:var(--font-display);font-weight:700;font-size:14px;line-height:1.2}
 .sb-brand-sub{font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono)}
+.sb-collapse-btn{position:absolute;top:16px;right:-11px;width:22px;height:22px;border-radius:50%;background:var(--surface);border:1px solid var(--border-strong);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-muted);font-size:12px;padding:0;z-index:5;transition:background .15s,color .15s,transform .18s ease}
+.sb-collapse-btn:hover{color:var(--text);background:var(--surface-2)}
 .sb-nav{display:flex;flex-direction:column;gap:2px}
-.sb-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--text-secondary);text-decoration:none;font-size:13px;font-weight:500;cursor:pointer;border:none;background:none;width:100%;text-align:left;font-family:inherit}
-.sb-item i{font-size:16px;width:18px;text-align:center}
+.sb-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--text-secondary);text-decoration:none;font-size:13px;font-weight:500;cursor:pointer;border:none;background:none;width:100%;text-align:left;font-family:inherit;white-space:nowrap;overflow:hidden}
+.sb-item i{font-size:16px;width:18px;text-align:center;flex-shrink:0}
 .sb-item:hover{background:var(--surface-2);color:var(--text)}
 .sb-item.active{background:var(--accent-bg);color:var(--accent-text);font-weight:600}
-.sb-item .soon{margin-left:auto;font-size:9px;font-family:var(--font-mono);color:var(--text-muted);background:var(--surface-3);padding:1px 6px;border-radius:10px}
+.sb-item .soon{margin-left:auto;font-size:9px;font-family:var(--font-mono);color:var(--text-muted);background:var(--surface-3);padding:1px 6px;border-radius:10px;flex-shrink:0}
 .sb-spacer{flex:1}
 .sb-foot{border-top:1px solid var(--border);padding-top:12px;margin-top:12px;display:flex;flex-direction:column;gap:4px}
-.sb-user{display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;color:var(--text-secondary)}
-.sb-user i{font-size:16px;color:var(--text-muted)}
+.sb-user{display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;color:var(--text-secondary);overflow:hidden}
+.sb-user i{font-size:16px;color:var(--text-muted);flex-shrink:0}
 .sb-user span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- Sidebar collapsed (desktop) ---- */
+.sidebar.collapsed{width:64px;padding:18px 8px}
+.sidebar.collapsed .sb-brand{justify-content:center;padding:4px 0 20px}
+.sidebar.collapsed .sb-brand-text,
+.sidebar.collapsed .sb-label,
+.sidebar.collapsed .sb-item .soon{display:none}
+.sidebar.collapsed .sb-item{justify-content:center;padding:9px 0}
+.sidebar.collapsed .sb-user{justify-content:center}
+.sidebar.collapsed .sb-collapse-btn i{transform:rotate(180deg)}
+@media (max-width:860px){
+  .sb-collapse-btn{display:none}
+}
 
 .main{flex:1;min-width:0;display:flex;flex-direction:column}
 .topbar{display:flex;align-items:center;gap:10px;padding:14px 22px;border-bottom:1px solid var(--border);background:var(--surface)}
@@ -177,6 +192,18 @@ tbody tr.clickable:hover{background:var(--surface-2)}
 /* ================= MODAL ================= */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,12,16,.55);z-index:60;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px}
 .modal-overlay.open{display:flex}
+
+/* ---- Dialog konfirmasi "perubahan belum disimpan" — tampil DI ATAS modal
+   edit (z-index lebih tinggi dari .modal-overlay), muncul kalau user coba
+   nutup modal (Batal/X/klik luar) atau nutup tab padahal ada perubahan
+   yang belum di-klik "Simpan". ---- */
+.confirm-overlay{display:none;position:fixed;inset:0;background:rgba(10,12,16,.6);z-index:90;align-items:center;justify-content:center;padding:16px}
+.confirm-overlay.open{display:flex}
+.confirm-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;max-width:380px;width:100%;box-shadow:0 16px 40px rgba(0,0,0,.35)}
+.confirm-card h3{font-family:var(--font-display);font-size:15px;margin-bottom:6px;color:var(--text);display:flex;align-items:center;gap:8px}
+.confirm-card h3 i{color:var(--amber)}
+.confirm-card p{font-size:13px;color:var(--text-secondary);margin-bottom:18px;line-height:1.5}
+.confirm-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .modal-card{background:var(--surface);border-radius:12px;width:100%;max-width:700px;padding:26px 26px 22px}
 .modal-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px}
 .modal-title{font-family:var(--font-display);font-size:16px;font-weight:700}
@@ -338,6 +365,16 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
 .stub-box i{font-size:26px;margin-bottom:10px;display:block}
 .stub-box b{color:var(--text);display:block;margin-bottom:4px;font-family:var(--font-display)}
 
+/* ================= PAGINATION (reusable: Produk, Set Management, Log Aktivitas) ================= */
+.pg-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 2px 4px;flex-wrap:wrap}
+.pg-info{font-size:12px;color:var(--text-muted);font-family:var(--font-mono)}
+.pg-btns{display:flex;align-items:center;gap:4px}
+.pg-btn{min-width:28px;height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);font-size:12.5px;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s,color .12s,border-color .12s}
+.pg-btn:hover:not(:disabled){background:var(--surface-2);color:var(--text);border-color:var(--border-strong)}
+.pg-btn.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+.pg-btn:disabled{opacity:.4;cursor:not-allowed}
+.pg-ellipsis{color:var(--text-muted);font-size:12px;padding:0 2px}
+
 @media (max-width:860px){
   .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:70;transform:translateX(-100%);transition:transform .2s}
   .sidebar.open{transform:translateX(0)}
@@ -372,23 +409,24 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
   <aside class="sidebar">
     <div class="sb-brand">
       <img src="assets/logo-mark-pnm.png" alt="PNM Logo" class="logo">
-      <div>
+      <div class="sb-brand-text">
         <div class="sb-brand-title">Robust Catalog</div>
         <div class="sb-brand-sub">PNM · SMY · METO</div>
       </div>
     </div>
+    <button class="sb-collapse-btn" id="sidebarCollapseBtn" title="Ciutkan sidebar" type="button"><i class="ti ti-chevron-left"></i></button>
     <nav class="sb-nav">
-      <button class="sb-item" data-view="dashboard"><i class="ti ti-layout-dashboard"></i> Dashboard <span class="soon">segera</span></button>
-      <button class="sb-item active" data-view="produk"><i class="ti ti-package"></i> Produk</button>
-      <button class="sb-item" data-view="set"><i class="ti ti-stack-2"></i> Set Management</button>
-      <button class="sb-item" data-view="akd"><i class="ti ti-shield-check"></i> AKD <span class="soon">segera</span></button>
-      <button class="sb-item" data-view="bulk"><i class="ti ti-table"></i> Bulk Edit</button>
+      <button class="sb-item" data-view="dashboard" title="Dashboard"><i class="ti ti-layout-dashboard"></i><span class="sb-label">Dashboard</span> <span class="soon">segera</span></button>
+      <button class="sb-item active" data-view="produk" title="Produk"><i class="ti ti-package"></i><span class="sb-label">Produk</span></button>
+      <button class="sb-item" data-view="set" title="Set Management"><i class="ti ti-stack-2"></i><span class="sb-label">Set Management</span></button>
+      <button class="sb-item" data-view="akd" title="AKD"><i class="ti ti-shield-check"></i><span class="sb-label">AKD</span> <span class="soon">segera</span></button>
+      <button class="sb-item" data-view="bulk" title="Bulk Edit"><i class="ti ti-table"></i><span class="sb-label">Bulk Edit</span></button>
     </nav>
     <div class="sb-spacer"></div>
     <div class="sb-foot">
-      <button class="sb-item" id="logToggle"><i class="ti ti-history"></i> Log Aktivitas</button>
-      <div class="sb-user"><i class="ti ti-user-circle"></i><span id="userEmailLabel"></span></div>
-      <button class="sb-item" id="logoutBtn"><i class="ti ti-logout"></i> Keluar</button>
+      <button class="sb-item" id="logToggle" title="Log Aktivitas"><i class="ti ti-history"></i><span class="sb-label">Log Aktivitas</span></button>
+      <div class="sb-user" title=""><i class="ti ti-user-circle"></i><span id="userEmailLabel" class="sb-label"></span></div>
+      <button class="sb-item" id="logoutBtn" title="Keluar"><i class="ti ti-logout"></i><span class="sb-label">Keluar</span></button>
     </div>
   </aside>
 
@@ -430,6 +468,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
         </table>
       </div>
       <div class="card-grid" id="cardWrap" style="display:none;"></div>
+      <div class="pg-bar" id="produkPagination" style="display:none;"></div>
     </div>
 
     <!-- STUB VIEWS -->
@@ -447,6 +486,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
           <button class="btn btn-accent" id="addSetBtn"><i class="ti ti-plus"></i> Set Baru</button>
         </div>
         <div id="setListBody"></div>
+        <div class="pg-bar" id="setListPagination" style="display:none;"></div>
       </div>
 
       <div id="setDetailWrap" style="display:none;">
@@ -781,6 +821,19 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
 
 <div class="toast" id="toast"></div>
 
+<!-- KONFIRMASI PERUBAHAN BELUM DISIMPAN -->
+<div class="confirm-overlay" id="unsavedConfirmOverlay">
+  <div class="confirm-card">
+    <h3><i class="ti ti-alert-triangle"></i> Perubahan belum disimpan</h3>
+    <p>Ada perubahan yang belum di-klik "Simpan". Kalau ditutup sekarang, perubahan itu bakal hilang.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-ghost" id="unsavedStayBtn" type="button">Tetap Edit</button>
+      <button class="btn btn-danger-ghost" id="unsavedDiscardBtn" type="button">Buang Perubahan</button>
+      <button class="btn btn-accent" id="unsavedSaveBtn" type="button"><i class="ti ti-check"></i> Simpan &amp; Tutup</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOG AKTIVITAS MODAL -->
 <div class="modal-overlay" id="logModalOverlay">
   <div class="modal-card log-modal">
@@ -825,6 +878,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
     <div class="log-list" id="logList">
       <div style="color:var(--text-muted);padding:14px;">Memuat log...</div>
     </div>
+    <div class="pg-bar" id="logPagination" style="display:none;"></div>
   </div>
 </div>
 
@@ -884,6 +938,18 @@ function switchView(view){
 document.querySelectorAll('.sb-item[data-view]').forEach(btn => {
   btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
+
+// ---- Sidebar collapse/expand (desktop) — state disimpen di localStorage biar
+// nempel walau reload/pindah tool, sama kayak preferensi theme & view lain. ----
+const sidebarEl = document.querySelector('.sidebar');
+const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
+function setSidebarCollapsed(collapsed){
+  sidebarEl.classList.toggle('collapsed', collapsed);
+  sidebarCollapseBtn.title = collapsed ? 'Perluas sidebar' : 'Ciutkan sidebar';
+  localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+}
+setSidebarCollapsed(localStorage.getItem('sidebarCollapsed') === '1');
+sidebarCollapseBtn.addEventListener('click', () => setSidebarCollapsed(!sidebarEl.classList.contains('collapsed')));
 
 // ---- Auth elements ----
 const gateWrap = document.getElementById('gateWrap');
@@ -952,27 +1018,39 @@ sb.auth.onAuthStateChange((event, session) => {
 const LOG_ACTION_LABELS = { INSERT: 'Tambah', UPDATE: 'Ubah', DELETE: 'Hapus' };
 const LOG_TABLE_LABELS = { produk: 'Produk', produk_harga: 'Harga', produk_media: 'Media', master_produk: 'Master Produk', produk_akd: 'Relasi AKD', produk_set_item: 'Komposisi Set' };
 const logModalOverlay = document.getElementById('logModalOverlay');
-document.getElementById('logToggle').addEventListener('click', () => { logModalOverlay.classList.add('open'); loadLog(); });
+document.getElementById('logToggle').addEventListener('click', () => { logModalOverlay.classList.add('open'); loadLog(1); });
 document.getElementById('logModalCloseBtn').addEventListener('click', () => logModalOverlay.classList.remove('open'));
 logModalOverlay.addEventListener('click', e => { if (e.target === logModalOverlay) logModalOverlay.classList.remove('open'); });
-document.getElementById('log_refresh').addEventListener('click', loadLog);
-document.getElementById('log_tanggal').addEventListener('change', loadLog);
-document.getElementById('log_table').addEventListener('change', loadLog);
-document.getElementById('log_action').addEventListener('change', loadLog);
+document.getElementById('log_refresh').addEventListener('click', () => loadLog(1));
+document.getElementById('log_tanggal').addEventListener('change', () => loadLog(1));
+document.getElementById('log_table').addEventListener('change', () => loadLog(1));
+document.getElementById('log_action').addEventListener('change', () => loadLog(1));
 
-async function loadLog(){
+let logPage = 1;
+const LOG_PAGE_SIZE = 30;
+
+async function loadLog(page){
+  logPage = page || logPage || 1;
   const logList = document.getElementById('logList');
   logList.innerHTML = '<div style="color:var(--text-muted);padding:14px;">Memuat log...</div>';
-  let query = sb.from('audit_log').select('*').order('changed_at', { ascending: false }).limit(100);
+  let query = sb.from('audit_log').select('*', { count: 'exact' }).order('changed_at', { ascending: false });
   const tgl = document.getElementById('log_tanggal').value;
   const tbl = document.getElementById('log_table').value;
   const act = document.getElementById('log_action').value;
   if (tgl) query = query.gte('changed_at', tgl + 'T00:00:00').lte('changed_at', tgl + 'T23:59:59');
   if (tbl) query = query.eq('table_name', tbl);
   if (act) query = query.eq('action', act);
+  const from = (logPage - 1) * LOG_PAGE_SIZE;
+  const to = from + LOG_PAGE_SIZE - 1;
+  query = query.range(from, to);
 
-  const { data, error } = await query;
+  const { data, error, count } = await query;
   if (error) { logList.innerHTML = `<div style="color:var(--rust);padding:14px;">Gagal memuat log: ${escapeHtml(error.message)}</div>`; return; }
+  const total = count || 0;
+  renderPgBar(document.getElementById('logPagination'), {
+    page: logPage, pageSize: LOG_PAGE_SIZE, total,
+    onPageChange: (p) => loadLog(p)
+  });
   if (!data || data.length === 0) { logList.innerHTML = '<div style="color:var(--text-muted);padding:14px;">Tidak ada aktivitas.</div>'; return; }
 
   logList.innerHTML = '';
@@ -1035,6 +1113,47 @@ function escapeHtml(s){
   return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
+// ---- Pagination reusable — dipakai di Produk, Set Management, Log Aktivitas ----
+// el: elemen container. page: halaman aktif (mulai dari 1). pageSize: item per
+// halaman. total: total item keseluruhan (dari count exact / panjang array).
+// onPageChange(newPage): dipanggil pas user klik halaman lain.
+function renderPgBar(el, { page, pageSize, total, onPageChange }){
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (total === 0 || totalPages <= 1) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+
+  const startItem = (page - 1) * pageSize + 1;
+  const endItem = Math.min(page * pageSize, total);
+
+  const pagesToShow = [...new Set([1, totalPages, page - 1, page, page + 1])]
+    .filter(p => p >= 1 && p <= totalPages)
+    .sort((a, b) => a - b);
+
+  let numberBtns = '';
+  let prevP = null;
+  pagesToShow.forEach(p => {
+    if (prevP !== null && p - prevP > 1) numberBtns += `<span class="pg-ellipsis">…</span>`;
+    numberBtns += `<button class="pg-btn${p === page ? ' active' : ''}" data-page="${p}">${p}</button>`;
+    prevP = p;
+  });
+
+  el.innerHTML = `
+    <span class="pg-info">${startItem}–${endItem} dari ${total}</span>
+    <div class="pg-btns">
+      <button class="pg-btn" data-page="${page - 1}" ${page === 1 ? 'disabled' : ''}><i class="ti ti-chevron-left"></i></button>
+      ${numberBtns}
+      <button class="pg-btn" data-page="${page + 1}" ${page === totalPages ? 'disabled' : ''}><i class="ti ti-chevron-right"></i></button>
+    </div>
+  `;
+  el.querySelectorAll('.pg-btn[data-page]:not(:disabled)').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = parseInt(btn.dataset.page, 10);
+      if (!p || p < 1 || p > totalPages || p === page) return;
+      onPageChange(p);
+    });
+  });
+}
+
 const tableBody = document.getElementById('tableBody');
 const cardWrap = document.getElementById('cardWrap');
 const tableWrap = document.getElementById('tableWrap');
@@ -1073,38 +1192,60 @@ topSearchClear.addEventListener('click', () => {
   topSearchInput.focus();
 });
 
-async function loadProduk(q){
-  q = (q ?? lastQuery ?? '').trim();
-  lastQuery = q;
+let produkPage = 1;
+const PRODUK_PAGE_SIZE = 30;
+let produkSearchAllRows = []; // hasil lengkap dari RPC search_produk_dengan_harga, di-page di client
+
+async function loadProduk(q, page){
+  const newQ = (q ?? lastQuery ?? '').trim();
+  const searchChanged = newQ !== (lastQuery ?? '').trim();
+  lastQuery = newQ;
+  produkPage = searchChanged ? 1 : (page || produkPage || 1);
+  const qq = newQ;
+
   tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Memuat data...</td></tr>`;
   cardWrap.innerHTML = '';
   produkCount.textContent = 'Memuat...';
 
   let rows = [];
-  if (q) {
+  let total = 0;
+  if (qq) {
     // pakai RPC search yang sudah ranked (token search + trigram + fast-path exact match)
-    const { data: rpcData, error: rpcErr } = await sb.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
-    if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
-    const kodeList = (rpcData || []).map(r => r.kode_produk);
-    if (kodeList.length === 0) { rows = []; }
-    else {
-      const { data: fullRows, error: fullErr } = await sb.from('produk')
-        .select('id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd')
-        .in('kode_produk', kodeList);
-      if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
-      const byKode = Object.fromEntries((fullRows || []).map(r => [r.kode_produk, r]));
-      rows = kodeList.map(k => byKode[k]).filter(Boolean);
+    // RPC ini ambil SEMUA hasil match sekaligus (gak dukung limit/offset), jadi paging
+    // hasil pencarian dilakukan di client — bukan query ulang tiap ganti halaman.
+    if (searchChanged) {
+      const { data: rpcData, error: rpcErr } = await sb.rpc('search_produk_dengan_harga', { q: qq, p_tipe: null, only_akd: false, only_kfa: false });
+      if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
+      const kodeList = (rpcData || []).map(r => r.kode_produk);
+      if (kodeList.length === 0) { produkSearchAllRows = []; }
+      else {
+        const { data: fullRows, error: fullErr } = await sb.from('produk')
+          .select('id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd')
+          .in('kode_produk', kodeList);
+        if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
+        const byKode = Object.fromEntries((fullRows || []).map(r => [r.kode_produk, r]));
+        produkSearchAllRows = kodeList.map(k => byKode[k]).filter(Boolean);
+      }
     }
+    total = produkSearchAllRows.length;
+    rows = produkSearchAllRows.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
   } else {
-    const { data, error } = await sb.from('produk')
-      .select('id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd')
+    const from = (produkPage - 1) * PRODUK_PAGE_SIZE;
+    const to = from + PRODUK_PAGE_SIZE - 1;
+    const { data, error, count } = await sb.from('produk')
+      .select('id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd', { count: 'exact' })
       .order('updated_at', { ascending: false })
-      .limit(60);
+      .range(from, to);
     if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
     rows = data || [];
+    total = count || 0;
   }
 
-  produkCount.textContent = rows.length + ' produk' + (q ? ` untuk "${q}"` : ' (terbaru diubah)');
+  produkCount.textContent = total + ' produk' + (qq ? ` untuk "${qq}"` : ' (terbaru diubah)');
+  renderPgBar(document.getElementById('produkPagination'), {
+    page: produkPage, pageSize: PRODUK_PAGE_SIZE, total,
+    onPageChange: (p) => loadProduk(qq, p)
+  });
 
   if (rows.length === 0) {
     tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Tidak ada produk ditemukan.</td></tr>`;
@@ -1218,13 +1359,53 @@ const mediaSection = document.getElementById('mediaSection');
 const deleteBtn = document.getElementById('deleteBtn');
 
 document.getElementById('addBtn').addEventListener('click', openAdd);
-document.getElementById('cancelBtn').addEventListener('click', closeModal);
-document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
-modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
+document.getElementById('cancelBtn').addEventListener('click', attemptCloseModal);
+document.getElementById('modalCloseBtn').addEventListener('click', attemptCloseModal);
+modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) attemptCloseModal(); });
 
 function closeModal(){ modalOverlay.classList.remove('open'); }
 
+// ---- Unsaved changes guard — dipakai di modal edit produk (form yang sama
+// juga dipakai buat "Set Baru" & "Edit Info Dasar" di Set Management, jadi
+// otomatis kepakai di sana juga). Composition/Pricing/AKD di tab Set Detail
+// TIDAK butuh guard ini karena tiap perubahan di situ sudah auto-save
+// langsung ke database (lihat hint "tersimpan otomatis" di UI-nya). ----
+let modalDirty = false;
+const unsavedConfirmOverlay = document.getElementById('unsavedConfirmOverlay');
+document.querySelector('#modalOverlay .modal-card').addEventListener('input', () => { modalDirty = true; });
+document.querySelector('#modalOverlay .modal-card').addEventListener('change', () => { modalDirty = true; });
+
+function attemptCloseModal(){
+  if (modalDirty) { unsavedConfirmOverlay.classList.add('open'); return; }
+  closeModal();
+}
+document.getElementById('unsavedStayBtn').addEventListener('click', () => {
+  unsavedConfirmOverlay.classList.remove('open'); // balik ke form, gak jadi nutup
+});
+document.getElementById('unsavedDiscardBtn').addEventListener('click', () => {
+  modalDirty = false;
+  unsavedConfirmOverlay.classList.remove('open');
+  closeModal(); // buang perubahan, form kebuang pas openAdd/openEdit berikutnya
+});
+document.getElementById('unsavedSaveBtn').addEventListener('click', async (e) => {
+  e.currentTarget.disabled = true;
+  const ok = await saveProduk();
+  e.currentTarget.disabled = false;
+  unsavedConfirmOverlay.classList.remove('open');
+  if (ok) { modalDirty = false; closeModal(); }
+  // kalau gagal (mis. validasi kode produk kosong), dialog konfirmasi ketutup
+  // tapi modal edit tetap kebuka dengan toast error-nya — user bisa benerin.
+});
+// Nutup tab/refresh browser padahal masih ada perubahan yang belum disimpan
+window.addEventListener('beforeunload', (e) => {
+  if (modalOverlay.classList.contains('open') && modalDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
 function resetForm(){
+  modalDirty = false;
   document.getElementById('inaprocIndikator').style.display = 'none';
   ['f_kode_asli','f_kode_produk','f_nama_produk','f_no_akd','f_masa_berlaku','f_golongan',
    'f_kode_kfa','f_kode_cangkang','f_nama_cangkang','f_berat_gram','f_status_v6','f_link_v6',
@@ -1548,11 +1729,11 @@ async function deleteMedia(id){
 }
 
 // ---- Save produk ----
-document.getElementById('saveBtn').addEventListener('click', async () => {
+async function saveProduk(){
   const kodeAsli = document.getElementById('f_kode_asli').value.trim();
   const kodeProduk = document.getElementById('f_kode_produk').value.trim();
   const tipe = document.getElementById('f_tipe').value;
-  if (!kodeProduk || !tipe) { showToast('Kode Produk dan Tipe wajib diisi', true); return; }
+  if (!kodeProduk || !tipe) { showToast('Kode Produk dan Tipe wajib diisi', true); return false; }
 
   if (kodeAsli) {
     const { error: mErr } = await sb.from('master_produk').upsert({
@@ -1563,7 +1744,7 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
       manufacturer: document.getElementById('m_manufacturer').value || null,
       capital: document.getElementById('m_capital').value || null
     }, { onConflict: 'kode_asli' });
-    if (mErr) { showToast('Gagal menyimpan master_produk: ' + mErr.message, true); return; }
+    if (mErr) { showToast('Gagal menyimpan master_produk: ' + mErr.message, true); return false; }
   }
 
   // no_akd/masa_berlaku/golongan sengaja TIDAK dikirim -> field itu read-only,
@@ -1589,9 +1770,10 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
   } else {
     result = await sb.from('produk').insert(payload).select().single();
   }
-  if (result.error) { showToast('Gagal simpan produk: ' + result.error.message, true); return; }
+  if (result.error) { showToast('Gagal simpan produk: ' + result.error.message, true); return false; }
 
   showToast(currentProdukId ? 'Produk diperbarui' : 'Produk ditambahkan');
+  modalDirty = false; // data form sekarang sudah sama persis dengan yang di database
   currentProdukId = result.data.id;
   hargaSection.style.display = 'block';
   mediaSection.style.display = 'block';
@@ -1604,7 +1786,9 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
   await loadMedia(currentProdukId);
   await loadAkdLinks(currentProdukId, tipe);
   loadProduk();
-});
+  return true;
+}
+document.getElementById('saveBtn').addEventListener('click', saveProduk);
 
 // ================================================================
 // SET MANAGEMENT
@@ -1628,12 +1812,26 @@ document.getElementById('addSetBtn').addEventListener('click', () => {
   document.getElementById('f_tipe').value = 'SET';
 });
 
-async function loadSetList(){
+let setListPage = 1;
+const SET_LIST_PAGE_SIZE = 30;
+
+async function loadSetList(page){
+  setListPage = page || setListPage || 1;
   const wrap = document.getElementById('setListBody');
   wrap.innerHTML = '<div style="color:var(--text-muted);padding:14px;">Memuat...</div>';
-  const { data, error } = await sb.from('produk_set_ringkasan').select('*').order('kode_produk');
+  const from = (setListPage - 1) * SET_LIST_PAGE_SIZE;
+  const to = from + SET_LIST_PAGE_SIZE - 1;
+  const { data, error, count } = await sb.from('produk_set_ringkasan')
+    .select('*', { count: 'exact' })
+    .order('kode_produk')
+    .range(from, to);
   if (error) { wrap.innerHTML = `<div style="color:var(--rust);padding:14px;">Gagal memuat: ${escapeHtml(error.message)}</div>`; return; }
-  document.getElementById('setListCount').textContent = (data || []).length + ' set produk';
+  const total = count || 0;
+  document.getElementById('setListCount').textContent = total + ' set produk';
+  renderPgBar(document.getElementById('setListPagination'), {
+    page: setListPage, pageSize: SET_LIST_PAGE_SIZE, total,
+    onPageChange: (p) => loadSetList(p)
+  });
   if (!data || data.length === 0) { wrap.innerHTML = '<div class="stub-box">Belum ada produk tipe SET.</div>'; return; }
   wrap.innerHTML = '';
   data.forEach(s => {
@@ -1944,7 +2142,7 @@ async function loadSetHistory(){
 document.getElementById('openFullLogFromSetBtn').addEventListener('click', () => {
   document.getElementById('log_table').value = 'produk_set_item';
   logModalOverlay.classList.add('open');
-  loadLog();
+  loadLog(1);
 });
 
 // ---- Sesuaikan modal generic: sembunyikan Harga & AKD kelola kalau tipe SET ----
