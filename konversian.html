@@ -2365,7 +2365,9 @@ function renderResults(data) {
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${modeSwasta ? '' : (r.link_v6
             ?`<a href="${r.link_v6}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</a>`
-            :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
+            : r.status_inaproc === 'Disetujui'
+              ?`<span class="badge-katalog-no" style="color:var(--rust-text,#8F3620);border-color:var(--rust,#B8492F);background:var(--rust-bg,#FBE8E2)"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Disetujui INAPROC — siap dibuatkan Link V6!</span>`
+              :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
           )}
           <button class="btn-preview-gambar btn-lihat-gambar" data-kode="${r.kode_produk}" data-kode-asli="${r.kode_asli||''}" data-nama="${(r.nama_produk||'').replace(/"/g,'&quot;')}"><i class="ti ti-eye" style="font-size:12px"></i> Lihat Gambar</button>
           <button class="btn-preview-gambar btn-copy-produk" data-kode="${r.kode_produk}"><i class="ti ti-copy" style="font-size:12px"></i> Copy</button>

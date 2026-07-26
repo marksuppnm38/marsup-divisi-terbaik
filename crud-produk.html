@@ -150,12 +150,15 @@ td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle
 tbody tr:last-child td{border-bottom:none}
 tbody tr.clickable{cursor:pointer}
 tbody tr.clickable:hover{background:var(--surface-2)}
+tbody tr.row-attention td:first-child{border-left:3px solid var(--amber)}
+tbody tr.row-attention:hover{background:var(--amber-bg)}
 .kode-cell{font-family:var(--font-mono);font-size:12px;color:var(--text-secondary)}
 .state-row td{text-align:center;padding:36px;color:var(--text-muted)}
 
 /* ================= CARD VIEW ================= */
 .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 .prod-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;transition:border-color .12s,transform .12s;display:flex;flex-direction:column;gap:8px}
+.prod-card.row-attention{border-left:3px solid var(--amber)}
 .prod-card:hover{border-color:var(--accent);transform:translateY(-1px)}
 .prod-card .pc-kode{font-family:var(--font-mono);font-size:11px;color:var(--text-muted)}
 .prod-card .pc-nama{font-size:13.5px;font-weight:600;line-height:1.3;min-height:34px}
@@ -307,6 +310,11 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
 
 /* ================= SET MANAGEMENT ================= */
 .set-list-row{display:flex;align-items:center;gap:14px;padding:13px 16px;border:1px solid var(--border);border-radius:9px;background:var(--surface);cursor:pointer;margin-bottom:8px}
+.set-list-row.row-attention{border-left:3px solid var(--amber)}
+.set-list-row.row-attention:hover{background:var(--amber-bg)}
+
+/* Titik kecil penanda "baru diubah" (<24 jam) — dipasang nempel setelah kode produk */
+.dot-updated{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-left:6px;vertical-align:middle}
 .set-list-row:hover{border-color:var(--accent)}
 .set-list-row .sl-kode{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);min-width:150px}
 .set-list-row .sl-nama{font-weight:600;font-size:13.5px;flex:1;min-width:0}
@@ -410,7 +418,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
     <div class="sb-brand">
       <img src="assets/logo-mark-pnm.png" alt="PNM Logo" class="logo">
       <div class="sb-brand-text">
-        <div class="sb-brand-title">Product Manager</div>
+        <div class="sb-brand-title">Robust Catalog</div>
         <div class="sb-brand-sub">PNM · SMY · METO</div>
       </div>
     </div>
@@ -434,10 +442,10 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
     <div class="topbar">
       <div class="top-search">
         <i class="ti ti-search"></i>
-        <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama.."/>
+        <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama... (filter langsung di daftar)"/>
         <button class="clear-btn" id="topSearchClear" title="Bersihkan"><i class="ti ti-x"></i></button>
       </div>
-      <button class="cmdk-launch" id="cmdkTrigger" title="Buka pencarian cepat lintas halaman"><i class="ti ti-command"></i> Spotlight <kbd>⌘K</kbd></button>
+      <button class="cmdk-launch" id="cmdkTrigger" title="Buka pencarian cepat lintas halaman"><i class="ti ti-command"></i> Loncat cepat <kbd>⌘K</kbd></button>
       <div class="theme-switch" id="themeToggle" title="Ganti tema"><div class="knob"><i class="ti ti-sun" id="themeIcon"></i></div></div>
       <div class="topbar-actions">
         <div class="view-toggle">
@@ -990,7 +998,14 @@ loginBtn.addEventListener('click', async () => {
 async function checkWhitelistAndShowApp(session){
   const email = session.user.email.toLowerCase();
   const { data, error } = await sb.from('allowed_users').select('email, role').eq('email', email).maybeSingle();
-  if (error || !data) {
+  if (error) {
+    // Query gagal (network/timeout, dll) — ini BUKAN bukti email nggak terdaftar.
+    // Jangan sign-out paksa di tengah kerjaan; cukup kasih tahu dan biarkan sesi tetap hidup.
+    showToast('Gagal cek akses (koneksi bermasalah), coba lagi: ' + error.message, true);
+    return;
+  }
+  if (!data) {
+    // Ini baru konfirmasi valid: query sukses, dan emailnya memang nggak ada di whitelist.
     await sb.auth.signOut();
     gateTitle.textContent = 'Akses Ditolak';
     gateDesc.textContent = 'Email ' + email + ' belum terdaftar sebagai tim. Hubungi admin kalau ini seharusnya salah.';
@@ -1009,9 +1024,20 @@ async function checkWhitelistAndShowApp(session){
 
 logoutBtn.addEventListener('click', async () => { await sb.auth.signOut(); });
 
+// Cuma jalanin gate whitelist di event login yang beneran baru (sign-in awal / load pertama).
+// Event lain kayak TOKEN_REFRESHED juga bawa `session`, tapi itu cuma refresh token di
+// background — nggak perlu (dan berbahaya kalau) re-check whitelist tiap kali itu terjadi,
+// karena query yang gagal gara-gara network sibuk (mis. lagi proses bulk upsert) bisa
+// kepicu sign-out paksa padahal user sebenarnya masih valid login.
+const AUTH_EVENTS_YANG_MEMICU_GATE = new Set(['SIGNED_IN', 'INITIAL_SESSION']);
 sb.auth.onAuthStateChange((event, session) => {
-  if (session) { checkWhitelistAndShowApp(session); }
-  else { gateWrap.style.display = 'flex'; appWrap.style.display = 'none'; loginFormWrap.style.display = 'block'; gateTitle.textContent = 'Masuk ke Produk'; gateDesc.textContent = 'Khusus tim internal.'; }
+  if (session && AUTH_EVENTS_YANG_MEMICU_GATE.has(event)) {
+    checkWhitelistAndShowApp(session);
+  } else if (!session) {
+    gateWrap.style.display = 'flex'; appWrap.style.display = 'none'; loginFormWrap.style.display = 'block'; gateTitle.textContent = 'Masuk ke Produk'; gateDesc.textContent = 'Khusus tim internal.';
+  }
+  // event lain (TOKEN_REFRESHED, USER_UPDATED, dll) dengan session yang masih ada: diamkan,
+  // sesi tetap jalan seperti biasa tanpa re-gate.
 });
 
 // ---- Log Aktivitas ----
@@ -1220,7 +1246,7 @@ async function loadProduk(q, page){
       if (kodeList.length === 0) { produkSearchAllRows = []; }
       else {
         const { data: fullRows, error: fullErr } = await sb.from('produk')
-          .select('id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd')
+          .select('id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd, updated_at')
           .in('kode_produk', kodeList);
         if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
         const byKode = Object.fromEntries((fullRows || []).map(r => [r.kode_produk, r]));
@@ -1233,7 +1259,7 @@ async function loadProduk(q, page){
     const from = (produkPage - 1) * PRODUK_PAGE_SIZE;
     const to = from + PRODUK_PAGE_SIZE - 1;
     const { data, error, count } = await sb.from('produk')
-      .select('id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd', { count: 'exact' })
+      .select('id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd, updated_at', { count: 'exact' })
       .order('updated_at', { ascending: false })
       .range(from, to);
     if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
@@ -1241,9 +1267,7 @@ async function loadProduk(q, page){
     total = count || 0;
   }
 
-produkCount.textContent = qq
-  ? `${total} produk untuk "${qq}"`
-  : `${total} produk`;
+  produkCount.textContent = total + ' produk' + (qq ? ` untuk "${qq}"` : ' (terbaru diubah)');
   renderPgBar(document.getElementById('produkPagination'), {
     page: produkPage, pageSize: PRODUK_PAGE_SIZE, total,
     onPageChange: (p) => loadProduk(qq, p)
@@ -1255,27 +1279,45 @@ produkCount.textContent = qq
     return;
   }
 
+  // Cek ketersediaan harga KHUSUS untuk baris yang lagi tampil di halaman ini
+  // (bukan semua produk) — biar ringan, query kecil nempel ke tiap ganti halaman.
+  // Dipakai buat kasih visual cue "butuh perhatian" di tabel/card, bukan buat
+  // nampilin nominal harganya (itu tetap di modal edit / tab Pricing).
+  const idsOnPage = rows.map(p => p.id);
+  let hargaExistIds = new Set();
+  if (idsOnPage.length) {
+    const { data: hargaRows } = await sb.from('produk_harga').select('produk_id').in('produk_id', idsOnPage);
+    hargaExistIds = new Set((hargaRows || []).map(h => h.produk_id));
+  }
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  function attentionMeta(p){
+    const noHarga = !hargaExistIds.has(p.id);
+    const recentlyUpdated = p.updated_at && (Date.now() - new Date(p.updated_at).getTime()) < ONE_DAY;
+    return { noHarga, recentlyUpdated };
+  }
+
   tableBody.innerHTML = '';
   cardWrap.innerHTML = '';
   rows.forEach(p => {
+    const { noHarga, recentlyUpdated } = attentionMeta(p);
     const tr = document.createElement('tr');
-    tr.className = 'clickable';
+    tr.className = 'clickable' + (noHarga ? ' row-attention' : '');
     tr.innerHTML = `
-      <td class="kode-cell">${escapeHtml(p.kode_produk)}</td>
+      <td class="kode-cell">${escapeHtml(p.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</td>
       <td>${escapeHtml(p.nama_produk || '—')}</td>
       <td><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span></td>
       <td>${sealHtml(p.status_akd)}</td>
-      <td style="text-align:right;color:var(--text-muted);">${p.is_active ? '' : '<i class="ti ti-eye-off" title="Nonaktif"></i>'}</td>
+      <td style="text-align:right;color:var(--text-muted);">${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga"></i>' : ''}${p.is_active ? '' : ' <i class="ti ti-eye-off" title="Nonaktif"></i>'}</td>
     `;
     tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     tableBody.appendChild(tr);
 
     const card = document.createElement('div');
-    card.className = 'prod-card';
+    card.className = 'prod-card' + (noHarga ? ' row-attention' : '');
     card.innerHTML = `
-      <div class="pc-kode">${escapeHtml(p.kode_produk)}</div>
+      <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</div>
       <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}</div>
-      <div class="pc-foot"><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}</div>
+      <div class="pc-foot"><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga" style="color:var(--amber);margin-left:4px;"></i>' : ''}</div>
     `;
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     cardWrap.appendChild(card);
@@ -1835,14 +1877,28 @@ async function loadSetList(page){
     onPageChange: (p) => loadSetList(p)
   });
   if (!data || data.length === 0) { wrap.innerHTML = '<div class="stub-box">Belum ada produk tipe SET.</div>'; return; }
+
+  // Sama kayak di list Produk: cek ketersediaan harga khusus buat set yang
+  // lagi tampil di halaman ini aja.
+  const setIdsOnPage = data.map(s => s.set_id);
+  let hargaExistIds = new Set();
+  if (setIdsOnPage.length) {
+    const { data: hargaRows } = await sb.from('produk_harga').select('produk_id').in('produk_id', setIdsOnPage);
+    hargaExistIds = new Set((hargaRows || []).map(h => h.produk_id));
+  }
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+
   wrap.innerHTML = '';
   data.forEach(s => {
+    const noHarga = !hargaExistIds.has(s.set_id);
+    const noItem = !(s.jumlah_jenis_item > 0); // set kosong (belum ada komposisi) — sama pentingnya kayak belum ada harga
+    const recentlyUpdated = s.updated_at && (Date.now() - new Date(s.updated_at).getTime()) < ONE_DAY;
     const row = document.createElement('div');
-    row.className = 'set-list-row';
+    row.className = 'set-list-row' + ((noHarga || noItem) ? ' row-attention' : '');
     row.innerHTML = `
-      <span class="sl-kode">${escapeHtml(s.kode_produk)}</span>
+      <span class="sl-kode">${escapeHtml(s.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</span>
       <span class="sl-nama">${escapeHtml(s.nama_produk || '—')}</span>
-      <span class="sl-meta">${s.jumlah_jenis_item || 0} item · qty ${s.total_qty || 0}</span>
+      <span class="sl-meta">${noItem ? '<span style="color:var(--amber);">Belum ada item</span>' : `${s.jumlah_jenis_item} item · qty ${s.total_qty || 0}`}${noHarga ? ' · <span style="color:var(--amber);">belum ada harga</span>' : ''}</span>
       ${sealHtml(s.status_akd)}
     `;
     row.addEventListener('click', () => openSetDetail(s.set_id, s.kode_produk));
@@ -2447,17 +2503,51 @@ document.getElementById('bulkInaprocPreviewBtn').addEventListener('click', async
   const lines = parsePasteLines(document.getElementById('bulkInaprocPaste').value);
   if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
 
-  const parsed = lines.map(l => {
+  const parsedRaw = lines.map(l => {
     const [, nama, kategori, nomorPermohonan, tglStr, status, alasan] = l;
     const kode = extractKodeDariNama(nama);
     const tgl = parseTglIndo(tglStr);
     return { nama, kategori, nomorPermohonan, tgl, status, alasan: alasan || null, kode };
   });
 
+  // Dedup by nomor_permohonan: kalau nomor yang sama muncul lebih dari sekali di paste
+  // (misal status-nya di-update dari "Ditolak" jadi "Disetujui" untuk nomor yang sama),
+  // upsert bakal nimpa baris itu berkali-kali. Tanpa dedup, yang menang adalah baris yang
+  // urutannya paling belakang di teks paste — bukan yang tgl_pengajuan-nya paling baru.
+  // Jadi ambil cuma satu per nomor_permohonan: yang tgl_pengajuan-nya terbesar (null dianggap paling lama).
+  const byNomor = new Map();
+  let dilewatiKarenaDuplikat = 0;
+  const parsed = [];
+  for (const p of parsedRaw) {
+    if (!p.nomorPermohonan) { parsed.push(p); continue; }
+    const existing = byNomor.get(p.nomorPermohonan);
+    if (!existing) {
+      byNomor.set(p.nomorPermohonan, p);
+    } else {
+      // bandingin tgl (format ISO string, aman dibandingin secara leksikografis); null dianggap paling lama
+      const tglBaru = p.tgl || '';
+      const tglLama = existing.tgl || '';
+      if (tglBaru > tglLama) {
+        byNomor.set(p.nomorPermohonan, p); // yang baru menang, yang lama dibuang
+      }
+      dilewatiKarenaDuplikat++;
+    }
+  }
+  for (const p of byNomor.values()) parsed.push(p);
+  if (dilewatiKarenaDuplikat > 0) {
+    showToast(`${dilewatiKarenaDuplikat} baris duplikat (nomor permohonan sama) dilewati — dipilih yang tgl_pengajuan-nya paling baru`, false);
+  }
+
   const kodeList = [...new Set(parsed.map(p => p.kode).filter(Boolean))];
-  const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk').in('kode_produk', kodeList);
-  if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
-  const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
+  const CHUNK_SIZE = 150; // batasi tiap query .in() biar URL-nya ga kepanjangan
+  let produkRows = [];
+  for (let i = 0; i < kodeList.length; i += CHUNK_SIZE) {
+    const chunk = kodeList.slice(i, i + CHUNK_SIZE);
+    const { data, error } = await sb.from('produk').select('id, kode_produk').in('kode_produk', chunk);
+    if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
+    produkRows = produkRows.concat(data || []);
+  }
+  const byKode = Object.fromEntries(produkRows.map(p => [p.kode_produk, p]));
 
   bulkInaprocRows = parsed.map(p => {
     const produk = byKode[p.kode];
@@ -2493,13 +2583,38 @@ function renderBulkInaprocPreview(){
   });
   document.getElementById('bulkInaprocProsesBtn').style.display = okCount > 0 ? 'inline-flex' : 'none';
 }
+function isAuthError(error) {
+  if (!error) return false;
+  const msg = (error.message || '') + ' ' + (error.code || '');
+  // sengaja SEMPIT: "403"/"forbidden"/"permission" itu muncul di SEMUA RLS denial,
+  // apapun sebabnya — bukan cuma pas token expired. Kalau dipakai buat deteksi,
+  // toast "sesi expired" jadi salah nembak tiap kali ada RLS/permission issue biasa.
+  // Cuma tandain sebagai auth-error kalau pesannya spesifik nyebut token/JWT/session.
+  return /jwt expired|invalid jwt|jwt malformed|invalid.{0,10}token|refresh.{0,10}token|session.{0,10}(expired|invalid|missing)/i.test(msg);
+}
 document.getElementById('bulkInaprocProsesBtn').addEventListener('click', async () => {
   const rows = bulkInaprocRows.filter(r => r.status_ === 'ok');
   if (rows.length === 0) return;
   const btn = document.getElementById('bulkInaprocProsesBtn');
+  const btnLabelAsal = btn.textContent;
   btn.disabled = true;
-  let sukses = 0, gagal = 0;
-  for (const r of rows) {
+
+  // pastikan sesi masih fresh sebelum mulai batch panjang — pakai refreshSession(),
+  // bukan getSession(), karena getSession() cuma baca cache lokal dan bisa keliru
+  // bilang "masih ada sesi" padahal sesi itu sebenarnya udah mati di server.
+  const { data: refreshData, error: refreshError } = await sb.auth.refreshSession();
+  if (refreshError || !refreshData?.session) {
+    showToast('Sesi login kamu udah habis — refresh halaman & login ulang dulu sebelum proses', true);
+    btn.disabled = false;
+    btn.textContent = btnLabelAsal;
+    return;
+  }
+
+  let sukses = 0, gagal = 0, diproses = 0, berhentiKarenaAuth = false;
+  const sisaRows = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    btn.textContent = `Memproses ${i + 1}/${rows.length}...`;
     const { error } = await sb.from('inaproc_pengajuan').upsert({
       nomor_permohonan: r.nomorPermohonan,
       nama_raw: r.nama,
@@ -2510,9 +2625,30 @@ document.getElementById('bulkInaprocProsesBtn').addEventListener('click', async 
       status: r.status,
       alasan_ditolak: r.alasan
     }, { onConflict: 'nomor_permohonan' });
-    if (error) gagal++; else sukses++;
+    if (error) {
+      console.error('INAPROC UPSERT ERROR (baris ' + (i+1) + ', nomor ' + r.nomorPermohonan + '):', JSON.stringify(error, null, 2));
+      gagal++;
+      if (isAuthError(error)) {
+        berhentiKarenaAuth = true;
+        sisaRows.push(...rows.slice(i)); // simpan baris ini + sisanya yang belum sempat dicoba
+        break;
+      }
+    } else {
+      sukses++;
+    }
+    diproses++;
   }
   btn.disabled = false;
+  btn.textContent = btnLabelAsal;
+
+  if (berhentiKarenaAuth) {
+    showToast(`Berhenti di baris ${diproses + 1}/${rows.length} — sesi login expired. Refresh halaman, login ulang, lalu klik Proses lagi buat lanjutin ${sisaRows.length} baris sisanya.`, true);
+    // ganti isi bulkInaprocRows dengan sisa baris yang belum ke-proses, biar preview & tombol tetap muncul
+    bulkInaprocRows = bulkInaprocRows.filter(r => r.status_ !== 'ok').concat(sisaRows);
+    renderBulkInaprocPreview();
+    return;
+  }
+
   showToast(`Selesai — ${sukses} pengajuan tersimpan${gagal ? `, ${gagal} gagal` : ''}`, gagal > 0);
   document.getElementById('bulkInaprocPaste').value = '';
   document.getElementById('bulkInaprocPreviewWrap').style.display = 'none';
