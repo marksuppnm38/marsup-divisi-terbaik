@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
@@ -37,6 +38,7 @@
   --accent-hover:#1749b1;
   --radius:10px;
   --mono:'JetBrains Mono',monospace;
+  --clip-width:340px;
 }
 body[data-theme="dark"]{
   --bg:#111318;
@@ -259,16 +261,31 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .pr-review-add-btn:hover{border-color:var(--accent);color:var(--accent-text)}
 
 /* KEBUTUHAN RS: section nempel di sidebar clip, bagian dari alur konversi yang sama */
-.clip-kebutuhan-section{flex-shrink:0;border-bottom:2px solid var(--border-strong);background:var(--accent-bg);display:flex;flex-direction:column;max-height:38%;overflow:hidden}
-.clip-kebutuhan-section.kb-collapsed{max-height:none}
+/* TAB: Kebutuhan RS vs Clipboard — dua sisi dari proses konversi yang sama,
+   sekarang dipisah tab (bukan ditumpuk vertikal) supaya yang lagi aktif dapat
+   tinggi penuh panel, bukan rebutan ruang sama yang lain. */
+.clip-tab-row{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.clip-tab-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:38px;border:none;background:none;font-family:inherit;font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .12s}
+.clip-tab-btn i{font-size:14px}
+.clip-tab-btn:hover{color:var(--text)}
+.clip-tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.clip-tab-badge{background:var(--text-muted);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;min-width:16px;text-align:center;line-height:15px}
+.clip-tab-btn.active .clip-tab-badge{background:var(--accent)}
+.clip-tab-badge.warn{background:var(--warning)!important}
+.clip-summary-strip{flex-shrink:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;padding:7px 14px;font-size:11px;color:var(--text-secondary);background:var(--surface-2);border-bottom:1px solid var(--border)}
+.clip-summary-strip b{color:var(--text);font-weight:600}
+.clip-tabs-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.clip-tab-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+
+.clip-kebutuhan-section{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--accent-bg);min-height:0}
 .clip-kebutuhan-section.kb-collapsed .kb-list,
 .clip-kebutuhan-section.kb-collapsed .kb-footer{display:none}
 .kb-head{display:flex;align-items:flex-start;justify-content:space-between;padding:10px 14px 6px;gap:6px}
 .kb-head-btns{display:flex;gap:2px;flex-shrink:0}
 .kb-title{font-size:12.5px;font-weight:700;color:var(--accent-text)}
 .kb-count{font-size:10.5px;color:var(--text-muted);margin-top:1px}
-.kb-close-btn,.kb-collapse-btn{width:20px;height:20px;border:none;border-radius:6px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:13px;line-height:1;flex-shrink:0;display:flex;align-items:center;justify-content:center}
-.kb-close-btn:hover,.kb-collapse-btn:hover{background:var(--surface)}
+.kb-collapse-btn{width:20px;height:20px;border:none;border-radius:6px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:13px;line-height:1;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.kb-collapse-btn:hover{background:var(--surface)}
 .kb-collapse-btn i{transition:transform .2s ease}
 .kb-collapsed .kb-collapse-btn i{transform:rotate(180deg)}
 .kb-summary{padding:0 14px 8px;font-size:11px;display:flex;flex-direction:column;gap:2px}
@@ -310,13 +327,25 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 #theme-toggle:active{transform:rotate(20deg) scale(0.9)}
 #theme-toggle i{transition:transform .4s ease,opacity .3s ease}
 
+/* RESIZE HANDLE — antara panel search & panel clipboard */
+.clip-resize-handle{width:7px;flex-shrink:0;cursor:col-resize;position:relative;background:transparent;touch-action:none}
+.clip-resize-handle::after{content:'';position:absolute;top:0;bottom:0;left:3px;width:1px;background:var(--border)}
+.clip-resize-handle:hover::after,.clip-resize-handle.dragging::after{left:2px;width:3px;background:var(--accent);border-radius:2px}
+.clip-resize-handle:hover .clip-resize-grip,.clip-resize-handle.dragging .clip-resize-grip{opacity:1}
+.clip-resize-grip{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:16px;height:34px;border-radius:8px;background:var(--surface);border:1px solid var(--border-strong);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;pointer-events:none}
+.clip-resize-grip i{font-size:12px;color:var(--text-muted)}
+
 /* PANEL KANAN */
-.panel-clip{width:340px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
+.panel-clip{width:var(--clip-width);flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
 .clip-header{padding:12px 14px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
 .clip-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .clip-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)}
 .clip-header-edit-btn{font-size:10.5px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 4px;display:flex;align-items:center;gap:3px}
 .clip-header-edit-btn:hover{text-decoration:underline}
+.clip-header-icon-btn{width:22px;height:22px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.clip-header-icon-btn:hover{background:var(--surface-2);color:var(--text);border-color:var(--border-strong)}
+.clip-header-icon-btn i{font-size:13px;transition:transform .2s ease}
+.clip-header.collapsed .clip-header-icon-btn i{transform:rotate(180deg)}
 .clip-header-compact{display:none;font-size:12px;color:var(--text-secondary);line-height:1.5;padding:2px 2px 6px}
 .clip-header-compact b{color:var(--text);font-weight:600}
 .clip-header.collapsed .clip-header-form{display:none}
@@ -359,6 +388,11 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .btn-end-sesi{width:100%;height:32px;background:var(--surface);color:var(--text-secondary);border:1px solid var(--border-strong);border-radius:6px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
 .btn-end-sesi:hover:not(:disabled){color:var(--success);border-color:var(--success-border);background:var(--success-bg)}
 .btn-end-sesi:disabled{opacity:.5;cursor:not-allowed}
+
+/* OFFLINE BANNER */
+#offline-banner{display:none;align-items:center;justify-content:center;gap:8px;background:var(--danger);color:#fff;font-size:12.5px;font-weight:600;padding:7px 12px;flex-shrink:0;text-align:center}
+#offline-banner.show{display:flex}
+#offline-banner i{font-size:15px}
 
 /* TOAST */
 #toast-container{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
@@ -413,7 +447,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   .workspace{flex-direction:column}
   .panel-search{border-right:none;display:none;flex:1;overflow:hidden}
   .panel-search.active{display:flex}
-  .panel-clip{width:100%;display:none;flex:1;overflow:hidden}
+  .clip-resize-handle{display:none}
+  .panel-clip{width:100%!important;display:none;flex:1;overflow:hidden}
   .panel-clip.active{display:flex}
   .mobile-tabs{display:flex;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0}
   .mobile-tab{flex:1;height:52px;border:none;background:none;font-family:inherit;font-size:11px;font-weight:500;color:var(--text-muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;transition:color .15s}
@@ -470,11 +505,14 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
   </button>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
+    <a class="toggle-btn" href="index.html" title="Kembali ke Beranda"><i class="ph ph-house"></i> Beranda</a>
     <a class="toggle-btn" href="/stok.html" title="Buka modul Stok"><i class="ph ph-truck"></i> Stok</a>
     <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ph ph-clipboard-text"></i> Permintaan RS</button>
     <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
   </div>
 </header>
+
+<div id="offline-banner"><i class="ph ph-wifi-slash"></i><span>Koneksi internet terputus — perubahan mungkin belum tersimpan.</span></div>
 
 <div class="workspace">
   <!-- PANEL KIRI: SEARCH -->
@@ -629,6 +667,11 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
     </div>
   </div>
 
+  <!-- RESIZE HANDLE: seret buat atur lebar panel clipboard, dobel klik buat reset ke Normal -->
+  <div class="clip-resize-handle" id="clip-resize-handle" title="Seret untuk mengubah lebar clipboard (dobel klik = reset)">
+    <div class="clip-resize-grip"><i class="ti ti-grip-vertical"></i></div>
+  </div>
+
   <!-- PANEL KANAN: CLIPBOARD -->
   <div class="panel-clip" id="panel-clip">
     <div class="clip-header" id="clip-header">
@@ -636,7 +679,9 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         <div class="clip-title"><i class="ti ti-clipboard" style="font-size:11px"></i> Clipboard Konversi</div>
         <div style="display:flex;align-items:center;gap:6px">
           <button class="clip-header-edit-btn" id="btn-butuh-bantuan" type="button" title="Tandai sesi ini butuh bantuan tim">🙋 Minta Bantuan</button>
-          <button class="clip-header-edit-btn" id="clip-header-toggle" type="button"><i class="ti ti-pencil" style="font-size:11px"></i> <span id="clip-header-toggle-label">Ciutkan</span></button>
+          <button class="clip-header-icon-btn" id="clip-header-toggle" type="button" title="Ciutkan form sesi">
+            <i class="ti ti-chevron-up" id="clip-header-toggle-icon"></i>
+          </button>
         </div>
       </div>
       <div id="sesi-save-status" style="font-size:11px;color:var(--text-muted);margin-bottom:4px;min-height:14px"></div>
@@ -657,35 +702,62 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       </div>
     </div>
 
-    <!-- KEBUTUHAN RS: nempel di alur yang sama, muncul kalau ada sesi Permintaan RS aktif.
-         Bukan panel terpisah lagi — ini langkah pertama sebelum cari & tambah produk. -->
-    <div id="clip-kebutuhan-section" class="clip-kebutuhan-section" style="display:none;">
-      <div class="kb-head">
-        <div>
-          <div class="kb-title" id="kb-title">Kebutuhan RS</div>
-          <div class="kb-count" id="kb-count"></div>
-        </div>
-        <div class="kb-head-btns">
-          <button class="kb-collapse-btn" id="kb-refresh-btn" title="Muat ulang (biar lihat update dari temen)"><i class="ti ti-refresh"></i></button>
-          <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan daftar"><i class="ti ti-chevron-up"></i></button>
-          <button class="kb-close-btn" id="kb-close-btn" title="Sembunyikan (data tetap tersimpan)">×</button>
+    <!-- TAB: Kebutuhan RS (pencocokan permintaan RS ↔ produk) vs Clipboard (hasil
+         final yang mau di-export/record). Dulu dua-duanya ditumpuk vertikal dan
+         rebutan tinggi di panel yang sempit — sekarang dipisah tab, jadi yang lagi
+         dikerjakan dapat tinggi penuh, bukan diciutkan ke sebagian kecil layar. -->
+    <div class="clip-tab-row" id="clip-tab-row">
+      <button class="clip-tab-btn" id="clip-tab-btn-kb" type="button" data-tab="kb">
+        <i class="ti ti-clipboard-text"></i> Kebutuhan RS <span class="clip-tab-badge" id="clip-tab-badge-kb" style="display:none">0</span>
+      </button>
+      <button class="clip-tab-btn active" id="clip-tab-btn-list" type="button" data-tab="list">
+        <i class="ti ti-clipboard"></i> Clipboard <span class="clip-tab-badge" id="clip-tab-badge-list" style="display:none">0</span>
+      </button>
+    </div>
+    <div class="clip-summary-strip" id="clip-summary-strip" style="display:none"></div>
+
+    <div class="clip-tabs-wrap">
+      <div class="clip-tab-panel" id="clip-tab-panel-kb" style="display:none">
+        <div id="clip-kebutuhan-section" class="clip-kebutuhan-section">
+          <div class="clip-empty" id="kb-empty-state">
+            <i class="ti ti-clipboard-text"></i>
+            <p>Belum ada Permintaan RS buat sesi ini.<br>Catat dulu biar item yang diminta bisa dicocokkan ke produk yang kamu tambahkan ke Clipboard.</p>
+            <button type="button" class="pr-add-clip-btn" id="kb-empty-cta" style="margin-top:12px">
+              <i class="ti ti-plus"></i> Catat Permintaan RS
+            </button>
+          </div>
+          <div id="kb-real-content" style="display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0">
+            <div class="kb-head">
+              <div>
+                <div class="kb-title" id="kb-title">Kebutuhan RS</div>
+                <div class="kb-count" id="kb-count"></div>
+              </div>
+              <div class="kb-head-btns">
+                <button class="kb-collapse-btn" id="kb-refresh-btn" title="Muat ulang (biar lihat update dari temen)"><i class="ti ti-refresh"></i></button>
+                <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan daftar"><i class="ti ti-chevron-up"></i></button>
+              </div>
+            </div>
+            <div class="kb-summary" id="kb-summary"></div>
+            <div id="kb-refresh-status" style="font-size:10.5px;color:var(--text-muted);padding:0 14px 4px;min-height:14px"></div>
+            <div id="kb-list" class="kb-list"></div>
+            <div class="kb-footer">
+              <div id="kb-record-status" class="kb-record-status">Tingkat pemenuhan tersimpan otomatis tiap item ditandai.</div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="kb-summary" id="kb-summary"></div>
-      <div id="kb-refresh-status" style="font-size:10.5px;color:var(--text-muted);padding:0 14px 4px;min-height:14px"></div>
-      <div id="kb-list" class="kb-list"></div>
-      <div class="kb-footer">
-        <div id="kb-record-status" class="kb-record-status">Tingkat pemenuhan tersimpan otomatis tiap item ditandai.</div>
+
+      <div class="clip-tab-panel" id="clip-tab-panel-list">
+        <div class="clip-body">
+          <div class="clip-empty" id="clip-empty">
+            <i class="ti ti-clipboard"></i>
+            <p>Belum ada produk.<br>Klik hasil pencarian untuk menambahkan.</p>
+          </div>
+          <div id="clip-list"></div>
+        </div>
       </div>
     </div>
 
-    <div class="clip-body">
-      <div class="clip-empty" id="clip-empty">
-        <i class="ti ti-clipboard"></i>
-        <p>Belum ada produk.<br>Klik hasil pencarian untuk menambahkan.</p>
-      </div>
-      <div id="clip-list"></div>
-    </div>
     <div class="clip-footer">
       <div class="clip-budget" id="clip-budget"></div>
       <div class="clip-summary">
@@ -1338,7 +1410,7 @@ lampiranSaveBtn.addEventListener('click', async () => {
   } catch (e) {
     lampiranSaveBtn.disabled = false;
     lampiranSaveBtn.textContent = 'Simpan';
-    alert('Gagal simpan: ' + (e.message||e));
+    showToast('Gagal simpan lampiran: ' + (e.message||e), 'error');
   }
 });
 
@@ -1379,10 +1451,84 @@ const inpMarsup = document.getElementById('inp-marsup');
 const btnRecord = document.getElementById('btn-record');
 const clipHeader = document.getElementById('clip-header');
 const clipHeaderToggle = document.getElementById('clip-header-toggle');
-const clipHeaderToggleLabel = document.getElementById('clip-header-toggle-label');
 const clipHeaderCompact = document.getElementById('clip-header-compact');
 const clipTotalHarga = document.getElementById('clip-total-harga');
 const clipBudget = document.getElementById('clip-budget');
+
+// ══════════════════════════════════════════
+// RESIZE PANEL CLIPBOARD: drag manual lewat handle (pointer events, mouse+touch),
+// dobel klik buat reset cepat ke lebar Normal. Lebar disimpan di localStorage
+// per browser, jadi tiap orang bisa atur sesuai layar masing-masing dan gak
+// ke-reset tiap refresh.
+// ══════════════════════════════════════════
+const CLIP_WIDTH_KEY = 'pnm_clip_width';
+const CLIP_WIDTH_MIN = 300;
+const CLIP_WIDTH_MAX = 640;
+const CLIP_WIDTH_DEFAULT = 340;
+const clipResizeHandle = document.getElementById('clip-resize-handle');
+
+function setClipWidth(px, persist = true) {
+  const clamped = Math.min(CLIP_WIDTH_MAX, Math.max(CLIP_WIDTH_MIN, Math.round(px)));
+  document.documentElement.style.setProperty('--clip-width', clamped + 'px');
+  if (persist) localStorage.setItem(CLIP_WIDTH_KEY, String(clamped));
+  return clamped;
+}
+
+(function initClipWidth() {
+  const saved = parseInt(localStorage.getItem(CLIP_WIDTH_KEY), 10);
+  setClipWidth(!isNaN(saved) ? saved : CLIP_WIDTH_DEFAULT, false);
+})();
+
+// Drag manual lewat resize handle. Panel clipboard ada di sisi kanan, jadi
+// menyeret handle ke kiri (dx negatif) memperlebar panel — width baru dihitung
+// dari jarak kursor ke tepi kanan layar (bukan cuma delta X saja), supaya tetap
+// akurat walau resize dimulai/dilepas di titik mana pun.
+let clipDragPointerId = null;
+function onClipResizeMove(e) {
+  if (clipDragPointerId === null) return;
+  const newWidth = window.innerWidth - e.clientX;
+  setClipWidth(newWidth, false);
+}
+function endClipResize(e) {
+  if (clipDragPointerId === null) return;
+  clipResizeHandle.classList.remove('dragging');
+  document.body.style.userSelect = '';
+  try { clipResizeHandle.releasePointerCapture(clipDragPointerId); } catch {}
+  clipDragPointerId = null;
+  // baru persist ke localStorage di akhir drag, biar gak nulis tiap pixel gerak
+  const current = getComputedStyle(document.documentElement).getPropertyValue('--clip-width');
+  setClipWidth(parseInt(current, 10) || CLIP_WIDTH_DEFAULT, true);
+  document.removeEventListener('pointermove', onClipResizeMove);
+  document.removeEventListener('pointerup', endClipResize);
+}
+clipResizeHandle.addEventListener('pointerdown', (e) => {
+  clipDragPointerId = e.pointerId;
+  clipResizeHandle.classList.add('dragging');
+  document.body.style.userSelect = 'none';
+  try { clipResizeHandle.setPointerCapture(e.pointerId); } catch {}
+  document.addEventListener('pointermove', onClipResizeMove);
+  document.addEventListener('pointerup', endClipResize);
+});
+// Dobel klik handle = reset cepat ke lebar Normal, buat yang kepencet kejauhan pas drag.
+clipResizeHandle.addEventListener('dblclick', () => setClipWidth(CLIP_WIDTH_DEFAULT));
+
+// ══════════════════════════════════════════
+// STATUS KONEKSI: banner + toast saat internet putus/nyambung lagi. Aksi yang
+// gagal karena offline (search, simpan sesi, dll) tetap dikasih tau lewat toast
+// error masing-masing seperti biasa — banner ini cuma indikator ambient.
+// ══════════════════════════════════════════
+const offlineBanner = document.getElementById('offline-banner');
+function updateOnlineStatus() {
+  const isOnline = navigator.onLine;
+  offlineBanner.classList.toggle('show', !isOnline);
+  if (isOnline && offlineBanner.dataset.wasOffline === '1') {
+    showToast('Koneksi kembali normal ✓');
+  }
+  offlineBanner.dataset.wasOffline = isOnline ? '0' : '1';
+}
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+updateOnlineStatus();
 
 // ══════════════════════════════════════════
 // SESI KONVERSI: bikin "clipboard" jadi objek yang tersimpan di server,
@@ -1441,6 +1587,16 @@ function showToast(msg, type = 'success') {
     el.classList.remove('show');
     setTimeout(() => el.remove(), 300);
   }, 2600);
+}
+
+// Render pesan error yang seragam buat daftar (Sesi/Riwayat/Dictionary), lengkap
+// sama tombol "Coba lagi" — biar user gak harus pindah tab/refresh cuma buat
+// nyoba ulang satu request yang gagal (misal gara-gara koneksi sempat putus).
+function renderListError(el, msg, retryFn) {
+  el.innerHTML = `<div>${msg}</div><button type="button" class="list-error-retry-btn" style="margin-top:8px;background:none;border:1px solid var(--danger-border);color:var(--danger);border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Coba lagi</button>`;
+  el.style.display = 'block';
+  const btn = el.querySelector('.list-error-retry-btn');
+  if (btn) btn.addEventListener('click', retryFn);
 }
 
 // Tombol "Selesaikan Sesi" cuma boleh aktif kalau memang lagi ada sesi yang
@@ -1639,7 +1795,7 @@ btnButuhBantuan.addEventListener('click', async () => {
       shareSesiToWhatsApp(sesiId, inpRs.value);
     }
   } catch (err) {
-    alert('Gagal update status bantuan: ' + err.message);
+    showToast('Gagal update status bantuan: ' + err.message, 'error');
   }
 });
 renderButuhBantuanBtn();
@@ -1827,7 +1983,7 @@ async function loadRiwayatList() {
       card.addEventListener('click', () => openSesi(card.dataset.id));
     });
   } catch (err) {
-    riwayatListError.textContent = err.message;
+    renderListError(riwayatListError, err.message, loadRiwayatList);
     riwayatListError.style.display = 'block';
   } finally {
     riwayatListLoading.style.display = 'none';
@@ -1892,8 +2048,7 @@ async function loadSesiList() {
       });
     });
   } catch (err) {
-    sesiListError.textContent = err.message;
-    sesiListError.style.display = 'block';
+    renderListError(sesiListError, err.message, loadSesiList);
   } finally {
     sesiListLoading.style.display = 'none';
   }
@@ -1928,7 +2083,7 @@ async function deleteSesi(id, nama, btn) {
     }
     await loadSesiList();
   } catch (err) {
-    alert('Gagal hapus sesi: ' + err.message);
+    showToast('Gagal hapus sesi: ' + err.message, 'error');
     if (btn) btn.disabled = false;
   }
 }
@@ -1975,7 +2130,7 @@ async function openSesi(id) {
     // orang yang pertama nyatetnya.
     await loadChecklistForSesi(sesi.id);
   } catch (err) {
-    alert('Gagal membuka sesi: ' + err.message);
+    showToast('Gagal membuka sesi: ' + err.message, 'error');
   }
 }
 
@@ -1984,8 +2139,10 @@ async function openSesi(id) {
 function resetChecklistUI() {
   checklistItems = [];
   checklistPermintaanId = null;
-  if (typeof kbSection !== 'undefined' && kbSection) kbSection.style.display = 'none';
   if (typeof kbRefreshStatus !== 'undefined' && kbRefreshStatus) kbRefreshStatus.textContent = '';
+  if (typeof updateKbTabState === 'function') updateKbTabState();
+  if (typeof updateClipSummaryStrip === 'function') updateClipSummaryStrip();
+  if (typeof switchClipTab === 'function') switchClipTab('list');
 }
 
 // Ambil Permintaan RS yang nempel ke sesi ini (kalau ada) dan tampilin di
@@ -2012,11 +2169,13 @@ async function loadChecklistForSesi(sesiId) {
     checklistPagu = (data.pagu != null) ? data.pagu : checklistPagu;
     checklistPermintaanId = data.permintaan_id;
 
-    kbSection.style.display = 'flex';
     kbSection.classList.remove('kb-collapsed');
     kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
     kbRefreshStatus.textContent = 'Diperbarui ✓ ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
     renderChecklist();
+    // Sesi ini punya Permintaan RS yang nempel — langsung arahkan ke tab
+    // Kebutuhan RS, karena itu kemungkinan besar yang mau dicek duluan.
+    switchClipTab('kb');
   } catch {
     kbRefreshStatus.textContent = 'Gagal memuat checklist.';
   }
@@ -2066,7 +2225,7 @@ function updateSessionIndicatorAndTitle(rsRaw, salesRaw) {
 }
 function setClipHeaderCollapsed(collapsed) {
   clipHeader.classList.toggle('collapsed', collapsed);
-  clipHeaderToggleLabel.textContent = collapsed ? 'Ubah' : 'Ciutkan';
+  clipHeaderToggle.title = collapsed ? 'Perluas form sesi' : 'Ciutkan form sesi';
   if (collapsed) updateClipHeaderCompact();
 }
 clipHeaderToggle.addEventListener('click', () => {
@@ -2122,15 +2281,76 @@ const prReviewAddBtn = document.getElementById('pr-review-add-btn');
 const prReviewBackBtn = document.getElementById('pr-review-back-btn');
 const prReviewSaveBtn = document.getElementById('pr-review-save-btn');
 const kbSection = document.getElementById('clip-kebutuhan-section');
+const kbEmptyState = document.getElementById('kb-empty-state');
+const kbEmptyCta = document.getElementById('kb-empty-cta');
+const kbRealContent = document.getElementById('kb-real-content');
 const kbTitle = document.getElementById('kb-title');
 const kbCount = document.getElementById('kb-count');
 const kbList = document.getElementById('kb-list');
 const kbSummary = document.getElementById('kb-summary');
 const kbRecordStatus = document.getElementById('kb-record-status');
-const kbCloseBtn = document.getElementById('kb-close-btn');
 const kbCollapseBtn = document.getElementById('kb-collapse-btn');
 const kbRefreshBtn = document.getElementById('kb-refresh-btn');
 const kbRefreshStatus = document.getElementById('kb-refresh-status');
+const clipTabRow = document.getElementById('clip-tab-row');
+const clipTabBtnKb = document.getElementById('clip-tab-btn-kb');
+const clipTabBtnList = document.getElementById('clip-tab-btn-list');
+const clipTabBadgeKb = document.getElementById('clip-tab-badge-kb');
+const clipTabBadgeList = document.getElementById('clip-tab-badge-list');
+const clipTabPanelKb = document.getElementById('clip-tab-panel-kb');
+const clipTabPanelList = document.getElementById('clip-tab-panel-list');
+const clipSummaryStrip = document.getElementById('clip-summary-strip');
+
+// ══════════════════════════════════════════
+// TAB CLIPBOARD PANEL: Kebutuhan RS (mapping permintaan↔produk) vs Clipboard
+// (hasil final). Ini gantiin versi lama yang numpuk dua-duanya vertikal dalam
+// satu kolom sempit — sekarang yang lagi aktif dapat tinggi penuh panel.
+// ══════════════════════════════════════════
+let clipActiveTab = 'list';
+function switchClipTab(tab) {
+  clipActiveTab = tab;
+  clipTabBtnKb.classList.toggle('active', tab === 'kb');
+  clipTabBtnList.classList.toggle('active', tab === 'list');
+  clipTabPanelKb.style.display = tab === 'kb' ? 'flex' : 'none';
+  clipTabPanelList.style.display = tab === 'list' ? 'flex' : 'none';
+}
+clipTabBtnKb.addEventListener('click', () => switchClipTab('kb'));
+clipTabBtnList.addEventListener('click', () => switchClipTab('list'));
+kbEmptyCta.addEventListener('click', () => openPrModal());
+
+// Toggle antara empty-state ("belum ada Permintaan RS") dan konten checklist
+// beneran di dalam tab Kebutuhan RS, plus update badge jumlah item pending
+// di tab-nya sendiri biar kelihatan dari tab Clipboard tanpa perlu pindah.
+function updateKbTabState() {
+  const hasChecklist = !!checklistPermintaanId && checklistItems.length > 0;
+  kbEmptyState.style.display = hasChecklist ? 'none' : 'flex';
+  kbRealContent.style.display = hasChecklist ? 'flex' : 'none';
+  if (hasChecklist) {
+    const pending = checklistItems.filter(i => i.status === 'PENDING').length;
+    clipTabBadgeKb.textContent = pending;
+    clipTabBadgeKb.style.display = 'inline-block';
+    clipTabBadgeKb.classList.toggle('warn', pending > 0);
+  } else {
+    clipTabBadgeKb.style.display = 'none';
+  }
+}
+
+// Strip ringkasan yang tetap kelihatan di kedua tab — biar progress pencocokan
+// & total belanja tetap ke-track walau lagi buka tab yang lain.
+function updateClipSummaryStrip() {
+  const parts = [];
+  if (checklistPermintaanId && checklistItems.length > 0) {
+    const done = checklistItems.filter(i => i.status === 'TERPENUHI').length;
+    parts.push(`Kebutuhan RS: <b>${done}/${checklistItems.length}</b> terpenuhi`);
+  }
+  if (clipboard.length > 0) {
+    parts.push(`Clipboard: <b>${clipboard.length}</b> produk`);
+    if (clipTotalHarga.textContent) parts.push(`<b>${clipTotalHarga.textContent}</b>`);
+  }
+  if (!parts.length) { clipSummaryStrip.style.display = 'none'; return; }
+  clipSummaryStrip.style.display = 'flex';
+  clipSummaryStrip.innerHTML = parts.map(p => `<span>${p}</span>`).join('');
+}
 const progressFill = document.getElementById('progress-fill');
 const progressLabel = document.getElementById('progress-label');
 const modalSub = document.getElementById('modal-sub');
@@ -2260,8 +2480,11 @@ async function runSearch() {
       emptyEl.style.display='block';
       metaEl.textContent='Pencarian timeout — coba kata kunci lebih spesifik';
     } else {
-      errEl.textContent = 'Error: '+msg;
+      const offlineHint = (!navigator.onLine) ? ' Sepertinya koneksi internet kamu sedang terputus.' : '';
+      errEl.innerHTML = `<div>Gagal mencari: ${msg}.${offlineHint}</div><button type="button" id="err-retry-btn" style="margin-top:6px;background:none;border:1px solid var(--danger-border);color:var(--danger);border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Coba lagi</button>`;
       errEl.style.display='block';
+      const retryBtn = document.getElementById('err-retry-btn');
+      if (retryBtn) retryBtn.addEventListener('click', () => { errEl.style.display='none'; runSearch(); });
     }
     return;
   }
@@ -2535,6 +2758,8 @@ function updateClipboard() {
   clipEmpty.style.display = n === 0 ? 'block' : 'none';
   const tabBadge = document.getElementById('tab-badge');
   if (tabBadge) { tabBadge.textContent = n; tabBadge.style.display = n > 0 ? 'inline-block' : 'none'; }
+  clipTabBadgeList.textContent = n;
+  clipTabBadgeList.style.display = n > 0 ? 'inline-block' : 'none';
 
   // Total harga clipboard + bandingin sama Pagu (kalau ada sesi Kebutuhan RS aktif)
   let totalHargaClip = 0;
@@ -2549,6 +2774,7 @@ function updateClipboard() {
   } else {
     clipTotalHarga.textContent = rupiah(totalHargaClip) + (adaHargaKosong ? ' +' : '');
   }
+  updateClipSummaryStrip();
   if (n > 0 && typeof checklistPagu !== 'undefined' && checklistPagu != null) {
     const sisa = checklistPagu - totalHargaClip;
     clipBudget.classList.add('show');
@@ -3071,7 +3297,7 @@ btnExport.addEventListener('click', async () => {
     URL.revokeObjectURL(url);
 
   } catch(e) {
-    alert('Export gagal: ' + e.message);
+    showToast('Export gagal: ' + e.message, 'error');
     console.error(e);
   } finally {
     exportModal.classList.remove('show');
@@ -4135,15 +4361,15 @@ function startChecklistSession(submitResult, namaRs, picSales, pagu) {
   updateClipboard();
   setClipHeaderCollapsed(true);
 
-  kbSection.style.display = 'flex';
   kbSection.classList.remove('kb-collapsed');
   kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
   kbRefreshStatus.textContent = '';
   renderChecklist();
+  switchClipTab('kb');
 
   // pastikan panel clipboard kelihatan (termasuk di mobile, yang defaultnya nampilin tab search)
   if (window.innerWidth <= 860 && typeof switchTab === 'function') switchTab('clip');
-  kbSection.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  clipTabRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 // Opsi dropdown produk diambil dari clipboard sesi ini (bukan search baru) —
@@ -4171,6 +4397,8 @@ function renderChecklist() {
 
   kbTitle.textContent = 'Kebutuhan RS';
   kbCount.textContent = `${pending} belum dicek · ${done} bisa dipenuhi · ${na} tidak bisa`;
+  updateKbTabState();
+  updateClipSummaryStrip();
 
   kbSummary.innerHTML = `
     <div class="kb-summary-row"><span>Nama RS</span><b>${checklistNamaRs || '-'}</b></div>
@@ -4271,7 +4499,7 @@ kbList.addEventListener('click', async (e) => {
       renderChecklist();
       autoFinalizePermintaan();
     } catch (err) {
-      alert('Gagal update: ' + err.message);
+      showToast('Gagal update: ' + err.message, 'error');
       renderChecklist();
     }
     return;
@@ -4287,7 +4515,7 @@ kbList.addEventListener('click', async (e) => {
       renderChecklist();
       autoFinalizePermintaan();
     } catch (err) {
-      alert('Gagal update: ' + err.message);
+      showToast('Gagal update: ' + err.message, 'error');
       renderChecklist();
     }
     return;
@@ -4303,17 +4531,11 @@ kbList.addEventListener('click', async (e) => {
       renderChecklist();
       autoFinalizePermintaan();
     } catch (err) {
-      alert('Gagal membatalkan: ' + err.message);
+      showToast('Gagal membatalkan: ' + err.message, 'error');
       renderChecklist();
     }
     return;
   }
-});
-
-kbCloseBtn.addEventListener('click', () => {
-  if (checklistItems.some(i => i.status === 'PENDING') &&
-      !confirm('Masih ada item yang belum dicek. Sembunyikan? (data tetap tersimpan, bisa dibuka lagi lewat Permintaan RS)')) return;
-  kbSection.style.display = 'none';
 });
 
 kbCollapseBtn.addEventListener('click', () => {
@@ -4475,8 +4697,7 @@ async function loadDictionary() {
     dictTableWrap.style.display = 'block';
     renderDictPagination();
   } catch (err) {
-    dictError.textContent = err.message;
-    dictError.style.display = 'block';
+    renderListError(dictError, err.message, loadDictionary);
     dictLastTotal = 0;
     renderDictPagination();
   } finally {
