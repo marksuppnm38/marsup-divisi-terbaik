@@ -418,7 +418,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
     <div class="sb-brand">
       <img src="assets/logo-mark-pnm.png" alt="PNM Logo" class="logo">
       <div class="sb-brand-text">
-        <div class="sb-brand-title">Robust Catalog</div>
+        <div class="sb-brand-title">Product Manager</div>
         <div class="sb-brand-sub">PNM · SMY · METO</div>
       </div>
     </div>
@@ -445,7 +445,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
         <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama... (filter langsung di daftar)"/>
         <button class="clear-btn" id="topSearchClear" title="Bersihkan"><i class="ti ti-x"></i></button>
       </div>
-      <button class="cmdk-launch" id="cmdkTrigger" title="Buka pencarian cepat lintas halaman"><i class="ti ti-command"></i> Loncat cepat <kbd>⌘K</kbd></button>
+      <button class="cmdk-launch" id="cmdkTrigger" title="Buka pencarian cepat lintas halaman"><i class="ti ti-command"></i> Spotlight <kbd>⌘K</kbd></button>
       <div class="theme-switch" id="themeToggle" title="Ganti tema"><div class="knob"><i class="ti ti-sun" id="themeIcon"></i></div></div>
       <div class="topbar-actions">
         <div class="view-toggle">
@@ -1267,7 +1267,7 @@ async function loadProduk(q, page){
     total = count || 0;
   }
 
-  produkCount.textContent = total + ' produk' + (qq ? ` untuk "${qq}"` : ' (terbaru diubah)');
+ produkCount.textContent = total + ' produk' + (qq ? ` untuk "${qq}"` : '');
   renderPgBar(document.getElementById('produkPagination'), {
     page: produkPage, pageSize: PRODUK_PAGE_SIZE, total,
     onPageChange: (p) => loadProduk(qq, p)
