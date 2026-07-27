@@ -7,4 +7,5 @@ ALL_INSTRUMENT_ON PROJECT_CANGGIH.xlsx
 README/tools console/
 folder_output - Copy.zip
 folder_output*
-.sql
+*.sql
+.vscode
