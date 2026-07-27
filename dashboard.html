@@ -213,6 +213,21 @@ main{max-width:1280px;margin:0 auto;padding:24px 20px 44px}
 .lb-value{font-size:12px;font-weight:700;font-family:var(--mono);color:var(--success);white-space:nowrap}
 .insight-empty{text-align:center;padding:24px;color:var(--text-muted);font-size:12px}
 
+.forecast-table{width:100%;border-collapse:collapse;font-size:12px}
+.forecast-table th{padding:7px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);text-align:left;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.forecast-table td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.forecast-table tr:last-child td{border-bottom:none}
+.forecast-table tr:hover td{background:var(--surface-2)}
+.days-pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;font-family:var(--mono)}
+.days-kritis{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-border)}
+.days-warn{background:var(--warning-bg);color:var(--warning);border:1px solid var(--warning-border)}
+.days-aman{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)}
+.forecast-bar-wrap{display:flex;align-items:center;gap:6px}
+.forecast-bar-track{flex:1;height:5px;background:var(--surface-2);border-radius:20px;overflow:hidden}
+.forecast-bar-fill{height:100%;border-radius:20px}
+.forecast-period-btn{height:24px;padding:0 10px;font-size:11px;font-family:inherit;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;transition:all .15s}
+.forecast-period-btn.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+
 @media(max-width:900px){ .insight-cards{grid-template-columns:1fr} }
 .search-wrap-mini{position:relative;display:inline-flex}
 i.search-spinner{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--accent);display:none !important}
@@ -418,6 +433,19 @@ th.checkbox-col,td.checkbox-col{width:30px;text-align:center;padding-left:12px;p
         <div class="skeleton" style="height:38px"></div>
       </div>
     </div>
+  </div>
+  <div class="section-label"><i class="ph ph-chart-line-down"></i> Forecasting Stok</div>
+  <div class="insight-card" style="margin-bottom:26px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-warning" style="color:var(--warning)"></i> Produk Berisiko Habis (berdasarkan laju konversi)</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-size:11px;color:var(--text-muted)">Periode analisis:</span>
+        <button class="forecast-period-btn" data-days="7" onclick="setForecastPeriod(7,this)">7 hari</button>
+        <button class="forecast-period-btn active" data-days="30" onclick="setForecastPeriod(30,this)">30 hari</button>
+        <button class="forecast-period-btn" data-days="90" onclick="setForecastPeriod(90,this)">90 hari</button>
+      </div>
+    </div>
+    <div id="forecast-box"><div class="skeleton" style="height:200px"></div></div>
   </div>
   <div class="section-label"><i class="ph ph-list"></i> Daftar Produk</div>
   <div class="table-section">
@@ -1064,7 +1092,7 @@ function handleLoadError(err){
 async function loadEverything(){
   clearError();
   try {
-    await Promise.all([loadStats(), loadTable(), loadKonversiToday(), loadTrend(), loadLeaderboard(), loadKategoriDonut(), loadValueLineChart()]);
+    await Promise.all([loadStats(), loadTable(), loadKonversiToday(), loadTrend(), loadLeaderboard(), loadKategoriDonut(), loadValueLineChart(), loadForecastStok()]);
   } catch (err) {
     handleLoadError(err);
   }
@@ -1381,6 +1409,90 @@ async function loadValueLineChart(){
     <path d="${pathD}" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}
   </svg>`;
+}
+// ══════════════════════════════════════════
+// FORECASTING STOK
+// ══════════════════════════════════════════
+let forecastDays = 30;
+
+function setForecastPeriod(days, el){
+  forecastDays = days;
+  document.querySelectorAll('.forecast-period-btn').forEach(b => b.classList.toggle('active', +b.dataset.days === days));
+  loadForecastStok();
+}
+
+async function loadForecastStok(){
+  const box = document.getElementById('forecast-box');
+  box.innerHTML = '<div class="skeleton" style="height:200px"></div>';
+  try {
+    const data = await rpc('get_dashboard_forecast_stok', {p_days: forecastDays, p_limit: 15});
+    if (!data || !data.length){
+      box.innerHTML = `<div class="insight-empty"><i class="ph ph-check-circle" style="font-size:28px;display:block;margin-bottom:6px;color:var(--success)"></i>Tidak ada produk berisiko habis berdasarkan data ${forecastDays} hari terakhir.</div>`;
+      return;
+    }
+
+    const maxDays = Math.max(...data.map(d => d.perkiraan_habis_hari || 0), 1);
+
+    function daysPill(d){
+      if (d === null || d === undefined) return '<span class="days-pill days-aman">—</span>';
+      if (d <= 7)  return `<span class="days-pill days-kritis">⚠ ${d} hari</span>`;
+      if (d <= 30) return `<span class="days-pill days-warn">${d} hari</span>`;
+      return `<span class="days-pill days-aman">${d} hari</span>`;
+    }
+
+    function barColor(d){
+      if (!d) return 'var(--border)';
+      if (d <= 7)  return 'var(--danger)';
+      if (d <= 30) return 'var(--warning)';
+      return 'var(--success)';
+    }
+
+    box.innerHTML = `
+      <div style="overflow-x:auto">
+      <table class="forecast-table">
+        <thead>
+          <tr>
+            <th>Kode Produk</th>
+            <th>Nama Produk</th>
+            <th style="text-align:right">Stok</th>
+            <th style="text-align:right">Pakai/${forecastDays}hr</th>
+            <th style="text-align:right">Rata/Hari</th>
+            <th>Perkiraan Habis</th>
+            <th style="min-width:100px">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.map(d => `
+            <tr>
+              <td><span class="kode-text">${d.kode_produk}</span></td>
+              <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.nama_produk}</td>
+              <td style="text-align:right;font-family:var(--mono);font-weight:600">${fmt(d.stok_sekarang)}</td>
+              <td style="text-align:right;font-family:var(--mono)">${fmt(d.terpakai_periode)}</td>
+              <td style="text-align:right;font-family:var(--mono)">${d.rata_harian}</td>
+              <td>${daysPill(d.perkiraan_habis_hari)}</td>
+              <td>
+                <div class="forecast-bar-wrap">
+                  <div class="forecast-bar-track">
+                    <div class="forecast-bar-fill" style="width:${Math.min(100, Math.round((d.perkiraan_habis_hari||0)/maxDays*100))}%;background:${barColor(d.perkiraan_habis_hari)}"></div>
+                  </div>
+                  <span style="font-size:10px;color:var(--text-muted);white-space:nowrap">${d.perkiraan_habis_hari||'—'}h</span>
+                </div>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
+        <i class="ph ph-info"></i> Berdasarkan laju pemakaian ${forecastDays} hari terakhir dari data konversi.
+        <span style="margin-left:12px"><span class="days-pill days-kritis" style="font-size:10px">≤7 hari</span> kritis &nbsp;
+        <span class="days-pill days-warn" style="font-size:10px">≤30 hari</span> waspada &nbsp;
+        <span class="days-pill days-aman" style="font-size:10px">&gt;30 hari</span> aman</span>
+      </div>
+    `;
+  } catch(e) {
+    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat: ${e.message}</div>`;
+  }
 }
 initAuth();
 </script>
