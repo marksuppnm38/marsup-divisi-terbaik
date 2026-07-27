@@ -1484,7 +1484,7 @@ async function loadForecastStok(){
       </table>
       </div>
       <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
-        <i class="ph ph-info"></i> Berdasarkan laju pemakaian ${forecastDays} hari terakhir dari data konversi.
+  <i class="ph ph-info"></i> Berdasarkan laju pemakaian ${forecastDays} hari terakhir dari data konversi. Data stok terakhir diupdate: <b>${new Date().toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</b>
         <span style="margin-left:12px"><span class="days-pill days-kritis" style="font-size:10px">≤7 hari</span> kritis &nbsp;
         <span class="days-pill days-warn" style="font-size:10px">≤30 hari</span> waspada &nbsp;
         <span class="days-pill days-aman" style="font-size:10px">&gt;30 hari</span> aman</span>
