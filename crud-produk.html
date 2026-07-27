@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -141,6 +142,20 @@ kbd{font-family:var(--font-mono);font-size:10.5px;background:var(--surface-3);bo
 .seal-null{color:var(--text-muted);border-color:var(--border-strong);background:var(--surface-2)}
 .seal-null::before{background:var(--gray-out)}
 .tipe-chip{font-family:var(--font-mono);font-size:10.5px;padding:2px 7px;border-radius:5px;background:var(--surface-3);color:var(--text-secondary);letter-spacing:.02em}
+
+/* ================= FILTER BAR ================= */
+.filter-bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.filter-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;border:1.3px solid var(--border-strong);background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;transition:background .12s,color .12s,border-color .12s}
+.filter-chip:hover{background:var(--surface-2);color:var(--text)}
+.filter-chip .fc-count{font-family:var(--font-mono);font-size:10px;opacity:.75}
+.filter-chip.active{color:var(--text);font-weight:600}
+.filter-chip[data-filter="all"].active{border-color:var(--border-strong);background:var(--surface-3)}
+.filter-chip[data-filter="belum_diajukan"].active{border-color:var(--rust);background:var(--rust-bg);color:var(--rust-text)}
+.filter-chip[data-filter="belum_firm"].active{border-color:var(--amber);background:var(--amber-bg);color:var(--amber-text)}
+.filter-chip[data-filter="di_luar_cakupan"].active{border-color:var(--border-strong);background:var(--surface-2);color:var(--text-muted)}
+.filter-chip[data-filter="terhubung"].active{border-color:var(--teal-ok);background:var(--teal-ok-bg);color:var(--teal-ok-text)}
+.filter-chip[data-filter="disetujui_tanpa_link"].active{border-color:var(--rust);background:var(--rust-bg);color:var(--rust-text)}
+.filter-chip.disabled{opacity:.4;cursor:default;pointer-events:none}
 
 /* ================= TABLE VIEW ================= */
 .table-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
@@ -375,6 +390,38 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
 
 /* ================= PAGINATION (reusable: Produk, Set Management, Log Aktivitas) ================= */
 .pg-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 2px 4px;flex-wrap:wrap}
+
+/* ================= AKD MANAGEMENT PAGE ================= */
+.akd-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.akd-search-box{flex:1;min-width:220px;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:9px;border:1px solid var(--border-strong);background:var(--surface)}
+.akd-search-box i{color:var(--text-muted);font-size:14px}
+.akd-search-box input{flex:1;border:none;outline:none;background:none;color:var(--text);font-size:13px;font-family:inherit}
+.stacked-filters-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.stacked-filter-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1}
+.adv-filter-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 8px 5px 11px;border-radius:20px;background:var(--accent-bg);color:var(--accent-text);border:1px solid var(--accent);font-size:11.5px;font-weight:600}
+.adv-filter-chip button{background:none;border:none;color:inherit;cursor:pointer;padding:1px;line-height:0;opacity:.75;font-size:12px}
+.adv-filter-chip button:hover{opacity:1}
+.add-filter-wrap{position:relative}
+.add-filter-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:1.3px dashed var(--border-strong);background:none;color:var(--text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:inherit}
+.add-filter-btn:hover{border-color:var(--accent);color:var(--accent-text)}
+.add-filter-pop{position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--surface);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);width:280px;padding:10px;display:none}
+.add-filter-pop.open{display:block}
+.afp-step{display:flex;flex-direction:column;gap:6px}
+.afp-dim-btn{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:12.5px;cursor:pointer;font-family:inherit;text-align:left}
+.afp-dim-btn:hover{border-color:var(--accent)}
+.afp-back{font-size:11.5px;color:var(--text-muted);cursor:pointer;margin-bottom:2px;display:flex;align-items:center;gap:4px}
+.afp-back:hover{color:var(--text)}
+.afp-title{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
+.akd-table-scroll{overflow-x:auto}
+.akd-table-scroll table{min-width:1180px}
+.status-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.status-pill.ok{background:var(--teal-ok-bg);color:var(--teal-ok-text)}
+.status-pill.warn{background:var(--amber-bg);color:var(--amber-text)}
+.status-pill.bad{background:var(--rust-bg);color:var(--rust-text)}
+.status-pill.neutral{background:var(--surface-3);color:var(--text-secondary)}
+.link-yes{color:var(--teal-ok-text);font-size:15px}
+.link-no{color:var(--text-muted);font-size:15px}
+.excel-export-btn{white-space:nowrap}
 .pg-info{font-size:12px;color:var(--text-muted);font-family:var(--font-mono)}
 .pg-btns{display:flex;align-items:center;gap:4px}
 .pg-btn{min-width:28px;height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);font-size:12.5px;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s,color .12s,border-color .12s}
@@ -427,7 +474,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
       <button class="sb-item" data-view="dashboard" title="Dashboard"><i class="ti ti-layout-dashboard"></i><span class="sb-label">Dashboard</span> <span class="soon">segera</span></button>
       <button class="sb-item active" data-view="produk" title="Produk"><i class="ti ti-package"></i><span class="sb-label">Produk</span></button>
       <button class="sb-item" data-view="set" title="Set Management"><i class="ti ti-stack-2"></i><span class="sb-label">Set Management</span></button>
-      <button class="sb-item" data-view="akd" title="AKD"><i class="ti ti-shield-check"></i><span class="sb-label">AKD</span> <span class="soon">segera</span></button>
+      <button class="sb-item" data-view="akd" title="AKD"><i class="ti ti-shield-check"></i><span class="sb-label">AKD</span></button>
       <button class="sb-item" data-view="bulk" title="Bulk Edit"><i class="ti ti-table"></i><span class="sb-label">Bulk Edit</span></button>
     </nav>
     <div class="sb-spacer"></div>
@@ -462,6 +509,24 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
         <div>
           <div class="content-title">Produk</div>
           <div class="content-sub" id="produkCount">Memuat...</div>
+        </div>
+        <button class="btn btn-ghost excel-export-btn" id="produkExportBtn"><i class="ti ti-file-spreadsheet"></i> Download Excel (hasil filter)</button>
+      </div>
+
+      <div class="filter-bar" id="produkFilterBar">
+        <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-all"></span></button>
+        <button class="filter-chip" data-filter="belum_diajukan">Perlu AKD<span class="fc-count" id="fc-belum_diajukan"></span></button>
+        <button class="filter-chip" data-filter="belum_firm">Belum Firm<span class="fc-count" id="fc-belum_firm"></span></button>
+        <button class="filter-chip" data-filter="di_luar_cakupan">Di Luar Cakupan<span class="fc-count" id="fc-di_luar_cakupan"></span></button>
+        <button class="filter-chip" data-filter="terhubung">Terhubung<span class="fc-count" id="fc-terhubung"></span></button>
+        <button class="filter-chip" data-filter="disetujui_tanpa_link">Disetujui, Belum Ada Link<span class="fc-count" id="fc-disetujui_tanpa_link"></span></button>
+      </div>
+
+      <div class="stacked-filters-row">
+        <div class="stacked-filter-chips" id="produkFilterChips"></div>
+        <div class="add-filter-wrap">
+          <button class="add-filter-btn" id="produkAddFilterBtn"><i class="ti ti-plus"></i> Tambah Filter</button>
+          <div class="add-filter-pop" id="produkAddFilterPop"></div>
         </div>
       </div>
 
@@ -570,7 +635,34 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
     </div>
 
     <div class="content" id="viewAkd" style="display:none;">
-      <div class="stub-box"><i class="ti ti-shield-check"></i><b>Browser AKD menyusul</b>Untuk sekarang, kelola relasi AKD lewat tombol "Kelola AKD" di form edit produk.</div>
+      <div class="content-head">
+        <div>
+          <div class="content-title">AKD Management</div>
+          <div class="content-sub" id="akdCount">Memuat...</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-accent" id="addAkdBtn"><i class="ti ti-plus"></i> Tambah AKD</button>
+        </div>
+      </div>
+
+      <div class="akd-toolbar">
+        <div class="akd-search-box">
+          <i class="ti ti-search"></i>
+          <input type="text" id="akdSearchBoxInput" placeholder="Cari no. AKD, nama AKD, kode set..."/>
+        </div>
+      </div>
+
+      <div class="table-card akd-table-scroll">
+        <table>
+          <thead>
+            <tr><th>No. AKD</th><th>Nama AKD</th><th>Tipe</th><th>Golongan</th><th>Kategori Set</th><th>Masa Berlaku</th><th>Status Terupdate</th><th>Link Dok.</th><th>Produk Terhubung</th></tr>
+          </thead>
+          <tbody id="akdTableBody">
+            <tr class="state-row"><td colspan="9">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="akdPagination" style="display:none;"></div>
     </div>
     <div class="content" id="viewBulk" style="display:none;">
       <div class="content-head">
@@ -753,6 +845,23 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
       </div>
     </div>
 
+    <div id="gambarInstrumenSection" style="display:none;">
+      <div class="sec-label">Gambar Instrumen (Bucket)</div>
+      <div class="akd-box" style="display:flex;align-items:center;gap:12px;">
+        <div id="gambarInstrumenPreviewWrap" style="display:none;flex-shrink:0;">
+          <img id="gambarInstrumenPreview" alt="Preview gambar instrumen" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);display:block;"/>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <span id="gambarInstrumenBadge" class="status-pill neutral">Mengecek...</span>
+          <div id="gambarInstrumenHint" class="akd-hint" style="margin-top:4px;"></div>
+        </div>
+        <div style="flex-shrink:0;">
+          <input type="file" id="gambarInstrumenFileInput" accept="image/png" style="display:none;"/>
+          <button class="btn btn-ghost btn-sm" id="gambarInstrumenUploadBtn" type="button"><i class="ti ti-upload"></i> Upload Gambar</button>
+        </div>
+      </div>
+    </div>
+
     <div class="sec-label">Status Legalitas (AKD) <span id="akdSealHolder"></span></div>
     <div class="grid2" style="margin-bottom:10px;">
       <div class="f"><label>No. AKD</label><input type="text" id="f_no_akd" readonly placeholder="Otomatis dari relasi AKD"/></div>
@@ -869,6 +978,7 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
           <option value="master_produk">master_produk</option>
           <option value="produk_akd">produk_akd</option>
           <option value="produk_set_item">produk_set_item</option>
+          <option value="akd">akd</option>
         </select>
       </div>
       <div class="f">
@@ -890,10 +1000,68 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
   </div>
 </div>
 
+<!-- AKD ADD/EDIT MODAL -->
+<div class="modal-overlay" id="akdModalOverlay">
+  <div class="modal-card">
+    <div class="mac-traffic">
+      <button class="mac-dot red" id="akdModalCloseBtn" title="Tutup"></button>
+      <span class="mac-dot yellow"></span>
+      <span class="mac-dot green"></span>
+    </div>
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="akdModalTitle">Tambah AKD</div>
+        <div class="modal-sub" id="akdModalSub">Isi data AKD baru</div>
+      </div>
+    </div>
+
+    <div class="sec-label">Identitas AKD</div>
+    <div class="grid2">
+      <div class="f"><label>Tipe AKD *</label>
+        <select id="a_tipe_akd">
+          <option value="">— pilih —</option>
+          <option value="satuan">satuan</option>
+          <option value="set">set</option>
+          <option value="unit">unit</option>
+        </select>
+      </div>
+      <div class="f"><label>No. AKD *</label><input type="text" id="a_no_akd"/></div>
+      <div class="f full"><label>Nama AKD</label><input type="text" id="a_nama_akd"/></div>
+      <div class="f"><label>Nama Database</label><input type="text" id="a_nama_database"/></div>
+      <div class="f"><label>Kode Set</label><input type="text" id="a_kode_set" placeholder="Isi kalau tipe AKD = set"/></div>
+      <div class="f"><label>Kategori Set</label><input type="text" id="a_kategori_set"/></div>
+      <div class="f"><label>Penanda Kode</label><input type="text" id="a_penanda_kode"/></div>
+      <div class="f"><label>Golongan</label><input type="text" id="a_golongan" list="akd_golongan_list"/><datalist id="akd_golongan_list"></datalist></div>
+    </div>
+
+    <div class="sec-label">Status &amp; Jadwal</div>
+    <div class="grid2">
+      <div class="f"><label>Masa Berlaku</label><input type="date" id="a_masa_berlaku"/></div>
+      <div class="f"><label>Tgl Maju Mas Munir</label><input type="date" id="a_tgl_maju_mas_munir"/></div>
+      <div class="f full"><label>Status Terupdate</label><input type="text" id="a_status_terupdate" list="akd_status_list"/><datalist id="akd_status_list"></datalist></div>
+      <div class="f full"><label>Link Dokumen</label><input type="text" id="a_link_dokumen" placeholder="https://..."/></div>
+      <div class="f full"><label>Update Progres</label><textarea id="a_update_progres" placeholder="Catatan progres..."></textarea></div>
+    </div>
+    <div class="akd-hint" style="margin-top:6px;"><i class="ti ti-info-circle"></i> Arti pasti kolom "Tgl Maju Mas Munir" &amp; "Status Terupdate" masih perlu dikonfirmasi ke tim — sementara ditampilkan apa adanya sesuai nama kolom di database.</div>
+
+    <div class="sec-label" id="akdLinkedProdukLabel" style="display:none;">Produk Terhubung</div>
+    <div id="akdLinkedProdukList" style="display:none;"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="deleteAkdBtn" style="display:none;"><i class="ti ti-trash"></i> Hapus AKD</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" id="akdCancelBtn">Batal</button>
+        <button class="btn btn-accent" id="akdSaveBtn"><i class="ti ti-check"></i> Simpan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
 
 const SEAL_LABELS = {
   terhubung: 'Terhubung',
@@ -942,7 +1110,11 @@ function switchView(view){
   ['produk','dashboard','set','akd','bulk'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
+  document.getElementById('addBtn').style.display = (view === 'produk') ? '' : 'none';
+  document.querySelector('.view-toggle').style.display = (view === 'produk') ? '' : 'none';
+  if (view === 'akd' && !akdLoadedOnce) { akdLoadedOnce = true; loadAkdDistinctValues(); loadAkd(); }
 }
+let akdLoadedOnce = false;
 document.querySelectorAll('.sb-item[data-view]').forEach(btn => {
   btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
@@ -1020,6 +1192,7 @@ async function checkWhitelistAndShowApp(session){
   gateWrap.style.display = 'none';
   appWrap.style.display = 'flex';
   loadProduk();
+  refreshProdukFilterCounts();
 }
 
 logoutBtn.addEventListener('click', async () => { await sb.auth.signOut(); });
@@ -1042,7 +1215,7 @@ sb.auth.onAuthStateChange((event, session) => {
 
 // ---- Log Aktivitas ----
 const LOG_ACTION_LABELS = { INSERT: 'Tambah', UPDATE: 'Ubah', DELETE: 'Hapus' };
-const LOG_TABLE_LABELS = { produk: 'Produk', produk_harga: 'Harga', produk_media: 'Media', master_produk: 'Master Produk', produk_akd: 'Relasi AKD', produk_set_item: 'Komposisi Set' };
+const LOG_TABLE_LABELS = { produk: 'Produk', produk_harga: 'Harga', produk_media: 'Media', master_produk: 'Master Produk', produk_akd: 'Relasi AKD', produk_set_item: 'Komposisi Set', akd: 'AKD' };
 const logModalOverlay = document.getElementById('logModalOverlay');
 document.getElementById('logToggle').addEventListener('click', () => { logModalOverlay.classList.add('open'); loadLog(1); });
 document.getElementById('logModalCloseBtn').addEventListener('click', () => logModalOverlay.classList.remove('open'));
@@ -1220,7 +1393,89 @@ topSearchClear.addEventListener('click', () => {
 
 let produkPage = 1;
 const PRODUK_PAGE_SIZE = 30;
-let produkSearchAllRows = []; // hasil lengkap dari RPC search_produk_dengan_harga, di-page di client
+let produkSearchRawRows = []; // hasil lengkap dari RPC search_produk_dengan_harga, BELUM difilter status
+let produkSearchAllRows = []; // produkSearchRawRows setelah difilter status_akd/link, di-page di client
+
+// ---- Filter status (chip bar di atas list Produk) ----
+// 'all' gak butuh kondisi tambahan. Sisanya map ke kolom status_akd, kecuali
+// 'disetujui_tanpa_link' yang kondisinya gabungan status_inaproc + link_v6 kosong
+// (logic-nya sama persis kayak renderInaprocIndikator() di modal edit, cuma di sini
+// dipakai buat nyaring list, bukan cuma nampilin di satu produk).
+const PRODUK_FILTERS = {
+  all: null,
+  belum_diajukan: p => p.status_akd === 'belum_diajukan',
+  belum_firm: p => p.status_akd === 'belum_firm',
+  di_luar_cakupan: p => p.status_akd === 'di_luar_cakupan',
+  terhubung: p => p.status_akd === 'terhubung',
+  disetujui_tanpa_link: p => p.status_inaproc === 'Disetujui' && !p.link_v6,
+};
+let produkActiveFilter = 'all';
+function applyProdukFilterToQuery(query, filterKey){
+  if (filterKey === 'disetujui_tanpa_link') return query.eq('status_inaproc', 'Disetujui').is('link_v6', null);
+  if (filterKey && filterKey !== 'all') return query.eq('status_akd', filterKey);
+  return query;
+}
+
+const PRODUK_LIST_COLUMNS = 'id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd, status_inaproc, link_v6, updated_at';
+
+// ---- Filter bertumpuk ("+ Tambah Filter") — di-AND-kan di atas chip status di atas
+// DAN di atas search yang lagi aktif. Sengaja dipasang di sini (Produk), bukan di
+// halaman AKD, karena semua dimensinya adalah properti produk (golongan, tipe,
+// is_active, status_inaproc, ketersediaan harga) — bukan properti AKD.
+let produkActiveFilters = []; // [{ dim, value, label }]
+let produkDistinct = { tipe: [], golongan: [], status_inaproc: [] };
+let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
+let produkAllRowsCache = { key: null, rows: null }; // dipakai kalau ada filter tambahan aktif (tanpa search) -> full-fetch respek chip status, difilter+dipaging di client
+let produkCurrentFilteredFull = null; // hasil filter lengkap (semua halaman) -> sumber Download Excel
+
+const PRODUK_FILTER_DIMS = [
+  { key: 'tipe', label: 'Tipe', dynamic: 'tipe' },
+  { key: 'golongan', label: 'Golongan', dynamic: 'golongan' },
+  { key: 'is_active', label: 'Status Aktif', options: [
+      { value: 'aktif', label: 'Aktif' },
+      { value: 'nonaktif', label: 'Nonaktif' },
+  ]},
+  { key: 'status_inaproc', label: 'Status INAPROC', dynamic: 'status_inaproc' },
+  { key: 'harga', label: 'Ketersediaan Harga', options: [
+      { value: 'ada', label: 'Sudah ada harga' },
+      { value: 'kosong', label: 'Belum ada harga' },
+  ]},
+];
+
+async function loadProdukDistinctValues(){
+  const [tipeR, golR, statR] = await Promise.all([
+    sb.from('produk').select('tipe').not('tipe', 'is', null).limit(3000),
+    sb.from('produk').select('golongan').not('golongan', 'is', null).limit(3000),
+    sb.from('produk').select('status_inaproc').not('status_inaproc', 'is', null).limit(3000),
+  ]);
+  produkDistinct.tipe = [...new Set((tipeR.data || []).map(r => r.tipe).filter(Boolean))].sort();
+  produkDistinct.golongan = [...new Set((golR.data || []).map(r => r.golongan).filter(Boolean))].sort();
+  produkDistinct.status_inaproc = [...new Set((statR.data || []).map(r => r.status_inaproc).filter(Boolean))].sort();
+}
+
+async function ensureProdukHargaSet(){
+  if (produkHargaIdSet) return;
+  const { data } = await sb.from('produk_harga').select('produk_id').limit(20000);
+  produkHargaIdSet = new Set((data || []).map(r => r.produk_id));
+}
+function invalidateProdukStackCache(){
+  produkAllRowsCache = { key: null, rows: null };
+  produkHargaIdSet = null;
+}
+
+function produkRowMatchesFilter(row, filt){
+  switch (filt.dim) {
+    case 'tipe': return row.tipe === filt.value;
+    case 'golongan': return row.golongan === filt.value;
+    case 'is_active': return filt.value === 'aktif' ? !!row.is_active : !row.is_active;
+    case 'status_inaproc': return row.status_inaproc === filt.value;
+    case 'harga': {
+      const has = produkHargaIdSet.has(row.id);
+      return filt.value === 'ada' ? has : !has;
+    }
+    default: return true;
+  }
+}
 
 async function loadProduk(q, page){
   const newQ = (q ?? lastQuery ?? '').trim();
@@ -1233,33 +1488,63 @@ async function loadProduk(q, page){
   cardWrap.innerHTML = '';
   produkCount.textContent = 'Memuat...';
 
+  const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
+  if (needsHarga) await ensureProdukHargaSet();
+
   let rows = [];
   let total = 0;
   if (qq) {
     // pakai RPC search yang sudah ranked (token search + trigram + fast-path exact match)
-    // RPC ini ambil SEMUA hasil match sekaligus (gak dukung limit/offset), jadi paging
-    // hasil pencarian dilakukan di client — bukan query ulang tiap ganti halaman.
+    // RPC ini ambil SEMUA hasil match sekaligus (gak dukung limit/offset dan gak dukung
+    // filter status tambahan), jadi paging DAN filter status dilakukan di client dari
+    // produkSearchRawRows — bukan query ulang tiap ganti halaman/filter.
     if (searchChanged) {
       const { data: rpcData, error: rpcErr } = await sb.rpc('search_produk_dengan_harga', { q: qq, p_tipe: null, only_akd: false, only_kfa: false });
       if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
       const kodeList = (rpcData || []).map(r => r.kode_produk);
-      if (kodeList.length === 0) { produkSearchAllRows = []; }
+      if (kodeList.length === 0) { produkSearchRawRows = []; }
       else {
         const { data: fullRows, error: fullErr } = await sb.from('produk')
-          .select('id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd, updated_at')
+          .select(PRODUK_LIST_COLUMNS)
           .in('kode_produk', kodeList);
         if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
         const byKode = Object.fromEntries((fullRows || []).map(r => [r.kode_produk, r]));
-        produkSearchAllRows = kodeList.map(k => byKode[k]).filter(Boolean);
+        produkSearchRawRows = kodeList.map(k => byKode[k]).filter(Boolean);
       }
     }
-    total = produkSearchAllRows.length;
-    rows = produkSearchAllRows.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
+    const matcher = PRODUK_FILTERS[produkActiveFilter];
+    let filtered = matcher ? produkSearchRawRows.filter(matcher) : produkSearchRawRows;
+    produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
+    produkSearchAllRows = filtered;
+    produkCurrentFilteredFull = filtered;
+    total = filtered.length;
+    rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
+  } else if (produkActiveFilters.length > 0) {
+    // Ada filter tambahan aktif ("+ Tambah Filter") tapi gak lagi search -> gak bisa
+    // dipaging langsung di server (kombinasi filternya campuran server+client), jadi
+    // full-fetch SEKALI (respek chip status di server dulu biar lebih ringan), lalu
+    // filter tambahan + paging dilakukan di client. Di-cache per chip status supaya
+    // gak fetch ulang tiap ganti halaman/tambah-hapus filter dalam chip yang sama.
+    if (produkAllRowsCache.key !== produkActiveFilter || !produkAllRowsCache.rows) {
+      let query = sb.from('produk').select(PRODUK_LIST_COLUMNS);
+      query = applyProdukFilterToQuery(query, produkActiveFilter);
+      const { data, error } = await query.order('updated_at', { ascending: false }).limit(20000);
+      if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+      produkAllRowsCache = { key: produkActiveFilter, rows: data || [] };
+    }
+    let filtered = produkAllRowsCache.rows;
+    produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
+    produkCurrentFilteredFull = filtered;
+    total = filtered.length;
+    rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
   } else {
+    produkCurrentFilteredFull = null;
     const from = (produkPage - 1) * PRODUK_PAGE_SIZE;
     const to = from + PRODUK_PAGE_SIZE - 1;
-    const { data, error, count } = await sb.from('produk')
-      .select('id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd, updated_at', { count: 'exact' })
+    let query = sb.from('produk')
+      .select(PRODUK_LIST_COLUMNS, { count: 'exact' });
+    query = applyProdukFilterToQuery(query, produkActiveFilter);
+    const { data, error, count } = await query
       .order('updated_at', { ascending: false })
       .range(from, to);
     if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
@@ -1267,7 +1552,8 @@ async function loadProduk(q, page){
     total = count || 0;
   }
 
- produkCount.textContent = total + ' produk' + (qq ? ` untuk "${qq}"` : '');
+ produkCount.textContent = total + ' produk' + (qq ? ` untuk "${qq}"` : '') +
+    (produkActiveFilters.length ? ` · ${produkActiveFilters.length} filter tambahan aktif` : '');
   renderPgBar(document.getElementById('produkPagination'), {
     page: produkPage, pageSize: PRODUK_PAGE_SIZE, total,
     onPageChange: (p) => loadProduk(qq, p)
@@ -1292,41 +1578,179 @@ async function loadProduk(q, page){
   const ONE_DAY = 24 * 60 * 60 * 1000;
   function attentionMeta(p){
     const noHarga = !hargaExistIds.has(p.id);
+    const noLink = p.status_inaproc === 'Disetujui' && !p.link_v6;
     const recentlyUpdated = p.updated_at && (Date.now() - new Date(p.updated_at).getTime()) < ONE_DAY;
-    return { noHarga, recentlyUpdated };
+    return { noHarga, noLink, recentlyUpdated };
   }
 
   tableBody.innerHTML = '';
   cardWrap.innerHTML = '';
   rows.forEach(p => {
-    const { noHarga, recentlyUpdated } = attentionMeta(p);
+    const { noHarga, noLink, recentlyUpdated } = attentionMeta(p);
+    const noLinkIcon = noLink ? '<i class="ti ti-link-off" title="Disetujui INAPROC, belum ada Link V6" style="color:var(--rust-text);"></i>' : '';
     const tr = document.createElement('tr');
-    tr.className = 'clickable' + (noHarga ? ' row-attention' : '');
+    tr.className = 'clickable' + (noHarga || noLink ? ' row-attention' : '');
     tr.innerHTML = `
       <td class="kode-cell">${escapeHtml(p.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</td>
       <td>${escapeHtml(p.nama_produk || '—')}</td>
       <td><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span></td>
-      <td>${sealHtml(p.status_akd)}</td>
+      <td>${sealHtml(p.status_akd)} ${noLinkIcon}</td>
       <td style="text-align:right;color:var(--text-muted);">${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga"></i>' : ''}${p.is_active ? '' : ' <i class="ti ti-eye-off" title="Nonaktif"></i>'}</td>
     `;
     tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     tableBody.appendChild(tr);
 
     const card = document.createElement('div');
-    card.className = 'prod-card' + (noHarga ? ' row-attention' : '');
+    card.className = 'prod-card' + (noHarga || noLink ? ' row-attention' : '');
     card.innerHTML = `
       <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</div>
       <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}</div>
-      <div class="pc-foot"><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga" style="color:var(--amber);margin-left:4px;"></i>' : ''}</div>
+      <div class="pc-foot"><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}${noLinkIcon}${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga" style="color:var(--amber);margin-left:4px;"></i>' : ''}</div>
     `;
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     cardWrap.appendChild(card);
   });
 }
 
+// ---- Klik chip filter status di atas list Produk ----
+document.querySelectorAll('#produkFilterBar .filter-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.filter === produkActiveFilter) return;
+    produkActiveFilter = btn.dataset.filter;
+    document.querySelectorAll('#produkFilterBar .filter-chip').forEach(b => b.classList.toggle('active', b === btn));
+    loadProduk(lastQuery, 1);
+  });
+});
+
+// ---- Filter builder ("+ Tambah Filter") — sama pola kayak yang dulu ada di AKD,
+// cuma dimensinya properti Produk (golongan, tipe, aktif/nonaktif, status INAPROC,
+// ketersediaan harga), dan ditumpuk di atas chip status + search yang lagi aktif.
+const produkAddFilterBtn = document.getElementById('produkAddFilterBtn');
+const produkAddFilterPop = document.getElementById('produkAddFilterPop');
+produkAddFilterBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  renderProdukFilterPopStep1();
+  produkAddFilterPop.classList.toggle('open');
+});
+document.addEventListener('click', (e) => {
+  if (produkAddFilterPop.classList.contains('open') && !produkAddFilterPop.contains(e.target) && e.target !== produkAddFilterBtn) {
+    produkAddFilterPop.classList.remove('open');
+  }
+});
+function renderProdukFilterPopStep1(){
+  produkAddFilterPop.innerHTML = `<div class="afp-step">
+    <div class="afp-title">Pilih dimensi filter</div>
+    ${PRODUK_FILTER_DIMS.map(d => `<button class="afp-dim-btn" data-dim="${d.key}"><span>${escapeHtml(d.label)}</span><i class="ti ti-chevron-right"></i></button>`).join('')}
+  </div>`;
+  produkAddFilterPop.querySelectorAll('.afp-dim-btn').forEach(b => {
+    b.addEventListener('click', () => renderProdukFilterPopStep2(b.dataset.dim));
+  });
+}
+function renderProdukFilterPopStep2(dimKey){
+  const dim = PRODUK_FILTER_DIMS.find(d => d.key === dimKey);
+  let options = dim.options;
+  if (dim.dynamic) {
+    options = (produkDistinct[dim.dynamic] || []).map(v => ({ value: v, label: v }));
+    if (!options.length) options = [{ value: '', label: '(belum ada data terisi)' }];
+  }
+  produkAddFilterPop.innerHTML = `<div class="afp-step">
+    <div class="afp-back" id="produkAfpBack"><i class="ti ti-arrow-left"></i> Kembali</div>
+    <div class="afp-title">${escapeHtml(dim.label)}</div>
+    ${options.map(o => `<button class="afp-dim-btn" data-value="${escapeHtml(o.value)}" ${o.value === '' ? 'disabled' : ''}>${escapeHtml(o.label)}</button>`).join('')}
+  </div>`;
+  document.getElementById('produkAfpBack').addEventListener('click', renderProdukFilterPopStep1);
+  produkAddFilterPop.querySelectorAll('.afp-dim-btn[data-value]:not([disabled])').forEach(b => {
+    b.addEventListener('click', () => {
+      addProdukFilter(dimKey, b.dataset.value, dim.label + ': ' + b.textContent.trim());
+      produkAddFilterPop.classList.remove('open');
+    });
+  });
+}
+function addProdukFilter(dim, value, label){
+  produkActiveFilters = produkActiveFilters.filter(f => f.dim !== dim); // satu dimensi = satu nilai aktif, ganti kalau dipilih ulang
+  produkActiveFilters.push({ dim, value, label });
+  renderProdukFilterChips();
+  loadProduk(lastQuery, 1);
+}
+function removeProdukFilter(dim){
+  produkActiveFilters = produkActiveFilters.filter(f => f.dim !== dim);
+  renderProdukFilterChips();
+  loadProduk(lastQuery, 1);
+}
+function renderProdukFilterChips(){
+  const el = document.getElementById('produkFilterChips');
+  el.innerHTML = produkActiveFilters.map(f => `<span class="adv-filter-chip" data-dim="${f.dim}">${escapeHtml(f.label)}<button title="Hapus filter ini"><i class="ti ti-x"></i></button></span>`).join('');
+  el.querySelectorAll('.adv-filter-chip button').forEach(btn => {
+    btn.addEventListener('click', () => removeProdukFilter(btn.parentElement.dataset.dim));
+  });
+}
+
+// ---- Download Excel (hasil filter yang lagi aktif — chip status + filter tambahan
+// + search, bukan cuma halaman yang lagi tampil) ----
+async function exportProdukToExcel(){
+  const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
+  if (needsHarga) await ensureProdukHargaSet();
+
+  let rowsToExport;
+  if (lastQuery.trim() || produkActiveFilters.length > 0) {
+    rowsToExport = produkCurrentFilteredFull || [];
+  } else {
+    let query = sb.from('produk').select(PRODUK_LIST_COLUMNS);
+    query = applyProdukFilterToQuery(query, produkActiveFilter);
+    const { data, error } = await query.order('updated_at', { ascending: false }).limit(20000);
+    if (error) { showToast('Gagal export: ' + error.message, true); return; }
+    rowsToExport = data || [];
+  }
+  if (!rowsToExport.length) { showToast('Tidak ada data untuk diexport', true); return; }
+  await ensureProdukHargaSet();
+  const sheetData = rowsToExport.map(r => ({
+    'Kode Produk': r.kode_produk || '',
+    'Nama Produk': r.nama_produk || '',
+    'Tipe': r.tipe || '',
+    'Golongan': r.golongan || '',
+    'Status AKD': SEAL_LABELS[r.status_akd] || r.status_akd || '',
+    'Status INAPROC': r.status_inaproc || '',
+    'Link V6': r.link_v6 || '',
+    'Aktif': r.is_active ? 'Ya' : 'Tidak',
+    'Sudah Ada Harga': produkHargaIdSet.has(r.id) ? 'Ya' : 'Tidak',
+  }));
+  const ws = XLSX.utils.json_to_sheet(sheetData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Produk');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filterTag = (produkActiveFilter !== 'all' ? '_' + produkActiveFilter : '') +
+    (produkActiveFilters.length ? '_' + produkActiveFilters.map(f => f.dim).join('-') : '') +
+    (lastQuery.trim() ? '_search' : '');
+  XLSX.writeFile(wb, `produk_export_${dateStr}${filterTag || '_semua'}.xlsx`);
+  showToast(`Excel terdownload — ${rowsToExport.length} baris`);
+}
+document.getElementById('produkExportBtn').addEventListener('click', exportProdukToExcel);
+
+// ---- Angka di tiap chip (total per kategori, independen dari search/pagination) ----
+async function refreshProdukFilterCounts(){
+  const defs = [
+    ['all', q => q],
+    ['belum_diajukan', q => q.eq('status_akd', 'belum_diajukan')],
+    ['belum_firm', q => q.eq('status_akd', 'belum_firm')],
+    ['di_luar_cakupan', q => q.eq('status_akd', 'di_luar_cakupan')],
+    ['terhubung', q => q.eq('status_akd', 'terhubung')],
+    ['disetujui_tanpa_link', q => q.eq('status_inaproc', 'Disetujui').is('link_v6', null)],
+  ];
+  const results = await Promise.all(defs.map(([key, apply]) =>
+    apply(sb.from('produk').select('id', { count: 'exact', head: true }))
+      .then(r => [key, r.error ? null : (r.count ?? 0)])
+  ));
+  results.forEach(([key, count]) => {
+    const el = document.getElementById('fc-' + key);
+    if (el) el.textContent = count === null ? '' : ` · ${count}`;
+  });
+}
+
 // debounce search dari topbar? -> topbar sekarang cuma trigger command palette,
 // browsing halaman utama pakai default list (tanpa query) + refresh tiap buka.
 loadProduk('');
+refreshProdukFilterCounts();
+loadProdukDistinctValues();
 
 // ================================================================
 // COMMAND PALETTE (⌘K) — search pakai RPC yang sama
@@ -1472,6 +1896,8 @@ function resetForm(){
   document.getElementById('md_urutan').value = 1;
   document.getElementById('md_primary').checked = false;
   document.getElementById('md_jenis').value = 'brosur';
+  document.getElementById('gambarInstrumenSection').style.display = 'none';
+  document.getElementById('gambarInstrumenPreviewWrap').style.display = 'none';
 }
 
 function openAdd(){
@@ -1551,7 +1977,83 @@ async function cekMaster(kodeAsli, silent){
     masterExists = false;
     msgEl.innerHTML = `<div class="lookup-msg notfound"><i class="ti ti-alert-triangle"></i> Belum ada — isi field di bawah untuk buat master baru.</div>`;
   }
+  await checkGambarInstrumen();
 }
+
+// ================================================================
+// GAMBAR INSTRUMEN — cek bucket 'thumbnails' by kode_asli.png, upload kalau belum ada.
+// Bucket-nya udah public buat DIBACA (GET file langsung bypass RLS), tapi list & upload
+// tetep lewat Storage API yang kena RLS storage.objects -> perlu policy select/insert/update
+// khusus bucket ini (lihat catatan migrasi terpisah).
+// ================================================================
+const GAMBAR_BUCKET = 'thumbnails';
+function gambarInstrumenFilename(kodeAsli){ return `${kodeAsli}.png`; }
+
+async function checkGambarInstrumen(){
+  const tipe = document.getElementById('f_tipe').value;
+  const kodeAsli = document.getElementById('f_kode_asli').value.trim();
+  const section = document.getElementById('gambarInstrumenSection');
+  const badge = document.getElementById('gambarInstrumenBadge');
+  const hint = document.getElementById('gambarInstrumenHint');
+  const previewWrap = document.getElementById('gambarInstrumenPreviewWrap');
+  const uploadBtn = document.getElementById('gambarInstrumenUploadBtn');
+
+  if (tipe !== 'INSTRUMENT' || !kodeAsli) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  badge.className = 'status-pill neutral';
+  badge.textContent = 'Mengecek...';
+  hint.textContent = '';
+  previewWrap.style.display = 'none';
+
+  const filename = gambarInstrumenFilename(kodeAsli);
+  const { data, error } = await sb.storage.from(GAMBAR_BUCKET).list('', { search: kodeAsli });
+  if (error) {
+    badge.className = 'status-pill bad';
+    badge.textContent = 'Gagal cek bucket';
+    hint.textContent = error.message;
+    uploadBtn.innerHTML = '<i class="ti ti-upload"></i> Upload Gambar';
+    return;
+  }
+  const found = (data || []).some(f => f.name === filename);
+  if (found) {
+    badge.className = 'status-pill ok';
+    badge.innerHTML = '<i class="ti ti-check"></i> Ada di bucket';
+    hint.textContent = filename;
+    previewWrap.style.display = '';
+    document.getElementById('gambarInstrumenPreview').src = THUMB_BASE + filename + '?t=' + Date.now();
+    uploadBtn.innerHTML = '<i class="ti ti-refresh"></i> Ganti Gambar';
+  } else {
+    badge.className = 'status-pill warn';
+    badge.innerHTML = '<i class="ti ti-alert-triangle"></i> Belum ada gambar';
+    hint.textContent = `Bakal disimpan sebagai ${filename}`;
+    uploadBtn.innerHTML = '<i class="ti ti-upload"></i> Upload Gambar';
+  }
+}
+
+document.getElementById('gambarInstrumenUploadBtn').addEventListener('click', () => {
+  const kodeAsli = document.getElementById('f_kode_asli').value.trim();
+  if (!kodeAsli) { showToast('Isi & cek kode_asli dulu', true); return; }
+  document.getElementById('gambarInstrumenFileInput').click();
+});
+
+document.getElementById('gambarInstrumenFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (file.type !== 'image/png') { showToast('File harus format PNG', true); return; }
+  const kodeAsli = document.getElementById('f_kode_asli').value.trim();
+  if (!kodeAsli) { showToast('Isi & cek kode_asli dulu', true); return; }
+  const filename = gambarInstrumenFilename(kodeAsli);
+  const badge = document.getElementById('gambarInstrumenBadge');
+  badge.className = 'status-pill neutral';
+  badge.textContent = 'Mengupload...';
+  const { error } = await sb.storage.from(GAMBAR_BUCKET).upload(filename, file, { upsert: true, contentType: 'image/png' });
+  if (error) { showToast('Gagal upload: ' + error.message, true); await checkGambarInstrumen(); return; }
+  showToast('Gambar instrumen berhasil diupload');
+  await checkGambarInstrumen();
+});
+
+document.getElementById('f_tipe').addEventListener('change', checkGambarInstrumen);
 
 // ================================================================
 // KELOLA AKD — link/unlink produk_akd, cari di tabel akd sesuai tipe
@@ -1829,7 +2331,9 @@ async function saveProduk(){
   await loadHarga(currentProdukId);
   await loadMedia(currentProdukId);
   await loadAkdLinks(currentProdukId, tipe);
+  invalidateProdukStackCache();
   loadProduk();
+  refreshProdukFilterCounts();
   return true;
 }
 document.getElementById('saveBtn').addEventListener('click', saveProduk);
@@ -2320,7 +2824,9 @@ document.getElementById('bulkHargaProsesBtn').addEventListener('click', async ()
   document.getElementById('bulkHargaSummary').innerHTML = '';
   btn.style.display = 'none';
   bulkHargaRows = [];
+  invalidateProdukStackCache();
   loadProduk();
+  refreshProdukFilterCounts();
 });
 
 // ---- BULK KOMPOSISI SET ----
@@ -2477,7 +2983,9 @@ document.getElementById('bulkLinkProsesBtn').addEventListener('click', async () 
   document.getElementById('bulkLinkSummary').innerHTML = '';
   btn.style.display = 'none';
   bulkLinkRows = [];
+  invalidateProdukStackCache();
   loadProduk();
+  refreshProdukFilterCounts();
 });
 
 // ---- BULK INAPROC TRACKER ----
@@ -2655,18 +3163,295 @@ document.getElementById('bulkInaprocProsesBtn').addEventListener('click', async 
   document.getElementById('bulkInaprocSummary').innerHTML = '';
   btn.style.display = 'none';
   bulkInaprocRows = [];
+  invalidateProdukStackCache();
   loadProduk();
+  refreshProdukFilterCounts();
 });
 
 // ---- Delete produk ----
+// Konstraint FK asli (dicek langsung ke Postgres, bukan asumsi):
+//  - produk_harga, produk_media, produk_akd, produk_set_item.set_id -> CASCADE.
+//    Rincian/komposisi SET, harga, media, & relasi AKD OTOMATIS ikut kehapus
+//    barengan produk induknya di satu statement DELETE (atomic, DB yang jamin).
+//  - produk_set_item.produk_id (posisi produk ini sbg ITEM di SET LAIN) -> RESTRICT.
+//    Wajib dilepas manual dulu di sini, kalau nggak delete produk gagal total.
+//  - inaproc_pengajuan.produk_id, permintaan_item.matched_produk_id,
+//    konversi_item.produk_id -> NO ACTION. Ini riwayat lintas modul (pengajuan
+//    INAPROC, Permintaan RS, konversi) yang SENGAJA kita hormati, bukan di-bypass —
+//    bukan wewenang halaman Produk buat hapus diam-diam. Kalau masih ada baris di
+//    situ, delete diBLOK dengan pesan jelas, bukan dibiarin gagal error Postgres mentah.
 deleteBtn.addEventListener('click', async () => {
   if (!currentProdukId) return;
-  if (!confirm('Hapus produk ini? Data harga, media, dan relasi AKD terkait juga sebaiknya dicek manual.')) return;
-  const { error } = await sb.from('produk').delete().eq('id', currentProdukId);
+  const id = currentProdukId;
+
+  const [hargaR, mediaR, akdR, komposisiSendiriR, dipakaiDiSetLainR, inaprocR, permintaanR, konversiR] = await Promise.all([
+    sb.from('produk_harga').select('id', { count: 'exact', head: true }).eq('produk_id', id),
+    sb.from('produk_media').select('id', { count: 'exact', head: true }).eq('produk_id', id),
+    sb.from('produk_akd').select('id', { count: 'exact', head: true }).eq('produk_id', id),
+    sb.from('produk_set_item').select('id', { count: 'exact', head: true }).eq('set_id', id),
+    sb.from('produk_set_item').select('id', { count: 'exact', head: true }).eq('produk_id', id),
+    sb.from('inaproc_pengajuan').select('id', { count: 'exact', head: true }).eq('produk_id', id),
+    sb.from('permintaan_item').select('id', { count: 'exact', head: true }).eq('matched_produk_id', id),
+    sb.from('konversi_item').select('id', { count: 'exact', head: true }).eq('produk_id', id),
+  ]);
+  const hargaCount = hargaR.count || 0, mediaCount = mediaR.count || 0, akdCount = akdR.count || 0,
+        komposisiSendiri = komposisiSendiriR.count || 0, dipakaiDiSetLain = dipakaiDiSetLainR.count || 0,
+        inaprocCount = inaprocR.count || 0, permintaanCount = permintaanR.count || 0, konversiCount = konversiR.count || 0;
+
+  const blokir = [];
+  if (inaprocCount) blokir.push(`${inaprocCount} riwayat pengajuan INAPROC`);
+  if (permintaanCount) blokir.push(`${permintaanCount} riwayat Permintaan RS`);
+  if (konversiCount) blokir.push(`${konversiCount} riwayat konversi`);
+  if (blokir.length) {
+    alert(`Produk ini belum bisa dihapus — masih ada ${blokir.join(', ')} yang menunjuk ke sini. Data riwayat lintas modul ini sengaja tidak dihapus otomatis dari halaman Produk; bersihkan dulu dari sumbernya kalau memang perlu.`);
+    return;
+  }
+
+  const parts = [];
+  if (hargaCount) parts.push(`${hargaCount} baris harga`);
+  if (mediaCount) parts.push(`${mediaCount} media`);
+  if (akdCount) parts.push(`${akdCount} relasi AKD`);
+  if (komposisiSendiri) parts.push(`${komposisiSendiri} item komposisi set ini`);
+  let pesan = 'Hapus produk ini?';
+  if (parts.length) pesan += ' Ikut terhapus otomatis: ' + parts.join(', ') + '.';
+  if (dipakaiDiSetLain) pesan += ` ⚠️ Produk ini masih jadi item komposisi di ${dipakaiDiSetLain} SET lain — relasinya di sana akan dilepas dulu (komposisi set-set itu berkurang satu item), baru produknya dihapus.`;
+  if (!confirm(pesan)) return;
+
+  if (dipakaiDiSetLain) {
+    const { error: detachErr } = await sb.from('produk_set_item').delete().eq('produk_id', id);
+    if (detachErr) { showToast('Gagal melepas relasi dari set lain: ' + detachErr.message, true); return; }
+  }
+
+  // Sisanya (harga, media, relasi AKD, komposisi SET ini sendiri) ikut kehapus
+  // otomatis lewat CASCADE dalam satu statement ini.
+  const { error } = await sb.from('produk').delete().eq('id', id);
   if (error) { showToast('Gagal hapus produk: ' + error.message, true); return; }
-  showToast('Produk dihapus');
+  showToast('Produk dan seluruh data terkait berhasil dihapus');
   closeModal();
+  invalidateProdukStackCache();
   loadProduk();
+  refreshProdukFilterCounts();
+});
+
+// ================================================================
+// AKD MANAGEMENT
+// ================================================================
+const AKD_COLUMNS = 'id, tipe_akd, no_akd, nama_akd, nama_database, kategori_set, penanda_kode, golongan, masa_berlaku, tgl_maju_mas_munir, status_terupdate, link_dokumen, update_progres, created_at, updated_at, kode_set';
+const AKD_PAGE_SIZE = 30;
+
+let akdPage = 1;
+let akdSearchQuery = '';
+let akdDistinct = { golongan: [], status_terupdate: [] }; // dipakai buat datalist "Golongan" & "Status Terupdate" di modal Tambah/Edit AKD
+
+// Nilai golongan/status_terupdate dimuat dari data aktual (bukan hardcode)
+// biar datalist di modal Tambah/Edit AKD selalu sinkron sama isi database beneran.
+async function loadAkdDistinctValues(){
+  const [golR, statR] = await Promise.all([
+    sb.from('akd').select('golongan').not('golongan', 'is', null).limit(3000),
+    sb.from('akd').select('status_terupdate').not('status_terupdate', 'is', null).limit(3000),
+  ]);
+  akdDistinct.golongan = [...new Set((golR.data || []).map(r => r.golongan).filter(Boolean))].sort();
+  akdDistinct.status_terupdate = [...new Set((statR.data || []).map(r => r.status_terupdate).filter(Boolean))].sort();
+  document.getElementById('akd_golongan_list').innerHTML = akdDistinct.golongan.map(g => `<option value="${escapeHtml(g)}">`).join('');
+  document.getElementById('akd_status_list').innerHTML = akdDistinct.status_terupdate.map(s => `<option value="${escapeHtml(s)}">`).join('');
+}
+
+function akdMasaBerlakuPill(dateStr){
+  if (!dateStr) return `<span class="status-pill neutral">—</span>`;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr + 'T00:00:00');
+  const diffDays = Math.round((d - today) / 86400000);
+  const label = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  if (diffDays < 0) return `<span class="status-pill bad" title="Sudah expired ${Math.abs(diffDays)} hari lalu">${label}</span>`;
+  if (diffDays <= 30) return `<span class="status-pill warn" title="Akan expired ${diffDays} hari lagi">${label}</span>`;
+  return `<span class="status-pill ok">${label}</span>`;
+}
+
+async function renderAkdTable(rows){
+  const tbody = document.getElementById('akdTableBody');
+  if (!rows.length) { tbody.innerHTML = `<tr class="state-row"><td colspan="9">Tidak ada AKD ditemukan.</td></tr>`; return; }
+  // Jumlah produk terhubung buat baris yang lagi tampil -> query kecil per halaman.
+  const idsOnPage = rows.map(r => r.id);
+  const counts = new Map();
+  if (idsOnPage.length) {
+    const { data: linkRows } = await sb.from('produk_akd').select('akd_id').in('akd_id', idsOnPage);
+    (linkRows || []).forEach(r => counts.set(r.akd_id, (counts.get(r.akd_id) || 0) + 1));
+  }
+  tbody.innerHTML = '';
+  rows.forEach(r => {
+    const cnt = counts.get(r.id) || 0;
+    const tr = document.createElement('tr');
+    tr.className = 'clickable';
+    tr.innerHTML = `
+      <td class="kode-cell">${escapeHtml(r.no_akd)}</td>
+      <td>${escapeHtml(r.nama_akd || '—')}</td>
+      <td><span class="tipe-chip">${escapeHtml(r.tipe_akd || '—')}</span></td>
+      <td>${escapeHtml(r.golongan || '—')}</td>
+      <td>${escapeHtml(r.kategori_set || '—')}</td>
+      <td>${akdMasaBerlakuPill(r.masa_berlaku)}</td>
+      <td>${escapeHtml(r.status_terupdate || '—')}</td>
+      <td style="text-align:center;">${r.link_dokumen ? '<i class="ti ti-link link-yes" title="Sudah ada link dokumen"></i>' : '<i class="ti ti-link-off link-no" title="Belum ada link dokumen"></i>'}</td>
+      <td>${cnt > 0 ? `<span class="status-pill ok">${cnt} produk</span>` : `<span class="status-pill neutral">Belum ada</span>`}</td>
+    `;
+    tr.addEventListener('click', () => openEditAkd(r.id));
+    tbody.appendChild(tr);
+  });
+}
+
+// Browse sederhana: tanpa search -> query server (paged, count exact).
+// Dengan search -> pakai ILIKE di server juga (bukan fetch-semua-lalu-filter-client),
+// biar halaman AKD tetap ringan dan gak nyimpen cache 5000 baris di memori.
+async function loadAkd(page){
+  akdPage = page || akdPage || 1;
+  const tbody = document.getElementById('akdTableBody');
+  tbody.innerHTML = `<tr class="state-row"><td colspan="9">Memuat data...</td></tr>`;
+  document.getElementById('akdCount').textContent = 'Memuat...';
+
+  const from = (akdPage - 1) * AKD_PAGE_SIZE, to = from + AKD_PAGE_SIZE - 1;
+  let query = sb.from('akd').select(AKD_COLUMNS, { count: 'exact' });
+  const q = akdSearchQuery.trim();
+  if (q) query = query.or(`no_akd.ilike.%${q}%,nama_akd.ilike.%${q}%,kode_set.ilike.%${q}%`);
+  const { data, error, count } = await query.order('updated_at', { ascending: false }).range(from, to);
+  if (error) { tbody.innerHTML = `<tr class="state-row"><td colspan="9">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+  const rows = data || [], total = count || 0;
+
+  document.getElementById('akdCount').textContent = total + ' AKD' + (q ? ` untuk "${q}"` : '');
+  renderPgBar(document.getElementById('akdPagination'), { page: akdPage, pageSize: AKD_PAGE_SIZE, total, onPageChange: (p) => loadAkd(p) });
+  await renderAkdTable(rows);
+}
+
+// ---- Search box ----
+let akdSearchDebounce = null;
+document.getElementById('akdSearchBoxInput').addEventListener('input', (e) => {
+  clearTimeout(akdSearchDebounce);
+  akdSearchDebounce = setTimeout(() => { akdSearchQuery = e.target.value; loadAkd(1); }, 300);
+});
+
+// ---- Modal Tambah/Edit AKD ----
+const akdModalOverlay = document.getElementById('akdModalOverlay');
+let currentAkdId = null;
+const AKD_FORM_FIELDS = ['a_tipe_akd','a_no_akd','a_nama_akd','a_nama_database','a_kode_set','a_kategori_set','a_penanda_kode','a_golongan','a_masa_berlaku','a_tgl_maju_mas_munir','a_status_terupdate','a_link_dokumen','a_update_progres'];
+
+document.getElementById('addAkdBtn').addEventListener('click', openAddAkd);
+document.getElementById('akdModalCloseBtn').addEventListener('click', closeAkdModal);
+document.getElementById('akdCancelBtn').addEventListener('click', closeAkdModal);
+akdModalOverlay.addEventListener('click', (e) => { if (e.target === akdModalOverlay) closeAkdModal(); });
+
+function closeAkdModal(){ akdModalOverlay.classList.remove('open'); }
+function clearAkdForm(){ AKD_FORM_FIELDS.forEach(id => document.getElementById(id).value = ''); }
+
+function openAddAkd(){
+  currentAkdId = null;
+  clearAkdForm();
+  document.getElementById('akdModalTitle').textContent = 'Tambah AKD';
+  document.getElementById('akdModalSub').textContent = 'Isi data AKD baru';
+  document.getElementById('deleteAkdBtn').style.display = 'none';
+  document.getElementById('akdLinkedProdukLabel').style.display = 'none';
+  document.getElementById('akdLinkedProdukList').style.display = 'none';
+  akdModalOverlay.classList.add('open');
+}
+
+async function openEditAkd(id){
+  currentAkdId = id;
+  clearAkdForm();
+  document.getElementById('akdModalTitle').textContent = 'Memuat...';
+  document.getElementById('akdModalSub').textContent = '';
+  document.getElementById('deleteAkdBtn').style.display = 'none';
+  document.getElementById('akdLinkedProdukLabel').style.display = 'none';
+  document.getElementById('akdLinkedProdukList').style.display = 'none';
+  akdModalOverlay.classList.add('open');
+
+  const { data: r, error } = await sb.from('akd').select(AKD_COLUMNS).eq('id', id).single();
+  if (error) { showToast('Gagal memuat AKD: ' + error.message, true); closeAkdModal(); return; }
+
+  document.getElementById('akdModalTitle').textContent = 'Edit AKD';
+  document.getElementById('akdModalSub').textContent = r.no_akd || '';
+  document.getElementById('a_tipe_akd').value = r.tipe_akd || '';
+  document.getElementById('a_no_akd').value = r.no_akd || '';
+  document.getElementById('a_nama_akd').value = r.nama_akd || '';
+  document.getElementById('a_nama_database').value = r.nama_database || '';
+  document.getElementById('a_kode_set').value = r.kode_set || '';
+  document.getElementById('a_kategori_set').value = r.kategori_set || '';
+  document.getElementById('a_penanda_kode').value = r.penanda_kode || '';
+  document.getElementById('a_golongan').value = r.golongan || '';
+  document.getElementById('a_masa_berlaku').value = r.masa_berlaku || '';
+  document.getElementById('a_tgl_maju_mas_munir').value = r.tgl_maju_mas_munir || '';
+  document.getElementById('a_status_terupdate').value = r.status_terupdate || '';
+  document.getElementById('a_link_dokumen').value = r.link_dokumen || '';
+  document.getElementById('a_update_progres').value = r.update_progres || '';
+  document.getElementById('deleteAkdBtn').style.display = '';
+
+  // Reverse-lookup: produk mana aja yang terhubung ke AKD ini
+  const { data: links } = await sb.from('produk_akd').select('produk:produk_id(id, kode_produk, nama_produk)').eq('akd_id', id);
+  const produkList = (links || []).map(l => l.produk).filter(Boolean);
+  document.getElementById('akdLinkedProdukLabel').style.display = '';
+  document.getElementById('akdLinkedProdukLabel').textContent = `Produk Terhubung (${produkList.length})`;
+  const listEl = document.getElementById('akdLinkedProdukList');
+  listEl.style.display = '';
+  if (!produkList.length) {
+    listEl.innerHTML = `<div class="akd-empty">Belum ada produk yang terhubung ke AKD ini.</div>`;
+  } else {
+    listEl.innerHTML = `<div class="akd-current">` + produkList.map(p =>
+      `<span class="akd-chip"><span class="ac-no">${escapeHtml(p.kode_produk)}</span><span class="ac-nama">${escapeHtml(p.nama_produk || '')}</span></span>`
+    ).join('') + `</div>`;
+  }
+}
+
+document.getElementById('akdSaveBtn').addEventListener('click', async () => {
+  const noAkd = document.getElementById('a_no_akd').value.trim();
+  const tipeAkd = document.getElementById('a_tipe_akd').value;
+  if (!noAkd) { showToast('No. AKD wajib diisi', true); return; }
+  if (!tipeAkd) { showToast('Tipe AKD wajib dipilih', true); return; }
+  const payload = {
+    tipe_akd: tipeAkd,
+    no_akd: noAkd,
+    nama_akd: document.getElementById('a_nama_akd').value.trim() || null,
+    nama_database: document.getElementById('a_nama_database').value.trim() || null,
+    kode_set: document.getElementById('a_kode_set').value.trim() || null,
+    kategori_set: document.getElementById('a_kategori_set').value.trim() || null,
+    penanda_kode: document.getElementById('a_penanda_kode').value.trim() || null,
+    golongan: document.getElementById('a_golongan').value.trim() || null,
+    masa_berlaku: document.getElementById('a_masa_berlaku').value || null,
+    tgl_maju_mas_munir: document.getElementById('a_tgl_maju_mas_munir').value || null,
+    status_terupdate: document.getElementById('a_status_terupdate').value.trim() || null,
+    link_dokumen: document.getElementById('a_link_dokumen').value.trim() || null,
+    update_progres: document.getElementById('a_update_progres').value.trim() || null,
+  };
+  let error;
+  if (currentAkdId) {
+    ({ error } = await sb.from('akd').update(payload).eq('id', currentAkdId));
+  } else {
+    ({ error } = await sb.from('akd').insert(payload));
+  }
+  if (error) {
+    if (error.code === '23505') { showToast('No. AKD ini sudah terdaftar', true); return; }
+    showToast('Gagal menyimpan AKD: ' + error.message, true); return;
+  }
+  showToast('AKD tersimpan');
+  closeAkdModal();
+  loadAkdDistinctValues();
+  loadAkd(akdPage);
+});
+
+// ---- Hapus AKD ----
+// produk_akd.akd_id -> akd itu FK yang confdeltype-nya gak ada di daftar constraint
+// yang dicek kemarin (yang dicek cuma FK yang NUJU ke tabel produk). Daripada asumsi,
+// halaman ini proaktif ngeblok manual kalau AKD masih punya relasi ke produk_akd,
+// baru minta dilepas dulu dari sana -- aman apapun aturan delete-nya di database.
+document.getElementById('deleteAkdBtn').addEventListener('click', async () => {
+  if (!currentAkdId) return;
+  const id = currentAkdId;
+  const { count } = await sb.from('produk_akd').select('id', { count: 'exact', head: true }).eq('akd_id', id);
+  if (count) {
+    alert(`AKD ini masih terhubung ke ${count} produk. Lepas dulu relasinya lewat halaman Produk (tombol "Kelola AKD") sebelum menghapus AKD ini.`);
+    return;
+  }
+  if (!confirm('Hapus AKD ini? Tindakan ini tidak bisa dibatalkan.')) return;
+  const { error } = await sb.from('akd').delete().eq('id', id);
+  if (error) { showToast('Gagal hapus AKD: ' + error.message, true); return; }
+  showToast('AKD dihapus');
+  closeAkdModal();
+  loadAkd(akdPage);
 });
 </script>
 </body>
