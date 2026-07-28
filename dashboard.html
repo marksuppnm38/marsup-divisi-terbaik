@@ -8,7 +8,24 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"/>
-<link rel="stylesheet" href="dashboard.css"/>
+<link rel="stylesheet" href="pnm-universal.css"/>
+<script>
+(function(){
+  var stored = localStorage.getItem('theme') || localStorage.getItem('pnum-theme');
+  var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  if (theme === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.documentElement.style.colorScheme = 'dark';
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+    document.documentElement.style.colorScheme = 'light';
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    if (theme === 'dark') document.body.setAttribute('data-theme', 'dark');
+    else document.body.setAttribute('data-theme', 'light');
+  });
+})();
+</script>
 </head>
 <body>
 <!-- AUTH GATE: sesi persistent, konsisten dengan Conversion Workspace -->
