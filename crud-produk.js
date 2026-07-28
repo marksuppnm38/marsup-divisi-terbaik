@@ -368,8 +368,7 @@ const PRODUK_LIST_COLUMNS = 'id, kode_produk, nama_produk, tipe, golongan, is_ac
 let produkActiveFilters = []; // [{ dim, value, label }]
 let produkDistinct = { tipe: [], golongan: [], status_inaproc: [] };
 let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
-let produkAllRowsCache = { key: null, rows: null }; // dipakai kalau ada filter tambahan aktif (tanpa search) -> full-fetch respek chip status, difilter+dipaging di client
-let produkCurrentFilteredFull = null; // hasil filter lengkap (semua halaman) -> sumber Download Excel
+let produkCurrentFilteredFull = null; // hasil filter lengkap dari jalur search (client-side match) -> sumber Download Excel pas search aktif
 
 const PRODUK_FILTER_DIMS = [
   { key: 'tipe', label: 'Tipe', icon: 'ti-category-2', dynamic: 'tipe', multi: true },
@@ -390,14 +389,18 @@ const PRODUK_FILTER_DIMS = [
 ];
 
 async function loadProdukDistinctValues(){
-  const [tipeR, golR, statR] = await Promise.all([
-    sb.from('produk').select('tipe').not('tipe', 'is', null).limit(3000),
-    sb.from('produk').select('golongan').not('golongan', 'is', null).limit(3000),
-    sb.from('produk').select('status_inaproc').not('status_inaproc', 'is', null).limit(3000),
-  ]);
-  produkDistinct.tipe = [...new Set((tipeR.data || []).map(r => r.tipe).filter(Boolean))].sort();
-  produkDistinct.golongan = [...new Set((golR.data || []).map(r => r.golongan).filter(Boolean))].sort();
-  produkDistinct.status_inaproc = [...new Set((statR.data || []).map(r => r.status_inaproc).filter(Boolean))].sort();
+  // Dulu: 3x sb.from('produk').select(...).limit(3000) lalu di-Set() di JS --
+  // rawan motong diam-diam kalau salah satu tipe/golongan jumlahnya jauh lebih
+  // banyak dari yang lain (ini penyebab "Tipe" cuma nongol INSTRUMENT, SET & UNIT
+  // ilang). Sekarang DISTINCT dihitung penuh di Postgres, gak ada limit baris.
+  const { data, error } = await sb.rpc('get_produk_distinct_filters');
+  if (error) {
+    showToast('Gagal memuat opsi filter: ' + error.message, true);
+    return;
+  }
+  produkDistinct.tipe = data?.tipe || [];
+  produkDistinct.golongan = data?.golongan || [];
+  produkDistinct.status_inaproc = data?.status_inaproc || [];
 }
 
 async function ensureProdukHargaSet(){
@@ -415,7 +418,6 @@ async function ensureProdukHargaSet(){
   produkHargaIdSet = new Set(data || []);
 }
 function invalidateProdukStackCache(){
-  produkAllRowsCache = { key: null, rows: null };
   produkHargaIdSet = null;
 }
 
@@ -432,6 +434,23 @@ function produkRowMatchesFilter(row, filt){
     case 'link_v6': return filt.value === 'ada' ? !!row.link_v6 : !row.link_v6;
     default: return true;
   }
+}
+
+// Konversi produkActiveFilters (dipilih lewat "+ Tambah Filter") jadi parameter
+// bernama buat RPC get_produk_list -- filternya dihitung penuh di Postgres
+// (join EXISTS ke produk_harga buat dimensi "harga", bukan lagi cross-check
+// manual ke produkHargaIdSet di client).
+function buildProdukDimParams(){
+  const params = { p_tipe: null, p_golongan: null, p_is_active: null, p_status_inaproc: null, p_harga: null, p_link_v6: null };
+  produkActiveFilters.forEach(f => {
+    if (f.dim === 'tipe') params.p_tipe = f.values || (f.value ? [f.value] : null);
+    else if (f.dim === 'golongan') params.p_golongan = f.value;
+    else if (f.dim === 'is_active') params.p_is_active = f.value === 'aktif';
+    else if (f.dim === 'status_inaproc') params.p_status_inaproc = f.value;
+    else if (f.dim === 'harga') params.p_harga = f.value;
+    else if (f.dim === 'link_v6') params.p_link_v6 = f.value;
+  });
+  return params;
 }
 
 async function loadProduk(q, page){
@@ -477,23 +496,21 @@ async function loadProduk(q, page){
     total = filtered.length;
     rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
   } else if (produkActiveFilters.length > 0) {
-    // Ada filter tambahan aktif ("+ Tambah Filter") tapi gak lagi search -> gak bisa
-    // dipaging langsung di server (kombinasi filternya campuran server+client), jadi
-    // full-fetch SEKALI (respek chip status di server dulu biar lebih ringan), lalu
-    // filter tambahan + paging dilakukan di client. Di-cache per chip status supaya
-    // gak fetch ulang tiap ganti halaman/tambah-hapus filter dalam chip yang sama.
-    if (produkAllRowsCache.key !== produkActiveFilter || !produkAllRowsCache.rows) {
-      let query = sb.from('produk').select(PRODUK_LIST_COLUMNS);
-      query = applyProdukFilterToQuery(query, produkActiveFilter);
-      const { data, error } = await query.order('updated_at', { ascending: false }).limit(20000);
-      if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
-      produkAllRowsCache = { key: produkActiveFilter, rows: data || [] };
-    }
-    let filtered = produkAllRowsCache.rows;
-    produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
-    produkCurrentFilteredFull = filtered;
-    total = filtered.length;
-    rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
+    // Ada filter tambahan aktif ("+ Tambah Filter") tapi gak lagi search.
+    // Dulu: full-fetch .limit(20000) sekali lalu filter+slice manual di JS --
+    // sama persis pola yang pernah bikin produk_harga undercount pas datanya
+    // tembus batas limit. Sekarang chip status + semua dimensi filter dihitung
+    // & dipaging penuh di Postgres lewat satu RPC.
+    const { data, error } = await sb.rpc('get_produk_list', {
+      p_status_filter: produkActiveFilter,
+      ...buildProdukDimParams(),
+      p_page: produkPage,
+      p_page_size: PRODUK_PAGE_SIZE,
+    });
+    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+    rows = data?.rows || [];
+    total = data?.total || 0;
+    produkCurrentFilteredFull = null; // gak lagi nyimpen array penuh di client -> export narik ulang lewat RPC (lihat exportProdukToExcel)
   } else {
     produkCurrentFilteredFull = null;
     const from = (produkPage - 1) * PRODUK_PAGE_SIZE;
@@ -725,14 +742,23 @@ async function exportProdukToExcel(){
   if (needsHarga) await ensureProdukHargaSet();
 
   let rowsToExport;
-  if (lastQuery.trim() || produkActiveFilters.length > 0) {
+  if (lastQuery.trim()) {
+    // Search aktif -> hasil match sudah lengkap di produkSearchAllRows (RPC search
+    // gak paging), filter tambahan sudah diterapkan di client -> produkCurrentFilteredFull.
     rowsToExport = produkCurrentFilteredFull || [];
   } else {
-    let query = sb.from('produk').select(PRODUK_LIST_COLUMNS);
-    query = applyProdukFilterToQuery(query, produkActiveFilter);
-    const { data, error } = await query.order('updated_at', { ascending: false }).limit(20000);
+    // Gak ada search -> tarik SEMUA baris yang cocok chip status + filter tambahan
+    // langsung dari get_produk_list dengan p_page_size null (dihitung & difilter
+    // penuh di Postgres). Dulu ini .limit(20000) mentah dari .from('produk'),
+    // sekarang gak ada lagi angka ajaib yang bisa diam-diam motong data.
+    const { data, error } = await sb.rpc('get_produk_list', {
+      p_status_filter: produkActiveFilter,
+      ...buildProdukDimParams(),
+      p_page: 1,
+      p_page_size: null,
+    });
     if (error) { showToast('Gagal export: ' + error.message, true); return; }
-    rowsToExport = data || [];
+    rowsToExport = data?.rows || [];
   }
   if (!rowsToExport.length) { showToast('Tidak ada data untuk diexport', true); return; }
   await ensureProdukHargaSet();
