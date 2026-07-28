@@ -383,6 +383,10 @@ const PRODUK_FILTER_DIMS = [
       { value: 'ada', label: 'Sudah ada harga' },
       { value: 'kosong', label: 'Belum ada harga' },
   ]},
+  { key: 'link_v6', label: 'Link V6', options: [
+      { value: 'ada', label: 'Sudah ada link' },
+      { value: 'kosong', label: 'Belum ada link' },
+  ]},
 ];
 
 async function loadProdukDistinctValues(){
@@ -416,6 +420,7 @@ function produkRowMatchesFilter(row, filt){
       const has = produkHargaIdSet.has(row.id);
       return filt.value === 'ada' ? has : !has;
     }
+    case 'link_v6': return filt.value === 'ada' ? !!row.link_v6 : !row.link_v6;
     default: return true;
   }
 }
