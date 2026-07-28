@@ -576,7 +576,7 @@ function handleLoadError(err){
 async function loadEverything(){
   clearError();
   try {
-    await Promise.all([loadStats(), loadTable(), loadKonversiToday(), loadTrend(), loadLeaderboard(), loadKategoriDonut(), loadValueLineChart(), loadForecastStok(), popInit()]);
+    await Promise.all([loadStats(), loadTable(), loadKonversiToday(), loadTrend(), loadLeaderboard(), loadKategoriDonut(), loadValueLineChart(), loadWordtree(), loadForecastStok(), popInit()]);
   } catch (err) {
     handleLoadError(err);
   }
@@ -811,6 +811,109 @@ async function loadLeaderboard(){
     `).join('')}
   </div>`;
 }
+// ══════════════════════════════════════════
+// WORD TREE: KEBUTUHAN CUSTOMER -> SKU
+// Sumbernya permintaan_item_produk (junction table dari fitur multi-SKU
+// di Kebutuhan RS) — otomatis nambah sendiri tiap staff nyentang "Bisa
+// Dipenuhi", gak ada langkah manual terpisah. Normalisasi istilahnya
+// dibikin niru pola yang dipakai tab Dictionary (lihat catatan di
+// wordtree_rpc.sql kalau ternyata beda).
+// ══════════════════════════════════════════
+const WORDTREE_COLORS = ['#2563eb','#16a34a','#7c3aed','#d97706','#dc2626','#0d9488','#be185d','#4338ca'];
+const WORDTREE_LAST_KEY = 'pnm_wordtree_last_istilah';
+let wordtreeRoots = [];
+
+async function loadWordtree(){
+  const select = document.getElementById('wordtree-root-select');
+  const box = document.getElementById('wordtree-box');
+  try {
+    wordtreeRoots = await rpc('get_wordtree_roots', { p_limit: 40 }) || [];
+  } catch {
+    wordtreeRoots = [];
+  }
+  if (!wordtreeRoots.length){
+    select.innerHTML = '<option value="">Belum ada data</option>';
+    box.innerHTML = `<div class="insight-empty">Belum ada kebutuhan yang tersambung ke SKU. Peta ini kepakai otomatis begitu Kebutuhan RS mulai ditandai "Bisa Dipenuhi".</div>`;
+    return;
+  }
+  const saved = localStorage.getItem(WORDTREE_LAST_KEY);
+  const initial = wordtreeRoots.some(r => r.istilah_customer === saved) ? saved : wordtreeRoots[0].istilah_customer;
+  select.innerHTML = wordtreeRoots.map(r => {
+    const val = escapeHtmlAttr(r.istilah_customer);
+    const sel = r.istilah_customer === initial ? ' selected' : '';
+    return `<option value="${val}"${sel}>${escapeHtmlAttr(r.istilah_customer)} (${r.frekuensi}×, ${r.jumlah_sku_unik} SKU)</option>`;
+  }).join('');
+  await loadWordtreeBranches(initial);
+}
+
+async function onWordtreeRootChange(istilah){
+  localStorage.setItem(WORDTREE_LAST_KEY, istilah);
+  await loadWordtreeBranches(istilah);
+}
+
+async function loadWordtreeBranches(istilah){
+  const box = document.getElementById('wordtree-box');
+  if (!istilah) { box.innerHTML = `<div class="insight-empty">Pilih istilah dulu.</div>`; return; }
+  box.innerHTML = `<div class="skeleton" style="height:260px"></div>`;
+  let branches;
+  try {
+    branches = await rpc('get_wordtree_branches', { p_istilah: istilah }) || [];
+  } catch {
+    box.innerHTML = `<div class="insight-empty">Gagal memuat word tree.</div>`;
+    return;
+  }
+  if (!branches.length){ box.innerHTML = `<div class="insight-empty">Belum ada SKU tersambung buat istilah ini.</div>`; return; }
+  box.innerHTML = renderWordtreeSvg(istilah, branches);
+}
+
+// Node kiri (root) = istilah customer, cabang di kanan = tiap SKU yang
+// pernah dipakai buat penuhi istilah itu. Ketebalan & warna kabel ngikutin
+// frekuensi, jadi kombinasi SKU paling sering kepakai langsung menonjol —
+// bundle (mis. "Set Pacho" + "Cataract Minor Set" buat "All Set Mata")
+// kelihatan sebagai beberapa cabang tebal dari satu root yang sama.
+function renderWordtreeSvg(istilah, branches){
+  const W = 720, rowH = 34, PAD_TOP = 20;
+  const H = PAD_TOP * 2 + branches.length * rowH;
+  const rootX = 170, rootY = H / 2;
+  const branchX = W - 210;
+  const maxFrek = Math.max(...branches.map(b => b.frekuensi), 1);
+
+  const wires = branches.map((b, i) => {
+    const by = PAD_TOP + i * rowH + rowH / 2;
+    const strokeW = (1.5 + (b.frekuensi / maxFrek) * 5).toFixed(1);
+    const color = WORDTREE_COLORS[i % WORDTREE_COLORS.length];
+    const dx = (branchX - rootX) * 0.5;
+    return `<path d="M ${rootX} ${rootY} C ${rootX + dx} ${rootY}, ${branchX - dx} ${by}, ${branchX} ${by}"
+      stroke="${color}" stroke-width="${strokeW}" fill="none" opacity="0.55"/>`;
+  }).join('');
+
+  const branchNodes = branches.map((b, i) => {
+    const by = PAD_TOP + i * rowH + rowH / 2;
+    const color = WORDTREE_COLORS[i % WORDTREE_COLORS.length];
+    return `
+      <circle cx="${branchX}" cy="${by}" r="5" fill="${color}"/>
+      <text x="${branchX + 12}" y="${by + 4}" font-size="12" fill="var(--text)">${escapeXml(b.kode_produk)}${b.nama_produk ? ' — ' + escapeXml(b.nama_produk) : ''}</text>
+      <text x="${W - 6}" y="${by + 4}" font-size="11" text-anchor="end" fill="var(--text-muted)">${b.frekuensi}×${b.persentase != null ? ' · ' + b.persentase + '%' : ''}</text>
+    `;
+  }).join('');
+
+  return `<div class="wordtree-wrap">
+    <svg width="100%" viewBox="0 0 ${W} ${H}">
+      ${wires}
+      <circle cx="${rootX}" cy="${rootY}" r="7" fill="var(--accent)"/>
+      <text x="${rootX - 14}" y="${rootY + 4}" font-size="13" font-weight="700" text-anchor="end" fill="var(--text)">${escapeXml(istilah)}</text>
+      ${branchNodes}
+    </svg>
+  </div>`;
+}
+
+function escapeXml(s){
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escapeHtmlAttr(s){
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 // ══════════════════════════════════════════
 // DONUT CHART KATEGORI + LINE CHART VALUE
 // ══════════════════════════════════════════

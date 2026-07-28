@@ -306,3 +306,6 @@ th.checkbox-col,td.checkbox-col{width:30px;text-align:center;padding-left:12px;p
   .search-mini{width:130px}
   .table-header{flex-direction:column;align-items:flex-start}
 }
+.wordtree-wrap{overflow-x:auto}
+.wordtree-wrap svg{display:block;min-width:520px}
+.wordtree-wrap text{font-family:inherit}
