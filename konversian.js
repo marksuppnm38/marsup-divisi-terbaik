@@ -1168,6 +1168,7 @@ async function loadChecklistForSesi(sesiId) {
     if (!data) { kbRefreshStatus.textContent = ''; return; } // sesi ini emang gak punya Permintaan RS
 
     checklistItems = Array.isArray(data.items) ? data.items : [];
+    checklistItems.forEach(it => { it.matched_items = normalizeMatchedItems(it); });
     checklistNamaRs = data.nama_rs || '(tanpa nama RS)';
     checklistSales = data.pic_sales || '(tanpa nama sales)';
     checklistPagu = (data.pagu != null) ? data.pagu : checklistPagu;
@@ -2094,19 +2095,27 @@ btnExport.addEventListener('click', async () => {
       let kbRow = 8;
       let kbGrandTotal = 0;
       checklistItems.forEach((item, idx) => {
-        const matched = item.matched_kode_produk ? clipboard.find(c => c.kode_produk === item.matched_kode_produk) : null;
-        const hargaPakai = matched ? (modeSwasta ? (matched.harga_swasta || 0) : (matched.harga_ekat || 0)) : 0;
-        const totalHarga = matched ? hargaPakai * (item.qty_diminta || 1) : 0;
-        if (matched) kbGrandTotal += totalHarga;
+        // Satu kebutuhan bisa kesambung ke lebih dari 1 SKU (bundle) — gabungkan
+        // kode/nama dengan "; " dan jumlahkan totalnya, bukan cuma ambil satu.
+        const matchedList = (item.matched_items || [])
+          .map(l => clipboard.find(c => c.kode_produk === l.kode_produk))
+          .filter(Boolean);
+        const hargaTotalRow = matchedList.reduce((sum, m) => {
+          const link = (item.matched_items || []).find(l => l.kode_produk === m.kode_produk);
+          const hargaSatuan = modeSwasta ? (m.harga_swasta || 0) : (m.harga_ekat || 0);
+          const qty = (link && link.qty_alokasi != null) ? link.qty_alokasi : (item.qty_diminta || 1);
+          return sum + hargaSatuan * qty;
+        }, 0);
+        if (matchedList.length) kbGrandTotal += hargaTotalRow;
 
         const row = wsKb.getRow(kbRow);
         row.getCell(1).value = idx + 1;
         row.getCell(2).value = item.raw_text;
         row.getCell(3).value = item.qty_diminta || '';
-        row.getCell(4).value = matched ? matched.kode_produk : '';
-        row.getCell(5).value = matched ? matched.nama_produk : '';
-        row.getCell(6).value = matched ? (hargaPakai || '') : '';
-        row.getCell(7).value = matched ? (totalHarga || '') : '';
+        row.getCell(4).value = matchedList.map(m => m.kode_produk).join('; ');
+        row.getCell(5).value = matchedList.map(m => m.nama_produk).join('; ');
+        row.getCell(6).value = matchedList.length === 1 ? (modeSwasta ? (matchedList[0].harga_swasta||0) : (matchedList[0].harga_ekat||0)) : '';
+        row.getCell(7).value = matchedList.length ? hargaTotalRow : '';
 
         const statusLabel = item.status === 'TERPENUHI' ? 'Bisa Dipenuhi'
           : item.status === 'TIDAK_TERPENUHI' ? 'Tidak Bisa'
@@ -3353,6 +3362,7 @@ var checklistPickingId = null; // id item yang lagi nampilin dropdown pilih prod
 
 function startChecklistSession(submitResult, namaRs, picSales, pagu) {
   checklistItems = Array.isArray(submitResult.items) ? submitResult.items : [];
+  checklistItems.forEach(it => { it.matched_items = normalizeMatchedItems(it); });
   checklistNamaRs = namaRs || '(tanpa nama RS)';
   checklistSales = picSales || '(tanpa nama sales)';
   checklistPagu = (pagu === undefined) ? null : pagu;
@@ -3376,14 +3386,28 @@ function startChecklistSession(submitResult, namaRs, picSales, pagu) {
   clipTabRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-// Opsi dropdown produk diambil dari clipboard sesi ini (bukan search baru) —
+// Daftar checkbox produk diambil dari clipboard sesi ini (bukan search baru) —
 // karena konteksnya emang produk yang lagi diproses di sesi konversi yang sama.
-function clipboardOptionsHtml(selectedKode) {
-  const opts = clipboard.map(c => {
-    const sel = c.kode_produk === selectedKode ? ' selected' : '';
-    return `<option value="${c.kode_produk}" data-produk-id="${c.produk_id||''}"${sel}>${c.kode_produk} — ${c.nama_produk}</option>`;
+// Satu kebutuhan sekarang boleh dicentang lebih dari satu SKU sekaligus (mis.
+// "All Set Mata" -> Set Pacho + Cataract Minor Set), makanya checkbox bukan
+// dropdown single-select lagi. Qty per-SKU opsional, dipakai kalau kebutuhan
+// dipenuhi campuran beberapa varian dengan porsi qty berbeda.
+function clipboardPickerHtml(itemId, matchedItems) {
+  if (!clipboard.length) {
+    return `<div class="kb-picker-empty">Clipboard masih kosong — tambahkan produk ke clipboard dulu buat bisa dipilih di sini.</div>`;
+  }
+  const rows = clipboard.map(c => {
+    const link = (matchedItems || []).find(l => l.kode_produk === c.kode_produk);
+    const checked = link ? ' checked' : '';
+    const qtyVal = (link && link.qty_alokasi != null) ? link.qty_alokasi : '';
+    return `<label class="kb-picker-row">
+      <input type="checkbox" data-picker-check="${itemId}" data-kode="${escapeHtmlAttr(c.kode_produk)}" data-produk-id="${c.produk_id||''}"${checked}>
+      <span class="kb-picker-name">${escapeHtmlAttr(c.kode_produk)} — ${escapeHtmlAttr(c.nama_produk)}</span>
+      <input type="number" min="0" class="kb-picker-qty" data-picker-qty="${itemId}" data-kode="${escapeHtmlAttr(c.kode_produk)}"
+        placeholder="qty" value="${qtyVal}" style="${checked ? '' : 'display:none'}">
+    </label>`;
   }).join('');
-  return `<option value="">Pilih dari daftar clipboard… (opsional)</option>${opts}`;
+  return `<div class="kb-picker-list">${rows}</div>`;
 }
 
 // Cari nama produk buat ditampilin di baris item yang udah TERPENUHI & ke-link
@@ -3421,19 +3445,24 @@ function renderChecklist() {
     else if (isNa) sub = `✕ Tidak bisa dipenuhi`;
 
     let matchedHtml = '';
-    if (isDone && item.matched_kode_produk) {
-      const nama = namaProdukByKode(item.matched_kode_produk);
-      matchedHtml = `<div class="kb-item-matched">→ ${item.matched_kode_produk}${nama ? ' — ' + nama : ''}</div>`;
+    if (isDone && item.matched_items && item.matched_items.length) {
+      matchedHtml = `<div class="kb-item-matched">${item.matched_items.map(l => {
+        const nama = namaProdukByKode(l.kode_produk);
+        const qtyTxt = l.qty_alokasi != null ? ` · qty ${l.qty_alokasi}` : '';
+        return `<span class="kb-matched-row">→ ${l.kode_produk}${nama ? ' — ' + nama : ''}${qtyTxt}</span>`;
+      }).join('')}</div>`;
     }
 
     let bodyHtml;
     if (isPicking) {
-      // Mode pilih produk: dropdown dari clipboard + Konfirmasi/Batal.
-      // Muncul baik dari klik "Bisa Dipenuhi" (item PENDING) maupun dari
-      // klik "Ubah produk" (item yang udah TERPENUHI).
+      // Mode pilih produk: checkbox multi-select dari clipboard (bisa dicentang
+      // lebih dari satu buat kebutuhan yang dipenuhi campuran beberapa SKU) +
+      // Konfirmasi/Batal. Muncul baik dari klik "Bisa Dipenuhi" (item PENDING)
+      // maupun dari klik "Ubah produk" (item yang udah TERPENUHI).
       bodyHtml = `
         <div class="kb-picker">
-          <select data-picker-select="${item.id}">${clipboardOptionsHtml(item.matched_kode_produk)}</select>
+          ${clipboardPickerHtml(item.id, item.matched_items)}
+          <div class="kb-picker-error" data-picker-error="${item.id}" style="display:none">Pilih minimal 1 produk dulu.</div>
           <div class="kb-picker-actions">
             <button class="kb-cancel-btn" data-action="pick-cancel" data-id="${item.id}">Batal</button>
             <button class="kb-confirm-btn" data-action="pick-confirm" data-id="${item.id}">Konfirmasi</button>
@@ -3488,17 +3517,26 @@ kbList.addEventListener('click', async (e) => {
   }
 
   if (action === 'pick-confirm') {
-    const select = kbList.querySelector(`select[data-picker-select="${itemId}"]`);
-    const kodeProduk = select && select.value ? select.value : null;
-    const selectedOption = select ? select.selectedOptions[0] : null;
-    const produkId = selectedOption && selectedOption.dataset.produkId ? parseInt(selectedOption.dataset.produkId, 10) : null;
+    // Kumpulin semua checkbox yang dicentang buat item ini -> jadi array link.
+    const checks = kbList.querySelectorAll(`input[data-picker-check="${itemId}"]:checked`);
+    if (checks.length === 0) {
+      const errEl = kbList.querySelector(`[data-picker-error="${itemId}"]`);
+      if (errEl) errEl.style.display = 'block';
+      return;
+    }
+    const links = Array.from(checks).map(chk => {
+      const kode = chk.dataset.kode;
+      const produkId = chk.dataset.produkId ? parseInt(chk.dataset.produkId, 10) : null;
+      const qtyInput = kbList.querySelector(`input[data-picker-qty="${itemId}"][data-kode="${CSS.escape(kode)}"]`);
+      const qtyVal = qtyInput && qtyInput.value.trim() ? Number(qtyInput.value) : null;
+      return { produk_id: produkId, kode_produk: kode, qty_alokasi: qtyVal };
+    });
 
     btn.disabled = true;
     try {
-      await callUpdatePermintaanItem(itemId, 'TERPENUHI', produkId, kodeProduk);
+      await callUpdatePermintaanItemMulti(itemId, 'TERPENUHI', links);
       item.status = 'TERPENUHI';
-      item.matched_produk_id = produkId;
-      item.matched_kode_produk = kodeProduk;
+      item.matched_items = links;
       checklistPickingId = null;
       renderChecklist();
       autoFinalizePermintaan();
@@ -3512,10 +3550,9 @@ kbList.addEventListener('click', async (e) => {
   if (action === 'tidak') {
     btn.closest('.kb-item-actions').querySelectorAll('button').forEach(b => b.disabled = true);
     try {
-      await callUpdatePermintaanItem(itemId, 'TIDAK_TERPENUHI', null, null);
+      await callUpdatePermintaanItemMulti(itemId, 'TIDAK_TERPENUHI', []);
       item.status = 'TIDAK_TERPENUHI';
-      item.matched_produk_id = null;
-      item.matched_kode_produk = null;
+      item.matched_items = [];
       renderChecklist();
       autoFinalizePermintaan();
     } catch (err) {
@@ -3527,10 +3564,9 @@ kbList.addEventListener('click', async (e) => {
 
   if (action === 'undo') {
     try {
-      await callUpdatePermintaanItem(itemId, 'PENDING', null, null);
+      await callUpdatePermintaanItemMulti(itemId, 'PENDING', []);
       item.status = 'PENDING';
-      item.matched_produk_id = null;
-      item.matched_kode_produk = null;
+      item.matched_items = [];
       checklistPickingId = null;
       renderChecklist();
       autoFinalizePermintaan();
@@ -3540,6 +3576,18 @@ kbList.addEventListener('click', async (e) => {
     }
     return;
   }
+});
+
+// Centang/uncentang checkbox produk di picker -> qty input muncul/hilang
+// ngikutin, dan pesan error "pilih minimal 1" ilang begitu ada yang dicentang.
+kbList.addEventListener('change', (e) => {
+  const chk = e.target.closest('input[data-picker-check]');
+  if (!chk) return;
+  const kode = chk.dataset.kode;
+  const qtyInput = kbList.querySelector(`input[data-picker-qty="${chk.dataset.pickerCheck}"][data-kode="${CSS.escape(kode)}"]`);
+  if (qtyInput) qtyInput.style.display = chk.checked ? '' : 'none';
+  const errEl = kbList.querySelector(`[data-picker-error="${chk.dataset.pickerCheck}"]`);
+  if (errEl && chk.checked) errEl.style.display = 'none';
 });
 
 kbCollapseBtn.addEventListener('click', () => {
@@ -3811,18 +3859,33 @@ async function openDictionaryDetail(istilah) {
 dictModalClose.addEventListener('click', () => dictModal.classList.remove('show'));
 dictModal.addEventListener('click', (e) => { if (e.target === dictModal) dictModal.classList.remove('show'); });
 
-async function callUpdatePermintaanItem(itemId, status, produkId, kodeProduk) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/update_permintaan_item`, {
+// p_links: array of {produk_id, kode_produk, qty_alokasi} — boleh kosong ([])
+// kalau statusnya PENDING/TIDAK_TERPENUHI. Ganti total (replace-all) per item,
+// bukan nambah satu-satu, jadi konsisten sama isi checkbox picker di layar.
+async function callUpdatePermintaanItemMulti(itemId, status, links) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/update_permintaan_item_multi`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'apikey': ANON_KEY,
       'Authorization': 'Bearer ' + stokAccessToken
     },
-    body: JSON.stringify({ p_item_id: itemId, p_status: status, p_produk_id: produkId, p_kode_produk: kodeProduk })
+    body: JSON.stringify({ p_item_id: itemId, p_status: status, p_links: links || [] })
   });
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
     throw new Error(errData.message || errData.hint || 'Gagal update item');
   }
+}
+
+// Item yang datang dari server (get_permintaan_by_sesi) atau dari sesi lama
+// mungkin masih format 1:1 (matched_produk_id/matched_kode_produk doang, belum
+// ada matched_items array). Normalisasi di sini biar sisa kode UI cuma perlu
+// tau satu bentuk: item.matched_items = [{produk_id, kode_produk, qty_alokasi}].
+function normalizeMatchedItems(item) {
+  if (Array.isArray(item.matched_items)) return item.matched_items;
+  if (item.matched_kode_produk) {
+    return [{ produk_id: item.matched_produk_id ?? null, kode_produk: item.matched_kode_produk, qty_alokasi: null }];
+  }
+  return [];
 }
