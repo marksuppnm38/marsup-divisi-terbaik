@@ -1953,25 +1953,17 @@ document.getElementById('bulkKompProsesBtn').addEventListener('click', async () 
   let sukses = 0, gagal = 0;
   for (const setId of Object.keys(bySet)) {
     const itemRows = bySet[setId];
-    if (timpaMode) {
-      const { error: delErr } = await sb.from('produk_set_item').delete().eq('set_id', setId);
-      if (delErr) { showToast('Gagal timpa komposisi ' + itemRows[0].kodeSet + ': ' + delErr.message, true); gagal += itemRows.length; continue; }
-    }
-    for (const r of itemRows) {
-      if (timpaMode) {
-        const { error } = await sb.from('produk_set_item').insert({ set_id: setId, produk_id: r.itemProduk.id, qty: r.qty });
-        if (error) { gagal++; } else { sukses++; }
-      } else {
-        const { data: existing } = await sb.from('produk_set_item').select('id').eq('set_id', setId).eq('produk_id', r.itemProduk.id).maybeSingle();
-        if (existing) {
-          const { error } = await sb.from('produk_set_item').update({ qty: r.qty }).eq('id', existing.id);
-          if (error) { gagal++; } else { sukses++; }
-        } else {
-          const { error } = await sb.from('produk_set_item').insert({ set_id: setId, produk_id: r.itemProduk.id, qty: r.qty });
-          if (error) { gagal++; } else { sukses++; }
-        }
-      }
-    }
+    const items = itemRows.map(r => ({ produk_id: r.itemProduk.id, qty: r.qty }));
+    // Satu panggilan RPC = satu transaksi Postgres buat SET ini: kalau ada yang
+    // gagal di tengah, semua di-rollback (gak ada lagi kondisi item lama kehapus
+    // tapi item baru belum semua masuk).
+    const { data, error } = await sb.rpc('save_set_composisi', {
+      p_set_id: setId,
+      p_items: items,
+      p_mode: timpaMode ? 'timpa' : 'gabung',
+    });
+    if (error) { showToast(`Gagal simpan komposisi ${itemRows[0].kodeSet}: ${error.message}`, true); gagal += itemRows.length; }
+    else { sukses += data?.processed ?? itemRows.length; }
   }
   btn.disabled = false;
   showToast(`Selesai — ${sukses} baris komposisi tersimpan${gagal ? `, ${gagal} gagal` : ''} (${Object.keys(bySet).length} set)`, gagal > 0);
@@ -2305,12 +2297,17 @@ let akdDistinct = { golongan: [], status_terupdate: [] }; // dipakai buat datali
 // Nilai golongan/status_terupdate dimuat dari data aktual (bukan hardcode)
 // biar datalist di modal Tambah/Edit AKD selalu sinkron sama isi database beneran.
 async function loadAkdDistinctValues(){
-  const [golR, statR] = await Promise.all([
-    sb.from('akd').select('golongan').not('golongan', 'is', null).limit(3000),
-    sb.from('akd').select('status_terupdate').not('status_terupdate', 'is', null).limit(3000),
-  ]);
-  akdDistinct.golongan = [...new Set((golR.data || []).map(r => r.golongan).filter(Boolean))].sort();
-  akdDistinct.status_terupdate = [...new Set((statR.data || []).map(r => r.status_terupdate).filter(Boolean))].sort();
+  // Dulu 2x sb.from('akd').select(...).limit(3000) -> sama risikonya kayak bug
+  // Tipe produk sebelumnya, cuma di sini dampaknya ke datalist Golongan/Status
+  // Terupdate di modal Tambah/Edit AKD (bukan filter). DISTINCT sekarang dihitung
+  // penuh di Postgres lewat get_akd_distinct_filters.
+  const { data, error } = await sb.rpc('get_akd_distinct_filters');
+  if (error) {
+    showToast('Gagal memuat opsi golongan/status AKD: ' + error.message, true);
+    return;
+  }
+  akdDistinct.golongan = data?.golongan || [];
+  akdDistinct.status_terupdate = data?.status_terupdate || [];
   document.getElementById('akd_golongan_list').innerHTML = akdDistinct.golongan.map(g => `<option value="${escapeHtml(g)}">`).join('');
   document.getElementById('akd_status_list').innerHTML = akdDistinct.status_terupdate.map(s => `<option value="${escapeHtml(s)}">`).join('');
 }
