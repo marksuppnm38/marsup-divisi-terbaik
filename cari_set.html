@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cari SET Mendekati</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root {
+    --bg: #0f1416;
+    --panel: #161d20;
+    --panel-2: #1c2427;
+    --border: #2a3538;
+    --text: #e8edee;
+    --text-dim: #8fa1a5;
+    --accent: #4fb0a8;
+    --accent-soft: rgba(79,176,168,0.15);
+    --warn: #d98c4f;
+    --mono: 'SF Mono', 'Fira Code', Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding: 32px 20px 80px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.02em;
+  }
+  .sub {
+    color: var(--text-dim);
+    font-size: 13.5px;
+    margin: 0 0 28px;
+  }
+  label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  textarea {
+    width: 100%;
+    min-height: 180px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 14px;
+    resize: vertical;
+    line-height: 1.6;
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+  button {
+    background: var(--accent);
+    color: #06201d;
+    border: none;
+    border-radius: 8px;
+    padding: 11px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  button:hover { opacity: 0.88; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .count-badge {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text-dim);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    border-radius: 20px;
+  }
+  .status {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 10px;
+    min-height: 18px;
+  }
+  .status.error { color: #e07a5f; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 24px;
+    font-size: 13.5px;
+  }
+  thead th {
+    text-align: left;
+    color: var(--text-dim);
+    font-weight: 500;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0 10px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody td {
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tbody tr:hover { background: var(--panel-2); }
+  .kode-set { font-family: var(--mono); font-weight: 600; color: var(--accent); }
+  .nama-set { color: var(--text-dim); font-size: 12.5px; margin-top: 2px; }
+  .skor {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .skor.high { color: #6fcf97; }
+  .skor.mid { color: var(--warn); }
+  .skor.low { color: var(--text-dim); }
+  .bar-track {
+    width: 70px;
+    height: 5px;
+    background: var(--panel-2);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 5px;
+  }
+  .bar-fill { height: 100%; background: var(--accent); }
+  .detail-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+  }
+  .detail-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .detail-row td {
+    background: var(--panel);
+    padding: 0;
+  }
+  .detail-inner { padding: 14px 18px 18px; }
+  .item-line {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+  .item-line:last-child { border-bottom: none; }
+  .item-line.match { color: #6fcf97; }
+  .item-line.nomatch { color: var(--text-dim); }
+  .tag {
+    font-size: 10.5px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .empty {
+    text-align: center;
+    color: var(--text-dim);
+    padding: 40px 0;
+    font-size: 13.5px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cari SET Mendekati</h1>
+  <p class="sub">Tempel daftar kode_produk (satu per baris), lalu cari SET dengan isi paling mirip.</p>
+
+  <label for="kodeInput">Daftar kode_produk</label>
+  <textarea id="kodeInput" placeholder="RB10-KE100-B004-U07&#10;RB10-KE130-B003-U07&#10;..."></textarea>
+
+  <div class="row">
+    <button id="searchBtn">Cari SET Mendekati</button>
+    <span class="count-badge" id="countBadge">0 kode</span>
+  </div>
+  <div class="status" id="statusEl"></div>
+
+  <table id="resultTable" style="display:none;">
+    <thead>
+      <tr>
+        <th style="width:38%">SET</th>
+        <th>Cocok</th>
+        <th>Skor</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="resultBody"></tbody>
+  </table>
+
+  <div class="empty" id="emptyState" style="display:none;"></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
+
+const sb = supabase.createClient(SUPABASE_URL, ANON_KEY);
+
+const kodeInput = document.getElementById('kodeInput');
+const searchBtn = document.getElementById('searchBtn');
+const countBadge = document.getElementById('countBadge');
+const statusEl = document.getElementById('statusEl');
+const resultTable = document.getElementById('resultTable');
+const resultBody = document.getElementById('resultBody');
+const emptyState = document.getElementById('emptyState');
+
+function parseKodeList() {
+  return kodeInput.value
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+kodeInput.addEventListener('input', () => {
+  countBadge.textContent = parseKodeList().length + ' kode';
+});
+
+function skorClass(skor) {
+  if (skor >= 0.7) return 'high';
+  if (skor >= 0.4) return 'mid';
+  return 'low';
+}
+
+function setStatus(msg, isError = false) {
+  statusEl.textContent = msg;
+  statusEl.className = 'status' + (isError ? ' error' : '');
+}
+
+async function cariSet() {
+  const list = parseKodeList();
+  if (list.length === 0) {
+    setStatus('Isi dulu daftar kode_produk-nya.', true);
+    return;
+  }
+
+  searchBtn.disabled = true;
+  setStatus('Mencari...');
+  resultTable.style.display = 'none';
+  emptyState.style.display = 'none';
+
+  const { data, error } = await sb.rpc('cari_set_mendekati', {
+    kode_list: list,
+    batas: 30
+  });
+
+  searchBtn.disabled = false;
+
+  if (error) {
+    setStatus('Gagal: ' + error.message, true);
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    setStatus('');
+    emptyState.textContent = 'Tidak ada SET yang cocok ditemukan.';
+    emptyState.style.display = 'block';
+    return;
+  }
+
+  setStatus(`Ditemukan ${data.length} SET, diurutkan dari yang paling mirip.`);
+  renderResults(data, list);
+}
+
+function renderResults(rows, inputList) {
+  resultBody.innerHTML = '';
+  resultTable.style.display = 'table';
+
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    const pct = Math.round(row.skor_jaccard * 100);
+    tr.innerHTML = `
+      <td>
+        <div class="kode-set">${row.kode_set}</div>
+        <div class="nama-set">${row.nama_set || ''}</div>
+      </td>
+      <td>${row.jumlah_cocok} / ${row.total_item_set} <span style="color:var(--text-dim)">item set</span></td>
+      <td>
+        <div class="skor ${skorClass(row.skor_jaccard)}">${pct}%</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+      </td>
+      <td><button class="detail-btn" data-set="${row.set_id}">Lihat isi</button></td>
+    `;
+    resultBody.appendChild(tr);
+
+    tr.querySelector('.detail-btn').addEventListener('click', (e) => {
+      toggleDetail(e.target, row.set_id, inputList, tr);
+    });
+  });
+}
+
+async function toggleDetail(btn, setId, inputList, afterRow) {
+  const existing = afterRow.nextElementSibling;
+  if (existing && existing.classList.contains('detail-row')) {
+    existing.remove();
+    btn.textContent = 'Lihat isi';
+    return;
+  }
+
+  btn.textContent = 'Memuat...';
+  const { data, error } = await sb.rpc('detail_isi_set', {
+    p_set_id: setId,
+    kode_list: inputList
+  });
+  btn.textContent = 'Sembunyikan';
+
+  if (error) {
+    setStatus('Gagal ambil detail: ' + error.message, true);
+    return;
+  }
+
+  const detailRow = document.createElement('tr');
+  detailRow.className = 'detail-row';
+  const lines = (data || []).map(it => `
+    <div class="item-line ${it.cocok_dengan_input ? 'match' : 'nomatch'}">
+      <span>${it.urutan}. ${it.kode_item} — ${it.nama_item || ''}</span>
+      <span>
+        qty ${it.qty}
+        ${it.cocok_dengan_input ? '<span class="tag">cocok</span>' : ''}
+      </span>
+    </div>
+  `).join('');
+
+  detailRow.innerHTML = `<td colspan="4"><div class="detail-inner">${lines || 'Tidak ada item.'}</div></td>`;
+  afterRow.after(detailRow);
+}
+
+searchBtn.addEventListener('click', cariSet);
+</script>
+</body>
+</html>
