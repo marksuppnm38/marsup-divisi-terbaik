@@ -372,18 +372,18 @@ let produkAllRowsCache = { key: null, rows: null }; // dipakai kalau ada filter 
 let produkCurrentFilteredFull = null; // hasil filter lengkap (semua halaman) -> sumber Download Excel
 
 const PRODUK_FILTER_DIMS = [
-  { key: 'tipe', label: 'Tipe', dynamic: 'tipe', multi: true },
-  { key: 'golongan', label: 'Golongan', dynamic: 'golongan' },
-  { key: 'is_active', label: 'Status Aktif', options: [
+  { key: 'tipe', label: 'Tipe', icon: 'ti-category-2', dynamic: 'tipe', multi: true },
+  { key: 'golongan', label: 'Golongan', icon: 'ti-tag', dynamic: 'golongan' },
+  { key: 'is_active', label: 'Status Aktif', icon: 'ti-toggle-right', options: [
       { value: 'aktif', label: 'Aktif' },
       { value: 'nonaktif', label: 'Nonaktif' },
   ]},
-  { key: 'status_inaproc', label: 'Status INAPROC', dynamic: 'status_inaproc' },
-  { key: 'harga', label: 'Ketersediaan Harga', options: [
+  { key: 'status_inaproc', label: 'Status INAPROC', icon: 'ti-shield-check', dynamic: 'status_inaproc' },
+  { key: 'harga', label: 'Ketersediaan Harga', icon: 'ti-currency-dollar', options: [
       { value: 'ada', label: 'Sudah ada harga' },
       { value: 'kosong', label: 'Belum ada harga' },
   ]},
-  { key: 'link_v6', label: 'Link V6', options: [
+  { key: 'link_v6', label: 'Link V6', icon: 'ti-link', options: [
       { value: 'ada', label: 'Sudah ada link' },
       { value: 'kosong', label: 'Belum ada link' },
   ]},
@@ -586,19 +586,45 @@ const produkAddFilterBtn = document.getElementById('produkAddFilterBtn');
 const produkAddFilterPop = document.getElementById('produkAddFilterPop');
 produkAddFilterBtn.addEventListener('click', (e) => {
   e.stopPropagation();
+  const willOpen = !produkAddFilterPop.classList.contains('open');
   renderProdukFilterPopStep1();
   produkAddFilterPop.classList.toggle('open');
+  if (willOpen) positionAddFilterPop();
 });
 document.addEventListener('click', (e) => {
   if (produkAddFilterPop.classList.contains('open') && !produkAddFilterPop.contains(e.target) && e.target !== produkAddFilterBtn) {
     produkAddFilterPop.classList.remove('open');
   }
 });
+window.addEventListener('resize', () => { if (produkAddFilterPop.classList.contains('open')) positionAddFilterPop(); });
+function positionAddFilterPop(){
+  // Popover default nempel rata kiri ke tombol; kalau bakal kepotong tepi kanan
+  // layar (misal di layar sempit / tombol deket ujung), balik jadi rata kanan
+  // biar seluruh isinya tetap kebaca, gak "mepet".
+  produkAddFilterPop.classList.remove('align-right');
+  const rect = produkAddFilterPop.getBoundingClientRect();
+  if (rect.right > window.innerWidth - 12) {
+    produkAddFilterPop.classList.add('align-right');
+  }
+}
 function renderProdukFilterPopStep1(){
   produkAddFilterPop.innerHTML = `<div class="afp-step">
-    <div class="afp-title">Pilih dimensi filter</div>
-    ${PRODUK_FILTER_DIMS.map(d => `<button class="afp-dim-btn" data-dim="${d.key}"><span>${escapeHtml(d.label)}</span><i class="ti ti-chevron-right"></i></button>`).join('')}
+    <div class="afp-header">
+      <div class="afp-header-text">
+        <div class="afp-title">Tambah Filter</div>
+        <div class="afp-subtitle">Pilih dimensi yang mau difilter</div>
+      </div>
+      <button class="afp-close" id="produkAfpClose" title="Tutup"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="afp-list">
+      ${PRODUK_FILTER_DIMS.map(d => `<button class="afp-dim-btn" data-dim="${d.key}">
+          <span class="afp-dim-icon"><i class="ti ${d.icon || 'ti-filter'}"></i></span>
+          <span class="afp-dim-label">${escapeHtml(d.label)}</span>
+          <i class="ti ti-chevron-right"></i>
+        </button>`).join('')}
+    </div>
   </div>`;
+  document.getElementById('produkAfpClose').addEventListener('click', (e) => { e.stopPropagation(); produkAddFilterPop.classList.remove('open'); });
   produkAddFilterPop.querySelectorAll('.afp-dim-btn').forEach(b => {
     b.addEventListener('click', (e) => { e.stopPropagation(); renderProdukFilterPopStep2(b.dataset.dim); });
   });
@@ -620,11 +646,18 @@ function renderProdukFilterPopStep2(dimKey){
     const selected = new Set(existing?.values || []);
     produkAddFilterPop.innerHTML = `<div class="afp-step">
       <div class="afp-back" id="produkAfpBack"><i class="ti ti-arrow-left"></i> Kembali</div>
-      <div class="afp-title">${escapeHtml(dim.label)} <span style="text-transform:none;font-weight:400;">(bisa pilih lebih dari satu)</span></div>
-      ${options.map(o => `<label class="afp-check-row${o.value === '' ? ' disabled' : ''}">
-          <input type="checkbox" data-value="${escapeHtml(o.value)}" ${selected.has(o.value) ? 'checked' : ''} ${o.value === '' ? 'disabled' : ''}/>
-          <span>${escapeHtml(o.label)}</span>
-        </label>`).join('')}
+      <div class="afp-header" style="border-bottom:none;margin-bottom:6px;padding-bottom:0;">
+        <div class="afp-header-text">
+          <div class="afp-title">${escapeHtml(dim.label)}</div>
+          <div class="afp-subtitle">Bisa pilih lebih dari satu</div>
+        </div>
+      </div>
+      <div class="afp-list">
+        ${options.map(o => `<label class="afp-check-row${o.value === '' ? ' disabled' : ''}">
+            <input type="checkbox" data-value="${escapeHtml(o.value)}" ${selected.has(o.value) ? 'checked' : ''} ${o.value === '' ? 'disabled' : ''}/>
+            <span>${escapeHtml(o.label)}</span>
+          </label>`).join('')}
+      </div>
       <button class="afp-apply-btn" id="produkAfpApply">Terapkan</button>
     </div>`;
     document.getElementById('produkAfpBack').addEventListener('click', (e) => { e.stopPropagation(); renderProdukFilterPopStep1(); });
@@ -644,8 +677,12 @@ function renderProdukFilterPopStep2(dimKey){
 
   produkAddFilterPop.innerHTML = `<div class="afp-step">
     <div class="afp-back" id="produkAfpBack"><i class="ti ti-arrow-left"></i> Kembali</div>
-    <div class="afp-title">${escapeHtml(dim.label)}</div>
-    ${options.map(o => `<button class="afp-dim-btn" data-value="${escapeHtml(o.value)}" ${o.value === '' ? 'disabled' : ''}>${escapeHtml(o.label)}</button>`).join('')}
+    <div class="afp-header" style="border-bottom:none;margin-bottom:6px;padding-bottom:0;">
+      <div class="afp-header-text"><div class="afp-title">${escapeHtml(dim.label)}</div></div>
+    </div>
+    <div class="afp-list">
+      ${options.map(o => `<button class="afp-dim-btn" data-value="${escapeHtml(o.value)}" ${o.value === '' ? 'disabled' : ''}><span class="afp-dim-label">${escapeHtml(o.label)}</span></button>`).join('')}
+    </div>
   </div>`;
   document.getElementById('produkAfpBack').addEventListener('click', (e) => { e.stopPropagation(); renderProdukFilterPopStep1(); });
   produkAddFilterPop.querySelectorAll('.afp-dim-btn[data-value]:not([disabled])').forEach(b => {
