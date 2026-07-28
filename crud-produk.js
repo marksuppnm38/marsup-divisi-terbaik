@@ -372,7 +372,7 @@ let produkAllRowsCache = { key: null, rows: null }; // dipakai kalau ada filter 
 let produkCurrentFilteredFull = null; // hasil filter lengkap (semua halaman) -> sumber Download Excel
 
 const PRODUK_FILTER_DIMS = [
-  { key: 'tipe', label: 'Tipe', dynamic: 'tipe' },
+  { key: 'tipe', label: 'Tipe', dynamic: 'tipe', multi: true },
   { key: 'golongan', label: 'Golongan', dynamic: 'golongan' },
   { key: 'is_active', label: 'Status Aktif', options: [
       { value: 'aktif', label: 'Aktif' },
@@ -421,7 +421,7 @@ function invalidateProdukStackCache(){
 
 function produkRowMatchesFilter(row, filt){
   switch (filt.dim) {
-    case 'tipe': return row.tipe === filt.value;
+    case 'tipe': return filt.values ? filt.values.includes(row.tipe) : row.tipe === filt.value;
     case 'golongan': return row.golongan === filt.value;
     case 'is_active': return filt.value === 'aktif' ? !!row.is_active : !row.is_active;
     case 'status_inaproc': return row.status_inaproc === filt.value;
@@ -610,6 +610,38 @@ function renderProdukFilterPopStep2(dimKey){
     options = (produkDistinct[dim.dynamic] || []).map(v => ({ value: v, label: v }));
     if (!options.length) options = [{ value: '', label: '(belum ada data terisi)' }];
   }
+
+  if (dim.multi) {
+    // Pilih banyak nilai sekaligus dalam satu dimensi (misal Tipe: SET + INSTRUMENT)
+    // -> hasil filter di-OR-kan di antara nilai yang dicentang, lalu di-AND-kan
+    // seperti biasa dengan dimensi/chip status lain. Prefill centang dari filter
+    // yang lagi aktif kalau user buka ulang dimensi yang sama buat diubah.
+    const existing = produkActiveFilters.find(f => f.dim === dimKey);
+    const selected = new Set(existing?.values || []);
+    produkAddFilterPop.innerHTML = `<div class="afp-step">
+      <div class="afp-back" id="produkAfpBack"><i class="ti ti-arrow-left"></i> Kembali</div>
+      <div class="afp-title">${escapeHtml(dim.label)} <span style="text-transform:none;font-weight:400;">(bisa pilih lebih dari satu)</span></div>
+      ${options.map(o => `<label class="afp-check-row${o.value === '' ? ' disabled' : ''}">
+          <input type="checkbox" data-value="${escapeHtml(o.value)}" ${selected.has(o.value) ? 'checked' : ''} ${o.value === '' ? 'disabled' : ''}/>
+          <span>${escapeHtml(o.label)}</span>
+        </label>`).join('')}
+      <button class="afp-apply-btn" id="produkAfpApply">Terapkan</button>
+    </div>`;
+    document.getElementById('produkAfpBack').addEventListener('click', (e) => { e.stopPropagation(); renderProdukFilterPopStep1(); });
+    document.getElementById('produkAfpApply').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const values = Array.from(produkAddFilterPop.querySelectorAll('input[type="checkbox"]:checked')).map(c => c.dataset.value);
+      if (values.length === 0) {
+        removeProdukFilter(dimKey);
+      } else {
+        const labels = values.map(v => (options.find(o => o.value === v) || {}).label || v);
+        addProdukFilterMulti(dimKey, values, dim.label + ': ' + labels.join(', '));
+      }
+      produkAddFilterPop.classList.remove('open');
+    });
+    return;
+  }
+
   produkAddFilterPop.innerHTML = `<div class="afp-step">
     <div class="afp-back" id="produkAfpBack"><i class="ti ti-arrow-left"></i> Kembali</div>
     <div class="afp-title">${escapeHtml(dim.label)}</div>
@@ -627,6 +659,12 @@ function renderProdukFilterPopStep2(dimKey){
 function addProdukFilter(dim, value, label){
   produkActiveFilters = produkActiveFilters.filter(f => f.dim !== dim); // satu dimensi = satu nilai aktif, ganti kalau dipilih ulang
   produkActiveFilters.push({ dim, value, label });
+  renderProdukFilterChips();
+  loadProduk(lastQuery, 1);
+}
+function addProdukFilterMulti(dim, values, label){
+  produkActiveFilters = produkActiveFilters.filter(f => f.dim !== dim);
+  produkActiveFilters.push({ dim, values, label });
   renderProdukFilterChips();
   loadProduk(lastQuery, 1);
 }

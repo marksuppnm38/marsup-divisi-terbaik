@@ -399,6 +399,13 @@ body[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:var
 .afp-back{font-size:11.5px;color:var(--text-muted);cursor:pointer;margin-bottom:2px;display:flex;align-items:center;gap:4px}
 .afp-back:hover{color:var(--text)}
 .afp-title{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
+.afp-check-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:12.5px;color:var(--text);font-family:inherit}
+.afp-check-row:hover{background:var(--surface-2)}
+.afp-check-row input[type="checkbox"]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer;flex-shrink:0}
+.afp-check-row.disabled{color:var(--text-muted);cursor:default}
+.afp-check-row.disabled:hover{background:none}
+.afp-apply-btn{margin-top:6px;padding:8px 10px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+.afp-apply-btn:hover{background:var(--accent-strong)}
 .akd-table-scroll{overflow-x:auto}
 .akd-table-scroll table{min-width:1180px}
 .status-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap}
