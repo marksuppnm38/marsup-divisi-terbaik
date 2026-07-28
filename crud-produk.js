@@ -402,8 +402,17 @@ async function loadProdukDistinctValues(){
 
 async function ensureProdukHargaSet(){
   if (produkHargaIdSet) return;
-  const { data } = await sb.from('produk_harga').select('produk_id').limit(20000);
-  produkHargaIdSet = new Set((data || []).map(r => r.produk_id));
+  // RPC balikin SATU baris array (bukan ribuan baris satu-satu), jadi gak
+  // kena limit baris PostgREST berapapun besar produk_harga nanti tumbuh
+  // -- beda dari .select('produk_id').limit(20000) yang dulu kepotong diam-diam
+  // pas produk_harga sudah 22 ribu baris (2 ribu produk salah kelihatan "belum ada harga").
+  const { data, error } = await sb.rpc('get_produk_harga_ids');
+  if (error) {
+    showToast('Gagal cek ketersediaan harga: ' + error.message, true);
+    produkHargaIdSet = new Set();
+    return;
+  }
+  produkHargaIdSet = new Set(data || []);
 }
 function invalidateProdukStackCache(){
   produkAllRowsCache = { key: null, rows: null };
