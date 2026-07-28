@@ -586,7 +586,7 @@ function renderProdukFilterPopStep1(){
     ${PRODUK_FILTER_DIMS.map(d => `<button class="afp-dim-btn" data-dim="${d.key}"><span>${escapeHtml(d.label)}</span><i class="ti ti-chevron-right"></i></button>`).join('')}
   </div>`;
   produkAddFilterPop.querySelectorAll('.afp-dim-btn').forEach(b => {
-    b.addEventListener('click', () => renderProdukFilterPopStep2(b.dataset.dim));
+    b.addEventListener('click', (e) => { e.stopPropagation(); renderProdukFilterPopStep2(b.dataset.dim); });
   });
 }
 function renderProdukFilterPopStep2(dimKey){
@@ -601,9 +601,10 @@ function renderProdukFilterPopStep2(dimKey){
     <div class="afp-title">${escapeHtml(dim.label)}</div>
     ${options.map(o => `<button class="afp-dim-btn" data-value="${escapeHtml(o.value)}" ${o.value === '' ? 'disabled' : ''}>${escapeHtml(o.label)}</button>`).join('')}
   </div>`;
-  document.getElementById('produkAfpBack').addEventListener('click', renderProdukFilterPopStep1);
+  document.getElementById('produkAfpBack').addEventListener('click', (e) => { e.stopPropagation(); renderProdukFilterPopStep1(); });
   produkAddFilterPop.querySelectorAll('.afp-dim-btn[data-value]:not([disabled])').forEach(b => {
-    b.addEventListener('click', () => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
       addProdukFilter(dimKey, b.dataset.value, dim.label + ': ' + b.textContent.trim());
       produkAddFilterPop.classList.remove('open');
     });
