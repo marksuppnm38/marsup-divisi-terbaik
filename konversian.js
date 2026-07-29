@@ -2374,6 +2374,13 @@ tipeBtns.forEach(btn => {
 clearBtn.addEventListener('click', () => { searchInput.value=''; clearBtn.style.display='none'; acBox.style.display='none'; reset(); searchInput.focus(); });
 
 searchInput.addEventListener('input', () => {
+  if (searchInput.value.trim().toLowerCase() === '/linkpalsugas') {
+    searchInput.value = '';
+    clearBtn.style.display = 'none';
+    acBox.style.display = 'none';
+    if (typeof window.openLinkGenModal === 'function') window.openLinkGenModal();
+    return;
+  }
   clearBtn.style.display = searchInput.value ? 'block' : 'none';
   clearTimeout(acTimer);
   acTimer = setTimeout(() => runSearch(), 150);
@@ -3889,3 +3896,87 @@ function normalizeMatchedItems(item) {
   }
   return [];
 }
+
+/* ==================================================================
+   HIDDEN FEATURE: Generator Link Katalog
+   Munculnya cuma kalau di search-input diketik "/linkpalsugas".
+   Tidak ada tombol/menu yang mengarah ke sini secara terlihat.
+   ================================================================== */
+(function () {
+  const modal = document.getElementById('linkgen-modal');
+  if (!modal) return;
+
+  const closeBtn = document.getElementById('linkgen-close');
+  const baseInput = document.getElementById('linkgen-base');
+  const prefixInput = document.getElementById('linkgen-prefix');
+  const textInput = document.getElementById('linkgen-input');
+  const genBtn = document.getElementById('linkgen-generate-btn');
+  const copyBtn = document.getElementById('linkgen-copy-btn');
+  const countEl = document.getElementById('linkgen-count');
+  const outputEl = document.getElementById('linkgen-output');
+  let rows = [];
+
+  function slugify(text, prefix) {
+    return prefix + text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function generate() {
+    const base = baseInput.value.trim();
+    const prefix = prefixInput.value;
+    const lines = textInput.value.split('\n').map(l => l.trim()).filter(Boolean);
+    rows = lines.map(desc => ({ desc, link: base + slugify(desc, prefix) }));
+
+    if (!rows.length) {
+      outputEl.innerHTML = '<div style="color:var(--text-muted);font-size:12.5px;padding:12px 0;text-align:center">Belum ada hasil.</div>';
+      countEl.textContent = '';
+      return;
+    }
+
+    countEl.textContent = rows.length + ' baris';
+
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'
+      + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase">Deskripsi</th>'
+      + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase">Link</th></tr></thead><tbody>';
+    rows.forEach(r => {
+      html += '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + esc(r.desc) + '</td>'
+        + '<td style="padding:6px 8px;border-bottom:1px solid var(--border);word-break:break-all"><a href="' + esc(r.link) + '" target="_blank" style="color:var(--accent-text)">' + esc(r.link) + '</a></td></tr>';
+    });
+    html += '</tbody></table>';
+    outputEl.innerHTML = html;
+  }
+
+  genBtn.addEventListener('click', generate);
+
+  copyBtn.addEventListener('click', () => {
+    if (!rows.length) generate();
+    if (!rows.length) return;
+    const tsv = rows.map(r => r.desc + '\t' + r.link).join('\n');
+    navigator.clipboard.writeText(tsv).then(() => {
+      const old = copyBtn.textContent;
+      copyBtn.textContent = 'Tersalin!';
+      setTimeout(() => { copyBtn.textContent = old; }, 1200);
+    });
+  });
+
+  closeBtn.addEventListener('click', () => modal.classList.remove('show'));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && modal.classList.contains('show')) modal.classList.remove('show');
+  });
+
+  window.openLinkGenModal = function () {
+    modal.classList.add('show');
+    outputEl.innerHTML = '';
+    countEl.textContent = '';
+    setTimeout(() => textInput.focus(), 50);
+  };
+})();
