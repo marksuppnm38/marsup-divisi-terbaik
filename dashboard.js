@@ -1093,6 +1093,7 @@ let popPage = 1;
 let popSearch = '';
 let popWilayah = '';
 let popEntitas = '';
+let popChannel = '';
 let popSearchDebounce = null;
 
 async function popInit(){
@@ -1108,11 +1109,18 @@ async function popInit(){
     sel.innerHTML = '<option value="">Semua Entitas</option>' +
       (list || []).map(e => `<option value="${e.entitas}">${e.entitas} (${fmt(e.jumlah)})</option>`).join('');
   } catch(e) { /* biarkan default */ }
+  try {
+    const list = await rpc('get_dashboard_populasi_channel_list', {});
+    const sel = document.getElementById('pop-channel-filter');
+    sel.innerHTML = '<option value="">Semua Channel</option>' +
+      (list || []).map(c => `<option value="${c.channel}">${c.channel} (${fmt(c.jumlah)})</option>`).join('');
+  } catch(e) { /* RPC belum ada — dropdown tetap default sampai SQL channel dijalankan */ }
   await Promise.all([popLoadSummary(), popLoadTable()]);
 }
 
 function popSetWilayah(v){ popWilayah = v; popPage = 1; popLoadTable(); popLoadSummary(); }
 function popSetEntitas(v){ popEntitas = v; popPage = 1; popLoadTable(); popLoadSummary(); }
+function popSetChannel(v){ popChannel = v; popPage = 1; popLoadTable(); popLoadSummary(); }
 
 function popOnSearch(){
   clearTimeout(popSearchDebounce);
@@ -1128,7 +1136,7 @@ function popOnSearch(){
 async function popLoadSummary(){
   const box = document.getElementById('pop-summary-grid');
   try {
-    const s = await rpc('get_dashboard_populasi_summary', { p_wilayah: popWilayah || null, p_entitas: popEntitas || null });
+    const s = await rpc('get_dashboard_populasi_summary', { p_wilayah: popWilayah || null, p_entitas: popEntitas || null, p_channel: popChannel || null });
     box.innerHTML = `
       <div class="stat-card blue">
         <div class="stat-icon blue"><i class="ph ph-map-pin"></i></div>
@@ -1158,19 +1166,20 @@ async function popLoadSummary(){
 
 async function popLoadTable(){
   const tbody = document.getElementById('pop-tbl-body');
-  tbody.innerHTML = '<tr class="loading-row"><td colspan="8"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>';
+  tbody.innerHTML = '<tr class="loading-row"><td colspan="9"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>';
   try {
     const result = await rpc('get_dashboard_populasi_produk', {
       p_search: popSearch || null,
       p_wilayah: popWilayah || null,
       p_entitas: popEntitas || null,
+      p_channel: popChannel || null,
       p_page: popPage,
       p_page_size: POP_PAGE_SIZE
     });
     popRenderTable(result.total || 0, result.rows || []);
   } catch(e) {
     if (e.message === 'unauthorized') return;
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">
       <i class="ph ph-database" style="font-size:26px;display:block;margin-bottom:8px"></i>
       Tabel/RPC populasi produk belum tersedia di Supabase.<br>
       <span style="font-size:11px">Jalankan <code>populasi_produk_schema.sql</code> di SQL Editor Supabase, lalu sync data (lihat <code>sync_ke_supabase.gs</code>).</span>
@@ -1187,7 +1196,7 @@ function popRenderTable(total, rows){
     total === 0 ? '—' : `Menampilkan ${fmt((popPage-1)*POP_PAGE_SIZE+1)}–${fmt(Math.min(popPage*POP_PAGE_SIZE, total))} dari ${fmt(total)} kombinasi produk×wilayah`;
 
   if (!rows.length){
-    document.getElementById('pop-tbl-body').innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">
+    document.getElementById('pop-tbl-body').innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">
       <i class="ph ph-magnifying-glass" style="font-size:26px;display:block;margin-bottom:6px"></i>Tidak ada data yang cocok.</td></tr>`;
   } else {
     document.getElementById('pop-tbl-body').innerHTML = rows.map(r => `
@@ -1195,6 +1204,7 @@ function popRenderTable(total, rows){
         <td><span class="kode-text">${r.kode_produk || '—'}</span></td>
         <td style="max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(r.nama_produk||'').replace(/"/g,'&quot;')}">${r.nama_produk || '—'}</td>
         <td><span class="badge badge-instrument">${r.entitas || '—'}</span></td>
+        <td><span class="badge badge-instrument">${r.channel || '—'}</span></td>
         <td>${r.wilayah || '—'}</td>
         <td style="text-align:right;font-family:var(--mono);font-weight:600">${fmt(r.total_qty)}</td>
         <td style="text-align:right;font-family:var(--mono)">${fmt(r.jumlah_customer)}</td>
@@ -1221,6 +1231,58 @@ function popGoPage(p){
   popPage = p;
   popLoadTable();
   window.scrollTo({ top: document.getElementById('pop-section').offsetTop - 80, behavior: 'smooth' });
+}
+
+// Export SEMUA baris yang cocok filter aktif (bukan cuma 1 halaman yang
+// lagi ditampilin) ke file .csv yang bisa dibuka Excel. Pakai page_size
+// besar biar RPC yang sama (get_dashboard_populasi_produk) narik semua
+// baris sekaligus, tanpa perlu bikin RPC terpisah.
+async function popExportExcel(ev){
+  const btn = ev?.target?.closest('button');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph ph-circle-notch spinner"></i> Menyiapkan…'; }
+  try {
+    const result = await rpc('get_dashboard_populasi_produk', {
+      p_search: popSearch || null,
+      p_wilayah: popWilayah || null,
+      p_entitas: popEntitas || null,
+      p_channel: popChannel || null,
+      p_page: 1,
+      p_page_size: 100000 // ambil semua baris yang cocok filter
+    });
+    const rows = result.rows || [];
+    if (!rows.length) { showToast('Tidak ada data untuk di-export sesuai filter aktif.'); return; }
+
+    const headers = ['Kode Produk','Nama Produk','Entitas','Channel','Wilayah','Total Qty','Jml Customer','Jml Dokumen','Order Terakhir'];
+    const csvRows = [headers.join(',')];
+    rows.forEach(r => {
+      const line = [
+        r.kode_produk || '',
+        `"${(r.nama_produk||'').replace(/"/g,'""')}"`,
+        r.entitas || '',
+        r.channel || '',
+        r.wilayah || '',
+        r.total_qty ?? '',
+        r.jumlah_customer ?? '',
+        r.jumlah_dokumen ?? '',
+        r.order_terakhir || ''
+      ].join(',');
+      csvRows.push(line);
+    });
+    const csvContent = '\uFEFF' + csvRows.join('\n'); // BOM biar Excel baca UTF-8 dengan benar
+    const blob = new Blob([csvContent], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const filterTag = [popWilayah, popEntitas, popChannel].filter(Boolean).join('-') || 'semua';
+    a.download = `populasi-produk-${filterTag}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`${rows.length} baris berhasil di-export.`);
+  } catch(e) {
+    showToast('Gagal export: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-file-xls"></i> Export Excel'; }
+  }
 }
 
 initAuth();

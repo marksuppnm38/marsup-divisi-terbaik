@@ -229,10 +229,16 @@
         <select class="filter-select" id="pop-entitas-filter" onchange="popSetEntitas(this.value)">
           <option value="">Semua Entitas</option>
         </select>
+        <select class="filter-select" id="pop-channel-filter" onchange="popSetChannel(this.value)">
+          <option value="">Semua Channel</option>
+        </select>
         <span class="search-wrap-mini" style="position:relative">
           <input class="search-mini" id="pop-search" type="search" placeholder="Cari kode / nama produk…" oninput="popOnSearch()" style="padding-right:24px;width:220px"/>
           <i class="ph ph-circle-notch spinner search-spinner" id="pop-search-spinner"></i>
         </span>
+        <button class="bulk-btn export" onclick="popExportExcel(event)" style="margin-left:auto">
+          <i class="ph ph-file-xls"></i> Export Excel
+        </button>
       </div>
     </div>
     <div class="table-scroll">
@@ -242,6 +248,7 @@
             <th>Kode Produk</th>
             <th>Nama Produk</th>
             <th>Entitas</th>
+            <th>Channel</th>
             <th>Wilayah</th>
             <th style="text-align:right">Total Qty</th>
             <th style="text-align:right">Jml Customer</th>
@@ -250,7 +257,7 @@
           </tr>
         </thead>
         <tbody id="pop-tbl-body">
-          <tr class="loading-row"><td colspan="8"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>
+          <tr class="loading-row"><td colspan="9"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>
         </tbody>
       </table>
     </div>
