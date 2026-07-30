@@ -505,9 +505,17 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
     </div>
     <div id="lampiran-status" style="font-size:13px;color:var(--text-muted);padding:24px 0;text-align:center">Memuat lampiran…</div>
     <div id="lampiran-picker" style="display:none;margin-bottom:14px">
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">PDF tidak ketemu otomatis. Cari & klik file brosur yang sesuai:</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">PDF tidak ketemu otomatis. Cari & klik file brosur yang sudah ada di bucket:</div>
       <input type="text" id="lampiran-search-input" placeholder="Ketik untuk cari nama file PDF…" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px"/>
       <div id="lampiran-suggest-list" style="margin-top:6px;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;display:none"></div>
+      <div class="dropzone-divider">atau</div>
+      <div id="lampiran-dropzone" class="dropzone">
+        <input type="file" id="lampiran-file-input" accept="application/pdf,.pdf" hidden/>
+        <i class="ti ti-cloud-upload dropzone-icon"></i>
+        <div class="dropzone-text">Seret &amp; taruh file brosur (PDF) di sini,<br/>atau <span class="dropzone-browse">klik untuk pilih file</span></div>
+        <div class="dropzone-sub">Cocok buat brosur yang didapat dari WA, email, atau HP — tinggal unggah langsung, gak perlu ada di bucket dulu.</div>
+      </div>
+      <div id="lampiran-upload-status" class="dropzone-status" style="display:none"></div>
     </div>
     <div id="lampiran-save-row" style="display:none;margin-bottom:14px;padding:10px;background:var(--surface-2);border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:10px">
       <span style="font-size:12px;color:var(--text-muted)">Simpan pilihan ini supaya otomatis kebuka lain kali?</span>
@@ -534,12 +542,22 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
   <div class="modal-box" style="width:auto;max-width:90vw;padding:20px 20px 16px;text-align:center">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
       <div class="modal-title" id="gambar-title" style="margin:0;text-align:left">Gambar Produk</div>
-      <button id="gambar-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1;flex-shrink:0">&times;</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button id="gambar-ganti-btn" class="modal-ganti-btn" style="display:none">Ganti Gambar</button>
+        <button id="gambar-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1;flex-shrink:0">&times;</button>
+      </div>
     </div>
     <div id="gambar-body" style="min-width:220px;max-width:70vw;max-height:70vh;display:flex;align-items:center;justify-content:center">
       <div id="gambar-status" style="font-size:13px;color:var(--text-muted);padding:24px 0">Memuat gambar…</div>
       <img id="gambar-img" src="" alt="Gambar produk" style="display:none;max-width:100%;max-height:70vh;border-radius:8px;border:1px solid var(--border)"/>
+      <div id="gambar-dropzone" class="dropzone" style="display:none;width:280px">
+        <input type="file" id="gambar-file-input" accept="image/*" hidden/>
+        <i class="ti ti-cloud-upload dropzone-icon"></i>
+        <div class="dropzone-text">Seret &amp; taruh gambar produk di sini,<br/>atau <span class="dropzone-browse">klik untuk pilih file</span></div>
+        <div class="dropzone-sub">Foto dari WA, HP, atau folder — langsung diunggah jadi gambar produk ini.</div>
+      </div>
     </div>
+    <div id="gambar-upload-status" class="dropzone-status" style="display:none"></div>
   </div>
 </div>
 

@@ -148,6 +148,67 @@ initAuth();
 const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
 const LAMPIRAN_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/lampiran-unit/';
 
+// upload file ke Supabase Storage bucket (dipakai fitur drag & drop brosur/gambar).
+// x-upsert:true supaya kalau nama file sama, langsung ditimpa (gak perlu hapus manual dulu).
+async function uploadToSupabaseStorage(bucket, path, fileOrBlob, contentType) {
+  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${encodeURIComponent(path)}`, {
+    method: 'POST',
+    headers: {
+      'apikey': ANON_KEY,
+      'Authorization': 'Bearer ' + ANON_KEY,
+      'Content-Type': contentType || fileOrBlob.type || 'application/octet-stream',
+      'x-upsert': 'true'
+    },
+    body: fileOrBlob
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return true;
+}
+
+// bikin dropzone (klik utk browse + drag&drop) manggil callback dgn File yg dipilih/di-drop
+function setupDropzone(zoneEl, inputEl, onFile) {
+  if (!zoneEl || !inputEl) return;
+  zoneEl.addEventListener('click', () => inputEl.click());
+  inputEl.addEventListener('change', () => {
+    if (inputEl.files && inputEl.files[0]) onFile(inputEl.files[0]);
+    inputEl.value = '';
+  });
+  ['dragenter', 'dragover'].forEach(evt => zoneEl.addEventListener(evt, (e) => {
+    e.preventDefault(); e.stopPropagation(); zoneEl.classList.add('dragover');
+  }));
+  ['dragleave', 'dragend'].forEach(evt => zoneEl.addEventListener(evt, (e) => {
+    e.preventDefault(); e.stopPropagation(); zoneEl.classList.remove('dragover');
+  }));
+  zoneEl.addEventListener('drop', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    zoneEl.classList.remove('dragover');
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) onFile(f);
+  });
+}
+
+// convert file gambar apapun (jpg/webp/screenshot dll) jadi PNG blob,
+// biar konsisten sama konvensi penamaan thumbnail (kode_produk.png)
+function imageFileToPngBlob(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Gagal memproses gambar')), 'image/png');
+      };
+      img.onerror = () => reject(new Error('File gambar tidak valid'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Gagal membaca file'));
+    reader.readAsDataURL(file);
+  });
+}
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 
 const lampiranModal = document.getElementById('lampiran-modal');
@@ -160,6 +221,9 @@ const lampiranSuggestList = document.getElementById('lampiran-suggest-list');
 const lampiranSaveRow = document.getElementById('lampiran-save-row');
 const lampiranSaveBtn = document.getElementById('lampiran-save-btn');
 const lampiranGantiBtn = document.getElementById('lampiran-ganti-btn');
+const lampiranDropzone = document.getElementById('lampiran-dropzone');
+const lampiranFileInput = document.getElementById('lampiran-file-input');
+const lampiranUploadStatus = document.getElementById('lampiran-upload-status');
 document.getElementById('lampiran-close').addEventListener('click', () => lampiranModal.classList.remove('show'));
 lampiranModal.addEventListener('click', (e) => { if (e.target === lampiranModal) lampiranModal.classList.remove('show'); });
 
@@ -168,22 +232,71 @@ const gambarModal = document.getElementById('gambar-modal');
 const gambarTitle = document.getElementById('gambar-title');
 const gambarStatus = document.getElementById('gambar-status');
 const gambarImg = document.getElementById('gambar-img');
+const gambarGantiBtn = document.getElementById('gambar-ganti-btn');
+const gambarDropzone = document.getElementById('gambar-dropzone');
+const gambarFileInput = document.getElementById('gambar-file-input');
+const gambarUploadStatus = document.getElementById('gambar-upload-status');
 document.getElementById('gambar-close').addEventListener('click', () => gambarModal.classList.remove('show'));
 gambarModal.addEventListener('click', (e) => { if (e.target === gambarModal) gambarModal.classList.remove('show'); });
 
+let gambarCurrentKodeForUrl = null;
+
 function openGambarModal(kode_asli, kode_produk, nama_produk) {
   const kodeForUrl = (kode_asli && kode_asli.trim()) ? kode_asli.trim() : kode_produk;
+  gambarCurrentKodeForUrl = kodeForUrl;
   gambarTitle.textContent = nama_produk || 'Gambar Produk';
   gambarImg.style.display = 'none';
+  gambarDropzone.style.display = 'none';
+  gambarUploadStatus.style.display = 'none';
+  gambarGantiBtn.style.display = 'none';
   gambarStatus.style.display = 'block';
   gambarStatus.style.color = 'var(--text-muted)';
   gambarStatus.textContent = 'Memuat gambar…';
   gambarModal.classList.add('show');
 
   const url = THUMB_BASE + kodeForUrl + '.png';
-  gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarImg.style.display = 'block'; };
-  gambarImg.onerror = () => { gambarStatus.style.color = 'var(--danger)'; gambarStatus.textContent = 'Gambar belum tersedia untuk produk ini.'; };
+  gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarImg.style.display = 'block'; gambarDropzone.style.display = 'none'; gambarGantiBtn.style.display = 'inline-block'; };
+  gambarImg.onerror = () => {
+    gambarStatus.style.display = 'none';
+    gambarGantiBtn.style.display = 'none';
+    showGambarDropzone();
+  };
   gambarImg.src = url;
+}
+
+function showGambarDropzone() {
+  gambarImg.style.display = 'none';
+  gambarStatus.style.display = 'none';
+  gambarUploadStatus.style.display = 'none';
+  gambarDropzone.style.display = 'flex';
+}
+gambarGantiBtn.addEventListener('click', showGambarDropzone);
+
+setupDropzone(gambarDropzone, gambarFileInput, handleGambarFileDropped);
+
+async function handleGambarFileDropped(file) {
+  if (!gambarCurrentKodeForUrl) return;
+  if (!file.type.startsWith('image/')) {
+    showToast('File harus berupa gambar (foto/screenshot).', 'error');
+    return;
+  }
+  gambarDropzone.style.display = 'none';
+  gambarUploadStatus.style.display = 'block';
+  gambarUploadStatus.textContent = `Mengunggah "${file.name}"…`;
+  try {
+    const pngBlob = await imageFileToPngBlob(file);
+    await uploadToSupabaseStorage('thumbnails', gambarCurrentKodeForUrl + '.png', pngBlob, 'image/png');
+    gambarUploadStatus.textContent = 'Berhasil diunggah ✓';
+    gambarStatus.style.display = 'block';
+    gambarStatus.style.color = 'var(--text-muted)';
+    gambarStatus.textContent = 'Memuat gambar…';
+    gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarUploadStatus.style.display = 'none'; gambarImg.style.display = 'block'; gambarGantiBtn.style.display = 'inline-block'; };
+    gambarImg.onerror = () => { gambarUploadStatus.textContent = 'Gambar sudah diunggah, tapi gagal dimuat ulang — coba buka lagi.'; };
+    gambarImg.src = THUMB_BASE + gambarCurrentKodeForUrl + '.png?t=' + Date.now();
+  } catch (e) {
+    gambarUploadStatus.textContent = 'Gagal mengunggah: ' + (e.message || e);
+    gambarDropzone.style.display = 'flex';
+  }
 }
 
 let lampiranBucketFiles = null; // cache daftar file di bucket
@@ -338,6 +451,8 @@ async function openLampiranModal(kode_produk) {
   lampiranSearchInput.value = '';
   lampiranSaveRow.style.display = 'none';
   lampiranGantiBtn.style.display = 'none';
+  lampiranUploadStatus.style.display = 'none';
+  lampiranDropzone.classList.remove('dragover');
   lampiranSaveBtn.disabled = false;
   lampiranSaveBtn.textContent = 'Simpan';
   lampiranStatus.style.display = 'block';
@@ -377,6 +492,7 @@ async function openLampiranModal(kode_produk) {
 async function showLampiranPicker() {
   lampiranPages.innerHTML = '';
   lampiranGantiBtn.style.display = 'none';
+  lampiranUploadStatus.style.display = 'none';
   lampiranStatus.style.display = 'block';
   lampiranStatus.textContent = 'Pilih file lampiran PDF:';
   lampiranPicker.style.display = 'block';
@@ -390,6 +506,28 @@ async function showLampiranPicker() {
 }
 
 lampiranGantiBtn.addEventListener('click', () => { showLampiranPicker(); });
+
+setupDropzone(lampiranDropzone, lampiranFileInput, handleLampiranFileDropped);
+
+// upload brosur baru (dari WA/HP/dll, belum ada di bucket) lalu langsung dipakai sbg lampiran
+async function handleLampiranFileDropped(file) {
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  if (!isPdf) {
+    showToast('File harus berupa PDF.', 'error');
+    return;
+  }
+  lampiranSuggestList.style.display = 'none';
+  lampiranUploadStatus.style.display = 'block';
+  lampiranUploadStatus.textContent = `Mengunggah "${file.name}"…`;
+  try {
+    await uploadToSupabaseStorage('lampiran-unit', file.name, file, 'application/pdf');
+    lampiranBucketFiles = null; // reset cache biar file baru ikut muncul di daftar lain kali
+    lampiranUploadStatus.textContent = `Berhasil diunggah: ${file.name}`;
+    await selectLampiranFile(file.name);
+  } catch (e) {
+    lampiranUploadStatus.textContent = 'Gagal mengunggah: ' + (e.message || e);
+  }
+}
 
 lampiranSaveBtn.addEventListener('click', async () => {
   if (!lampiranCurrentProdukId || !lampiranCurrentFilename) return;
@@ -1602,7 +1740,7 @@ function renderResults(data) {
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
-          ${r.tipe==='UNIT'?`<button class="btn-lampiran" data-kode="${r.kode_produk}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>`:''}
+          <button class="btn-lampiran" data-kode="${r.kode_produk}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>
           ${!inClip?`<span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambah</span>`:''}
         </div>
       </div>
@@ -2248,9 +2386,12 @@ btnExport.addEventListener('click', async () => {
       }
     }
 
-    // ── SHEET LAMPIRAN PER UNIT (1 sheet per unit, nama sheet = nama file brosurnya) ──
-    const unitItems = clipboard.filter(i => i.tipe === 'UNIT');
-    if (unitItems.length > 0) {
+    // ── SHEET LAMPIRAN (instrumen, set, ataupun unit — 1 sheet per produk yg PUNYA lampiran) ──
+    // Dulu cuma dicek buat tipe UNIT. Sekarang brosur bisa diupload utk tipe apa aja
+    // (lihat fitur drag&drop lampiran), jadi semua item di clipboard dicek satu-satu;
+    // yg gak ada lampirannya dilewatin aja (gak bikin sheet kosong).
+    const lampiranCandidates = clipboard;
+    if (lampiranCandidates.length > 0) {
       const usedSheetNames = new Set();
       function uniqueSheetName(base) {
         let name = base.replace(/[\\\/\?\*\[\]:]/g,'').trim().substring(0,31) || 'LAMPIRAN';
@@ -2265,10 +2406,11 @@ btnExport.addEventListener('click', async () => {
         return final;
       }
 
-      for (let u = 0; u < unitItems.length; u++) {
-        const item = unitItems[u];
-        setProgress(u, unitItems.length, `Mengambil lampiran PDF: ${item.nama_produk}`);
+      for (let u = 0; u < lampiranCandidates.length; u++) {
+        const item = lampiranCandidates[u];
+        setProgress(u, lampiranCandidates.length, `Mengecek lampiran: ${item.nama_produk}`);
         const { filename, pages } = await getLampiranPagesForKode(item.kode_produk);
+        if (!pages.length) continue; // gak ada lampiran buat produk ini — lewati, gak perlu sheet kosong
 
         const wsLamp = wb.addWorksheet(uniqueSheetName(filename));
         wsLamp.getRow(1).getCell(1).value = `${item.kode_produk} — ${item.nama_produk}`;
@@ -2279,12 +2421,6 @@ btnExport.addEventListener('click', async () => {
         wsLamp.columns = [{width:90}];
 
         let lampRow = 3;
-        if (!pages.length) {
-          wsLamp.getRow(lampRow).getCell(1).value = '(Lampiran tidak tersedia)';
-          wsLamp.getRow(lampRow).getCell(1).font = {italic:true, color:{argb:'FF9CA3AF'}};
-          continue;
-        }
-
         const targetW = 520;
         for (const pg of pages) {
           const targetH = Math.round(pg.height * (targetW / pg.width));
@@ -2297,7 +2433,7 @@ btnExport.addEventListener('click', async () => {
           lampRow += 1;
         }
       }
-      setProgress(unitItems.length, unitItems.length, 'Lampiran selesai…');
+      setProgress(lampiranCandidates.length, lampiranCandidates.length, 'Lampiran selesai…');
     }
 
     // WRITE FILE
