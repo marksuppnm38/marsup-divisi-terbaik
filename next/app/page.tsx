@@ -81,6 +81,9 @@ export default function HubPage() {
     } catch {}
   }, []);
 
+useEffect(() => {
+  document.documentElement.setAttribute("data-theme", theme);
+}, [theme]);
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -90,7 +93,7 @@ export default function HubPage() {
   }
 
   return (
-    <div className="wrap" data-theme={theme === "dark" ? "dark" : undefined}>
+    <div className="wrap">
       <header>
         <div className="brand">
           <Image src="/logo-mark-pnm.png" alt="PNM logo" width={40} height={40} />
