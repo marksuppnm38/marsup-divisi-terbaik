@@ -68,6 +68,15 @@ export default function StokPage() {
       setTheme(stored);
     } catch {}
   }, []);
+
+  useEffect(() => {
+  if (theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+}, [theme]);
+
   const effectiveTheme =
     theme ||
     (typeof window !== "undefined" &&
@@ -438,8 +447,8 @@ export default function StokPage() {
 
   const loggedIn = !!accessToken;
 
-  return (
-    <div data-theme={theme ?? undefined}>
+return (
+  <div>
       {/* React 19 hoists these into <head> automatically */}
       <link
         rel="stylesheet"
