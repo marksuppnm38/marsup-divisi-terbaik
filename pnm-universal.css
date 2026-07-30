@@ -113,6 +113,18 @@ body{
   transition:var(--transition-theme);
 }
 ::selection{background:var(--accent);color:#fff}
+/* hover-lift: shared by every card-like surface, one rule instead of per-class repeats */
+.stat-card,.prog-card,.insight-card,.rcard,.set-list-row,.card,.dict-stat-card{
+  transition:transform .15s var(--ease),box-shadow .15s var(--ease);
+}
+.stat-card:hover,.prog-card:hover,.insight-card:hover,.rcard:hover,.set-list-row:hover,.card:hover,.dict-stat-card:hover{
+  transform:translateY(-3px);
+  box-shadow:var(--shadow-lg);
+}
+@media(prefers-reduced-motion:reduce){
+  .stat-card,.prog-card,.insight-card,.rcard,.set-list-row,.card,.dict-stat-card{transition:none}
+  .stat-card:hover,.prog-card:hover,.insight-card:hover,.rcard:hover,.set-list-row:hover,.card:hover,.dict-stat-card:hover{transform:none}
+}
 kbd{
   font-family:var(--font-mono);
   font-size:10.5px;
@@ -962,9 +974,9 @@ tbody tr.row-attention:hover{background:var(--amber-bg)}
 
 /* ================= CARD VIEW ================= */
 .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
-.prod-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;transition:border-color .12s,transform .12s;display:flex;flex-direction:column;gap:8px}
+.prod-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;transition:border-color .12s,transform .12s,box-shadow .12s;display:flex;flex-direction:column;gap:8px}
 .prod-card.row-attention{border-left:3px solid var(--amber)}
-.prod-card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.prod-card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 .prod-card .pc-kode{font-family:var(--font-mono);font-size:11px;color:var(--text-muted)}
 .prod-card .pc-nama{font-size:13.5px;font-weight:600;line-height:1.3;min-height:34px}
 .prod-card .pc-foot{display:flex;justify-content:space-between;align-items:center;margin-top:auto;gap:6px}
