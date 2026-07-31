@@ -933,7 +933,7 @@ btnButuhBantuan.addEventListener('click', async () => {
     });
     // Baru minta bantuan (bukan batalin) → langsung tawarin kirim link sesinya ke WA,
     // biar temen yang dihubungi bisa langsung klik & buka sesi yang sama.
-    if (currentButuhBantuan && confirm('Kirim link sesi ini ke WhatsApp sekarang?')) {
+    if (currentButuhBantuan && await showConfirmModal({ title: 'Minta Bantuan', text: 'Kirim link sesi ini ke WhatsApp sekarang?', okText: 'Ya, Kirim' })) {
       shareSesiToWhatsApp(sesiId, inpRs.value);
     }
   } catch (err) {
@@ -947,7 +947,7 @@ renderButuhBantuanBtn();
 // itu juga (bukan nunggu user isi form/nambah produk dulu) — biar "Mulai Sesi Baru"
 // beneran berarti sesi udah mulai, dan langsung muncul di daftar Konversi Berjalan.
 async function startNewSesi() {
-  if (clipboard.length && !confirm('Mulai konversi baru? Sesi yang sedang dibuka akan ditinggalkan — datanya tetap tersimpan, bisa dibuka lagi lewat daftar Konversi Berjalan.')) return;
+  if (clipboard.length && !(await showConfirmModal({ title: 'Mulai Sesi Baru', text: 'Sesi yang sedang dibuka akan ditinggalkan — datanya tetap tersimpan, bisa dibuka lagi lewat daftar Konversi Berjalan.', okText: 'Ya, Mulai Baru' }))) return;
   currentSesiId = null;
   currentButuhBantuan = false;
   clipboard = [];
@@ -984,7 +984,12 @@ btnSesiBaru.addEventListener('click', startNewSesi);
 btnEndSesi.addEventListener('click', async () => {
   if (!currentSesiId) return;
   const namaAktif = inpRs.value.trim() || '(Nama RS belum diisi)';
-  if (!confirm(`Selesaikan sesi "${namaAktif}"? Sesi akan keluar dari daftar Konversi Berjalan, tapi datanya tetap tersimpan.`)) return;
+  const ok = await showConfirmModal({
+    title: 'Selesaikan Sesi',
+    text: `Selesaikan sesi "${namaAktif}"? Sesi akan keluar dari daftar Konversi Berjalan, tapi datanya tetap tersimpan.`,
+    okText: 'Ya, Selesaikan'
+  });
+  if (!ok) return;
   btnEndSesi.disabled = true;
   try {
     await sesiFetch(`${SESI_TABLE}?id=eq.${currentSesiId}`, {
@@ -1200,7 +1205,7 @@ async function loadSesiList() {
 // Kalau sesi yang dihapus adalah sesi yang sedang dibuka, layar clipboard
 // ikut direset biar gak nyisa data sesi yang udah gak ada.
 async function deleteSesi(id, nama, btn) {
-  if (!confirm(`Hapus sesi "${nama}"? Semua produk di dalamnya ikut terhapus dan tidak bisa dikembalikan.`)) return;
+  if (!(await showConfirmModal({ title: 'Hapus Sesi', text: `Hapus sesi "${nama}"? Semua produk di dalamnya ikut terhapus dan tidak bisa dikembalikan.`, okText: 'Ya, Hapus', danger: true }))) return;
   if (btn) btn.disabled = true;
   try {
     await sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${id}`, { method: 'DELETE' });
@@ -2454,9 +2459,9 @@ btnExport.addEventListener('click', async () => {
 });
 
 // CLEAR ALL
-btnClearAll.addEventListener('click', () => {
+btnClearAll.addEventListener('click', async () => {
   if (!clipboard.length) return;
-  if (confirm('Hapus semua item dari clipboard?')) {
+  if (await showConfirmModal({ title: 'Hapus Semua', text: 'Hapus semua item dari clipboard?', okText: 'Ya, Hapus', danger: true })) {
     const sesiIdSebelumnya = currentSesiId;
     clipboard = [];
     updateClipboard();
@@ -4116,3 +4121,44 @@ function normalizeMatchedItems(item) {
     setTimeout(() => textInput.focus(), 50);
   };
 })();
+
+// Modal konfirmasi custom — pengganti confirm() bawaan browser biar konsisten
+// dengan tampilan app dan gak nge-block thread (native confirm() nge-freeze
+// seluruh tab, termasuk animasi/toast lain yang lagi jalan).
+function showConfirmModal({ title = 'Konfirmasi', text = '', okText = 'Ya, Lanjutkan', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirm-modal');
+    const titleEl = document.getElementById('confirm-modal-title');
+    const textEl = document.getElementById('confirm-modal-text');
+    const okBtn = document.getElementById('confirm-modal-ok');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+    const iconWrap = document.getElementById('confirm-modal-icon');
+
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    okBtn.textContent = okText;
+    okBtn.style.background = danger ? 'var(--danger)' : 'var(--accent)';
+    iconWrap.style.background = danger ? 'var(--danger-soft)' : 'var(--warn-soft)';
+    iconWrap.style.color = danger ? 'var(--danger-text)' : 'var(--warn-text)';
+    iconWrap.innerHTML = danger ? '<i class="ph ph-trash"></i>' : '<i class="ph ph-warning-circle"></i>';
+
+    function cleanup(result) {
+      modal.classList.remove('show');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onOverlay);
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    }
+    function onOk() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+    function onOverlay(e) { if (e.target === modal) cleanup(false); }
+    function onKey(e) { if (e.key === 'Escape') cleanup(false); if (e.key === 'Enter') cleanup(true); }
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    modal.addEventListener('click', onOverlay);
+    document.addEventListener('keydown', onKey);
+    modal.classList.add('show');
+  });
+}

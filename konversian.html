@@ -638,6 +638,24 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 })();
 </script>
 
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal-box" style="width:90vw;max-width:420px;padding:24px 26px;text-align:left">
+    <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:18px">
+      <div id="confirm-modal-icon" style="width:38px;height:38px;border-radius:10px;background:var(--warn-soft);color:var(--warn-text);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">
+        <i class="ph ph-warning-circle"></i>
+      </div>
+      <div style="flex:1">
+        <div class="modal-title" id="confirm-modal-title" style="margin-bottom:6px">Konfirmasi</div>
+        <div id="confirm-modal-text" style="font-size:13px;color:var(--text-secondary);line-height:1.5"></div>
+      </div>
+    </div>
+    <div class="record-actions">
+      <button id="confirm-modal-cancel">Batal</button>
+      <button id="confirm-modal-ok" style="background:var(--accent);color:#fff">Ya, Lanjutkan</button>
+    </div>
+  </div>
+</div>
+
 <script src="konversian.js"></script>
 <div id="toast-container"></div>
 </div><!-- /#app-root -->
