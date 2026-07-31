@@ -1601,6 +1601,15 @@ async function fetchImageBase64(kode_asli, kode_produk) {
 // AUTOCOMPLETE
 async function runAutocomplete(q) { acBox.style.display = 'none'; }
 
+function renderSkeletons(count) {
+  const widths = [62, 75, 50, 68, 40, 80, 55, 45];
+  loadingEl.innerHTML = Array.from({length: count}, (_, i) => {
+    const w1 = widths[i % widths.length];
+    const w2 = widths[(i + 3) % widths.length] * 0.6;
+    return `<div class="skel-card"><div class="skeleton skel-bar" style="width:${w1}%"></div><div class="skeleton skel-bar" style="width:${w2}%;height:9px"></div></div>`;
+  }).join('');
+}
+
 // SEARCH
 async function runSearch() {
   const q = searchInput.value.trim();
@@ -1610,6 +1619,7 @@ async function runSearch() {
   if (!q) { reset(); return; }
   errEl.style.display = 'none';
   hintEl.style.display = 'none';
+  renderSkeletons(Math.min(lastResults.length || 6, RESULTS_PER_PAGE));
   loadingEl.style.display = 'block';
   resultsEl.innerHTML = '';
   emptyEl.style.display = 'none';
