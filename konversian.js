@@ -1598,8 +1598,27 @@ async function fetchImageBase64(kode_asli, kode_produk) {
   } catch { return null; }
 }
 
-// AUTOCOMPLETE
-async function runAutocomplete(q) { acBox.style.display = 'none'; }
+// AUTOCOMPLETE — reuses lastResults from runSearch, no separate API call needed
+function renderAutocomplete(data) {
+  if (!searchInput.value.trim() || !data || !data.length) {
+    acBox.style.display = 'none'; acItems = []; acIndex = -1; return;
+  }
+  acItems = data.slice(0, 6);
+  acIndex = -1;
+  acBox.innerHTML = acItems.map(r => {
+    const t = (r.tipe || '').toUpperCase();
+    const tipeLabel = t === 'SET' ? 'Set' : t === 'UNIT' ? 'Unit' : 'Instrumen';
+    return `<div class="ac-item"><span class="ac-name">${r.nama_produk}</span><span class="ac-code">${r.kode_produk || ''}</span><span class="ac-badge">${tipeLabel}</span></div>`;
+  }).join('');
+  acBox.querySelectorAll('.ac-item').forEach((el, i) => {
+    el.addEventListener('click', () => {
+      searchInput.value = acItems[i].nama_produk;
+      acBox.style.display = 'none';
+      runSearch();
+    });
+  });
+  acBox.style.display = 'block';
+}
 
 function renderSkeletons(count) {
   const widths = [62, 75, 50, 68, 40, 80, 55, 45];
@@ -1633,6 +1652,7 @@ async function runSearch() {
   loadingEl.style.display = 'none'; // FIX: matikan loading begitu response datang (sebelum branching)
 
   if (error) {
+    acBox.style.display = 'none';
     const msg = error.message || JSON.stringify(error);
     if (msg.includes('timeout') || msg.includes('canceling')) {
       emptyEl.style.display='block';
@@ -1646,7 +1666,7 @@ async function runSearch() {
     }
     return;
   }
-  if (!data || !data.length) { emptyEl.style.display='block'; metaEl.textContent='Tidak ada hasil untuk "'+q+'"'; return; }
+  if (!data || !data.length) { emptyEl.style.display='block'; metaEl.textContent='Tidak ada hasil untuk "'+q+'"'; acBox.style.display='none'; return; }
   lastResults = data;
   await enrichResultsWithStok(lastResults);
   sortSelect.style.display = 'inline-block';
@@ -1654,6 +1674,7 @@ async function runSearch() {
   currentPage = 1;
   metaEl.textContent = data.length + ' produk ditemukan — klik untuk tambah ke clipboard';
   renderResults(lastResults);
+  renderAutocomplete(lastResults);
 }
 
 // SORT
@@ -2496,6 +2517,7 @@ function reset() {
   loadingEl.style.display = 'none';
   hintEl.style.display = 'block';
   errEl.style.display = 'none';
+  acBox.style.display = 'none';
 }
 
 // EVENTS
