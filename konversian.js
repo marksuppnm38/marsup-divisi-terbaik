@@ -1994,10 +1994,9 @@ function updateClipboard() {
             inputmode="numeric"
             value="${item.qty}"
             data-kode="${item.kode_produk}"
-            style="width:44px;text-align:center;border:1px solid var(--border,#ccc);border-radius:4px;font-size:13px;padding:2px 0;-moz-appearance:textfield"
           />
           <button class="qty-btn" data-kode="${item.kode_produk}" data-d="1">+</button>
-          <button class="clip-remove" data-kode="${item.kode_produk}" title="Hapus" style="margin-left:2px;width:20px;height:20px;border:1px solid var(--danger-border);border-radius:4px;color:var(--danger);background:var(--danger-bg);font-size:13px">×</button>
+          <button class="clip-remove" data-kode="${item.kode_produk}" title="Hapus">×</button>
         </div>
       </div>
     </div>`;
