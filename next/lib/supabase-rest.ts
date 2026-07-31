@@ -54,3 +54,9 @@ export async function restRpc(
     body: JSON.stringify(args),
   });
 }
+
+/** Same as restRpc, but for modules with no login gate — authenticates as
+ * the anon role (same as what supabase-js does when there's no user session). */
+export async function restRpcAnon(fn: string, args: unknown): Promise<Response> {
+  return restRpc(fn, args, SUPABASE_ANON_KEY);
+}

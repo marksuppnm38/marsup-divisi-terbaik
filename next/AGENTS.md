@@ -34,11 +34,14 @@ runs on a separate `react-migrate` branch.
   to the old HTML/JS page before adding anything new
 
 ## Migration status
-- `app/stok/` — migrated (pilot)
-- `app/page.tsx` — module hub (was `index.html`), links to `/stok` for the migrated
-  module and to the old relative `.html` paths for everything not yet migrated
-- Everything else (`crud-produk`, `konversian`, `generatesph`, `dashboard`,
-  `cari_set`) — not yet migrated, still plain HTML/JS
+- `app/stok/` — migrated (pilot, needs login)
+- `app/cari-set/` — migrated (no login gate in the original, ported as-is —
+  calls RPC with the anon key directly via `restRpcAnon`)
+- `app/page.tsx` — module hub (was `index.html`), links to `/stok` and
+  `/cari-set` for migrated modules, and to the old relative `.html` paths
+  for everything not yet migrated
+- Everything else (`crud-produk`, `konversian`, `generatesph`, `dashboard`)
+  — not yet migrated, still plain HTML/JS
 
 ## Principles
 - Don't re-architect the Supabase backend (RPC-for-writes, view/REST-for-reads
