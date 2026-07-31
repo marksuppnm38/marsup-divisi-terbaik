@@ -1630,12 +1630,14 @@ function renderSkeletons(count) {
 }
 
 // SEARCH
+let searchSeq = 0;
 async function runSearch() {
   const q = searchInput.value.trim();
   console.log('DEBUG q:', JSON.stringify(q));
   console.log('DEBUG codes:', [...q].map(c => c.charCodeAt(0)));
   
   if (!q) { reset(); return; }
+  const mySeq = ++searchSeq; // request lama yang telat balik nanti diabaikan, bukan nimpa hasil yang lebih baru
   errEl.style.display = 'none';
   hintEl.style.display = 'none';
   renderSkeletons(Math.min(lastResults.length || 6, RESULTS_PER_PAGE));
@@ -1646,6 +1648,7 @@ async function runSearch() {
   const {data, error} = await rpc('search_produk_dengan_harga', {
     q, p_tipe: selectedTipe, only_akd: onlyAkd, only_kfa: false
   });
+  if (mySeq !== searchSeq) return; // sudah ada pencarian lebih baru — buang hasil basi ini
   console.log('DEBUG data length:', data ? data.length : null);
   console.log('DEBUG error:', error);
 
@@ -1985,7 +1988,7 @@ function updateClipboard() {
       </div>
       <div class="clip-item-right">
         <div class="qty-ctrl">
-          <button class="qty-btn" data-kode="${item.kode_produk}" data-d="-1">−</button>
+          <button class="qty-btn" data-kode="${item.kode_produk}" data-d="-1" title="Kurangi qty" aria-label="Kurangi qty">−</button>
           <input
             class="qty-input"
             type="number"
@@ -1994,9 +1997,10 @@ function updateClipboard() {
             inputmode="numeric"
             value="${item.qty}"
             data-kode="${item.kode_produk}"
+            aria-label="Jumlah qty"
           />
-          <button class="qty-btn" data-kode="${item.kode_produk}" data-d="1">+</button>
-          <button class="clip-remove" data-kode="${item.kode_produk}" title="Hapus">×</button>
+          <button class="qty-btn" data-kode="${item.kode_produk}" data-d="1" title="Tambah qty" aria-label="Tambah qty">+</button>
+          <button class="clip-remove" data-kode="${item.kode_produk}" title="Hapus dari clipboard" aria-label="Hapus dari clipboard">×</button>
         </div>
       </div>
     </div>`;
@@ -2506,6 +2510,7 @@ btnClearAll.addEventListener('click', async () => {
 
 // RESET
 function reset() {
+  searchSeq++;
   resultsEl.innerHTML = '';
   paginationEl.innerHTML = '';
   paginationEl.classList.add('hidden');
