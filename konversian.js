@@ -655,6 +655,124 @@ clipResizeHandle.addEventListener('pointerdown', (e) => {
 clipResizeHandle.addEventListener('dblclick', () => setClipWidth(CLIP_WIDTH_DEFAULT));
 
 // ══════════════════════════════════════════
+// COLLAPSE PANEL PENCARIAN: kalau lagi fokus nyocokin clipboard, panel kiri
+// bisa diciutkan jadi rail tipis biar area clipboard dapat ruang penuh.
+// Status ciutan/enggak disimpan per sesi browser (sessionStorage), bukan
+// selamanya — biar gak bikin bingung kalau lain kali buka lagi dari awal.
+// ══════════════════════════════════════════
+const PANEL_SEARCH_COLLAPSE_KEY = 'pnm_panel_search_collapsed';
+const panelSearchEl = document.getElementById('panel-search');
+const panelSearchCollapseBtn = document.getElementById('panel-search-collapse-btn');
+const panelSearchRail = document.getElementById('panel-search-rail');
+function setPanelSearchCollapsed(collapsed, persist = true) {
+  panelSearchEl.classList.toggle('collapsed', collapsed);
+  panelSearchRail.title = 'Buka panel pencarian';
+  if (persist) sessionStorage.setItem(PANEL_SEARCH_COLLAPSE_KEY, collapsed ? '1' : '0');
+}
+if (panelSearchCollapseBtn && panelSearchRail) {
+  panelSearchCollapseBtn.addEventListener('click', () => setPanelSearchCollapsed(true));
+  panelSearchRail.addEventListener('click', () => setPanelSearchCollapsed(false));
+  panelSearchRail.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPanelSearchCollapsed(false); }
+  });
+  setPanelSearchCollapsed(sessionStorage.getItem(PANEL_SEARCH_COLLAPSE_KEY) === '1', false);
+}
+
+// ══════════════════════════════════════════
+// PREFERENSI / SETTINGS: dirancang biar gampang nambah setting baru — tinggal
+// push satu entry ke SETTINGS_SCHEMA (key, label, deskripsi, default, dan
+// callback onChange kalau perlu efek langsung), modal otomatis nge-render
+// togglenya. Tema (Light/Dark) tetap pakai sistem localStorage yang sudah
+// ada di bawah (biar gak duplikat/nabrak), tapi tetap ditampilkan sebagai
+// baris pertama di modal ini biar semua preferensi ada di satu tempat.
+// ══════════════════════════════════════════
+const PNM_SETTINGS_KEY = 'pnm_settings';
+const PNM_SETTINGS_DEFAULT = { autoComplete: true };
+function loadPnmSettings() {
+  try {
+    return Object.assign({}, PNM_SETTINGS_DEFAULT, JSON.parse(localStorage.getItem(PNM_SETTINGS_KEY) || '{}'));
+  } catch {
+    return Object.assign({}, PNM_SETTINGS_DEFAULT);
+  }
+}
+let pnmSettings = loadPnmSettings();
+function savePnmSettings() {
+  localStorage.setItem(PNM_SETTINGS_KEY, JSON.stringify(pnmSettings));
+}
+
+// Tambah setting baru di sini nanti — tidak perlu ubah HTML modal.
+const SETTINGS_SCHEMA = [
+  {
+    key: 'autoComplete',
+    label: 'Auto Complete',
+    desc: 'Tampilkan saran ejaan otomatis di bawah kolom pencarian sambil mengetik.',
+    onChange: (val) => { if (!val) { acBox.style.display = 'none'; acBox.innerHTML = ''; } }
+  }
+];
+
+const settingsModal = document.getElementById('settings-modal');
+const settingsToggleBtn = document.getElementById('settings-toggle');
+const settingsModalClose = document.getElementById('settings-modal-close');
+const settingsListEl = document.getElementById('settings-list');
+
+function isDarkThemeActive() {
+  return document.documentElement.getAttribute('data-theme') === 'dark';
+}
+
+function renderSettingsList() {
+  const dark = isDarkThemeActive();
+  let html = `
+    <div class="pref-row">
+      <div>
+        <div class="pref-row-label">Tema</div>
+        <div class="pref-row-desc">Pilih tampilan terang atau gelap untuk seluruh workspace.</div>
+      </div>
+      <div class="pref-switch ${dark ? 'on' : ''}" id="pref-theme-switch" role="switch" aria-checked="${dark}" tabindex="0">
+        <div class="knob"><i class="ph ${dark ? 'ph-moon' : 'ph-sun'}"></i></div>
+      </div>
+    </div>
+  `;
+  html += SETTINGS_SCHEMA.map(s => `
+    <div class="pref-row">
+      <div>
+        <div class="pref-row-label">${s.label}</div>
+        <div class="pref-row-desc">${s.desc}</div>
+      </div>
+      <div class="pref-switch ${pnmSettings[s.key] ? 'on' : ''}" data-pref-key="${s.key}" role="switch" aria-checked="${!!pnmSettings[s.key]}" tabindex="0"><div class="knob"></div></div>
+    </div>
+  `).join('');
+  settingsListEl.innerHTML = html;
+
+  const themeSwitch = document.getElementById('pref-theme-switch');
+  themeSwitch.addEventListener('click', () => {
+    // Reuse tombol theme-toggle yang sudah ada di header, biar logika
+    // penyimpanan tema (localStorage 'theme'/'pnum-theme' + ikon) gak dobel.
+    document.getElementById('theme-toggle').click();
+    renderSettingsList();
+  });
+
+  settingsListEl.querySelectorAll('.pref-switch[data-pref-key]').forEach(el => {
+    const toggle = () => {
+      const key = el.dataset.prefKey;
+      pnmSettings[key] = !pnmSettings[key];
+      savePnmSettings();
+      el.classList.toggle('on', pnmSettings[key]);
+      el.setAttribute('aria-checked', String(pnmSettings[key]));
+      const schema = SETTINGS_SCHEMA.find(s => s.key === key);
+      if (schema && typeof schema.onChange === 'function') schema.onChange(pnmSettings[key]);
+    };
+    el.addEventListener('click', toggle);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  });
+}
+
+function openSettingsModal() { renderSettingsList(); settingsModal.classList.add('show'); }
+function closeSettingsModal() { settingsModal.classList.remove('show'); }
+if (settingsToggleBtn) settingsToggleBtn.addEventListener('click', openSettingsModal);
+if (settingsModalClose) settingsModalClose.addEventListener('click', closeSettingsModal);
+if (settingsModal) settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettingsModal(); });
+
+// ══════════════════════════════════════════
 // STATUS KONEKSI: banner + toast saat internet putus/nyambung lagi. Aksi yang
 // gagal karena offline (search, simpan sesi, dll) tetap dikasih tau lewat toast
 // error masing-masing seperti biasa — banner ini cuma indikator ambient.
@@ -1371,14 +1489,19 @@ function updateSessionIndicatorAndTitle(rsRaw, salesRaw) {
     document.title = APP_TITLE_BASE;
   }
 }
-function setClipHeaderCollapsed(collapsed) {
+const CLIP_HEADER_COLLAPSE_KEY = 'pnm_clip_header_collapsed';
+function setClipHeaderCollapsed(collapsed, persist = true) {
   clipHeader.classList.toggle('collapsed', collapsed);
   clipHeaderToggle.title = collapsed ? 'Perluas form sesi' : 'Ciutkan form sesi';
   if (collapsed) updateClipHeaderCompact();
+  if (persist) sessionStorage.setItem(CLIP_HEADER_COLLAPSE_KEY, collapsed ? '1' : '0');
 }
 clipHeaderToggle.addEventListener('click', () => {
   setClipHeaderCollapsed(!clipHeader.classList.contains('collapsed'));
 });
+// Section tetap ciutan/terbuka selama masih di tab yang sama (sessionStorage),
+// jadi gak perlu diulang tiap kali klik antar produk.
+setClipHeaderCollapsed(sessionStorage.getItem(CLIP_HEADER_COLLAPSE_KEY) === '1', false);
 [inpRs, inpSales, inpMarsup].forEach(inp => {
   inp.addEventListener('input', updateClipHeaderCompact);
 });
@@ -1677,7 +1800,13 @@ async function runSearch() {
   currentPage = 1;
   metaEl.textContent = data.length + ' produk ditemukan — klik untuk tambah ke clipboard';
   renderResults(lastResults);
-  renderAutocomplete(lastResults);
+  if (pnmSettings.autoComplete) {
+    renderAutocomplete(lastResults);
+  } else {
+    acBox.style.display = 'none';
+    acBox.innerHTML = '';
+    acItems = []; acIndex = -1;
+  }
 }
 
 // SORT
@@ -3774,10 +3903,18 @@ kbList.addEventListener('change', (e) => {
   if (errEl && chk.checked) errEl.style.display = 'none';
 });
 
+const KB_COLLAPSE_KEY = 'pnm_kb_collapsed';
 kbCollapseBtn.addEventListener('click', () => {
   const collapsed = kbSection.classList.toggle('kb-collapsed');
   kbCollapseBtn.title = collapsed ? 'Buka daftar' : 'Ciutkan daftar';
+  sessionStorage.setItem(KB_COLLAPSE_KEY, collapsed ? '1' : '0');
 });
+// Kalau sebelumnya diciutkan di sesi browser yang sama, biarkan tetap ciutan
+// begitu daftar Kebutuhan RS pertama kali muncul.
+if (sessionStorage.getItem(KB_COLLAPSE_KEY) === '1') {
+  kbSection.classList.add('kb-collapsed');
+  kbCollapseBtn.title = 'Buka daftar';
+}
 
 // Kerja bareng dalam satu sesi yang sama bisa jalan bersamaan (bukan cuma
 // gantian) — tombol ini nge-tarik ulang status checklist dari server, biar
