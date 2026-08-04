@@ -151,11 +151,16 @@ const LAMPIRAN_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/objec
 // upload file ke Supabase Storage bucket (dipakai fitur drag & drop brosur/gambar).
 // x-upsert:true supaya kalau nama file sama, langsung ditimpa (gak perlu hapus manual dulu).
 async function uploadToSupabaseStorage(bucket, path, fileOrBlob, contentType) {
+  // PENTING: Authorization pakai token sesi user yg login (stokAccessToken), BUKAN ANON_KEY.
+  // Kalau pakai ANON_KEY, Supabase Storage nganggep request datang dari role 'anon',
+  // jadi kalau policy RLS bucket-nya butuh role 'authenticated', request selalu ditolak
+  // dgn error "new row violates row-level security policy" walau bucket-nya sendiri udah bener.
+  if (!stokAccessToken) throw new Error('Sesi login sudah habis / belum login — silakan login ulang dulu.');
   const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${encodeURIComponent(path)}`, {
     method: 'POST',
     headers: {
       'apikey': ANON_KEY,
-      'Authorization': 'Bearer ' + ANON_KEY,
+      'Authorization': 'Bearer ' + stokAccessToken,
       'Content-Type': contentType || fileOrBlob.type || 'application/octet-stream',
       'x-upsert': 'true'
     },
