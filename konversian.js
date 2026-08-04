@@ -809,13 +809,25 @@ const subtabCari = document.getElementById('subtab-cari');
 const subtabSesi = document.getElementById('subtab-sesi');
 const subtabRiwayat = document.getElementById('subtab-riwayat');
 const subtabConverter = document.getElementById('subtab-converter');
+const subtabSetcari = document.getElementById('subtab-setcari');
 const subtabDictionary = document.getElementById('subtab-dictionary');
 const cariControls = document.getElementById('cari-controls');
 const panelBodyCari = document.getElementById('panel-body-cari');
 const panelBodySesi = document.getElementById('panel-body-sesi');
 const panelBodyRiwayat = document.getElementById('panel-body-riwayat');
 const panelBodyConverter = document.getElementById('panel-body-converter');
+const panelBodySetcari = document.getElementById('panel-body-setcari');
 const panelBodyDictionary = document.getElementById('panel-body-dictionary');
+const setcariBadge = document.getElementById('setcari-badge');
+// Refs modul "Cari SET Mendekati" — dideklarasikan di sini (bukan di dekat
+// fungsi-fungsinya di bawah) karena updateClipboard() manggil
+// updateSetcariSourceCount() sejak load pertama; kalau const-nya baru
+// dideklarasikan belakangan, ini ReferenceError (temporal dead zone).
+const setcariSearchBtn = document.getElementById('setcari-search-btn');
+const setcariStatus = document.getElementById('setcari-status');
+const setcariEmpty = document.getElementById('setcari-empty');
+const setcariList = document.getElementById('setcari-list');
+const setcariSourceCount = document.getElementById('setcari-source-count');
 const riwayatList = document.getElementById('riwayat-list');
 const riwayatListEmpty = document.getElementById('riwayat-list-empty');
 const riwayatListLoading = document.getElementById('riwayat-list-loading');
@@ -1146,21 +1158,25 @@ function switchSubTab(tab) {
   subtabSesi.classList.toggle('active', tab === 'sesi');
   subtabRiwayat.classList.toggle('active', tab === 'riwayat');
   subtabConverter.classList.toggle('active', tab === 'converter');
+  subtabSetcari.classList.toggle('active', tab === 'setcari');
   subtabDictionary.classList.toggle('active', tab === 'dictionary');
   panelBodyCari.style.display = tab === 'cari' ? 'block' : 'none';
   panelBodySesi.style.display = tab === 'sesi' ? 'block' : 'none';
   panelBodyRiwayat.style.display = tab === 'riwayat' ? 'block' : 'none';
   panelBodyConverter.style.display = tab === 'converter' ? 'block' : 'none';
+  panelBodySetcari.style.display = tab === 'setcari' ? 'block' : 'none';
   panelBodyDictionary.style.display = tab === 'dictionary' ? 'block' : 'none';
   cariControls.style.display = tab === 'cari' ? 'block' : 'none';
   if (tab === 'sesi') loadSesiList();
   if (tab === 'riwayat') loadRiwayatList();
   if (tab === 'dictionary') loadDictionary();
+  if (tab === 'setcari' && typeof updateSetcariSourceCount === 'function') updateSetcariSourceCount();
 }
 subtabCari.addEventListener('click', () => switchSubTab('cari'));
 subtabSesi.addEventListener('click', () => switchSubTab('sesi'));
 subtabRiwayat.addEventListener('click', () => switchSubTab('riwayat'));
 subtabConverter.addEventListener('click', () => switchSubTab('converter'));
+subtabSetcari.addEventListener('click', () => switchSubTab('setcari'));
 subtabDictionary.addEventListener('click', () => switchSubTab('dictionary'));
 
 function sesiTimeAgo(iso) {
@@ -2119,6 +2135,7 @@ function updateClipboard() {
     clipTotalHarga.textContent = rupiah(totalHargaClip) + (adaHargaKosong ? ' +' : '');
   }
   updateClipSummaryStrip();
+  if (typeof updateSetcariSourceCount === 'function') updateSetcariSourceCount();
   if (n > 0 && typeof checklistPagu !== 'undefined' && checklistPagu != null) {
     const sisa = checklistPagu - totalHargaClip;
     clipBudget.classList.add('show');
@@ -4010,6 +4027,165 @@ async function autoFinalizePermintaan() {
     kbRecordStatus.textContent = 'Gagal simpan rekap otomatis (gak masalah, dicoba lagi pas item berikutnya ditandai)';
   }
 }
+
+// ══════════════════════════════════════════
+// CARI SET MENDEKATI: dulu tool HTML terpisah (tempel kode_produk manual ke
+// textarea, panggil RPC cari_set_mendekati/detail_isi_set). Sekarang dilebur
+// jadi tab clipboard, sumber kode_produk-nya otomatis dari item yang ada di
+// Clipboard sesi ini (bukan input manual lagi) — biar seamless: user tinggal
+// klik "Cari SET Mendekati", gak perlu copy-paste kode dari clipboard ke tool
+// lain. RPC dipanggil lewat helper rpc() yang sudah ada (pola sama kayak
+// get_set_items dkk — pakai ANON_KEY, bukan stokAccessToken, karena RPC ini
+// read-only/security-definer).
+// ══════════════════════════════════════════
+// Kode sumber = kode_produk unik dari clipboard (kode_asli dipakai kalau ada,
+// sama kayak konvensi kode buat gambar/thumbnail di bagian lain app ini).
+function setcariSourceKodeList() {
+  const seen = new Set();
+  const out = [];
+  clipboard.forEach(c => {
+    const kode = (c.kode_asli && c.kode_asli.trim()) ? c.kode_asli.trim() : c.kode_produk;
+    if (kode && !seen.has(kode)) { seen.add(kode); out.push(kode); }
+  });
+  return out;
+}
+
+function updateSetcariSourceCount() {
+  const n = setcariSourceKodeList().length;
+  setcariSourceCount.textContent = n;
+  setcariSearchBtn.disabled = n === 0;
+}
+
+function setcariSetStatus(msg, isError) {
+  setcariStatus.textContent = msg || '';
+  setcariStatus.classList.toggle('error', !!isError);
+}
+
+function setcariSkorClass(skor) {
+  if (skor >= 0.7) return 'high';
+  if (skor >= 0.4) return 'mid';
+  return 'low';
+}
+
+async function runCariSetMendekati() {
+  const kodeList = setcariSourceKodeList();
+  if (kodeList.length === 0) {
+    setcariSetStatus('Clipboard masih kosong — tambahkan produk dulu.', true);
+    return;
+  }
+  setcariSearchBtn.disabled = true;
+  setcariSetStatus('Mencari…');
+  setcariEmpty.style.display = 'none';
+  setcariList.innerHTML = '';
+  setcariBadge.style.display = 'none';
+  try {
+    const { data, error } = await rpc('cari_set_mendekati', { kode_list: kodeList, batas: 30 });
+    if (error) throw new Error(error.message || 'Gagal mencari SET');
+    if (!data || data.length === 0) {
+      setcariSetStatus('');
+      setcariEmpty.style.display = 'block';
+      setcariEmpty.querySelector('p').textContent = 'Tidak ada SET yang cocok ditemukan buat produk-produk di clipboard sekarang.';
+      return;
+    }
+    setcariSetStatus(`Ditemukan ${data.length} SET, diurutkan dari yang paling mirip.`);
+    setcariBadge.textContent = data.length;
+    setcariBadge.style.display = 'inline-block';
+    renderSetcariResults(data, kodeList);
+  } catch (err) {
+    setcariSetStatus('Gagal mencari: ' + err.message, true);
+  } finally {
+    setcariSearchBtn.disabled = setcariSourceKodeList().length === 0;
+  }
+}
+
+function renderSetcariResults(rows, kodeList) {
+  setcariList.innerHTML = rows.map(row => {
+    const pct = Math.round(row.skor_jaccard * 100);
+    const cls = setcariSkorClass(row.skor_jaccard);
+    return `<div class="setcari-card" data-set-id="${row.set_id}">
+      <div class="setcari-card-top">
+        <div>
+          <div class="setcari-kode">${escapeHtmlAttr(row.kode_set)}</div>
+          ${row.nama_set ? `<div class="setcari-nama">${escapeHtmlAttr(row.nama_set)}</div>` : ''}
+          <div class="setcari-cocok" style="margin-top:4px">${row.jumlah_cocok} / ${row.total_item_set} item set cocok</div>
+        </div>
+        <div class="setcari-score-wrap">
+          <div class="setcari-score ${cls}">${pct}%</div>
+          <div class="setcari-bar-track"><div class="setcari-bar-fill" style="width:${pct}%"></div></div>
+        </div>
+      </div>
+      <div class="setcari-card-actions">
+        <button class="setcari-detail-btn" type="button" data-action="toggle-detail" data-set-id="${row.set_id}">Lihat isi</button>
+        <button class="setcari-detail-btn" type="button" data-action="add-clip" data-kode="${escapeHtmlAttr(row.kode_set)}">+ Tambah ke Clipboard</button>
+      </div>
+      <div class="setcari-detail" data-detail-for="${row.set_id}" style="display:none"></div>
+    </div>`;
+  }).join('');
+
+  setcariList.querySelectorAll('button[data-action="toggle-detail"]').forEach(btn => {
+    btn.addEventListener('click', () => toggleSetcariDetail(btn, kodeList));
+  });
+  setcariList.querySelectorAll('button[data-action="add-clip"]').forEach(btn => {
+    btn.addEventListener('click', () => addSetKodeToClip(btn.dataset.kode, btn));
+  });
+}
+
+// Tambah SET hasil pencarian langsung ke Clipboard tanpa harus balik ke tab
+// pencarian produk dulu — cari by kode_produk persis (RPC produk_by_kode kalau
+// ada; fallback ke pencarian biasa lewat search_produk yang sudah dipakai app).
+async function addSetKodeToClip(kode, btn) {
+  if (!kode) return;
+  if (clipboard.some(c => c.kode_produk === kode)) {
+    showToast('SET ini sudah ada di clipboard.', 'error');
+    return;
+  }
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'Menambahkan…';
+  try {
+    const { data, error } = await rpc('search_produk_dengan_harga', { q: kode, p_tipe: null, only_akd: false, only_kfa: false });
+    if (error) throw new Error(error.message || 'Gagal mencari produk SET');
+    const match = Array.isArray(data) ? data.find(r => r.kode_produk && r.kode_produk.toLowerCase() === kode.toLowerCase()) : null;
+    if (!match) throw new Error('Produk SET tidak ditemukan di database.');
+    lastResults = lastResults && lastResults.length ? lastResults.concat([match]) : [match];
+    addToClip(kode);
+    showToast(`${kode} ditambahkan ke clipboard ✓`);
+    btn.textContent = 'Ditambahkan ✓';
+  } catch (err) {
+    showToast('Gagal menambahkan: ' + err.message, 'error');
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
+async function toggleSetcariDetail(btn, kodeList) {
+  const setId = btn.dataset.setId;
+  const detailEl = setcariList.querySelector(`[data-detail-for="${setId}"]`);
+  if (!detailEl) return;
+  if (detailEl.style.display !== 'none') {
+    detailEl.style.display = 'none';
+    btn.textContent = 'Lihat isi';
+    return;
+  }
+  btn.textContent = 'Memuat…';
+  try {
+    const { data, error } = await rpc('detail_isi_set', { p_set_id: Number(setId), kode_list: kodeList });
+    if (error) throw new Error(error.message || 'Gagal ambil detail SET');
+    const lines = (data || []).map(it => `
+      <div class="setcari-item-line ${it.cocok_dengan_input ? 'match' : ''}">
+        <span>${it.urutan}. ${escapeHtmlAttr(it.kode_item)} — ${escapeHtmlAttr(it.nama_item || '')}</span>
+        <span>qty ${it.qty}${it.cocok_dengan_input ? '<span class="setcari-item-tag">cocok</span>' : ''}</span>
+      </div>`).join('');
+    detailEl.innerHTML = lines || '<div class="setcari-detail-empty">Tidak ada item.</div>';
+    detailEl.style.display = 'flex';
+    btn.textContent = 'Sembunyikan';
+  } catch (err) {
+    setcariSetStatus('Gagal ambil detail: ' + err.message, true);
+    btn.textContent = 'Lihat isi';
+  }
+}
+
+setcariSearchBtn.addEventListener('click', runCariSetMendekati);
 
 // ══════════════════════════════════════════
 // DICTIONARY ISTILAH CUSTOMER (fitur baru)

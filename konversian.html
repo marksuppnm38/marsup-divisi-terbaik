@@ -92,6 +92,7 @@
         <button class="subtab-btn" id="subtab-sesi" type="button"><i class="ti ti-list-details"></i> Konversi Berjalan <span class="subtab-badge" id="sesi-badge" style="display:none">0</span></button>
         <button class="subtab-btn" id="subtab-riwayat" type="button"><i class="ti ti-history"></i> Riwayat</button>
         <button class="subtab-btn" id="subtab-converter" type="button"><i class="ti ti-clipboard-copy"></i> Converter</button>
+        <button class="subtab-btn" id="subtab-setcari" type="button"><i class="ti ti-box-multiple"></i> Cari SET <span class="subtab-badge" id="setcari-badge" style="display:none">0</span></button>
         <button class="subtab-btn" id="subtab-dictionary" type="button"><i class="ti ti-book-2"></i> Dictionary</button>
         <button class="panel-collapse-btn" id="panel-search-collapse-btn" type="button" title="Ciutkan panel pencarian"><i class="ti ti-chevron-left"></i></button>
       </div>
@@ -173,6 +174,24 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       <div id="conv-actions" style="display:none;padding:0 12px 12px">
         <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang Dicentang ke Clipboard</button>
       </div>
+    </div>
+
+    <!-- ===== CARI SET MENDEKATI: dulu tool HTML terpisah (tempel kode_produk
+         manual ke textarea). Sekarang jadi subtab di sini, otomatis pakai
+         kode_produk dari item yang ada di Clipboard sesi ini — gak perlu
+         copy-paste kode lagi. Berdiri sendiri kayak Converter/Dictionary,
+         gak nyentuh logic tab lain. ===== -->
+    <div class="panel-body" id="panel-body-setcari" style="display:none">
+      <div class="sesi-toolbar">
+        <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center">Nyari SET dengan isi paling mirip <b id="setcari-source-count">0</b> produk yang lagi ada di Clipboard</span>
+        <button class="pr-add-clip-btn" id="setcari-search-btn" type="button" disabled><i class="ti ti-search"></i> Cari SET Mendekati</button>
+      </div>
+      <div class="setcari-status" id="setcari-status"></div>
+      <div class="clip-empty" id="setcari-empty">
+        <i class="ti ti-box-multiple"></i>
+        <p>Tambahkan produk ke Clipboard dulu, lalu klik "Cari SET Mendekati" buat lihat SET yang isinya paling mirip sama produk-produk itu.</p>
+      </div>
+      <div class="setcari-list" id="setcari-list"></div>
     </div>
 
     <!-- ===== DICTIONARY: histori istilah customer vs produk Robust yang dipilih.
@@ -403,6 +422,10 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
           </div>
         </div>
       </div>
+
+      <!-- Modul "Cari SET Mendekati" dipindah jadi subtab tersendiri (lihat
+           panel-body-setcari di atas), sejajar Riwayat/Converter/Dictionary —
+           bukan lagi nested di tab Clipboard. -->
     </div>
 
     <div class="clip-footer">
