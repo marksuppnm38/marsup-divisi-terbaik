@@ -12,6 +12,7 @@
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <link rel="stylesheet" href="pnm-universal.css"/>
 </head>
 <body>
@@ -286,6 +287,9 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       <button class="clip-tab-btn active" id="clip-tab-btn-list" type="button" data-tab="list">
         <i class="ti ti-clipboard"></i> Clipboard <span class="clip-tab-badge" id="clip-tab-badge-list" style="display:none">0</span>
       </button>
+      <button class="clip-tab-btn" id="clip-tab-btn-sph" type="button" data-tab="sph">
+        <i class="ti ti-file-text"></i> Buat SPH
+      </button>
     </div>
     <div class="clip-summary-strip" id="clip-summary-strip" style="display:none"></div>
 
@@ -333,6 +337,70 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
             <p>Belum ada produk.<br>Klik hasil pencarian untuk menambahkan.</p>
           </div>
           <div id="clip-list"></div>
+        </div>
+      </div>
+
+      <!-- BUAT SPH: generate Surat Penawaran Harga langsung dari item yang udah ada
+           di Clipboard — gak perlu export Excel dulu terus upload lagi ke tool lain.
+           Detail logic-nya ada di sph-module.js (dipisah biar konversian.js gak makin
+           membengkak), tapi tetep satu halaman/satu app buat user. -->
+      <div class="clip-tab-panel" id="clip-tab-panel-sph" style="display:none">
+        <div class="sph-panel" id="sph-panel">
+          <div class="sph-form" id="sph-form">
+            <div class="form-group">
+              <label>Perusahaan</label>
+              <select id="sph-company">
+                <option value="smy">PT Samaya Medika Indonesia (SMY)</option>
+                <option value="pnm">PT Pionir Nusantara Manufacturing (PNM)</option>
+                <option value="meto">PT Meto Cahaya Abadi (METO)</option>
+              </select>
+            </div>
+            <div class="sph-form-row">
+              <div class="form-group">
+                <label>Prefix Nomor</label>
+                <input id="sph-prefix" type="text" placeholder="SPH-SMY"/>
+              </div>
+              <div class="form-group">
+                <label>Nomor Urut</label>
+                <input id="sph-nomor" type="text" placeholder="cth: 001"/>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Tanggal Surat</label>
+              <input id="sph-tanggal" type="date"/>
+            </div>
+            <div class="form-group">
+              <label>Nama RS / Instansi</label>
+              <input id="sph-rs" type="text" placeholder="Diisi otomatis dari form sesi"/>
+            </div>
+            <div class="form-group">
+              <label>Nama Sales</label>
+              <input id="sph-sales" type="text" placeholder="Diisi otomatis dari form sesi"/>
+            </div>
+            <div id="sph-asset-slots"></div>
+            <label class="sph-checkbox-row">
+              <input type="checkbox" id="sph-include-lampiran" checked/>
+              <span>Sertakan lampiran (rincian per-set, item satuan, dan brosur PDF — sama kayak Export ke Excel)</span>
+            </label>
+            <div id="sph-validation" class="sph-validation" style="display:none"></div>
+            <button class="pr-add-clip-btn sph-btn-block" id="sph-generate-btn" type="button">
+              <i class="ti ti-file-text"></i> Generate SPH
+            </button>
+            <div id="sph-status" class="sph-status"></div>
+          </div>
+          <div class="sph-preview-wrap" id="sph-preview-wrap">
+            <div class="clip-empty" id="sph-preview-empty">
+              <i class="ti ti-file-text"></i>
+              <p>Preview SPH bakal muncul di sini setelah di-generate. Item diambil langsung dari Clipboard (<span id="sph-item-count">0</span> produk).</p>
+            </div>
+            <iframe id="sph-preview-frame" title="Preview SPH" style="display:none"></iframe>
+            <a class="pr-add-clip-btn sph-btn-block" id="sph-download-link" style="display:none;margin-top:10px" download>
+              <i class="ti ti-download"></i> Download PDF
+            </a>
+            <button class="btn-record" id="sph-record-btn" type="button" style="display:none">
+              <i class="ti ti-clipboard-check"></i> Record SPH
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -430,11 +498,69 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
   </div>
 </div>
 
+<!-- RECORD SPH MODAL — catatan terpisah dari "Record Konversi" di atas, khusus
+     surat SPH yang di-generate lewat tab "Buat SPH" (lihat sph-module.js). -->
+<div class="modal-overlay" id="record-sph-modal">
+  <div class="record-modal-box">
+    <div class="modal-title" style="margin-bottom:14px">Record ke Sheet Record SPH</div>
+
+    <div class="record-field">
+      <label>No. SPH</label>
+      <div class="ro" id="rsph-nomor">-</div>
+    </div>
+    <div class="record-field">
+      <label>Distributor</label>
+      <div class="ro" id="rsph-distributor">-</div>
+    </div>
+    <div class="record-field">
+      <label>Tanggal Surat</label>
+      <div class="ro" id="rsph-tanggal">-</div>
+    </div>
+    <div class="record-field">
+      <label>Customer</label>
+      <div class="ro" id="rsph-customer">-</div>
+    </div>
+    <div class="record-field">
+      <label>PIC Sales</label>
+      <div class="ro" id="rsph-sales">-</div>
+    </div>
+    <div class="record-field">
+      <label>Detail Penawaran</label>
+      <div class="ro" id="rsph-detail">-</div>
+    </div>
+    <div class="record-field">
+      <label>Total Value</label>
+      <div class="ro" id="rsph-value">-</div>
+    </div>
+    <div class="record-field">
+      <label>Nama File</label>
+      <div class="ro" id="rsph-namafile">-</div>
+    </div>
+    <div class="record-field">
+      <label>PIC (Owner)</label>
+      <div class="ro" id="rsph-owner">-</div>
+      <div class="helper-text">Diambil dari "PIC Marsup" di panel Clipboard — isi dulu di sana kalau masih kosong.</div>
+    </div>
+    <div class="record-field">
+      <label>Link File (opsional)</label>
+      <input id="rsph-link" type="text" placeholder="Link file PDF (Drive, dsb) — isi kalau sudah diupload"/>
+    </div>
+
+    <div id="record-sph-status"></div>
+
+    <div class="record-actions">
+      <button id="record-sph-cancel-btn">Batal</button>
+      <button id="record-sph-submit-btn">Kirim ke Sheet</button>
+    </div>
+  </div>
+</div>
+
 <!-- STOK MODAL -->
 <!-- Modal Stok dipindah ke stok.html (modul mandiri di index) -->
 
 <!-- PERMINTAAN RS MODAL -->
 <div class="modal-overlay" id="pr-modal">
+
   <div class="pr-modal-box">
     <h3>Catat Permintaan RS</h3>
     <div class="pr-sub">Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Ini murni buat data insight — bukan proses konversi otomatis.</div>
@@ -688,6 +814,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 </div>
 
 <script src="konversian.js"></script>
+<script src="sph-module.js"></script>
 <div id="toast-container"></div>
 </div><!-- /#app-root -->
 </body>

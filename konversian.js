@@ -1566,27 +1566,55 @@ const kbRefreshStatus = document.getElementById('kb-refresh-status');
 const clipTabRow = document.getElementById('clip-tab-row');
 const clipTabBtnKb = document.getElementById('clip-tab-btn-kb');
 const clipTabBtnList = document.getElementById('clip-tab-btn-list');
+const clipTabBtnSph = document.getElementById('clip-tab-btn-sph');
 const clipTabBadgeKb = document.getElementById('clip-tab-badge-kb');
 const clipTabBadgeList = document.getElementById('clip-tab-badge-list');
 const clipTabPanelKb = document.getElementById('clip-tab-panel-kb');
 const clipTabPanelList = document.getElementById('clip-tab-panel-list');
+const clipTabPanelSph = document.getElementById('clip-tab-panel-sph');
 const clipSummaryStrip = document.getElementById('clip-summary-strip');
 
 // ══════════════════════════════════════════
 // TAB CLIPBOARD PANEL: Kebutuhan RS (mapping permintaan↔produk) vs Clipboard
-// (hasil final). Ini gantiin versi lama yang numpuk dua-duanya vertikal dalam
-// satu kolom sempit — sekarang yang lagi aktif dapat tinggi penuh panel.
+// (hasil final) vs Buat SPH (generate surat penawaran langsung dari Clipboard).
+// Ini gantiin versi lama yang numpuk dua-duanya vertikal dalam satu kolom
+// sempit — sekarang yang lagi aktif dapat tinggi penuh panel.
 // ══════════════════════════════════════════
 let clipActiveTab = 'list';
+const panelClipEl = document.getElementById('panel-clip');
+// Tab "Buat SPH" gak butuh panel pencarian produk (item diambil dari
+// Clipboard yang udah jadi, bukan dicari lagi), jadi search diciutkan
+// otomatis begitu tab ini dibuka — form + preview PDF dapet ruang lebih
+// lega tanpa user harus mencet tombol ciutkan manual dulu. Balik ke tab
+// lain otomatis ngembaliin panel search ke kondisi semula, TAPI cuma kalau
+// kita sendiri yang nyiutin di sini — kalau user emang udah nyiutin duluan
+// (manual) sebelum masuk tab SPH, biarin tetap ciut, jangan maksa kebuka.
+let sphAutoCollapsedSearch = false;
 function switchClipTab(tab) {
   clipActiveTab = tab;
   clipTabBtnKb.classList.toggle('active', tab === 'kb');
   clipTabBtnList.classList.toggle('active', tab === 'list');
+  clipTabBtnSph.classList.toggle('active', tab === 'sph');
   clipTabPanelKb.style.display = tab === 'kb' ? 'flex' : 'none';
   clipTabPanelList.style.display = tab === 'list' ? 'flex' : 'none';
+  clipTabPanelSph.style.display = tab === 'sph' ? 'flex' : 'none';
+  if (panelClipEl) panelClipEl.classList.toggle('tab-sph-active', tab === 'sph');
+
+  if (tab === 'sph') {
+    if (panelSearchEl && !panelSearchEl.classList.contains('collapsed')) {
+      sphAutoCollapsedSearch = true;
+      setPanelSearchCollapsed(true, false);
+    }
+  } else if (sphAutoCollapsedSearch) {
+    sphAutoCollapsedSearch = false;
+    setPanelSearchCollapsed(false, false);
+  }
+
+  if (tab === 'sph' && typeof window.onSphTabOpen === 'function') window.onSphTabOpen();
 }
 clipTabBtnKb.addEventListener('click', () => switchClipTab('kb'));
 clipTabBtnList.addEventListener('click', () => switchClipTab('list'));
+clipTabBtnSph.addEventListener('click', () => switchClipTab('sph'));
 kbEmptyCta.addEventListener('click', () => openPrModal());
 
 // Toggle antara empty-state ("belum ada Permintaan RS") dan konten checklist
