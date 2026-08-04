@@ -3878,6 +3878,21 @@ kbList.addEventListener('click', async (e) => {
       return { produk_id: produkId, kode_produk: kode, qty_alokasi: qtyVal };
     });
 
+    // Kalau qty_alokasi diisi di picker Kebutuhan RS, ikutin ke qty item clipboard
+    // yang sama — biar user gak perlu isi qty dua kali (di clipboard & di sini).
+    // Kalau qty_alokasi dikosongin, qty clipboard dibiarin apa adanya (gak di-reset).
+    let clipQtyChanged = false;
+    links.forEach(l => {
+      if (l.qty_alokasi == null || isNaN(l.qty_alokasi) || l.qty_alokasi < 1) return;
+      const clipItem = clipboard.find(c => c.kode_produk === l.kode_produk);
+      if (clipItem && clipItem.qty !== l.qty_alokasi) {
+        clipItem.qty = l.qty_alokasi;
+        persistUpdateQty(clipItem);
+        clipQtyChanged = true;
+      }
+    });
+    if (clipQtyChanged) updateClipboard();
+
     btn.disabled = true;
     try {
       await callUpdatePermintaanItemMulti(itemId, 'TERPENUHI', links);
