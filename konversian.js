@@ -148,6 +148,29 @@ initAuth();
 const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
 const LAMPIRAN_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/lampiran-unit/';
 
+// Regex resmi dari storage-api Supabase buat validasi object key (S3-safe chars).
+// Nama file dari WA/HP sering nyelundupin karakter unicode "siluman" (nbsp,
+// smart quotes, dash khusus, dll) yang kelihatan normal tapi bikin request
+// upload ditolak dgn error "InvalidKey". Makanya path yg dikirim ke Storage
+// WAJIB disanitasi dulu, jangan pakai file.name mentah-mentah.
+function isValidStorageKey(key) {
+  return /^(\w|\/|!|-|\.|\*|'|\(|\)| |&|\$|@|=|;|:|\+|,|\?)*$/.test(key);
+}
+function sanitizeStorageFileName(name) {
+  const dotIdx = name.lastIndexOf('.');
+  const base = dotIdx > -1 ? name.slice(0, dotIdx) : name;
+  const ext = dotIdx > -1 ? name.slice(dotIdx) : '';
+  const cleanBase = base
+    .normalize('NFKC')                              // normalisasi variasi unicode
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')    // hapus control char tak terlihat
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, ' ')    // nbsp & zero-width -> spasi biasa
+    .replace(/\s+/g, '_')                            // spasi (termasuk ganda) -> underscore
+    .replace(/[^a-zA-Z0-9._-]/g, '')                 // buang sisa char di luar whitelist aman
+    .replace(/_+/g, '_')                             // rapikan underscore berulang
+    .replace(/^_+|_+$/g, '');                        // trim underscore di ujung
+  return (cleanBase || 'file') + ext.toLowerCase();
+}
+
 // upload file ke Supabase Storage bucket (dipakai fitur drag & drop brosur/gambar).
 // x-upsert:true supaya kalau nama file sama, langsung ditimpa (gak perlu hapus manual dulu).
 async function uploadToSupabaseStorage(bucket, path, fileOrBlob, contentType) {
@@ -524,11 +547,20 @@ async function handleLampiranFileDropped(file) {
   lampiranSuggestList.style.display = 'none';
   lampiranUploadStatus.style.display = 'block';
   lampiranUploadStatus.textContent = `Mengunggah "${file.name}"…`;
+
+  // Nama asli dari WA/HP bisa ngandung karakter unicode "siluman" (nbsp, smart
+  // quote, dash khusus, dll) yang bikin Supabase Storage nolak dgn "InvalidKey".
+  // Jadi key yg dikirim ke Storage WAJIB versi yang sudah disanitasi;
+  // nama asli (file.name) cuma dipakai buat teks status yg dilihat user.
+  const safeName = sanitizeStorageFileName(file.name);
+
   try {
-    await uploadToSupabaseStorage('lampiran-unit', file.name, file, 'application/pdf');
+    await uploadToSupabaseStorage('lampiran-unit', safeName, file, 'application/pdf');
     lampiranBucketFiles = null; // reset cache biar file baru ikut muncul di daftar lain kali
-    lampiranUploadStatus.textContent = `Berhasil diunggah: ${file.name}`;
-    await selectLampiranFile(file.name);
+    lampiranUploadStatus.textContent = safeName === file.name
+      ? `Berhasil diunggah: ${file.name}`
+      : `Berhasil diunggah sbg "${safeName}" (nama asli: ${file.name})`;
+    await selectLampiranFile(safeName); // pakai safeName krn itu key sebenarnya di bucket
   } catch (e) {
     lampiranUploadStatus.textContent = 'Gagal mengunggah: ' + (e.message || e);
   }
