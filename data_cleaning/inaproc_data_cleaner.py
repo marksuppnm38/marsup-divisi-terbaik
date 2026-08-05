@@ -28,10 +28,14 @@ import json
 import re
 import sys
 from datetime import datetime
+from pathlib import Path
 
-SRC = "/mnt/user-data/uploads/products.csv"
-RAW_OUT = "/home/claude/products_raw.csv"
-CLEAN_OUT = "/home/claude/products_clean.csv"
+BASE_DIR = Path(__file__).resolve().parent.parent
+OUTPUT_DIR = BASE_DIR / "output"
+
+SRC = OUTPUT_DIR / "products.csv"
+RAW_OUT = OUTPUT_DIR / "products_raw.csv"
+CLEAN_OUT = OUTPUT_DIR / "products_clean.csv"
 
 UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
