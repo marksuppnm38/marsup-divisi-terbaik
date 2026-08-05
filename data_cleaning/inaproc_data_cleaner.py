@@ -31,7 +31,7 @@ from datetime import datetime
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = BASE_DIR / "output"
+OUTPUT_DIR = BASE_DIR / "inaproc_scrapper" / "output"
 
 SRC = OUTPUT_DIR / "products.csv"
 RAW_OUT = OUTPUT_DIR / "products_raw.csv"
