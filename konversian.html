@@ -4,9 +4,6 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Conversion Workspace — PT Pionir Nusantara Manufacturing</title>
-<meta name="description" content="Workspace konversi produk PT Pionir Nusantara Manufacturing: pencarian produk, pencocokan permintaan RS, dan pengelolaan clipboard konversi."/>
-<meta name="theme-color" content="#f0f2f5"/>
-<link rel="icon" href="assets/logo-mark-pnm.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
@@ -16,6 +13,9 @@
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<!-- Dipakai CUMA buat client Realtime (channel/presence/broadcast) — semua query data
+     tetap lewat sesiFetch()/REST kayak biasa, gak ada yang dipindah ke SDK ini. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="pnm-universal.css"/>
 </head>
 <body>
@@ -70,6 +70,14 @@
     <i class="ph ph-hospital"></i>
     <span id="session-indicator-text">Belum ada sesi — klik "Mulai Sesi Baru"</span>
   </button>
+  <!-- Status koneksi realtime — beda arti sama session-indicator-dot (itu status SIMPAN,
+       ini status TERSAMBUNG-nya channel live). Cuma keliatan pas ada sesi yg lagi dibuka. -->
+  <div class="rt-status" id="rt-status" style="display:none">
+    <span class="rt-status-dot" id="rt-status-dot"></span>
+    <span id="rt-status-text"></span>
+  </div>
+  <!-- Siapa aja yang lagi buka sesi yang sama (Presence) -->
+  <div class="rt-presence" id="rt-presence" style="display:none" title=""></div>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
     <a class="toggle-btn" href="index.html" title="Kembali ke Beranda"><i class="ph ph-house"></i> <span class="toggle-btn-label">Beranda</span></a>
@@ -284,6 +292,9 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         </div>
       </div>
       <div id="sesi-save-status" style="font-size:11px;color:var(--text-muted);margin-bottom:4px;min-height:14px"></div>
+      <!-- Feed aktivitas realtime — siapa ngapain di sesi ini barusan. Kosong/hidden
+           kalau belum ada event apapun (sesi baru/gak ada channel aktif). -->
+      <div id="rt-activity-feed" style="display:none;font-size:11px;color:var(--text-muted);margin-bottom:6px;padding:6px 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;max-height:110px;overflow-y:auto"></div>
       <div class="clip-header-compact" id="clip-header-compact"></div>
       <div class="clip-header-form-collapsible" id="clip-header-form-collapsible">
         <div class="clip-header-form-inner">

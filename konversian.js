@@ -7,6 +7,7 @@ const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 // ══════════════════════════════════════════
 const AUTH_STORAGE_KEY = 'pnm_auth_session';
 let stokAccessToken = null; // dipakai di seluruh app buat panggil RPC yang butuh role 'authenticated'
+let currentUser = null; // { id, email } dari Supabase Auth — basis identitas Presence/Realtime (BUKAN pic_marsup yang teks bebas)
 
 const authGate = document.getElementById('auth-gate');
 const appRoot = document.getElementById('app-root');
@@ -15,16 +16,35 @@ const gatePassword = document.getElementById('gate-password');
 const gateLoginBtn = document.getElementById('gate-login-btn');
 const gateStatus = document.getElementById('gate-status');
 
+// ══════════════════════════════════════════
+// REALTIME CLIENT: cuma dipakai buat channel (postgres_changes/presence/broadcast).
+// Query data TETAP lewat sesiFetch()/REST kayak biasa — SDK ini gak gantiin itu.
+// `window.supabase` global dari CDN ketimpa nama var lokal manapun, makanya
+// instance-nya dipegang di `rt` biar gak collide sama apa-apa yang udah ada.
+// ══════════════════════════════════════════
+const rt = (typeof window.supabase !== 'undefined' && window.supabase.createClient)
+  ? window.supabase.createClient(SUPABASE_URL, ANON_KEY)
+  : null;
+if (!rt) console.warn('Supabase Realtime SDK gagal dimuat — kolaborasi live gak aktif, app tetap jalan pakai REST biasa.');
+
 function saveAuthSession(data) {
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
     access_token: data.access_token,
     refresh_token: data.refresh_token,
-    expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600)
+    expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
+    user: data.user ? { id: data.user.id, email: data.user.email } : null
   }));
 }
 function clearAuthSession() { localStorage.removeItem(AUTH_STORAGE_KEY); }
 function readAuthSession() {
   try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null'); } catch { return null; }
+}
+// Realtime (postgres_changes yang difilter RLS + presence) butuh token user yang
+// sama kayak dipakai sesiFetch() — kalau enggak, channel subscribe tapi gak pernah
+// nerima row apapun (RLS nge-filter diem-diem). Dipanggil tiap kali token baru
+// didapat/direfresh, sejalur sama titik-titik stokAccessToken diisi.
+function syncRealtimeAuth() {
+  if (rt && stokAccessToken) rt.realtime.setAuth(stokAccessToken);
 }
 function showApp() {
   authGate.style.display = 'none';
@@ -74,6 +94,8 @@ function shareSesiToWhatsApp(id, namaRs) {
 }
 function showGate(msg) {
   stokAccessToken = null;
+  currentUser = null;
+  if (typeof unsubscribeFromSesiRealtime === 'function') unsubscribeFromSesiRealtime();
   appRoot.style.display = 'none';
   authGate.style.display = 'flex';
   if (msg) { gateStatus.style.color = 'var(--danger)'; gateStatus.textContent = msg; }
@@ -96,13 +118,17 @@ async function initAuth() {
   // Kalau token masih berlaku >60 detik lagi, pakai langsung. Kalau enggak, refresh dulu.
   if (saved.expires_at && saved.expires_at - Math.floor(Date.now() / 1000) > 60) {
     stokAccessToken = saved.access_token;
+    currentUser = saved.user || null;
+    syncRealtimeAuth();
     showApp();
     return;
   }
   try {
     const data = await refreshAuthSession(saved.refresh_token);
     stokAccessToken = data.access_token;
+    currentUser = data.user ? { id: data.user.id, email: data.user.email } : saved.user || null;
     saveAuthSession(data);
+    syncRealtimeAuth();
     showApp();
   } catch (err) {
     clearAuthSession();
@@ -131,7 +157,9 @@ gateLoginBtn.addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error_description || data.msg || 'Login gagal');
     stokAccessToken = data.access_token;
+    currentUser = data.user ? { id: data.user.id, email: data.user.email } : null;
     saveAuthSession(data);
+    syncRealtimeAuth();
     gatePassword.value = '';
     showApp();
   } catch (err) {
@@ -972,7 +1000,7 @@ const APP_TITLE_BASE = document.title; // "Conversion Workspace — PT Pionir Nu
 function showToast(msg, type = 'success') {
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
-  const icon = type === 'error' ? 'ti-alert-circle' : 'ti-circle-check';
+  const icon = type === 'error' ? 'ti-alert-circle' : (type === 'presence' ? 'ti-users' : 'ti-circle-check');
   el.innerHTML = `<i class="ti ${icon}"></i><span></span>`;
   el.querySelector('span').textContent = msg;
   toastContainer.appendChild(el);
@@ -1068,6 +1096,7 @@ async function ensureSesi() {
   currentSesiId = rows[0].id;
   updateEndSesiBtnState();
   updateClipHeaderCompact(); // refresh indikator header (ikut currentSesiId, bukan cuma nama RS)
+  if (typeof subscribeToSesiRealtime === 'function') subscribeToSesiRealtime(currentSesiId);
   return currentSesiId;
 }
 
@@ -1153,12 +1182,18 @@ let headerSaveTimer = null;
     headerSaveTimer = setTimeout(async () => {
       try {
         const sesiId = await ensureSesi();
+        const namaRs = inpRs.value.trim() || null;
+        const namaSales = inpSales.value.trim() || null;
+        const picMarsup = inpMarsup.value.trim() || null;
+        markLocalWrite(SESI_TABLE, sesiId, 'nama_rs', namaRs);
+        markLocalWrite(SESI_TABLE, sesiId, 'nama_sales', namaSales);
+        markLocalWrite(SESI_TABLE, sesiId, 'pic_marsup', picMarsup);
         await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
           method: 'PATCH',
           body: JSON.stringify({
-            nama_rs: inpRs.value.trim() || null,
-            nama_sales: inpSales.value.trim() || null,
-            pic_marsup: inpMarsup.value.trim() || null,
+            nama_rs: namaRs,
+            nama_sales: namaSales,
+            pic_marsup: picMarsup,
             updated_at: new Date().toISOString()
           })
         });
@@ -1179,6 +1214,7 @@ btnButuhBantuan.addEventListener('click', async () => {
   renderButuhBantuanBtn();
   try {
     const sesiId = await ensureSesi();
+    markLocalWrite(SESI_TABLE, sesiId, 'butuh_bantuan', currentButuhBantuan);
     await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
       method: 'PATCH',
       body: JSON.stringify({ butuh_bantuan: currentButuhBantuan, updated_at: new Date().toISOString() })
@@ -1537,13 +1573,7 @@ async function openSesi(id) {
     checklistPagu = (sesi.pagu != null) ? sesi.pagu : null;
     updateEndSesiBtnState();
 
-    clipboard = items.map(it => ({
-      kode_produk: it.kode_produk, kode_asli: it.kode_asli, nama_produk: it.nama_produk,
-      tipe: it.tipe, is_set: it.is_set, produk_id: it.produk_id, no_akd: it.no_akd,
-      kode_kfa: it.kode_kfa, link_v6: it.link_v6, harga_ekat: it.harga_ekat, tahun_harga: it.tahun_harga,
-      harga_swasta: it.harga_swasta, tahun_harga_swasta: it.tahun_harga_swasta,
-      stok_status: it.stok_status, stok_qty: it.stok_qty, qty: it.qty, _sesiItemId: it.id
-    }));
+    clipboard = items.map(mapSesiItemRowToClipItem);
 
     updateClipboard();
     if (lastResults.length) renderResults(lastResults);
@@ -1558,6 +1588,7 @@ async function openSesi(id) {
     // jadi siapa pun yang buka sesi ini liat daftar permintaannya — bukan cuma
     // orang yang pertama nyatetnya.
     await loadChecklistForSesi(sesi.id);
+    if (typeof subscribeToSesiRealtime === 'function') subscribeToSesiRealtime(currentSesiId);
   } catch (err) {
     showToast('Gagal membuka sesi: ' + err.message, 'error');
   }
@@ -1575,6 +1606,246 @@ function resetChecklistUI() {
   // Referensi screenshot nempel ke konteks Permintaan RS yang lagi dibuka —
   // begitu pindah/tutup/hapus sesi, referensi lama gak relevan lagi.
   if (typeof resetSsReferences === 'function') resetSsReferences();
+  // Channel realtime nempel ke satu sesi doang — begitu pindah/tutup/hapus sesi,
+  // channel yang lama WAJIB diputus dulu (lihat subscribeToSesiRealtime di bawah).
+  if (typeof unsubscribeFromSesiRealtime === 'function') unsubscribeFromSesiRealtime();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// REALTIME KOLABORASI — satu sesi = satu live workspace. Dua channel per sesi:
+//   1) sesi-db-*       → postgres_changes (sumber kebenaran: tabel SESI_TABLE &
+//      SESI_ITEM_TABLE). Ini yang bikin clipboard/header orang lain nongol
+//      otomatis — lewat patchClipItem/insertClipItem/removeClipItemDom yang
+//      cuma nyentuh baris yang berubah, BUKAN updateClipboard() penuh.
+//   2) sesi-presence-* → presence + broadcast, buat hal yang EPHEMERAL doang
+//      (siapa online, siapa lagi ngedit apa). Sengaja gak numpang ke tabel
+//      manapun — otomatis bersih begitu tab ditutup, gak ninggalin baris
+//      "lock" yang nyangkut kalau browser crash.
+// Siklusnya ngikutin currentSesiId: subscribeToSesiRealtime() dipanggil begitu
+// currentSesiId final (ensureSesi()/openSesi()), unsubscribe dipanggil dari
+// resetChecklistUI() di atas — titik reset terpusat yang sama dipakai
+// resetSsReferences().
+// ══════════════════════════════════════════════════════════════════════════
+let sesiDbChannel = null;
+let sesiPresenceChannel = null;
+let presenceRoster = {}; // presence key -> {nama, status, joined_at}
+let rtActivityLog = []; // {ts, msg} — dicap N item terakhir, lihat pushActivity()
+
+// Jejak tulisan lokal barusan, biar event postgres_changes yang notabene
+// "gema" dari tulisan sendiri gak di-reapply (nge-pulse/nge-flash sendiri).
+const recentLocalWrites = new Map(); // key: `${table}:${id}:${field}` -> {value, ts}
+const RECENT_WRITE_TTL_MS = 2500;
+function markLocalWrite(table, id, field, value) {
+  if (!id) return;
+  recentLocalWrites.set(`${table}:${id}:${field}`, { value, ts: Date.now() });
+}
+function isEchoOfLocalWrite(table, id, field, value) {
+  const key = `${table}:${id}:${field}`;
+  const rec = recentLocalWrites.get(key);
+  if (!rec) return false;
+  if (Date.now() - rec.ts > RECENT_WRITE_TTL_MS) { recentLocalWrites.delete(key); return false; }
+  // Nilainya sama persis → emang gema tulisan sendiri. Kalau beda, tetap
+  // dianggap perubahan asli (ke-outrace tulisan orang lain di window yang sama).
+  return String(rec.value) === String(value);
+}
+
+function updateRtStatus(state) {
+  // state: 'connecting' | 'live' | 'reconnecting' | 'offline'
+  const dot = document.getElementById('rt-status-dot');
+  const text = document.getElementById('rt-status-text');
+  const wrap = document.getElementById('rt-status');
+  if (!dot || !text || !wrap) return;
+  wrap.style.display = currentSesiId ? 'flex' : 'none';
+  dot.classList.remove('dot-live', 'dot-connecting', 'dot-reconnecting', 'dot-offline');
+  dot.classList.add('dot-' + state);
+  const labels = { connecting: 'Menyambungkan…', live: 'Live', reconnecting: 'Menyambung ulang…', offline: 'Offline' };
+  text.textContent = labels[state] || '';
+}
+
+function subscribeToSesiRealtime(sesiId) {
+  if (!rt || !sesiId) return; // SDK gagal dimuat / gak ada sesi → diam-diam gak aktifin live sync, app tetap jalan manual kayak sebelumnya
+  unsubscribeFromSesiRealtime(); // jaga-jaga: jangan sampai numpuk channel dari sesi sebelumnya
+  updateRtStatus('connecting');
+
+  sesiDbChannel = rt.channel(`sesi-db-${sesiId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: SESI_TABLE, filter: `id=eq.${sesiId}` }, handleSesiRowChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: SESI_ITEM_TABLE, filter: `sesi_id=eq.${sesiId}` }, handleItemRowChange)
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') updateRtStatus('live');
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') updateRtStatus('reconnecting');
+      else if (status === 'CLOSED') updateRtStatus('offline');
+    });
+
+  const presenceKey = currentUser ? currentUser.id : ('anon-' + Math.random().toString(36).slice(2, 9));
+  sesiPresenceChannel = rt.channel(`sesi-presence-${sesiId}`, { config: { presence: { key: presenceKey } } })
+    .on('presence', { event: 'sync' }, handlePresenceSync)
+    .on('presence', { event: 'join' }, handlePresenceJoin)
+    .on('presence', { event: 'leave' }, handlePresenceLeave)
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        try {
+          await sesiPresenceChannel.track({
+            nama: (inpMarsup && inpMarsup.value.trim()) || (currentUser && currentUser.email) || 'Anonim',
+            status: 'online',
+            joined_at: new Date().toISOString()
+          });
+        } catch { /* presence gagal gak boleh nge-block kerjaan utama */ }
+      }
+    });
+
+  // Away kalau tab disembunyikan >30 detik — kembali online begitu dibuka lagi.
+  document.addEventListener('visibilitychange', handleVisibilityForPresence);
+}
+
+let awayTimer = null;
+function handleVisibilityForPresence() {
+  if (!sesiPresenceChannel) return;
+  clearTimeout(awayTimer);
+  if (document.hidden) {
+    awayTimer = setTimeout(() => {
+      sesiPresenceChannel && sesiPresenceChannel.track({ nama: (inpMarsup && inpMarsup.value.trim()) || 'Anonim', status: 'away', joined_at: new Date().toISOString() }).catch(() => {});
+    }, 30000);
+  } else {
+    sesiPresenceChannel.track({ nama: (inpMarsup && inpMarsup.value.trim()) || 'Anonim', status: 'online', joined_at: new Date().toISOString() }).catch(() => {});
+  }
+}
+
+function unsubscribeFromSesiRealtime() {
+  document.removeEventListener('visibilitychange', handleVisibilityForPresence);
+  clearTimeout(awayTimer);
+  if (rt && sesiDbChannel) rt.removeChannel(sesiDbChannel);
+  if (rt && sesiPresenceChannel) rt.removeChannel(sesiPresenceChannel);
+  sesiDbChannel = null;
+  sesiPresenceChannel = null;
+  presenceRoster = {};
+  rtActivityLog = [];
+  renderPresenceRoster();
+  renderActivityFeed();
+  updateRtStatus('offline');
+  const wrap = document.getElementById('rt-status');
+  if (wrap) wrap.style.display = 'none';
+}
+
+// ---- Handler: baris sesi_konversi berubah (header/pagu/status/butuh_bantuan) ----
+function handleSesiRowChange(payload) {
+  if (payload.eventType === 'DELETE') return; // dihapus ditangani lewat alur hapus sesi yang sudah ada
+  const row = payload.new;
+  if (!row || row.id !== currentSesiId) return;
+
+  // Nama RS/Sales/PIC: jangan timpa field yang LAGI DIFOKUS user lokal (lagi diketik).
+  [['nama_rs', inpRs], ['nama_sales', inpSales], ['pic_marsup', inpMarsup]].forEach(([field, el]) => {
+    if (!el) return;
+    if (isEchoOfLocalWrite(SESI_TABLE, row.id, field, row[field])) return;
+    if (document.activeElement === el) return;
+    const newVal = row[field] || '';
+    if (el.value !== newVal) {
+      el.value = newVal;
+      el.classList.add('rt-field-pulse');
+      setTimeout(() => el.classList.remove('rt-field-pulse'), 1100);
+    }
+  });
+
+  if (row.pagu !== checklistPagu && !isEchoOfLocalWrite(SESI_TABLE, row.id, 'pagu', row.pagu)) {
+    checklistPagu = row.pagu;
+    updateClipAggregates(); // cuma hitung ulang total/budget, gak nyentuh daftar item
+    pushActivity('Pagu diperbarui');
+  }
+  if (!!row.butuh_bantuan !== currentButuhBantuan && !isEchoOfLocalWrite(SESI_TABLE, row.id, 'butuh_bantuan', row.butuh_bantuan)) {
+    currentButuhBantuan = !!row.butuh_bantuan;
+    if (typeof renderButuhBantuanBtn === 'function') renderButuhBantuanBtn();
+    pushActivity(currentButuhBantuan ? 'Minta bantuan diaktifkan' : 'Minta bantuan dibatalkan');
+  }
+}
+
+// ---- Handler: baris sesi_konversi_item berubah (isi clipboard) ----
+function handleItemRowChange(payload) {
+  if (!currentSesiId) return;
+  const row = payload.new || payload.old;
+  if (!row || row.sesi_id !== currentSesiId) return;
+
+  if (payload.eventType === 'INSERT') {
+    // kode_produk unik per clipboard (dipakai jadi key di mana-mana) — cukup buat
+    // ngecek "ini beneran baru" tanpa perlu tracking id kayak update/delete.
+    if (clipboard.some(c => c.kode_produk === row.kode_produk)) return;
+    insertClipItem(mapSesiItemRowToClipItem(row));
+    pushActivity(`${presenceNameGuess()} menambahkan ${row.nama_produk}`);
+    return;
+  }
+  if (payload.eventType === 'UPDATE') {
+    const item = clipboard.find(c => c._sesiItemId === row.id);
+    if (!item) { insertClipItem(mapSesiItemRowToClipItem(row)); return; }
+    if (row.qty !== item.qty && !isEchoOfLocalWrite(SESI_ITEM_TABLE, row.id, 'qty', row.qty)) {
+      const oldQty = item.qty;
+      patchClipItem(item.kode_produk, { qty: row.qty });
+      pushActivity(`Qty ${item.nama_produk} ${oldQty} → ${row.qty}`);
+    }
+    return;
+  }
+  if (payload.eventType === 'DELETE') {
+    const item = clipboard.find(c => c._sesiItemId === row.id);
+    if (!item) return; // udah kehapus duluan lokal (optimistic), gak perlu apa-apa lagi
+    const nama = item.nama_produk;
+    removeClipItemDom(item.kode_produk);
+    pushActivity(`${nama} dihapus`);
+  }
+}
+
+// Placeholder ringan buat "siapa yang ngelakuin ini" di activity feed — presence
+// gak nyimpen histori per-event, jadi paling akurat yang bisa kita bilang cuma
+// "kolaborator" kalau bukan diri sendiri. Upgrade ke nama presisi (butuh kolom
+// pengubah di tabel item) masuk tahap activity-feed berikutnya.
+function presenceNameGuess() {
+  return 'Kolaborator';
+}
+
+// ---- Activity feed ringan (in-memory, dicap 8 entri terakhir) ----
+function pushActivity(msg) {
+  rtActivityLog.unshift({ ts: new Date(), msg });
+  if (rtActivityLog.length > 8) rtActivityLog.length = 8;
+  renderActivityFeed();
+}
+function renderActivityFeed() {
+  const el = document.getElementById('rt-activity-feed');
+  if (!el) return;
+  if (!rtActivityLog.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.innerHTML = rtActivityLog.map((a, i) => {
+    const hh = String(a.ts.getHours()).padStart(2, '0');
+    const mm = String(a.ts.getMinutes()).padStart(2, '0');
+    return `<div${i === 0 ? ' class="rt-fade-in"' : ''} style="padding:2px 0">${hh}:${mm} — ${a.msg}</div>`;
+  }).join('');
+}
+
+// ---- Presence ----
+function handlePresenceSync() {
+  if (!sesiPresenceChannel) return;
+  const state = sesiPresenceChannel.presenceState();
+  const roster = {};
+  Object.keys(state).forEach(key => {
+    const entries = state[key];
+    if (entries && entries.length) roster[key] = entries[entries.length - 1];
+  });
+  presenceRoster = roster;
+  renderPresenceRoster();
+}
+function handlePresenceJoin({ key, newPresences }) {
+  if (currentUser && key === currentUser.id) return; // diri sendiri, gak usah notif
+  const nama = newPresences && newPresences[0] && newPresences[0].nama;
+  if (nama) showToast(`${nama} bergabung ke sesi ini`, 'presence');
+}
+function handlePresenceLeave({ key, leftPresences }) {
+  if (currentUser && key === currentUser.id) return;
+  const nama = leftPresences && leftPresences[0] && leftPresences[0].nama;
+  if (nama) showToast(`${nama} keluar dari sesi`, 'presence');
+}
+function renderPresenceRoster() {
+  const el = document.getElementById('rt-presence');
+  if (!el) return;
+  const names = Object.values(presenceRoster).map(p => p.nama).filter(Boolean);
+  if (!names.length) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.title = names.join(', ');
+  el.innerHTML = `<i class="ti ti-users"></i> ${names.length} online`;
 }
 
 // Ambil Permintaan RS yang nempel ke sesi ini (kalau ada) dan tampilin di
@@ -2255,7 +2526,7 @@ function removeFromClip(kode) {
   renderResults(lastResults);
   if (removed) persistRemoveItem(removed);
 }
-function updateClipboard() {
+function updateClipAggregates() {
   const n = clipboard.length;
   hdrCount.textContent = n;
   clipTotal.textContent = n;
@@ -2297,12 +2568,16 @@ function updateClipboard() {
   } else {
     clipBudget.classList.remove('show');
   }
-  clipList.innerHTML = clipboard.map(item => {
-    const isSet = item.is_set;
-    const tipeColor = isSet ? 'background:var(--success-bg);color:var(--success)' : 'background:var(--accent-bg);color:var(--accent-text)';
-    const hargaTampil = modeSwasta ? item.harga_swasta : item.harga_ekat;
-    const totalHarga = hargaTampil ? hargaTampil * item.qty : null;
-    return `<div class="clip-item">
+}
+
+// Template satu baris clipboard — dipakai render awal (updateClipboard) MAUPUN
+// patch realtime (insertClipItem/patchClipItem), biar markup-nya gak dobel definisi.
+function renderClipItemHtml(item) {
+  const isSet = item.is_set;
+  const tipeColor = isSet ? 'background:var(--success-bg);color:var(--success)' : 'background:var(--accent-bg);color:var(--accent-text)';
+  const hargaTampil = modeSwasta ? item.harga_swasta : item.harga_ekat;
+  const totalHarga = hargaTampil ? hargaTampil * item.qty : null;
+  return `<div class="clip-item" data-kode="${item.kode_produk}">
       <div class="clip-item-info">
         <div class="clip-item-name">${item.nama_produk}</div>
         <div class="clip-item-meta">
@@ -2329,21 +2604,27 @@ function updateClipboard() {
         </div>
       </div>
     </div>`;
-  }).join('');
-  clipList.querySelectorAll('.clip-remove').forEach(btn => {
+}
+
+// Pasang event listener buat satu subtree (satu node .clip-item ATAU seluruh
+// clipList) — dipisah dari render biar bisa dipanggil ulang cuma buat node yang
+// baru di-insert/di-patch, bukan query-ulang seluruh daftar tiap kali.
+function bindClipItemEvents(scopeEl) {
+  scopeEl.querySelectorAll('.clip-remove').forEach(btn => {
     btn.addEventListener('click', () => removeFromClip(btn.dataset.kode));
   });
-  clipList.querySelectorAll('.qty-btn').forEach(btn => {
+  scopeEl.querySelectorAll('.qty-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const item = clipboard.find(c => c.kode_produk === btn.dataset.kode);
       if (!item) return;
       item.qty = Math.max(1, item.qty + parseInt(btn.dataset.d));
-      updateClipboard();
+      if (item._sesiItemId) markLocalWrite(SESI_ITEM_TABLE, item._sesiItemId, 'qty', item.qty);
+      patchClipItem(item.kode_produk, { qty: item.qty });
       persistUpdateQty(item);
     });
   });
   // FIX: handler untuk input qty yang diketik manual
-  clipList.querySelectorAll('.qty-input').forEach(input => {
+  scopeEl.querySelectorAll('.qty-input').forEach(input => {
     // update saat user selesai ngetik (blur) atau tekan Enter
     const commit = () => {
       const item = clipboard.find(c => c.kode_produk === input.dataset.kode);
@@ -2351,7 +2632,8 @@ function updateClipboard() {
       let val = parseInt(input.value, 10);
       if (isNaN(val) || val < 1) val = 1;
       item.qty = val;
-      updateClipboard();
+      if (item._sesiItemId) markLocalWrite(SESI_ITEM_TABLE, item._sesiItemId, 'qty', item.qty);
+      patchClipItem(item.kode_produk, { qty: item.qty });
       persistUpdateQty(item);
     };
     input.addEventListener('blur', commit);
@@ -2361,6 +2643,69 @@ function updateClipboard() {
     // supaya klik di input tidak ikut trigger event lain di parent (kalau ada)
     input.addEventListener('click', (e) => e.stopPropagation());
   });
+}
+
+function updateClipboard() {
+  updateClipAggregates();
+  clipList.innerHTML = clipboard.map(renderClipItemHtml).join('');
+  bindClipItemEvents(clipList);
+}
+
+// ---- Patch granular (dipakai realtime DAN aksi lokal qty +/-/ketik) ----
+// Bedanya sama updateClipboard(): ini cuma nyentuh SATU baris + angka agregat,
+// gak nge-rebuild innerHTML seluruh daftar — biar baris lain gak ikut kedip
+// dan scroll position/fokus input orang lain gak keganggu.
+function patchClipItem(kode, changes) {
+  const item = clipboard.find(c => c.kode_produk === kode);
+  if (!item) return;
+  Object.assign(item, changes);
+  const node = clipList.querySelector(`.clip-item[data-kode="${CSS.escape(kode)}"]`);
+  if (node) {
+    const temp = document.createElement('div');
+    temp.innerHTML = renderClipItemHtml(item);
+    const newNode = temp.firstElementChild;
+    newNode.classList.add('rt-pulse');
+    node.replaceWith(newNode);
+    bindClipItemEvents(newNode);
+  }
+  updateClipAggregates();
+}
+
+function insertClipItem(item) {
+  if (clipboard.some(c => c.kode_produk === item.kode_produk)) { patchClipItem(item.kode_produk, item); return; }
+  clipboard.push(item);
+  const temp = document.createElement('div');
+  temp.innerHTML = renderClipItemHtml(item);
+  const newNode = temp.firstElementChild;
+  newNode.classList.add('rt-fade-in');
+  clipList.prepend(newNode); // item baru dari kolaborator muncul paling atas, biar kelihatan
+  bindClipItemEvents(newNode);
+  updateClipAggregates();
+}
+
+function removeClipItemDom(kode) {
+  const idx = clipboard.findIndex(c => c.kode_produk === kode);
+  if (idx === -1) return;
+  clipboard.splice(idx, 1);
+  const node = clipList.querySelector(`.clip-item[data-kode="${CSS.escape(kode)}"]`);
+  if (node) {
+    node.classList.add('rt-removing');
+    setTimeout(() => node.remove(), 260);
+  }
+  updateClipAggregates();
+}
+
+// Mapping baris sesi_konversi_item (REST maupun payload postgres_changes, bentuknya
+// sama) → shape objek clipboard lokal. Satu titik doang, dipakai openSesi() DAN
+// handleItemRowChange() — biar gak ada 2 tempat yang bisa beda kalau kolomnya nambah.
+function mapSesiItemRowToClipItem(it) {
+  return {
+    kode_produk: it.kode_produk, kode_asli: it.kode_asli, nama_produk: it.nama_produk,
+    tipe: it.tipe, is_set: it.is_set, produk_id: it.produk_id, no_akd: it.no_akd,
+    kode_kfa: it.kode_kfa, link_v6: it.link_v6, harga_ekat: it.harga_ekat, tahun_harga: it.tahun_harga,
+    harga_swasta: it.harga_swasta, tahun_harga_swasta: it.tahun_harga_swasta,
+    stok_status: it.stok_status, stok_qty: it.stok_qty, qty: it.qty, _sesiItemId: it.id
+  };
 }
 
 // PROGRESS
