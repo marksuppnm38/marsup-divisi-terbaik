@@ -4,8 +4,8 @@ const path = require("path");
 
 module.exports = {
   // Target seller
-  SELLER_ID: "01JJTFB2E9HHVVRHB9G6MZYFYY",
-  USERNAME: "abadinusa-usahasemesta",
+  SELLER_ID: "01JJ3EZS1MFRY5CVS4B83NME9J",
+  USERNAME: "presisi-mandiri-industri",
 
   // Used for the `prices(regionCode: ...)` field on getProductBySlug.
   // Doesn't need to be "correct" for your buyer region — it just needs to be
