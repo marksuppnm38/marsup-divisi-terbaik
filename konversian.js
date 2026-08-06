@@ -267,6 +267,88 @@ const gambarUploadStatus = document.getElementById('gambar-upload-status');
 document.getElementById('gambar-close').addEventListener('click', () => gambarModal.classList.remove('show'));
 gambarModal.addEventListener('click', (e) => { if (e.target === gambarModal) gambarModal.classList.remove('show'); });
 
+// ══════════════════════════════════════════
+// REFERENSI SCREENSHOT PERMINTAAN RS: dipicu tiap kali OCR (Tesseract) berhasil
+// baca gambar di modal Catat Permintaan RS. Gambarnya DISIMPEN CUMA DI MEMORY TAB
+// INI (object URL dari File asli) — sengaja gak diupload ke Supabase Storage,
+// biar user masih bisa cek balik ke sumber kalau parsing OCR meleset (sering
+// kejadian), tanpa nambah beban storage tiap konversi. Konsekuensinya: ilang
+// begitu tab ditutup/direfresh — itu trade-off yang disengaja buat v1, bukan bug.
+// Ditampilin di 2 tempat pake container beda (renderSsRefStrip loop keduanya):
+// 1) pr-ss-ref-strip — di modal intake, biar kecek pas ngedit hasil parse.
+// 2) kb-ss-ref-strip — di panel Kebutuhan RS, karena OCR yang meleset biasanya
+//    baru ketauan pas proses matching, bukan pas upload.
+// ══════════════════════════════════════════
+let ssReferences = []; // [{id, url, filename}]
+let ssRefLightboxIndex = 0;
+const prSsRefStrip = document.getElementById('pr-ss-ref-strip');
+const kbSsRefStrip = document.getElementById('kb-ss-ref-strip');
+const ssRefModal = document.getElementById('ss-ref-modal');
+const ssRefImg = document.getElementById('ss-ref-img');
+const ssRefCounter = document.getElementById('ss-ref-counter');
+const ssRefPrevBtn = document.getElementById('ss-ref-prev');
+const ssRefNextBtn = document.getElementById('ss-ref-next');
+
+function addSsReference(file) {
+  const ref = { id: 'ss_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), url: URL.createObjectURL(file), filename: file.name };
+  ssReferences.push(ref);
+  renderSsRefStrip();
+  return ref;
+}
+
+// Dipanggil pas ganti/keluar konteks sesi (mulai sesi baru, sesi selesai, sesi
+// dihapus, pindah buka sesi lain) — lihat resetChecklistUI(). Object URL WAJIB
+// di-revoke di sini, kalau enggak nyangkut di memory browser sampai tab ditutup.
+function resetSsReferences() {
+  ssReferences.forEach(r => URL.revokeObjectURL(r.url));
+  ssReferences = [];
+  renderSsRefStrip();
+}
+
+function ssRefStripHtml() {
+  const chips = ssReferences.map((r, idx) => `<button type="button" class="ss-ref-chip" data-idx="${idx}" title="Lihat screenshot ${idx + 1} dari ${ssReferences.length}" style="flex-shrink:0;padding:0;border:1.5px solid var(--border-strong);border-radius:8px;overflow:hidden;cursor:pointer;width:48px;height:48px;background:var(--surface-2)">
+    <img src="${r.url}" alt="Screenshot ${idx + 1}" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none"/>
+  </button>`).join('');
+  return `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px 10px">
+    <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;white-space:nowrap"><i class="ti ti-photo"></i> Referensi:</span>
+    <div style="display:flex;gap:6px;overflow-x:auto">${chips}</div>
+  </div>`;
+}
+
+function renderSsRefStrip() {
+  [prSsRefStrip, kbSsRefStrip].forEach(el => {
+    if (!el) return;
+    if (!ssReferences.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    el.innerHTML = ssRefStripHtml();
+    el.style.display = 'block';
+    el.querySelectorAll('.ss-ref-chip').forEach(btn => {
+      btn.addEventListener('click', () => openSsRefLightbox(parseInt(btn.dataset.idx, 10)));
+    });
+  });
+}
+
+function openSsRefLightbox(idx) {
+  if (!ssReferences.length) return;
+  ssRefLightboxIndex = Math.max(0, Math.min(idx, ssReferences.length - 1));
+  renderSsRefLightbox();
+  ssRefModal.classList.add('show');
+}
+
+function renderSsRefLightbox() {
+  const ref = ssReferences[ssRefLightboxIndex];
+  if (!ref) return;
+  ssRefImg.src = ref.url;
+  ssRefCounter.textContent = ssReferences.length > 1 ? `Gambar ${ssRefLightboxIndex + 1} dari ${ssReferences.length}` : '';
+  const multi = ssReferences.length > 1;
+  ssRefPrevBtn.style.visibility = multi ? 'visible' : 'hidden';
+  ssRefNextBtn.style.visibility = multi ? 'visible' : 'hidden';
+}
+
+document.getElementById('ss-ref-close').addEventListener('click', () => ssRefModal.classList.remove('show'));
+ssRefModal.addEventListener('click', (e) => { if (e.target === ssRefModal) ssRefModal.classList.remove('show'); });
+ssRefPrevBtn.addEventListener('click', () => { ssRefLightboxIndex = (ssRefLightboxIndex - 1 + ssReferences.length) % ssReferences.length; renderSsRefLightbox(); });
+ssRefNextBtn.addEventListener('click', () => { ssRefLightboxIndex = (ssRefLightboxIndex + 1) % ssReferences.length; renderSsRefLightbox(); });
+
 let gambarCurrentKodeForUrl = null;
 
 function openGambarModal(kode_asli, kode_produk, nama_produk) {
@@ -865,6 +947,9 @@ const riwayatListEmpty = document.getElementById('riwayat-list-empty');
 const riwayatListLoading = document.getElementById('riwayat-list-loading');
 const riwayatListError = document.getElementById('riwayat-list-error');
 const btnRiwayatRefresh = document.getElementById('btn-riwayat-refresh');
+const riwayatSearchInput = document.getElementById('riwayat-search-input');
+const riwayatClearBtn = document.getElementById('riwayat-clear-btn');
+let riwayatSearchDebounce = null;
 const sesiBadge = document.getElementById('sesi-badge');
 const sesiList = document.getElementById('sesi-list');
 const sesiListEmpty = document.getElementById('sesi-list-empty');
@@ -1289,13 +1374,27 @@ async function loadRiwayatList() {
   riwayatListEmpty.style.display = 'none';
   riwayatList.innerHTML = '';
   try {
-    const res = await sesiFetch(`${SESI_TABLE}?status=eq.selesai&select=*,${SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi)&order=updated_at.desc&limit=100`);
+    // Search realtime di nama RS / PIC / Sales — pake `or=` PostgREST biar
+    // kepencet satu kotak aja, gak perlu tiga filter field terpisah.
+    const term = riwayatSearchInput ? riwayatSearchInput.value.trim() : '';
+    let searchFilter = '';
+    if (term) {
+      const esc = term.replace(/[,()]/g, ' ').trim();
+      searchFilter = `&or=(nama_rs.ilike.*${encodeURIComponent(esc)}*,pic_marsup.ilike.*${encodeURIComponent(esc)}*,nama_sales.ilike.*${encodeURIComponent(esc)}*)`;
+    }
+    const res = await sesiFetch(`${SESI_TABLE}?status=eq.selesai${searchFilter}&select=*,${SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi)&order=updated_at.desc&limit=100`);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
     }
     const data = await res.json();
-    if (data.length === 0) { riwayatListEmpty.style.display = 'block'; return; }
+    if (data.length === 0) {
+      riwayatListEmpty.querySelector('p').innerHTML = term
+        ? `Gak ada riwayat yang cocok dengan "${term.replace(/</g, '&lt;')}".`
+        : 'Belum ada sesi yang selesai.<br>Sesi yang di-Record atau di-Selesaikan bakal muncul di sini.';
+      riwayatListEmpty.style.display = 'block';
+      return;
+    }
     riwayatList.innerHTML = data.map(renderRiwayatCard).join('');
     riwayatList.querySelectorAll('.riwayat-card').forEach(card => {
       card.addEventListener('click', () => openSesi(card.dataset.id));
@@ -1308,6 +1407,18 @@ async function loadRiwayatList() {
   }
 }
 btnRiwayatRefresh.addEventListener('click', loadRiwayatList);
+
+// Search realtime, di-debounce biar gak nembak Supabase tiap ketikan huruf.
+riwayatSearchInput.addEventListener('input', () => {
+  riwayatClearBtn.style.display = riwayatSearchInput.value ? 'block' : 'none';
+  clearTimeout(riwayatSearchDebounce);
+  riwayatSearchDebounce = setTimeout(loadRiwayatList, 300);
+});
+riwayatClearBtn.addEventListener('click', () => {
+  riwayatSearchInput.value = '';
+  riwayatClearBtn.style.display = 'none';
+  loadRiwayatList();
+});
 
 
 // buat seluruh daftar), lalu tempel ke masing-masing baris sesi sebagai _permintaan.
@@ -1461,6 +1572,9 @@ function resetChecklistUI() {
   if (typeof updateKbTabState === 'function') updateKbTabState();
   if (typeof updateClipSummaryStrip === 'function') updateClipSummaryStrip();
   if (typeof switchClipTab === 'function') switchClipTab('list');
+  // Referensi screenshot nempel ke konteks Permintaan RS yang lagi dibuka —
+  // begitu pindah/tutup/hapus sesi, referensi lama gak relevan lagi.
+  if (typeof resetSsReferences === 'function') resetSsReferences();
 }
 
 // Ambil Permintaan RS yang nempel ke sesi ini (kalau ada) dan tampilin di
@@ -3410,6 +3524,9 @@ prSsRunBtn.addEventListener('click', async () => {
       prSsStatus.textContent = 'Gak ada teks yang kebaca dari gambar ini. Coba ketik manual di tab Paste Teks.';
       return;
     }
+    // Simpen gambarnya sebagai referensi (RAM-only, lihat addSsReference) — biar
+    // user bisa cek balik ke sumber kalau nanti ternyata ada baris yang salah kebaca.
+    addSsReference(file);
     // Hasil OCR ditaruh ke textarea Paste Teks, biar user cek/edit dulu sebelum simpan —
     // sama sekali gak langsung disimpan otomatis dari OCR.
     prTeks.value = (prTeks.value ? prTeks.value + '\n' : '') + text;
@@ -3888,6 +4005,42 @@ function renderChecklist() {
   }).join('');
 }
 
+// Total qty_alokasi dari SEMUA item Kebutuhan RS yang match ke produk yang sama
+// (by produk_id kalau ada, fallback ke kode_produk) — dipake buat sinkronin qty
+// clipboard biar akurat kalau >1 item Permintaan RS dipenuhi dari produk yang
+// sama persis (harus DIJUMLAH, bukan ketimpa sama yang terakhir dikonfirm).
+// `override` opsional: {itemId, links} — dipake pas lagi proses konfirmasi
+// picker, sebelum item.matched_items-nya sendiri kesimpen.
+function sumQtyAlokasiForProduk(produkId, kode, override) {
+  let total = 0;
+  let hasAny = false;
+  checklistItems.forEach(it => {
+    const list = (override && override.itemId === it.id) ? override.links : (it.matched_items || []);
+    (list || []).forEach(l => {
+      const sameProduk = (produkId != null && l.produk_id != null) ? l.produk_id === produkId : l.kode_produk === kode;
+      if (!sameProduk) return;
+      if (l.qty_alokasi == null || isNaN(l.qty_alokasi) || l.qty_alokasi < 1) return;
+      total += Number(l.qty_alokasi);
+      hasAny = true;
+    });
+  });
+  return hasAny ? total : null;
+}
+
+// Sinkronin qty item clipboard ke total qty_alokasi teragregasi (lihat fungsi
+// di atas). Balikin true kalau qty-nya berubah (biar caller tau perlu re-render).
+function syncClipboardQtyForProduk(produkId, kode, override) {
+  const clipItem = clipboard.find(c => c.kode_produk === kode);
+  if (!clipItem) return false;
+  const total = sumQtyAlokasiForProduk(produkId, kode, override);
+  if (total != null && clipItem.qty !== total) {
+    clipItem.qty = total;
+    persistUpdateQty(clipItem);
+    return true;
+  }
+  return false;
+}
+
 kbList.addEventListener('click', async (e) => {
   const link = e.target.closest('a[data-action]');
   const btn = e.target.closest('button[data-action]');
@@ -3929,16 +4082,18 @@ kbList.addEventListener('click', async (e) => {
 
     // Kalau qty_alokasi diisi di picker Kebutuhan RS, ikutin ke qty item clipboard
     // yang sama — biar user gak perlu isi qty dua kali (di clipboard & di sini).
+    // Kalau ada >1 item Permintaan RS yang dipenuhi dari produk yang sama, qty-nya
+    // DIJUMLAH (bukan ketimpa sama yang terakhir dikonfirm) — agregasi per produk
+    // (produk_id kalau ada, fallback kode_produk), lewat sumQtyAlokasiForProduk().
     // Kalau qty_alokasi dikosongin, qty clipboard dibiarin apa adanya (gak di-reset).
     let clipQtyChanged = false;
+    const touchedProduk = new Set();
     links.forEach(l => {
       if (l.qty_alokasi == null || isNaN(l.qty_alokasi) || l.qty_alokasi < 1) return;
-      const clipItem = clipboard.find(c => c.kode_produk === l.kode_produk);
-      if (clipItem && clipItem.qty !== l.qty_alokasi) {
-        clipItem.qty = l.qty_alokasi;
-        persistUpdateQty(clipItem);
-        clipQtyChanged = true;
-      }
+      const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+      if (touchedProduk.has(key)) return; // 2 checkbox beda tapi produk sama (jarang) — cukup dihitung sekali
+      touchedProduk.add(key);
+      if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk, { itemId, links })) clipQtyChanged = true;
     });
     if (clipQtyChanged) updateClipboard();
 
@@ -3959,10 +4114,22 @@ kbList.addEventListener('click', async (e) => {
 
   if (action === 'tidak') {
     btn.closest('.kb-item-actions').querySelectorAll('button').forEach(b => b.disabled = true);
+    const prevMatched = item.matched_items || [];
     try {
       await callUpdatePermintaanItemMulti(itemId, 'TIDAK_TERPENUHI', []);
       item.status = 'TIDAK_TERPENUHI';
       item.matched_items = [];
+      // Produk yang tadinya kepakai item ini kehilangan kontribusinya ke total —
+      // kalkulasi ulang qty clipboard biar gak nyangkut kelebihan dari sebelumnya.
+      let clipQtyChanged = false;
+      const touchedProduk = new Set();
+      prevMatched.forEach(l => {
+        const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+        if (touchedProduk.has(key)) return;
+        touchedProduk.add(key);
+        if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk)) clipQtyChanged = true;
+      });
+      if (clipQtyChanged) updateClipboard();
       renderChecklist();
       autoFinalizePermintaan();
     } catch (err) {
@@ -3973,10 +4140,22 @@ kbList.addEventListener('click', async (e) => {
   }
 
   if (action === 'undo') {
+    const prevMatched = item.matched_items || [];
     try {
       await callUpdatePermintaanItemMulti(itemId, 'PENDING', []);
       item.status = 'PENDING';
       item.matched_items = [];
+      // Sama kayak 'tidak': produk yang kepakai item ini kehilangan kontribusinya,
+      // jadi total qty clipboard dihitung ulang biar tetap akurat.
+      let clipQtyChanged = false;
+      const touchedProduk = new Set();
+      prevMatched.forEach(l => {
+        const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+        if (touchedProduk.has(key)) return;
+        touchedProduk.add(key);
+        if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk)) clipQtyChanged = true;
+      });
+      if (clipQtyChanged) updateClipboard();
       checklistPickingId = null;
       renderChecklist();
       autoFinalizePermintaan();
