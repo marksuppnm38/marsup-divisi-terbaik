@@ -618,10 +618,12 @@ th.checkbox-col,td.checkbox-col{width:30px;text-align:center;padding-left:12px;p
 
 /* HEADER */
 header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
+.header-brand{display:flex;align-items:center;gap:10px;flex-shrink:0;min-width:0}
+.header-brand-text{min-width:0;overflow:hidden}
 .logo{height:32px;width:auto;object-fit:contain;flex-shrink:0}
-.logo-text{font-size:15px;font-weight:600}
-.logo-sub{font-size:11px;color:var(--text-muted)}
-.session-indicator{display:flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;border-radius:20px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;max-width:280px;transition:all .18s var(--ease)}
+.logo-text{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.logo-sub{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session-indicator{display:flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;border-radius:20px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;max-width:280px;min-width:0;flex-shrink:1;transition:all .18s var(--ease)}
 .session-indicator:hover{border-color:var(--accent);color:var(--text)}
 .session-indicator i{font-size:14px;flex-shrink:0}
 .session-indicator span#session-indicator-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -660,7 +662,31 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .ac-name{flex:1;font-size:13px}
 .ac-code{font-size:11px;color:var(--text-muted);font-family:var(--mono)}
 .ac-badge{font-size:10px;padding:1px 6px;border-radius:20px;background:var(--accent-bg);color:var(--accent-text);font-weight:500}
-.subtab-row{display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--border)}
+.subtab-row{display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--border);align-items:center}
+.panel-collapse-btn{margin-left:auto;flex-shrink:0;background:none;border:1px solid var(--border-strong);border-radius:6px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);cursor:pointer;transition:all .15s;margin-bottom:6px}
+.panel-collapse-btn:hover{color:var(--text);background:var(--surface-2)}
+
+/* PANEL SEARCH: collapse to a slim rail so the clipboard/matching side can
+   take the full workspace width. Uses flex-grow/flex-basis transition so it
+   still plays nicely with the fluid layout (--clip-width panel stays fixed). */
+.panel-search{transition:flex-grow .25s ease, flex-basis .25s ease, min-width .25s ease}
+.panel-search-rail{display:none}
+.panel-search.collapsed{flex:0 0 46px;min-width:46px}
+.panel-search.collapsed > .panel-header,
+.panel-search.collapsed > .panel-body{display:none}
+.panel-search.collapsed .panel-search-rail{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;height:100%;cursor:pointer;color:var(--text-muted);font-size:16px;
+}
+.panel-search.collapsed .panel-search-rail:hover{color:var(--accent);background:var(--surface-2)}
+.panel-search.collapsed .panel-search-rail i:last-child{font-size:12px}
+@media(max-width:768px){
+  .panel-search.collapsed{flex:1;min-width:0;width:100%}
+  .panel-search.collapsed > .panel-header,
+  .panel-search.collapsed > .panel-body{display:flex !important}
+  .panel-search-rail,.panel-search.collapsed .panel-search-rail{display:none !important}
+}
+
 .subtab-btn{background:none;border:none;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--text-muted);padding:6px 4px 10px;cursor:pointer;display:flex;align-items:center;gap:5px;border-bottom:2px solid transparent;margin-bottom:-1px}
 .subtab-btn:hover{color:var(--text)}
 .subtab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
@@ -789,6 +815,7 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .pr-add-clip-btn{font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;border:1px solid var(--accent);background:var(--accent-bg);color:var(--accent-text);cursor:pointer;white-space:nowrap;font-family:inherit}
 .pr-add-clip-btn:hover{background:var(--accent);color:#fff}
 .pr-add-clip-btn:disabled{cursor:default;opacity:.7;background:var(--surface-2);color:var(--text-muted);border-color:var(--border)}
+.pr-add-clip-btn.sph-btn-block{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;font-size:12.5px;text-decoration:none}
 .pr-review-box{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:4px}
 .pr-review-info{font-size:12.5px;color:var(--text-secondary);margin-bottom:10px}
 .pr-review-head{display:grid;grid-template-columns:2.2fr 0.8fr 1.2fr 28px;gap:8px;font-size:11px;color:var(--text-muted);padding:0 4px 6px}
@@ -821,8 +848,13 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .clip-tab-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 
 .clip-kebutuhan-section{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--accent-bg);min-height:0}
-.clip-kebutuhan-section.kb-collapsed .kb-list,
-.clip-kebutuhan-section.kb-collapsed .kb-footer{display:none}
+/* Animated collapse (grid-rows trick): looks intentional instead of a hard
+   display:none — content slides/fades shut instead of snapping away. */
+.kb-collapsible{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.kb-collapsible-inner{flex:1;min-height:0;display:grid;grid-template-rows:1fr;opacity:1;transition:grid-template-rows .25s var(--ease,ease),opacity .22s ease .05s}
+.kb-collapsible-content{overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.clip-kebutuhan-section.kb-collapsed .kb-collapsible{flex:0 0 auto}
+.clip-kebutuhan-section.kb-collapsed .kb-collapsible-inner{grid-template-rows:0fr;opacity:0;transition:grid-template-rows .25s var(--ease,ease),opacity .18s ease}
 .kb-head{display:flex;align-items:flex-start;justify-content:space-between;padding:10px 14px 6px;gap:6px}
 .kb-head-btns{display:flex;gap:2px;flex-shrink:0}
 .kb-title{font-size:12.5px;font-weight:700;color:var(--accent-text)}
@@ -892,7 +924,18 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .clip-resize-grip i{font-size:12px;color:var(--text-muted)}
 
 /* PANEL KANAN */
-.panel-clip{width:var(--clip-width);flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
+.panel-clip{width:var(--clip-width);flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surface);transition:flex-grow .25s ease,width .25s ease,max-width .25s ease}
+/* Ini yang kemarin ketinggalan: panel-search collapsed jadi rail 46px, tapi
+   panel-clip masih width tetap (--clip-width) jadi ruang yang keciutkan cuma
+   nganggur. Sekarang begitu search diciutkan, clip panel jadi ikutan melebar
+   ngambil semua ruang sisa — ini yang bikin preview SPH dkk kepake beneran. */
+.panel-search.collapsed ~ .panel-clip{flex:1 1 auto;width:auto}
+/* Tab "Buat SPH" gak butuh SEMUA ruang kosong yang kebuka pas search
+   diciutkan — form-nya fixed-width dan preview PDF proporsi A4 (portrait),
+   jadi kalau dipaksa full-bleed malah jadi "kececeran": form nempel kiri,
+   iframe preview jadi lebar banget dgn bidang kosong gede di kanan-kirinya.
+   Dibatasi max-width + di-center biar tetap proporsional & rapi. */
+.panel-clip.tab-sph-active{max-width:1100px;margin:0 auto}
 .clip-header{padding:12px 14px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
 .clip-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .clip-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)}
@@ -904,12 +947,40 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .clip-header.collapsed .clip-header-icon-btn i{transform:rotate(180deg)}
 .clip-header-compact{display:none;font-size:12px;color:var(--text-secondary);line-height:1.5;padding:2px 2px 6px}
 .clip-header-compact b{color:var(--text);font-weight:600}
-.clip-header.collapsed .clip-header-form{display:none}
 .clip-header.collapsed .clip-header-compact{display:block}
+/* Animated collapse (grid-rows trick) instead of hard display:none */
+.clip-header-form-collapsible{display:grid;grid-template-rows:1fr;transition:grid-template-rows .25s var(--ease,ease)}
+.clip-header-form-inner{overflow:hidden;min-height:0}
+.clip-header.collapsed .clip-header-form-collapsible{grid-template-rows:0fr;opacity:0;transition:grid-template-rows .25s var(--ease,ease),opacity .18s ease}
+.clip-header-form-collapsible{opacity:1;transition:grid-template-rows .25s var(--ease,ease),opacity .22s ease .05s}
 .form-group{margin-bottom:8px}
 .form-group label{font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px;font-weight:500}
 .form-group input{width:100%;height:32px;padding:0 10px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface-2);color:var(--text);outline:none;transition:border-color .15s}
 .form-group input:focus{border-color:var(--accent);background:var(--surface)}
+.form-group select{width:100%;height:32px;padding:0 8px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface-2);color:var(--text);outline:none}
+
+/* BUAT SPH: form generate SPH langsung dari item Clipboard (lihat sph-module.js).
+   Stacked (form lalu preview) biar tetap rapi di panel sempit; kalau panel search
+   lagi diciutkan (lebih lebar tersedia), boleh dikembangin ke side-by-side nanti. */
+.sph-panel{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-wrap:wrap;gap:16px;align-content:flex-start}
+.sph-form{flex:1 1 300px;max-width:340px;display:flex;flex-direction:column}
+.sph-form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sph-validation{font-size:11.5px;color:var(--danger-text,var(--danger));background:var(--danger-bg);border:1px solid var(--danger-border,var(--danger));border-radius:6px;padding:8px 10px;line-height:1.5}
+.sph-status{font-size:11.5px;color:var(--text-muted);min-height:14px}
+.sph-checkbox-row{display:flex;align-items:flex-start;gap:8px;font-size:11.5px;color:var(--text-secondary);line-height:1.5;padding:2px 0 4px;cursor:pointer}
+.sph-checkbox-row input{margin-top:2px;flex-shrink:0}
+.sph-asset-slot{border:1px dashed var(--border-strong);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11.5px;color:var(--text-muted);display:flex;align-items:center;gap:8px}
+.sph-asset-slot.ok{border-style:solid;border-color:var(--border);color:var(--text-secondary)}
+.sph-asset-slot.error{border-style:solid;border-color:var(--danger-border,var(--danger));color:var(--danger-text,var(--danger))}
+.sph-asset-slot img{height:26px;max-width:70px;object-fit:contain;background:#fff;border-radius:3px;flex-shrink:0}
+.sph-asset-slot .sph-asset-label{flex:1;min-width:0}
+.sph-asset-slot input[type=file]{display:none}
+.sph-asset-slot button{flex-shrink:0;background:none;border:1px solid var(--border-strong);border-radius:6px;padding:4px 9px;font-size:11px;color:var(--text);cursor:pointer;font-family:inherit}
+.sph-asset-slot button:hover{background:var(--surface-2)}
+.sph-spin{display:inline-block;animation:sph-spin-anim .9s linear infinite}
+@keyframes sph-spin-anim{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.sph-preview-wrap{flex:1 1 360px;min-width:280px;display:flex;flex-direction:column;min-height:240px}
+#sph-preview-frame{width:100%;height:60vh;min-height:360px;border:1px solid var(--border);border-radius:8px;background:#fff}
 .clip-body{flex:1;overflow-y:auto;padding:10px 12px}
 .clip-empty{text-align:center;padding:32px 12px;color:var(--text-muted)}
 .clip-empty i{font-size:32px;display:block;margin-bottom:8px;color:var(--border-strong)}
@@ -932,6 +1003,40 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .qty-input:focus{outline:none;background:var(--surface);border-radius:4px}
 .qty-ctrl .clip-remove{margin-left:4px;width:20px;height:20px;border:none;border-radius:4px;background:transparent;color:var(--text-muted);font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;flex-shrink:0;line-height:1}
 .qty-ctrl .clip-remove:hover{background:var(--danger-bg);color:var(--danger)}
+/* CARI SET MENDEKATI: tab clipboard yang nyari SET dgn isi paling mirip sama
+   kode_produk yang ada di Clipboard sekarang (dulu tool HTML terpisah, sekarang
+   dilebur jadi satu tab biar gak perlu copy-paste kode manual lagi). */
+.setcari-panel{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column}
+.setcari-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.setcari-title{font-size:13px;font-weight:700;color:var(--text)}
+.setcari-sub{font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.5;max-width:420px}
+.setcari-status{font-size:11.5px;color:var(--text-muted);min-height:16px;margin-bottom:4px}
+.setcari-status.error{color:var(--danger)}
+.setcari-empty{text-align:center;padding:32px 12px;color:var(--text-muted)}
+.setcari-empty i{font-size:32px;display:block;margin-bottom:8px;color:var(--border-strong)}
+.setcari-empty p{font-size:12px}
+.setcari-list{display:flex;flex-direction:column;gap:8px}
+.setcari-card{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.setcari-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.setcari-kode{font-family:var(--mono);font-weight:700;font-size:12.5px;color:var(--accent)}
+.setcari-nama{font-size:11.5px;color:var(--text-muted);margin-top:2px}
+.setcari-cocok{font-size:11px;color:var(--text-secondary);white-space:nowrap}
+.setcari-score-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.setcari-score{font-family:var(--mono);font-weight:700;font-size:13.5px}
+.setcari-score.high{color:var(--success)}
+.setcari-score.mid{color:var(--warn)}
+.setcari-score.low{color:var(--text-muted)}
+.setcari-bar-track{width:64px;height:5px;background:var(--surface-3);border-radius:4px;overflow:hidden}
+.setcari-bar-fill{height:100%;background:var(--accent)}
+.setcari-card-actions{margin-top:8px;display:flex;gap:6px}
+.setcari-detail-btn{background:none;border:1px solid var(--border-strong);color:var(--text-secondary);padding:5px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit}
+.setcari-detail-btn:hover{border-color:var(--accent);color:var(--accent)}
+.setcari-detail{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;flex-direction:column;gap:4px}
+.setcari-detail-empty{font-size:11px;color:var(--text-muted)}
+.setcari-item-line{display:flex;justify-content:space-between;gap:8px;font-family:var(--mono);font-size:11px;padding:3px 0;color:var(--text-muted)}
+.setcari-item-line.match{color:var(--success)}
+.setcari-item-tag{font-size:9.5px;padding:1px 6px;border-radius:10px;background:var(--accent-bg);color:var(--accent-text);margin-left:6px;font-family:inherit}
+
 .clip-footer{padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0}
 .clip-summary{font-size:12px;color:var(--text-muted);margin-bottom:4px;display:flex;justify-content:space-between;gap:8px}
 .clip-summary span{font-weight:600;color:var(--text)}
@@ -990,6 +1095,18 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .modal-box{background:var(--surface);border-radius:var(--radius);padding:28px 32px;width:360px;text-align:center;box-shadow:0 20px 60px rgba(16,24,40,.15)}
 .modal-title{font-size:15px;font-weight:600;margin-bottom:6px}
 .modal-sub{font-size:13px;color:var(--text-muted);margin-bottom:20px}
+
+/* PREFERENSI / SETTINGS MODAL — rows are rendered from a schema in JS, so
+   adding a future setting means pushing to the schema, not editing markup. */
+.pref-list{display:flex;flex-direction:column;margin-top:10px}
+.pref-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 2px;border-bottom:1px solid var(--border)}
+.pref-row:last-child{border-bottom:none}
+.pref-row-label{font-size:13.5px;font-weight:600;color:var(--text)}
+.pref-row-desc{font-size:11.5px;color:var(--text-muted);margin-top:2px;line-height:1.45}
+.pref-switch{width:44px;height:24px;border-radius:20px;background:var(--surface-3);border:1px solid var(--border-strong);position:relative;cursor:pointer;flex-shrink:0;transition:background .18s ease,border-color .18s ease}
+.pref-switch .knob{position:absolute;top:1px;left:1px;width:18px;height:18px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--amber);transition:transform .18s ease}
+.pref-switch.on{background:var(--accent);border-color:var(--accent)}
+.pref-switch.on .knob{transform:translateX(20px);color:var(--accent-strong)}
 .progress-track{height:6px;background:var(--surface-2);border-radius:4px;overflow:hidden;margin-bottom:8px}
 .progress-fill{height:100%;background:var(--accent);border-radius:4px;transition:width .3s}
 .progress-label{font-size:12px;color:var(--text-muted)}
@@ -1021,6 +1138,25 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
   .panel-search{display:flex !important}
   .panel-clip{display:flex !important}
 }
+
+/* MEDIUM WIDTH (Windows split-screen, narrow desktop windows): keep branding
+   balanced and header controls from wrapping/squeezing instead of just
+   shrinking everything uniformly like the phone breakpoint does. */
+@media(max-width:1180px) and (min-width:769px){
+  header{padding:10px 14px;gap:8px}
+  .logo{height:26px}
+  .logo-text{font-size:13px}
+  .session-indicator{max-width:180px;padding:0 10px 0 9px;font-size:11.5px}
+  .header-right{gap:5px}
+  .header-right .clip-count{display:none}
+  .toggle-btn-label{display:none}
+  .header-right .toggle-btn{padding:0 8px}
+}
+@media(max-width:920px) and (min-width:769px){
+  .logo-sub{display:none}
+  .session-indicator{max-width:120px}
+}
+.toggle-btn-label{white-space:nowrap}
 
 /* ========== CRUD PRODUK / PRODUCT MANAGER ==========
    (sidebar shell, seals, modal form, AKD, bulk, set)

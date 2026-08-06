@@ -15,6 +15,7 @@
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <link rel="stylesheet" href="pnm-universal.css"/>
 </head>
 <body>
@@ -57,10 +58,12 @@
 
 <div id="app-root" style="display:none;flex-direction:column;height:100vh;overflow:hidden">
 <header>
-  <img src="assets/logo-mark-pnm.png" alt="PNM Logo" class="logo">
-  <div>
-    <div class="logo-text">Pionir Nusantara Manufacturing</div>
-    <div class="logo-sub">Conversion Workspace</div>
+  <div class="header-brand">
+    <img src="assets/logo-mark-pnm.png" alt="PNM Logo" class="logo">
+    <div class="header-brand-text">
+      <div class="logo-text">Pionir Nusantara Manufacturing</div>
+      <div class="logo-sub">Conversion Workspace</div>
+    </div>
   </div>
   <button class="session-indicator empty" id="session-indicator" type="button" title="Klik untuk lihat daftar Konversi Berjalan">
     <span class="session-indicator-dot" id="session-indicator-dot"></span>
@@ -69,9 +72,10 @@
   </button>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
-    <a class="toggle-btn" href="index.html" title="Kembali ke Beranda"><i class="ph ph-house"></i> Beranda</a>
-    <a class="toggle-btn" href="/stok.html" title="Buka modul Stok"><i class="ph ph-truck"></i> Stok</a>
-    <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ph ph-clipboard-text"></i> Permintaan RS</button>
+    <a class="toggle-btn" href="index.html" title="Kembali ke Beranda"><i class="ph ph-house"></i> <span class="toggle-btn-label">Beranda</span></a>
+    <a class="toggle-btn" href="/stok.html" title="Buka modul Stok"><i class="ph ph-truck"></i> <span class="toggle-btn-label">Stok</span></a>
+    <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ph ph-clipboard-text"></i> <span class="toggle-btn-label">Permintaan RS</span></button>
+    <button class="toggle-btn" id="settings-toggle" title="Preferensi" aria-label="Preferensi"><i class="ph ph-gear-six"></i></button>
     <button class="toggle-btn" id="theme-toggle" title="Ganti tema" aria-label="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
   </div>
 </header>
@@ -81,13 +85,19 @@
 <div class="workspace">
   <!-- PANEL KIRI: SEARCH -->
   <div class="panel-search" id="panel-search">
+    <div class="panel-search-rail" id="panel-search-rail" title="Buka panel pencarian" role="button" tabindex="0">
+      <i class="ti ti-search"></i>
+      <i class="ti ti-chevron-right"></i>
+    </div>
     <div class="panel-header">
       <div class="subtab-row">
         <button class="subtab-btn active" id="subtab-cari" type="button"><i class="ti ti-search"></i> Cari Produk</button>
         <button class="subtab-btn" id="subtab-sesi" type="button"><i class="ti ti-list-details"></i> Konversi Berjalan <span class="subtab-badge" id="sesi-badge" style="display:none">0</span></button>
         <button class="subtab-btn" id="subtab-riwayat" type="button"><i class="ti ti-history"></i> Riwayat</button>
         <button class="subtab-btn" id="subtab-converter" type="button"><i class="ti ti-clipboard-copy"></i> Converter</button>
+        <button class="subtab-btn" id="subtab-setcari" type="button"><i class="ti ti-box-multiple"></i> Cari SET <span class="subtab-badge" id="setcari-badge" style="display:none">0</span></button>
         <button class="subtab-btn" id="subtab-dictionary" type="button"><i class="ti ti-book-2"></i> Dictionary</button>
+        <button class="panel-collapse-btn" id="panel-search-collapse-btn" type="button" title="Ciutkan panel pencarian"><i class="ti ti-chevron-left"></i></button>
       </div>
       <div id="cari-controls">
         <div class="search-wrap">
@@ -141,6 +151,13 @@
         <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center">Sesi yang sudah selesai — jadi order maupun enggak</span>
         <button class="toggle-btn" id="btn-riwayat-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
       </div>
+      <div style="padding:0 12px 10px">
+        <div class="search-wrap" style="margin-bottom:0">
+          <i class="ti ti-search"></i>
+          <input id="riwayat-search-input" type="text" placeholder="Cari nama RS, PIC, atau sales…" autocomplete="off" style="width:100%;height:36px;padding:0 34px;font-size:13px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none"/>
+          <button class="clear-btn" id="riwayat-clear-btn"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
       <div id="riwayat-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat riwayat…</div>
       <div id="riwayat-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
       <div class="clip-empty" id="riwayat-list-empty" style="display:none">
@@ -167,6 +184,24 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       <div id="conv-actions" style="display:none;padding:0 12px 12px">
         <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang Dicentang ke Clipboard</button>
       </div>
+    </div>
+
+    <!-- ===== CARI SET MENDEKATI: dulu tool HTML terpisah (tempel kode_produk
+         manual ke textarea). Sekarang jadi subtab di sini, otomatis pakai
+         kode_produk dari item yang ada di Clipboard sesi ini — gak perlu
+         copy-paste kode lagi. Berdiri sendiri kayak Converter/Dictionary,
+         gak nyentuh logic tab lain. ===== -->
+    <div class="panel-body" id="panel-body-setcari" style="display:none">
+      <div class="sesi-toolbar">
+        <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center">Nyari SET dengan isi paling mirip <b id="setcari-source-count">0</b> produk yang lagi ada di Clipboard</span>
+        <button class="pr-add-clip-btn" id="setcari-search-btn" type="button" disabled><i class="ti ti-search"></i> Cari SET Mendekati</button>
+      </div>
+      <div class="setcari-status" id="setcari-status"></div>
+      <div class="clip-empty" id="setcari-empty">
+        <i class="ti ti-box-multiple"></i>
+        <p>Tambahkan produk ke Clipboard dulu, lalu klik "Cari SET Mendekati" buat lihat SET yang isinya paling mirip sama produk-produk itu.</p>
+      </div>
+      <div class="setcari-list" id="setcari-list"></div>
     </div>
 
     <!-- ===== DICTIONARY: histori istilah customer vs produk Robust yang dipilih.
@@ -250,18 +285,22 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       </div>
       <div id="sesi-save-status" style="font-size:11px;color:var(--text-muted);margin-bottom:4px;min-height:14px"></div>
       <div class="clip-header-compact" id="clip-header-compact"></div>
-      <div class="clip-header-form">
-        <div class="form-group">
-          <label>Nama RS / Instansi</label>
-          <input id="inp-rs" type="text" placeholder="contoh: RSUD Dr. Soetomo"/>
-        </div>
-        <div class="form-group">
-          <label>Nama Sales</label>
-          <input id="inp-sales" type="text" placeholder="Nama sales" list="sales-datalist" autocomplete="off"/>
-        </div>
-        <div class="form-group">
-          <label>PIC Marsup (kamu)</label>
-          <input id="inp-marsup" type="text" placeholder="Nama kamu"/>
+      <div class="clip-header-form-collapsible" id="clip-header-form-collapsible">
+        <div class="clip-header-form-inner">
+          <div class="clip-header-form">
+            <div class="form-group">
+              <label>Nama RS / Instansi</label>
+              <input id="inp-rs" type="text" placeholder="contoh: RSUD Dr. Soetomo"/>
+            </div>
+            <div class="form-group">
+              <label>Nama Sales</label>
+              <input id="inp-sales" type="text" placeholder="Nama sales" list="sales-datalist" autocomplete="off"/>
+            </div>
+            <div class="form-group">
+              <label>PIC Marsup (kamu)</label>
+              <input id="inp-marsup" type="text" placeholder="Nama kamu"/>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -276,6 +315,9 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       </button>
       <button class="clip-tab-btn active" id="clip-tab-btn-list" type="button" data-tab="list">
         <i class="ti ti-clipboard"></i> Clipboard <span class="clip-tab-badge" id="clip-tab-badge-list" style="display:none">0</span>
+      </button>
+      <button class="clip-tab-btn" id="clip-tab-btn-sph" type="button" data-tab="sph">
+        <i class="ti ti-file-text"></i> Buat SPH
       </button>
     </div>
     <div class="clip-summary-strip" id="clip-summary-strip" style="display:none"></div>
@@ -302,10 +344,19 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
               </div>
             </div>
             <div class="kb-summary" id="kb-summary"></div>
-            <div id="kb-refresh-status" style="font-size:10.5px;color:var(--text-muted);padding:0 14px 4px;min-height:14px"></div>
-            <div id="kb-list" class="kb-list"></div>
-            <div class="kb-footer">
-              <div id="kb-record-status" class="kb-record-status">Tingkat pemenuhan tersimpan otomatis tiap item ditandai.</div>
+            <!-- Strip referensi screenshot yang sama kayak di modal intake — ditaruh di
+                 luar kb-collapsible biar tetap keliatan walau daftar item lagi diciutkan. -->
+            <div id="kb-ss-ref-strip" style="display:none"></div>
+            <div class="kb-collapsible" id="kb-collapsible">
+              <div class="kb-collapsible-inner">
+                <div class="kb-collapsible-content">
+                  <div id="kb-refresh-status" style="font-size:10.5px;color:var(--text-muted);padding:0 14px 4px;min-height:14px"></div>
+                  <div id="kb-list" class="kb-list"></div>
+                  <div class="kb-footer">
+                    <div id="kb-record-status" class="kb-record-status">Tingkat pemenuhan tersimpan otomatis tiap item ditandai.</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -320,6 +371,74 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
           <div id="clip-list"></div>
         </div>
       </div>
+
+      <!-- BUAT SPH: generate Surat Penawaran Harga langsung dari item yang udah ada
+           di Clipboard — gak perlu export Excel dulu terus upload lagi ke tool lain.
+           Detail logic-nya ada di sph-module.js (dipisah biar konversian.js gak makin
+           membengkak), tapi tetep satu halaman/satu app buat user. -->
+      <div class="clip-tab-panel" id="clip-tab-panel-sph" style="display:none">
+        <div class="sph-panel" id="sph-panel">
+          <div class="sph-form" id="sph-form">
+            <div class="form-group">
+              <label>Perusahaan</label>
+              <select id="sph-company">
+                <option value="smy">PT Samaya Medika Indonesia (SMY)</option>
+                <option value="pnm">PT Pionir Nusantara Manufacturing (PNM)</option>
+                <option value="meto">PT Meto Cahaya Abadi (METO)</option>
+              </select>
+            </div>
+            <div class="sph-form-row">
+              <div class="form-group">
+                <label>Prefix Nomor</label>
+                <input id="sph-prefix" type="text" placeholder="SPH-SMY"/>
+              </div>
+              <div class="form-group">
+                <label>Nomor Urut</label>
+                <input id="sph-nomor" type="text" placeholder="cth: 001"/>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Tanggal Surat</label>
+              <input id="sph-tanggal" type="date"/>
+            </div>
+            <div class="form-group">
+              <label>Nama RS / Instansi</label>
+              <input id="sph-rs" type="text" placeholder="Diisi otomatis dari form sesi"/>
+            </div>
+            <div class="form-group">
+              <label>Nama Sales</label>
+              <input id="sph-sales" type="text" placeholder="Diisi otomatis dari form sesi"/>
+            </div>
+            <div id="sph-asset-slots"></div>
+            <label class="sph-checkbox-row">
+              <input type="checkbox" id="sph-include-lampiran" checked/>
+              <span>Sertakan lampiran (rincian per-set, item satuan, dan brosur PDF — sama kayak Export ke Excel)</span>
+            </label>
+            <div id="sph-validation" class="sph-validation" style="display:none"></div>
+            <button class="pr-add-clip-btn sph-btn-block" id="sph-generate-btn" type="button">
+              <i class="ti ti-file-text"></i> Generate SPH
+            </button>
+            <div id="sph-status" class="sph-status"></div>
+          </div>
+          <div class="sph-preview-wrap" id="sph-preview-wrap">
+            <div class="clip-empty" id="sph-preview-empty">
+              <i class="ti ti-file-text"></i>
+              <p>Preview SPH bakal muncul di sini setelah di-generate. Item diambil langsung dari Clipboard (<span id="sph-item-count">0</span> produk).</p>
+            </div>
+            <iframe id="sph-preview-frame" title="Preview SPH" style="display:none"></iframe>
+            <a class="pr-add-clip-btn sph-btn-block" id="sph-download-link" style="display:none;margin-top:10px" download>
+              <i class="ti ti-download"></i> Download PDF
+            </a>
+            <button class="btn-record" id="sph-record-btn" type="button" style="display:none">
+              <i class="ti ti-clipboard-check"></i> Record SPH
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modul "Cari SET Mendekati" dipindah jadi subtab tersendiri (lihat
+           panel-body-setcari di atas), sejajar Riwayat/Converter/Dictionary —
+           bukan lagi nested di tab Clipboard. -->
     </div>
 
     <div class="clip-footer">
@@ -415,14 +534,77 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
   </div>
 </div>
 
+<!-- RECORD SPH MODAL — catatan terpisah dari "Record Konversi" di atas, khusus
+     surat SPH yang di-generate lewat tab "Buat SPH" (lihat sph-module.js). -->
+<div class="modal-overlay" id="record-sph-modal">
+  <div class="record-modal-box">
+    <div class="modal-title" style="margin-bottom:14px">Record ke Sheet Record SPH</div>
+
+    <div class="record-field">
+      <label>No. SPH</label>
+      <div class="ro" id="rsph-nomor">-</div>
+    </div>
+    <div class="record-field">
+      <label>Distributor</label>
+      <div class="ro" id="rsph-distributor">-</div>
+    </div>
+    <div class="record-field">
+      <label>Tanggal Surat</label>
+      <div class="ro" id="rsph-tanggal">-</div>
+    </div>
+    <div class="record-field">
+      <label>Customer</label>
+      <div class="ro" id="rsph-customer">-</div>
+    </div>
+    <div class="record-field">
+      <label>PIC Sales</label>
+      <div class="ro" id="rsph-sales">-</div>
+    </div>
+    <div class="record-field">
+      <label>Detail Penawaran</label>
+      <div class="ro" id="rsph-detail">-</div>
+    </div>
+    <div class="record-field">
+      <label>Total Value</label>
+      <div class="ro" id="rsph-value">-</div>
+    </div>
+    <div class="record-field">
+      <label>Nama File</label>
+      <div class="ro" id="rsph-namafile">-</div>
+    </div>
+    <div class="record-field">
+      <label>PIC (Owner)</label>
+      <div class="ro" id="rsph-owner">-</div>
+      <div class="helper-text">Diambil dari "PIC Marsup" di panel Clipboard — isi dulu di sana kalau masih kosong.</div>
+    </div>
+    <div class="record-field">
+      <label>Link File (opsional)</label>
+      <input id="rsph-link" type="text" placeholder="Link file PDF (Drive, dsb) — isi kalau sudah diupload"/>
+    </div>
+
+    <div id="record-sph-status"></div>
+
+    <div class="record-actions">
+      <button id="record-sph-cancel-btn">Batal</button>
+      <button id="record-sph-submit-btn">Kirim ke Sheet</button>
+    </div>
+  </div>
+</div>
+
 <!-- STOK MODAL -->
 <!-- Modal Stok dipindah ke stok.html (modul mandiri di index) -->
 
 <!-- PERMINTAAN RS MODAL -->
 <div class="modal-overlay" id="pr-modal">
+
   <div class="pr-modal-box">
     <h3>Catat Permintaan RS</h3>
     <div class="pr-sub">Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Ini murni buat data insight — bukan proses konversi otomatis.</div>
+
+    <!-- Strip referensi screenshot (kalau ada) — muncul begitu OCR selesai baca gambar,
+         biar user bisa cek balik ke sumber pas ngedit hasil parse. RAM-only, gak
+         diupload; lihat ssReferences di konversian.js. -->
+    <div id="pr-ss-ref-strip" style="display:none"></div>
 
     <!-- Login sudah ditangani di gerbang awal (satu login buat seluruh app) -->
     <div id="pr-form-wrap">
@@ -574,6 +756,25 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
   </div>
 </div>
 
+<!-- MODAL LIGHTBOX REFERENSI SCREENSHOT PERMINTAAN RS: nampilin screenshot asli
+     yang di-OCR, buat dicek balik kalau hasil parsing meleset. Gambarnya cuma
+     hidup di memory tab ini (object URL) — gak pernah diupload ke server. -->
+<div class="modal-overlay" id="ss-ref-modal">
+  <div class="modal-box" style="width:auto;max-width:92vw;padding:16px 16px 12px;text-align:center">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+      <div class="modal-title" id="ss-ref-title" style="margin:0;text-align:left">Referensi Screenshot</div>
+      <button id="ss-ref-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1;flex-shrink:0">&times;</button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+      <button id="ss-ref-prev" class="kb-collapse-btn" type="button" title="Sebelumnya" style="flex-shrink:0"><i class="ti ti-chevron-left"></i></button>
+      <img id="ss-ref-img" src="" alt="Screenshot permintaan RS" style="max-width:78vw;max-height:72vh;border-radius:8px;border:1px solid var(--border);background:var(--surface-2)"/>
+      <button id="ss-ref-next" class="kb-collapse-btn" type="button" title="Berikutnya" style="flex-shrink:0"><i class="ti ti-chevron-right"></i></button>
+    </div>
+    <div id="ss-ref-counter" style="font-size:11.5px;color:var(--text-muted);margin-top:8px"></div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Referensi ini cuma tersimpan selama tab ini kebuka — ilang kalau ditutup/direfresh, gak diunggah ke server.</div>
+  </div>
+</div>
+
 
 <!-- Hidden feature: ketik /linkpalsugas di search box untuk munculin modal ini -->
 <div class="modal-overlay" id="linkgen-modal">
@@ -641,6 +842,19 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 })();
 </script>
 
+<!-- SETTINGS / PREFERENSI: dirancang extensible — daftar setting dirender dari
+     SETTINGS_SCHEMA di JS, jadi nambah setting baru nanti gak perlu ubah HTML. -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal-box" style="width:90vw;max-width:440px;padding:22px 24px;text-align:left">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div class="modal-title" style="margin:0"><i class="ph ph-gear-six"></i> Preferensi</div>
+      <button id="settings-modal-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
+    </div>
+    <div class="modal-sub" style="margin-bottom:6px">Atur tampilan dan perilaku workspace sesuai kebiasaan kerja kamu.</div>
+    <div id="settings-list" class="pref-list"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="confirm-modal">
   <div class="modal-box" style="width:90vw;max-width:420px;padding:24px 26px;text-align:left">
     <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:18px">
@@ -660,6 +874,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 </div>
 
 <script src="konversian.js"></script>
+<script src="sph-module.js"></script>
 <div id="toast-container"></div>
 </div><!-- /#app-root -->
 </body>

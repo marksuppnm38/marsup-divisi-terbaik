@@ -1,0 +1,14 @@
+{
+  "name": "inaproc-scraper",
+  "version": "1.0.0",
+  "description": "Scrapes a seller's full product catalogue from INAPROC (katalog.inaproc.id) via its GraphQL API, downloads all product images, and exports everything to a single CSV.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

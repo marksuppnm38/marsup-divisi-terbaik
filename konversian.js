@@ -148,14 +148,42 @@ initAuth();
 const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
 const LAMPIRAN_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/lampiran-unit/';
 
+// Regex resmi dari storage-api Supabase buat validasi object key (S3-safe chars).
+// Nama file dari WA/HP sering nyelundupin karakter unicode "siluman" (nbsp,
+// smart quotes, dash khusus, dll) yang kelihatan normal tapi bikin request
+// upload ditolak dgn error "InvalidKey". Makanya path yg dikirim ke Storage
+// WAJIB disanitasi dulu, jangan pakai file.name mentah-mentah.
+function isValidStorageKey(key) {
+  return /^(\w|\/|!|-|\.|\*|'|\(|\)| |&|\$|@|=|;|:|\+|,|\?)*$/.test(key);
+}
+function sanitizeStorageFileName(name) {
+  const dotIdx = name.lastIndexOf('.');
+  const base = dotIdx > -1 ? name.slice(0, dotIdx) : name;
+  const ext = dotIdx > -1 ? name.slice(dotIdx) : '';
+  const cleanBase = base
+    .normalize('NFKC')                              // normalisasi variasi unicode
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')    // hapus control char tak terlihat
+    .replace(/[\u00A0\u200B-\u200D\uFEFF]/g, ' ')    // nbsp & zero-width -> spasi biasa
+    .replace(/\s+/g, '_')                            // spasi (termasuk ganda) -> underscore
+    .replace(/[^a-zA-Z0-9._-]/g, '')                 // buang sisa char di luar whitelist aman
+    .replace(/_+/g, '_')                             // rapikan underscore berulang
+    .replace(/^_+|_+$/g, '');                        // trim underscore di ujung
+  return (cleanBase || 'file') + ext.toLowerCase();
+}
+
 // upload file ke Supabase Storage bucket (dipakai fitur drag & drop brosur/gambar).
 // x-upsert:true supaya kalau nama file sama, langsung ditimpa (gak perlu hapus manual dulu).
 async function uploadToSupabaseStorage(bucket, path, fileOrBlob, contentType) {
+  // PENTING: Authorization pakai token sesi user yg login (stokAccessToken), BUKAN ANON_KEY.
+  // Kalau pakai ANON_KEY, Supabase Storage nganggep request datang dari role 'anon',
+  // jadi kalau policy RLS bucket-nya butuh role 'authenticated', request selalu ditolak
+  // dgn error "new row violates row-level security policy" walau bucket-nya sendiri udah bener.
+  if (!stokAccessToken) throw new Error('Sesi login sudah habis / belum login — silakan login ulang dulu.');
   const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${encodeURIComponent(path)}`, {
     method: 'POST',
     headers: {
       'apikey': ANON_KEY,
-      'Authorization': 'Bearer ' + ANON_KEY,
+      'Authorization': 'Bearer ' + stokAccessToken,
       'Content-Type': contentType || fileOrBlob.type || 'application/octet-stream',
       'x-upsert': 'true'
     },
@@ -238,6 +266,88 @@ const gambarFileInput = document.getElementById('gambar-file-input');
 const gambarUploadStatus = document.getElementById('gambar-upload-status');
 document.getElementById('gambar-close').addEventListener('click', () => gambarModal.classList.remove('show'));
 gambarModal.addEventListener('click', (e) => { if (e.target === gambarModal) gambarModal.classList.remove('show'); });
+
+// ══════════════════════════════════════════
+// REFERENSI SCREENSHOT PERMINTAAN RS: dipicu tiap kali OCR (Tesseract) berhasil
+// baca gambar di modal Catat Permintaan RS. Gambarnya DISIMPEN CUMA DI MEMORY TAB
+// INI (object URL dari File asli) — sengaja gak diupload ke Supabase Storage,
+// biar user masih bisa cek balik ke sumber kalau parsing OCR meleset (sering
+// kejadian), tanpa nambah beban storage tiap konversi. Konsekuensinya: ilang
+// begitu tab ditutup/direfresh — itu trade-off yang disengaja buat v1, bukan bug.
+// Ditampilin di 2 tempat pake container beda (renderSsRefStrip loop keduanya):
+// 1) pr-ss-ref-strip — di modal intake, biar kecek pas ngedit hasil parse.
+// 2) kb-ss-ref-strip — di panel Kebutuhan RS, karena OCR yang meleset biasanya
+//    baru ketauan pas proses matching, bukan pas upload.
+// ══════════════════════════════════════════
+let ssReferences = []; // [{id, url, filename}]
+let ssRefLightboxIndex = 0;
+const prSsRefStrip = document.getElementById('pr-ss-ref-strip');
+const kbSsRefStrip = document.getElementById('kb-ss-ref-strip');
+const ssRefModal = document.getElementById('ss-ref-modal');
+const ssRefImg = document.getElementById('ss-ref-img');
+const ssRefCounter = document.getElementById('ss-ref-counter');
+const ssRefPrevBtn = document.getElementById('ss-ref-prev');
+const ssRefNextBtn = document.getElementById('ss-ref-next');
+
+function addSsReference(file) {
+  const ref = { id: 'ss_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), url: URL.createObjectURL(file), filename: file.name };
+  ssReferences.push(ref);
+  renderSsRefStrip();
+  return ref;
+}
+
+// Dipanggil pas ganti/keluar konteks sesi (mulai sesi baru, sesi selesai, sesi
+// dihapus, pindah buka sesi lain) — lihat resetChecklistUI(). Object URL WAJIB
+// di-revoke di sini, kalau enggak nyangkut di memory browser sampai tab ditutup.
+function resetSsReferences() {
+  ssReferences.forEach(r => URL.revokeObjectURL(r.url));
+  ssReferences = [];
+  renderSsRefStrip();
+}
+
+function ssRefStripHtml() {
+  const chips = ssReferences.map((r, idx) => `<button type="button" class="ss-ref-chip" data-idx="${idx}" title="Lihat screenshot ${idx + 1} dari ${ssReferences.length}" style="flex-shrink:0;padding:0;border:1.5px solid var(--border-strong);border-radius:8px;overflow:hidden;cursor:pointer;width:48px;height:48px;background:var(--surface-2)">
+    <img src="${r.url}" alt="Screenshot ${idx + 1}" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none"/>
+  </button>`).join('');
+  return `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px 10px">
+    <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;white-space:nowrap"><i class="ti ti-photo"></i> Referensi:</span>
+    <div style="display:flex;gap:6px;overflow-x:auto">${chips}</div>
+  </div>`;
+}
+
+function renderSsRefStrip() {
+  [prSsRefStrip, kbSsRefStrip].forEach(el => {
+    if (!el) return;
+    if (!ssReferences.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    el.innerHTML = ssRefStripHtml();
+    el.style.display = 'block';
+    el.querySelectorAll('.ss-ref-chip').forEach(btn => {
+      btn.addEventListener('click', () => openSsRefLightbox(parseInt(btn.dataset.idx, 10)));
+    });
+  });
+}
+
+function openSsRefLightbox(idx) {
+  if (!ssReferences.length) return;
+  ssRefLightboxIndex = Math.max(0, Math.min(idx, ssReferences.length - 1));
+  renderSsRefLightbox();
+  ssRefModal.classList.add('show');
+}
+
+function renderSsRefLightbox() {
+  const ref = ssReferences[ssRefLightboxIndex];
+  if (!ref) return;
+  ssRefImg.src = ref.url;
+  ssRefCounter.textContent = ssReferences.length > 1 ? `Gambar ${ssRefLightboxIndex + 1} dari ${ssReferences.length}` : '';
+  const multi = ssReferences.length > 1;
+  ssRefPrevBtn.style.visibility = multi ? 'visible' : 'hidden';
+  ssRefNextBtn.style.visibility = multi ? 'visible' : 'hidden';
+}
+
+document.getElementById('ss-ref-close').addEventListener('click', () => ssRefModal.classList.remove('show'));
+ssRefModal.addEventListener('click', (e) => { if (e.target === ssRefModal) ssRefModal.classList.remove('show'); });
+ssRefPrevBtn.addEventListener('click', () => { ssRefLightboxIndex = (ssRefLightboxIndex - 1 + ssReferences.length) % ssReferences.length; renderSsRefLightbox(); });
+ssRefNextBtn.addEventListener('click', () => { ssRefLightboxIndex = (ssRefLightboxIndex + 1) % ssReferences.length; renderSsRefLightbox(); });
 
 let gambarCurrentKodeForUrl = null;
 
@@ -519,11 +629,20 @@ async function handleLampiranFileDropped(file) {
   lampiranSuggestList.style.display = 'none';
   lampiranUploadStatus.style.display = 'block';
   lampiranUploadStatus.textContent = `Mengunggah "${file.name}"…`;
+
+  // Nama asli dari WA/HP bisa ngandung karakter unicode "siluman" (nbsp, smart
+  // quote, dash khusus, dll) yang bikin Supabase Storage nolak dgn "InvalidKey".
+  // Jadi key yg dikirim ke Storage WAJIB versi yang sudah disanitasi;
+  // nama asli (file.name) cuma dipakai buat teks status yg dilihat user.
+  const safeName = sanitizeStorageFileName(file.name);
+
   try {
-    await uploadToSupabaseStorage('lampiran-unit', file.name, file, 'application/pdf');
+    await uploadToSupabaseStorage('lampiran-unit', safeName, file, 'application/pdf');
     lampiranBucketFiles = null; // reset cache biar file baru ikut muncul di daftar lain kali
-    lampiranUploadStatus.textContent = `Berhasil diunggah: ${file.name}`;
-    await selectLampiranFile(file.name);
+    lampiranUploadStatus.textContent = safeName === file.name
+      ? `Berhasil diunggah: ${file.name}`
+      : `Berhasil diunggah sbg "${safeName}" (nama asli: ${file.name})`;
+    await selectLampiranFile(safeName); // pakai safeName krn itu key sebenarnya di bucket
   } catch (e) {
     lampiranUploadStatus.textContent = 'Gagal mengunggah: ' + (e.message || e);
   }
@@ -655,6 +774,124 @@ clipResizeHandle.addEventListener('pointerdown', (e) => {
 clipResizeHandle.addEventListener('dblclick', () => setClipWidth(CLIP_WIDTH_DEFAULT));
 
 // ══════════════════════════════════════════
+// COLLAPSE PANEL PENCARIAN: kalau lagi fokus nyocokin clipboard, panel kiri
+// bisa diciutkan jadi rail tipis biar area clipboard dapat ruang penuh.
+// Status ciutan/enggak disimpan per sesi browser (sessionStorage), bukan
+// selamanya — biar gak bikin bingung kalau lain kali buka lagi dari awal.
+// ══════════════════════════════════════════
+const PANEL_SEARCH_COLLAPSE_KEY = 'pnm_panel_search_collapsed';
+const panelSearchEl = document.getElementById('panel-search');
+const panelSearchCollapseBtn = document.getElementById('panel-search-collapse-btn');
+const panelSearchRail = document.getElementById('panel-search-rail');
+function setPanelSearchCollapsed(collapsed, persist = true) {
+  panelSearchEl.classList.toggle('collapsed', collapsed);
+  panelSearchRail.title = 'Buka panel pencarian';
+  if (persist) sessionStorage.setItem(PANEL_SEARCH_COLLAPSE_KEY, collapsed ? '1' : '0');
+}
+if (panelSearchCollapseBtn && panelSearchRail) {
+  panelSearchCollapseBtn.addEventListener('click', () => setPanelSearchCollapsed(true));
+  panelSearchRail.addEventListener('click', () => setPanelSearchCollapsed(false));
+  panelSearchRail.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPanelSearchCollapsed(false); }
+  });
+  setPanelSearchCollapsed(sessionStorage.getItem(PANEL_SEARCH_COLLAPSE_KEY) === '1', false);
+}
+
+// ══════════════════════════════════════════
+// PREFERENSI / SETTINGS: dirancang biar gampang nambah setting baru — tinggal
+// push satu entry ke SETTINGS_SCHEMA (key, label, deskripsi, default, dan
+// callback onChange kalau perlu efek langsung), modal otomatis nge-render
+// togglenya. Tema (Light/Dark) tetap pakai sistem localStorage yang sudah
+// ada di bawah (biar gak duplikat/nabrak), tapi tetap ditampilkan sebagai
+// baris pertama di modal ini biar semua preferensi ada di satu tempat.
+// ══════════════════════════════════════════
+const PNM_SETTINGS_KEY = 'pnm_settings';
+const PNM_SETTINGS_DEFAULT = { autoComplete: true };
+function loadPnmSettings() {
+  try {
+    return Object.assign({}, PNM_SETTINGS_DEFAULT, JSON.parse(localStorage.getItem(PNM_SETTINGS_KEY) || '{}'));
+  } catch {
+    return Object.assign({}, PNM_SETTINGS_DEFAULT);
+  }
+}
+let pnmSettings = loadPnmSettings();
+function savePnmSettings() {
+  localStorage.setItem(PNM_SETTINGS_KEY, JSON.stringify(pnmSettings));
+}
+
+// Tambah setting baru di sini nanti — tidak perlu ubah HTML modal.
+const SETTINGS_SCHEMA = [
+  {
+    key: 'autoComplete',
+    label: 'Auto Complete',
+    desc: 'Tampilkan saran ejaan otomatis di bawah kolom pencarian sambil mengetik.',
+    onChange: (val) => { if (!val) { acBox.style.display = 'none'; acBox.innerHTML = ''; } }
+  }
+];
+
+const settingsModal = document.getElementById('settings-modal');
+const settingsToggleBtn = document.getElementById('settings-toggle');
+const settingsModalClose = document.getElementById('settings-modal-close');
+const settingsListEl = document.getElementById('settings-list');
+
+function isDarkThemeActive() {
+  return document.documentElement.getAttribute('data-theme') === 'dark';
+}
+
+function renderSettingsList() {
+  const dark = isDarkThemeActive();
+  let html = `
+    <div class="pref-row">
+      <div>
+        <div class="pref-row-label">Tema</div>
+        <div class="pref-row-desc">Pilih tampilan terang atau gelap untuk seluruh workspace.</div>
+      </div>
+      <div class="pref-switch ${dark ? 'on' : ''}" id="pref-theme-switch" role="switch" aria-checked="${dark}" tabindex="0">
+        <div class="knob"><i class="ph ${dark ? 'ph-moon' : 'ph-sun'}"></i></div>
+      </div>
+    </div>
+  `;
+  html += SETTINGS_SCHEMA.map(s => `
+    <div class="pref-row">
+      <div>
+        <div class="pref-row-label">${s.label}</div>
+        <div class="pref-row-desc">${s.desc}</div>
+      </div>
+      <div class="pref-switch ${pnmSettings[s.key] ? 'on' : ''}" data-pref-key="${s.key}" role="switch" aria-checked="${!!pnmSettings[s.key]}" tabindex="0"><div class="knob"></div></div>
+    </div>
+  `).join('');
+  settingsListEl.innerHTML = html;
+
+  const themeSwitch = document.getElementById('pref-theme-switch');
+  themeSwitch.addEventListener('click', () => {
+    // Reuse tombol theme-toggle yang sudah ada di header, biar logika
+    // penyimpanan tema (localStorage 'theme'/'pnum-theme' + ikon) gak dobel.
+    document.getElementById('theme-toggle').click();
+    renderSettingsList();
+  });
+
+  settingsListEl.querySelectorAll('.pref-switch[data-pref-key]').forEach(el => {
+    const toggle = () => {
+      const key = el.dataset.prefKey;
+      pnmSettings[key] = !pnmSettings[key];
+      savePnmSettings();
+      el.classList.toggle('on', pnmSettings[key]);
+      el.setAttribute('aria-checked', String(pnmSettings[key]));
+      const schema = SETTINGS_SCHEMA.find(s => s.key === key);
+      if (schema && typeof schema.onChange === 'function') schema.onChange(pnmSettings[key]);
+    };
+    el.addEventListener('click', toggle);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  });
+}
+
+function openSettingsModal() { renderSettingsList(); settingsModal.classList.add('show'); }
+function closeSettingsModal() { settingsModal.classList.remove('show'); }
+if (settingsToggleBtn) settingsToggleBtn.addEventListener('click', openSettingsModal);
+if (settingsModalClose) settingsModalClose.addEventListener('click', closeSettingsModal);
+if (settingsModal) settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettingsModal(); });
+
+// ══════════════════════════════════════════
 // STATUS KONEKSI: banner + toast saat internet putus/nyambung lagi. Aksi yang
 // gagal karena offline (search, simpan sesi, dll) tetap dikasih tau lewat toast
 // error masing-masing seperti biasa — banner ini cuma indikator ambient.
@@ -686,18 +923,33 @@ const subtabCari = document.getElementById('subtab-cari');
 const subtabSesi = document.getElementById('subtab-sesi');
 const subtabRiwayat = document.getElementById('subtab-riwayat');
 const subtabConverter = document.getElementById('subtab-converter');
+const subtabSetcari = document.getElementById('subtab-setcari');
 const subtabDictionary = document.getElementById('subtab-dictionary');
 const cariControls = document.getElementById('cari-controls');
 const panelBodyCari = document.getElementById('panel-body-cari');
 const panelBodySesi = document.getElementById('panel-body-sesi');
 const panelBodyRiwayat = document.getElementById('panel-body-riwayat');
 const panelBodyConverter = document.getElementById('panel-body-converter');
+const panelBodySetcari = document.getElementById('panel-body-setcari');
 const panelBodyDictionary = document.getElementById('panel-body-dictionary');
+const setcariBadge = document.getElementById('setcari-badge');
+// Refs modul "Cari SET Mendekati" — dideklarasikan di sini (bukan di dekat
+// fungsi-fungsinya di bawah) karena updateClipboard() manggil
+// updateSetcariSourceCount() sejak load pertama; kalau const-nya baru
+// dideklarasikan belakangan, ini ReferenceError (temporal dead zone).
+const setcariSearchBtn = document.getElementById('setcari-search-btn');
+const setcariStatus = document.getElementById('setcari-status');
+const setcariEmpty = document.getElementById('setcari-empty');
+const setcariList = document.getElementById('setcari-list');
+const setcariSourceCount = document.getElementById('setcari-source-count');
 const riwayatList = document.getElementById('riwayat-list');
 const riwayatListEmpty = document.getElementById('riwayat-list-empty');
 const riwayatListLoading = document.getElementById('riwayat-list-loading');
 const riwayatListError = document.getElementById('riwayat-list-error');
 const btnRiwayatRefresh = document.getElementById('btn-riwayat-refresh');
+const riwayatSearchInput = document.getElementById('riwayat-search-input');
+const riwayatClearBtn = document.getElementById('riwayat-clear-btn');
+let riwayatSearchDebounce = null;
 const sesiBadge = document.getElementById('sesi-badge');
 const sesiList = document.getElementById('sesi-list');
 const sesiListEmpty = document.getElementById('sesi-list-empty');
@@ -1023,21 +1275,25 @@ function switchSubTab(tab) {
   subtabSesi.classList.toggle('active', tab === 'sesi');
   subtabRiwayat.classList.toggle('active', tab === 'riwayat');
   subtabConverter.classList.toggle('active', tab === 'converter');
+  subtabSetcari.classList.toggle('active', tab === 'setcari');
   subtabDictionary.classList.toggle('active', tab === 'dictionary');
   panelBodyCari.style.display = tab === 'cari' ? 'block' : 'none';
   panelBodySesi.style.display = tab === 'sesi' ? 'block' : 'none';
   panelBodyRiwayat.style.display = tab === 'riwayat' ? 'block' : 'none';
   panelBodyConverter.style.display = tab === 'converter' ? 'block' : 'none';
+  panelBodySetcari.style.display = tab === 'setcari' ? 'block' : 'none';
   panelBodyDictionary.style.display = tab === 'dictionary' ? 'block' : 'none';
   cariControls.style.display = tab === 'cari' ? 'block' : 'none';
   if (tab === 'sesi') loadSesiList();
   if (tab === 'riwayat') loadRiwayatList();
   if (tab === 'dictionary') loadDictionary();
+  if (tab === 'setcari' && typeof updateSetcariSourceCount === 'function') updateSetcariSourceCount();
 }
 subtabCari.addEventListener('click', () => switchSubTab('cari'));
 subtabSesi.addEventListener('click', () => switchSubTab('sesi'));
 subtabRiwayat.addEventListener('click', () => switchSubTab('riwayat'));
 subtabConverter.addEventListener('click', () => switchSubTab('converter'));
+subtabSetcari.addEventListener('click', () => switchSubTab('setcari'));
 subtabDictionary.addEventListener('click', () => switchSubTab('dictionary'));
 
 function sesiTimeAgo(iso) {
@@ -1118,13 +1374,27 @@ async function loadRiwayatList() {
   riwayatListEmpty.style.display = 'none';
   riwayatList.innerHTML = '';
   try {
-    const res = await sesiFetch(`${SESI_TABLE}?status=eq.selesai&select=*,${SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi)&order=updated_at.desc&limit=100`);
+    // Search realtime di nama RS / PIC / Sales — pake `or=` PostgREST biar
+    // kepencet satu kotak aja, gak perlu tiga filter field terpisah.
+    const term = riwayatSearchInput ? riwayatSearchInput.value.trim() : '';
+    let searchFilter = '';
+    if (term) {
+      const esc = term.replace(/[,()]/g, ' ').trim();
+      searchFilter = `&or=(nama_rs.ilike.*${encodeURIComponent(esc)}*,pic_marsup.ilike.*${encodeURIComponent(esc)}*,nama_sales.ilike.*${encodeURIComponent(esc)}*)`;
+    }
+    const res = await sesiFetch(`${SESI_TABLE}?status=eq.selesai${searchFilter}&select=*,${SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi)&order=updated_at.desc&limit=100`);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
     }
     const data = await res.json();
-    if (data.length === 0) { riwayatListEmpty.style.display = 'block'; return; }
+    if (data.length === 0) {
+      riwayatListEmpty.querySelector('p').innerHTML = term
+        ? `Gak ada riwayat yang cocok dengan "${term.replace(/</g, '&lt;')}".`
+        : 'Belum ada sesi yang selesai.<br>Sesi yang di-Record atau di-Selesaikan bakal muncul di sini.';
+      riwayatListEmpty.style.display = 'block';
+      return;
+    }
     riwayatList.innerHTML = data.map(renderRiwayatCard).join('');
     riwayatList.querySelectorAll('.riwayat-card').forEach(card => {
       card.addEventListener('click', () => openSesi(card.dataset.id));
@@ -1137,6 +1407,18 @@ async function loadRiwayatList() {
   }
 }
 btnRiwayatRefresh.addEventListener('click', loadRiwayatList);
+
+// Search realtime, di-debounce biar gak nembak Supabase tiap ketikan huruf.
+riwayatSearchInput.addEventListener('input', () => {
+  riwayatClearBtn.style.display = riwayatSearchInput.value ? 'block' : 'none';
+  clearTimeout(riwayatSearchDebounce);
+  riwayatSearchDebounce = setTimeout(loadRiwayatList, 300);
+});
+riwayatClearBtn.addEventListener('click', () => {
+  riwayatSearchInput.value = '';
+  riwayatClearBtn.style.display = 'none';
+  loadRiwayatList();
+});
 
 
 // buat seluruh daftar), lalu tempel ke masing-masing baris sesi sebagai _permintaan.
@@ -1290,6 +1572,9 @@ function resetChecklistUI() {
   if (typeof updateKbTabState === 'function') updateKbTabState();
   if (typeof updateClipSummaryStrip === 'function') updateClipSummaryStrip();
   if (typeof switchClipTab === 'function') switchClipTab('list');
+  // Referensi screenshot nempel ke konteks Permintaan RS yang lagi dibuka —
+  // begitu pindah/tutup/hapus sesi, referensi lama gak relevan lagi.
+  if (typeof resetSsReferences === 'function') resetSsReferences();
 }
 
 // Ambil Permintaan RS yang nempel ke sesi ini (kalau ada) dan tampilin di
@@ -1371,14 +1656,19 @@ function updateSessionIndicatorAndTitle(rsRaw, salesRaw) {
     document.title = APP_TITLE_BASE;
   }
 }
-function setClipHeaderCollapsed(collapsed) {
+const CLIP_HEADER_COLLAPSE_KEY = 'pnm_clip_header_collapsed';
+function setClipHeaderCollapsed(collapsed, persist = true) {
   clipHeader.classList.toggle('collapsed', collapsed);
   clipHeaderToggle.title = collapsed ? 'Perluas form sesi' : 'Ciutkan form sesi';
   if (collapsed) updateClipHeaderCompact();
+  if (persist) sessionStorage.setItem(CLIP_HEADER_COLLAPSE_KEY, collapsed ? '1' : '0');
 }
 clipHeaderToggle.addEventListener('click', () => {
   setClipHeaderCollapsed(!clipHeader.classList.contains('collapsed'));
 });
+// Section tetap ciutan/terbuka selama masih di tab yang sama (sessionStorage),
+// jadi gak perlu diulang tiap kali klik antar produk.
+setClipHeaderCollapsed(sessionStorage.getItem(CLIP_HEADER_COLLAPSE_KEY) === '1', false);
 [inpRs, inpSales, inpMarsup].forEach(inp => {
   inp.addEventListener('input', updateClipHeaderCompact);
 });
@@ -1443,27 +1733,55 @@ const kbRefreshStatus = document.getElementById('kb-refresh-status');
 const clipTabRow = document.getElementById('clip-tab-row');
 const clipTabBtnKb = document.getElementById('clip-tab-btn-kb');
 const clipTabBtnList = document.getElementById('clip-tab-btn-list');
+const clipTabBtnSph = document.getElementById('clip-tab-btn-sph');
 const clipTabBadgeKb = document.getElementById('clip-tab-badge-kb');
 const clipTabBadgeList = document.getElementById('clip-tab-badge-list');
 const clipTabPanelKb = document.getElementById('clip-tab-panel-kb');
 const clipTabPanelList = document.getElementById('clip-tab-panel-list');
+const clipTabPanelSph = document.getElementById('clip-tab-panel-sph');
 const clipSummaryStrip = document.getElementById('clip-summary-strip');
 
 // ══════════════════════════════════════════
 // TAB CLIPBOARD PANEL: Kebutuhan RS (mapping permintaan↔produk) vs Clipboard
-// (hasil final). Ini gantiin versi lama yang numpuk dua-duanya vertikal dalam
-// satu kolom sempit — sekarang yang lagi aktif dapat tinggi penuh panel.
+// (hasil final) vs Buat SPH (generate surat penawaran langsung dari Clipboard).
+// Ini gantiin versi lama yang numpuk dua-duanya vertikal dalam satu kolom
+// sempit — sekarang yang lagi aktif dapat tinggi penuh panel.
 // ══════════════════════════════════════════
 let clipActiveTab = 'list';
+const panelClipEl = document.getElementById('panel-clip');
+// Tab "Buat SPH" gak butuh panel pencarian produk (item diambil dari
+// Clipboard yang udah jadi, bukan dicari lagi), jadi search diciutkan
+// otomatis begitu tab ini dibuka — form + preview PDF dapet ruang lebih
+// lega tanpa user harus mencet tombol ciutkan manual dulu. Balik ke tab
+// lain otomatis ngembaliin panel search ke kondisi semula, TAPI cuma kalau
+// kita sendiri yang nyiutin di sini — kalau user emang udah nyiutin duluan
+// (manual) sebelum masuk tab SPH, biarin tetap ciut, jangan maksa kebuka.
+let sphAutoCollapsedSearch = false;
 function switchClipTab(tab) {
   clipActiveTab = tab;
   clipTabBtnKb.classList.toggle('active', tab === 'kb');
   clipTabBtnList.classList.toggle('active', tab === 'list');
+  clipTabBtnSph.classList.toggle('active', tab === 'sph');
   clipTabPanelKb.style.display = tab === 'kb' ? 'flex' : 'none';
   clipTabPanelList.style.display = tab === 'list' ? 'flex' : 'none';
+  clipTabPanelSph.style.display = tab === 'sph' ? 'flex' : 'none';
+  if (panelClipEl) panelClipEl.classList.toggle('tab-sph-active', tab === 'sph');
+
+  if (tab === 'sph') {
+    if (panelSearchEl && !panelSearchEl.classList.contains('collapsed')) {
+      sphAutoCollapsedSearch = true;
+      setPanelSearchCollapsed(true, false);
+    }
+  } else if (sphAutoCollapsedSearch) {
+    sphAutoCollapsedSearch = false;
+    setPanelSearchCollapsed(false, false);
+  }
+
+  if (tab === 'sph' && typeof window.onSphTabOpen === 'function') window.onSphTabOpen();
 }
 clipTabBtnKb.addEventListener('click', () => switchClipTab('kb'));
 clipTabBtnList.addEventListener('click', () => switchClipTab('list'));
+clipTabBtnSph.addEventListener('click', () => switchClipTab('sph'));
 kbEmptyCta.addEventListener('click', () => openPrModal());
 
 // Toggle antara empty-state ("belum ada Permintaan RS") dan konten checklist
@@ -1677,7 +1995,13 @@ async function runSearch() {
   currentPage = 1;
   metaEl.textContent = data.length + ' produk ditemukan — klik untuk tambah ke clipboard';
   renderResults(lastResults);
-  renderAutocomplete(lastResults);
+  if (pnmSettings.autoComplete) {
+    renderAutocomplete(lastResults);
+  } else {
+    acBox.style.display = 'none';
+    acBox.innerHTML = '';
+    acItems = []; acIndex = -1;
+  }
 }
 
 // SORT
@@ -1957,6 +2281,7 @@ function updateClipboard() {
     clipTotalHarga.textContent = rupiah(totalHargaClip) + (adaHargaKosong ? ' +' : '');
   }
   updateClipSummaryStrip();
+  if (typeof updateSetcariSourceCount === 'function') updateSetcariSourceCount();
   if (n > 0 && typeof checklistPagu !== 'undefined' && checklistPagu != null) {
     const sisa = checklistPagu - totalHargaClip;
     clipBudget.classList.add('show');
@@ -3199,6 +3524,9 @@ prSsRunBtn.addEventListener('click', async () => {
       prSsStatus.textContent = 'Gak ada teks yang kebaca dari gambar ini. Coba ketik manual di tab Paste Teks.';
       return;
     }
+    // Simpen gambarnya sebagai referensi (RAM-only, lihat addSsReference) — biar
+    // user bisa cek balik ke sumber kalau nanti ternyata ada baris yang salah kebaca.
+    addSsReference(file);
     // Hasil OCR ditaruh ke textarea Paste Teks, biar user cek/edit dulu sebelum simpan —
     // sama sekali gak langsung disimpan otomatis dari OCR.
     prTeks.value = (prTeks.value ? prTeks.value + '\n' : '') + text;
@@ -3677,6 +4005,42 @@ function renderChecklist() {
   }).join('');
 }
 
+// Total qty_alokasi dari SEMUA item Kebutuhan RS yang match ke produk yang sama
+// (by produk_id kalau ada, fallback ke kode_produk) — dipake buat sinkronin qty
+// clipboard biar akurat kalau >1 item Permintaan RS dipenuhi dari produk yang
+// sama persis (harus DIJUMLAH, bukan ketimpa sama yang terakhir dikonfirm).
+// `override` opsional: {itemId, links} — dipake pas lagi proses konfirmasi
+// picker, sebelum item.matched_items-nya sendiri kesimpen.
+function sumQtyAlokasiForProduk(produkId, kode, override) {
+  let total = 0;
+  let hasAny = false;
+  checklistItems.forEach(it => {
+    const list = (override && override.itemId === it.id) ? override.links : (it.matched_items || []);
+    (list || []).forEach(l => {
+      const sameProduk = (produkId != null && l.produk_id != null) ? l.produk_id === produkId : l.kode_produk === kode;
+      if (!sameProduk) return;
+      if (l.qty_alokasi == null || isNaN(l.qty_alokasi) || l.qty_alokasi < 1) return;
+      total += Number(l.qty_alokasi);
+      hasAny = true;
+    });
+  });
+  return hasAny ? total : null;
+}
+
+// Sinkronin qty item clipboard ke total qty_alokasi teragregasi (lihat fungsi
+// di atas). Balikin true kalau qty-nya berubah (biar caller tau perlu re-render).
+function syncClipboardQtyForProduk(produkId, kode, override) {
+  const clipItem = clipboard.find(c => c.kode_produk === kode);
+  if (!clipItem) return false;
+  const total = sumQtyAlokasiForProduk(produkId, kode, override);
+  if (total != null && clipItem.qty !== total) {
+    clipItem.qty = total;
+    persistUpdateQty(clipItem);
+    return true;
+  }
+  return false;
+}
+
 kbList.addEventListener('click', async (e) => {
   const link = e.target.closest('a[data-action]');
   const btn = e.target.closest('button[data-action]');
@@ -3716,6 +4080,23 @@ kbList.addEventListener('click', async (e) => {
       return { produk_id: produkId, kode_produk: kode, qty_alokasi: qtyVal };
     });
 
+    // Kalau qty_alokasi diisi di picker Kebutuhan RS, ikutin ke qty item clipboard
+    // yang sama — biar user gak perlu isi qty dua kali (di clipboard & di sini).
+    // Kalau ada >1 item Permintaan RS yang dipenuhi dari produk yang sama, qty-nya
+    // DIJUMLAH (bukan ketimpa sama yang terakhir dikonfirm) — agregasi per produk
+    // (produk_id kalau ada, fallback kode_produk), lewat sumQtyAlokasiForProduk().
+    // Kalau qty_alokasi dikosongin, qty clipboard dibiarin apa adanya (gak di-reset).
+    let clipQtyChanged = false;
+    const touchedProduk = new Set();
+    links.forEach(l => {
+      if (l.qty_alokasi == null || isNaN(l.qty_alokasi) || l.qty_alokasi < 1) return;
+      const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+      if (touchedProduk.has(key)) return; // 2 checkbox beda tapi produk sama (jarang) — cukup dihitung sekali
+      touchedProduk.add(key);
+      if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk, { itemId, links })) clipQtyChanged = true;
+    });
+    if (clipQtyChanged) updateClipboard();
+
     btn.disabled = true;
     try {
       await callUpdatePermintaanItemMulti(itemId, 'TERPENUHI', links);
@@ -3733,10 +4114,22 @@ kbList.addEventListener('click', async (e) => {
 
   if (action === 'tidak') {
     btn.closest('.kb-item-actions').querySelectorAll('button').forEach(b => b.disabled = true);
+    const prevMatched = item.matched_items || [];
     try {
       await callUpdatePermintaanItemMulti(itemId, 'TIDAK_TERPENUHI', []);
       item.status = 'TIDAK_TERPENUHI';
       item.matched_items = [];
+      // Produk yang tadinya kepakai item ini kehilangan kontribusinya ke total —
+      // kalkulasi ulang qty clipboard biar gak nyangkut kelebihan dari sebelumnya.
+      let clipQtyChanged = false;
+      const touchedProduk = new Set();
+      prevMatched.forEach(l => {
+        const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+        if (touchedProduk.has(key)) return;
+        touchedProduk.add(key);
+        if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk)) clipQtyChanged = true;
+      });
+      if (clipQtyChanged) updateClipboard();
       renderChecklist();
       autoFinalizePermintaan();
     } catch (err) {
@@ -3747,10 +4140,22 @@ kbList.addEventListener('click', async (e) => {
   }
 
   if (action === 'undo') {
+    const prevMatched = item.matched_items || [];
     try {
       await callUpdatePermintaanItemMulti(itemId, 'PENDING', []);
       item.status = 'PENDING';
       item.matched_items = [];
+      // Sama kayak 'tidak': produk yang kepakai item ini kehilangan kontribusinya,
+      // jadi total qty clipboard dihitung ulang biar tetap akurat.
+      let clipQtyChanged = false;
+      const touchedProduk = new Set();
+      prevMatched.forEach(l => {
+        const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+        if (touchedProduk.has(key)) return;
+        touchedProduk.add(key);
+        if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk)) clipQtyChanged = true;
+      });
+      if (clipQtyChanged) updateClipboard();
       checklistPickingId = null;
       renderChecklist();
       autoFinalizePermintaan();
@@ -3774,10 +4179,18 @@ kbList.addEventListener('change', (e) => {
   if (errEl && chk.checked) errEl.style.display = 'none';
 });
 
+const KB_COLLAPSE_KEY = 'pnm_kb_collapsed';
 kbCollapseBtn.addEventListener('click', () => {
   const collapsed = kbSection.classList.toggle('kb-collapsed');
   kbCollapseBtn.title = collapsed ? 'Buka daftar' : 'Ciutkan daftar';
+  sessionStorage.setItem(KB_COLLAPSE_KEY, collapsed ? '1' : '0');
 });
+// Kalau sebelumnya diciutkan di sesi browser yang sama, biarkan tetap ciutan
+// begitu daftar Kebutuhan RS pertama kali muncul.
+if (sessionStorage.getItem(KB_COLLAPSE_KEY) === '1') {
+  kbSection.classList.add('kb-collapsed');
+  kbCollapseBtn.title = 'Buka daftar';
+}
 
 // Kerja bareng dalam satu sesi yang sama bisa jalan bersamaan (bukan cuma
 // gantian) — tombol ini nge-tarik ulang status checklist dari server, biar
@@ -3825,6 +4238,165 @@ async function autoFinalizePermintaan() {
     kbRecordStatus.textContent = 'Gagal simpan rekap otomatis (gak masalah, dicoba lagi pas item berikutnya ditandai)';
   }
 }
+
+// ══════════════════════════════════════════
+// CARI SET MENDEKATI: dulu tool HTML terpisah (tempel kode_produk manual ke
+// textarea, panggil RPC cari_set_mendekati/detail_isi_set). Sekarang dilebur
+// jadi tab clipboard, sumber kode_produk-nya otomatis dari item yang ada di
+// Clipboard sesi ini (bukan input manual lagi) — biar seamless: user tinggal
+// klik "Cari SET Mendekati", gak perlu copy-paste kode dari clipboard ke tool
+// lain. RPC dipanggil lewat helper rpc() yang sudah ada (pola sama kayak
+// get_set_items dkk — pakai ANON_KEY, bukan stokAccessToken, karena RPC ini
+// read-only/security-definer).
+// ══════════════════════════════════════════
+// Kode sumber = kode_produk unik dari clipboard (kode_asli dipakai kalau ada,
+// sama kayak konvensi kode buat gambar/thumbnail di bagian lain app ini).
+function setcariSourceKodeList() {
+  const seen = new Set();
+  const out = [];
+  clipboard.forEach(c => {
+    const kode = (c.kode_asli && c.kode_asli.trim()) ? c.kode_asli.trim() : c.kode_produk;
+    if (kode && !seen.has(kode)) { seen.add(kode); out.push(kode); }
+  });
+  return out;
+}
+
+function updateSetcariSourceCount() {
+  const n = setcariSourceKodeList().length;
+  setcariSourceCount.textContent = n;
+  setcariSearchBtn.disabled = n === 0;
+}
+
+function setcariSetStatus(msg, isError) {
+  setcariStatus.textContent = msg || '';
+  setcariStatus.classList.toggle('error', !!isError);
+}
+
+function setcariSkorClass(skor) {
+  if (skor >= 0.7) return 'high';
+  if (skor >= 0.4) return 'mid';
+  return 'low';
+}
+
+async function runCariSetMendekati() {
+  const kodeList = setcariSourceKodeList();
+  if (kodeList.length === 0) {
+    setcariSetStatus('Clipboard masih kosong — tambahkan produk dulu.', true);
+    return;
+  }
+  setcariSearchBtn.disabled = true;
+  setcariSetStatus('Mencari…');
+  setcariEmpty.style.display = 'none';
+  setcariList.innerHTML = '';
+  setcariBadge.style.display = 'none';
+  try {
+    const { data, error } = await rpc('cari_set_mendekati', { kode_list: kodeList, batas: 30 });
+    if (error) throw new Error(error.message || 'Gagal mencari SET');
+    if (!data || data.length === 0) {
+      setcariSetStatus('');
+      setcariEmpty.style.display = 'block';
+      setcariEmpty.querySelector('p').textContent = 'Tidak ada SET yang cocok ditemukan buat produk-produk di clipboard sekarang.';
+      return;
+    }
+    setcariSetStatus(`Ditemukan ${data.length} SET, diurutkan dari yang paling mirip.`);
+    setcariBadge.textContent = data.length;
+    setcariBadge.style.display = 'inline-block';
+    renderSetcariResults(data, kodeList);
+  } catch (err) {
+    setcariSetStatus('Gagal mencari: ' + err.message, true);
+  } finally {
+    setcariSearchBtn.disabled = setcariSourceKodeList().length === 0;
+  }
+}
+
+function renderSetcariResults(rows, kodeList) {
+  setcariList.innerHTML = rows.map(row => {
+    const pct = Math.round(row.skor_jaccard * 100);
+    const cls = setcariSkorClass(row.skor_jaccard);
+    return `<div class="setcari-card" data-set-id="${row.set_id}">
+      <div class="setcari-card-top">
+        <div>
+          <div class="setcari-kode">${escapeHtmlAttr(row.kode_set)}</div>
+          ${row.nama_set ? `<div class="setcari-nama">${escapeHtmlAttr(row.nama_set)}</div>` : ''}
+          <div class="setcari-cocok" style="margin-top:4px">${row.jumlah_cocok} / ${row.total_item_set} item set cocok</div>
+        </div>
+        <div class="setcari-score-wrap">
+          <div class="setcari-score ${cls}">${pct}%</div>
+          <div class="setcari-bar-track"><div class="setcari-bar-fill" style="width:${pct}%"></div></div>
+        </div>
+      </div>
+      <div class="setcari-card-actions">
+        <button class="setcari-detail-btn" type="button" data-action="toggle-detail" data-set-id="${row.set_id}">Lihat isi</button>
+        <button class="setcari-detail-btn" type="button" data-action="add-clip" data-kode="${escapeHtmlAttr(row.kode_set)}">+ Tambah ke Clipboard</button>
+      </div>
+      <div class="setcari-detail" data-detail-for="${row.set_id}" style="display:none"></div>
+    </div>`;
+  }).join('');
+
+  setcariList.querySelectorAll('button[data-action="toggle-detail"]').forEach(btn => {
+    btn.addEventListener('click', () => toggleSetcariDetail(btn, kodeList));
+  });
+  setcariList.querySelectorAll('button[data-action="add-clip"]').forEach(btn => {
+    btn.addEventListener('click', () => addSetKodeToClip(btn.dataset.kode, btn));
+  });
+}
+
+// Tambah SET hasil pencarian langsung ke Clipboard tanpa harus balik ke tab
+// pencarian produk dulu — cari by kode_produk persis (RPC produk_by_kode kalau
+// ada; fallback ke pencarian biasa lewat search_produk yang sudah dipakai app).
+async function addSetKodeToClip(kode, btn) {
+  if (!kode) return;
+  if (clipboard.some(c => c.kode_produk === kode)) {
+    showToast('SET ini sudah ada di clipboard.', 'error');
+    return;
+  }
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'Menambahkan…';
+  try {
+    const { data, error } = await rpc('search_produk_dengan_harga', { q: kode, p_tipe: null, only_akd: false, only_kfa: false });
+    if (error) throw new Error(error.message || 'Gagal mencari produk SET');
+    const match = Array.isArray(data) ? data.find(r => r.kode_produk && r.kode_produk.toLowerCase() === kode.toLowerCase()) : null;
+    if (!match) throw new Error('Produk SET tidak ditemukan di database.');
+    lastResults = lastResults && lastResults.length ? lastResults.concat([match]) : [match];
+    addToClip(kode);
+    showToast(`${kode} ditambahkan ke clipboard ✓`);
+    btn.textContent = 'Ditambahkan ✓';
+  } catch (err) {
+    showToast('Gagal menambahkan: ' + err.message, 'error');
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
+async function toggleSetcariDetail(btn, kodeList) {
+  const setId = btn.dataset.setId;
+  const detailEl = setcariList.querySelector(`[data-detail-for="${setId}"]`);
+  if (!detailEl) return;
+  if (detailEl.style.display !== 'none') {
+    detailEl.style.display = 'none';
+    btn.textContent = 'Lihat isi';
+    return;
+  }
+  btn.textContent = 'Memuat…';
+  try {
+    const { data, error } = await rpc('detail_isi_set', { p_set_id: Number(setId), kode_list: kodeList });
+    if (error) throw new Error(error.message || 'Gagal ambil detail SET');
+    const lines = (data || []).map(it => `
+      <div class="setcari-item-line ${it.cocok_dengan_input ? 'match' : ''}">
+        <span>${it.urutan}. ${escapeHtmlAttr(it.kode_item)} — ${escapeHtmlAttr(it.nama_item || '')}</span>
+        <span>qty ${it.qty}${it.cocok_dengan_input ? '<span class="setcari-item-tag">cocok</span>' : ''}</span>
+      </div>`).join('');
+    detailEl.innerHTML = lines || '<div class="setcari-detail-empty">Tidak ada item.</div>';
+    detailEl.style.display = 'flex';
+    btn.textContent = 'Sembunyikan';
+  } catch (err) {
+    setcariSetStatus('Gagal ambil detail: ' + err.message, true);
+    btn.textContent = 'Lihat isi';
+  }
+}
+
+setcariSearchBtn.addEventListener('click', runCariSetMendekati);
 
 // ══════════════════════════════════════════
 // DICTIONARY ISTILAH CUSTOMER (fitur baru)

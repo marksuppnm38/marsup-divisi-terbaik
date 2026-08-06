@@ -9,3 +9,6 @@ folder_output - Copy.zip
 folder_output*
 *.sql
 .vscode
+output/
+node_modules/
+output_abadinusa/

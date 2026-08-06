@@ -1,319 +1,1040 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pionir Group — Tools</title>
+<title>Pionir Group — Tools Manifest 3D</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #F6F7FA;
-    --surface: #FFFFFF;
-    --border: #E5E8EE;
-    --text: #101828;
-    --text-muted: #667085;
-    --navy: #1B2A4A;
-    --navy-hover: #263A63;
-    --blue: #2563EB;
-    --blue-soft: #EEF3FF;
-    --green: #16A34A;
-    --green-soft: #EAF7EE;
-    --gray-soft: #F1F2F5;
-    --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
+    --bg-canvas: #F8FAFC;
+    --text-main: #0F172A;
+    --text-muted: #64748B;
+    --text-dim: #94A3B8;
+    --accent-blue: #2563EB;
+    --accent-blue-glow: rgba(37, 99, 235, 0.25);
+    --border-glass: rgba(255, 255, 255, 0.9);
+    --border-glass-subtle: rgba(15, 23, 42, 0.08);
+    --glass-bg: rgba(255, 255, 255, 0.65);
+    --glass-cubie: linear-gradient(135deg, rgba(255, 255, 255, 0.75) 0%, rgba(240, 244, 255, 0.45) 100%);
+    --glass-cubie-hover: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(224, 236, 255, 0.75) 100%);
+    --glass-shadow: 0 16px 40px rgba(15, 23, 42, 0.06), inset 0 1px 2px rgba(255, 255, 255, 0.95);
+    --cubie-shadow: 0 6px 20px rgba(0, 0, 0, 0.05), inset 0 1px 1.5px rgba(255, 255, 255, 0.9);
+    --badge-bg: rgba(37, 99, 235, 0.08);
+    --badge-text: #1D4ED8;
+    --card-bg: rgba(255, 255, 255, 0.85);
   }
+
   [data-theme="dark"] {
-    --bg: #12151C;
-    --surface: #1A1E27;
-    --border: #2A2F3A;
-    --text: #F0F1F5;
-    --text-muted: #9AA1AF;
-    --navy: #3B5A9A;
-    --navy-hover: #4A6BB0;
-    --blue: #5B8DEF;
-    --blue-soft: #1E2A45;
-    --green: #3CCB6F;
-    --green-soft: #16281D;
-    --gray-soft: #232733;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --bg-canvas: #090C15;
+    --text-main: #F8FAFC;
+    --text-muted: #94A3B8;
+    --text-dim: #64748B;
+    --accent-blue: #3B82F6;
+    --accent-blue-glow: rgba(59, 130, 246, 0.35);
+    --border-glass: rgba(255, 255, 255, 0.22);
+    --border-glass-subtle: rgba(255, 255, 255, 0.08);
+    --glass-bg: rgba(15, 23, 42, 0.65);
+    --glass-cubie: linear-gradient(135deg, rgba(30, 41, 65, 0.75) 0%, rgba(15, 23, 42, 0.55) 100%);
+    --glass-cubie-hover: linear-gradient(135deg, rgba(45, 62, 98, 0.9) 0%, rgba(25, 36, 60, 0.75) 100%);
+    --glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.25);
+    --cubie-shadow: 0 8px 25px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+    --badge-bg: rgba(59, 130, 246, 0.15);
+    --badge-text: #60A5FA;
+    --card-bg: rgba(15, 23, 42, 0.85);
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+
   body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Inter', system-ui, sans-serif;
+    background-color: var(--bg-canvas);
+    color: var(--text-main);
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     min-height: 100vh;
-    transition: background 0.15s ease, color 0.15s ease;
+    overflow-x: hidden;
+    position: relative;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
-  .wrap {
-    max-width: 920px;
+
+  /* GPU-Accelerated CSS Aurora Background Blobs */
+  .aurora-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  .aurora-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.6;
+    will-change: transform;
+  }
+
+  .blob-1 {
+    top: 10%;
+    right: 15%;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, var(--accent-blue-glow) 0%, rgba(37, 99, 235, 0) 70%);
+    animation: blobFloat1 12s infinite alternate ease-in-out;
+  }
+
+  .blob-2 {
+    bottom: 15%;
+    left: 10%;
+    width: 450px;
+    height: 450px;
+    background: radial-gradient(circle, rgba(124, 58, 237, 0.2) 0%, rgba(124, 58, 237, 0) 70%);
+    animation: blobFloat2 15s infinite alternate ease-in-out;
+  }
+
+  @keyframes blobFloat1 {
+    0% { transform: translate3d(0, 0, 0) scale(1); }
+    100% { transform: translate3d(-80px, 60px, 0) scale(1.15); }
+  }
+
+  @keyframes blobFloat2 {
+    0% { transform: translate3d(0, 0, 0) scale(1); }
+    100% { transform: translate3d(70px, -50px, 0) scale(1.1); }
+  }
+
+  /* Cursor Light Follower */
+  #cursor-glow {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 500px;
+    height: 500px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent-blue-glow) 0%, rgba(37, 99, 235, 0) 70%);
+    pointer-events: none;
+    z-index: 1;
+    transform: translate3d(-50%, -50%, 0);
+    opacity: 0.5;
+    will-change: transform;
+    pointer-events: none;
+  }
+
+  /* App Layout Wrapper */
+  .app-wrap {
+    position: relative;
+    z-index: 2;
+    max-width: 1380px;
     margin: 0 auto;
-    padding: 32px 24px 64px;
+    padding: 0 32px 48px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
   }
+
+  /* Navigation Header */
   header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-    padding-bottom: 20px;
-    margin-bottom: 28px;
-    border-bottom: 1px solid var(--border);
+    justify-content: space-between;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--border-glass-subtle);
+    margin-bottom: 32px;
   }
-  .brand {
+
+  .brand-group {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
   }
-  .brand img {
-    width: 40px;
-    height: 40px;
+
+  .brand-logo-wrap {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--glass-bg);
+    border: 1px solid var(--border-glass);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--glass-shadow);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .brand-logo-wrap:hover {
+    transform: scale(1.06) rotate(-3deg);
+  }
+
+  .brand-logo-wrap img {
+    width: 28px;
+    height: 28px;
     object-fit: contain;
-    border-radius: 8px;
   }
-  .brand-text h1 {
-    font-size: 18px;
+
+  .brand-titles h1 {
+    font-size: 17px;
     font-weight: 700;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
+    color: var(--text-main);
   }
-  .brand-text p {
-    font-size: 13px;
+
+  .brand-titles p {
+    font-size: 12px;
+    font-weight: 500;
     color: var(--text-muted);
-    margin-top: 2px;
   }
+
   .header-right {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 20px;
   }
-  .breadcrumb {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11.5px;
+
+  .breadcrumb-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
     color: var(--text-muted);
-    text-align: right;
-    line-height: 1.5;
+    background: var(--glass-bg);
+    border: 1px solid var(--border-glass-subtle);
+    padding: 6px 14px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
-  .theme-toggle {
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text-muted);
+
+  .pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: #10B981;
+    box-shadow: 0 0 8px #10B981;
+    animation: pulseGlow 2s infinite;
+  }
+
+  @keyframes pulseGlow {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+  }
+
+  .theme-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--glass-bg);
+    border: 1px solid var(--border-glass);
+    color: var(--text-main);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: border-color 0.15s ease, color 0.15s ease;
+    box-shadow: var(--glass-shadow);
+    transition: all 0.25s ease;
   }
-  .theme-toggle:hover {
-    border-color: var(--blue);
-    color: var(--blue);
+
+  .theme-btn:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
   }
-  .theme-toggle svg { width: 16px; height: 16px; }
-  .section-label {
-    font-size: 11.5px;
+
+  .theme-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Hero Grid */
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.35fr;
+    gap: 48px;
+    align-items: center;
+    flex: 1;
+    margin: auto 0;
+    padding: 24px 0 40px;
+  }
+
+  .hero-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 24px;
+    z-index: 5;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: var(--badge-bg);
+    color: var(--badge-text);
+    font-size: 12px;
     font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid rgba(37, 99, 235, 0.2);
+  }
+
+  .hero-title {
+    font-size: clamp(34px, 4.2vw, 54px);
+    font-weight: 800;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, var(--text-main) 60%, var(--text-muted));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .hero-desc {
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text-muted);
+    max-width: 480px;
+    font-weight: 400;
+  }
+
+  .module-selector-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-width: 460px;
+    margin-top: 8px;
+  }
+
+  .selector-title {
+    font-size: 11px;
+    font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 14px;
+    color: var(--text-dim);
+    margin-bottom: 2px;
   }
-  .modules {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  .module {
+
+  .module-pill {
     display: flex;
     align-items: center;
-    gap: 16px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 18px 20px;
+    justify-content: space-between;
+    padding: 12px 18px;
+    border-radius: 14px;
+    background: var(--glass-bg);
+    border: 1px solid var(--border-glass-subtle);
     text-decoration: none;
-    color: var(--text);
-    box-shadow: var(--shadow);
-    transition: border-color 0.15s ease, transform 0.1s ease;
+    color: var(--text-main);
+    cursor: pointer;
+    box-shadow: var(--glass-shadow);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    overflow: hidden;
   }
-  .module:hover {
-    border-color: var(--blue);
-    transform: translateY(-1px);
+
+  .module-pill::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; width: 3px; height: 100%;
+    background: var(--accent-blue);
+    opacity: 0;
+    transition: opacity 0.25s ease;
   }
-  .module-icon {
-    flex: 0 0 42px;
-    width: 42px;
-    height: 42px;
+
+  .module-pill:hover, .module-pill.active {
+    transform: translateX(6px);
+    border-color: var(--border-glass);
+    background: var(--card-bg);
+  }
+
+  .module-pill.active::before, .module-pill:hover::before {
+    opacity: 1;
+  }
+
+  .pill-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .pill-icon {
+    width: 34px;
+    height: 34px;
     border-radius: 10px;
-    background: var(--blue-soft);
-    color: var(--blue);
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--accent-blue);
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: transform 0.25s ease;
   }
-  .module-icon svg { width: 20px; height: 20px; }
-  .module-body {
-    flex: 1;
-    min-width: 0;
+
+  .module-pill:hover .pill-icon {
+    transform: scale(1.1) rotate(5deg);
   }
-  .module-title {
-    font-size: 15.5px;
+
+  .pill-icon svg { width: 18px; height: 18px; stroke-width: 2; }
+
+  .pill-info h3 {
+    font-size: 14px;
     font-weight: 600;
-    margin-bottom: 3px;
+    letter-spacing: -0.01em;
   }
-  .module-desc {
-    font-size: 13.5px;
+
+  .pill-info p {
+    font-size: 12px;
     color: var(--text-muted);
-    line-height: 1.4;
   }
-  .status {
-    flex: 0 0 auto;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 10.5px;
-    font-weight: 500;
-    letter-spacing: 0.06em;
+
+  .pill-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
     text-transform: uppercase;
-    padding: 4px 10px;
-    border-radius: 999px;
-    white-space: nowrap;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: rgba(16, 185, 129, 0.12);
+    color: #10B981;
+    letter-spacing: 0.05em;
   }
-  .status.live {
-    color: var(--green);
-    background: var(--green-soft);
+
+  .hero-stats {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-glass-subtle);
+    width: 100%;
+    max-width: 460px;
   }
-  .status.soon {
-    color: var(--text-muted);
-    background: var(--gray-soft);
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
-  .module.disabled {
-    pointer-events: none;
-    opacity: 0.6;
+
+  .stat-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-main);
   }
-  footer {
-    margin-top: 40px;
-    padding-top: 18px;
-    border-top: 1px solid var(--border);
-    font-family: 'IBM Plex Mono', monospace;
+
+  .stat-lbl {
     font-size: 11px;
     color: var(--text-muted);
-    display: flex;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
   }
-  @media (max-width: 520px) {
+
+  /* 3D Rubik Stage */
+  .hero-right-stage {
+    position: relative;
+    width: 100%;
+    height: 560px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1200px;
+    user-select: none;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  .hero-right-stage:active {
+    cursor: grabbing;
+  }
+
+  .stage-floor-glow {
+    position: absolute;
+    width: 360px;
+    height: 360px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent-blue-glow) 0%, rgba(37, 99, 235, 0) 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotateX(75deg) translateZ(-160px);
+    pointer-events: none;
+    filter: blur(20px);
+    opacity: 0.7;
+  }
+
+  /* The Main 3D Rubik Container */
+  .rubik-cube-world {
+    width: 270px;
+    height: 270px;
+    position: relative;
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+
+  /* High Performance 3D Cubies */
+  .cubie {
+    position: absolute;
+    width: 82px;
+    height: 82px;
+    transform-style: preserve-3d;
+    will-change: transform;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  /* Ultra-smooth Glass Faces (Optimized without heavy backdrop-filter per face) */
+  .face {
+    position: absolute;
+    width: 82px;
+    height: 82px;
+    border-radius: 14px;
+    background: var(--glass-cubie);
+    border: 1px solid var(--border-glass);
+    box-shadow: var(--cubie-shadow);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    text-align: center;
+    backface-visibility: hidden;
+    transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  .face.front  { transform: rotateY(0deg) translateZ(41px); }
+  .face.back   { transform: rotateY(180deg) translateZ(41px); }
+  .face.right  { transform: rotateY(90deg) translateZ(41px); }
+  .face.left   { transform: rotateY(-90deg) translateZ(41px); }
+  .face.top    { transform: rotateX(90deg) translateZ(41px); }
+  .face.bottom { transform: rotateX(-90deg) translateZ(41px); }
+
+  .cubie.hovered {
+    transform: scale(1.08) translateZ(12px) !important;
+  }
+
+  .cubie.hovered .face {
+    background: var(--glass-cubie-hover);
+    border-color: rgba(255, 255, 255, 1);
+    box-shadow: 0 0 25px var(--accent-blue-glow), inset 0 1px 3px rgba(255, 255, 255, 1);
+  }
+
+  .face-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .face-icon {
+    width: 28px;
+    height: 28px;
+    color: var(--accent-blue);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+  }
+
+  .face-icon svg {
+    width: 22px;
+    height: 22px;
+    stroke-width: 2.2;
+  }
+
+  .face-title {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text-main);
+    line-height: 1.1;
+    max-width: 70px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .face-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7.5px;
+    font-weight: 600;
+    color: #10B981;
+    background: rgba(16, 185, 129, 0.15);
+    padding: 1px 5px;
+    border-radius: 6px;
+    letter-spacing: 0.05em;
+  }
+
+  .stage-tooltip {
+    position: absolute;
+    bottom: 12px;
+    background: var(--glass-bg);
+    border: 1px solid var(--border-glass-subtle);
+    padding: 8px 18px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: var(--glass-shadow);
+    pointer-events: none;
+  }
+
+  .stage-tooltip svg { width: 14px; height: 14px; stroke: var(--accent-blue); }
+
+  @media (max-width: 1024px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 32px; padding: 16px 0; }
+    .hero-left { align-items: center; text-align: center; }
+    .hero-desc, .module-selector-group, .hero-stats { max-width: 100%; }
+    .hero-right-stage { height: 480px; }
+  }
+
+  @media (max-width: 640px) {
+    .app-wrap { padding: 0 16px 32px; }
+    header { flex-direction: column; align-items: flex-start; gap: 16px; }
     .header-right { width: 100%; justify-content: space-between; }
-    .breadcrumb { text-align: left; }
-    .module { padding: 16px; }
-    .module-icon { flex-basis: 36px; width: 36px; height: 36px; }
+    .hero-title { font-size: 32px; }
+    .hero-right-stage { height: 380px; }
+    .rubik-cube-world { transform: scale(0.85); }
   }
 </style>
 </head>
 <body>
-  <div class="wrap">
+
+  <!-- Aurora Background Blobs -->
+  <div class="aurora-bg">
+    <div class="aurora-blob blob-1"></div>
+    <div class="aurora-blob blob-2"></div>
+  </div>
+
+  <!-- Cursor Light Follower -->
+  <div id="cursor-glow"></div>
+
+  <!-- App Wrapper -->
+  <div class="app-wrap">
+
+    <!-- Navigation Header -->
     <header>
-      <div class="brand">
-        <img src="assets/logo-mark-pnm.png" alt="PNUM logo">
-        <div class="brand-text">
+      <div class="brand-group">
+        <div class="brand-logo-wrap">
+          <img src="assets/logo-mark-pnm.png" alt="Pionir Logo" onerror="this.onerror=null; this.parentNode.innerHTML='<svg width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2.5\'><path d=\'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5\'/></svg>';">
+        </div>
+        <div class="brand-titles">
           <h1>Tools Manifest</h1>
-          <p>Pionir Group · Internal</p>
+          <p>Pionir Group · Internal Operations</p>
         </div>
       </div>
+
       <div class="header-right">
-        <div class="breadcrumb">Pionir Group — PNM / SMY / METO<br>marketing &amp; sales ops</div>
-        <button class="theme-toggle" id="themeToggle" aria-label="Ganti tema" title="Ganti tema">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <div class="breadcrumb-tag">
+          <span class="pulse-dot"></span>
+          Pionir Group — PNM / SMY / METO
+        </div>
+        <button class="theme-btn" id="themeToggle" aria-label="Ganti Tema" title="Ganti Tema (Light / Dark)">
+          <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
       </div>
     </header>
-    <div class="section-label">Modul Aktif</div>
-    <div class="modules">
-      <a class="module" href="/konversian.html">
-        <div class="module-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+
+    <!-- Hero Main Section -->
+    <main class="hero-grid">
+
+      <!-- Left Column: Vision Content -->
+      <section class="hero-left">
+        <div class="hero-badge">
+          <span class="pulse-dot"></span> Pionir Workspace
         </div>
-        <div class="module-body">
-          <div class="module-title">Konversi</div>
-          <div class="module-desc">Cari produk, susun harga, dan export ke Excel dengan gambar.</div>
+
+        <h2 class="hero-title">One Workspace.</h2>
+
+        <p class="hero-desc">
+          Work has many dimensions.
+          Your workspace should too.
+        </p>
+
+        <!-- Module Selector Group -->
+        <div class="module-selector-group">
+          <div class="selector-title">Pilih Modul (Atau Putar Cube 3D)</div>
+
+          <!-- Conversion Workspace -->
+          <a class="module-pill active" href="/konversian.html" data-face="front" id="pill-konversian">
+            <div class="pill-left">
+              <div class="pill-icon" style="color: #2563EB; background: rgba(37,99,235,0.1);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              </div>
+              <div class="pill-info">
+                <h3>Conversion Workspace</h3>
+                <p>Almost everything you need.</p>
+              </div>
+            </div>
+            <span class="pill-badge">Live</span>
+          </a>
+
+          <!-- Stock -->
+          <a class="module-pill" href="/stok.html" data-face="right" id="pill-stok">
+            <div class="pill-left">
+              <div class="pill-icon" style="color: #10B981; background: rgba(16,185,129,0.1);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg>
+              </div>
+              <div class="pill-info">
+                <h3>Stok</h3>
+                <p>One source of truth.</p>
+              </div>
+            </div>
+            <span class="pill-badge">Live</span>
+          </a>
+
+          <!-- CRUD Produk -->
+          <a class="module-pill" href="/crud-produk.html" data-face="back" id="pill-crud">
+            <div class="pill-left">
+              <div class="pill-icon" style="color: #8B5CF6; background: rgba(139,92,246,0.1);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+              </div>
+              <div class="pill-info">
+                <h3>CRUD Produk</h3>
+                <p>Control, without complexity.</p>
+              </div>
+            </div>
+            <span class="pill-badge">Live</span>
+          </a>
+
+          <!-- Dashboard -->
+          <a class="module-pill" href="/dashboard.html" data-face="left" id="pill-dashboard">
+            <div class="pill-left">
+              <div class="pill-icon" style="color: #06B6D4; background: rgba(6,182,212,0.1);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+              </div>
+              <div class="pill-info">
+                <h3>Dashboard</h3>
+                <p>See everything that matters.</p>
+              </div>
+            </div>
+            <span class="pill-badge">Live</span>
+          </a>
         </div>
-        <div class="status live">Live</div>
-      </a>
-      <a class="module" href="/generatesph.html">
-        <div class="module-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M9 11h2"/></svg>
+
+        <!-- System Stats Bar -->
+        <div class="hero-stats">
+          <div class="stat-item">
+            <span class="stat-val">4</span>
+            <span class="stat-lbl">Active Modules</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-val">12,934</span>
+            <span class="stat-lbl">Total Products</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-val">99.9%</span>
+            <span class="stat-lbl">System Uptime</span>
+          </div>
         </div>
-        <div class="module-body">
-          <div class="module-title">SPH Generator</div>
-          <div class="module-desc">Buat Surat Penawaran Harga dari sheet SUMMARY, lengkap dengan lampiran.</div>
+      </section>
+
+      <!-- Right Column: Interactive 3D Rubik's Cube Stage -->
+      <section class="hero-right-stage" id="rubikStage">
+        
+        <!-- Floor Glow Reflection -->
+        <div class="stage-floor-glow"></div>
+
+        <!-- 3D Rubik Cube Container -->
+        <div class="rubik-cube-world" id="rubikWorld">
+          <!-- Outer Cubies dynamically injected -->
         </div>
-        <div class="status live">Live</div>
-      </a>
-      <a class="module" href="/stok.html">
-        <div class="module-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg>
+
+        <!-- Floating Interactive Tooltip -->
+        <div class="stage-tooltip" id="stageTooltip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l4 4 4-4M12 19V5"/></svg>
+          Gunakan mouse/sentuhan untuk memutar Rubik Cube 3D
         </div>
-        <div class="module-body">
-          <div class="module-title">Stok</div>
-          <div class="module-desc">Upload &amp; timpa data stok harian — bisa dipakai divisi mana pun, gak perlu buka Konversian.</div>
-        </div>
-        <div class="status live">Live</div>
-      </a>
-      <a class="module" href="/crud-produk.html">
-        <div class="module-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-        </div>
-        <div class="module-body">
-          <div class="module-title">CRUD Produk</div>
-          <div class="module-desc">Edit data produk, harga, dan deskripsi.</div>
-        </div>
-        <div class="status live">Live</div>
-      </a>
-      <a class="module" href="/cari_set.html">
-        <div class="module-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-        </div>
-        <div class="module-body">
-          <div class="module-title">Cari SET Mendekati</div>
-          <div class="module-desc">Cocokkan daftar kode instrumen dengan isi SET yang paling mirip di database.</div>
-        </div>
-        <div class="status live">Live</div>
-      </a>
-      <a class="module" href="/dashboard.html">
-        <div class="module-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
-        </div>
-        <div class="module-body">
-          <div class="module-title">Dashboard</div>
-          <div class="module-desc">Ringkasan penjualan dan aktivitas tim lintas perusahaan.</div>
-        </div>
-        <div class="status live">Live</div>
-      </a>
-    </div>
-    <footer>
-      <span>tools-conversion.vercel.app</span>
-      <span>Diperbarui manual via Vercel CLI</span>
-    </footer>
+
+      </section>
+
+    </main>
+
   </div>
+
   <script>
     (function () {
+      // 1. Theme Toggle
       const root = document.documentElement;
-      const toggle = document.getElementById('themeToggle');
-      const stored = localStorage.getItem('pnum-theme');
+      const themeBtn = document.getElementById('themeToggle');
+      const storedTheme = localStorage.getItem('pnum-theme');
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const initial = stored || (prefersDark ? 'dark' : 'light');
-      if (initial === 'dark') root.setAttribute('data-theme', 'dark');
-      toggle.addEventListener('click', function () {
-        const isDark = root.getAttribute('data-theme') === 'dark';
-        if (isDark) {
-          root.removeAttribute('data-theme');
-          localStorage.setItem('pnum-theme', 'light');
-        } else {
-          root.setAttribute('data-theme', 'dark');
-          localStorage.setItem('pnum-theme', 'dark');
+      
+      let currentTheme = storedTheme || (prefersDark ? 'dark' : 'light');
+      setTheme(currentTheme);
+
+      function setTheme(theme) {
+        root.setAttribute('data-theme', theme);
+        localStorage.setItem('pnum-theme', theme);
+        currentTheme = theme;
+        if (themeBtn) {
+          themeBtn.innerHTML = theme === 'dark'
+            ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+            : '<svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+        }
+      }
+
+      themeBtn.addEventListener('click', () => {
+        setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+      });
+
+      // 2. Optimized Cursor Glow Tracking via requestAnimationFrame
+      const cursorGlow = document.getElementById('cursor-glow');
+      let mouseX = window.innerWidth / 2;
+      let mouseY = window.innerHeight / 2;
+      let curX = mouseX;
+      let curY = mouseY;
+
+      window.addEventListener('pointermove', (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+      }, { passive: true });
+
+      function updateCursor() {
+        curX += (mouseX - curX) * 0.15;
+        curY += (mouseY - curY) * 0.15;
+        cursorGlow.style.transform = `translate3d(${curX - 250}px, ${curY - 250}px, 0)`;
+        requestAnimationFrame(updateCursor);
+      }
+      updateCursor();
+
+      // 3. Building High-Performance 3x3x3 Rubik's Cube
+      const rubikWorld = document.getElementById('rubikWorld');
+      const CUBIE_SIZE = 82; // px
+      const GAP = 8; // px
+      const CUBIE_STEP = CUBIE_SIZE + GAP; // 90px
+
+      const moduleFaces = {
+        front: {
+          title: "Conversion Workspace",
+          url: "/konversian.html",
+          color: "#2563EB",
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>'
+        },
+        right: {
+          title: "Stock",
+          url: "/stok.html",
+          color: "#10B981",
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg>'
+        },
+        back: {
+          title: "CRUD Produk",
+          url: "/crud-produk.html",
+          color: "#8B5CF6",
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>'
+        },
+        left: {
+          title: "Dashboard",
+          url: "/dashboard.html",
+          color: "#06B6D4",
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>'
+        },
+        top: {
+          title: "Pionir Hub",
+          url: "#",
+          color: "#3B82F6",
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>'
+        },
+        bottom: {
+          title: "12k Products",
+          url: "#",
+          color: "#10B981",
+          icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>'
+        }
+      };
+
+      const faceTypes = ['front', 'back', 'right', 'left', 'top', 'bottom'];
+
+      // Generate 26 outer cubies (skip hidden core x=0,y=0,z=0)
+      for (let x = -1; x <= 1; x++) {
+        for (let y = -1; y <= 1; y++) {
+          for (let z = -1; z <= 1; z++) {
+            if (x === 0 && y === 0 && z === 0) continue; // Skip invisible core
+
+            const cubie = document.createElement('div');
+            cubie.className = 'cubie';
+            const tx = x * CUBIE_STEP;
+            const ty = y * CUBIE_STEP;
+            const tz = z * CUBIE_STEP;
+            cubie.style.transform = `translate3d(${tx}px, ${ty}px, ${tz}px)`;
+
+            faceTypes.forEach(faceType => {
+              // Only create faces that lie on the outer surface of the 3x3x3 cube
+              const isOuter = 
+                (faceType === 'front'  && z === 1)  ||
+                (faceType === 'back'   && z === -1) ||
+                (faceType === 'right'  && x === 1)  ||
+                (faceType === 'left'   && x === -1) ||
+                (faceType === 'top'    && y === -1) ||
+                (faceType === 'bottom' && y === 1);
+
+              if (isOuter) {
+                const face = document.createElement('div');
+                face.className = `face ${faceType}`;
+                face.dataset.faceType = faceType;
+
+                const module = moduleFaces[faceType];
+                const isCenter =
+                  (faceType === 'front' && x === 0 && y === 0) ||
+                  (faceType === 'back'  && x === 0 && y === 0) ||
+                  (faceType === 'right' && y === 0 && z === 0) ||
+                  (faceType === 'left'  && y === 0 && z === 0) ||
+                  (faceType === 'top'   && x === 0 && z === 0) ||
+                  (faceType === 'bottom'&& x === 0 && z === 0);
+
+                if (isCenter) {
+                  face.innerHTML = `
+                    <div class="face-content">
+                      <div class="face-icon" style="color: ${module.color}">${module.icon}</div>
+                      <div class="face-title" style="font-weight: 800;">${module.title}</div>
+                      <div class="face-tag">MODULE</div>
+                    </div>
+                  `;
+                } else {
+                  face.innerHTML = `
+                    <div class="face-content" style="opacity: 0.65;">
+                      <div class="face-icon" style="color: ${module.color}; transform: scale(0.85);">${module.icon}</div>
+                    </div>
+                  `;
+                }
+
+                cubie.appendChild(face);
+              }
+            });
+
+            rubikWorld.appendChild(cubie);
+          }
+        }
+      }
+
+      // 4. Smooth Drag Rotation Physics
+      let rotX = -18;
+      let rotY = 25;
+      let targetRotX = -18;
+      let targetRotY = 25;
+
+      let velX = 0;
+      let velY = 0;
+
+      let isDragging = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      const stage = document.getElementById('rubikStage');
+
+      stage.addEventListener('pointerdown', (e) => {
+        isDragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        velX = 0;
+        velY = 0;
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const deltaX = e.clientX - lastX;
+        const deltaY = e.clientY - lastY;
+
+        lastX = e.clientX;
+        lastY = e.clientY;
+
+        targetRotY += deltaX * 0.5;
+        targetRotX -= deltaY * 0.5;
+
+        velY = deltaX * 0.5;
+        velX = -deltaY * 0.5;
+      }, { passive: true });
+
+      window.addEventListener('pointerup', () => { isDragging = false; });
+
+      rubikWorld.addEventListener('pointerover', (e) => {
+        const face = e.target.closest('.face');
+        if (face) face.parentElement.classList.add('hovered');
+      });
+
+      rubikWorld.addEventListener('pointerout', (e) => {
+        const face = e.target.closest('.face');
+        if (face) face.parentElement.classList.remove('hovered');
+      });
+
+      rubikWorld.addEventListener('click', (e) => {
+        const face = e.target.closest('.face');
+        if (!face) return;
+        
+        const faceType = face.dataset.faceType;
+        const module = moduleFaces[faceType];
+
+        if (module && module.url && module.url !== '#') {
+          rotateToFace(faceType);
+          face.style.boxShadow = `0 0 40px ${module.color}, inset 0 0 20px #FFF`;
+          setTimeout(() => { window.location.href = module.url; }, 380);
         }
       });
+
+      function rotateToFace(faceType) {
+        syncPills(faceType);
+        switch (faceType) {
+          case 'front':  targetRotX = 0; targetRotY = 0; break;
+          case 'right':  targetRotX = 0; targetRotY = -90; break;
+          case 'back':   targetRotX = 0; targetRotY = -180; break;
+          case 'left':   targetRotX = 0; targetRotY = 90; break;
+          case 'top':    targetRotX = -90; targetRotY = 0; break;
+          case 'bottom': targetRotX = 90; targetRotY = 0; break;
+        }
+      }
+
+      const pills = document.querySelectorAll('.module-pill');
+      function syncPills(faceType) {
+        pills.forEach(pill => {
+          pill.classList.toggle('active', pill.dataset.face === faceType);
+        });
+      }
+
+      pills.forEach(pill => {
+        pill.addEventListener('mouseenter', () => {
+          rotateToFace(pill.dataset.face);
+        });
+
+        pill.addEventListener('click', (e) => {
+          e.preventDefault();
+          const href = pill.getAttribute('href');
+          rotateToFace(pill.dataset.face);
+          setTimeout(() => { window.location.href = href; }, 350);
+        });
+      });
+
+      // 5. High Performance 60fps Spring Render Loop
+      let time = 0;
+      function render3DLoop() {
+        time += 0.015;
+
+        if (!isDragging) {
+          targetRotX += velX;
+          targetRotY += velY;
+
+          velX *= 0.92;
+          velY *= 0.92;
+
+          const idlePitch = Math.sin(time) * 1.5;
+          const idleYaw = Math.cos(time * 0.8) * 1.5;
+          const idleY = Math.sin(time * 1.2) * 10;
+
+          rotX += (targetRotX + idlePitch - rotX) * 0.08;
+          rotY += (targetRotY + idleYaw - rotY) * 0.08;
+
+          rubikWorld.style.transform = `translate3d(0, ${idleY}px, 0) rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+        } else {
+          rotX += (targetRotX - rotX) * 0.2;
+          rotY += (targetRotY - rotY) * 0.2;
+
+          rubikWorld.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+        }
+
+        requestAnimationFrame(render3DLoop);
+      }
+
+      render3DLoop();
+
     })();
   </script>
 </body>
