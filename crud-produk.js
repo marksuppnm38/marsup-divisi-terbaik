@@ -246,10 +246,16 @@ let currentAkdLinks = [];
 let currentView = localStorage.getItem('produkView') || 'table';
 
 function showToast(msg, isError){
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast show' + (isError ? ' error' : '');
-  setTimeout(() => t.className = 'toast', 3000);
+  const container = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast' + (isError ? ' error' : ' success');
+  t.innerHTML = `<i class="ti ${isError ? 'ti-alert-circle' : 'ti-check'}"></i><span>${escapeHtml(msg)}</span>`;
+  container.appendChild(t);
+  const duration = isError ? 4500 : 3000;
+  setTimeout(() => {
+    t.classList.add('fade-out');
+    setTimeout(() => t.remove(), 250); // samain sama durasi animasi toastOut di CSS
+  }, duration);
 }
 function escapeHtml(s){
   return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -1335,6 +1341,18 @@ async function deleteMedia(id){
 
 // ---- Save produk ----
 async function saveProduk(){
+  const saveBtn = document.getElementById('saveBtn');
+  const saveBtnOriginalHtml = saveBtn.innerHTML;
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = '<span class="spinner"></span> Menyimpan...';
+  try {
+    return await saveProdukInner();
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = saveBtnOriginalHtml;
+  }
+}
+async function saveProdukInner(){
   const kodeAsli = document.getElementById('f_kode_asli').value.trim();
   const kodeProduk = document.getElementById('f_kode_produk').value.trim();
   const tipe = document.getElementById('f_tipe').value;
