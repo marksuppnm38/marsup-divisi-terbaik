@@ -1,0 +1,1705 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kompres PDF</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#f5f4f0;
+    --surface:#ffffff;
+    --border:#e3e0d8;
+    --ink:#1b1a17;
+    --ink-soft:#6c685f;
+    --accent:#0f6b5c;
+    --accent-ink:#ffffff;
+    --accent-soft:#e6efec;
+    --danger:#b3261e;
+    --danger-soft:#fbeceb;
+    --warn:#8a6d1c;
+    --warn-soft:#faf3df;
+    --radius-lg:20px;
+    --radius-md:12px;
+    --radius-sm:8px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--font);
+    background:
+      radial-gradient(circle at 15% -10%, #ffffff 0%, transparent 45%),
+      var(--bg);
+    color:var(--ink);
+    min-height:100vh;
+    padding:48px 20px 80px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:660px;margin:0 auto;}
+
+  .tabbar{
+    display:flex;gap:4px;background:#efece4;padding:4px;border-radius:14px;
+    margin-bottom:20px;
+  }
+  .tab{
+    flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+    border:none;background:transparent;color:var(--ink-soft);
+    font-family:var(--font);font-size:13.5px;font-weight:600;
+    padding:10px 8px;border-radius:10px;cursor:pointer;transition:all .15s ease;
+  }
+  .tab.active{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,0.12);}
+  .tab:hover:not(.active){color:var(--ink);}
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  header.page-head{margin-bottom:32px;}
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:8px;
+    font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--accent);font-weight:600;margin-bottom:10px;
+  }
+  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);}
+  h1{
+    font-size:clamp(28px,4vw,36px);
+    line-height:1.08;
+    letter-spacing:-0.02em;
+    margin:0 0 10px;
+    font-weight:700;
+  }
+  .sub{
+    color:var(--ink-soft);
+    font-size:15px;
+    line-height:1.55;
+    max-width:56ch;
+    margin:0;
+  }
+
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    padding:28px;
+    box-shadow:0 20px 40px -28px rgba(27,26,23,0.18);
+  }
+  .card + .card{margin-top:16px;}
+
+  /* Dropzone */
+  .dropzone{
+    border:1.5px dashed #c9c5ba;
+    border-radius:var(--radius-md);
+    padding:32px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .18s ease, background .18s ease;
+    background:#fafaf8;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color:var(--accent);
+    background:var(--accent-soft);
+  }
+  .dropzone svg{margin-bottom:12px;opacity:.75;}
+  .dropzone .dz-title{font-weight:600;font-size:15px;margin-bottom:4px;}
+  .dropzone .dz-sub{font-size:13px;color:var(--ink-soft);}
+  input[type=file]{display:none;}
+
+  /* File list */
+  .list-head{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:12px;
+  }
+  .list-head .count{font-size:13px;font-weight:600;color:var(--ink);}
+  .list-head .add-more{
+    font-size:12.5px;font-weight:600;color:var(--accent);
+    background:none;border:none;cursor:pointer;padding:4px 0;
+  }
+  .file-list{display:flex;flex-direction:column;gap:8px;margin-bottom:6px;}
+
+  .file-item{
+    display:flex;align-items:center;gap:12px;
+    padding:12px 14px;
+    background:#fafaf8;
+    border:1px solid var(--border);
+    border-radius:var(--radius-md);
+  }
+  .file-icon{
+    width:36px;height:36px;flex:none;border-radius:9px;
+    background:var(--accent-soft);color:var(--accent);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .file-icon.error{background:var(--danger-soft);color:var(--danger);}
+  .file-meta{min-width:0;flex:1;}
+  .file-name{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .file-status{font-size:12px;color:var(--ink-soft);margin-top:2px;display:flex;align-items:center;gap:6px;}
+  .file-status .badge{
+    font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+    padding:1px 6px;border-radius:5px;background:#efece4;color:var(--ink-soft);
+  }
+  .file-status .badge.done{background:var(--accent-soft);color:var(--accent);}
+  .file-status .badge.error{background:var(--danger-soft);color:var(--danger);}
+  .file-status .badge.processing{background:var(--warn-soft);color:var(--warn);}
+  .file-mini-progress{
+    height:4px;border-radius:2px;background:#e9e6dd;margin-top:6px;overflow:hidden;width:100%;
+  }
+  .file-mini-fill{height:100%;background:var(--accent);width:0%;transition:width .2s ease;}
+  .file-actions{flex:none;display:flex;align-items:center;gap:4px;}
+  .icon-btn{
+    border:none;background:transparent;color:var(--ink-soft);
+    cursor:pointer;padding:6px;border-radius:8px;display:flex;
+  }
+  .icon-btn:hover{background:#efece5;color:var(--ink);}
+  .icon-btn.accent{color:var(--accent);}
+  .icon-btn.accent:hover{background:var(--accent-soft);}
+
+  /* Options */
+  .field{margin-top:22px;}
+  .field-label{
+    font-size:13px;font-weight:600;margin-bottom:10px;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .field-hint{font-size:12.5px;color:var(--ink-soft);font-weight:400;}
+
+  .segmented{
+    display:grid;grid-template-columns:1fr 1fr;
+    background:#efece4;border-radius:var(--radius-sm);padding:3px;gap:3px;
+  }
+  .segmented.level4{grid-template-columns:repeat(4,1fr);}
+  .segmented button{
+    border:none;background:transparent;padding:10px 8px;
+    font-family:var(--font);font-size:13px;font-weight:600;color:var(--ink-soft);
+    border-radius:7px;cursor:pointer;transition:all .15s ease;
+  }
+  .segmented button.active{
+    background:var(--surface);color:var(--ink);
+    box-shadow:0 1px 3px rgba(0,0,0,0.12);
+  }
+  .segmented button:hover:not(.active){color:var(--ink);}
+
+  .mode-desc{
+    margin-top:10px;font-size:12.5px;color:var(--ink-soft);
+    line-height:1.5;padding:10px 12px;background:#fafaf8;
+    border-radius:var(--radius-sm);border:1px solid var(--border);
+  }
+
+  .gauge{display:flex;gap:4px;margin-top:8px;}
+  .gauge span{
+    height:4px;flex:1;border-radius:2px;background:#e3e0d8;
+    transition:background .2s ease;
+  }
+  .gauge span.on{background:var(--accent);}
+
+  .target-row{display:flex;align-items:center;gap:8px;}
+  .target-row input[type=number]{
+    flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
+    font-family:var(--font);font-size:14px;color:var(--ink);background:#fafaf8;
+  }
+  .target-row input[type=number]:focus{outline:none;border-color:var(--accent);background:#fff;}
+
+  #splitRangeInput{
+    width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
+    font-family:var(--font);font-size:14px;color:var(--ink);background:#fafaf8;
+  }
+  #splitRangeInput:focus{outline:none;border-color:var(--accent);background:#fff;}
+  .target-unit{font-size:13px;color:var(--ink-soft);font-weight:600;flex:none;}
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .chip{
+    border:1px solid var(--border);background:#fafaf8;color:var(--ink-soft);
+    font-family:var(--font);font-size:12px;font-weight:600;
+    padding:6px 10px;border-radius:999px;cursor:pointer;transition:all .15s ease;
+  }
+  .chip:hover{border-color:var(--accent);color:var(--accent);}
+  .chip.active{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
+
+  /* Button */
+  .btn{
+    width:100%;margin-top:24px;
+    padding:14px 18px;border:none;border-radius:var(--radius-md);
+    background:var(--accent);color:var(--accent-ink);
+    font-family:var(--font);font-size:15px;font-weight:600;
+    cursor:pointer;transition:transform .12s ease, background .15s ease;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .btn:hover:not(:disabled){background:#0c5449;}
+  .btn:active:not(:disabled){transform:scale(0.98) translateY(1px);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn.ghost{
+    background:transparent;color:var(--ink);border:1px solid var(--border);
+    margin-top:12px;
+  }
+  .btn.ghost:hover:not(:disabled){background:#fafaf8;}
+  .btn.secondary{
+    background:var(--ink);
+  }
+  .btn.secondary:hover:not(:disabled){background:#000000;}
+
+  /* Overall progress */
+  .progress-wrap{margin-top:22px;}
+  .progress-track{
+    height:8px;border-radius:999px;background:#efece4;overflow:hidden;
+  }
+  .progress-fill{
+    height:100%;background:var(--accent);border-radius:999px;
+    width:0%;transition:width .25s ease;
+  }
+  .progress-label{
+    display:flex;justify-content:space-between;
+    font-size:12.5px;color:var(--ink-soft);margin-top:8px;
+  }
+
+  /* Summary */
+  .result-head{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
+  .result-badge{
+    width:36px;height:36px;border-radius:50%;background:var(--accent-soft);
+    color:var(--accent);display:flex;align-items:center;justify-content:center;flex:none;
+  }
+  .result-title{font-size:16px;font-weight:700;}
+  .result-sub{font-size:13px;color:var(--ink-soft);margin-top:1px;}
+
+  .size-compare{display:flex;align-items:center;gap:14px;margin:18px 0 6px;}
+  .size-box{flex:1;text-align:center;}
+  .size-value{font-family:var(--mono);font-size:20px;font-weight:700;letter-spacing:-0.01em;}
+  .size-value.after{color:var(--accent);}
+  .size-tag{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
+  .size-arrow{color:var(--ink-soft);flex:none;}
+
+  .bar-compare{margin:18px 0;}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .bar-row .lbl{width:64px;flex:none;font-size:12px;color:var(--ink-soft);}
+  .bar-track{flex:1;height:14px;background:#efece4;border-radius:7px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:7px;transition:width .5s cubic-bezier(.2,.8,.2,1);}
+  .bar-fill.before{background:#cfcbc0;width:100%;}
+  .bar-fill.after{background:var(--accent);width:0%;}
+
+  .reduction-pill{
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--accent-soft);color:var(--accent);
+    font-size:13px;font-weight:700;padding:6px 12px;border-radius:999px;
+    margin-top:4px;
+  }
+
+  .result-file-head{
+    font-size:12.5px;font-weight:700;color:var(--ink-soft);
+    text-transform:uppercase;letter-spacing:.05em;
+    margin-top:22px;margin-bottom:10px;
+  }
+
+  .btn-row{display:flex;gap:10px;margin-top:24px;}
+  .btn-row .btn{margin-top:0;}
+
+  .note{
+    display:flex;gap:8px;align-items:flex-start;
+    font-size:12.5px;color:var(--ink-soft);line-height:1.5;
+    margin-top:18px;padding-top:16px;border-top:1px solid var(--border);
+  }
+  .note svg{flex:none;margin-top:1px;opacity:.7;}
+
+  .error-box{
+    display:flex;gap:10px;align-items:flex-start;
+    background:var(--danger-soft);color:var(--danger);
+    border-radius:var(--radius-md);padding:12px 14px;margin-top:16px;
+    font-size:13px;line-height:1.5;
+  }
+
+  .privacy{
+    display:flex;align-items:center;justify-content:center;gap:7px;
+    text-align:center;font-size:12.5px;color:var(--ink-soft);
+    margin-top:22px;
+  }
+
+  .hidden{display:none !important;}
+
+  @media (max-width:420px){
+    .card{padding:20px;}
+    .size-compare{gap:8px;}
+    .size-value{font-size:16px;}
+    .btn-row{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page-head">
+    <div class="eyebrow"><span class="dot"></span>Alat lokal &middot; tanpa unggah server</div>
+    <h1>Perkakas PDF</h1>
+    <p class="sub">Kompres, pisah, dan gabungkan file PDF langsung di browser Anda &mdash; tidak pernah diunggah ke server mana pun.</p>
+  </header>
+
+  <div class="tabbar" id="tabbar">
+    <button class="tab active" data-tab="compress">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3l4 4-4 4M16 21l-4-4 4-4M4 7h9M20 17h-9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Kompres
+    </button>
+    <button class="tab" data-tab="split">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H6a2 2 0 00-2 2v14a2 2 0 002 2h2M16 3h2a2 2 0 012 2v14a2 2 0 01-2 2h-2M12 3v18" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 2"/></svg>
+      Pisah
+    </button>
+    <button class="tab" data-tab="merge">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Gabung
+    </button>
+  </div>
+
+  <!-- ================= COMPRESS PANEL ================= -->
+  <div class="panel active" id="panel-compress">
+
+  <!-- UPLOAD CARD -->
+  <div class="card" id="uploadCard">
+
+    <div class="dropzone" id="dropzone">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#6c685f" stroke-width="1.5">
+        <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="dz-title">Tarik &amp; letakkan file PDF di sini</div>
+      <div class="dz-sub">atau klik untuk memilih &mdash; boleh pilih lebih dari satu file sekaligus</div>
+      <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple>
+    </div>
+
+    <div id="listBlock" class="hidden">
+      <div class="list-head" style="margin-top:18px;">
+        <span class="count" id="listCount">0 file</span>
+        <button class="add-more" id="addMoreBtn">+ Tambah file</button>
+      </div>
+      <div class="file-list" id="fileList"></div>
+    </div>
+
+    <div id="optionsBlock" class="hidden">
+      <div class="field">
+        <div class="field-label">Mode kompresi <span class="field-hint" id="modeHint"></span></div>
+        <div class="segmented" id="modeSeg">
+          <button data-mode="whole" class="active">Seluruh Dokumen</button>
+          <button data-mode="images">Hanya Gambar</button>
+        </div>
+        <div class="mode-desc" id="modeDesc"></div>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Tingkat kompresi <span class="field-hint" id="levelHint">Sedang</span></div>
+        <div class="segmented level4" id="levelSeg">
+          <button data-level="ringan">Ringan</button>
+          <button data-level="sedang" class="active">Sedang</button>
+          <button data-level="kuat">Kuat</button>
+          <button data-level="ekstrem">Ekstrem</button>
+        </div>
+        <div class="gauge" id="gauge">
+          <span></span><span></span><span></span><span></span>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Target ukuran maksimal <span class="field-hint">Opsional</span></div>
+        <div class="target-row">
+          <input type="number" id="targetInput" min="0.1" step="0.1" placeholder="misal 1">
+          <span class="target-unit">MB</span>
+        </div>
+        <div class="chip-row" id="targetChips">
+          <button type="button" class="chip" data-val="0.5">0.5 MB</button>
+          <button type="button" class="chip" data-val="1">1 MB</button>
+          <button type="button" class="chip" data-val="2">2 MB</button>
+          <button type="button" class="chip" data-val="5">5 MB</button>
+          <button type="button" class="chip" data-val="">Tanpa target</button>
+        </div>
+        <div class="mode-desc">Jika diisi, tool akan otomatis mencoba tingkat kompresi yang lebih agresif secara bertahap sampai ukuran berada di bawah target — tanpa pernah membuat hasil lebih besar dari file asli. Jika target tidak mungkin tercapai (misalnya dokumen berisi banyak teks/vektor), Anda akan diberi tahu hasil terbaik yang bisa dicapai.</div>
+      </div>
+
+      <button class="btn" id="compressBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8 3l4 4-4 4M16 21l-4-4 4-4M4 7h9M20 17h-9" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="compressBtnLabel">Kompres PDF</span>
+      </button>
+    </div>
+
+    <div class="progress-wrap hidden" id="progressBlock">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label">
+        <span id="progressText">Memproses…</span>
+        <span id="progressPct">0%</span>
+      </div>
+    </div>
+
+    <div class="error-box hidden" id="errorBox">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg>
+      <span id="errorText"></span>
+    </div>
+  </div>
+
+  <!-- RESULT CARD -->
+  <div class="card hidden" id="resultCard">
+    <div class="result-head">
+      <div class="result-badge">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="result-title" id="resultTitle">Kompresi selesai</div>
+        <div class="result-sub" id="resultSub">-</div>
+      </div>
+    </div>
+
+    <div class="size-compare">
+      <div class="size-box">
+        <div class="size-value" id="origSize">-</div>
+        <div class="size-tag">Sebelum</div>
+      </div>
+      <div class="size-arrow">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0l-6-6m6 6l-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="size-box">
+        <div class="size-value after" id="newSize">-</div>
+        <div class="size-tag">Sesudah</div>
+      </div>
+    </div>
+
+    <div class="bar-compare">
+      <div class="bar-row">
+        <span class="lbl">Sebelum</span>
+        <div class="bar-track"><div class="bar-fill before"></div></div>
+      </div>
+      <div class="bar-row">
+        <span class="lbl">Sesudah</span>
+        <div class="bar-track"><div class="bar-fill after" id="afterBar"></div></div>
+      </div>
+    </div>
+
+    <div class="reduction-pill" id="reductionPill">-</div>
+
+    <div id="resultFileListBlock" class="hidden">
+      <div class="result-file-head">Rincian per file</div>
+      <div class="file-list" id="resultFileList"></div>
+    </div>
+
+    <div class="btn-row" id="resultBtnRow">
+      <button class="btn" id="downloadBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span id="downloadBtnLabel">Unduh PDF Hasil Kompresi</span>
+      </button>
+    </div>
+    <button class="btn ghost" id="resetBtn">Kompres File Lain</button>
+
+    <div class="note" id="resultNote"></div>
+  </div>
+
+  </div>
+  <!-- ================= END COMPRESS PANEL ================= -->
+
+  <!-- ================= SPLIT PANEL ================= -->
+  <div class="panel" id="panel-split">
+
+    <div class="card" id="splitUploadCard">
+      <div class="dropzone" id="splitDropzone">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#6c685f" stroke-width="1.5">
+          <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="dz-title">Tarik &amp; letakkan satu file PDF di sini</div>
+        <div class="dz-sub">atau klik untuk memilih file yang ingin dipisah</div>
+        <input type="file" id="splitFileInput" accept="application/pdf,.pdf">
+      </div>
+
+      <div class="file-row hidden" id="splitFileRow">
+        <div class="file-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="file-meta">
+          <div class="file-name" id="splitFileName">-</div>
+          <div class="file-size" id="splitFileMeta">-</div>
+        </div>
+        <button class="file-remove" id="splitFileRemove">Ganti</button>
+      </div>
+
+      <div id="splitOptionsBlock" class="hidden">
+        <div class="field">
+          <div class="field-label">Cara membagi</div>
+          <div class="segmented" id="splitModeSeg">
+            <button data-mode="each" class="active">Tiap Halaman</button>
+            <button data-mode="range">Rentang Kustom</button>
+          </div>
+          <div class="mode-desc" id="splitModeDesc">Setiap halaman akan menjadi file PDF terpisah.</div>
+        </div>
+
+        <div class="field hidden" id="splitRangeField">
+          <div class="field-label">Rentang halaman</div>
+          <input type="text" id="splitRangeInput" placeholder="misal: 1-3, 4, 7-10">
+          <div class="mode-desc">Pisahkan tiap rentang dengan koma. Contoh "1-3, 4, 7-10" akan menghasilkan 3 file: halaman 1&ndash;3, halaman 4, dan halaman 7&ndash;10.</div>
+        </div>
+
+        <button class="btn" id="splitBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 8l-2 4 2 4M19 8l2 4-2 4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Pisahkan PDF
+        </button>
+      </div>
+
+      <div class="progress-wrap hidden" id="splitProgressBlock">
+        <div class="progress-track"><div class="progress-fill" id="splitProgressFill"></div></div>
+        <div class="progress-label"><span id="splitProgressText">Memproses…</span><span id="splitProgressPct">0%</span></div>
+      </div>
+
+      <div class="error-box hidden" id="splitErrorBox">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg>
+        <span id="splitErrorText"></span>
+      </div>
+    </div>
+
+    <div class="card hidden" id="splitResultCard">
+      <div class="result-head">
+        <div class="result-badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div>
+          <div class="result-title">PDF berhasil dipisah</div>
+          <div class="result-sub" id="splitResultSub">-</div>
+        </div>
+      </div>
+
+      <div class="file-list" id="splitResultList"></div>
+
+      <div class="btn-row">
+        <button class="btn" id="splitDownloadAllBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="splitDownloadAllLabel">Unduh Semua (ZIP)</span>
+        </button>
+      </div>
+      <button class="btn ghost" id="splitResetBtn">Pisahkan File Lain</button>
+    </div>
+
+  </div>
+  <!-- ================= END SPLIT PANEL ================= -->
+
+  <!-- ================= MERGE PANEL ================= -->
+  <div class="panel" id="panel-merge">
+
+    <div class="card" id="mergeUploadCard">
+      <div class="dropzone" id="mergeDropzone">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#6c685f" stroke-width="1.5">
+          <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="dz-title">Tarik &amp; letakkan beberapa file PDF di sini</div>
+        <div class="dz-sub">atau klik untuk memilih &mdash; urutan bisa diatur sebelum digabung</div>
+        <input type="file" id="mergeFileInput" accept="application/pdf,.pdf" multiple>
+      </div>
+
+      <div id="mergeListBlock" class="hidden">
+        <div class="list-head" style="margin-top:18px;">
+          <span class="count" id="mergeListCount">0 file</span>
+          <button class="add-more" id="mergeAddMoreBtn">+ Tambah file</button>
+        </div>
+        <div class="file-list" id="mergeFileList"></div>
+        <div class="mode-desc" style="margin-top:10px;">Urutan file di atas menentukan urutan halaman pada PDF hasil gabungan. Gunakan panah untuk mengatur urutan.</div>
+
+        <button class="btn" id="mergeBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="mergeBtnLabel">Gabungkan PDF</span>
+        </button>
+      </div>
+
+      <div class="progress-wrap hidden" id="mergeProgressBlock">
+        <div class="progress-track"><div class="progress-fill" id="mergeProgressFill"></div></div>
+        <div class="progress-label"><span id="mergeProgressText">Memproses…</span><span id="mergeProgressPct">0%</span></div>
+      </div>
+
+      <div class="error-box hidden" id="mergeErrorBox">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg>
+        <span id="mergeErrorText"></span>
+      </div>
+    </div>
+
+    <div class="card hidden" id="mergeResultCard">
+      <div class="result-head">
+        <div class="result-badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div>
+          <div class="result-title">PDF berhasil digabung</div>
+          <div class="result-sub" id="mergeResultSub">-</div>
+        </div>
+      </div>
+      <button class="btn" id="mergeDownloadBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Unduh PDF Gabungan
+      </button>
+      <button class="btn ghost" id="mergeResetBtn">Gabungkan File Lain</button>
+    </div>
+
+  </div>
+  <!-- ================= END MERGE PANEL ================= -->
+
+  <div class="privacy">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
+    File Anda diproses sepenuhnya di perangkat ini dan tidak pernah diunggah.
+  </div>
+
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// Ladder of compression tiers, least → most aggressive.
+// The first 4 are user-facing presets; the rest are only used when
+// a target size is set and the tool needs to push further automatically.
+const LADDER = [
+  { key:'ringan',  label:'Ringan',  quality:0.82, dpi:150, maxDimension:null },
+  { key:'sedang',  label:'Sedang',  quality:0.65, dpi:120, maxDimension:2000 },
+  { key:'kuat',    label:'Kuat',    quality:0.45, dpi:96,  maxDimension:1400 },
+  { key:'ekstrem', label:'Ekstrem', quality:0.30, dpi:72,  maxDimension:1000 },
+  { key:'ekstrem+1', label:'Ekstrem+',  quality:0.22, dpi:60, maxDimension:800 },
+  { key:'ekstrem+2', label:'Ekstrem++', quality:0.16, dpi:48, maxDimension:650 },
+  { key:'ekstrem+3', label:'Ekstrem+++',quality:0.12, dpi:38, maxDimension:500 },
+  { key:'ekstrem+4', label:'Maksimal',  quality:0.10, dpi:30, maxDimension:380 },
+];
+const LEVELS = Object.fromEntries(LADDER.slice(0,4).map(t => [t.key, t]));
+const LEVEL_ORDER = LADDER.slice(0,4).map(t => t.key);
+
+const MODE_DESC = {
+  whole: 'Setiap halaman diubah menjadi gambar terkompresi lalu disusun ulang jadi PDF baru. Paling efektif untuk PDF hasil scan/foto. Untuk dokumen berbasis teks (misalnya ekspor dari Word), cara ini bisa saja menghasilkan ukuran lebih besar dari aslinya — gunakan mode "Hanya Gambar" untuk dokumen semacam itu. Teks pada hasil juga tidak lagi bisa diseleksi atau dicari.',
+  images: 'Hanya gambar (foto/JPEG) di dalam PDF yang dikompres ulang. Teks tetap tajam, bisa diseleksi, dan dicari seperti biasa. Cocok untuk PDF hasil scan atau berisi banyak foto. Jika PDF tidak berisi gambar, ukurannya akan tetap sama.',
+};
+
+let uid = 0;
+let state = {
+  items: [],       // {id, file, arrayBuffer, status, resultBytes, resultName, originalSize, newSize, errorMsg, note, tierLabel, targetReached}
+  mode: 'whole',
+  level: 'sedang',
+  targetBytes: null,
+  processing: false,
+};
+
+const $ = id => document.getElementById(id);
+const dropzone = $('dropzone'), fileInput = $('fileInput');
+const listBlock = $('listBlock'), listCount = $('listCount'), fileList = $('fileList'), addMoreBtn = $('addMoreBtn');
+const optionsBlock = $('optionsBlock'), modeSeg = $('modeSeg'), levelSeg = $('levelSeg');
+const modeDesc = $('modeDesc'), modeHint = $('modeHint'), levelHint = $('levelHint'), gauge = $('gauge');
+const compressBtn = $('compressBtn'), compressBtnLabel = $('compressBtnLabel'), progressBlock = $('progressBlock');
+const progressFill = $('progressFill'), progressText = $('progressText'), progressPct = $('progressPct');
+const errorBox = $('errorBox'), errorText = $('errorText');
+const uploadCard = $('uploadCard'), resultCard = $('resultCard');
+const resultTitle = $('resultTitle'), resultSub = $('resultSub'), origSize = $('origSize'), newSize = $('newSize');
+const afterBar = $('afterBar'), reductionPill = $('reductionPill'), resultNote = $('resultNote');
+const downloadBtn = $('downloadBtn'), downloadBtnLabel = $('downloadBtnLabel'), resetBtn = $('resetBtn');
+const targetInput = $('targetInput'), targetChips = $('targetChips');
+const resultFileListBlock = $('resultFileListBlock'), resultFileList = $('resultFileList');
+
+function formatBytes(bytes){
+  if (bytes < 1024) return bytes + ' B';
+  const units = ['KB','MB','GB'];
+  let val = bytes / 1024, i = 0;
+  while (val >= 1024 && i < units.length - 1){ val /= 1024; i++; }
+  return val.toFixed(val >= 10 ? 0 : 1) + ' ' + units[i];
+}
+
+function showError(msg){
+  errorText.textContent = msg;
+  errorBox.classList.remove('hidden');
+}
+function clearError(){ errorBox.classList.add('hidden'); }
+
+function renderModeDesc(){
+  modeDesc.textContent = MODE_DESC[state.mode];
+  modeHint.textContent = state.mode === 'whole' ? 'Kompresi maksimal' : 'Kualitas teks terjaga';
+}
+function renderLevelGauge(){
+  const idx = LEVEL_ORDER.indexOf(state.level);
+  [...gauge.children].forEach((el,i) => el.classList.toggle('on', i <= idx));
+  levelHint.textContent = LEVELS[state.level].label;
+}
+
+modeSeg.addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  state.mode = btn.dataset.mode;
+  [...modeSeg.children].forEach(b => b.classList.toggle('active', b === btn));
+  renderModeDesc();
+});
+levelSeg.addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  state.level = btn.dataset.level;
+  [...levelSeg.children].forEach(b => b.classList.toggle('active', b === btn));
+  renderLevelGauge();
+});
+
+function setTargetFromValue(mb){
+  targetInput.value = mb ? mb : '';
+  syncTargetChips();
+}
+function syncTargetChips(){
+  const v = targetInput.value.trim();
+  [...targetChips.children].forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.val === v);
+  });
+}
+targetChips.addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  setTargetFromValue(btn.dataset.val);
+});
+targetInput.addEventListener('input', syncTargetChips);
+
+function fileItemIcon(status){
+  if (status === 'error'){
+    return `<div class="file-icon error"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg></div>`;
+  }
+  return `<div class="file-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6" stroke-linejoin="round"/></svg></div>`;
+}
+
+function badgeFor(item){
+  switch(item.status){
+    case 'pending': return `<span class="badge">Menunggu</span>`;
+    case 'processing': return `<span class="badge processing">Memproses</span>`;
+    case 'done': {
+      const sizeTxt = item.reduction > 0 ? `Selesai &middot; -${item.reduction}%` : 'Sudah optimal';
+      const targetTxt = item.targetReached === false ? ` &middot; belum capai target` : '';
+      return `<span class="badge done">${sizeTxt}${targetTxt}</span>`;
+    }
+    case 'error': return `<span class="badge error">Gagal</span>`;
+  }
+}
+
+function renderList(){
+  listCount.textContent = state.items.length + (state.items.length === 1 ? ' file' : ' file');
+  fileList.innerHTML = state.items.map(item => {
+    const showMiniProgress = item.status === 'processing';
+    const showDownload = item.status === 'done';
+    const showRemove = item.status === 'pending' && !state.processing;
+    return `
+    <div class="file-item" data-id="${item.id}">
+      ${fileItemIcon(item.status)}
+      <div class="file-meta">
+        <div class="file-name">${item.file.name}</div>
+        <div class="file-status">
+          ${badgeFor(item)}
+          <span>${item.status === 'done' ? formatBytes(item.originalSize) + ' &rarr; ' + formatBytes(item.newSize) : formatBytes(item.originalSize)}</span>
+        </div>
+        ${showMiniProgress ? `<div class="file-mini-progress"><div class="file-mini-fill" style="width:${item.progress||0}%"></div></div>` : ''}
+        ${item.status === 'error' ? `<div class="file-status" style="color:var(--danger);margin-top:4px;">${item.errorMsg||''}</div>` : ''}
+      </div>
+      <div class="file-actions">
+        ${showDownload ? `<button class="icon-btn accent" title="Unduh" data-action="download" data-id="${item.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5M4 21h16" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}
+        ${showRemove ? `<button class="icon-btn" title="Hapus" data-action="remove" data-id="${item.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg></button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+fileList.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action]'); if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const item = state.items.find(it => it.id === id);
+  if (!item) return;
+  if (btn.dataset.action === 'remove'){
+    state.items = state.items.filter(it => it.id !== id);
+    if (state.items.length === 0){
+      resetAll();
+    } else {
+      renderList();
+      updateCompressLabel();
+    }
+  } else if (btn.dataset.action === 'download'){
+    downloadItem(item);
+  }
+});
+
+function downloadItem(item){
+  const blob = new Blob([item.resultBytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = item.resultName;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function updateCompressLabel(){
+  const n = state.items.length;
+  compressBtnLabel.textContent = n <= 1 ? 'Kompres PDF' : `Kompres ${n} File`;
+}
+
+function addFiles(fileListRaw){
+  clearError();
+  const files = Array.from(fileListRaw || []);
+  if (files.length === 0) return;
+  const rejected = [];
+  files.forEach(file => {
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf){ rejected.push(file.name); return; }
+    state.items.push({
+      id: ++uid,
+      file,
+      arrayBuffer: null,
+      status: 'pending',
+      progress: 0,
+      resultBytes: null,
+      resultName: '',
+      originalSize: file.size,
+      newSize: 0,
+      reduction: 0,
+      errorMsg: '',
+    });
+  });
+  if (rejected.length){
+    showError(`File berikut dilewati karena bukan PDF: ${rejected.join(', ')}`);
+  }
+  if (state.items.length > 0){
+    dropzone.classList.add('hidden');
+    listBlock.classList.remove('hidden');
+    optionsBlock.classList.remove('hidden');
+    renderModeDesc();
+    renderLevelGauge();
+    renderList();
+    updateCompressLabel();
+  }
+}
+
+dropzone.addEventListener('click', () => fileInput.click());
+addMoreBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { addFiles(e.target.files); fileInput.value = ''; });
+['dragenter','dragover'].forEach(evt => dropzone.addEventListener(evt, e => {
+  e.preventDefault(); dropzone.classList.add('drag');
+}));
+['dragleave','drop'].forEach(evt => dropzone.addEventListener(evt, e => {
+  e.preventDefault(); dropzone.classList.remove('drag');
+}));
+dropzone.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+
+function setOverallProgress(frac, label){
+  const pct = Math.round(frac * 100);
+  progressFill.style.width = pct + '%';
+  progressPct.textContent = pct + '%';
+  if (label) progressText.textContent = label;
+}
+
+async function readAsArrayBuffer(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Gagal membaca file'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Runs `fn` over `items` with up to `limit` concurrent in-flight calls.
+// Lets page rendering / image decode-encode overlap instead of running
+// one strictly after another, which is the main speed win here.
+async function mapWithConcurrency(items, limit, fn){
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function worker(){
+    while (nextIndex < items.length){
+      const current = nextIndex++;
+      results[current] = await fn(items[current], current);
+    }
+  }
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return results;
+}
+
+const CORES = (navigator.hardwareConcurrency || 4);
+const PAGE_RENDER_CONCURRENCY = Math.max(2, Math.min(6, CORES - 1));
+const ENCODE_CONCURRENCY = Math.max(2, Math.min(8, CORES));
+
+// --- WHOLE DOCUMENT MODE ---
+// Renders every page ONCE at the highest resolution the current run might
+// need, caching each as an ImageBitmap. Every escalation tier after that
+// just downsamples the cached bitmap and re-encodes — no repeat pdf.js
+// rendering, which is by far the slowest step.
+async function renderPagesToCache(arrayBuffer, dpi, onProgress){
+  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
+  const pdf = await loadingTask.promise;
+  const scale = dpi / 72;
+  const pageNums = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
+  const cache = new Array(pdf.numPages);
+  let done = 0;
+
+  await mapWithConcurrency(pageNums, PAGE_RENDER_CONCURRENCY, async (pageNum) => {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
+    const baseViewport = page.getViewport({ scale: 1 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.ceil(viewport.width));
+    canvas.height = Math.max(1, Math.ceil(viewport.height));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    cache[pageNum - 1] = { canvas, baseW: baseViewport.width, baseH: baseViewport.height, renderedW: canvas.width, renderedH: canvas.height };
+    done++;
+    onProgress(done / pdf.numPages, `Merender halaman ${done} dari ${pdf.numPages}…`);
+  });
+  return cache;
+}
+
+async function buildPdfFromCache(pageCache, settings, onProgress){
+  const outDoc = await PDFLib.PDFDocument.create();
+  const targetScale = settings.dpi / 72;
+  const jpegs = new Array(pageCache.length);
+  let done = 0;
+
+  await mapWithConcurrency(pageCache.map((_, i) => i), ENCODE_CONCURRENCY, async (i) => {
+    const entry = pageCache[i];
+    const w = Math.min(Math.max(1, Math.round(entry.baseW * targetScale)), entry.renderedW);
+    const h = Math.min(Math.max(1, Math.round(entry.baseH * targetScale)), entry.renderedH);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(entry.canvas, 0, 0, w, h);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', settings.quality));
+    jpegs[i] = new Uint8Array(await blob.arrayBuffer());
+    canvas.width = 0; canvas.height = 0;
+    done++;
+    onProgress(done / pageCache.length, `Mengompres halaman ${done} dari ${pageCache.length}…`);
+  });
+
+  // Assembling the PDF itself must stay sequential (page order matters),
+  // but it's cheap now that all JPEGs are already encoded.
+  for (let i = 0; i < pageCache.length; i++){
+    const entry = pageCache[i];
+    const jpgImage = await outDoc.embedJpg(jpegs[i]);
+    const newPage = outDoc.addPage([entry.baseW, entry.baseH]);
+    newPage.drawImage(jpgImage, { x: 0, y: 0, width: entry.baseW, height: entry.baseH });
+  }
+  return await outDoc.save({ useObjectStreams: false });
+}
+
+function closePageCache(pageCache){
+  pageCache.forEach(entry => { try { entry.canvas.width = 0; entry.canvas.height = 0; } catch (_){} });
+}
+
+// --- IMAGES-ONLY MODE ---
+// Parses the PDF and decodes every target JPEG ONCE, caching the bitmap.
+// Every escalation tier re-encodes straight from that original bitmap
+// (never from a previously-recompressed copy), so quality doesn't
+// compound and no image is ever decoded twice.
+async function extractImageCache(arrayBuffer, onProgress){
+  const { PDFDocument, PDFName, PDFRawStream } = PDFLib;
+  const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true, updateMetadata: false });
+  const context = pdfDoc.context;
+
+  const targets = [];
+  for (const [, obj] of context.enumerateIndirectObjects()){
+    if (!(obj instanceof PDFRawStream)) continue;
+    const dict = obj.dict;
+    const subtype = dict.get(PDFName.of('Subtype'));
+    if (!subtype || subtype.toString() !== '/Image') continue;
+    const filter = dict.get(PDFName.of('Filter'));
+    const filterStr = filter ? filter.toString() : '';
+    const colorSpace = dict.get(PDFName.of('ColorSpace'));
+    const csStr = colorSpace ? colorSpace.toString() : '';
+    if (filterStr === '/DCTDecode' && csStr !== '/DeviceCMYK'){
+      targets.push(obj);
+    }
+  }
+
+  const cache = [];
+  let done = 0;
+  await mapWithConcurrency(targets, ENCODE_CONCURRENCY, async (obj) => {
+    try {
+      const original = obj.contents;
+      const blob = new Blob([original], { type: 'image/jpeg' });
+      const bitmap = await createImageBitmap(blob);
+      cache.push({ obj, bitmap, originalSize: original.length });
+    } catch (e){
+      console.warn('Lewati satu gambar (gagal dekode):', e);
+    }
+    done++;
+    onProgress(done / Math.max(1, targets.length), `Membaca gambar ${done} dari ${targets.length}…`);
+  });
+
+  return { pdfDoc, cache, imagesFound: targets.length };
+}
+
+async function applyImagesTier({ pdfDoc, cache }, settings, onProgress){
+  const { PDFName } = PDFLib;
+  let done = 0;
+  let compressedCount = 0;
+
+  await mapWithConcurrency(cache, ENCODE_CONCURRENCY, async (entry) => {
+    const { obj, bitmap, originalSize } = entry;
+    let { width, height } = bitmap;
+    let scale = 1;
+    if (settings.maxDimension && Math.max(width, height) > settings.maxDimension){
+      scale = settings.maxDimension / Math.max(width, height);
+    }
+    const newW = Math.max(1, Math.round(width * scale));
+    const newH = Math.max(1, Math.round(height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = newW; canvas.height = newH;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, newW, newH);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', settings.quality));
+    const newBytes = new Uint8Array(await blob.arrayBuffer());
+    if (newBytes.length < originalSize){
+      obj.contents = newBytes;
+      obj.dict.set(PDFName.of('Width'), PDFLib.PDFNumber.of(newW));
+      obj.dict.set(PDFName.of('Height'), PDFLib.PDFNumber.of(newH));
+      obj.dict.delete(PDFName.of('DecodeParms'));
+      obj.dict.delete(PDFName.of('SMaskInData'));
+      compressedCount++;
+    }
+    canvas.width = 0; canvas.height = 0;
+    done++;
+    onProgress(done / cache.length, `Mengompres gambar ${done} dari ${cache.length}…`);
+  });
+
+  const bytes = await pdfDoc.save({ useObjectStreams: false });
+  return { bytes, compressedCount };
+}
+
+function closeImageCache(cache){
+  cache.forEach(entry => { try { entry.bitmap.close && entry.bitmap.close(); } catch (_){} });
+}
+
+async function processItem(item, targetBytes, onItemProgress){
+  item.arrayBuffer = await readAsArrayBuffer(item.file);
+  const startIdx = LEVEL_ORDER.indexOf(state.level);
+  const totalPossible = targetBytes ? (LADDER.length - startIdx) : 1;
+  const startSettings = LADDER[startIdx];
+
+  if (state.mode === 'whole'){
+    const pageCache = await renderPagesToCache(item.arrayBuffer, startSettings.dpi, (frac, label) => {
+      onItemProgress(frac * 0.35, 'Merender', 0);
+    });
+
+    let idx = startIdx, best = null, prevSize = Infinity;
+    while (true){
+      const settings = LADDER[idx];
+      const attemptsSoFar = idx - startIdx + 1;
+      const resultBytes = await buildPdfFromCache(pageCache, settings, (frac) => {
+        const tierFrac = ((idx - startIdx) + frac) / totalPossible;
+        onItemProgress(0.35 + Math.min(0.64, tierFrac * 0.65), settings.label, attemptsSoFar);
+      });
+      if (!best || resultBytes.byteLength < best.resultBytes.byteLength){
+        best = { resultBytes, note: 'whole', tierLabel: settings.label };
+      }
+      const size = resultBytes.byteLength;
+      const reachedTarget = targetBytes && size <= targetBytes;
+      const atLadderEnd = idx >= LADDER.length - 1;
+      const diminishing = (prevSize - size) < prevSize * 0.03 && idx > startIdx;
+      if (!targetBytes || reachedTarget || atLadderEnd || diminishing){
+        closePageCache(pageCache);
+        return { ...best, targetReached: targetBytes ? reachedTarget : null };
+      }
+      prevSize = size;
+      idx++;
+    }
+  }
+
+  // images-only mode
+  const { pdfDoc, cache, imagesFound } = await extractImageCache(item.arrayBuffer, (frac, label) => {
+    onItemProgress(frac * 0.3, 'Membaca gambar', 0);
+  });
+
+  if (cache.length === 0){
+    const bytes = await pdfDoc.save({ useObjectStreams: false });
+    return {
+      resultBytes: bytes,
+      note: 'no-images',
+      tierLabel: startSettings.label,
+      targetReached: targetBytes ? (bytes.byteLength <= targetBytes) : null,
+    };
+  }
+
+  let idx = startIdx, best = null, prevSize = Infinity;
+  while (true){
+    const settings = LADDER[idx];
+    const attemptsSoFar = idx - startIdx + 1;
+    const { bytes, compressedCount } = await applyImagesTier({ pdfDoc, cache }, settings, (frac) => {
+      const tierFrac = ((idx - startIdx) + frac) / totalPossible;
+      onItemProgress(0.3 + Math.min(0.69, tierFrac * 0.7), settings.label, attemptsSoFar);
+    });
+    const note = `images:${compressedCount}/${imagesFound}`;
+    if (!best || bytes.byteLength < best.resultBytes.byteLength){
+      best = { resultBytes: bytes, note, tierLabel: settings.label };
+    }
+    const size = bytes.byteLength;
+    const reachedTarget = targetBytes && size <= targetBytes;
+    const atLadderEnd = idx >= LADDER.length - 1;
+    const diminishing = (prevSize - size) < prevSize * 0.03 && idx > startIdx;
+    if (!targetBytes || reachedTarget || atLadderEnd || diminishing){
+      closeImageCache(cache);
+      return { ...best, targetReached: targetBytes ? reachedTarget : null };
+    }
+    prevSize = size;
+    idx++;
+  }
+}
+
+compressBtn.addEventListener('click', async () => {
+  if (state.items.length === 0 || state.processing) return;
+  clearError();
+
+  const targetMb = parseFloat(targetInput.value);
+  const targetBytes = (!isNaN(targetMb) && targetMb > 0) ? Math.round(targetMb * 1024 * 1024) : null;
+  state.targetBytes = targetBytes;
+
+  state.processing = true;
+  optionsBlock.classList.add('hidden');
+  listBlock.classList.add('hidden');
+  progressBlock.classList.remove('hidden');
+  compressBtn.disabled = true;
+  setOverallProgress(0, 'Memulai…');
+
+  const total = state.items.length;
+  let anyError = false;
+
+  for (let idx = 0; idx < total; idx++){
+    const item = state.items[idx];
+    item.status = 'processing';
+    item.progress = 0;
+    try {
+      let { resultBytes, note, tierLabel, targetReached } = await processItem(item, targetBytes, (frac, label, attemptNum) => {
+        item.progress = Math.round(frac * 100);
+        const overall = (idx + frac) / total;
+        const attemptTxt = attemptNum > 1 ? ` (percobaan ${attemptNum}, tingkat ${label})` : '';
+        setOverallProgress(overall, `Memproses file ${idx + 1} dari ${total}: ${item.file.name}${attemptTxt}`);
+      });
+      // Safeguard: never hand back a file larger than the original.
+      if (resultBytes.byteLength >= item.originalSize){
+        resultBytes = new Uint8Array(item.arrayBuffer);
+        note = note === 'no-images' ? 'no-images' : 'kept-original';
+        targetReached = targetBytes ? (resultBytes.byteLength <= targetBytes) : targetReached;
+      }
+      item.resultBytes = resultBytes;
+      item.newSize = resultBytes.byteLength;
+      item.resultName = item.file.name.replace(/\.pdf$/i, '') + '-kompres.pdf';
+      item.reduction = Math.max(0, Math.round((1 - item.newSize / item.originalSize) * 100));
+      item.note = note;
+      item.tierLabel = tierLabel;
+      item.targetReached = targetReached;
+      item.status = 'done';
+    } catch (err){
+      console.error(err);
+      item.status = 'error';
+      item.errorMsg = 'Gagal memproses (file rusak, terkunci, atau tidak didukung).';
+      anyError = true;
+    }
+    setOverallProgress((idx + 1) / total, `Selesai ${idx + 1} dari ${total} file`);
+  }
+
+  state.processing = false;
+  compressBtn.disabled = false;
+  progressBlock.classList.add('hidden');
+  showSummary(anyError);
+});
+
+function renderResultFileList(){
+  resultFileList.innerHTML = state.items.map(item => {
+    const sizeLine = item.status === 'done'
+      ? `${formatBytes(item.originalSize)} &rarr; ${formatBytes(item.newSize)}`
+      : formatBytes(item.originalSize);
+    return `
+    <div class="file-item" data-id="${item.id}">
+      ${fileItemIcon(item.status)}
+      <div class="file-meta">
+        <div class="file-name">${item.file.name}</div>
+        <div class="file-status">
+          ${badgeFor(item)}
+          <span>${sizeLine}</span>
+        </div>
+        ${item.status === 'error' ? `<div class="file-status" style="color:var(--danger);margin-top:4px;">${item.errorMsg || ''}</div>` : ''}
+      </div>
+      <div class="file-actions">
+        ${item.status === 'done' ? `<button class="icon-btn accent" title="Unduh" data-action="download-result" data-id="${item.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5M4 21h16" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+resultFileList.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action="download-result"]'); if (!btn) return;
+  const item = state.items.find(it => it.id === Number(btn.dataset.id));
+  if (item && item.status === 'done') downloadItem(item);
+});
+
+function showSummary(anyError){
+  const doneItems = state.items.filter(it => it.status === 'done');
+  const totalOriginal = doneItems.reduce((s, it) => s + it.originalSize, 0);
+  const totalNew = doneItems.reduce((s, it) => s + it.newSize, 0);
+  const reduction = totalOriginal > 0 ? Math.max(0, Math.round((1 - totalNew / totalOriginal) * 100)) : 0;
+  const errorCount = state.items.filter(it => it.status === 'error').length;
+
+  const multi = state.items.length > 1;
+  resultTitle.textContent = anyError ? 'Kompresi selesai dengan beberapa kendala' : 'Kompresi selesai';
+  resultSub.textContent = multi
+    ? `${doneItems.length} dari ${state.items.length} file berhasil dikompres${errorCount ? `, ${errorCount} gagal` : ''}`
+    : (doneItems[0] ? doneItems[0].resultName : 'Gagal memproses file');
+
+  origSize.textContent = formatBytes(totalOriginal);
+  newSize.textContent = formatBytes(totalNew);
+  reductionPill.innerHTML = reduction > 0 ? `&darr; ${reduction}% lebih kecil` : `Ukuran tidak banyak berubah`;
+
+  resultFileListBlock.classList.toggle('hidden', !multi);
+  if (multi) renderResultFileList();
+
+  const keptOriginal = doneItems.filter(it => it.note === 'kept-original').length;
+  const noImages = doneItems.filter(it => it.note === 'no-images').length;
+  const targetMissed = state.targetBytes ? doneItems.filter(it => it.targetReached === false).length : 0;
+
+  let noteText;
+  if (doneItems.length === 0){
+    noteText = 'Semua file gagal diproses. Periksa apakah file PDF valid dan tidak terkunci kata sandi, lalu coba lagi.';
+  } else if (state.mode === 'whole'){
+    noteText = 'Setiap halaman diubah menjadi gambar sehingga teks tidak lagi bisa diseleksi atau dicari. Gunakan mode "Hanya Gambar" bila ingin teks tetap dapat dicari.';
+    if (keptOriginal > 0){
+      noteText += ` ${keptOriginal} file ternyata membengkak jika dirasterisasi (biasanya karena isinya teks/vektor, bukan hasil scan) — untuk file itu, versi asli dipertahankan apa adanya.`;
+    }
+  } else {
+    noteText = 'Teks tetap tajam dan bisa dicari seperti biasa.';
+    if (noImages > 0){
+      noteText += ` ${noImages} file tidak memiliki gambar JPEG untuk dikompres, sehingga ukurannya tetap sama seperti aslinya.`;
+    }
+    if (keptOriginal > 0){
+      noteText += ` ${keptOriginal} file gambarnya sudah cukup terkompresi, sehingga tidak ada ukuran yang bisa dihemat lagi.`;
+    }
+  }
+  if (state.targetBytes){
+    if (targetMissed > 0){
+      noteText += ` ${targetMissed} dari ${doneItems.length} file tidak berhasil mencapai target ${formatBytes(state.targetBytes)} meski sudah dikompres dengan tingkat paling agresif (kemungkinan berisi banyak teks/vektor yang tak bisa dikecilkan lebih jauh) — ukuran terbaik yang bisa dicapai tetap digunakan.`;
+    } else {
+      noteText += ` Semua file berhasil dikompres di bawah target ${formatBytes(state.targetBytes)}.`;
+    }
+  }
+  resultNote.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg><span>${noteText}</span>`;
+
+  downloadBtnLabel.textContent = multi ? `Unduh Semua (ZIP, ${doneItems.length} file)` : 'Unduh PDF Hasil Kompresi';
+  downloadBtn.classList.toggle('hidden', doneItems.length === 0);
+  downloadBtn.dataset.multi = multi ? '1' : '0';
+
+  uploadCard.classList.add('hidden');
+  resultCard.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    afterBar.style.width = Math.max(4, 100 - reduction) + '%';
+  });
+}
+
+downloadBtn.addEventListener('click', async () => {
+  const doneItems = state.items.filter(it => it.status === 'done');
+  if (doneItems.length === 0) return;
+  if (downloadBtn.dataset.multi === '1'){
+    downloadBtn.disabled = true;
+    const originalLabel = downloadBtnLabel.textContent;
+    downloadBtnLabel.textContent = 'Menyiapkan ZIP…';
+    try {
+      const zip = new JSZip();
+      const usedNames = new Set();
+      doneItems.forEach(item => {
+        let name = item.resultName;
+        let n = 1;
+        while (usedNames.has(name)){
+          name = item.resultName.replace(/\.pdf$/i, `-${n}.pdf`);
+          n++;
+        }
+        usedNames.add(name);
+        zip.file(name, item.resultBytes);
+      });
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'pdf-terkompresi.zip';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      downloadBtn.disabled = false;
+      downloadBtnLabel.textContent = originalLabel;
+    }
+  } else {
+    downloadItem(doneItems[0]);
+  }
+});
+
+resetBtn.addEventListener('click', resetAll);
+
+function resetAll(){
+  uid = 0;
+  state = { items: [], mode: 'whole', level: 'sedang', targetBytes: null, processing: false };
+  fileInput.value = '';
+  dropzone.classList.remove('hidden');
+  listBlock.classList.add('hidden');
+  fileList.innerHTML = '';
+  optionsBlock.classList.add('hidden');
+  progressBlock.classList.add('hidden');
+  setOverallProgress(0, 'Memproses…');
+  clearError();
+  [...modeSeg.children].forEach(b => b.classList.toggle('active', b.dataset.mode === 'whole'));
+  [...levelSeg.children].forEach(b => b.classList.toggle('active', b.dataset.level === 'sedang'));
+  targetInput.value = '';
+  syncTargetChips();
+  resultFileList.innerHTML = '';
+  resultFileListBlock.classList.add('hidden');
+  resultCard.classList.add('hidden');
+  uploadCard.classList.remove('hidden');
+}
+
+renderModeDesc();
+renderLevelGauge();
+syncTargetChips();
+
+/* ============================================================ */
+/* TAB SWITCHING                                                 */
+/* ============================================================ */
+const tabPanels = {
+  compress: document.getElementById('panel-compress'),
+  split: document.getElementById('panel-split'),
+  merge: document.getElementById('panel-merge'),
+};
+document.getElementById('tabbar').addEventListener('click', e => {
+  const btn = e.target.closest('button.tab'); if (!btn) return;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b === btn));
+  Object.entries(tabPanels).forEach(([key, el]) => el.classList.toggle('active', key === btn.dataset.tab));
+});
+
+function triggerDownload(bytes, filename, mime = 'application/pdf'){
+  const blob = new Blob([bytes], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ============================================================ */
+/* SPLIT PDF                                                     */
+/* ============================================================ */
+const splitDropzone = $('splitDropzone'), splitFileInput = $('splitFileInput'), splitFileRow = $('splitFileRow');
+const splitFileName = $('splitFileName'), splitFileMeta = $('splitFileMeta'), splitFileRemove = $('splitFileRemove');
+const splitOptionsBlock = $('splitOptionsBlock'), splitModeSeg = $('splitModeSeg'), splitModeDesc = $('splitModeDesc');
+const splitRangeField = $('splitRangeField'), splitRangeInput = $('splitRangeInput'), splitBtn = $('splitBtn');
+const splitProgressBlock = $('splitProgressBlock'), splitProgressFill = $('splitProgressFill');
+const splitProgressText = $('splitProgressText'), splitProgressPct = $('splitProgressPct');
+const splitErrorBox = $('splitErrorBox'), splitErrorText = $('splitErrorText');
+const splitUploadCard = $('splitUploadCard'), splitResultCard = $('splitResultCard');
+const splitResultSub = $('splitResultSub'), splitResultList = $('splitResultList');
+const splitDownloadAllBtn = $('splitDownloadAllBtn'), splitDownloadAllLabel = $('splitDownloadAllLabel');
+const splitResetBtn = $('splitResetBtn');
+
+let splitState = { file: null, arrayBuffer: null, pageCount: 0, mode: 'each', results: [] };
+
+function showSplitError(msg){ splitErrorText.textContent = msg; splitErrorBox.classList.remove('hidden'); }
+function clearSplitError(){ splitErrorBox.classList.add('hidden'); }
+function setSplitProgress(frac, label){
+  const pct = Math.round(frac * 100);
+  splitProgressFill.style.width = pct + '%';
+  splitProgressPct.textContent = pct + '%';
+  if (label) splitProgressText.textContent = label;
+}
+
+async function handleSplitFile(file){
+  clearSplitError();
+  if (!file) return;
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  if (!isPdf){ showSplitError('Format file tidak didukung. Silakan pilih file PDF (.pdf).'); return; }
+  try {
+    const buf = await readAsArrayBuffer(file);
+    const doc = await PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
+    const pageCount = doc.getPageCount();
+    splitState.file = file;
+    splitState.arrayBuffer = buf;
+    splitState.pageCount = pageCount;
+    splitFileName.textContent = file.name;
+    splitFileMeta.textContent = `${pageCount} halaman · ${formatBytes(file.size)}`;
+    splitDropzone.classList.add('hidden');
+    splitFileRow.classList.remove('hidden');
+    splitOptionsBlock.classList.remove('hidden');
+  } catch (e){
+    console.error(e);
+    showSplitError('Gagal membaca PDF. File mungkin rusak atau terkunci kata sandi.');
+  }
+}
+
+splitDropzone.addEventListener('click', () => splitFileInput.click());
+splitFileInput.addEventListener('change', e => { handleSplitFile(e.target.files[0]); splitFileInput.value = ''; });
+['dragenter','dragover'].forEach(evt => splitDropzone.addEventListener(evt, e => { e.preventDefault(); splitDropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(evt => splitDropzone.addEventListener(evt, e => { e.preventDefault(); splitDropzone.classList.remove('drag'); }));
+splitDropzone.addEventListener('drop', e => handleSplitFile(e.dataTransfer.files[0]));
+splitFileRemove.addEventListener('click', resetSplit);
+
+splitModeSeg.addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  splitState.mode = btn.dataset.mode;
+  [...splitModeSeg.children].forEach(b => b.classList.toggle('active', b === btn));
+  splitRangeField.classList.toggle('hidden', splitState.mode !== 'range');
+  splitModeDesc.textContent = splitState.mode === 'each'
+    ? 'Setiap halaman akan menjadi file PDF terpisah.'
+    : 'Tentukan rentang halaman Anda sendiri di kolom di bawah.';
+});
+
+function parseSplitRanges(rangeStr, pageCount){
+  const parts = rangeStr.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) throw new Error('Isi rentang halaman terlebih dahulu, misal: 1-3, 4, 7-10.');
+  const ranges = [];
+  for (const part of parts){
+    const m = part.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+    if (!m) throw new Error(`Format rentang tidak dikenali: "${part}".`);
+    const start = parseInt(m[1], 10);
+    const end = m[2] ? parseInt(m[2], 10) : start;
+    if (start < 1 || end > pageCount || start > end){
+      throw new Error(`Rentang "${part}" di luar jangkauan (dokumen punya ${pageCount} halaman).`);
+    }
+    ranges.push([start - 1, end - 1]);
+  }
+  return ranges;
+}
+
+splitBtn.addEventListener('click', async () => {
+  clearSplitError();
+  if (!splitState.arrayBuffer) return;
+
+  let ranges;
+  try {
+    ranges = splitState.mode === 'each'
+      ? Array.from({ length: splitState.pageCount }, (_, i) => [i, i])
+      : parseSplitRanges(splitRangeInput.value, splitState.pageCount);
+  } catch (e){
+    showSplitError(e.message);
+    return;
+  }
+
+  splitOptionsBlock.classList.add('hidden');
+  splitFileRow.classList.add('hidden');
+  splitProgressBlock.classList.remove('hidden');
+  splitBtn.disabled = true;
+  setSplitProgress(0, 'Memulai…');
+
+  try {
+    const srcDoc = await PDFLib.PDFDocument.load(splitState.arrayBuffer, { ignoreEncryption: true });
+    const baseName = splitState.file.name.replace(/\.pdf$/i, '');
+    const results = [];
+    for (let i = 0; i < ranges.length; i++){
+      const [start, end] = ranges[i];
+      const newDoc = await PDFLib.PDFDocument.create();
+      const indices = Array.from({ length: end - start + 1 }, (_, k) => start + k);
+      const copied = await newDoc.copyPages(srcDoc, indices);
+      copied.forEach(p => newDoc.addPage(p));
+      const bytes = await newDoc.save({ useObjectStreams: false });
+      const label = start === end ? `hal-${start + 1}` : `hal-${start + 1}-${end + 1}`;
+      results.push({ name: `${baseName}-${label}.pdf`, bytes, pageCount: end - start + 1 });
+      setSplitProgress((i + 1) / ranges.length, `Memisahkan ${i + 1} dari ${ranges.length}…`);
+    }
+    splitState.results = results;
+    showSplitResult();
+  } catch (e){
+    console.error(e);
+    splitProgressBlock.classList.add('hidden');
+    splitOptionsBlock.classList.remove('hidden');
+    splitFileRow.classList.remove('hidden');
+    showSplitError('Gagal memisah PDF. File mungkin rusak atau terkunci kata sandi.');
+  } finally {
+    splitBtn.disabled = false;
+  }
+});
+
+function showSplitResult(){
+  const n = splitState.results.length;
+  splitResultSub.textContent = `${n} file dari "${splitState.file.name}"`;
+  splitResultList.innerHTML = splitState.results.map((r, i) => `
+    <div class="file-item">
+      <div class="file-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6" stroke-linejoin="round"/></svg></div>
+      <div class="file-meta">
+        <div class="file-name">${r.name}</div>
+        <div class="file-status"><span>${r.pageCount} halaman · ${formatBytes(r.bytes.byteLength)}</span></div>
+      </div>
+      <div class="file-actions">
+        <button class="icon-btn accent" title="Unduh" data-idx="${i}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5M4 21h16" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+    </div>`).join('');
+  splitDownloadAllLabel.textContent = n > 1 ? `Unduh Semua (ZIP, ${n} file)` : 'Unduh File';
+  splitUploadCard.classList.add('hidden');
+  splitProgressBlock.classList.add('hidden');
+  splitResultCard.classList.remove('hidden');
+}
+
+splitResultList.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-idx]'); if (!btn) return;
+  const r = splitState.results[Number(btn.dataset.idx)];
+  triggerDownload(r.bytes, r.name);
+});
+
+splitDownloadAllBtn.addEventListener('click', async () => {
+  const n = splitState.results.length;
+  if (n === 0) return;
+  if (n === 1){ triggerDownload(splitState.results[0].bytes, splitState.results[0].name); return; }
+  splitDownloadAllBtn.disabled = true;
+  const original = splitDownloadAllLabel.textContent;
+  splitDownloadAllLabel.textContent = 'Menyiapkan ZIP…';
+  try {
+    const zip = new JSZip();
+    splitState.results.forEach(r => zip.file(r.name, r.bytes));
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = (splitState.file.name.replace(/\.pdf$/i, '') || 'pdf') + '-split.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } finally {
+    splitDownloadAllBtn.disabled = false;
+    splitDownloadAllLabel.textContent = original;
+  }
+});
+
+splitResetBtn.addEventListener('click', resetSplit);
+
+function resetSplit(){
+  splitState = { file: null, arrayBuffer: null, pageCount: 0, mode: 'each', results: [] };
+  splitFileInput.value = '';
+  splitDropzone.classList.remove('hidden');
+  splitFileRow.classList.add('hidden');
+  splitOptionsBlock.classList.add('hidden');
+  splitRangeField.classList.add('hidden');
+  splitRangeInput.value = '';
+  [...splitModeSeg.children].forEach(b => b.classList.toggle('active', b.dataset.mode === 'each'));
+  splitModeDesc.textContent = 'Setiap halaman akan menjadi file PDF terpisah.';
+  splitProgressBlock.classList.add('hidden');
+  clearSplitError();
+  splitResultCard.classList.add('hidden');
+  splitUploadCard.classList.remove('hidden');
+}
+
+/* ============================================================ */
+/* MERGE PDF                                                     */
+/* ============================================================ */
+const mergeDropzone = $('mergeDropzone'), mergeFileInput = $('mergeFileInput');
+const mergeListBlock = $('mergeListBlock'), mergeListCount = $('mergeListCount');
+const mergeFileList = $('mergeFileList'), mergeAddMoreBtn = $('mergeAddMoreBtn');
+const mergeBtn = $('mergeBtn'), mergeBtnLabel = $('mergeBtnLabel');
+const mergeProgressBlock = $('mergeProgressBlock'), mergeProgressFill = $('mergeProgressFill');
+const mergeProgressText = $('mergeProgressText'), mergeProgressPct = $('mergeProgressPct');
+const mergeErrorBox = $('mergeErrorBox'), mergeErrorText = $('mergeErrorText');
+const mergeUploadCard = $('mergeUploadCard'), mergeResultCard = $('mergeResultCard');
+const mergeResultSub = $('mergeResultSub'), mergeDownloadBtn = $('mergeDownloadBtn'), mergeResetBtn = $('mergeResetBtn');
+
+let mergeState = { items: [], resultBytes: null, resultName: '', totalPages: 0 };
+
+function showMergeError(msg){ mergeErrorText.textContent = msg; mergeErrorBox.classList.remove('hidden'); }
+function clearMergeError(){ mergeErrorBox.classList.add('hidden'); }
+function setMergeProgress(frac, label){
+  const pct = Math.round(frac * 100);
+  mergeProgressFill.style.width = pct + '%';
+  mergeProgressPct.textContent = pct + '%';
+  if (label) mergeProgressText.textContent = label;
+}
+
+function addMergeFiles(fileListRaw){
+  clearMergeError();
+  const files = Array.from(fileListRaw || []);
+  if (files.length === 0) return;
+  const rejected = [];
+  files.forEach(file => {
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf){ rejected.push(file.name); return; }
+    mergeState.items.push({ id: ++uid, file });
+  });
+  if (rejected.length){
+    showMergeError(`File berikut dilewati karena bukan PDF: ${rejected.join(', ')}`);
+  }
+  if (mergeState.items.length > 0){
+    mergeDropzone.classList.add('hidden');
+    mergeListBlock.classList.remove('hidden');
+    renderMergeList();
+  }
+}
+
+function renderMergeList(){
+  mergeListCount.textContent = mergeState.items.length + ' file';
+  mergeFileList.innerHTML = mergeState.items.map((item, idx) => `
+    <div class="file-item" data-id="${item.id}">
+      <div class="file-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6" stroke-linejoin="round"/></svg></div>
+      <div class="file-meta">
+        <div class="file-name">${idx + 1}. ${item.file.name}</div>
+        <div class="file-status"><span>${formatBytes(item.file.size)}</span></div>
+      </div>
+      <div class="file-actions">
+        <button class="icon-btn" data-action="up" data-id="${item.id}" title="Naik" ${idx === 0 ? 'disabled' : ''}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="icon-btn" data-action="down" data-id="${item.id}" title="Turun" ${idx === mergeState.items.length - 1 ? 'disabled' : ''}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="icon-btn" data-action="remove" data-id="${item.id}" title="Hapus"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg></button>
+      </div>
+    </div>`).join('');
+  mergeBtnLabel.textContent = mergeState.items.length > 1 ? `Gabungkan ${mergeState.items.length} File` : 'Gabungkan PDF';
+}
+
+mergeFileList.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-action]'); if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const idx = mergeState.items.findIndex(it => it.id === id);
+  if (idx === -1) return;
+  if (btn.dataset.action === 'remove'){
+    mergeState.items.splice(idx, 1);
+    if (mergeState.items.length === 0){ resetMerge(); } else { renderMergeList(); }
+  } else if (btn.dataset.action === 'up' && idx > 0){
+    [mergeState.items[idx - 1], mergeState.items[idx]] = [mergeState.items[idx], mergeState.items[idx - 1]];
+    renderMergeList();
+  } else if (btn.dataset.action === 'down' && idx < mergeState.items.length - 1){
+    [mergeState.items[idx + 1], mergeState.items[idx]] = [mergeState.items[idx], mergeState.items[idx + 1]];
+    renderMergeList();
+  }
+});
+
+mergeDropzone.addEventListener('click', () => mergeFileInput.click());
+mergeAddMoreBtn.addEventListener('click', () => mergeFileInput.click());
+mergeFileInput.addEventListener('change', e => { addMergeFiles(e.target.files); mergeFileInput.value = ''; });
+['dragenter','dragover'].forEach(evt => mergeDropzone.addEventListener(evt, e => { e.preventDefault(); mergeDropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(evt => mergeDropzone.addEventListener(evt, e => { e.preventDefault(); mergeDropzone.classList.remove('drag'); }));
+mergeDropzone.addEventListener('drop', e => addMergeFiles(e.dataTransfer.files));
+
+mergeBtn.addEventListener('click', async () => {
+  clearMergeError();
+  if (mergeState.items.length < 2){
+    showMergeError('Pilih minimal 2 file PDF untuk digabungkan.');
+    return;
+  }
+  mergeListBlock.classList.add('hidden');
+  mergeProgressBlock.classList.remove('hidden');
+  mergeBtn.disabled = true;
+  setMergeProgress(0, 'Memulai…');
+
+  try {
+    const outDoc = await PDFLib.PDFDocument.create();
+    let totalPages = 0;
+    for (let i = 0; i < mergeState.items.length; i++){
+      const item = mergeState.items[i];
+      const buf = await readAsArrayBuffer(item.file);
+      const srcDoc = await PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
+      const indices = srcDoc.getPageIndices();
+      const copied = await outDoc.copyPages(srcDoc, indices);
+      copied.forEach(p => outDoc.addPage(p));
+      totalPages += indices.length;
+      setMergeProgress((i + 1) / mergeState.items.length, `Menggabungkan file ${i + 1} dari ${mergeState.items.length}: ${item.file.name}`);
+    }
+    const bytes = await outDoc.save({ useObjectStreams: false });
+    mergeState.resultBytes = bytes;
+    mergeState.resultName = 'gabungan.pdf';
+    mergeState.totalPages = totalPages;
+    showMergeResult();
+  } catch (e){
+    console.error(e);
+    mergeProgressBlock.classList.add('hidden');
+    mergeListBlock.classList.remove('hidden');
+    showMergeError('Gagal menggabungkan PDF. Pastikan semua file valid dan tidak terkunci kata sandi.');
+  } finally {
+    mergeBtn.disabled = false;
+  }
+});
+
+function showMergeResult(){
+  mergeResultSub.textContent = `${mergeState.items.length} file digabung · ${mergeState.totalPages} halaman · ${formatBytes(mergeState.resultBytes.byteLength)}`;
+  mergeUploadCard.classList.add('hidden');
+  mergeProgressBlock.classList.add('hidden');
+  mergeResultCard.classList.remove('hidden');
+}
+
+mergeDownloadBtn.addEventListener('click', () => {
+  if (!mergeState.resultBytes) return;
+  triggerDownload(mergeState.resultBytes, mergeState.resultName);
+});
+
+mergeResetBtn.addEventListener('click', resetMerge);
+
+function resetMerge(){
+  mergeState = { items: [], resultBytes: null, resultName: '', totalPages: 0 };
+  mergeFileInput.value = '';
+  mergeDropzone.classList.remove('hidden');
+  mergeListBlock.classList.add('hidden');
+  mergeFileList.innerHTML = '';
+  mergeProgressBlock.classList.add('hidden');
+  clearMergeError();
+  mergeResultCard.classList.add('hidden');
+  mergeUploadCard.classList.remove('hidden');
+}
+</script>
+</body>
+</html>
