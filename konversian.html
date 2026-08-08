@@ -4,7 +4,6 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Conversion Workspace — PT Pionir Nusantara Manufacturing</title>
-<link rel="icon" type="image/png" href="assets/logo-mark-pnm.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
@@ -71,14 +70,13 @@
     <i class="ph ph-hospital"></i>
     <span id="session-indicator-text">Belum ada sesi — klik "Mulai Sesi Baru"</span>
   </button>
-  <!-- Status koneksi realtime — beda arti sama session-indicator-dot (itu status SIMPAN,
-       ini status TERSAMBUNG-nya channel live). Cuma keliatan pas ada sesi yg lagi dibuka. -->
-  <div class="rt-status" id="rt-status" style="display:none">
+  <!-- Gabungan status koneksi + siapa aja yang online, satu badge aja (dulu 2
+       terpisah, kerasa penuh) — dot warna = status koneksi, avatar = presence.
+       Detail (nama, status online/away, teks koneksi) muncul di tooltip. -->
+  <div class="rt-live" id="rt-live" style="display:none" title="">
     <span class="rt-status-dot" id="rt-status-dot"></span>
-    <span id="rt-status-text"></span>
+    <div class="rt-avatar-cluster" id="rt-avatar-cluster"></div>
   </div>
-  <!-- Siapa aja yang lagi buka sesi yang sama (Presence) -->
-  <div class="rt-presence" id="rt-presence" style="display:none" title=""></div>
   <div class="header-right">
     <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
     <a class="toggle-btn" href="index.html" title="Kembali ke Beranda"><i class="ph ph-house"></i> <span class="toggle-btn-label">Beranda</span></a>
@@ -293,23 +291,34 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         </div>
       </div>
       <div id="sesi-save-status" style="font-size:11px;color:var(--text-muted);margin-bottom:4px;min-height:14px"></div>
-      <!-- Feed aktivitas realtime — siapa ngapain di sesi ini barusan. Kosong/hidden
-           kalau belum ada event apapun (sesi baru/gak ada channel aktif). -->
-      <div id="rt-activity-feed" style="display:none;font-size:11px;color:var(--text-muted);margin-bottom:6px;padding:6px 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;max-height:110px;overflow-y:auto"></div>
+      <!-- Feed aktivitas realtime — diciutkan default biar gak numpang tinggi di
+           atas panel yang udah padat. Klik header-nya buat buka/tutup, pola sama
+           kayak kb-collapsible di panel Kebutuhan RS. -->
+      <div class="rt-feed-wrap rt-feed-collapsed" id="rt-feed-wrap" style="display:none">
+        <button type="button" class="rt-feed-toggle" id="rt-feed-toggle">
+          <i class="ti ti-chevron-right" id="rt-feed-toggle-icon"></i>
+          <span id="rt-feed-toggle-label">Aktivitas terbaru</span>
+        </button>
+        <div class="rt-feed-collapsible">
+          <div class="rt-feed-collapsible-inner">
+            <div id="rt-activity-feed"></div>
+          </div>
+        </div>
+      </div>
       <div class="clip-header-compact" id="clip-header-compact"></div>
       <div class="clip-header-form-collapsible" id="clip-header-form-collapsible">
         <div class="clip-header-form-inner">
           <div class="clip-header-form">
             <div class="form-group">
-              <label>Nama RS / Instansi</label>
+              <label>Nama RS / Instansi <span class="editing-badge" id="editing-badge-nama_rs"></span></label>
               <input id="inp-rs" type="text" placeholder="contoh: RSUD Dr. Soetomo"/>
             </div>
             <div class="form-group">
-              <label>Nama Sales</label>
+              <label>Nama Sales <span class="editing-badge" id="editing-badge-nama_sales"></span></label>
               <input id="inp-sales" type="text" placeholder="Nama sales" list="sales-datalist" autocomplete="off"/>
             </div>
             <div class="form-group">
-              <label>PIC Marsup (kamu)</label>
+              <label>PIC Marsup (kamu) <span class="editing-badge" id="editing-badge-pic_marsup"></span></label>
               <input id="inp-marsup" type="text" placeholder="Nama kamu"/>
             </div>
           </div>

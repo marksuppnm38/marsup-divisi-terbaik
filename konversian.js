@@ -23,7 +23,18 @@ const gateStatus = document.getElementById('gate-status');
 // instance-nya dipegang di `rt` biar gak collide sama apa-apa yang udah ada.
 // ══════════════════════════════════════════
 const rt = (typeof window.supabase !== 'undefined' && window.supabase.createClient)
-  ? window.supabase.createClient(SUPABASE_URL, ANON_KEY)
+  ? window.supabase.createClient(SUPABASE_URL, ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      // POLA "THIRD-PARTY AUTH": kita login manual (fetch ke /auth/v1/token
+      // langsung, bukan lewat rt.auth.signIn...), jadi rt.auth gak pernah punya
+      // sesi. Realtime SDK ini manggil ULANG fungsi accessToken ini sendiri tiap
+      // heartbeat/reconnect buat narik token TERBARU — beda sama rt.realtime.setAuth()
+      // manual yang cuma nembak sekali terus ketiban balik ke ANON_KEY tiap heartbeat
+      // jalan (itu penyebab kenapa role-nya selalu balik jadi 'anon'). Callback ini
+      // baca stokAccessToken langsung dari closure, jadi otomatis dapet nilai
+      // terbaru kapan pun dipanggil — gak perlu manual re-sync di titik lain lagi.
+      accessToken: async () => stokAccessToken || ANON_KEY
+    })
   : null;
 if (!rt) console.warn('Supabase Realtime SDK gagal dimuat — kolaborasi live gak aktif, app tetap jalan pakai REST biasa.');
 
@@ -944,6 +955,7 @@ updateOnlineStatus();
 // ══════════════════════════════════════════
 const SESI_TABLE = 'sesi_konversi';
 const SESI_ITEM_TABLE = 'sesi_konversi_item';
+const PERMINTAAN_ITEM_TABLE = 'permintaan_item'; // tabel mentah di balik RPC get_permintaan_by_sesi/update_permintaan_item_multi — dipakai buat filter postgres_changes
 let currentSesiId = null;
 let currentButuhBantuan = false;
 
@@ -1148,6 +1160,12 @@ async function persistRemoveItem(item) {
       await sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${currentSesiId}&kode_produk=eq.${encodeURIComponent(item.kode_produk)}`, { method: 'DELETE' });
     }
     await touchSesiUpdatedAt(currentSesiId);
+    // WORKAROUND: postgres_changes event DELETE ternyata gak reliable di Supabase
+    // Realtime (dikonfirmasi manual: SQL DELETE langsung pun gak ngirim event apa-apa
+    // buat tabel ini — publication/RLS/replica identity semua udah benar, ini murni
+    // limitation di sisi Supabase, bukan config kita). Makanya penghapusan disiarin
+    // manual lewat Broadcast begitu REST DELETE-nya sukses, bukan nunggu postgres_changes.
+    if (typeof broadcastItemRemoved === 'function') broadcastItemRemoved(item);
     setSesiSavedStatus('Tersimpan ✓');
   } catch (err) {
     setSesiSavedStatus('Gagal hapus: ' + err.message, true);
@@ -1204,6 +1222,52 @@ let headerSaveTimer = null;
     }, 700);
   });
 });
+
+// ---- Editing indicator: broadcast 'editing' pas fokus di salah satu field header,
+// biar kolaborator lain liat "lagi diedit siapa" — ini SOFT-locking (cuma sinyal),
+// bukan hard lock; semua tetep bisa ngedit bareng kapan aja. ----
+const RT_FIELD_MAP = [[inpRs, 'nama_rs'], [inpSales, 'nama_sales'], [inpMarsup, 'pic_marsup']];
+let editingBroadcastTimer = null;
+RT_FIELD_MAP.forEach(([inp, field]) => {
+  inp.addEventListener('focus', () => {
+    broadcastEditing(field);
+    clearInterval(editingBroadcastTimer);
+    editingBroadcastTimer = setInterval(() => broadcastEditing(field), 3000); // di-refresh berkala selama fokus, biar kolaborator lain tau masih diedit
+  });
+  inp.addEventListener('blur', () => {
+    clearInterval(editingBroadcastTimer);
+    broadcastEditingStop(field);
+  });
+});
+function broadcastEditing(field) {
+  if (!sesiPresenceChannel) return;
+  sesiPresenceChannel.send({ type: 'broadcast', event: 'editing', payload: { field, nama: currentDisplayName() } }).catch(() => {});
+}
+function broadcastEditingStop(field) {
+  if (!sesiPresenceChannel) return;
+  sesiPresenceChannel.send({ type: 'broadcast', event: 'editing_stop', payload: { field } }).catch(() => {});
+}
+const editingBadgeTimers = {}; // field -> timeout id
+function handleEditingBroadcast({ payload }) {
+  if (!payload || !payload.field) return;
+  const badge = document.getElementById('editing-badge-' + payload.field);
+  if (!badge) return;
+  badge.textContent = `· ${payload.nama} sedang mengedit`;
+  badge.classList.add('show');
+  clearTimeout(editingBadgeTimers[payload.field]);
+  // Safety net: kalau broadcast 'editing_stop' gak nyampe (tab ditutup paksa,
+  // koneksi putus), badge tetep ke-auto-hide sendiri abis beberapa detik gak
+  // di-refresh — refresh berkala di atas (tiap 3 detik) yang jaga ini tetep nyala
+  // selama beneran masih diedit.
+  editingBadgeTimers[payload.field] = setTimeout(() => badge.classList.remove('show'), 5000);
+}
+function handleEditingStopBroadcast({ payload }) {
+  if (!payload || !payload.field) return;
+  const badge = document.getElementById('editing-badge-' + payload.field);
+  if (!badge) return;
+  clearTimeout(editingBadgeTimers[payload.field]);
+  badge.classList.remove('show');
+}
 
 function renderButuhBantuanBtn() {
   btnButuhBantuan.classList.toggle('on', currentButuhBantuan);
@@ -1627,6 +1691,11 @@ function resetChecklistUI() {
 // resetSsReferences().
 // ══════════════════════════════════════════════════════════════════════════
 let sesiDbChannel = null;
+// Nama yang ditampilin buat presence/activity/editing-indicator — pake PIC Marsup
+// (lebih manusiawi daripada email), fallback ke email kalau belum diisi.
+function currentDisplayName() {
+  return (inpMarsup && inpMarsup.value.trim()) || (currentUser && currentUser.email) || 'Anonim';
+}
 let sesiPresenceChannel = null;
 let presenceRoster = {}; // presence key -> {nama, status, joined_at}
 let rtActivityLog = []; // {ts, msg} — dicap N item terakhir, lihat pushActivity()
@@ -1649,43 +1718,54 @@ function isEchoOfLocalWrite(table, id, field, value) {
   return String(rec.value) === String(value);
 }
 
+let rtConnState = 'offline'; // dipake buat nyusun title tooltip gabungan sama presence
 function updateRtStatus(state) {
   // state: 'connecting' | 'live' | 'reconnecting' | 'offline'
+  rtConnState = state;
   const dot = document.getElementById('rt-status-dot');
-  const text = document.getElementById('rt-status-text');
-  const wrap = document.getElementById('rt-status');
-  if (!dot || !text || !wrap) return;
+  const wrap = document.getElementById('rt-live');
+  if (!dot || !wrap) return;
   wrap.style.display = currentSesiId ? 'flex' : 'none';
   dot.classList.remove('dot-live', 'dot-connecting', 'dot-reconnecting', 'dot-offline');
   dot.classList.add('dot-' + state);
-  const labels = { connecting: 'Menyambungkan…', live: 'Live', reconnecting: 'Menyambung ulang…', offline: 'Offline' };
-  text.textContent = labels[state] || '';
+  renderPresenceRoster(); // ikut update tooltip-nya (teks koneksi + daftar nama gabung di situ)
 }
 
 function subscribeToSesiRealtime(sesiId) {
   if (!rt || !sesiId) return; // SDK gagal dimuat / gak ada sesi → diam-diam gak aktifin live sync, app tetap jalan manual kayak sebelumnya
   unsubscribeFromSesiRealtime(); // jaga-jaga: jangan sampai numpuk channel dari sesi sebelumnya
+  syncRealtimeAuth(); // pastiin token authenticated kepasang tiap kali (re)subscribe, jangan andelin sekali panggil pas login doang
   updateRtStatus('connecting');
 
-  sesiDbChannel = rt.channel(`sesi-db-${sesiId}`)
+  // Item Kebutuhan RS (tabel permintaan_item) SENGAJA gak disubscribe lewat
+  // postgres_changes di sini — kena berlapis masalah di setup ini (auth Realtime
+  // kepeleset ke anon, kolom filter gak ke-index) dan biarpun udah dibenerin
+  // semua tetep gak reliable. Update status item disiarin lewat Broadcast aja
+  // (lihat broadcastChecklistItemUpdated/handleChecklistItemUpdatedBroadcast di
+  // channel presence bawah), sama pola yang dipakai clipboard.
+  const dbChannel = rt.channel(`sesi-db-${sesiId}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: SESI_TABLE, filter: `id=eq.${sesiId}` }, handleSesiRowChange)
-    .on('postgres_changes', { event: '*', schema: 'public', table: SESI_ITEM_TABLE, filter: `sesi_id=eq.${sesiId}` }, handleItemRowChange)
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') updateRtStatus('live');
-      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') updateRtStatus('reconnecting');
-      else if (status === 'CLOSED') updateRtStatus('offline');
-    });
+    .on('postgres_changes', { event: '*', schema: 'public', table: SESI_ITEM_TABLE, filter: `sesi_id=eq.${sesiId}` }, handleItemRowChange);
+  sesiDbChannel = dbChannel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') updateRtStatus('live');
+    else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') updateRtStatus('reconnecting');
+    else if (status === 'CLOSED') updateRtStatus('offline');
+  });
 
   const presenceKey = currentUser ? currentUser.id : ('anon-' + Math.random().toString(36).slice(2, 9));
   sesiPresenceChannel = rt.channel(`sesi-presence-${sesiId}`, { config: { presence: { key: presenceKey } } })
     .on('presence', { event: 'sync' }, handlePresenceSync)
     .on('presence', { event: 'join' }, handlePresenceJoin)
     .on('presence', { event: 'leave' }, handlePresenceLeave)
+    .on('broadcast', { event: 'item_removed' }, handleItemRemovedBroadcast)
+    .on('broadcast', { event: 'checklist_item_updated' }, handleChecklistItemUpdatedBroadcast)
+    .on('broadcast', { event: 'editing' }, handleEditingBroadcast)
+    .on('broadcast', { event: 'editing_stop' }, handleEditingStopBroadcast)
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         try {
           await sesiPresenceChannel.track({
-            nama: (inpMarsup && inpMarsup.value.trim()) || (currentUser && currentUser.email) || 'Anonim',
+            nama: currentDisplayName(),
             status: 'online',
             joined_at: new Date().toISOString()
           });
@@ -1703,10 +1783,10 @@ function handleVisibilityForPresence() {
   clearTimeout(awayTimer);
   if (document.hidden) {
     awayTimer = setTimeout(() => {
-      sesiPresenceChannel && sesiPresenceChannel.track({ nama: (inpMarsup && inpMarsup.value.trim()) || 'Anonim', status: 'away', joined_at: new Date().toISOString() }).catch(() => {});
+      sesiPresenceChannel && sesiPresenceChannel.track({ nama: currentDisplayName(), status: 'away', joined_at: new Date().toISOString() }).catch(() => {});
     }, 30000);
   } else {
-    sesiPresenceChannel.track({ nama: (inpMarsup && inpMarsup.value.trim()) || 'Anonim', status: 'online', joined_at: new Date().toISOString() }).catch(() => {});
+    sesiPresenceChannel.track({ nama: currentDisplayName(), status: 'online', joined_at: new Date().toISOString() }).catch(() => {});
   }
 }
 
@@ -1722,8 +1802,16 @@ function unsubscribeFromSesiRealtime() {
   renderPresenceRoster();
   renderActivityFeed();
   updateRtStatus('offline');
-  const wrap = document.getElementById('rt-status');
+  const wrap = document.getElementById('rt-live');
   if (wrap) wrap.style.display = 'none';
+  // Badge "sedang mengedit" nempel ke sesi yang lama — bersihin biar gak nyisa
+  // pas pindah/buka sesi lain.
+  clearInterval(editingBroadcastTimer);
+  Object.keys(editingBadgeTimers).forEach(field => {
+    clearTimeout(editingBadgeTimers[field]);
+    const badge = document.getElementById('editing-badge-' + field);
+    if (badge) badge.classList.remove('show');
+  });
 }
 
 // ---- Handler: baris sesi_konversi berubah (header/pagu/status/butuh_bantuan) ----
@@ -1760,7 +1848,30 @@ function handleSesiRowChange(payload) {
 // ---- Handler: baris sesi_konversi_item berubah (isi clipboard) ----
 function handleItemRowChange(payload) {
   if (!currentSesiId) return;
-  const row = payload.new || payload.old;
+
+  // PENTING soal DELETE: Supabase Postgres Changes SECARA RESMI gak nge-filter
+  // event DELETE di server sama sekali (beda dari INSERT/UPDATE) — lihat
+  // https://supabase.com/docs/guides/realtime/postgres-changes#delete-events-are-not-filterable
+  // Ditambah lagi payload.old default-nya cuma isi primary key (`id`), gak ada
+  // sesi_id, jadi filter `row.sesi_id !== currentSesiId` GAK BISA dipakai buat
+  // DELETE — bakal selalu gagal match dan diem-diem nge-drop semua delete.
+  // Solusinya: DELETE difilter dari sisi client pakai keanggotaan di clipboard
+  // LOKAL kita (yang emang udah pasti isinya cuma item sesi ini), bukan dari
+  // kolom sesi_id di payload.
+  if (payload.eventType === 'DELETE') {
+    const row = payload.old;
+    if (!row || row.id == null) return;
+    const item = clipboard.find(c => c._sesiItemId === row.id);
+    if (!item) return; // bukan item sesi ini, atau emang udah kehapus lokal duluan (optimistic)
+    const nama = item.nama_produk;
+    removeClipItemDom(item.kode_produk);
+    pushActivity(`${nama} dihapus`);
+    return;
+  }
+
+  // INSERT & UPDATE difilter server-side dengan benar (payload.new selalu lengkap),
+  // baris di bawah cuma jaga-jaga kalau ada race/event nyasar.
+  const row = payload.new;
   if (!row || row.sesi_id !== currentSesiId) return;
 
   if (payload.eventType === 'INSERT') {
@@ -1779,14 +1890,6 @@ function handleItemRowChange(payload) {
       patchClipItem(item.kode_produk, { qty: row.qty });
       pushActivity(`Qty ${item.nama_produk} ${oldQty} → ${row.qty}`);
     }
-    return;
-  }
-  if (payload.eventType === 'DELETE') {
-    const item = clipboard.find(c => c._sesiItemId === row.id);
-    if (!item) return; // udah kehapus duluan lokal (optimistic), gak perlu apa-apa lagi
-    const nama = item.nama_produk;
-    removeClipItemDom(item.kode_produk);
-    pushActivity(`${nama} dihapus`);
   }
 }
 
@@ -1798,6 +1901,58 @@ function presenceNameGuess() {
   return 'Kolaborator';
 }
 
+// ---- Penghapusan item: Broadcast manual, bukan andelin postgres_changes DELETE ----
+// LATAR BELAKANG: postgres_changes event DELETE terbukti gak reliable di Supabase
+// Realtime buat setup ini — udah dicek satu-satu (publication, RLS, replica identity,
+// bahkan SQL DELETE langsung dari SQL Editor) dan semuanya benar, tapi event-nya tetep
+// gak pernah nyampe. Ini match sama bug yang udah lama dilaporin di beberapa repo
+// Supabase (INSERT/UPDATE jalan, DELETE diem) — bukan salah konfigurasi kita. Makanya
+// penghapusan disiarin manual lewat Broadcast (send/on, bukan postgres_changes), yang
+// justru direkomendasikan Supabase sendiri buat use-case yang butuh reliability.
+function broadcastItemRemoved(item) {
+  if (!sesiPresenceChannel) return;
+  sesiPresenceChannel.send({
+    type: 'broadcast',
+    event: 'item_removed',
+    payload: { kode_produk: item.kode_produk, sesi_item_id: item._sesiItemId, nama_produk: item.nama_produk, actor: currentDisplayName() }
+  }).catch(() => { /* broadcast gagal gak boleh nge-block penghapusan lokal — item ini tetap kehapus di sisi yang ngirim */ });
+}
+function handleItemRemovedBroadcast({ payload }) {
+  if (!payload || !payload.kode_produk) return;
+  const item = clipboard.find(c => c.kode_produk === payload.kode_produk);
+  if (!item) return; // udah kehapus duluan lokal, atau bukan item sesi ini
+  removeClipItemDom(item.kode_produk);
+  pushActivity(`${payload.actor ? payload.actor + ' menghapus ' : ''}${payload.nama_produk || item.nama_produk}${payload.actor ? '' : ' dihapus'}`);
+}
+
+// ---- Update status item Kebutuhan RS: Broadcast manual, sama kayak pola DELETE
+// clipboard di atas ----
+// LATAR BELAKANG: postgres_changes buat tabel permintaan_item kena berlapis-lapis
+// masalah di setup ini (auth Realtime kepeleset ke anon, kolom filter permintaan_id
+// gak ke-index, dst) — daripada terus gantung ke situ, status item disiarin manual
+// lewat Broadcast begitu update ke server sukses, persis pola yang udah kebukti
+// reliable buat clipboard.
+function broadcastChecklistItemUpdated(item) {
+  if (!sesiPresenceChannel) return;
+  sesiPresenceChannel.send({
+    type: 'broadcast',
+    event: 'checklist_item_updated',
+    payload: { id: item.id, status: item.status, matched_items: item.matched_items || [], raw_text: item.raw_text, actor: currentDisplayName() }
+  }).catch(() => { /* broadcast gagal gak boleh nge-block update lokal — item ini tetap keupdate di sisi yang ngirim */ });
+}
+function handleChecklistItemUpdatedBroadcast({ payload }) {
+  if (!payload || payload.id == null) return;
+  const item = checklistItems.find(i => i.id === payload.id);
+  if (!item) return;
+  const statusChanged = payload.status !== item.status;
+  patchChecklistItem(payload.id, { status: payload.status, matched_items: payload.matched_items || [] });
+  if (statusChanged) {
+    const label = payload.status === 'TERPENUHI' ? 'bisa dipenuhi' : payload.status === 'TIDAK_TERPENUHI' ? 'tidak bisa dipenuhi' : 'PENDING lagi';
+    const actor = payload.actor ? payload.actor + ' menandai ' : '';
+    pushActivity(`${actor}"${payload.raw_text || item.raw_text}" ${label}`);
+  }
+}
+
 // ---- Activity feed ringan (in-memory, dicap 8 entri terakhir) ----
 function pushActivity(msg) {
   rtActivityLog.unshift({ ts: new Date(), msg });
@@ -1805,16 +1960,22 @@ function pushActivity(msg) {
   renderActivityFeed();
 }
 function renderActivityFeed() {
+  const wrap = document.getElementById('rt-feed-wrap');
   const el = document.getElementById('rt-activity-feed');
-  if (!el) return;
-  if (!rtActivityLog.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
-  el.style.display = 'block';
+  const label = document.getElementById('rt-feed-toggle-label');
+  if (!wrap || !el) return;
+  if (!rtActivityLog.length) { wrap.style.display = 'none'; el.innerHTML = ''; return; }
+  wrap.style.display = 'block';
+  if (label) label.textContent = `Aktivitas terbaru (${rtActivityLog.length})`;
   el.innerHTML = rtActivityLog.map((a, i) => {
     const hh = String(a.ts.getHours()).padStart(2, '0');
     const mm = String(a.ts.getMinutes()).padStart(2, '0');
     return `<div${i === 0 ? ' class="rt-fade-in"' : ''} style="padding:2px 0">${hh}:${mm} — ${a.msg}</div>`;
   }).join('');
 }
+document.getElementById('rt-feed-toggle').addEventListener('click', () => {
+  document.getElementById('rt-feed-wrap').classList.toggle('rt-feed-collapsed');
+});
 
 // ---- Presence ----
 function handlePresenceSync() {
@@ -1838,14 +1999,33 @@ function handlePresenceLeave({ key, leftPresences }) {
   const nama = leftPresences && leftPresences[0] && leftPresences[0].nama;
   if (nama) showToast(`${nama} keluar dari sesi`, 'presence');
 }
+const RT_AVATAR_PALETTE = ['#e5484d', '#f76b15', '#ffb224', '#46a758', '#12a594', '#0091ff', '#8e4ec6', '#e93d82'];
+function avatarColorFor(seed) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  return RT_AVATAR_PALETTE[hash % RT_AVATAR_PALETTE.length];
+}
+function initialsFor(nama) {
+  const parts = nama.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+const RT_STATUS_LABELS = { connecting: 'Menyambungkan…', live: 'Live', reconnecting: 'Menyambung ulang…', offline: 'Offline' };
 function renderPresenceRoster() {
-  const el = document.getElementById('rt-presence');
-  if (!el) return;
-  const names = Object.values(presenceRoster).map(p => p.nama).filter(Boolean);
-  if (!names.length) { el.style.display = 'none'; return; }
-  el.style.display = 'flex';
-  el.title = names.join(', ');
-  el.innerHTML = `<i class="ti ti-users"></i> ${names.length} online`;
+  const wrap = document.getElementById('rt-live');
+  const cluster = document.getElementById('rt-avatar-cluster');
+  if (!wrap || !cluster) return;
+  const entries = Object.values(presenceRoster).filter(p => p.nama);
+  const MAX_SHOWN = 4;
+  const shown = entries.slice(0, MAX_SHOWN);
+  const overflow = entries.length - shown.length;
+  cluster.innerHTML = shown.map(p => {
+    const awayCls = p.status === 'away' ? ' away' : '';
+    return `<span class="rt-avatar${awayCls}" style="background:${avatarColorFor(p.nama)}">${initialsFor(p.nama)}</span>`;
+  }).join('') + (overflow > 0 ? `<span class="rt-avatar-more">+${overflow}</span>` : '');
+  const names = entries.map(p => p.nama + (p.status === 'away' ? ' (away)' : ''));
+  wrap.title = (names.length ? names.join(', ') : 'Cuma kamu di sesi ini') + ' — ' + (RT_STATUS_LABELS[rtConnState] || '');
 }
 
 // Ambil Permintaan RS yang nempel ke sesi ini (kalau ada) dan tampilin di
@@ -4275,80 +4455,109 @@ function namaProdukByKode(kode) {
   return c ? c.nama_produk : null;
 }
 
-function renderChecklist() {
+function updateKbCounts() {
   const pending = checklistItems.filter(i => i.status === 'PENDING').length;
   const done = checklistItems.filter(i => i.status === 'TERPENUHI').length;
   const na = checklistItems.filter(i => i.status === 'TIDAK_TERPENUHI').length;
-
   kbTitle.textContent = 'Kebutuhan RS';
   kbCount.textContent = `${pending} belum dicek · ${done} bisa dipenuhi · ${na} tidak bisa`;
   updateKbTabState();
   updateClipSummaryStrip();
+}
+
+// Template satu baris Kebutuhan RS — dipakai render awal (renderChecklist) MAUPUN
+// patch realtime (patchChecklistItem), biar markup-nya gak dobel definisi.
+function renderChecklistItemHtml(item) {
+  const isPending = item.status === 'PENDING';
+  const isDone = item.status === 'TERPENUHI';
+  const isNa = item.status === 'TIDAK_TERPENUHI';
+  const isPicking = checklistPickingId === item.id;
+  const cls = isDone ? 'terpenuhi' : isNa ? 'tidak-terpenuhi' : '';
+
+  let sub = '';
+  if (isDone) sub = `✓ Bisa dipenuhi`;
+  else if (isNa) sub = `✕ Tidak bisa dipenuhi`;
+
+  let matchedHtml = '';
+  if (isDone && item.matched_items && item.matched_items.length) {
+    matchedHtml = `<div class="kb-item-matched">${item.matched_items.map(l => {
+      const nama = namaProdukByKode(l.kode_produk);
+      const qtyTxt = l.qty_alokasi != null ? ` · qty ${l.qty_alokasi}` : '';
+      return `<span class="kb-matched-row">→ ${l.kode_produk}${nama ? ' — ' + nama : ''}${qtyTxt}</span>`;
+    }).join('')}</div>`;
+  }
+
+  let bodyHtml;
+  if (isPicking) {
+    // Mode pilih produk: checkbox multi-select dari clipboard (bisa dicentang
+    // lebih dari satu buat kebutuhan yang dipenuhi campuran beberapa SKU) +
+    // Konfirmasi/Batal. Muncul baik dari klik "Bisa Dipenuhi" (item PENDING)
+    // maupun dari klik "Ubah produk" (item yang udah TERPENUHI).
+    bodyHtml = `
+      <div class="kb-picker">
+        ${clipboardPickerHtml(item.id, item.matched_items)}
+        <div class="kb-picker-error" data-picker-error="${item.id}" style="display:none">Pilih minimal 1 produk dulu.</div>
+        <div class="kb-picker-actions">
+          <button class="kb-cancel-btn" data-action="pick-cancel" data-id="${item.id}">Batal</button>
+          <button class="kb-confirm-btn" data-action="pick-confirm" data-id="${item.id}">Konfirmasi</button>
+        </div>
+      </div>`;
+  } else if (isPending) {
+    bodyHtml = `
+      <div class="kb-item-actions">
+        <button class="kb-bisa-btn" data-action="bisa" data-id="${item.id}">✓ Bisa Dipenuhi</button>
+        <button class="kb-tidak-btn" data-action="tidak" data-id="${item.id}">✕ Tidak Bisa</button>
+      </div>`;
+  } else {
+    // Sudah dikonfirmasi (TERPENUHI/TIDAK_TERPENUHI): status kekunci, tapi
+    // tetep bisa diubah/dibatalkan lewat dua link kecil ini.
+    bodyHtml = `
+      <div class="kb-item-links">
+        ${isDone ? `<a data-action="change" data-id="${item.id}">Ubah produk</a>` : ''}
+        <a class="kb-batal-link" data-action="undo" data-id="${item.id}">Batal</a>
+      </div>`;
+  }
+
+  return `<div class="kb-item ${cls}" data-id="${item.id}">
+    <div class="kb-item-text">${item.raw_text}${item.qty_diminta ? ' · qty ' + item.qty_diminta : ''}${item.pagu_satuan != null ? ' · pagu satuan ' + rupiah(item.pagu_satuan) : ''}</div>
+    ${sub ? `<div class="kb-item-sub">${sub}</div>` : ''}
+    ${matchedHtml}
+    ${bodyHtml}
+  </div>`;
+}
+
+function renderChecklist() {
+  updateKbCounts();
 
   kbSummary.innerHTML = `
     <div class="kb-summary-row"><span>Nama RS</span><b>${checklistNamaRs || '-'}</b></div>
     <div class="kb-summary-row"><span>Pagu</span><b>${checklistPagu != null ? rupiah(checklistPagu) : '-'}</b></div>
   `;
 
-  kbList.innerHTML = checklistItems.map(item => {
-    const isPending = item.status === 'PENDING';
-    const isDone = item.status === 'TERPENUHI';
-    const isNa = item.status === 'TIDAK_TERPENUHI';
-    const isPicking = checklistPickingId === item.id;
-    const cls = isDone ? 'terpenuhi' : isNa ? 'tidak-terpenuhi' : '';
-
-    let sub = '';
-    if (isDone) sub = `✓ Bisa dipenuhi`;
-    else if (isNa) sub = `✕ Tidak bisa dipenuhi`;
-
-    let matchedHtml = '';
-    if (isDone && item.matched_items && item.matched_items.length) {
-      matchedHtml = `<div class="kb-item-matched">${item.matched_items.map(l => {
-        const nama = namaProdukByKode(l.kode_produk);
-        const qtyTxt = l.qty_alokasi != null ? ` · qty ${l.qty_alokasi}` : '';
-        return `<span class="kb-matched-row">→ ${l.kode_produk}${nama ? ' — ' + nama : ''}${qtyTxt}</span>`;
-      }).join('')}</div>`;
-    }
-
-    let bodyHtml;
-    if (isPicking) {
-      // Mode pilih produk: checkbox multi-select dari clipboard (bisa dicentang
-      // lebih dari satu buat kebutuhan yang dipenuhi campuran beberapa SKU) +
-      // Konfirmasi/Batal. Muncul baik dari klik "Bisa Dipenuhi" (item PENDING)
-      // maupun dari klik "Ubah produk" (item yang udah TERPENUHI).
-      bodyHtml = `
-        <div class="kb-picker">
-          ${clipboardPickerHtml(item.id, item.matched_items)}
-          <div class="kb-picker-error" data-picker-error="${item.id}" style="display:none">Pilih minimal 1 produk dulu.</div>
-          <div class="kb-picker-actions">
-            <button class="kb-cancel-btn" data-action="pick-cancel" data-id="${item.id}">Batal</button>
-            <button class="kb-confirm-btn" data-action="pick-confirm" data-id="${item.id}">Konfirmasi</button>
-          </div>
-        </div>`;
-    } else if (isPending) {
-      bodyHtml = `
-        <div class="kb-item-actions">
-          <button class="kb-bisa-btn" data-action="bisa" data-id="${item.id}">✓ Bisa Dipenuhi</button>
-          <button class="kb-tidak-btn" data-action="tidak" data-id="${item.id}">✕ Tidak Bisa</button>
-        </div>`;
-    } else {
-      // Sudah dikonfirmasi (TERPENUHI/TIDAK_TERPENUHI): status kekunci, tapi
-      // tetep bisa diubah/dibatalkan lewat dua link kecil ini.
-      bodyHtml = `
-        <div class="kb-item-links">
-          ${isDone ? `<a data-action="change" data-id="${item.id}">Ubah produk</a>` : ''}
-          <a class="kb-batal-link" data-action="undo" data-id="${item.id}">Batal</a>
-        </div>`;
-    }
-
-    return `<div class="kb-item ${cls}">
-      <div class="kb-item-text">${item.raw_text}${item.qty_diminta ? ' · qty ' + item.qty_diminta : ''}${item.pagu_satuan != null ? ' · pagu satuan ' + rupiah(item.pagu_satuan) : ''}</div>
-      ${sub ? `<div class="kb-item-sub">${sub}</div>` : ''}
-      ${matchedHtml}
-      ${bodyHtml}
-    </div>`;
-  }).join('');
+  kbList.innerHTML = checklistItems.map(renderChecklistItemHtml).join('');
 }
+
+// ---- Patch granular buat 1 item Kebutuhan RS (dipakai realtime UPDATE dari
+// kolaborator lain) — gak nge-rebuild seluruh daftar kayak renderChecklist(). ----
+function patchChecklistItem(id, changes) {
+  const item = checklistItems.find(i => i.id === id);
+  if (!item) return;
+  if (checklistPickingId === id) return; // lagi dipilihin produknya sama user lokal, jangan diganggu dulu
+  Object.assign(item, changes);
+  updateKbCounts();
+  const node = kbList.querySelector(`.kb-item[data-id="${CSS.escape(String(id))}"]`);
+  if (node) {
+    const temp = document.createElement('div');
+    temp.innerHTML = renderChecklistItemHtml(item);
+    const newNode = temp.firstElementChild;
+    newNode.classList.add('rt-pulse');
+    node.replaceWith(newNode);
+  } else {
+    renderChecklist(); // fallback aman kalau node-nya gak ketemu (harusnya jarang)
+  }
+}
+
+
 
 // Total qty_alokasi dari SEMUA item Kebutuhan RS yang match ke produk yang sama
 // (by produk_id kalau ada, fallback ke kode_produk) — dipake buat sinkronin qty
@@ -4444,11 +4653,13 @@ kbList.addEventListener('click', async (e) => {
 
     btn.disabled = true;
     try {
+      markLocalWrite(PERMINTAAN_ITEM_TABLE, itemId, 'status', 'TERPENUHI');
       await callUpdatePermintaanItemMulti(itemId, 'TERPENUHI', links);
       item.status = 'TERPENUHI';
       item.matched_items = links;
       checklistPickingId = null;
       renderChecklist();
+      broadcastChecklistItemUpdated(item);
       autoFinalizePermintaan();
     } catch (err) {
       showToast('Gagal update: ' + err.message, 'error');
@@ -4461,6 +4672,7 @@ kbList.addEventListener('click', async (e) => {
     btn.closest('.kb-item-actions').querySelectorAll('button').forEach(b => b.disabled = true);
     const prevMatched = item.matched_items || [];
     try {
+      markLocalWrite(PERMINTAAN_ITEM_TABLE, itemId, 'status', 'TIDAK_TERPENUHI');
       await callUpdatePermintaanItemMulti(itemId, 'TIDAK_TERPENUHI', []);
       item.status = 'TIDAK_TERPENUHI';
       item.matched_items = [];
@@ -4476,6 +4688,7 @@ kbList.addEventListener('click', async (e) => {
       });
       if (clipQtyChanged) updateClipboard();
       renderChecklist();
+      broadcastChecklistItemUpdated(item);
       autoFinalizePermintaan();
     } catch (err) {
       showToast('Gagal update: ' + err.message, 'error');
@@ -4487,6 +4700,7 @@ kbList.addEventListener('click', async (e) => {
   if (action === 'undo') {
     const prevMatched = item.matched_items || [];
     try {
+      markLocalWrite(PERMINTAAN_ITEM_TABLE, itemId, 'status', 'PENDING');
       await callUpdatePermintaanItemMulti(itemId, 'PENDING', []);
       item.status = 'PENDING';
       item.matched_items = [];
@@ -4503,6 +4717,7 @@ kbList.addEventListener('click', async (e) => {
       if (clipQtyChanged) updateClipboard();
       checklistPickingId = null;
       renderChecklist();
+      broadcastChecklistItemUpdated(item);
       autoFinalizePermintaan();
     } catch (err) {
       showToast('Gagal membatalkan: ' + err.message, 'error');
