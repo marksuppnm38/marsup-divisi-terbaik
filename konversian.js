@@ -1003,19 +1003,34 @@ const sessionIndicator = document.getElementById('session-indicator');
 const sessionIndicatorDot = document.getElementById('session-indicator-dot');
 const sessionIndicatorText = document.getElementById('session-indicator-text');
 const btnEndSesi = document.getElementById('btn-end-sesi');
-const toastContainer = document.getElementById('toast-container');
+// LAZY LOOKUP, BUKAN const di-cache: <script src="konversian.js"> dieksekusi
+// sebelum <div id="toast-container"> sempet keparsing ke DOM (div-nya taruh
+// SETELAH tag script ini di HTML) — kalau di-cache di awal, hasilnya selalu
+// null dan showToast() bakal nge-throw tiap dipanggil. Yang paling parah:
+// exception itu bisa kejadian di TENGAH proses internal Presence sync
+// (syncDiff/syncState di supabase-js, dipicu dari handlePresenceJoin), dan
+// karena gak ketangkep, prosesnya keputus sebelum sempet nge-merge entry
+// user yang baru join ke presenceState() — akibatnya avatar kolaborator lain
+// gak pernah nongol walau join event-nya sendiri sukses diterima. Lookup
+// ulang tiap panggil beres karena pas showToast() beneran dipanggil (bukan
+// pas script awal jalan), div-nya udah pasti ada di DOM.
+function getToastContainer() {
+  return document.getElementById('toast-container');
+}
 const APP_TITLE_BASE = document.title; // "Conversion Workspace — PT Pionir Nusantara Manufacturing"
 
 // Notifikasi kecil yang muncul-hilang sendiri — dipakai buat kasih feedback instan
 // untuk aksi yang sebelumnya senyap (bikin sesi, selesaikan sesi), biar user gak
 // ragu-ragu apakah aksinya beneran kejadian atau enggak.
 function showToast(msg, type = 'success') {
+  const container = getToastContainer();
+  if (!container) return; // jaga-jaga: jangan sampe toast yang gagal nampil nge-crash pemanggilnya (mis. presence sync)
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
   const icon = type === 'error' ? 'ti-alert-circle' : (type === 'presence' ? 'ti-users' : 'ti-circle-check');
   el.innerHTML = `<i class="ti ${icon}"></i><span></span>`;
   el.querySelector('span').textContent = msg;
-  toastContainer.appendChild(el);
+  container.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
   setTimeout(() => {
     el.classList.remove('show');
@@ -1144,6 +1159,13 @@ async function persistAddItem(item) {
       item._sesiItemId = rows[0] && rows[0].id;
     }
     await touchSesiUpdatedAt(sesiId);
+    // Nama pengubah yang akurat di activity feed: postgres_changes INSERT-nya sendiri
+    // reliable (beda dari DELETE), tapi payload row-nya gak bawa info "siapa yang nambahin"
+    // (gak ada kolom pengubah di tabel). Makanya disiarin manual lewat Broadcast juga,
+    // sama pola kayak broadcastItemRemoved/broadcastChecklistItemUpdated — dipakai
+    // handleItemRowChange buat isi nama asli di activity feed, gantiin placeholder
+    // "Kolaborator" dari presenceNameGuess().
+    if (typeof broadcastItemAdded === 'function') broadcastItemAdded(item);
     setSesiSavedStatus('Tersimpan ✓');
   } catch (err) {
     setSesiSavedStatus('Gagal simpan: ' + err.message, true);
@@ -1694,7 +1716,16 @@ let sesiDbChannel = null;
 // Nama yang ditampilin buat presence/activity/editing-indicator — pake PIC Marsup
 // (lebih manusiawi daripada email), fallback ke email kalau belum diisi.
 function currentDisplayName() {
-  return (inpMarsup && inpMarsup.value.trim()) || (currentUser && currentUser.email) || 'Anonim';
+  // PENTING: currentUser (identitas login) harus jadi sumber utama, BUKAN inpMarsup.
+  // inpMarsup ("PIC Marsup") adalah field TEKS BEBAS di level SESI yang di-share ke
+  // semua kolaborator lewat header form (sinkron server-side) — begitu satu orang
+  // ngisi field itu, SEMUA browser yang buka sesi yang sama bakal baca teks yang
+  // sama persis dari inpMarsup.value, walaupun login mereka beda-beda. Kalau
+  // dipakein duluan, hasilnya SEMUA kolaborator "ketuker" jadi nama yang sama di
+  // activity feed/presence — persis bug yang kejadian (dua akun login beda tapi
+  // keduanya ketulis nama yang sama di feed). currentUser.email itu satu-satunya
+  // yang beneran unik per-browser/per-login, jadi wajib menang duluan.
+  return (currentUser && currentUser.email) || (inpMarsup && inpMarsup.value.trim()) || 'Anonim';
 }
 let sesiPresenceChannel = null;
 let presenceRoster = {}; // presence key -> {nama, status, joined_at}
@@ -1757,6 +1788,7 @@ function subscribeToSesiRealtime(sesiId) {
     .on('presence', { event: 'sync' }, handlePresenceSync)
     .on('presence', { event: 'join' }, handlePresenceJoin)
     .on('presence', { event: 'leave' }, handlePresenceLeave)
+    .on('broadcast', { event: 'item_added' }, handleItemAddedBroadcast)
     .on('broadcast', { event: 'item_removed' }, handleItemRemovedBroadcast)
     .on('broadcast', { event: 'checklist_item_updated' }, handleChecklistItemUpdatedBroadcast)
     .on('broadcast', { event: 'editing' }, handleEditingBroadcast)
@@ -1879,7 +1911,25 @@ function handleItemRowChange(payload) {
     // ngecek "ini beneran baru" tanpa perlu tracking id kayak update/delete.
     if (clipboard.some(c => c.kode_produk === row.kode_produk)) return;
     insertClipItem(mapSesiItemRowToClipItem(row));
-    pushActivity(`${presenceNameGuess()} menambahkan ${row.nama_produk}`);
+    const pendingActor = pendingAddActors.get(row.kode_produk);
+    if (pendingActor) {
+      clearTimeout(pendingActor.timer);
+      pendingAddActors.delete(row.kode_produk);
+      pushActivity(`${pendingActor.actor} menambahkan ${row.nama_produk}`);
+    } else {
+      // Broadcast 'item_added' lewat kanal presence terpisah dari postgres_changes —
+      // gak ada jaminan urutan sampenya, dan pas nambah banyak item sekaligus
+      // (mis. expand SET) postgres_changes kadang nyampe duluan sebelum broadcast-nya
+      // sempet diterima. Kasih jeda singkat dulu biar nama aslinya sempet nyusul,
+      // baru jatuh ke placeholder "Kolaborator" kalau emang beneran gak nyampe.
+      const kode = row.kode_produk, nama = row.nama_produk;
+      setTimeout(() => {
+        const late = pendingAddActors.get(kode);
+        let actorNama = presenceNameGuess();
+        if (late) { clearTimeout(late.timer); pendingAddActors.delete(kode); actorNama = late.actor; }
+        pushActivity(`${actorNama} menambahkan ${nama}`);
+      }, 400);
+    }
     return;
   }
   if (payload.eventType === 'UPDATE') {
@@ -1893,12 +1943,36 @@ function handleItemRowChange(payload) {
   }
 }
 
-// Placeholder ringan buat "siapa yang ngelakuin ini" di activity feed — presence
-// gak nyimpen histori per-event, jadi paling akurat yang bisa kita bilang cuma
-// "kolaborator" kalau bukan diri sendiri. Upgrade ke nama presisi (butuh kolom
-// pengubah di tabel item) masuk tahap activity-feed berikutnya.
+// Fallback kalau-kalau broadcast 'item_added' gak nyampe (mis. kirim gagal, atau
+// event postgres_changes INSERT-nya nyampe duluan sebelum broadcast sempet diterima).
+// Normalnya gak kepake — lihat pendingAddActors di bawah buat jalur utama.
 function presenceNameGuess() {
   return 'Kolaborator';
+}
+
+// ---- Atribusi nama pengubah buat item yang baru ditambahin ----
+// postgres_changes INSERT di tabel SESI_ITEM_TABLE terbukti reliable (beda dari
+// DELETE), tapi payload row-nya gak bawa info "siapa yang nambahin" — gak ada
+// kolom pengubah di tabel. Solusinya: begitu REST POST-nya sukses, pengirim
+// nyiarin nama dia manual lewat Broadcast (broadcastItemAdded), ditampung
+// sebentar di sini per kode_produk, terus dipakai handleItemRowChange buat isi
+// nama asli di activity feed pas event INSERT-nya nyampe. Kalau broadcast gak
+// nyampe/telat, activity feed jatuh balik ke placeholder "Kolaborator".
+const pendingAddActors = new Map(); // kode_produk -> { actor, timer }
+function broadcastItemAdded(item) {
+  if (!sesiPresenceChannel) return;
+  sesiPresenceChannel.send({
+    type: 'broadcast',
+    event: 'item_added',
+    payload: { kode_produk: item.kode_produk, nama_produk: item.nama_produk, actor: currentDisplayName() }
+  }).catch(() => { /* broadcast gagal gak boleh nge-block penambahan lokal — cuma activity feed orang lain yang jatuh balik ke "Kolaborator" */ });
+}
+function handleItemAddedBroadcast({ payload }) {
+  if (!payload || !payload.kode_produk) return;
+  const existing = pendingAddActors.get(payload.kode_produk);
+  if (existing) clearTimeout(existing.timer);
+  const timer = setTimeout(() => pendingAddActors.delete(payload.kode_produk), 8000); // jaga-jaga item gak jadi kesave / event INSERT gak pernah nyampe
+  pendingAddActors.set(payload.kode_produk, { actor: payload.actor, timer });
 }
 
 // ---- Penghapusan item: Broadcast manual, bukan andelin postgres_changes DELETE ----
