@@ -1072,10 +1072,15 @@ sessionIndicator.addEventListener('click', () => {
   switchSubTab('sesi');
 });
 
-// Semua panggilan REST ke Supabase buat modul sesi lewat sini, supaya kalau
-// token expired di tengah jalan, langsung ditendang balik ke gerbang login.
+// Semua panggilan REST ke Supabase buat modul sesi lewat sini. Kalau token
+// expired di tengah jalan, coba refresh diam-diam dulu pakai refresh_token
+// yang tersimpan (biasanya masih valid jauh lebih lama dari access_token) —
+// baru kalau refresh-nya sendiri gagal (refresh_token juga udah invalid/
+// dicabut), baru ditendang balik ke gerbang login. Sebelumnya 401 langsung
+// nendang ke login walau refresh_token-nya sebenernya masih hidup, jadi user
+// kerja di tengah sesi bisa keputus paksa padahal harusnya bisa nyambung mulus.
 async function sesiFetch(path, options = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  const doFetch = () => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -1084,7 +1089,26 @@ async function sesiFetch(path, options = {}) {
       ...(options.headers || {})
     }
   });
-  if (res.status === 401) { showGate('Sesi kamu habis, silakan masuk lagi.'); throw new Error('Sesi login habis'); }
+  let res = await doFetch();
+  if (res.status === 401) {
+    const saved = readAuthSession();
+    if (saved && saved.refresh_token) {
+      try {
+        const data = await refreshAuthSession(saved.refresh_token);
+        stokAccessToken = data.access_token;
+        currentUser = data.user ? { id: data.user.id, email: data.user.email } : currentUser;
+        saveAuthSession(data);
+        syncRealtimeAuth();
+        res = await doFetch(); // ulang sekali pakai token baru
+      } catch {
+        // refresh_token juga udah gak valid — beneran harus login ulang
+      }
+    }
+    if (res.status === 401) {
+      showGate('Sesi kamu habis, silakan masuk lagi.');
+      throw new Error('Sesi login habis');
+    }
+  }
   return res;
 }
 
@@ -2402,12 +2426,21 @@ themeToggle.addEventListener('click', () => {
 });
 
 // SUPABASE
+// PENTING: pakai stokAccessToken (token user yang login), BUKAN ANON_KEY.
+// RPC-RPC ini (search produk+harga, dictionary, cari set) memang harusnya
+// cuma bisa diakses karyawan yang login — kalau dikirim pakai ANON_KEY,
+// siapa pun yang tau URL Supabase + anon key (publik, nempel di JS bundle)
+// bisa manggil langsung tanpa pernah login lewat app ini sama sekali.
+// CATATAN: ganti header ini doang GAK CUKUP buat nutup celahnya kalau
+// izin EXECUTE function-nya di Supabase masih di-grant ke role 'anon' —
+// itu WAJIB dicabut juga dari sisi database (lihat catatan di tempat lain).
 async function rpc(fn, params) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',
-    headers: {'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY},
+    headers: {'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+(stokAccessToken || ANON_KEY)},
     body: JSON.stringify(params)
   });
+  if (res.status === 401) { showGate('Sesi kamu habis, silakan masuk lagi.'); return {data:null, error:{message:'Sesi login habis'}}; }
   const data = await res.json();
   if (!res.ok) return {data:null, error:data};
   return {data, error:null};
