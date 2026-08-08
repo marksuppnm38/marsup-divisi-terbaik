@@ -789,6 +789,7 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .pr-field label{display:block;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
 .pr-field input[type="text"],.pr-field input[type="date"],.pr-field input[type="email"],.pr-field input[type="password"]{width:100%;height:32px;padding:0 10px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none}
 .pr-field textarea{width:100%;min-height:120px;padding:8px 10px;font-size:12.5px;font-family:var(--mono);border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none;resize:vertical}
+.helper-text{font-size:11px;color:var(--text-muted);margin-top:4px;line-height:1.4}
 .pr-field input[type="file"]{width:100%;font-size:12px;padding:8px;border:1.5px dashed var(--border-strong);border-radius:8px;background:var(--surface-2)}
 .pr-row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pr-actions{display:flex;gap:8px;margin-top:14px}
@@ -847,8 +848,12 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .kb-collapsible{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .kb-collapsible-inner{flex:1;min-height:0;display:grid;grid-template-rows:1fr;opacity:1;transition:grid-template-rows .25s var(--ease,ease),opacity .22s ease .05s}
 .kb-collapsible-content{overflow:hidden;display:flex;flex-direction:column;min-height:0}
-.clip-kebutuhan-section.kb-collapsed .kb-collapsible{flex:0 0 auto}
-.clip-kebutuhan-section.kb-collapsed .kb-collapsible-inner{grid-template-rows:0fr;opacity:0;transition:grid-template-rows .25s var(--ease,ease),opacity .18s ease}
+/* Ciutkan itu buat ngilangin metadata (Nama RS/Pagu/referensi screenshot) yang
+   sering dobel sama info yang udah kelihatan di judul tab session di atas —
+   BUKAN buat nyembunyiin daftar item permintaan. Daftar item itu justru inti
+   dari fitur ini, jadi kb-collapsible sengaja TIDAK ikut collapsed lagi. */
+.clip-kebutuhan-section.kb-collapsed .kb-summary,
+.clip-kebutuhan-section.kb-collapsed #kb-ss-ref-strip{display:none!important}
 .kb-head{display:flex;align-items:flex-start;justify-content:space-between;padding:10px 14px 6px;gap:6px}
 .kb-head-btns{display:flex;gap:2px;flex-shrink:0}
 .kb-title{font-size:12.5px;font-weight:700;color:var(--accent-text)}

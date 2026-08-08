@@ -2053,7 +2053,11 @@ async function loadChecklistForSesi(sesiId) {
     checklistPagu = (data.pagu != null) ? data.pagu : checklistPagu;
     checklistPermintaanId = data.permintaan_id;
 
-    kbSection.classList.remove('kb-collapsed');
+    // Dulu di sini ada `kbSection.classList.remove('kb-collapsed')` yang
+    // maksa buka lagi tiap kali checklist dimuat — jadinya preferensi
+    // ciutkan yang udah dipilih user ke-reset terus tiap refresh sesi.
+    // Sekarang dibiarin, ikutin state ciutan terakhir yang user pilih
+    // (tersimpan di sessionStorage lewat kb-collapse-btn).
     kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
     kbRefreshStatus.textContent = 'Diperbarui ✓ ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
     renderChecklist();
@@ -2144,6 +2148,37 @@ const prNamaRs = document.getElementById('pr-nama-rs');
 const prTanggal = document.getElementById('pr-tanggal');
 const prPicSales = document.getElementById('pr-pic-sales');
 const prPagu = document.getElementById('pr-pagu');
+
+// ---- Sinkron dua-arah dengan form sesi di atas (inpRs/inpSales) ----
+// Dulu Nama RS & PIC Sales harus diketik ULANG di modal Permintaan RS meskipun
+// udah keisi di form sesi paling atas — dan hasil ketikan di modal ini nimpa
+// nama_rs/nama_sales sesi lewat jalur save terpisah (race/potensi beda nilai).
+// Sekarang: satu sumber data. Field di modal ini cuma "jendela" ke inpRs/inpSales;
+// ngetik di salah satu langsung kecermin ke yang lain lewat event 'input' asli,
+// jadi lewat jalur auto-save yang sama persis (headerSaveTimer) — bukan jalur baru.
+let prSyncBound = false;
+function bindPrSyncWithHeader() {
+  if (prSyncBound) return;
+  prSyncBound = true;
+  prNamaRs.addEventListener('input', () => {
+    if (inpRs.value === prNamaRs.value) return;
+    inpRs.value = prNamaRs.value;
+    inpRs.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  prPicSales.addEventListener('input', () => {
+    if (inpSales.value === prPicSales.value) return;
+    inpSales.value = prPicSales.value;
+    inpSales.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  // Sebaliknya: kalau lagi diketik di form sesi atas SEMENTARA modal PR kebuka,
+  // ikut ke-update juga (jarang kejadian, tapi biar tetep konsisten).
+  inpRs.addEventListener('input', () => { if (prModal.classList.contains('show')) prNamaRs.value = inpRs.value; });
+  inpSales.addEventListener('input', () => { if (prModal.classList.contains('show')) prPicSales.value = inpSales.value; });
+}
+function syncPrFieldsFromHeader() {
+  prNamaRs.value = inpRs.value || '';
+  prPicSales.value = inpSales.value || '';
+}
 
 // Format input Pagu jadi "150.000.000" sambil ngetik, biar kebaca jelas —
 // tapi tetep nerima keyboard numerik biasa (bukan input type=number yang suka nolak titik).
@@ -3976,6 +4011,11 @@ function openPrModal() {
   prReviewWrap.style.display = 'none';
   prFormWrap.style.display = '';
   if (!prTanggal.value) prTanggal.value = new Date().toISOString().slice(0,10);
+  // Isi otomatis dari form sesi di atas (kalau sudah keisi) — biar gak ngetik ulang.
+  // Kalau form sesi masih kosong (misal ini aksi pertama di sesi baru), field di
+  // sini tetap kebuka kosong & bisa diisi seperti biasa, lalu ikut kecermin ke atas.
+  syncPrFieldsFromHeader();
+  bindPrSyncWithHeader();
 
   // Satu login di gerbang awal sudah cukup — kalau token expired, balik ke gerbang.
   if (!stokAccessToken) {
@@ -4329,19 +4369,11 @@ prReviewSaveBtn.addEventListener('click', async () => {
     // Permintaan RS ini nempel ke sesi konversi yang lagi aktif (bikin baru
     // kalau belum ada), jadi kalau temen buka sesi yang sama, daftar
     // permintaannya ikut kelihatan — bukan cuma tersimpan di layar sendiri.
+    // nama_rs & nama_sales sudah tersinkron & tersimpan lewat form sesi di atas
+    // (lihat bindPrSyncWithHeader/headerSaveTimer) — gak perlu PATCH terpisah lagi
+    // di sini, jadi cuma ada SATU jalur simpan buat dua kolom ini (gak ada lagi
+    // risiko modal ini nimpa nilai sesi dengan nilai yang beda).
     const sesiId = await ensureSesi();
-    const namaRsTrim = prNamaRs.value.trim();
-    const picSalesTrim = prPicSales.value.trim();
-    if (namaRsTrim || picSalesTrim) {
-      await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          nama_rs: namaRsTrim || null,
-          nama_sales: picSalesTrim || null,
-          updated_at: new Date().toISOString()
-        })
-      });
-    }
 
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/submit_permintaan_rs`, {
       method: 'POST',
@@ -4412,7 +4444,9 @@ function startChecklistSession(submitResult, namaRs, picSales, pagu) {
   updateClipboard();
   setClipHeaderCollapsed(true);
 
-  kbSection.classList.remove('kb-collapsed');
+  // Sama kayak di loadChecklistForSesi: gak maksa buka kbSection lagi di sini,
+  // biar preferensi ciutan/buka yang dipilih user konsisten — gak balik
+  // "meledak" nampilin semua item tiap kali baru submit Permintaan RS.
   kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
   kbRefreshStatus.textContent = '';
   renderChecklist();
@@ -4739,17 +4773,32 @@ kbList.addEventListener('change', (e) => {
   if (errEl && chk.checked) errEl.style.display = 'none';
 });
 
-const KB_COLLAPSE_KEY = 'pnm_kb_collapsed';
+// Key-nya di-versi-in ('_v2') biar preferensi lama yang sempat kesimpen dari
+// SEBELUM section ini beneran collapsible (klik ciutkan cuma nyembunyiin
+// daftar item, bukan summary Nama RS/Pagu) gak ikut kebawa jadi "expanded"
+// terus di reload berikutnya. User yang sempat klik toggle di versi lama
+// bakal mulai bersih lagi dengan default baru: ciutan.
+//
+// PENTING: "ciutkan" di sini cuma ngilangin baris Nama RS/Pagu/referensi
+// (kb-summary) — DAFTAR ITEM PERMINTAAN GAK PERNAH IKUT DICIUTKAN. Itu
+// justru konten utama section ini, jadi selalu kelihatan apapun state-nya.
+const KB_COLLAPSE_KEY = 'pnm_kb_collapsed_v2';
 kbCollapseBtn.addEventListener('click', () => {
   const collapsed = kbSection.classList.toggle('kb-collapsed');
-  kbCollapseBtn.title = collapsed ? 'Buka daftar' : 'Ciutkan daftar';
+  kbCollapseBtn.title = collapsed ? 'Tampilkan info RS (Nama RS/Pagu)' : 'Ciutkan info RS (Nama RS/Pagu)';
   sessionStorage.setItem(KB_COLLAPSE_KEY, collapsed ? '1' : '0');
 });
-// Kalau sebelumnya diciutkan di sesi browser yang sama, biarkan tetap ciutan
-// begitu daftar Kebutuhan RS pertama kali muncul.
-if (sessionStorage.getItem(KB_COLLAPSE_KEY) === '1') {
-  kbSection.classList.add('kb-collapsed');
-  kbCollapseBtn.title = 'Buka daftar';
+// Default HTML-nya sekarang udah "kb-collapsed" (biar info RS yang sering
+// dobel sama judul di atas gak makan tempat duluan) — jadi di sini tinggal
+// HORMATIN pilihan eksplisit user kalau ada: '1' tetap ciut, '0' berarti
+// user pernah buka sendiri dan mau tetap kebuka. Gak ada nilai tersimpan =
+// ikut default HTML (ciut).
+const kbCollapsePref = sessionStorage.getItem(KB_COLLAPSE_KEY);
+if (kbCollapsePref === '0') {
+  kbSection.classList.remove('kb-collapsed');
+  kbCollapseBtn.title = 'Ciutkan info RS (Nama RS/Pagu)';
+} else {
+  kbCollapseBtn.title = 'Tampilkan info RS (Nama RS/Pagu)';
 }
 
 // Kerja bareng dalam satu sesi yang sama bisa jalan bersamaan (bukan cuma

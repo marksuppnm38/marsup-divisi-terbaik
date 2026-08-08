@@ -346,7 +346,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 
     <div class="clip-tabs-wrap">
       <div class="clip-tab-panel" id="clip-tab-panel-kb" style="display:none">
-        <div id="clip-kebutuhan-section" class="clip-kebutuhan-section">
+        <div id="clip-kebutuhan-section" class="clip-kebutuhan-section kb-collapsed">
           <div class="clip-empty" id="kb-empty-state">
             <i class="ti ti-clipboard-text"></i>
             <p>Belum ada Permintaan RS buat sesi ini.<br>Catat dulu biar item yang diminta bisa dicocokkan ke produk yang kamu tambahkan ke Clipboard.</p>
@@ -362,7 +362,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
               </div>
               <div class="kb-head-btns">
                 <button class="kb-collapse-btn" id="kb-refresh-btn" title="Muat ulang (biar lihat update dari temen)"><i class="ti ti-refresh"></i></button>
-                <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan daftar"><i class="ti ti-chevron-up"></i></button>
+                <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan info RS (Nama RS/Pagu)"><i class="ti ti-chevron-up"></i></button>
               </div>
             </div>
             <div class="kb-summary" id="kb-summary"></div>
@@ -634,6 +634,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         <div class="pr-field">
           <label>Nama RS / Instansi</label>
           <input type="text" id="pr-nama-rs" placeholder="RS ABC"/>
+          <div class="helper-text">Sinkron otomatis dengan "Nama RS / Instansi" di form sesi atas — isi/ubah di sini atau di atas, sama aja.</div>
         </div>
         <div class="pr-field">
           <label>Tanggal</label>
@@ -644,6 +645,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         <div class="pr-field">
           <label>PIC Sales</label>
           <input type="text" id="pr-pic-sales" placeholder="Nama sales" list="sales-datalist" autocomplete="off"/>
+          <div class="helper-text">Sinkron otomatis dengan "Nama Sales" di form sesi atas — isi/ubah di sini atau di atas, sama aja.</div>
         </div>
         <!-- Satu datalist dipakai bareng oleh #inp-sales dan #pr-pic-sales, diisi dari
              tabel `sales` (master, sudah dinormalisasi) lewat loadSalesOptions(). -->
