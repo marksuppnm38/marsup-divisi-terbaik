@@ -62,7 +62,62 @@ function showApp() {
   appRoot.style.display = 'flex';
   openSesiFromUrlIfAny();
   loadSalesOptions();
+  updateUserMenu();
 }
+
+// ══════════════════════════════════════════
+// USER MENU / LOGOUT: dropdown kecil di header buat lihat siapa yang login
+// dan keluar dari sesi. Logout manual (bukan cuma clear localStorage) supaya
+// refresh token juga di-revoke di sisi Supabase, bukan cuma "lupa" di browser.
+// ══════════════════════════════════════════
+const userMenu = document.getElementById('user-menu');
+const userMenuToggle = document.getElementById('user-menu-toggle');
+const userMenuDropdown = document.getElementById('user-menu-dropdown');
+const userMenuEmail = document.getElementById('user-menu-email');
+const btnLogout = document.getElementById('btn-logout');
+
+function updateUserMenu() {
+  if (userMenuEmail) userMenuEmail.textContent = (currentUser && currentUser.email) || '-';
+}
+
+if (userMenuToggle) {
+  userMenuToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    userMenuDropdown.classList.toggle('open');
+  });
+}
+document.addEventListener('click', (e) => {
+  if (userMenuDropdown && userMenuDropdown.classList.contains('open') && !userMenu.contains(e.target)) {
+    userMenuDropdown.classList.remove('open');
+  }
+});
+
+async function doLogout() {
+  userMenuDropdown.classList.remove('open');
+  const ok = await showConfirmModal({
+    title: 'Keluar',
+    text: 'Kamu bakal keluar dari akun ini di perangkat ini. Sesi yang belum di-Record tetap tersimpan, bisa dilanjutkan lagi setelah login ulang.',
+    okText: 'Ya, Keluar',
+    danger: true
+  });
+  if (!ok) return;
+  const saved = readAuthSession();
+  // Revoke refresh token di server — best-effort, jangan sampai gagal logout
+  // lokal cuma gara-gara request ini gagal (mis. offline).
+  if (saved && saved.access_token) {
+    try {
+      await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+        method: 'POST',
+        headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + saved.access_token }
+      });
+    } catch { /* offline / gagal revoke di server — tetap lanjut logout lokal */ }
+  }
+  clearAuthSession();
+  gateEmail.value = '';
+  gatePassword.value = '';
+  showGate();
+}
+if (btnLogout) btnLogout.addEventListener('click', doLogout);
 
 // Isi datalist "Nama Sales" dari tabel master `sales` (via RPC get_sales_aktif,
 // security definer — bukan select langsung ke tabel, karena tabel sales pakai
