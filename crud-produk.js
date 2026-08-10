@@ -92,7 +92,8 @@ function showMsg(text, type){
   gateMsg.className = 'gate-msg show ' + type;
 }
 
-loginBtn.addEventListener('click', async () => {
+loginFormWrap.addEventListener('submit', async (e) => {
+  e.preventDefault(); // form asli mau reload halaman kalau di-submit -- ini yang bikin Enter kerasa "gak ngapa-ngapain" sebelumnya
   const email = loginEmail.value.trim().toLowerCase();
   const password = loginPassword.value;
   if (!email || !email.includes('@')) { showMsg('Masukkan email yang valid dulu ya.', 'error'); return; }
@@ -937,8 +938,29 @@ window.addEventListener('beforeunload', (e) => {
   }
 });
 
+// ---- Tab bertahap di modal Produk (Info Dasar selalu kebuka; sisanya kekunci
+// sampai Info Dasar tersimpan pertama kali, biar form gak kerasa numpuk) ----
+document.querySelectorAll('.prod-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.classList.contains('locked')) { showToast('Simpan Info Dasar dulu, baru bagian ini kebuka'); return; }
+    switchProdTab(btn.dataset.tab);
+  });
+});
+function switchProdTab(tab){
+  document.querySelectorAll('.prod-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.prod-tab-panel').forEach(p => p.classList.toggle('active', p.id === 'ptab-' + tab));
+}
+function setProdTabsLocked(locked){
+  document.querySelectorAll('.prod-tab[data-tab]:not([data-tab="dasar"])').forEach(b => {
+    b.classList.toggle('locked', locked);
+    b.title = locked ? 'Simpan Info Dasar dulu' : '';
+  });
+  if (locked) switchProdTab('dasar'); // kalau lagi buka tab yang baru dikunci, balik ke Info Dasar
+}
+
 function resetForm(){
   modalDirty = false;
+  document.querySelectorAll('.prod-tab.hidden-for-set').forEach(b => b.classList.remove('hidden-for-set'));
   document.getElementById('inaprocIndikator').style.display = 'none';
   ['f_kode_asli','f_kode_produk','f_nama_produk','f_no_akd','f_masa_berlaku','f_golongan',
    'f_kode_kfa','f_kode_cangkang','f_nama_cangkang','f_berat_gram','f_status_v6','f_link_v6',
@@ -970,8 +992,9 @@ function openAdd(){
   currentProdukId = null;
   modalTitle.textContent = 'Tambah Produk';
   modalSub.textContent = 'Isi data produk baru';
-  hargaSection.style.display = 'none';
-  mediaSection.style.display = 'none';
+  setProdTabsLocked(true);
+  document.getElementById('prodTabDasarCheck').style.display = 'none';
+  document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan &amp; Lanjut';
   deleteBtn.style.display = 'none';
   document.getElementById('toggleAkdBoxBtn').style.display = 'none';
   document.getElementById('akdHint').textContent = 'Simpan produk dulu sebelum mengelola relasi AKD.';
@@ -983,8 +1006,9 @@ async function openEdit(produkId){
   currentProdukId = produkId;
   modalTitle.textContent = 'Edit Produk';
   modalSub.textContent = 'Memuat data...';
-  hargaSection.style.display = 'block';
-  mediaSection.style.display = 'block';
+  setProdTabsLocked(false);
+  document.getElementById('prodTabDasarCheck').style.display = 'inline';
+  document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
   deleteBtn.style.display = 'inline-flex';
   document.getElementById('toggleAkdBoxBtn').style.display = 'inline-flex';
   modalOverlay.classList.add('open');
@@ -1227,20 +1251,45 @@ async function loadHarga(produkId){
 }
 function renderHargaTable(){
   const tbody = document.getElementById('hargaTableBody');
-  if (hargaRows.length === 0) {
+  renderHargaGroupInto(tbody, hargaRows, () => loadHarga(currentProdukId));
+}
+// EKATALOG adalah satu-satunya harga yang diinput manual -- SWASTA & UPLOAD cuma hasil rumus
+// turunan (lihat upsertHargaDariEkat), jadi ditampilkan grouped per tahun: EKATALOG jadi baris
+// utama yang bisa dihapus (hapus trio-nya sekaligus biar gak ada baris turunan yang jadi yatim),
+// SWASTA & UPLOAD ditampilkan sebagai info read-only di bawahnya, tanpa tombol hapus sendiri.
+function renderHargaGroupInto(tbody, rows, onAfterDelete){
+  if (!rows || rows.length === 0) {
     tbody.innerHTML = `<tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr>`;
     return;
   }
+  const byTahun = new Map();
+  rows.forEach(h => {
+    if (!byTahun.has(h.tahun)) byTahun.set(h.tahun, {});
+    byTahun.get(h.tahun)[h.jenis] = h;
+  });
+  const tahunList = [...byTahun.keys()].sort((a, b) => b - a);
   tbody.innerHTML = '';
-  hargaRows.forEach(h => {
+  tahunList.forEach(tahun => {
+    const group = byTahun.get(tahun);
+    const ekat = group.EKATALOG;
+    const turunan = ['SWASTA', 'UPLOAD'].filter(j => group[j])
+      .map(j => `${j} Rp ${Number(group[j].harga).toLocaleString('id-ID')}`).join(' · ');
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${h.tahun}</td>
-      <td>${escapeHtml(h.jenis)}</td>
-      <td>Rp ${Number(h.harga).toLocaleString('id-ID')}</td>
-      <td><button class="btn btn-danger-ghost btn-sm" data-id="${h.id}"><i class="ti ti-trash"></i></button></td>
+      <td>${tahun}</td>
+      <td>${ekat ? 'Rp ' + Number(ekat.harga).toLocaleString('id-ID') : '<span style="color:var(--text-muted);">— belum ada</span>'}</td>
+      <td style="color:var(--text-muted);font-size:12px;">${turunan || '—'}</td>
+      <td>${ekat ? `<button class="btn btn-danger-ghost btn-sm" title="Hapus EKATALOG, SWASTA & UPLOAD tahun ${tahun}"><i class="ti ti-trash"></i></button>` : ''}</td>
     `;
-    tr.querySelector('button').addEventListener('click', () => deleteHarga(h.id));
+    const delBtn = tr.querySelector('button');
+    if (delBtn) delBtn.addEventListener('click', async () => {
+      if (!confirm(`Hapus harga tahun ${tahun} (EKATALOG, SWASTA & UPLOAD sekaligus)?`)) return;
+      const produkId = ekat.produk_id;
+      const { error } = await sb.from('produk_harga').delete().eq('produk_id', produkId).eq('tahun', tahun);
+      if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
+      showToast('Harga tahun ' + tahun + ' dihapus');
+      onAfterDelete();
+    });
     tbody.appendChild(tr);
   });
 }
@@ -1279,14 +1328,6 @@ document.getElementById('addHargaBtn').addEventListener('click', async () => {
   showToast('Harga EKATALOG, SWASTA & UPLOAD tersimpan');
   loadHarga(currentProdukId);
 });
-async function deleteHarga(id){
-  if (!confirm('Hapus baris harga ini?')) return;
-  const { error } = await sb.from('produk_harga').delete().eq('id', id);
-  if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
-  showToast('Harga dihapus');
-  loadHarga(currentProdukId);
-}
-
 // ---- Media ----
 async function loadMedia(produkId){
   const { data, error } = await sb.from('produk_media').select('*').eq('produk_id', produkId).order('urutan', { ascending: true });
@@ -1357,6 +1398,7 @@ async function saveProdukInner(){
   const kodeProduk = document.getElementById('f_kode_produk').value.trim();
   const tipe = document.getElementById('f_tipe').value;
   if (!kodeProduk || !tipe) { showToast('Kode Produk dan Tipe wajib diisi', true); return false; }
+  const wasNew = !currentProdukId; // dicek sebelum currentProdukId ditimpa di bawah
 
   if (kodeAsli) {
     const { error: mErr } = await sb.from('master_produk').upsert({
@@ -1398,8 +1440,23 @@ async function saveProdukInner(){
   showToast(currentProdukId ? 'Produk diperbarui' : 'Produk ditambahkan');
   modalDirty = false; // data form sekarang sudah sama persis dengan yang di database
   currentProdukId = result.data.id;
-  hargaSection.style.display = 'block';
-  mediaSection.style.display = 'block';
+
+  // SET baru: Info Dasar-nya cukup disimpan di sini, sisanya (komposisi/harga/AKD)
+  // dikelola penuh di Set Management -- langsung lempar ke sana, gak usah nampilin
+  // tab Harga/AKD generic di modal ini (bakal langsung dikunci ulang lain kali dibuka
+  // lewat monkey-patch openEdit di bagian SET Management di bawah).
+  if (wasNew && tipe === 'SET') {
+    closeModal();
+    invalidateProdukStackCache();
+    loadProduk();
+    refreshProdukFilterCounts();
+    goToSetDetail(currentProdukId);
+    return true;
+  }
+
+  setProdTabsLocked(false);
+  document.getElementById('prodTabDasarCheck').style.display = 'inline';
+  document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
   deleteBtn.style.display = 'inline-flex';
   toggleAkdBoxBtn.style.display = 'inline-flex';
   document.getElementById('akdHint').textContent = 'Simpan berhasil — sekarang kamu bisa hubungkan AKD.';
@@ -1517,8 +1574,11 @@ async function refreshSetHeader(){
   document.getElementById('setDetailJumlahItem').textContent = ring?.jumlah_jenis_item || 0;
   document.getElementById('setDetailQty').textContent = ring?.total_qty || 0;
 
+  // EKATALOG adalah source of truth harga -- SWASTA & UPLOAD cuma hasil rumus turunan
+  // (lihat upsertHargaDariEkat), jadi subtitle set harus selalu ambil baris EKATALOG,
+  // bukan baris pertama apa pun yang kebetulan muncul duluan di urutan tahun.
   const { data: hargaRow } = await sb.from('produk_harga').select('harga, jenis, tahun').eq('produk_id', currentSetId)
-    .order('tahun', { ascending: false }).limit(1).maybeSingle();
+    .eq('jenis', 'EKATALOG').order('tahun', { ascending: false }).limit(1).maybeSingle();
   document.getElementById('setDetailHarga').textContent = hargaRow ? `Rp ${Number(hargaRow.harga).toLocaleString('id-ID')} (${hargaRow.jenis} ${hargaRow.tahun})` : 'Belum ada harga';
 }
 
@@ -1667,20 +1727,7 @@ async function loadSetHarga(){
   const { data, error } = await sb.from('produk_harga').select('*').eq('produk_id', currentSetId).order('tahun', { ascending: false });
   const tbody = document.getElementById('setHargaTableBody');
   if (error) { tbody.innerHTML = `<tr><td colspan="4">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
-  if (!data || data.length === 0) { tbody.innerHTML = `<tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr>`; return; }
-  tbody.innerHTML = '';
-  data.forEach(h => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${h.tahun}</td><td>${escapeHtml(h.jenis)}</td><td>Rp ${Number(h.harga).toLocaleString('id-ID')}</td>
-      <td><button class="btn btn-danger-ghost btn-sm" data-id="${h.id}"><i class="ti ti-trash"></i></button></td>`;
-    tr.querySelector('button').addEventListener('click', async () => {
-      if (!confirm('Hapus baris harga ini?')) return;
-      const { error: delErr } = await sb.from('produk_harga').delete().eq('id', h.id);
-      if (delErr) { showToast('Gagal hapus: ' + delErr.message, true); return; }
-      showToast('Harga dihapus'); loadSetHarga(); refreshSetHeader();
-    });
-    tbody.appendChild(tr);
-  });
+  renderHargaGroupInto(tbody, data || [], () => { loadSetHarga(); refreshSetHeader(); });
 }
 document.getElementById('hitungKomposisiBtn').addEventListener('click', async () => {
   if (compRows.length === 0) { showToast('Belum ada item di komposisi set ini', true); return; }
@@ -1785,15 +1832,24 @@ document.getElementById('openFullLogFromSetBtn').addEventListener('click', () =>
 });
 
 // ---- Sesuaikan modal generic: sembunyikan Harga & AKD kelola kalau tipe SET ----
+// (jalur ini cuma kepakai buat "Edit Info Dasar" dari dalam Set Detail -- SET baru
+// sekarang langsung dilempar ke Set Detail begitu Info Dasar tersimpan, lihat
+// saveProdukInner, jadi gak pernah nyentuh tab Harga/AKD generic ini lagi)
 const _origOpenEdit = openEdit;
 window.openEdit = async function(produkId){
   await _origOpenEdit(produkId);
   const tipe = document.getElementById('f_tipe').value;
+  const tabAkdBtn = document.querySelector('.prod-tab[data-tab="akd"]');
+  const tabHargaBtn = document.querySelector('.prod-tab[data-tab="harga"]');
   if (tipe === 'SET') {
-    hargaSection.style.display = 'none';
     toggleAkdBoxBtn.style.display = 'none';
     akdBox.style.display = 'none';
     document.getElementById('akdHint').textContent = '';
+    tabAkdBtn.classList.add('hidden-for-set');
+    tabHargaBtn.classList.add('hidden-for-set');
+    if (document.getElementById('ptab-akd').classList.contains('active') || document.getElementById('ptab-harga').classList.contains('active')) {
+      switchProdTab('dasar');
+    }
     if (!document.getElementById('setRedirectNote')) {
       const note = document.createElement('div');
       note.id = 'setRedirectNote';
@@ -1806,6 +1862,8 @@ window.openEdit = async function(produkId){
     const note = document.getElementById('setRedirectNote');
     if (note) note.remove();
     toggleAkdBoxBtn.style.display = 'inline-flex';
+    tabAkdBtn.classList.remove('hidden-for-set');
+    tabHargaBtn.classList.remove('hidden-for-set');
   }
 };
 

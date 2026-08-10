@@ -10,3 +10,14 @@
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;padding:10px 14px;background:var(--surface-2);color:var(--text-muted);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)}
 td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+
+/* Tab bertahap di modal Tambah/Edit Produk -- class terpisah dari .set-tab (Set Management)
+   biar switchProdTab/switchSetTab gak saling nabrak walau dua-duanya kepakai di halaman yang sama. */
+.prod-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:18px;flex-wrap:wrap}
+.prod-tab{background:none;border:none;padding:10px 14px;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;font-family:inherit;display:flex;align-items:center;gap:6px}
+.prod-tab.active{color:var(--accent-text);border-bottom-color:var(--accent)}
+.prod-tab.locked{opacity:.4;cursor:not-allowed}
+.prod-tab.hidden-for-set{display:none}
+.prod-step-check{color:var(--accent);font-size:14px}
+.prod-tab-panel{display:none}
+.prod-tab-panel.active{display:block}
