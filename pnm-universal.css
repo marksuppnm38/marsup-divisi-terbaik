@@ -317,14 +317,14 @@ body[data-theme="light"] td{
 .pr-field label{display:block;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
 .pr-field input[type="email"],.pr-field input[type="password"]{width:100%;height:32px;padding:0 10px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none}
 
-/* HEADER — identik dengan tools lain di suite ini */
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0}
-.logo{height:34px;width:auto;object-fit:contain}
-.logo-text{font-size:14px;font-weight:600}
-.logo-sub{font-size:11px;color:var(--text-muted)}
-.header-right{margin-left:auto;display:flex;align-items:center;gap:8px}
-.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;text-decoration:none}
-.toggle-btn:hover{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
+/* HEADER — component rules (header, .logo*, .header-right, .toggle-btn) live
+   in ONE place only: search "HEADER" further down this file. Dulu ada 2-3
+   definisi header/.toggle-btn kepisah-pisah di file ini (nilai beda-beda,
+   yang menang cuma yang paling akhir di-load, sisanya dead code) — itu
+   sumber bug "hover jadi kaku/beda tema" yang disebut di komentar
+   crud-produk.css. Kalau butuh ubah tampilan header, edit di blok
+   canonical-nya aja, JANGAN bikin definisi baru di sini atau di file
+   halaman (crud-produk.css dkk). */
 .last-update{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px}
 
 /* dashboard main — higher specificity vs other modules */
@@ -575,13 +575,17 @@ th.checkbox-col,td.checkbox-col{width:30px;text-align:center;padding-left:12px;p
 .auth-gate-btn:disabled{background:var(--border-strong);cursor:not-allowed}
 .auth-gate-status{font-size:12px;text-align:center;margin-top:10px;min-height:16px}
 
-/* HEADER */
+/* HEADER — canonical block. Semua halaman (crud-produk, konversian, dll)
+   pakai selector generic ini, JANGAN redefine header/.logo*/
 header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
 .header-brand{display:flex;align-items:center;gap:10px;flex-shrink:0;min-width:0}
 .header-brand-text{min-width:0;overflow:hidden}
 .logo{height:32px;width:auto;object-fit:contain;flex-shrink:0}
 .logo-text{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .logo-sub{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;text-decoration:none;box-sizing:border-box}
+.toggle-btn:hover{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
+.toggle-btn.on{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);font-weight:500}
 .session-indicator{display:flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;border-radius:20px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;max-width:280px;min-width:0;flex-shrink:1;transition:all .18s var(--ease)}
 .session-indicator:hover{border-color:var(--accent);color:var(--text)}
 .session-indicator i{font-size:14px;flex-shrink:0}
@@ -631,6 +635,21 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .header-right{margin-left:auto;display:flex;align-items:center;gap:8px}
 .clip-count{font-size:12px;color:var(--text-muted)}
 .clip-count span{font-weight:600;color:var(--accent)}
+
+/* User menu (avatar + dropdown email/keluar) di header kanan — WAJIB tetap di
+   sini kalau ada markup .user-menu baru ditambah di halaman manapun, JANGAN
+   cuma ditambah HTML-nya doang. Ini persis bug yang pernah kejadian: markup
+   .user-menu-dropdown dipasang di konversian.html tapi CSS-nya lupa dibikin,
+   hasilnya dropdown render mentah/gak ke-posisiin dan bikin header keliatan
+   berantakan. Toggle buka/tutup pakai class .open, konsisten sama
+   .add-filter-pop di bawah. */
+.user-menu{position:relative}
+.user-menu-dropdown{position:absolute;top:calc(100% + 8px);right:0;z-index:30;background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.22);min-width:220px;padding:8px;display:none}
+.user-menu.open .user-menu-dropdown,
+.user-menu-dropdown.open{display:block;animation:afpIn .14s ease-out}
+.user-menu-email{font-size:12px;color:var(--text-secondary);padding:8px 10px 12px;border-bottom:1px solid var(--border);margin-bottom:6px;word-break:break-all;line-height:1.4}
+.user-menu-logout-btn{width:100%;display:flex;align-items:center;gap:6px;padding:9px 10px;font-size:13px;font-weight:500;font-family:inherit;border:none;border-radius:8px;background:none;color:var(--danger);cursor:pointer;transition:background .12s}
+.user-menu-logout-btn:hover{background:var(--danger-bg)}
 
 /* LAYOUT */
 /* Konversian shell: page locks to viewport */
@@ -719,8 +738,6 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 #btn-butuh-bantuan.on{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-border);border-radius:6px}
 .filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .filter-select{height:30px;padding:0 8px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;outline:none}
-.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;text-decoration:none;box-sizing:border-box}
-.toggle-btn.on{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);font-weight:500}
 .panel-body{flex:1;overflow-y:auto;padding:10px 12px}
 #meta{font-size:12px;color:var(--text-muted);min-height:16px}
 .meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
@@ -1182,7 +1199,7 @@ kbd{font-family:var(--font-mono);font-size:10.5px;background:var(--surface-3);bo
 .sidebar{width:var(--sidebar-w);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 12px;position:relative;transition:width .18s ease,padding .18s ease}
 .sb-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 20px}
 .sb-logo{width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
-.logo{width:30px;height:30px;object-fit:contain;flex-shrink:0}
+.sb-brand .logo{width:30px;height:30px;object-fit:contain;flex-shrink:0}
 .sb-brand-title{font-family:var(--font-display);font-weight:700;font-size:14px;line-height:1.2}
 .sb-brand-sub{font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono)}
 .sb-collapse-btn{position:absolute;top:16px;right:-11px;width:22px;height:22px;border-radius:50%;background:var(--surface);border:1px solid var(--border-strong);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-muted);font-size:12px;padding:0;z-index:5;transition:background .15s,color .15s,transform .18s ease}

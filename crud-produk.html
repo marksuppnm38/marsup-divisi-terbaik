@@ -24,6 +24,7 @@
   const saved = localStorage.getItem('theme') || localStorage.getItem('pnum-theme');
   const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   document.documentElement.style.colorScheme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
   document.body.setAttribute('data-theme', theme);
 })();
 </script>
@@ -669,6 +670,49 @@
   </div>
 </div>
 
+<script>
+/* Theme toggle — standalone, works even if crud-produk.js omits it.
+   (Sama persis pola di konversian.html — dulu di sini cuma ada logic BACA
+   tema awal tapi gak ada listener klik-nya, jadi tombol keliatan ada tapi
+   gak ngapa-ngapain. Kalau bikin halaman baru dari template ini, pastikan
+   blok ini ikut ke-copy.) */
+(function(){
+  function applyTheme(theme){
+    theme = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    if (document.body) document.body.setAttribute('data-theme', theme);
+    document.documentElement.style.colorScheme = theme;
+    localStorage.setItem('theme', theme);
+    localStorage.setItem('pnum-theme', theme);
+    var icon = document.getElementById('themeIcon');
+    if (icon) {
+      icon.className = theme === 'dark' ? 'ti ti-moon' : 'ti ti-sun';
+    }
+  }
+  function currentTheme(){
+    return document.documentElement.getAttribute('data-theme')
+      || (document.body && document.body.getAttribute('data-theme'))
+      || localStorage.getItem('theme')
+      || localStorage.getItem('pnum-theme')
+      || 'light';
+  }
+  function bind(){
+    var btn = document.getElementById('themeToggle');
+    if (!btn || btn.dataset.themeBound) return;
+    btn.dataset.themeBound = '1';
+    applyTheme(currentTheme());
+    btn.addEventListener('click', function(e){
+      e.preventDefault();
+      applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bind);
+  } else {
+    bind();
+  }
+})();
+</script>
 <script src="crud-produk.js"></script>
 </body>
 </html>
