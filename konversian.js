@@ -38,18 +38,11 @@ const rt = (typeof window.supabase !== 'undefined' && window.supabase.createClie
   : null;
 if (!rt) console.warn('Supabase Realtime SDK gagal dimuat — kolaborasi live gak aktif, app tetap jalan pakai REST biasa.');
 
-function saveAuthSession(data) {
-  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
-    user: data.user ? { id: data.user.id, email: data.user.email } : null
-  }));
-}
-function clearAuthSession() { localStorage.removeItem(AUTH_STORAGE_KEY); }
-function readAuthSession() {
-  try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null'); } catch { return null; }
-}
+// saveAuthSession/readAuthSession/clearAuthSession versi manual (localStorage
+// langsung) SUDAH DIGANTIKAN oleh shared/auth-session.js (PNMAuth), yang
+// baca-tulis via window.pnmSupabase.auth — tapi tetap ke localStorage key
+// yang SAMA (pnm_auth_session, lihat shared/supabase-client.js), jadi sesi
+// yang lagi aktif gak ke-invalidate pas file ini di-deploy.
 // Realtime (postgres_changes yang difilter RLS + presence) butuh token user yang
 // sama kayak dipakai sesiFetch() — kalau enggak, channel subscribe tapi gak pernah
 // nerima row apapun (RLS nge-filter diem-diem). Dipanggil tiap kali token baru
@@ -62,62 +55,7 @@ function showApp() {
   appRoot.style.display = 'flex';
   openSesiFromUrlIfAny();
   loadSalesOptions();
-  updateUserMenu();
 }
-
-// ══════════════════════════════════════════
-// USER MENU / LOGOUT: dropdown kecil di header buat lihat siapa yang login
-// dan keluar dari sesi. Logout manual (bukan cuma clear localStorage) supaya
-// refresh token juga di-revoke di sisi Supabase, bukan cuma "lupa" di browser.
-// ══════════════════════════════════════════
-const userMenu = document.getElementById('user-menu');
-const userMenuToggle = document.getElementById('user-menu-toggle');
-const userMenuDropdown = document.getElementById('user-menu-dropdown');
-const userMenuEmail = document.getElementById('user-menu-email');
-const btnLogout = document.getElementById('btn-logout');
-
-function updateUserMenu() {
-  if (userMenuEmail) userMenuEmail.textContent = (currentUser && currentUser.email) || '-';
-}
-
-if (userMenuToggle) {
-  userMenuToggle.addEventListener('click', (e) => {
-    e.stopPropagation();
-    userMenuDropdown.classList.toggle('open');
-  });
-}
-document.addEventListener('click', (e) => {
-  if (userMenuDropdown && userMenuDropdown.classList.contains('open') && !userMenu.contains(e.target)) {
-    userMenuDropdown.classList.remove('open');
-  }
-});
-
-async function doLogout() {
-  userMenuDropdown.classList.remove('open');
-  const ok = await showConfirmModal({
-    title: 'Keluar',
-    text: 'Kamu bakal keluar dari akun ini di perangkat ini. Sesi yang belum di-Record tetap tersimpan, bisa dilanjutkan lagi setelah login ulang.',
-    okText: 'Ya, Keluar',
-    danger: true
-  });
-  if (!ok) return;
-  const saved = readAuthSession();
-  // Revoke refresh token di server — best-effort, jangan sampai gagal logout
-  // lokal cuma gara-gara request ini gagal (mis. offline).
-  if (saved && saved.access_token) {
-    try {
-      await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-        method: 'POST',
-        headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + saved.access_token }
-      });
-    } catch { /* offline / gagal revoke di server — tetap lanjut logout lokal */ }
-  }
-  clearAuthSession();
-  gateEmail.value = '';
-  gatePassword.value = '';
-  showGate();
-}
-if (btnLogout) btnLogout.addEventListener('click', doLogout);
 
 // Isi datalist "Nama Sales" dari tabel master `sales` (via RPC get_sales_aktif,
 // security definer — bukan select langsung ke tabel, karena tabel sales pakai
@@ -167,40 +105,37 @@ function showGate(msg) {
   if (msg) { gateStatus.style.color = 'var(--danger)'; gateStatus.textContent = msg; }
 }
 
-async function refreshAuthSession(refreshToken) {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
-    body: JSON.stringify({ refresh_token: refreshToken })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error_description || data.msg || 'Sesi habis, silakan masuk lagi.');
-  return data;
-}
+// refreshAuthSession() manual SUDAH DIGANTIKAN oleh autoRefreshToken bawaan
+// SDK (diaktifkan di shared/supabase-client.js) — PNMAuth.getSession() di
+// bawah otomatis kepicu refresh sendiri kalau token yang tersimpan sudah
+// dekat/lewat expired, gak perlu dicek manual pakai expires_at lagi di sini.
 
 async function initAuth() {
-  const saved = readAuthSession();
-  if (!saved) { showGate(); return; }
-  // Kalau token masih berlaku >60 detik lagi, pakai langsung. Kalau enggak, refresh dulu.
-  if (saved.expires_at && saved.expires_at - Math.floor(Date.now() / 1000) > 60) {
-    stokAccessToken = saved.access_token;
-    currentUser = saved.user || null;
-    syncRealtimeAuth();
-    showApp();
+  const session = await PNMAuth.getSession();
+  if (!session) { showGate(); return; }
+  stokAccessToken = session.access_token;
+  currentUser = session.user ? { id: session.user.id, email: session.user.email } : null;
+  syncRealtimeAuth();
+  showApp();
+}
+
+// PNMAuth.onAuthStateChange menangani 2 kasus yang dulu gak ke-cover pola manual:
+//  1) Token di-refresh otomatis oleh SDK di background -> stokAccessToken (dipakai
+//     seluruh sesiFetch()/rpc()/upload di file ini) otomatis ke-update juga, gak
+//     perlu nunggu initAuth() jalan ulang.
+//  2) Sesi habis/di-signOut dari tab/modul lain (mis. user logout dari crud-produk
+//     di tab sebelah) -> app ini ikut ke-gate juga, gak nyangkut di state "login"
+//     palsu karena token yang dipegang sebenarnya udah gak valid.
+PNMAuth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_OUT' || !session) {
+    if (appRoot.style.display !== 'none') showGate('Sesi kamu berakhir, silakan masuk lagi.');
     return;
   }
-  try {
-    const data = await refreshAuthSession(saved.refresh_token);
-    stokAccessToken = data.access_token;
-    currentUser = data.user ? { id: data.user.id, email: data.user.email } : saved.user || null;
-    saveAuthSession(data);
+  if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+    stokAccessToken = session.access_token;
     syncRealtimeAuth();
-    showApp();
-  } catch (err) {
-    clearAuthSession();
-    showGate('Sesi kamu sudah habis, silakan masuk lagi.');
   }
-}
+});
 
 gateLoginBtn.addEventListener('click', async () => {
   const email = gateEmail.value.trim().toLowerCase();
@@ -215,16 +150,9 @@ gateLoginBtn.addEventListener('click', async () => {
   gateStatus.style.color = 'var(--text-muted)';
   gateStatus.textContent = '';
   try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || data.msg || 'Login gagal');
-    stokAccessToken = data.access_token;
-    currentUser = data.user ? { id: data.user.id, email: data.user.email } : null;
-    saveAuthSession(data);
+    const { session } = await PNMAuth.login(email, password);
+    stokAccessToken = session.access_token;
+    currentUser = session.user ? { id: session.user.id, email: session.user.email } : null;
     syncRealtimeAuth();
     gatePassword.value = '';
     showApp();
@@ -237,6 +165,20 @@ gateLoginBtn.addEventListener('click', async () => {
   }
 });
 gatePassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') gateLoginBtn.click(); });
+
+// Logout: satu pintu lewat PNMAuth.logout() -> ini yang otomatis nembak
+// /auth/v1/logout buat revoke refresh token di server (mekanisme yang
+// sempat ketinggalan 1 commit) SEKALIGUS hapus sesi dari localStorage.
+// showGate() sendiri sudah kepanggil otomatis lewat onAuthStateChange di
+// atas begitu event SIGNED_OUT masuk, jadi gak perlu dipanggil manual di sini.
+const btnLogout = document.getElementById('btn-logout');
+if (btnLogout) {
+  btnLogout.addEventListener('click', async () => {
+    btnLogout.disabled = true;
+    try { await PNMAuth.logout(); }
+    finally { btnLogout.disabled = false; }
+  });
+}
 
 initAuth();
 const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
@@ -1058,34 +1000,19 @@ const sessionIndicator = document.getElementById('session-indicator');
 const sessionIndicatorDot = document.getElementById('session-indicator-dot');
 const sessionIndicatorText = document.getElementById('session-indicator-text');
 const btnEndSesi = document.getElementById('btn-end-sesi');
-// LAZY LOOKUP, BUKAN const di-cache: <script src="konversian.js"> dieksekusi
-// sebelum <div id="toast-container"> sempet keparsing ke DOM (div-nya taruh
-// SETELAH tag script ini di HTML) — kalau di-cache di awal, hasilnya selalu
-// null dan showToast() bakal nge-throw tiap dipanggil. Yang paling parah:
-// exception itu bisa kejadian di TENGAH proses internal Presence sync
-// (syncDiff/syncState di supabase-js, dipicu dari handlePresenceJoin), dan
-// karena gak ketangkep, prosesnya keputus sebelum sempet nge-merge entry
-// user yang baru join ke presenceState() — akibatnya avatar kolaborator lain
-// gak pernah nongol walau join event-nya sendiri sukses diterima. Lookup
-// ulang tiap panggil beres karena pas showToast() beneran dipanggil (bukan
-// pas script awal jalan), div-nya udah pasti ada di DOM.
-function getToastContainer() {
-  return document.getElementById('toast-container');
-}
+const toastContainer = document.getElementById('toast-container');
 const APP_TITLE_BASE = document.title; // "Conversion Workspace — PT Pionir Nusantara Manufacturing"
 
 // Notifikasi kecil yang muncul-hilang sendiri — dipakai buat kasih feedback instan
 // untuk aksi yang sebelumnya senyap (bikin sesi, selesaikan sesi), biar user gak
 // ragu-ragu apakah aksinya beneran kejadian atau enggak.
 function showToast(msg, type = 'success') {
-  const container = getToastContainer();
-  if (!container) return; // jaga-jaga: jangan sampe toast yang gagal nampil nge-crash pemanggilnya (mis. presence sync)
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
   const icon = type === 'error' ? 'ti-alert-circle' : (type === 'presence' ? 'ti-users' : 'ti-circle-check');
   el.innerHTML = `<i class="ti ${icon}"></i><span></span>`;
   el.querySelector('span').textContent = msg;
-  container.appendChild(el);
+  toastContainer.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
   setTimeout(() => {
     el.classList.remove('show');
@@ -1127,15 +1054,10 @@ sessionIndicator.addEventListener('click', () => {
   switchSubTab('sesi');
 });
 
-// Semua panggilan REST ke Supabase buat modul sesi lewat sini. Kalau token
-// expired di tengah jalan, coba refresh diam-diam dulu pakai refresh_token
-// yang tersimpan (biasanya masih valid jauh lebih lama dari access_token) —
-// baru kalau refresh-nya sendiri gagal (refresh_token juga udah invalid/
-// dicabut), baru ditendang balik ke gerbang login. Sebelumnya 401 langsung
-// nendang ke login walau refresh_token-nya sebenernya masih hidup, jadi user
-// kerja di tengah sesi bisa keputus paksa padahal harusnya bisa nyambung mulus.
+// Semua panggilan REST ke Supabase buat modul sesi lewat sini, supaya kalau
+// token expired di tengah jalan, langsung ditendang balik ke gerbang login.
 async function sesiFetch(path, options = {}) {
-  const doFetch = () => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -1144,26 +1066,7 @@ async function sesiFetch(path, options = {}) {
       ...(options.headers || {})
     }
   });
-  let res = await doFetch();
-  if (res.status === 401) {
-    const saved = readAuthSession();
-    if (saved && saved.refresh_token) {
-      try {
-        const data = await refreshAuthSession(saved.refresh_token);
-        stokAccessToken = data.access_token;
-        currentUser = data.user ? { id: data.user.id, email: data.user.email } : currentUser;
-        saveAuthSession(data);
-        syncRealtimeAuth();
-        res = await doFetch(); // ulang sekali pakai token baru
-      } catch {
-        // refresh_token juga udah gak valid — beneran harus login ulang
-      }
-    }
-    if (res.status === 401) {
-      showGate('Sesi kamu habis, silakan masuk lagi.');
-      throw new Error('Sesi login habis');
-    }
-  }
+  if (res.status === 401) { showGate('Sesi kamu habis, silakan masuk lagi.'); throw new Error('Sesi login habis'); }
   return res;
 }
 
@@ -1238,13 +1141,6 @@ async function persistAddItem(item) {
       item._sesiItemId = rows[0] && rows[0].id;
     }
     await touchSesiUpdatedAt(sesiId);
-    // Nama pengubah yang akurat di activity feed: postgres_changes INSERT-nya sendiri
-    // reliable (beda dari DELETE), tapi payload row-nya gak bawa info "siapa yang nambahin"
-    // (gak ada kolom pengubah di tabel). Makanya disiarin manual lewat Broadcast juga,
-    // sama pola kayak broadcastItemRemoved/broadcastChecklistItemUpdated — dipakai
-    // handleItemRowChange buat isi nama asli di activity feed, gantiin placeholder
-    // "Kolaborator" dari presenceNameGuess().
-    if (typeof broadcastItemAdded === 'function') broadcastItemAdded(item);
     setSesiSavedStatus('Tersimpan ✓');
   } catch (err) {
     setSesiSavedStatus('Gagal simpan: ' + err.message, true);
@@ -1294,11 +1190,25 @@ function persistUpdateQty(item) {
 
 // Nama RS / Sales / PIC diketik → sesi ikut keupdate (bikin baru kalau belum ada)
 let headerSaveTimer = null;
+// Kalau belum ada sesi & user nolak konfirmasi "Mulai Konversi Baru?" pas ngetik
+// di field ini, jangan nanya ULANG tiap debounce nembak lagi (bisa tiap keystroke-
+// pause) — cukup sekali per "sesi ngetik form" ini. Direset begitu ada sesi baru
+// beneran kebentuk di tempat lain (lihat resetChecklistUI()).
+let headerFieldsSesiDeclined = false;
 [inpRs, inpSales, inpMarsup].forEach(inp => {
   inp.addEventListener('input', () => {
     clearTimeout(headerSaveTimer);
     setSesiSavedStatus('Menyimpan…');
     headerSaveTimer = setTimeout(async () => {
+      if (!currentSesiId) {
+        if (headerFieldsSesiDeclined) { setSesiSavedStatus(''); return; }
+        const ok = await showConfirmModal({
+          title: 'Mulai Konversi Baru?',
+          text: 'Isian ini bakal disimpan ke sesi konversi baru.',
+          okText: 'Ya, Mulai Konversi'
+        });
+        if (!ok) { headerFieldsSesiDeclined = true; setSesiSavedStatus(''); return; }
+      }
       try {
         const sesiId = await ensureSesi();
         const namaRs = inpRs.value.trim() || null;
@@ -1470,6 +1380,33 @@ btnEndSesi.addEventListener('click', async () => {
   }
 });
 btnSesiRefresh.addEventListener('click', loadSesiList);
+
+// ══════════════════════════════════════════
+// DUA PINTU: Cari Cepat (murni lookup, nol tulisan ke database) vs Konversi
+// (workspace requirement↔produk yang butuh sesi). Default selalu 'cari' pas
+// fresh load — itu tugas paling sering (liat design-rebase discussion), BUKAN
+// diinget dari localStorage, biar predictable tiap buka app.
+// Titik-titik yang MEMAKSA pindah ke 'konversi' (escalation eksplisit):
+//   - openSesi() sukses (buka sesi lewat "Konversi Berjalan" atau link share)
+//   - handleClipToggleClick() berhasil nambahin produk pertama ke sesi
+// ══════════════════════════════════════════
+let currentDoor = 'cari';
+function switchDoor(door) {
+  currentDoor = door;
+  const appRootEl = document.getElementById('app-root');
+  appRootEl.classList.toggle('door-cari', door === 'cari');
+  appRootEl.classList.toggle('door-konversi', door === 'konversi');
+  document.getElementById('door-btn-cari').classList.toggle('active', door === 'cari');
+  document.getElementById('door-btn-konversi').classList.toggle('active', door === 'konversi');
+  if (door === 'cari') {
+    switchSubTab('cari'); // pintu ini cuma nyisain 1 opsi, pastiin itu yang aktif
+    if (typeof switchTab === 'function') switchTab('search'); // sinkron sama mekanisme tab mobile yang udah ada
+  } else if (typeof switchTab === 'function') {
+    switchTab('clip'); // default landing di workspace-nya, subtab lain (Kebutuhan RS dkk) tetep dijangkau dari situ
+  }
+}
+document.getElementById('door-btn-cari').addEventListener('click', () => switchDoor('cari'));
+document.getElementById('door-btn-konversi').addEventListener('click', () => switchDoor('konversi'));
 
 function switchSubTab(tab) {
   subtabCari.classList.toggle('active', tab === 'cari');
@@ -1721,6 +1658,7 @@ async function deleteSesi(id, nama, btn) {
 async function openSesi(id) {
   try {
     resetChecklistUI(); // buang checklist Permintaan RS dari sesi sebelumnya (kalau ada) dulu
+    if (typeof switchDoor === 'function') switchDoor('konversi'); // buka sesi = jelas-jelas mau lanjut kerjaan konversi
     const [sesiRes, itemsRes] = await Promise.all([
       sesiFetch(`${SESI_TABLE}?id=eq.${id}&select=*`),
       sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${id}&select=*`)
@@ -1764,6 +1702,11 @@ async function openSesi(id) {
 function resetChecklistUI() {
   checklistItems = [];
   checklistPermintaanId = null;
+  checklistExpandedId = null;
+  checklistPickingId = null;
+  // Cache saran Dictionary di-key pakai item.id — item.id sesi lama gak relevan
+  // lagi (dan secara teori bisa collide sama id sesi baru), buang aja.
+  Object.keys(dictSuggestionCache).forEach(k => delete dictSuggestionCache[k]);
   if (typeof kbRefreshStatus !== 'undefined' && kbRefreshStatus) kbRefreshStatus.textContent = '';
   if (typeof updateKbTabState === 'function') updateKbTabState();
   if (typeof updateClipSummaryStrip === 'function') updateClipSummaryStrip();
@@ -1774,6 +1717,9 @@ function resetChecklistUI() {
   // Channel realtime nempel ke satu sesi doang — begitu pindah/tutup/hapus sesi,
   // channel yang lama WAJIB diputus dulu (lihat subscribeToSesiRealtime di bawah).
   if (typeof unsubscribeFromSesiRealtime === 'function') unsubscribeFromSesiRealtime();
+  // Konteks sesi ganti total — kalau ada penolakan "Mulai Konversi Baru?" dari
+  // form sebelumnya, itu gak relevan lagi buat konteks yang baru ini.
+  headerFieldsSesiDeclined = false;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1795,16 +1741,7 @@ let sesiDbChannel = null;
 // Nama yang ditampilin buat presence/activity/editing-indicator — pake PIC Marsup
 // (lebih manusiawi daripada email), fallback ke email kalau belum diisi.
 function currentDisplayName() {
-  // PENTING: currentUser (identitas login) harus jadi sumber utama, BUKAN inpMarsup.
-  // inpMarsup ("PIC Marsup") adalah field TEKS BEBAS di level SESI yang di-share ke
-  // semua kolaborator lewat header form (sinkron server-side) — begitu satu orang
-  // ngisi field itu, SEMUA browser yang buka sesi yang sama bakal baca teks yang
-  // sama persis dari inpMarsup.value, walaupun login mereka beda-beda. Kalau
-  // dipakein duluan, hasilnya SEMUA kolaborator "ketuker" jadi nama yang sama di
-  // activity feed/presence — persis bug yang kejadian (dua akun login beda tapi
-  // keduanya ketulis nama yang sama di feed). currentUser.email itu satu-satunya
-  // yang beneran unik per-browser/per-login, jadi wajib menang duluan.
-  return (currentUser && currentUser.email) || (inpMarsup && inpMarsup.value.trim()) || 'Anonim';
+  return (inpMarsup && inpMarsup.value.trim()) || (currentUser && currentUser.email) || 'Anonim';
 }
 let sesiPresenceChannel = null;
 let presenceRoster = {}; // presence key -> {nama, status, joined_at}
@@ -1867,7 +1804,6 @@ function subscribeToSesiRealtime(sesiId) {
     .on('presence', { event: 'sync' }, handlePresenceSync)
     .on('presence', { event: 'join' }, handlePresenceJoin)
     .on('presence', { event: 'leave' }, handlePresenceLeave)
-    .on('broadcast', { event: 'item_added' }, handleItemAddedBroadcast)
     .on('broadcast', { event: 'item_removed' }, handleItemRemovedBroadcast)
     .on('broadcast', { event: 'checklist_item_updated' }, handleChecklistItemUpdatedBroadcast)
     .on('broadcast', { event: 'editing' }, handleEditingBroadcast)
@@ -1990,25 +1926,7 @@ function handleItemRowChange(payload) {
     // ngecek "ini beneran baru" tanpa perlu tracking id kayak update/delete.
     if (clipboard.some(c => c.kode_produk === row.kode_produk)) return;
     insertClipItem(mapSesiItemRowToClipItem(row));
-    const pendingActor = pendingAddActors.get(row.kode_produk);
-    if (pendingActor) {
-      clearTimeout(pendingActor.timer);
-      pendingAddActors.delete(row.kode_produk);
-      pushActivity(`${pendingActor.actor} menambahkan ${row.nama_produk}`);
-    } else {
-      // Broadcast 'item_added' lewat kanal presence terpisah dari postgres_changes —
-      // gak ada jaminan urutan sampenya, dan pas nambah banyak item sekaligus
-      // (mis. expand SET) postgres_changes kadang nyampe duluan sebelum broadcast-nya
-      // sempet diterima. Kasih jeda singkat dulu biar nama aslinya sempet nyusul,
-      // baru jatuh ke placeholder "Kolaborator" kalau emang beneran gak nyampe.
-      const kode = row.kode_produk, nama = row.nama_produk;
-      setTimeout(() => {
-        const late = pendingAddActors.get(kode);
-        let actorNama = presenceNameGuess();
-        if (late) { clearTimeout(late.timer); pendingAddActors.delete(kode); actorNama = late.actor; }
-        pushActivity(`${actorNama} menambahkan ${nama}`);
-      }, 400);
-    }
+    pushActivity(`${presenceNameGuess()} menambahkan ${row.nama_produk}`);
     return;
   }
   if (payload.eventType === 'UPDATE') {
@@ -2022,36 +1940,12 @@ function handleItemRowChange(payload) {
   }
 }
 
-// Fallback kalau-kalau broadcast 'item_added' gak nyampe (mis. kirim gagal, atau
-// event postgres_changes INSERT-nya nyampe duluan sebelum broadcast sempet diterima).
-// Normalnya gak kepake — lihat pendingAddActors di bawah buat jalur utama.
+// Placeholder ringan buat "siapa yang ngelakuin ini" di activity feed — presence
+// gak nyimpen histori per-event, jadi paling akurat yang bisa kita bilang cuma
+// "kolaborator" kalau bukan diri sendiri. Upgrade ke nama presisi (butuh kolom
+// pengubah di tabel item) masuk tahap activity-feed berikutnya.
 function presenceNameGuess() {
   return 'Kolaborator';
-}
-
-// ---- Atribusi nama pengubah buat item yang baru ditambahin ----
-// postgres_changes INSERT di tabel SESI_ITEM_TABLE terbukti reliable (beda dari
-// DELETE), tapi payload row-nya gak bawa info "siapa yang nambahin" — gak ada
-// kolom pengubah di tabel. Solusinya: begitu REST POST-nya sukses, pengirim
-// nyiarin nama dia manual lewat Broadcast (broadcastItemAdded), ditampung
-// sebentar di sini per kode_produk, terus dipakai handleItemRowChange buat isi
-// nama asli di activity feed pas event INSERT-nya nyampe. Kalau broadcast gak
-// nyampe/telat, activity feed jatuh balik ke placeholder "Kolaborator".
-const pendingAddActors = new Map(); // kode_produk -> { actor, timer }
-function broadcastItemAdded(item) {
-  if (!sesiPresenceChannel) return;
-  sesiPresenceChannel.send({
-    type: 'broadcast',
-    event: 'item_added',
-    payload: { kode_produk: item.kode_produk, nama_produk: item.nama_produk, actor: currentDisplayName() }
-  }).catch(() => { /* broadcast gagal gak boleh nge-block penambahan lokal — cuma activity feed orang lain yang jatuh balik ke "Kolaborator" */ });
-}
-function handleItemAddedBroadcast({ payload }) {
-  if (!payload || !payload.kode_produk) return;
-  const existing = pendingAddActors.get(payload.kode_produk);
-  if (existing) clearTimeout(existing.timer);
-  const timer = setTimeout(() => pendingAddActors.delete(payload.kode_produk), 8000); // jaga-jaga item gak jadi kesave / event INSERT gak pernah nyampe
-  pendingAddActors.set(payload.kode_produk, { actor: payload.actor, timer });
 }
 
 // ---- Penghapusan item: Broadcast manual, bukan andelin postgres_changes DELETE ----
@@ -2205,15 +2099,16 @@ async function loadChecklistForSesi(sesiId) {
     checklistSales = data.pic_sales || '(tanpa nama sales)';
     checklistPagu = (data.pagu != null) ? data.pagu : checklistPagu;
     checklistPermintaanId = data.permintaan_id;
+    // Buka otomatis requirement PENDING pertama, biar langsung ada yang bisa
+    // dikerjain begitu Kebutuhan RS ini tampil — bukan daftar kolaps semua.
+    const firstPending = checklistItems.find(i => i.status === 'PENDING');
+    checklistExpandedId = firstPending ? firstPending.id : null;
 
-    // Dulu di sini ada `kbSection.classList.remove('kb-collapsed')` yang
-    // maksa buka lagi tiap kali checklist dimuat — jadinya preferensi
-    // ciutkan yang udah dipilih user ke-reset terus tiap refresh sesi.
-    // Sekarang dibiarin, ikutin state ciutan terakhir yang user pilih
-    // (tersimpan di sessionStorage lewat kb-collapse-btn).
+    kbSection.classList.remove('kb-collapsed');
     kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
     kbRefreshStatus.textContent = 'Diperbarui ✓ ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
     renderChecklist();
+    maybeFetchSuggestionForExpanded();
     // Sesi ini punya Permintaan RS yang nempel — langsung arahkan ke tab
     // Kebutuhan RS, karena itu kemungkinan besar yang mau dicek duluan.
     switchClipTab('kb');
@@ -2301,37 +2196,6 @@ const prNamaRs = document.getElementById('pr-nama-rs');
 const prTanggal = document.getElementById('pr-tanggal');
 const prPicSales = document.getElementById('pr-pic-sales');
 const prPagu = document.getElementById('pr-pagu');
-
-// ---- Sinkron dua-arah dengan form sesi di atas (inpRs/inpSales) ----
-// Dulu Nama RS & PIC Sales harus diketik ULANG di modal Permintaan RS meskipun
-// udah keisi di form sesi paling atas — dan hasil ketikan di modal ini nimpa
-// nama_rs/nama_sales sesi lewat jalur save terpisah (race/potensi beda nilai).
-// Sekarang: satu sumber data. Field di modal ini cuma "jendela" ke inpRs/inpSales;
-// ngetik di salah satu langsung kecermin ke yang lain lewat event 'input' asli,
-// jadi lewat jalur auto-save yang sama persis (headerSaveTimer) — bukan jalur baru.
-let prSyncBound = false;
-function bindPrSyncWithHeader() {
-  if (prSyncBound) return;
-  prSyncBound = true;
-  prNamaRs.addEventListener('input', () => {
-    if (inpRs.value === prNamaRs.value) return;
-    inpRs.value = prNamaRs.value;
-    inpRs.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  prPicSales.addEventListener('input', () => {
-    if (inpSales.value === prPicSales.value) return;
-    inpSales.value = prPicSales.value;
-    inpSales.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  // Sebaliknya: kalau lagi diketik di form sesi atas SEMENTARA modal PR kebuka,
-  // ikut ke-update juga (jarang kejadian, tapi biar tetep konsisten).
-  inpRs.addEventListener('input', () => { if (prModal.classList.contains('show')) prNamaRs.value = inpRs.value; });
-  inpSales.addEventListener('input', () => { if (prModal.classList.contains('show')) prPicSales.value = inpSales.value; });
-}
-function syncPrFieldsFromHeader() {
-  prNamaRs.value = inpRs.value || '';
-  prPicSales.value = inpSales.value || '';
-}
 
 // Format input Pagu jadi "150.000.000" sambil ngetik, biar kebaca jelas —
 // tapi tetep nerima keyboard numerik biasa (bukan input type=number yang suka nolak titik).
@@ -2481,21 +2345,12 @@ themeToggle.addEventListener('click', () => {
 });
 
 // SUPABASE
-// PENTING: pakai stokAccessToken (token user yang login), BUKAN ANON_KEY.
-// RPC-RPC ini (search produk+harga, dictionary, cari set) memang harusnya
-// cuma bisa diakses karyawan yang login — kalau dikirim pakai ANON_KEY,
-// siapa pun yang tau URL Supabase + anon key (publik, nempel di JS bundle)
-// bisa manggil langsung tanpa pernah login lewat app ini sama sekali.
-// CATATAN: ganti header ini doang GAK CUKUP buat nutup celahnya kalau
-// izin EXECUTE function-nya di Supabase masih di-grant ke role 'anon' —
-// itu WAJIB dicabut juga dari sisi database (lihat catatan di tempat lain).
 async function rpc(fn, params) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',
-    headers: {'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+(stokAccessToken || ANON_KEY)},
+    headers: {'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY},
     body: JSON.stringify(params)
   });
-  if (res.status === 401) { showGate('Sesi kamu habis, silakan masuk lagi.'); return {data:null, error:{message:'Sesi login habis'}}; }
   const data = await res.json();
   if (!res.ok) return {data:null, error:data};
   return {data, error:null};
@@ -2752,13 +2607,22 @@ function renderResults(data) {
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
           <button class="btn-lampiran" data-kode="${r.kode_produk}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>
-          ${!inClip?`<span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambah</span>`:''}
+          ${inClip
+            ? `<button class="btn-clip-toggle in-clip" data-kode="${r.kode_produk}" data-action="remove"><i class="ti ti-circle-check" style="font-size:12px"></i> Di Konversi</button>`
+            : `<button class="btn-clip-toggle" data-kode="${r.kode_produk}" data-action="add"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambahkan ke Konversi</button>`}
         </div>
       </div>
     </div>`;
   }).join('');
-  resultsEl.querySelectorAll('.rcard').forEach(el => {
-    el.addEventListener('click', () => addToClip(el.dataset.kode));
+  // Card body SENGAJA gak punya click listener lagi (dulu klik di mana aja
+  // langsung commit ke Konversi/bikin row database — lihat diskusi rebase UI).
+  // Cari Cepat sekarang murni baca: lihat, Copy, atau eksplisit "Tambahkan ke
+  // Konversi" lewat tombol di bawah ini, gak ada jalan lain yang nulis ke server.
+  resultsEl.querySelectorAll('.btn-clip-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleClipToggleClick(btn.dataset.kode, btn.dataset.action);
+    });
   });
   resultsEl.querySelectorAll('.btn-lampiran').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -2868,6 +2732,28 @@ function renderPagination(totalItems) {
   });
 }
 // CLIPBOARD
+// Satu-satunya jalan masuk dari Cari Cepat yang boleh nulis ke database — dipicu
+// CUMA dari klik eksplisit tombol "Tambahkan ke Konversi" (lihat renderResults),
+// gak pernah dari klik kartu. Kalau belum ada sesi jalan, konfirmasi dulu biar
+// bikin row sesi_konversi itu keputusan sadar, bukan efek samping diam-diam.
+async function handleClipToggleClick(kode, action) {
+  if (action === 'remove') { removeFromClip(kode); return; }
+  const isFirstCommit = !currentSesiId; // ini yang nentuin apa perlu konfirmasi DAN apa perlu eskalasi pintu
+  if (isFirstCommit) {
+    const ok = await showConfirmModal({
+      title: 'Mulai Konversi Baru?',
+      text: 'Produk ini bakal masuk ke sesi konversi baru. Kalau cuma mau cari info produk (harga/link/gambar) buat dikirim ke pelanggan, gak perlu ini — tombol Copy di kartu udah cukup.',
+      okText: 'Ya, Mulai Konversi'
+    });
+    if (!ok) return;
+  }
+  addToClip(kode);
+  // Cuma pindah pintu pas KOMIT PERTAMA (baru mulai sesi) — kalau sesi udah
+  // jalan dan orang lagi nambahin produk lagi dari Cari Cepat, biarin tetep di
+  // situ (mungkin lagi nyari beberapa produk sekaligus sebelum balik ke Konversi).
+  if (isFirstCommit && typeof switchDoor === 'function') switchDoor('konversi');
+}
+
 function addToClip(kode) {
   const r = lastResults.find(x => x.kode_produk === kode);
   if (!r) return;
@@ -4117,6 +4003,16 @@ btnConvClear.addEventListener('click', () => {
 btnConvAddAll.addEventListener('click', async () => {
   btnConvAddAll.disabled = true;
   try {
+    // Konsisten sama "+ Tambahkan ke Konversi" di Cari Cepat dan submit Permintaan
+    // RS: kalau ini bakal jadi sesi PERTAMA, konfirmasi dulu.
+    if (!currentSesiId) {
+      const ok = await showConfirmModal({
+        title: 'Mulai Konversi Baru?',
+        text: 'Produk-produk terpilih bakal masuk ke sesi konversi baru.',
+        okText: 'Ya, Mulai Konversi'
+      });
+      if (!ok) { btnConvAddAll.disabled = false; return; }
+    }
     // Pastikan sesi kebuat/kepake SEKALI dulu di sini, sebelum loop nambahin
     // item — kalau enggak, tiap item bisa manggil ensureSesi() hampir bareng
     // dan masing-masing bikin sesi barunya sendiri (race condition → numpuk
@@ -4173,11 +4069,6 @@ function openPrModal() {
   prReviewWrap.style.display = 'none';
   prFormWrap.style.display = '';
   if (!prTanggal.value) prTanggal.value = new Date().toISOString().slice(0,10);
-  // Isi otomatis dari form sesi di atas (kalau sudah keisi) — biar gak ngetik ulang.
-  // Kalau form sesi masih kosong (misal ini aksi pertama di sesi baru), field di
-  // sini tetap kebuka kosong & bisa diisi seperti biasa, lalu ikut kecermin ke atas.
-  syncPrFieldsFromHeader();
-  bindPrSyncWithHeader();
 
   // Satu login di gerbang awal sudah cukup — kalau token expired, balik ke gerbang.
   if (!stokAccessToken) {
@@ -4531,11 +4422,31 @@ prReviewSaveBtn.addEventListener('click', async () => {
     // Permintaan RS ini nempel ke sesi konversi yang lagi aktif (bikin baru
     // kalau belum ada), jadi kalau temen buka sesi yang sama, daftar
     // permintaannya ikut kelihatan — bukan cuma tersimpan di layar sendiri.
-    // nama_rs & nama_sales sudah tersinkron & tersimpan lewat form sesi di atas
-    // (lihat bindPrSyncWithHeader/headerSaveTimer) — gak perlu PATCH terpisah lagi
-    // di sini, jadi cuma ada SATU jalur simpan buat dua kolom ini (gak ada lagi
-    // risiko modal ini nimpa nilai sesi dengan nilai yang beda).
+    // Sama kayak "+ Tambahkan ke Konversi" di Cari Cepat: kalau ini bakal jadi
+    // sesi PERTAMA, konfirmasi dulu biar bikin row sesi_konversi itu keputusan
+    // sadar, bukan efek samping submit form.
+    const isFirstCommit = !currentSesiId;
+    if (isFirstCommit) {
+      const ok = await showConfirmModal({
+        title: 'Mulai Konversi Baru?',
+        text: 'Permintaan RS ini bakal disimpan ke sesi konversi baru.',
+        okText: 'Ya, Mulai Konversi'
+      });
+      if (!ok) return; // finally di bawah tetap jalan, ngebalikin tombol ke state semula
+    }
     const sesiId = await ensureSesi();
+    const namaRsTrim = prNamaRs.value.trim();
+    const picSalesTrim = prPicSales.value.trim();
+    if (namaRsTrim || picSalesTrim) {
+      await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          nama_rs: namaRsTrim || null,
+          nama_sales: picSalesTrim || null,
+          updated_at: new Date().toISOString()
+        })
+      });
+    }
 
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/submit_permintaan_rs`, {
       method: 'POST',
@@ -4562,6 +4473,7 @@ prReviewSaveBtn.addEventListener('click', async () => {
 
     startChecklistSession(result, prNamaRs.value.trim(), prPicSales.value.trim(), parsePaguValue(prPagu.value));
     closePrModal();
+    if (typeof switchDoor === 'function') switchDoor('konversi');
 
     // Kalau tadi masuk ke sini lewat nudge di Record modal, balik lagi ke situ
     // biar user lanjut dari titik yang sama (bukan ilang, harus klik Record lagi).
@@ -4590,6 +4502,96 @@ var checklistSales = '';
 var checklistPagu = null;
 var checklistPermintaanId = null;
 var checklistPickingId = null; // id item yang lagi nampilin dropdown pilih produk (null = gak ada)
+// Accordion master-detail: cuma SATU requirement yang "kebuka" nunjukin detail
+// penuh dalam satu waktu, sisanya nyusut jadi baris ringkas — biar kerasa kayak
+// fokus per-requirement, bukan 20-50 baris yang semuanya "berteriak" bareng.
+var checklistExpandedId = null;
+// Abis 1 requirement diputusin (bisa/tidak), otomatis buka yang PENDING
+// berikutnya — biar alur kerja "putusin, lanjut, putusin, lanjut" gak perlu
+// klik cari-cari baris berikutnya manual tiap kali.
+function advanceToNextPending(afterId) {
+  const idx = checklistItems.findIndex(i => i.id === afterId);
+  for (let i = idx + 1; i < checklistItems.length; i++) {
+    if (checklistItems[i].status === 'PENDING') return checklistItems[i].id;
+  }
+  for (let i = 0; i < idx; i++) { // muter dari awal, jaga-jaga ada yang kelewat di atas
+    if (checklistItems[i].status === 'PENDING') return checklistItems[i].id;
+  }
+  return null; // udah gak ada yang PENDING lagi
+}
+
+// Fast-path "tandai TERPENUHI pakai 1 produk spesifik" — dipake bareng sama
+// action 'use-suggestion' (produk udah ada di Clipboard) dan 'attach-suggestion'
+// (produk baru aja ditambahin ke Clipboard). Satu titik biar dua jalur itu gak
+// duplikasi logic konfirmasi status.
+async function markItemTerpenuhiWithSingleProduk(item, kode) {
+  const itemId = item.id;
+  try {
+    markLocalWrite(PERMINTAAN_ITEM_TABLE, itemId, 'status', 'TERPENUHI');
+    const links = [{ produk_id: null, kode_produk: kode, qty_alokasi: null }];
+    await callUpdatePermintaanItemMulti(itemId, 'TERPENUHI', links);
+    item.status = 'TERPENUHI';
+    item.matched_items = links;
+    checklistExpandedId = advanceToNextPending(itemId);
+    renderChecklist();
+    maybeFetchSuggestionForExpanded();
+    broadcastChecklistItemUpdated(item);
+    autoFinalizePermintaan();
+  } catch (err) {
+    showToast('Gagal update: ' + err.message, 'error');
+    renderChecklist();
+  }
+}
+
+// ══════════════════════════════════════════
+// SARAN DICTIONARY INLINE — "organizational memory" muncul pas lagi ngerjain
+// satu requirement, bukan jadi tab terpisah yang harus disambangin. Berkat
+// accordion, paling banyak cuma SATU item yang expanded dalam satu waktu, jadi
+// paling banyak cuma 1 pasang RPC call yang jalan bersamaan (bukan N+1 buat
+// 20-50 item sekaligus) — di-cache per item.id biar gak nembak ulang tiap
+// buka-tutup baris yang sama.
+// ══════════════════════════════════════════
+const dictSuggestionCache = {}; // item.id -> {loading, istilah, status, produk} | null (null = udah dicek, gak ada saran)
+async function fetchDictSuggestionFor(item) {
+  if (dictSuggestionCache[item.id] !== undefined) return; // udah pernah dicek (ada hasil ATAU emang null)
+  dictSuggestionCache[item.id] = { loading: true };
+  try {
+    const { data: summaryRows, error: summaryErr } = await rpc('get_dictionary_summary', {
+      // Value parameter ini HARUS sama persis kayak yang dipake tab Dictionary
+      // asli (lihat #dict-filter-select/#dict-sort-select) — 'semua'/'frekuensi',
+      // bukan 'all'/'freq_desc'. Nilai enum yang salah bikin RPC gagal, dan
+      // gagalnya gak keliatan kalau cuma ngecek `data` doang tanpa cek `error`.
+      p_search: item.raw_text, p_filter: 'semua', p_sort: 'frekuensi', p_limit: 1, p_offset: 0
+    });
+    if (summaryErr) throw new Error(summaryErr.message || summaryErr.hint || 'get_dictionary_summary gagal');
+    const top = summaryRows && summaryRows[0];
+    if (!top) { dictSuggestionCache[item.id] = null; }
+    else {
+      const { data: detailRows, error: detailErr } = await rpc('get_dictionary_detail', { p_istilah: top.istilah_customer });
+      if (detailErr) throw new Error(detailErr.message || detailErr.hint || 'get_dictionary_detail gagal');
+      dictSuggestionCache[item.id] = {
+        loading: false,
+        istilah: top.istilah_customer,
+        status: top.status,
+        produk: (detailRows || []).slice(0, 3) // paling banyak 3 baris teratas, ini sinyal kontekstual bukan halaman browse penuh
+      };
+    }
+  } catch (err) {
+    console.error('Gagal ambil saran Dictionary buat "' + item.raw_text + '":', err);
+    dictSuggestionCache[item.id] = null; // gagal fetch = anggap gak ada saran, jangan block UI checklist-nya — tapi errornya sekarang keliatan di console
+  }
+  // Item ini mungkin masih expanded pas fetch selesai — patch biar sarannya muncul.
+  // Kalau user udah pindah ke item lain, patchChecklistItem no-op aman aja.
+  if (checklistExpandedId === item.id) patchChecklistItem(item.id, {});
+}
+// Dipanggil abis checklistExpandedId ganti (toggle manual, auto-advance, atau
+// default pas checklist pertama kali dimuat) — satu titik konsisten biar gak
+// keulang nulis pengecekan yang sama di banyak tempat.
+function maybeFetchSuggestionForExpanded() {
+  if (!checklistExpandedId) return;
+  const it = checklistItems.find(i => i.id === checklistExpandedId);
+  if (it && it.status === 'PENDING') fetchDictSuggestionFor(it);
+}
 
 function startChecklistSession(submitResult, namaRs, picSales, pagu) {
   checklistItems = Array.isArray(submitResult.items) ? submitResult.items : [];
@@ -4598,6 +4600,9 @@ function startChecklistSession(submitResult, namaRs, picSales, pagu) {
   checklistSales = picSales || '(tanpa nama sales)';
   checklistPagu = (pagu === undefined) ? null : pagu;
   checklistPermintaanId = submitResult.permintaan_id;
+  // Sama kayak loadChecklistForSesi: buka otomatis requirement PENDING pertama.
+  const firstPending = checklistItems.find(i => i.status === 'PENDING');
+  checklistExpandedId = firstPending ? firstPending.id : null;
 
   // Auto-isi Nama RS / Sales di clipboard, biar gak perlu diketik ulang —
   // ini satu sesi konversi yang sama, bukan dua langkah terpisah.
@@ -4606,12 +4611,11 @@ function startChecklistSession(submitResult, namaRs, picSales, pagu) {
   updateClipboard();
   setClipHeaderCollapsed(true);
 
-  // Sama kayak di loadChecklistForSesi: gak maksa buka kbSection lagi di sini,
-  // biar preferensi ciutan/buka yang dipilih user konsisten — gak balik
-  // "meledak" nampilin semua item tiap kali baru submit Permintaan RS.
+  kbSection.classList.remove('kb-collapsed');
   kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
   kbRefreshStatus.textContent = '';
   renderChecklist();
+  maybeFetchSuggestionForExpanded();
   switchClipTab('kb');
 
   // pastikan panel clipboard kelihatan (termasuk di mobile, yang defaultnya nampilin tab search)
@@ -4668,57 +4672,118 @@ function renderChecklistItemHtml(item) {
   const isDone = item.status === 'TERPENUHI';
   const isNa = item.status === 'TIDAK_TERPENUHI';
   const isPicking = checklistPickingId === item.id;
-  const cls = isDone ? 'terpenuhi' : isNa ? 'tidak-terpenuhi' : '';
+  // Picker butuh ruang penuh buat checkbox-list-nya, jadi kalau lagi milih
+  // produk, item ini otomatis kebuka juga — gak masuk akal ada picker di
+  // dalam baris yang keciutin.
+  const isExpanded = isPicking || checklistExpandedId === item.id;
+  const cls = (isDone ? 'terpenuhi' : isNa ? 'tidak-terpenuhi' : '') + (isExpanded ? ' expanded' : ' collapsed');
 
-  let sub = '';
-  if (isDone) sub = `✓ Bisa dipenuhi`;
-  else if (isNa) sub = `✕ Tidak bisa dipenuhi`;
+  const qtyTxt = item.qty_diminta ? ` · qty ${item.qty_diminta}` : '';
+  const paguTxt = item.pagu_satuan != null ? ` · pagu satuan ${rupiah(item.pagu_satuan)}` : '';
 
-  let matchedHtml = '';
+  // ---- Baris ringkas (selalu kelihatan, ini yang diklik buat buka/tutup) ----
+  const statusIcon = isDone ? '<i class="ti ti-circle-check" style="color:var(--success)"></i>'
+    : isNa ? '<i class="ti ti-circle-x" style="color:var(--danger)"></i>'
+    : '<i class="ti ti-circle-dashed" style="color:var(--text-muted)"></i>';
+  let compactMatchedTxt = '';
   if (isDone && item.matched_items && item.matched_items.length) {
-    matchedHtml = `<div class="kb-item-matched">${item.matched_items.map(l => {
-      const nama = namaProdukByKode(l.kode_produk);
-      const qtyTxt = l.qty_alokasi != null ? ` · qty ${l.qty_alokasi}` : '';
-      return `<span class="kb-matched-row">→ ${l.kode_produk}${nama ? ' — ' + nama : ''}${qtyTxt}</span>`;
-    }).join('')}</div>`;
+    const first = item.matched_items[0];
+    const namaFirst = namaProdukByKode(first.kode_produk) || first.kode_produk;
+    const more = item.matched_items.length - 1;
+    compactMatchedTxt = `<div class="kb-item-compact-matched">→ ${namaFirst}${more > 0 ? ` +${more} lainnya` : ''}</div>`;
   }
+  const headerHtml = `<div class="kb-item-header" data-action="toggle-expand" data-id="${item.id}">
+    <span class="kb-item-status-icon">${statusIcon}</span>
+    <div class="kb-item-header-text">
+      <div class="kb-item-text">${item.raw_text}${qtyTxt}${paguTxt}</div>
+      ${!isExpanded ? compactMatchedTxt : ''}
+    </div>
+    <i class="ti ti-chevron-down kb-item-chevron"></i>
+  </div>`;
 
-  let bodyHtml;
-  if (isPicking) {
-    // Mode pilih produk: checkbox multi-select dari clipboard (bisa dicentang
-    // lebih dari satu buat kebutuhan yang dipenuhi campuran beberapa SKU) +
-    // Konfirmasi/Batal. Muncul baik dari klik "Bisa Dipenuhi" (item PENDING)
-    // maupun dari klik "Ubah produk" (item yang udah TERPENUHI).
-    bodyHtml = `
-      <div class="kb-picker">
-        ${clipboardPickerHtml(item.id, item.matched_items)}
-        <div class="kb-picker-error" data-picker-error="${item.id}" style="display:none">Pilih minimal 1 produk dulu.</div>
-        <div class="kb-picker-actions">
-          <button class="kb-cancel-btn" data-action="pick-cancel" data-id="${item.id}">Batal</button>
-          <button class="kb-confirm-btn" data-action="pick-confirm" data-id="${item.id}">Konfirmasi</button>
-        </div>
-      </div>`;
-  } else if (isPending) {
-    bodyHtml = `
-      <div class="kb-item-actions">
-        <button class="kb-bisa-btn" data-action="bisa" data-id="${item.id}">✓ Bisa Dipenuhi</button>
-        <button class="kb-tidak-btn" data-action="tidak" data-id="${item.id}">✕ Tidak Bisa</button>
-      </div>`;
-  } else {
-    // Sudah dikonfirmasi (TERPENUHI/TIDAK_TERPENUHI): status kekunci, tapi
-    // tetep bisa diubah/dibatalkan lewat dua link kecil ini.
-    bodyHtml = `
-      <div class="kb-item-links">
-        ${isDone ? `<a data-action="change" data-id="${item.id}">Ubah produk</a>` : ''}
-        <a class="kb-batal-link" data-action="undo" data-id="${item.id}">Batal</a>
-      </div>`;
+  // ---- Detail (cuma dirender kalau lagi expanded — hemat DOM buat 20-50 baris) ----
+  let detailHtml = '';
+  if (isExpanded) {
+    let sub = '';
+    if (isDone) sub = `✓ Bisa dipenuhi`;
+    else if (isNa) sub = `✕ Tidak bisa dipenuhi`;
+
+    let matchedHtml = '';
+    if (isDone && item.matched_items && item.matched_items.length) {
+      matchedHtml = `<div class="kb-item-matched">${item.matched_items.map(l => {
+        const nama = namaProdukByKode(l.kode_produk);
+        const qtyLineTxt = l.qty_alokasi != null ? ` · qty ${l.qty_alokasi}` : '';
+        return `<span class="kb-matched-row">→ ${l.kode_produk}${nama ? ' — ' + nama : ''}${qtyLineTxt}</span>`;
+      }).join('')}</div>`;
+    }
+
+    let bodyHtml;
+    if (isPicking) {
+      // Mode pilih produk: checkbox multi-select dari clipboard (bisa dicentang
+      // lebih dari satu buat kebutuhan yang dipenuhi campuran beberapa SKU) +
+      // Konfirmasi/Batal. Muncul baik dari klik "Bisa Dipenuhi" (item PENDING)
+      // maupun dari klik "Ubah produk" (item yang udah TERPENUHI).
+      bodyHtml = `
+        <div class="kb-picker">
+          ${clipboardPickerHtml(item.id, item.matched_items)}
+          <div class="kb-picker-error" data-picker-error="${item.id}" style="display:none">Pilih minimal 1 produk dulu.</div>
+          <div class="kb-picker-actions">
+            <button class="kb-cancel-btn" data-action="pick-cancel" data-id="${item.id}">Batal</button>
+            <button class="kb-confirm-btn" data-action="pick-confirm" data-id="${item.id}">Konfirmasi</button>
+          </div>
+        </div>`;
+    } else if (isPending) {
+      const sugg = dictSuggestionCache[item.id];
+      let suggHtml = '';
+      if (sugg === undefined) {
+        suggHtml = ''; // belum sempat di-fetch (harusnya sebentar doang, di-trigger bareng expand)
+      } else if (sugg && sugg.loading) {
+        suggHtml = `<div class="kb-dict-suggestion loading">Ngecek riwayat pemakaian…</div>`;
+      } else if (sugg && sugg.produk && sugg.produk.length) {
+        const badgeCls = sugg.status === 'MULTIPLE' ? 'multiple' : 'consistent';
+        const rows = sugg.produk.map(p => {
+          const inClip = clipboard.some(c => c.kode_produk === p.kode_produk);
+          return `<div class="kb-dict-sugg-row">
+            <div class="kb-dict-sugg-info">
+              <span class="kb-dict-sugg-nama">${escapeHtmlAttr(p.nama_produk || p.kode_produk)}</span>
+              <span class="kb-dict-sugg-freq">${Number(p.jumlah_pemakaian).toLocaleString('id-ID')}× dipakai${p.persentase != null ? ' · ' + p.persentase + '%' : ''}</span>
+            </div>
+            ${inClip
+              ? `<button class="kb-dict-sugg-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${p.kode_produk}">Pakai</button>`
+              : `<button class="kb-dict-sugg-attach" data-action="attach-suggestion" data-id="${item.id}" data-kode="${p.kode_produk}" title="Belum ada di Clipboard sesi ini — tambahin dulu">+ Tambah & Pakai</button>`}
+          </div>`;
+        }).join('');
+        suggHtml = `<div class="kb-dict-suggestion">
+          <div class="kb-dict-suggestion-label"><i class="ti ti-history"></i> Biasa dipakai buat "${escapeHtmlAttr(sugg.istilah)}" <span class="dict-badge ${badgeCls}" style="font-size:9px;padding:1px 5px">${sugg.status}</span></div>
+          ${rows}
+        </div>`;
+      }
+      bodyHtml = `
+        ${suggHtml}
+        <div class="kb-item-actions">
+          <button class="kb-bisa-btn" data-action="bisa" data-id="${item.id}">✓ Bisa Dipenuhi</button>
+          <button class="kb-tidak-btn" data-action="tidak" data-id="${item.id}">✕ Tidak Bisa</button>
+        </div>`;
+    } else {
+      // Sudah dikonfirmasi (TERPENUHI/TIDAK_TERPENUHI): status kekunci, tapi
+      // tetep bisa diubah/dibatalkan lewat dua link kecil ini.
+      bodyHtml = `
+        <div class="kb-item-links">
+          ${isDone ? `<a data-action="change" data-id="${item.id}">Ubah produk</a>` : ''}
+          <a class="kb-batal-link" data-action="undo" data-id="${item.id}">Batal</a>
+        </div>`;
+    }
+
+    detailHtml = `<div class="kb-item-detail">
+      ${sub ? `<div class="kb-item-sub">${sub}</div>` : ''}
+      ${matchedHtml}
+      ${bodyHtml}
+    </div>`;
   }
 
   return `<div class="kb-item ${cls}" data-id="${item.id}">
-    <div class="kb-item-text">${item.raw_text}${item.qty_diminta ? ' · qty ' + item.qty_diminta : ''}${item.pagu_satuan != null ? ' · pagu satuan ' + rupiah(item.pagu_satuan) : ''}</div>
-    ${sub ? `<div class="kb-item-sub">${sub}</div>` : ''}
-    ${matchedHtml}
-    ${bodyHtml}
+    ${headerHtml}
+    ${detailHtml}
   </div>`;
 }
 
@@ -4794,16 +4859,53 @@ function syncClipboardQtyForProduk(produkId, kode, override) {
 kbList.addEventListener('click', async (e) => {
   const link = e.target.closest('a[data-action]');
   const btn = e.target.closest('button[data-action]');
-  const el = link || btn;
+  const header = e.target.closest('.kb-item-header[data-action]');
+  const el = link || btn || header;
   if (!el) return;
   const itemId = parseInt(el.dataset.id, 10);
   const action = el.dataset.action;
   const item = checklistItems.find(i => i.id === itemId);
   if (!item) return;
 
+  if (action === 'toggle-expand') {
+    // Kalau lagi milih produk (picker kebuka), jangan biarin ke-collapse cuma
+    // gara-gara klik header-nya sendiri — user harus Batal/Konfirmasi dulu.
+    if (checklistPickingId === itemId) return;
+    checklistExpandedId = (checklistExpandedId === itemId) ? null : itemId;
+    renderChecklist();
+    maybeFetchSuggestionForExpanded();
+    return;
+  }
+
+  if (action === 'use-suggestion') {
+    // Fast-path dari saran Dictionary: langsung tandai TERPENUHI pakai produk
+    // yang disaranin, TANPA buka picker — cuma valid kalau produknya emang
+    // udah ada di Clipboard sesi ini (dicek dobel di sini, bukan cuma percaya
+    // tombolnya beneran ke-render dengan benar).
+    const kode = el.dataset.kode;
+    if (!clipboard.some(c => c.kode_produk === kode)) return;
+    btn.disabled = true;
+    await markItemTerpenuhiWithSingleProduk(item, kode);
+    return;
+  }
+
+  if (action === 'attach-suggestion') {
+    // Sama kayak "Pakai", tapi produknya belum ada di Clipboard — tambahin dulu
+    // (reuse addSetKodeToClip yang udah dipakai tab Cari SET buat kasus yang
+    // sama persis: cari exact by kode_produk, masukin ke lastResults, addToClip
+    // — fungsi itu juga yang ngurus disabled/text state tombolnya sendiri),
+    // baru abis itu jalanin fast-path yang sama kayak "Pakai".
+    const kode = el.dataset.kode;
+    await addSetKodeToClip(kode, btn);
+    if (!clipboard.some(c => c.kode_produk === kode)) return; // gagal, addSetKodeToClip udah nampilin toast errornya
+    await markItemTerpenuhiWithSingleProduk(item, kode);
+    return;
+  }
+
   if (action === 'bisa' || action === 'change') {
     // Buka mode pilih produk, belum manggil API sama sekali.
     checklistPickingId = itemId;
+    checklistExpandedId = itemId;
     renderChecklist();
     return;
   }
@@ -4854,7 +4956,9 @@ kbList.addEventListener('click', async (e) => {
       item.status = 'TERPENUHI';
       item.matched_items = links;
       checklistPickingId = null;
+      checklistExpandedId = advanceToNextPending(itemId); // langsung buka yang PENDING berikutnya
       renderChecklist();
+      maybeFetchSuggestionForExpanded();
       broadcastChecklistItemUpdated(item);
       autoFinalizePermintaan();
     } catch (err) {
@@ -4883,7 +4987,9 @@ kbList.addEventListener('click', async (e) => {
         if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk)) clipQtyChanged = true;
       });
       if (clipQtyChanged) updateClipboard();
+      checklistExpandedId = advanceToNextPending(itemId);
       renderChecklist();
+      maybeFetchSuggestionForExpanded();
       broadcastChecklistItemUpdated(item);
       autoFinalizePermintaan();
     } catch (err) {
@@ -4935,32 +5041,17 @@ kbList.addEventListener('change', (e) => {
   if (errEl && chk.checked) errEl.style.display = 'none';
 });
 
-// Key-nya di-versi-in ('_v2') biar preferensi lama yang sempat kesimpen dari
-// SEBELUM section ini beneran collapsible (klik ciutkan cuma nyembunyiin
-// daftar item, bukan summary Nama RS/Pagu) gak ikut kebawa jadi "expanded"
-// terus di reload berikutnya. User yang sempat klik toggle di versi lama
-// bakal mulai bersih lagi dengan default baru: ciutan.
-//
-// PENTING: "ciutkan" di sini cuma ngilangin baris Nama RS/Pagu/referensi
-// (kb-summary) — DAFTAR ITEM PERMINTAAN GAK PERNAH IKUT DICIUTKAN. Itu
-// justru konten utama section ini, jadi selalu kelihatan apapun state-nya.
-const KB_COLLAPSE_KEY = 'pnm_kb_collapsed_v2';
+const KB_COLLAPSE_KEY = 'pnm_kb_collapsed';
 kbCollapseBtn.addEventListener('click', () => {
   const collapsed = kbSection.classList.toggle('kb-collapsed');
-  kbCollapseBtn.title = collapsed ? 'Tampilkan info RS (Nama RS/Pagu)' : 'Ciutkan info RS (Nama RS/Pagu)';
+  kbCollapseBtn.title = collapsed ? 'Buka daftar' : 'Ciutkan daftar';
   sessionStorage.setItem(KB_COLLAPSE_KEY, collapsed ? '1' : '0');
 });
-// Default HTML-nya sekarang udah "kb-collapsed" (biar info RS yang sering
-// dobel sama judul di atas gak makan tempat duluan) — jadi di sini tinggal
-// HORMATIN pilihan eksplisit user kalau ada: '1' tetap ciut, '0' berarti
-// user pernah buka sendiri dan mau tetap kebuka. Gak ada nilai tersimpan =
-// ikut default HTML (ciut).
-const kbCollapsePref = sessionStorage.getItem(KB_COLLAPSE_KEY);
-if (kbCollapsePref === '0') {
-  kbSection.classList.remove('kb-collapsed');
-  kbCollapseBtn.title = 'Ciutkan info RS (Nama RS/Pagu)';
-} else {
-  kbCollapseBtn.title = 'Tampilkan info RS (Nama RS/Pagu)';
+// Kalau sebelumnya diciutkan di sesi browser yang sama, biarkan tetap ciutan
+// begitu daftar Kebutuhan RS pertama kali muncul.
+if (sessionStorage.getItem(KB_COLLAPSE_KEY) === '1') {
+  kbSection.classList.add('kb-collapsed');
+  kbCollapseBtn.title = 'Buka daftar';
 }
 
 // Kerja bareng dalam satu sesi yang sama bisa jalan bersamaan (bukan cuma

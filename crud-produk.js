@@ -1,6 +1,10 @@
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Instance client SEKARANG dari shared/supabase-client.js (satu client, satu
+// storageKey pnm_auth_session, dipakai semua modul) -- bukan bikin baru lagi
+// di sini. sb.from/sb.rpc/sb.storage/sb.auth di bawah SEMUA tetap jalan sama
+// persis, gak ada titik lain di file ini yang perlu diubah.
+const sb = window.pnmSupabase;
 const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
 
 const SEAL_LABELS = {

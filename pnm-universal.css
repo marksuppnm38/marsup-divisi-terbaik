@@ -738,7 +738,24 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .page-btn:disabled{opacity:.4;cursor:not-allowed}
 .page-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
 .page-info{font-size:12px;color:var(--text-muted);padding:0 6px}
-.rcard{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color .15s,box-shadow .15s;position:relative}
+.door-switch{display:flex;align-items:center;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px;gap:2px;flex-shrink:0}
+.door-btn{display:flex;align-items:center;gap:5px;height:28px;padding:0 12px;border:none;border-radius:18px;background:transparent;color:var(--text-secondary);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .15s var(--ease)}
+.door-btn i{font-size:14px}
+.door-btn:hover:not(.active){color:var(--text)}
+.door-btn.active{background:var(--accent);color:#fff}
+/* PINTU "Cari Cepat": lookup murni, panel-clip disembunyikan total, panel-search
+   ambil full width, subtab-row (cuma nyisain 1 opsi) ikut disembunyikan.
+   Class door-* nempel di #app-root biar bisa nge-scope elemen header juga. */
+#app-root.door-cari .panel-clip{display:none !important}
+#app-root.door-cari .subtab-row{display:none}
+#app-root.door-cari .panel-search{border-right:none}
+#hdr-clip-count-wrap{display:none}
+#app-root.door-konversi #hdr-clip-count-wrap{display:inline}
+#app-root.door-cari #btn-permintaan{display:none}
+.btn-clip-toggle{font-size:11px;font-weight:600;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:3px 10px;min-height:28px;display:flex;align-items:center;gap:4px;cursor:pointer;transition:filter .12s}
+.btn-clip-toggle:hover{filter:brightness(.96)}
+.btn-clip-toggle.in-clip{color:var(--success);background:var(--success-bg);border-color:var(--success)}
+.rcard{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:default;transition:border-color .15s,box-shadow .15s;position:relative}
 .rcard:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(29,91,212,.08)}
 .rcard.selected{border-color:var(--accent);background:var(--accent-bg)}
 .rcard.selected::after{content:'\ea5e';font-family:'tabler-icons';position:absolute;top:10px;right:10px;font-size:16px;color:var(--accent)}
@@ -871,17 +888,38 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .kb-summary-row{display:flex;justify-content:space-between;gap:8px;color:var(--text-secondary)}
 .kb-summary-row b{color:var(--text);font-weight:600}
 .kb-list{overflow-y:auto;padding:0 10px 6px;flex:1}
-.kb-item{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:12px;background:var(--surface)}
-.kb-item.terpenuhi{background:var(--success-bg);opacity:.85}
-.kb-item.tidak-terpenuhi{background:var(--danger-bg);opacity:.85}
+.kb-item{display:flex;flex-direction:column;gap:0;padding:0;border-radius:8px;margin-bottom:6px;font-size:12px;background:var(--surface);border:1px solid transparent;transition:border-color .15s ease}
+.kb-item.terpenuhi{background:var(--success-bg)}
+.kb-item.tidak-terpenuhi{background:var(--danger-bg)}
+.kb-item.terpenuhi.collapsed,.kb-item.tidak-terpenuhi.collapsed{opacity:.75}
+.kb-item.expanded{border-color:var(--border-strong)}
+.kb-item-header{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;cursor:pointer}
+.kb-item-header:hover{background:rgba(0,0,0,.02)}
+.kb-item-status-icon{flex-shrink:0;font-size:15px;line-height:1.4;margin-top:1px}
+.kb-item-header-text{flex:1;min-width:0}
+.kb-item-compact-matched{font-size:10.5px;color:var(--text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb-item-chevron{flex-shrink:0;font-size:14px;color:var(--text-muted);margin-top:2px;transition:transform .18s ease}
+.kb-item.expanded .kb-item-chevron{transform:rotate(180deg)}
+.kb-item-detail{padding:0 10px 10px;animation:rt-fade-in .18s ease}
 .kb-item-text{line-height:1.4}
 .kb-item-sub{font-size:10.5px;color:var(--text-muted);margin-top:2px}
-.kb-item-actions{display:flex;gap:6px}
+.kb-item-actions{display:flex;gap:6px;margin-top:4px}
 .kb-item-actions button{flex:1;font-size:11px;font-weight:600;padding:5px 8px;border-radius:6px;border:none;cursor:pointer;font-family:inherit}
 .kb-bisa-btn{background:var(--success-bg);color:var(--success);border:1px solid var(--success-border)!important}
 .kb-tidak-btn{background:var(--surface-2);color:var(--danger);border:1px solid var(--danger-border)!important}
 .kb-item-matched{font-size:10.5px;color:var(--text-muted);margin-top:2px}
 .kb-matched-row{display:block}
+.kb-dict-suggestion{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:6px;font-size:10.5px}
+.kb-dict-suggestion.loading{color:var(--text-muted);font-style:italic}
+.kb-dict-suggestion-label{display:flex;align-items:center;gap:4px;color:var(--text-muted);margin-bottom:4px;font-weight:600}
+.kb-dict-suggestion-label i{font-size:11px}
+.kb-dict-sugg-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 0}
+.kb-dict-sugg-info{display:flex;flex-direction:column;min-width:0}
+.kb-dict-sugg-nama{color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb-dict-sugg-freq{color:var(--text-muted);font-size:9.5px}
+.kb-dict-sugg-use{flex-shrink:0;font-size:10px;font-weight:600;padding:3px 9px;border-radius:12px;border:1px solid var(--accent-text);background:var(--accent-bg);color:var(--accent-text);cursor:pointer}
+.kb-dict-sugg-attach{flex-shrink:0;font-size:10px;font-weight:600;padding:3px 9px;border-radius:12px;border:1px dashed var(--border-strong);background:transparent;color:var(--text-secondary);cursor:pointer;white-space:nowrap}
+.kb-dict-sugg-attach:hover{border-color:var(--accent-text);color:var(--accent-text)}
 .kb-item-links{display:flex;gap:12px;margin-top:2px}
 .kb-item-links a{font-size:10.5px;cursor:pointer;color:var(--text-secondary);text-decoration:underline}
 .kb-item-links a.kb-batal-link{color:var(--danger)}

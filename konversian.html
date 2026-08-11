@@ -1,12 +1,6 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<link rel="icon" type="image/png" href="favicon/favicon-96x96.png" sizes="96x96" />
-<link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
-<link rel="shortcut icon" href="favicon/favicon.ico" />
-<link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png" />
-<meta name="apple-mobile-web-app-title" content="MyWebSite" />
-<link rel="manifest" href="favicon/site.webmanifest" />
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Conversion Workspace — PT Pionir Nusantara Manufacturing</title>
@@ -22,6 +16,8 @@
 <!-- Dipakai CUMA buat client Realtime (channel/presence/broadcast) — semua query data
      tetap lewat sesiFetch()/REST kayak biasa, gak ada yang dipindah ke SDK ini. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="/shared/supabase-client.js"></script>
+<script src="/shared/auth-session.js"></script>
 <link rel="stylesheet" href="pnm-universal.css"/>
 </head>
 <body>
@@ -62,7 +58,7 @@
   </div>
 </div>
 
-<div id="app-root" style="display:none;flex-direction:column;height:100vh;overflow:hidden">
+<div id="app-root" class="door-cari" style="display:none;flex-direction:column;height:100vh;overflow:hidden">
 <header>
   <div class="header-brand">
     <img src="favicon/favicon-96x96.png" alt="PNM Logo" class="logo">
@@ -70,6 +66,14 @@
       <div class="logo-text">Pionir Nusantara Manufacturing</div>
       <div class="logo-sub">Conversion Workspace</div>
     </div>
+  </div>
+  <!-- DUA PINTU: Cari Cepat (murni lookup, gak nyentuh database sama sekali)
+       vs Konversi (workspace requirement↔produk yang butuh sesi). Ini pilihan
+       navigasi PALING dasar di app ini sekarang — makanya ditaruh paling depan,
+       sebelum status sesi. Lihat switchDoor() di konversian.js. -->
+  <div class="door-switch" id="door-switch">
+    <button class="door-btn active" id="door-btn-cari" type="button" data-door="cari"><i class="ti ti-search"></i> Cari Cepat</button>
+    <button class="door-btn" id="door-btn-konversi" type="button" data-door="konversi"><i class="ti ti-clipboard-list"></i> Konversi</button>
   </div>
   <button class="session-indicator empty" id="session-indicator" type="button" title="Klik untuk lihat daftar Konversi Berjalan">
     <span class="session-indicator-dot" id="session-indicator-dot"></span>
@@ -84,29 +88,19 @@
     <div class="rt-avatar-cluster" id="rt-avatar-cluster"></div>
   </div>
   <div class="header-right">
-    <span class="clip-count">Clipboard: <span id="hdr-count">0</span> item</span>
+    <span class="clip-count" id="hdr-clip-count-wrap">Clipboard: <span id="hdr-count">0</span> item</span>
     <a class="toggle-btn" href="index.html" title="Kembali ke Beranda"><i class="ph ph-house"></i> <span class="toggle-btn-label">Beranda</span></a>
     <a class="toggle-btn" href="/stok.html" title="Buka modul Stok"><i class="ph ph-truck"></i> <span class="toggle-btn-label">Stok</span></a>
     <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ph ph-clipboard-text"></i> <span class="toggle-btn-label">Permintaan RS</span></button>
     <button class="toggle-btn" id="settings-toggle" title="Preferensi" aria-label="Preferensi"><i class="ph ph-gear-six"></i></button>
     <button class="toggle-btn" id="theme-toggle" title="Ganti tema" aria-label="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
-    <div class="user-menu" id="user-menu">
-      <button class="toggle-btn" id="user-menu-toggle" type="button" title="Akun" aria-label="Akun">
-        <i class="ph ph-user-circle"></i>
-      </button>
-      <div class="user-menu-dropdown" id="user-menu-dropdown">
-        <div class="user-menu-email" id="user-menu-email">-</div>
-        <button class="user-menu-logout-btn" id="btn-logout" type="button">
-          <i class="ph ph-sign-out"></i> Keluar
-        </button>
-      </div>
-    </div>
+    <button class="toggle-btn" id="btn-logout" title="Keluar" aria-label="Keluar"><i class="ph ph-sign-out"></i> <span class="toggle-btn-label">Keluar</span></button>
   </div>
 </header>
 
 <div id="offline-banner"><i class="ph ph-wifi-slash"></i><span>Koneksi internet terputus — perubahan mungkin belum tersimpan.</span></div>
 
-<div class="workspace">
+<div class="workspace" id="workspace">
   <!-- PANEL KIRI: SEARCH -->
   <div class="panel-search" id="panel-search">
     <div class="panel-search-rail" id="panel-search-rail" title="Buka panel pencarian" role="button" tabindex="0">
@@ -151,7 +145,7 @@
           <option value="stok_indent_dulu">Stok: Indent dulu</option>
         </select>
       </div>
-      <div id="hint"><i class="ti ti-search"></i><p>Ketik untuk mulai mencari produk.<br>Klik hasil untuk menambahkan ke clipboard.</p></div>
+      <div id="hint"><i class="ti ti-search"></i><p>Ketik untuk mulai mencari produk.<br>Klik "Copy" buat nyalin info produknya, atau "Tambahkan ke Konversi" kalau mau dijadiin bagian kerjaan.</p></div>
       <div id="loading"></div>
       <div id="empty"><i class="ti ti-search-off"></i><p>Produk tidak ditemukan.<br>Coba kata kunci lain.</p></div>
       <div id="results"></div>
@@ -362,7 +356,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 
     <div class="clip-tabs-wrap">
       <div class="clip-tab-panel" id="clip-tab-panel-kb" style="display:none">
-        <div id="clip-kebutuhan-section" class="clip-kebutuhan-section kb-collapsed">
+        <div id="clip-kebutuhan-section" class="clip-kebutuhan-section">
           <div class="clip-empty" id="kb-empty-state">
             <i class="ti ti-clipboard-text"></i>
             <p>Belum ada Permintaan RS buat sesi ini.<br>Catat dulu biar item yang diminta bisa dicocokkan ke produk yang kamu tambahkan ke Clipboard.</p>
@@ -378,7 +372,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
               </div>
               <div class="kb-head-btns">
                 <button class="kb-collapse-btn" id="kb-refresh-btn" title="Muat ulang (biar lihat update dari temen)"><i class="ti ti-refresh"></i></button>
-                <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan info RS (Nama RS/Pagu)"><i class="ti ti-chevron-up"></i></button>
+                <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan daftar"><i class="ti ti-chevron-up"></i></button>
               </div>
             </div>
             <div class="kb-summary" id="kb-summary"></div>
@@ -650,7 +644,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         <div class="pr-field">
           <label>Nama RS / Instansi</label>
           <input type="text" id="pr-nama-rs" placeholder="RS ABC"/>
-          <div class="helper-text">Sinkron otomatis dengan "Nama RS / Instansi" di form sesi atas — isi/ubah di sini atau di atas, sama aja.</div>
         </div>
         <div class="pr-field">
           <label>Tanggal</label>
@@ -661,7 +654,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         <div class="pr-field">
           <label>PIC Sales</label>
           <input type="text" id="pr-pic-sales" placeholder="Nama sales" list="sales-datalist" autocomplete="off"/>
-          <div class="helper-text">Sinkron otomatis dengan "Nama Sales" di form sesi atas — isi/ubah di sini atau di atas, sama aja.</div>
         </div>
         <!-- Satu datalist dipakai bareng oleh #inp-sales dan #pr-pic-sales, diisi dari
              tabel `sales` (master, sudah dinormalisasi) lewat loadSalesOptions(). -->
