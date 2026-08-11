@@ -50,14 +50,16 @@ themeToggle.addEventListener('click', () => {
 // ---- Sidebar nav (stub views) ----
 function switchView(view){
   document.querySelectorAll('.sb-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  ['produk','dashboard','set','akd','bulk'].forEach(v => {
+  ['produk','dashboard','set','akd','kfa','bulk'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
   document.getElementById('addBtn').style.display = (view === 'produk') ? '' : 'none';
   document.querySelector('.view-toggle').style.display = (view === 'produk') ? '' : 'none';
   if (view === 'akd' && !akdLoadedOnce) { akdLoadedOnce = true; loadAkdDistinctValues(); loadAkd(); }
+  if (view === 'kfa' && !kfaLoadedOnce) { kfaLoadedOnce = true; loadKfa(); refreshKfaFilterCounts(); }
 }
 let akdLoadedOnce = false;
+let kfaLoadedOnce = false;
 document.querySelectorAll('.sb-item[data-view]').forEach(btn => {
   btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
@@ -1722,6 +1724,85 @@ async function addCompItem(kodeProduk){
   await refreshSetHeader();
 }
 
+// ---- Paste Rincian Set (dipindah dari Bulk Edit -- sekarang scoped ke SET yang lagi
+// dibuka, bukan lintas-set lagi. Terima format 5-kolom apa adanya dari sheet Rincian Set
+// (kode_set/nama_set diabaikan) ATAU format ringkas 2-kolom kode_item + qty. ----
+let compPasteRows = [];
+function parseSetKompLine(cols){
+  if (cols.length >= 5) return { kodeItem: cols[2], namaItem: cols[3], qtyStr: cols[4] };
+  if (cols.length >= 2) return { kodeItem: cols[0], namaItem: '', qtyStr: cols[1] };
+  return { kodeItem: cols[0] || '', namaItem: '', qtyStr: '' };
+}
+document.getElementById('compPastePreviewBtn').addEventListener('click', async () => {
+  const lines = parsePasteLines(document.getElementById('compPasteArea').value);
+  if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
+  const kodeItemList = [...new Set(lines.map(l => parseSetKompLine(l).kodeItem).filter(Boolean))];
+  const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk, nama_produk, tipe').in('kode_produk', kodeItemList);
+  if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
+  const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
+
+  compPasteRows = lines.map(l => {
+    const { kodeItem, namaItem, qtyStr } = parseSetKompLine(l);
+    const qty = parseInt(qtyStr, 10);
+    const itemProduk = byKode[kodeItem];
+    let status = 'ok', msg = 'Siap diproses';
+    if (!kodeItem) { status = 'err'; msg = 'Kode item kosong'; }
+    else if (!itemProduk) { status = 'err'; msg = 'Kode item tidak ditemukan'; }
+    else if (itemProduk.id === currentSetId) { status = 'err'; msg = 'Item gak boleh set ini sendiri'; }
+    else if (itemProduk.tipe === 'SET') { status = 'err'; msg = 'Item tidak boleh SET (nested)'; }
+    else if (!qty || qty < 1) { status = 'err'; msg = 'Qty tidak valid'; }
+    return { kodeItem, namaItem, qty, itemProduk, status, msg };
+  });
+
+  renderCompPastePreview();
+});
+function renderCompPastePreview(){
+  const wrap = document.getElementById('compPastePreviewWrap');
+  const body = document.getElementById('compPastePreviewBody');
+  const summary = document.getElementById('compPasteSummary');
+  const okCount = compPasteRows.filter(r => r.status === 'ok').length;
+  const errCount = compPasteRows.length - okCount;
+  summary.innerHTML = `<span class="ok">${okCount} baris siap diproses</span>${errCount ? `<span class="warn">${errCount} baris bermasalah (tidak ikut diproses)</span>` : ''}`;
+  wrap.style.display = 'block';
+  body.innerHTML = '';
+  compPasteRows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="kode-cell">${escapeHtml(r.kodeItem)}</td>
+      <td>${escapeHtml(r.namaItem || r.itemProduk?.nama_produk || '—')}</td>
+      <td>${r.qty || '—'}</td>
+      <td><span class="row-status ${r.status}">${r.status === 'ok' ? 'Siap' : r.msg}</span></td>
+    `;
+    body.appendChild(tr);
+  });
+  document.getElementById('compPasteProsesBtn').style.display = okCount > 0 ? 'inline-flex' : 'none';
+}
+document.getElementById('compPasteProsesBtn').addEventListener('click', async () => {
+  const rows = compPasteRows.filter(r => r.status === 'ok');
+  if (rows.length === 0) return;
+  const timpaMode = document.getElementById('compPasteTimpaMode').checked;
+  const btn = document.getElementById('compPasteProsesBtn');
+  btn.disabled = true;
+  const items = rows.map(r => ({ produk_id: r.itemProduk.id, qty: r.qty }));
+  // Satu panggilan RPC = satu transaksi Postgres: kalau ada yang gagal di tengah,
+  // semua di-rollback (gak ada kondisi item lama kehapus tapi item baru belum semua masuk).
+  const { data, error } = await sb.rpc('save_set_composisi', {
+    p_set_id: currentSetId,
+    p_items: items,
+    p_mode: timpaMode ? 'timpa' : 'gabung',
+  });
+  btn.disabled = false;
+  if (error) { showToast('Gagal simpan komposisi: ' + error.message, true); return; }
+  showToast(`Selesai — ${data?.processed ?? items.length} baris komposisi tersimpan`);
+  document.getElementById('compPasteArea').value = '';
+  document.getElementById('compPastePreviewWrap').style.display = 'none';
+  document.getElementById('compPasteSummary').innerHTML = '';
+  btn.style.display = 'none';
+  compPasteRows = [];
+  await loadComposition();
+  await refreshSetHeader();
+});
+
 // ---- Pricing (tab, terpisah dari modal generic) ----
 async function loadSetHarga(){
   const { data, error } = await sb.from('produk_harga').select('*').eq('produk_id', currentSetId).order('tahun', { ascending: false });
@@ -1964,91 +2045,7 @@ document.getElementById('bulkHargaProsesBtn').addEventListener('click', async ()
   refreshProdukFilterCounts();
 });
 
-// ---- BULK KOMPOSISI SET ----
-let bulkKompRows = [];
-document.getElementById('bulkKompPreviewBtn').addEventListener('click', async () => {
-  const lines = parsePasteLines(document.getElementById('bulkKompPaste').value);
-  if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
-  const kodeSetList = [...new Set(lines.map(l => l[0]).filter(Boolean))];
-  const kodeItemList = [...new Set(lines.map(l => l[2]).filter(Boolean))];
-  const allKode = [...new Set([...kodeSetList, ...kodeItemList])];
-  const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk, tipe').in('kode_produk', allKode);
-  if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
-  const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
-
-  bulkKompRows = lines.map(l => {
-    const [kodeSet, , kodeItem, namaItem, qtyStr] = l;
-    const qty = parseInt(qtyStr, 10);
-    const setProduk = byKode[kodeSet];
-    const itemProduk = byKode[kodeItem];
-    let status = 'ok', msg = 'Siap diproses';
-    if (!kodeSet || !kodeItem) { status = 'err'; msg = 'Kode set/item kosong'; }
-    else if (!setProduk) { status = 'err'; msg = 'Kode set tidak ditemukan'; }
-    else if (setProduk.tipe !== 'SET') { status = 'err'; msg = 'Kode set bukan tipe SET'; }
-    else if (!itemProduk) { status = 'err'; msg = 'Kode item tidak ditemukan'; }
-    else if (itemProduk.tipe === 'SET') { status = 'err'; msg = 'Item tidak boleh SET (nested)'; }
-    else if (!qty || qty < 1) { status = 'err'; msg = 'Qty tidak valid'; }
-    return { kodeSet, kodeItem, namaItem, qty, setProduk, itemProduk, status, msg };
-  });
-
-  renderBulkKompPreview();
-});
-function renderBulkKompPreview(){
-  const wrap = document.getElementById('bulkKompPreviewWrap');
-  const body = document.getElementById('bulkKompPreviewBody');
-  const summary = document.getElementById('bulkKompSummary');
-  const okCount = bulkKompRows.filter(r => r.status === 'ok').length;
-  const errCount = bulkKompRows.length - okCount;
-  const setCount = new Set(bulkKompRows.filter(r => r.status === 'ok').map(r => r.kodeSet)).size;
-  summary.innerHTML = `<span class="ok">${okCount} baris siap (${setCount} set berbeda)</span>${errCount ? `<span class="warn">${errCount} baris bermasalah (tidak ikut diproses)</span>` : ''}`;
-  wrap.style.display = 'block';
-  body.innerHTML = '';
-  bulkKompRows.forEach(r => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="kode-cell">${escapeHtml(r.kodeSet)}</td>
-      <td class="kode-cell">${escapeHtml(r.kodeItem)}</td>
-      <td>${escapeHtml(r.namaItem || r.itemProduk?.nama_produk || '—')}</td>
-      <td>${r.qty || '—'}</td>
-      <td><span class="row-status ${r.status}">${r.status === 'ok' ? 'Siap' : r.msg}</span></td>
-    `;
-    body.appendChild(tr);
-  });
-  document.getElementById('bulkKompProsesBtn').style.display = okCount > 0 ? 'inline-flex' : 'none';
-}
-document.getElementById('bulkKompProsesBtn').addEventListener('click', async () => {
-  const rows = bulkKompRows.filter(r => r.status === 'ok');
-  if (rows.length === 0) return;
-  const timpaMode = document.getElementById('bulkKompTimpaMode').checked;
-  const btn = document.getElementById('bulkKompProsesBtn');
-  btn.disabled = true;
-
-  const bySet = {};
-  rows.forEach(r => { (bySet[r.setProduk.id] = bySet[r.setProduk.id] || []).push(r); });
-
-  let sukses = 0, gagal = 0;
-  for (const setId of Object.keys(bySet)) {
-    const itemRows = bySet[setId];
-    const items = itemRows.map(r => ({ produk_id: r.itemProduk.id, qty: r.qty }));
-    // Satu panggilan RPC = satu transaksi Postgres buat SET ini: kalau ada yang
-    // gagal di tengah, semua di-rollback (gak ada lagi kondisi item lama kehapus
-    // tapi item baru belum semua masuk).
-    const { data, error } = await sb.rpc('save_set_composisi', {
-      p_set_id: setId,
-      p_items: items,
-      p_mode: timpaMode ? 'timpa' : 'gabung',
-    });
-    if (error) { showToast(`Gagal simpan komposisi ${itemRows[0].kodeSet}: ${error.message}`, true); gagal += itemRows.length; }
-    else { sukses += data?.processed ?? itemRows.length; }
-  }
-  btn.disabled = false;
-  showToast(`Selesai — ${sukses} baris komposisi tersimpan${gagal ? `, ${gagal} gagal` : ''} (${Object.keys(bySet).length} set)`, gagal > 0);
-  document.getElementById('bulkKompPaste').value = '';
-  document.getElementById('bulkKompPreviewWrap').style.display = 'none';
-  document.getElementById('bulkKompSummary').innerHTML = '';
-  btn.style.display = 'none';
-  bulkKompRows = [];
-});
+// ---- KOMPOSISI SET dipindah ke tab-composition (lihat compPaste* di dekat loadComposition) ----
 
 // ---- BULK LINK V6 ----
 let bulkLinkRows = [];
@@ -2584,4 +2581,192 @@ document.getElementById('deleteAkdBtn').addEventListener('click', async () => {
   showToast('AKD dihapus');
   closeAkdModal();
   loadAkd(akdPage);
+});
+// ============================================================
+// ---- KFA Management ----
+// produk_kfa: 1 baris = 1 produk (unique produk_id). status terverifikasi
+// men-sync kode_kfa balik ke produk.kode_kfa lewat trigger DB (lihat
+// setup_produk_kfa_v2.sql) -- jadi kita gak perlu urus sync itu dari sini.
+// ============================================================
+const KFA_PAGE_SIZE = 30;
+let kfaPage = 1;
+let kfaSearchQuery = '';
+let kfaActiveFilter = 'all';
+let currentKfaId = null;
+const kfaModalOverlay = document.getElementById('kfaModalOverlay');
+
+async function refreshKfaFilterCounts(){
+  const statuses = ['pending', 'diajukan', 'terverifikasi', 'ditolak'];
+  const results = await Promise.all(
+    statuses.map(s => sb.from('produk_kfa').select('id', { count: 'exact', head: true }).eq('status', s))
+  );
+  let total = 0;
+  statuses.forEach((s, i) => {
+    const c = results[i].count || 0;
+    total += c;
+    document.getElementById('fc-kfa-' + s).textContent = c;
+  });
+  document.getElementById('fc-kfa-all').textContent = total;
+}
+
+async function loadKfa(page){
+  kfaPage = page || kfaPage || 1;
+  const tbody = document.getElementById('kfaTableBody');
+  tbody.innerHTML = `<tr class="state-row"><td colspan="7">Memuat data...</td></tr>`;
+  document.getElementById('kfaCount').textContent = 'Memuat...';
+
+  const from = (kfaPage - 1) * KFA_PAGE_SIZE, to = from + KFA_PAGE_SIZE - 1;
+  let query = sb.from('produk_kfa').select('*, produk:produk_id(kode_produk, nama_produk, tipe)', { count: 'exact' });
+  if (kfaActiveFilter !== 'all') query = query.eq('status', kfaActiveFilter);
+
+  const q = kfaSearchQuery.trim();
+  if (q) {
+    // produk_kfa gak bisa di-ilike langsung pakai kolom produk (beda tabel),
+    // jadi resolve dulu produk_id yang cocok, baru gabung sama pencarian kode_kfa.
+    const { data: matchedProduk } = await sb.from('produk').select('id')
+      .or(`kode_produk.ilike.%${q}%,nama_produk.ilike.%${q}%`).limit(500);
+    const ids = (matchedProduk || []).map(p => p.id);
+    if (ids.length) query = query.or(`kode_kfa.ilike.%${q}%,produk_id.in.(${ids.join(',')})`);
+    else query = query.ilike('kode_kfa', `%${q}%`);
+  }
+
+  const { data, error, count } = await query.order('updated_at', { ascending: false }).range(from, to);
+  if (error) { tbody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+  const rows = data || [], total = count || 0;
+
+  document.getElementById('kfaCount').textContent = total + ' record KFA' + (q ? ` untuk "${q}"` : '');
+  renderPgBar(document.getElementById('kfaPagination'), { page: kfaPage, pageSize: KFA_PAGE_SIZE, total, onPageChange: (p) => loadKfa(p) });
+  renderKfaTable(rows);
+}
+
+const KFA_STATUS_LABEL = { pending: 'Pending', diajukan: 'Diajukan', terverifikasi: 'Terverifikasi', ditolak: 'Ditolak' };
+const KFA_STATUS_PILL = { pending: 'neutral', diajukan: 'warn', terverifikasi: 'ok', ditolak: 'bad' };
+function renderKfaTable(rows){
+  const tbody = document.getElementById('kfaTableBody');
+  if (!rows.length) { tbody.innerHTML = `<tr class="state-row"><td colspan="7">Tidak ada record KFA ditemukan.</td></tr>`; return; }
+  tbody.innerHTML = '';
+  rows.forEach(r => {
+    const p = r.produk || {};
+    const tr = document.createElement('tr');
+    tr.className = 'clickable';
+    tr.innerHTML = `
+      <td class="kode-cell">${escapeHtml(p.kode_produk || '—')}</td>
+      <td>${escapeHtml(p.nama_produk || '—')}</td>
+      <td><span class="status-pill ${KFA_STATUS_PILL[r.status] || 'neutral'}">${KFA_STATUS_LABEL[r.status] || r.status}</span></td>
+      <td>${escapeHtml(r.kode_kfa || '—')}</td>
+      <td>${escapeHtml(r.no_akd_rujukan || '—')}</td>
+      <td>${r.tanggal_verifikasi || '—'}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.catatan || '')}">${escapeHtml(r.catatan || '—')}</td>
+    `;
+    tr.addEventListener('click', () => openEditKfa(r));
+    tbody.appendChild(tr);
+  });
+}
+
+// ---- Filter chip & search box ----
+document.querySelectorAll('#kfaFilterBar .filter-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    kfaActiveFilter = btn.dataset.filter;
+    document.querySelectorAll('#kfaFilterBar .filter-chip').forEach(b => b.classList.toggle('active', b === btn));
+    loadKfa(1);
+  });
+});
+let kfaSearchDebounce = null;
+document.getElementById('kfaSearchBoxInput').addEventListener('input', (e) => {
+  clearTimeout(kfaSearchDebounce);
+  kfaSearchDebounce = setTimeout(() => { kfaSearchQuery = e.target.value; loadKfa(1); }, 300);
+});
+
+// ---- Modal edit ----
+function openEditKfa(row){
+  currentKfaId = row.id;
+  const p = row.produk || {};
+  document.getElementById('kfaModalTitle').textContent = p.kode_produk || 'Detail KFA';
+  document.getElementById('kfaModalSub').textContent = p.nama_produk || '—';
+  document.getElementById('k_status').value = row.status || 'pending';
+  document.getElementById('k_tanggal_verifikasi').value = row.tanggal_verifikasi || '';
+  document.getElementById('k_kode_kfa').value = row.kode_kfa || '';
+  document.getElementById('k_no_akd_rujukan').value = row.no_akd_rujukan || '';
+  document.getElementById('k_catatan').value = row.catatan || '';
+  kfaModalOverlay.classList.add('open');
+}
+function closeKfaModal(){ kfaModalOverlay.classList.remove('open'); currentKfaId = null; }
+document.getElementById('kfaModalCloseBtn').addEventListener('click', closeKfaModal);
+document.getElementById('kfaCancelBtn').addEventListener('click', closeKfaModal);
+
+document.getElementById('kfaSaveBtn').addEventListener('click', async () => {
+  if (!currentKfaId) return;
+  const status = document.getElementById('k_status').value;
+  const kodeKfa = document.getElementById('k_kode_kfa').value.trim() || null;
+  if (status === 'terverifikasi' && !kodeKfa) { showToast('Kode KFA wajib diisi kalau status Terverifikasi', true); return; }
+  const payload = {
+    status,
+    kode_kfa: kodeKfa,
+    no_akd_rujukan: document.getElementById('k_no_akd_rujukan').value.trim() || null,
+    tanggal_verifikasi: document.getElementById('k_tanggal_verifikasi').value || null,
+    catatan: document.getElementById('k_catatan').value.trim() || null,
+  };
+  const { error } = await sb.from('produk_kfa').update(payload).eq('id', currentKfaId);
+  if (error) {
+    if (error.code === '23505') { showToast('Kode KFA ini sudah dipakai produk lain', true); return; }
+    showToast('Gagal menyimpan: ' + error.message, true); return;
+  }
+  showToast('Record KFA tersimpan');
+  closeKfaModal();
+  loadKfa(kfaPage);
+  refreshKfaFilterCounts();
+});
+
+document.getElementById('deleteKfaBtn').addEventListener('click', async () => {
+  if (!currentKfaId) return;
+  if (!confirm('Hapus record KFA ini? Kode KFA di produk (kalau ada) ikut kekosongin.')) return;
+  const { error } = await sb.from('produk_kfa').delete().eq('id', currentKfaId);
+  if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
+  showToast('Record KFA dihapus');
+  closeKfaModal();
+  loadKfa(kfaPage);
+  refreshKfaFilterCounts();
+});
+
+// ---- Tambah produk baru ke KFA (produk yang belum punya record sama sekali) ----
+const kfaAddBox = document.getElementById('kfaAddBox');
+document.getElementById('addKfaBtn').addEventListener('click', () => {
+  kfaAddBox.style.display = kfaAddBox.style.display === 'none' ? 'block' : 'none';
+  if (kfaAddBox.style.display === 'block') document.getElementById('kfaAddSearchInput').focus();
+});
+let kfaAddSearchDebounce = null;
+document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
+  clearTimeout(kfaAddSearchDebounce);
+  const q = e.target.value.trim();
+  const resultsEl = document.getElementById('kfaAddResults');
+  if (!q) { resultsEl.innerHTML = ''; return; }
+  kfaAddSearchDebounce = setTimeout(async () => {
+    // cari produk yang cocok DAN belum punya baris di produk_kfa sama sekali
+    const { data: matched } = await sb.from('produk').select('id, kode_produk, nama_produk')
+      .or(`kode_produk.ilike.%${q}%,nama_produk.ilike.%${q}%`).neq('tipe', 'SET').limit(15);
+    if (!matched || !matched.length) { resultsEl.innerHTML = `<div class="akd-hint">Tidak ada produk cocok.</div>`; return; }
+    const ids = matched.map(p => p.id);
+    const { data: existing } = await sb.from('produk_kfa').select('produk_id').in('produk_id', ids);
+    const existingIds = new Set((existing || []).map(r => r.produk_id));
+    const available = matched.filter(p => !existingIds.has(p.id));
+    if (!available.length) { resultsEl.innerHTML = `<div class="akd-hint">Semua hasil pencarian ini sudah punya record KFA.</div>`; return; }
+    resultsEl.innerHTML = '';
+    available.forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'akd-result-row';
+      div.innerHTML = `<span class="ar-no">${escapeHtml(p.kode_produk)}</span><span class="ar-nama">${escapeHtml(p.nama_produk || '')}</span>`;
+      div.addEventListener('click', async () => {
+        const { data: inserted, error } = await sb.from('produk_kfa').insert({ produk_id: p.id, status: 'pending' }).select('*, produk:produk_id(kode_produk, nama_produk, tipe)').single();
+        if (error) { showToast('Gagal tambah record: ' + error.message, true); return; }
+        showToast('Record KFA dibuat, isi detailnya');
+        document.getElementById('kfaAddSearchInput').value = '';
+        resultsEl.innerHTML = '';
+        kfaAddBox.style.display = 'none';
+        loadKfa(1);
+        refreshKfaFilterCounts();
+        openEditKfa(inserted);
+      });
+      resultsEl.appendChild(div);
+    });
+  }, 300);
 });

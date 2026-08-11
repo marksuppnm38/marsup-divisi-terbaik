@@ -11,7 +11,7 @@
 <link rel="manifest" href="favicon/site.webmanifest" />
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -24,7 +24,6 @@
   const saved = localStorage.getItem('theme') || localStorage.getItem('pnum-theme');
   const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   document.documentElement.style.colorScheme = theme;
-  document.documentElement.setAttribute('data-theme', theme);
   document.body.setAttribute('data-theme', theme);
 })();
 </script>
@@ -65,6 +64,7 @@
       <button class="sb-item active" data-view="produk" title="Produk"><i class="ti ti-package"></i><span class="sb-label">Produk</span></button>
       <button class="sb-item" data-view="set" title="Set Management"><i class="ti ti-stack-2"></i><span class="sb-label">Set Management</span></button>
       <button class="sb-item" data-view="akd" title="AKD"><i class="ti ti-shield-check"></i><span class="sb-label">AKD</span></button>
+      <button class="sb-item" data-view="kfa" title="KFA Management"><i class="ti ti-barcode"></i><span class="sb-label">KFA Management</span></button>
       <button class="sb-item" data-view="bulk" title="Bulk Edit"><i class="ti ti-table"></i><span class="sb-label">Bulk Edit</span></button>
     </nav>
     <div class="sb-spacer"></div>
@@ -188,6 +188,24 @@
             <div class="akd-results" id="compSearchResults"></div>
           </div>
           <div class="akd-hint" style="margin-top:10px;"><i class="ti ti-device-floppy"></i> Perubahan (tambah/hapus item, ubah qty) tersimpan otomatis ke database — tidak ada tombol Simpan terpisah.</div>
+
+          <div class="sec-label" style="margin-top:22px;">Atau Paste Rincian Set</div>
+          <div class="paste-hint">
+            Paste langsung dari sheet Rincian Set kamu apa adanya (kode_set, nama_set, kode_item, nama_item, qty — kolom kode_set/nama_set diabaikan karena udah jelas set-nya set ini), atau cukup 2 kolom <code>kode_item</code> — <code>qty</code>.
+          </div>
+          <textarea class="paste-area" id="compPasteArea" placeholder="RB999-KE921-B99-U667&#9;BASIC SPINE LAMINECTOMY S.&#9;RB10-KE130-B003-U07&#9;SCALPEL HANDLE, NO. 3, 12 CM&#9;1"></textarea>
+          <div class="bulk-actions">
+            <button class="btn btn-ghost" id="compPastePreviewBtn" type="button"><i class="ti ti-eye"></i> Preview</button>
+            <label class="check-row-inline"><input type="checkbox" id="compPasteTimpaMode"/> Mode Timpa Total (hapus item lama yang tidak disebut di paste ini)</label>
+            <button class="btn btn-accent" id="compPasteProsesBtn" type="button" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+          </div>
+          <div class="bulk-summary" id="compPasteSummary"></div>
+          <div class="preview-table-wrap" id="compPastePreviewWrap" style="display:none;">
+            <table>
+              <thead><tr><th>Kode Item</th><th>Nama Item</th><th>Qty</th><th>Status</th></tr></thead>
+              <tbody id="compPastePreviewBody"></tbody>
+            </table>
+          </div>
         </div>
 
         <div class="set-tab-panel" id="tab-pricing">
@@ -254,6 +272,51 @@
       </div>
       <div class="pg-bar" id="akdPagination" style="display:none;"></div>
     </div>
+    <div class="content" id="viewKfa" style="display:none;">
+      <div class="content-head">
+        <div>
+          <div class="content-title">KFA Management</div>
+          <div class="content-sub" id="kfaCount">Memuat...</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-accent" id="addKfaBtn"><i class="ti ti-plus"></i> Tambah Produk ke KFA</button>
+        </div>
+      </div>
+
+      <div id="kfaAddBox" class="akd-box" style="display:none;margin-bottom:14px;">
+        <div class="akd-search-wrap">
+          <input type="text" class="field-input" id="kfaAddSearchInput" placeholder="Cari kode/nama produk yang belum ada record KFA-nya..." style="padding:8px 10px;font-size:12.5px;"/>
+          <div class="akd-results" id="kfaAddResults"></div>
+        </div>
+      </div>
+
+      <div class="filter-bar" id="kfaFilterBar">
+        <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-kfa-all"></span></button>
+        <button class="filter-chip" data-filter="pending">Pending<span class="fc-count" id="fc-kfa-pending"></span></button>
+        <button class="filter-chip" data-filter="diajukan">Diajukan<span class="fc-count" id="fc-kfa-diajukan"></span></button>
+        <button class="filter-chip" data-filter="terverifikasi">Terverifikasi<span class="fc-count" id="fc-kfa-terverifikasi"></span></button>
+        <button class="filter-chip" data-filter="ditolak">Ditolak<span class="fc-count" id="fc-kfa-ditolak"></span></button>
+      </div>
+
+      <div class="akd-toolbar">
+        <div class="akd-search-box">
+          <i class="ti ti-search"></i>
+          <input type="text" id="kfaSearchBoxInput" placeholder="Cari kode/nama produk atau kode KFA..."/>
+        </div>
+      </div>
+
+      <div class="table-card akd-table-scroll">
+        <table>
+          <thead>
+            <tr><th>Kode Produk</th><th>Nama Produk</th><th>Status</th><th>Kode KFA</th><th>No. AKD Rujukan</th><th>Tgl Verifikasi</th><th>Catatan</th></tr>
+          </thead>
+          <tbody id="kfaTableBody">
+            <tr class="state-row"><td colspan="7">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="kfaPagination" style="display:none;"></div>
+    </div>
     <div class="content" id="viewBulk" style="display:none;">
       <div class="content-head">
         <div>
@@ -264,7 +327,6 @@
 
       <div class="bulk-tabs">
         <button class="bulk-tab active" data-bulk="harga">Harga Massal</button>
-        <button class="bulk-tab" data-bulk="komposisi">Komposisi Set Massal</button>
         <button class="bulk-tab" data-bulk="link">Link V6 Massal</button>
         <button class="bulk-tab" data-bulk="inaproc">INAPROC Tracker</button>
       </div>
@@ -289,26 +351,7 @@
         </div>
       </div>
 
-      <!-- BULK KOMPOSISI SET -->
-      <div class="bulk-panel" id="bulk-komposisi">
-        <div class="paste-hint">
-          Paste tanpa header, tab-separated, 5 kolom per baris: <code>kode_set</code> — <code>nama_set</code> (diabaikan, cuma buat kamu baca) — <code>kode_item</code> — <code>nama_item</code> (diabaikan) — <code>qty</code>.
-          Bisa langsung paste dari sheet Rincian Set kamu apa adanya.
-        </div>
-        <textarea class="paste-area" id="bulkKompPaste" placeholder="RB999-KE921-B99-U667&#9;BASIC SPINE LAMINECTOMY S.&#9;RB10-KE130-B003-U07&#9;SCALPEL HANDLE, NO. 3, 12 CM&#9;1"></textarea>
-        <div class="bulk-actions">
-          <button class="btn btn-ghost" id="bulkKompPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
-          <label class="check-row-inline"><input type="checkbox" id="bulkKompTimpaMode"/> Mode Timpa Total (hapus item lama yang tidak disebut di paste ini, per SET yang muncul)</label>
-          <button class="btn btn-accent" id="bulkKompProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
-        </div>
-        <div class="bulk-summary" id="bulkKompSummary"></div>
-        <div class="preview-table-wrap" id="bulkKompPreviewWrap" style="display:none;">
-          <table>
-            <thead><tr><th>Kode Set</th><th>Kode Item</th><th>Nama Item</th><th>Qty</th><th>Status</th></tr></thead>
-            <tbody id="bulkKompPreviewBody"></tbody>
-          </table>
-        </div>
-      </div>
+      <!-- BULK KOMPOSISI SET dipindah ke Set Management > tab Composition (per-set, gak lintas-set lagi) -->
 
       <!-- BULK LINK V6 -->
       <div class="bulk-panel" id="bulk-link">
@@ -670,49 +713,47 @@
   </div>
 </div>
 
-<script>
-/* Theme toggle — standalone, works even if crud-produk.js omits it.
-   (Sama persis pola di konversian.html — dulu di sini cuma ada logic BACA
-   tema awal tapi gak ada listener klik-nya, jadi tombol keliatan ada tapi
-   gak ngapa-ngapain. Kalau bikin halaman baru dari template ini, pastikan
-   blok ini ikut ke-copy.) */
-(function(){
-  function applyTheme(theme){
-    theme = theme === 'dark' ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    if (document.body) document.body.setAttribute('data-theme', theme);
-    document.documentElement.style.colorScheme = theme;
-    localStorage.setItem('theme', theme);
-    localStorage.setItem('pnum-theme', theme);
-    var icon = document.getElementById('themeIcon');
-    if (icon) {
-      icon.className = theme === 'dark' ? 'ti ti-moon' : 'ti ti-sun';
-    }
-  }
-  function currentTheme(){
-    return document.documentElement.getAttribute('data-theme')
-      || (document.body && document.body.getAttribute('data-theme'))
-      || localStorage.getItem('theme')
-      || localStorage.getItem('pnum-theme')
-      || 'light';
-  }
-  function bind(){
-    var btn = document.getElementById('themeToggle');
-    if (!btn || btn.dataset.themeBound) return;
-    btn.dataset.themeBound = '1';
-    applyTheme(currentTheme());
-    btn.addEventListener('click', function(e){
-      e.preventDefault();
-      applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
-    });
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bind);
-  } else {
-    bind();
-  }
-})();
-</script>
+<div class="modal-overlay" id="kfaModalOverlay">
+  <div class="modal-card">
+    <div class="mac-traffic">
+      <button class="mac-dot red" id="kfaModalCloseBtn" title="Tutup"></button>
+      <span class="mac-dot yellow"></span>
+      <span class="mac-dot green"></span>
+    </div>
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="kfaModalTitle">Detail KFA</div>
+        <div class="modal-sub" id="kfaModalSub">—</div>
+      </div>
+    </div>
+
+    <div class="sec-label">Status Verifikasi</div>
+    <div class="grid2">
+      <div class="f"><label>Status *</label>
+        <select id="k_status">
+          <option value="pending">Pending</option>
+          <option value="diajukan">Diajukan</option>
+          <option value="terverifikasi">Terverifikasi</option>
+          <option value="ditolak">Ditolak</option>
+        </select>
+      </div>
+      <div class="f"><label>Tgl Verifikasi</label><input type="date" id="k_tanggal_verifikasi"/></div>
+      <div class="f full"><label>Kode KFA</label><input type="text" id="k_kode_kfa" placeholder="Isi kalau status Terverifikasi"/></div>
+      <div class="f full"><label>No. AKD Rujukan</label><input type="text" id="k_no_akd_rujukan" placeholder="Dasar verifikasi KFA ini"/></div>
+      <div class="f full"><label>Catatan</label><textarea id="k_catatan" placeholder="Catatan bebas..."></textarea></div>
+    </div>
+    <div class="akd-hint" style="margin-top:6px;"><i class="ti ti-info-circle"></i> Kode KFA cuma otomatis kepakai di data produk (menggantikan field lama) kalau statusnya Terverifikasi — di luar itu dianggap belum resmi.</div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="deleteKfaBtn"><i class="ti ti-trash"></i> Hapus Record</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" id="kfaCancelBtn">Batal</button>
+        <button class="btn btn-accent" id="kfaSaveBtn"><i class="ti ti-check"></i> Simpan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="crud-produk.js"></script>
 </body>
 </html>
