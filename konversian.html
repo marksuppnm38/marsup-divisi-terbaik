@@ -4,6 +4,11 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Conversion Workspace — PT Pionir Nusantara Manufacturing</title>
+<link rel="icon" type="image/png" href="favicon/favicon-96x96.png" sizes="96x96" />
+<link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
+<link rel="shortcut icon" href="favicon/favicon.ico" />
+<link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png" />
+<link rel="manifest" href="favicon/site.webmanifest" />
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
@@ -25,17 +30,8 @@
 (function(){
   var stored = localStorage.getItem('theme') || localStorage.getItem('pnum-theme');
   var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  if (theme === 'dark') {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    document.documentElement.style.colorScheme = 'dark';
-  } else {
-    document.documentElement.setAttribute('data-theme', 'light');
-    document.documentElement.style.colorScheme = 'light';
-  }
-  document.addEventListener('DOMContentLoaded', function(){
-    if (theme === 'dark') document.body.setAttribute('data-theme', 'dark');
-    else document.body.setAttribute('data-theme', 'light');
-  });
+  document.documentElement.setAttribute('data-theme', theme);
+  document.documentElement.style.colorScheme = theme;
 })();
 </script>
 
@@ -835,12 +831,17 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 </div>
 
 <script>
-/* Theme toggle — standalone, works even if dashboard.js omits it */
+/* Theme toggle — standalone, works even if dashboard.js omits it.
+   Single source of truth: <html data-theme>. Do NOT also write to
+   <body> — pnm-universal.css only reacts to the attribute on <html>,
+   and a second theme system used to live in konversian.js (bottom of
+   file) that read/wrote <body> only; the two fought over the same
+   #theme-toggle button and made the toggle look stuck. That duplicate
+   block has been removed — this is now the only theme-toggle logic. */
 (function(){
   function applyTheme(theme){
     theme = theme === 'dark' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', theme);
-    if (document.body) document.body.setAttribute('data-theme', theme);
     document.documentElement.style.colorScheme = theme;
     localStorage.setItem('theme', theme);
     localStorage.setItem('pnum-theme', theme);
@@ -851,7 +852,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
   }
   function currentTheme(){
     return document.documentElement.getAttribute('data-theme')
-      || (document.body && document.body.getAttribute('data-theme'))
       || localStorage.getItem('theme')
       || localStorage.getItem('pnum-theme')
       || 'light';

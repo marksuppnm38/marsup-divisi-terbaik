@@ -39,16 +39,18 @@ function renderInaprocIndikator(statusInaproc, linkV6){
 // NOTE: data-theme attribute is already set as early as possible by the
 // inline script right after <body> (prevents flash of light theme before
 // this external file loads). Here we just sync the icon + wire the toggle.
+// Single source of truth: <html data-theme>, not <body> — pnm-universal.css
+// only reacts to the attribute on <html>.
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon = document.getElementById('themeIcon');
 function applyTheme(t){
-  document.body.setAttribute('data-theme', t);
+  document.documentElement.setAttribute('data-theme', t);
   themeIcon.className = t === 'dark' ? 'ti ti-moon' : 'ti ti-sun';
   localStorage.setItem('theme', t);
 }
-themeIcon.className = document.body.getAttribute('data-theme') === 'dark' ? 'ti ti-moon' : 'ti ti-sun';
+themeIcon.className = document.documentElement.getAttribute('data-theme') === 'dark' ? 'ti ti-moon' : 'ti ti-sun';
 themeToggle.addEventListener('click', () => {
-  applyTheme(document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
 });
 
 // ---- Sidebar nav (stub views) ----

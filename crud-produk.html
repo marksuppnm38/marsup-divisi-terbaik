@@ -26,7 +26,7 @@
   const saved = localStorage.getItem('theme') || localStorage.getItem('pnum-theme');
   const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   document.documentElement.style.colorScheme = theme;
-  document.body.setAttribute('data-theme', theme);
+  document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
 

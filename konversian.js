@@ -2323,26 +2323,16 @@ function updateClipSummaryStrip() {
 const progressFill = document.getElementById('progress-fill');
 const progressLabel = document.getElementById('progress-label');
 const modalSub = document.getElementById('modal-sub');
-const themeToggle = document.getElementById('theme-toggle');
-const themeIcon = document.getElementById('theme-icon');
 
-// DARK MODE
-function setThemeIcon() {
-  const isDark = document.body.getAttribute('data-theme') === 'dark';
-  themeIcon.className = isDark ? 'ph ph-sun' : 'ph ph-moon';
-}
-setThemeIcon();
-themeToggle.addEventListener('click', () => {
-  const isDark = document.body.getAttribute('data-theme') === 'dark';
-  if (isDark) {
-    document.body.removeAttribute('data-theme');
-    localStorage.setItem('theme', 'light');
-  } else {
-    document.body.setAttribute('data-theme', 'dark');
-    localStorage.setItem('theme', 'dark');
-  }
-  setThemeIcon();
-});
+// DARK MODE: theme init + toggle binding lives in konversian.html (inline
+// script near the end of <body>) and targets <html data-theme> only, which
+// is what pnm-universal.css reacts to. A second, independent theme system
+// used to live here — it read/wrote document.body's data-theme (ignored by
+// the CSS) and attached its own click listener to the SAME #theme-toggle
+// button as the one in konversian.html, so every click ran both handlers
+// and they fought over the state, making the toggle look stuck/inconsistent.
+// Removed. Use isDarkThemeActive() above (reads document.documentElement)
+// if you need to know the current theme from this file.
 
 // SUPABASE
 async function rpc(fn, params) {
