@@ -674,8 +674,49 @@
             return `<span class="chip">${name}<button type="button" aria-label="Hapus ${name}" onclick="toggleFile('${id}')">✕</button></span>`;
         }).join("");
     }
+    // Cache supaya gambar yang sama tidak difetch ulang ke Google
+    const imageCache = {};
+
     async function getDriveImageUrl(fileId) {
-        return `https://lh3.googleusercontent.com/d/${fileId}`;
+        // Pakai Google Drive API resmi (files.get?alt=media), jauh lebih stabil
+        // dan tidak gampang kena rate-limit 429 dibanding lh3.googleusercontent.com.
+        // CATATAN: file di Drive harus di-share "Anyone with the link" dan
+        // Drive API harus diaktifkan untuk API key ini di Google Cloud Console.
+        return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${apiKey}`;
+    }
+
+    // Load gambar dengan retry + exponential backoff, khusus menangani 429
+    function loadImageWithRetry(src, maxRetries = 4, baseDelay = 800) {
+        return new Promise(async (resolve, reject) => {
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    const img = await loadImage(src);
+                    resolve(img);
+                    return;
+                } catch (err) {
+                    if (attempt === maxRetries) {
+                        reject(err);
+                        return;
+                    }
+                    const delay = baseDelay * Math.pow(2, attempt); // 800ms, 1.6s, 3.2s, 6.4s
+                    console.warn(`[RETRY] Gagal load gambar (percobaan ${attempt + 1}/${maxRetries}), coba lagi dalam ${delay}ms:`, src);
+                    await new Promise(r => setTimeout(r, delay));
+                }
+            }
+        });
+    }
+
+    // Ambil overlay (sudah diproses hapus background) dengan cache per fileId
+    async function getOverlayCanvasCached(fileId) {
+        if (imageCache[fileId]) {
+            console.log("[CACHE] Pakai gambar overlay dari cache untuk:", fileId);
+            return imageCache[fileId];
+        }
+        const overlaySrc = await getDriveImageUrl(fileId);
+        const overlayImg = await loadImageWithRetry(overlaySrc);
+        const processedOverlay = await removeBackgroundHighQuality(overlayImg);
+        imageCache[fileId] = processedOverlay;
+        return processedOverlay;
     }
     async function removeBackgroundHighQuality(image) {
         let tempCanvas = document.createElement("canvas");
@@ -786,7 +827,13 @@
         return /^[a-zA-Z0-9_-]+$/.test(id);
     }
 
+    let isMerging = false; // guard supaya tidak ada request bertumpuk
+
     async function mergeAndPreview() {
+        if (isMerging) {
+            console.warn("[SKIP] Proses merge sebelumnya masih berjalan, klik diabaikan.");
+            return;
+        }
         if (selectedIds.length === 0) {
             toast("Pilih minimal 1 gambar terlebih dahulu!", "error");
             return;
@@ -798,18 +845,26 @@
         console.log("[INFO] File ID yang dipilih:", selectedIds);
 
         const btn = document.getElementById("previewBtn");
+        isMerging = true;
         setButtonLoading(btn, true, "Memproses...");
 
         try {
-            let templateSrc = "https://lh3.googleusercontent.com/d/1uZiM5HO748yItSjYS17OgCmw71uK5xPN";
-            console.log("[INFO] Mengambil gambar template:", templateSrc);
+            const templateFileId = "1uZiM5HO748yItSjYS17OgCmw71uK5xPN";
+            console.log("[INFO] Mengambil gambar template & overlay...");
 
-            let templateImg = await loadImage(templateSrc);
+            const templateImg = imageCache[templateFileId]
+                ? imageCache[templateFileId]
+                : await (async () => {
+                    const src = await getDriveImageUrl(templateFileId);
+                    const img = await loadImageWithRetry(src);
+                    imageCache[templateFileId] = img;
+                    return img;
+                })();
 
-            let overlaySrcs = await Promise.all(selectedIds.map(id => getDriveImageUrl(id)));
-            console.log("[INFO] Mengambil gambar overlay:", overlaySrcs);
-            let overlayImgs = await Promise.all(overlaySrcs.map(src => loadImage(src)));
-            let processedOverlays = await Promise.all(overlayImgs.map(img => removeBackgroundHighQuality(img)));
+            // ambil semua overlay secara paralel, masing-masing pakai cache + retry sendiri
+            let processedOverlays = await Promise.all(
+                selectedIds.map(id => getOverlayCanvasCached(id))
+            );
 
             console.log("[SUCCESS] Gambar berhasil diproses.");
             drawMergedCanvas(templateImg, processedOverlays);
@@ -822,8 +877,9 @@
             toast("Preview berhasil dibuat.", "success", 2500);
         } catch (error) {
             console.error("[ERROR] Gagal memproses gambar:", error);
-            toast("Gagal memproses gambar. Pastikan file dapat diakses publik.", "error");
+            toast("Gagal memproses gambar. Pastikan file dapat diakses publik, atau coba lagi (rate-limit).", "error");
         } finally {
+            isMerging = false;
             setButtonLoading(btn, false);
         }
     }
