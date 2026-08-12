@@ -21,9 +21,9 @@
 <!-- Dipakai CUMA buat client Realtime (channel/presence/broadcast) — semua query data
      tetap lewat sesiFetch()/REST kayak biasa, gak ada yang dipindah ke SDK ini. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="/shared/supabase-client.js"></script>
-<script src="/shared/auth-session.js"></script>
-<link rel="stylesheet" href="pnm-universal.css"/>
+<script src="/shared/supabase-client.js?v=20260812a"></script>
+<script src="/shared/auth-session.js?v=20260812a"></script>
+<link rel="stylesheet" href="pnm-universal.css?v=20260812a"/>
 </head>
 <body>
 <script>
@@ -475,9 +475,39 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         <span>Total: <span id="clip-total">0</span> produk dipilih</span>
         <span id="clip-total-harga"></span>
       </div>
-      <button class="btn-export" id="btn-export" disabled>
-        <i class="ti ti-file-spreadsheet"></i> Export ke Excel
-      </button>
+      <!-- ALUR KONVERSI: Export → Drive ditampilkan sebagai 2 langkah yang terhubung
+           (bukan 2 tombol biru identik ditumpuk) biar kelihatan jelas ini satu alur
+           berurutan, bukan 2 aksi independen. Nomor step ganti jadi centang begitu
+           step itu selesai (lihat #conv-flow-status script di bawah, dekat
+           #export-modal). ID tombol TETAP SAMA (btn-export, btn-drive-upload,
+           btn-record) biar konversian.js gak perlu diubah. -->
+      <div class="conv-steps" id="conv-steps">
+        <button class="btn-export conv-step" id="btn-export" data-step="export" disabled>
+          <span class="conv-step-num">1</span>
+          <span class="conv-step-check"><i class="ti ti-check"></i></span>
+          <span class="conv-step-body">
+            <span class="conv-step-label">Export ke Excel</span>
+            <span class="conv-step-hint">Buat file rincian konversi</span>
+          </span>
+          <i class="ti ti-file-spreadsheet conv-step-icon"></i>
+        </button>
+        <div class="conv-step-connector"></div>
+        <div class="conv-step-row" id="conv-step-drive-row">
+          <button class="btn-export conv-step" id="btn-drive-upload" data-step="drive" disabled title="Aktif setelah Export ke Excel. Butuh sesi ini punya Permintaan RS (buat nentuin folder tahun).">
+            <span class="conv-step-num">2</span>
+            <span class="conv-step-check"><i class="ti ti-check"></i></span>
+            <span class="conv-step-body">
+              <span class="conv-step-label">Simpan ke Drive</span>
+              <span class="conv-step-hint" id="conv-step-drive-hint">Aktif setelah Export selesai</span>
+            </span>
+            <i class="ti ti-cloud-upload conv-step-icon"></i>
+          </button>
+          <a class="conv-step-open" id="conv-step-drive-open" href="#" target="_blank" rel="noopener" title="Buka folder di Drive">
+            <i class="ti ti-external-link"></i>
+          </a>
+        </div>
+      </div>
+
       <button class="btn-record" id="btn-record" disabled>
         <i class="ti ti-clipboard-check"></i> Record Konversi
       </button>
@@ -501,15 +531,438 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
   </button>
 </div>
 
-<!-- PROGRESS MODAL -->
+<!-- PROGRESS MODAL — sekarang punya 3 tampilan (loading/success/error) di satu
+     overlay yang sama, dipilih oleh convFlow.js di bawah lewat MutationObserver
+     yang mengamati #progress-label. Ini SENGAJA gak nyentuh cara konversian.js
+     menjalankan/menutup modal ini — cuma "menumpangi" state yang sudah ada, jadi
+     tetap jalan walau konversian.js belum diubah sama sekali. -->
 <div class="modal-overlay" id="export-modal">
-  <div class="modal-box">
-    <div class="modal-title">Menyiapkan Export…</div>
-    <div class="modal-sub" id="modal-sub">Mengambil data dan gambar produk</div>
-    <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
-    <div class="progress-label" id="progress-label">0 / 0</div>
+  <div class="modal-box conv-modal-box">
+    <div id="export-modal-loading" class="conv-modal-state">
+      <div class="conv-modal-icon-wrap loading"><i class="ti ti-loader-2"></i></div>
+      <div class="modal-title" id="modal-title">Menyiapkan Export…</div>
+      <div class="modal-sub" id="modal-sub">Mengambil data dan gambar produk</div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      <div class="progress-label" id="progress-label">0 / 0</div>
+    </div>
+
+    <div id="export-modal-success" class="conv-modal-state" style="display:none">
+      <div class="conv-modal-icon-wrap success"><i class="ti ti-circle-check"></i></div>
+      <div class="modal-title" id="conv-success-title">Export berhasil</div>
+      <div class="modal-sub" id="conv-success-sub">File Excel sudah siap.</div>
+      <div class="conv-success-file" id="conv-success-file" style="display:none">
+        <i class="ti ti-file-spreadsheet"></i>
+        <span id="conv-success-filename"></span>
+      </div>
+
+      <!-- LOKASI FILE — pengganti kalimat generik "sudah ada di folder Drive".
+           Nunjukin breadcrumb folder tujuan + status link secara eksplisit:
+             'checking' → masih nyari link (poll rec-link, lihat convFlow.js)
+             'ready'    → link ketemu, tombol Buka/Salin aktif
+             'unknown'  → link gak ketemu setelah ditunggu — jujur bilang gitu,
+                          jangan pura-pura pasti tersimpan di lokasi tertentu -->
+      <div class="conv-location" id="conv-location" style="display:none">
+        <div class="conv-location-row">
+          <i class="ti ti-folder conv-location-icon"></i>
+          <span class="conv-location-path" id="conv-location-path">—</span>
+        </div>
+        <div class="conv-location-status" id="conv-location-status"></div>
+        <div class="conv-location-actions" id="conv-location-actions" style="display:none">
+          <a class="conv-loc-btn conv-loc-btn-primary" id="conv-location-open" href="#" target="_blank" rel="noopener">
+            <i class="ti ti-external-link"></i> Buka di Drive
+          </a>
+          <button class="conv-loc-btn" id="conv-location-copy" type="button">
+            <i class="ti ti-copy"></i> Salin link
+          </button>
+        </div>
+      </div>
+
+      <div class="conv-modal-actions">
+        <button class="conv-btn-secondary" id="conv-success-close" type="button">Tutup</button>
+        <button class="conv-btn-primary" id="conv-success-next" type="button" style="display:none">
+          Lanjut <i class="ti ti-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="export-modal-error" class="conv-modal-state" style="display:none">
+      <div class="conv-modal-icon-wrap error"><i class="ti ti-alert-circle"></i></div>
+      <div class="modal-title">Gagal, coba lagi</div>
+      <div class="modal-sub" id="conv-error-sub">Terjadi kendala saat memproses. Cek koneksi lalu ulangi.</div>
+      <div class="conv-modal-actions">
+        <button class="conv-btn-secondary" id="conv-error-close" type="button">Tutup</button>
+      </div>
+    </div>
   </div>
 </div>
+
+<script>
+/* ============================================================
+   CONVERSION FLOW UX — loading → success/error state untuk
+   Export ke Excel & Simpan ke Drive, plus nyalain centang di
+   stepper #conv-steps.
+   ------------------------------------------------------------
+   PENTING: script ini SENGAJA gak mengubah konversian.js sama
+   sekali — cuma "menumpang" di atas elemen yang sudah ada:
+     • Deteksi klik #btn-export / #btn-drive-upload → tau aksi mana
+       yang jalan (buat ganti judul modal & step mana yg ditandai).
+     • Amati teks #progress-label ("N / N") → tau kapan proses
+       selesai, lalu tampilkan state sukses di modal yang sama
+       (bukan modal yang tiba-tiba hilang tanpa konfirmasi).
+     • Best-effort ambil link Drive dari input #rec-link (field itu
+       tampaknya keisi otomatis setelah upload) buat tombol
+       "Buka di Drive". Kalau kosong, tombol itu disembunyikan —
+       gak ditebak-tebak.
+   Kalau mau hasil yang lebih presisi (nama file & link asli dari
+   response API, bukan tebakan dari DOM), konversian.js bisa manggil
+   langsung setelah request berhasil/gagal:
+     window.convFlow.showSuccess('export'|'drive', { filename, driveUrl, subtitle })
+     window.convFlow.showError('export'|'drive', 'pesan error')
+   ============================================================ */
+(function(){
+  function ready(fn){ document.readyState==='loading' ? document.addEventListener('DOMContentLoaded',fn) : fn(); }
+
+  ready(function(){
+    var overlay = document.getElementById('export-modal');
+    var progressLabel = document.getElementById('progress-label');
+    var modalTitle = document.getElementById('modal-title');
+    var viewLoading = document.getElementById('export-modal-loading');
+    var viewSuccess = document.getElementById('export-modal-success');
+    var viewError = document.getElementById('export-modal-error');
+    if(!overlay || !progressLabel || !viewLoading || !viewSuccess) return;
+
+    var stepExport = document.getElementById('btn-export');
+    var stepDrive = document.getElementById('btn-drive-upload');
+    var btnRecord = document.getElementById('btn-record');
+    var btnClearAll = document.getElementById('btn-clear-all');
+
+    var COPY = {
+      export: {
+        loadingTitle: 'Menyiapkan Export…',
+        successTitle: 'Export berhasil',
+        successSub: function(){
+          var n = (document.getElementById('clip-total')||{}).textContent || '0';
+          return n + ' produk sudah masuk ke file Excel.';
+        },
+        nextLabel: 'Lanjut: Simpan ke Drive',
+        get nextTarget(){ return stepDrive; },
+        get step(){ return stepExport; }
+      },
+      drive: {
+        loadingTitle: 'Mengunggah ke Drive…',
+        successTitle: 'Tersimpan ke Drive',
+        successSub: function(){ return 'File sudah ada di folder Drive sesi ini.'; },
+        nextLabel: 'Lanjut: Record Konversi',
+        get nextTarget(){ return btnRecord; },
+        get step(){ return stepDrive; }
+      }
+    };
+
+    var currentAction = 'export';
+    var watching = false;
+    var doneShown = false;
+    // Khusus step 'drive': konversian.js sekarang manggil window.convFlow.
+    // showSuccess/showError('drive', ...) LANGSUNG di titik yang beneran tau
+    // hasilnya (lihat uploadKonversianToDrive) — itu jalur utama & normalnya
+    // selalu kepakai dalam beberapa detik. Timer di bawah ini MURNI jaring
+    // pengaman kalau ternyata gak ada sinyal apa pun yang pernah datang dalam
+    // waktu wajar — itu tandanya proses upload-nya malah GAK PERNAH MULAI
+    // (mis. ke-block guard clause di konversian.js sebelum sempat nelpon API,
+    // atau error lain yang gak ketangkep) — BUKAN tanda "kemungkinan besar
+    // berhasil". Makanya di sini kita tampilin state ERROR yang jujur, bukan
+    // sukses palsu.
+    var driveTimeoutTimer = null;
+    var DRIVE_TIMEOUT_MS = 15000;
+
+    function resetToLoading(action){
+      currentAction = action;
+      doneShown = false;
+      watching = true;
+      if(activePollTimer){ clearInterval(activePollTimer); activePollTimer = null; }
+      if(driveTimeoutTimer){ clearTimeout(driveTimeoutTimer); driveTimeoutTimer = null; }
+      var locBox = document.getElementById('conv-location');
+      if(locBox) locBox.style.display = 'none';
+      currentLocationPath = null;
+      var c = COPY[action];
+      if(modalTitle) modalTitle.textContent = c.loadingTitle;
+      viewLoading.style.display = '';
+      viewSuccess.style.display = 'none';
+      if(viewError) viewError.style.display = 'none';
+      if(c.step) c.step.classList.add('is-loading');
+      if(action === 'drive'){
+        driveTimeoutTimer = setTimeout(function(){
+          driveTimeoutTimer = null;
+          if(watching && currentAction === 'drive' && !doneShown){
+            window.convFlow.showError('drive', 'Gak ada konfirmasi dari proses upload setelah 15 detik — kemungkinan prosesnya gak sempat mulai (cek notifikasi toast di pojok layar buat alasannya, mis. sesi ini belum ada Permintaan RS/tanggal, atau sesi login kedaluwarsa), bukan berarti sudah pasti berhasil. Cek folder Drive-nya manual dulu sebelum coba lagi.');
+          }
+        }, DRIVE_TIMEOUT_MS);
+      }
+    }
+
+    if(stepExport) stepExport.addEventListener('click', function(){ if(!stepExport.disabled) resetToLoading('export'); });
+    if(stepDrive) stepDrive.addEventListener('click', function(){ if(!stepDrive.disabled) resetToLoading('drive'); });
+    if(btnClearAll) btnClearAll.addEventListener('click', function(){
+      [stepExport, stepDrive].forEach(function(el){ if(el) el.classList.remove('is-done','is-loading'); });
+      if(driveTimeoutTimer){ clearTimeout(driveTimeoutTimer); driveTimeoutTimer = null; }
+    });
+
+    function ensureOpen(){
+      overlay.classList.add('show');
+      overlay.classList.add('open');
+      overlay.style.display = 'flex';
+    }
+    // userClosing: dinyalain SEBELUM kita nutup overlay lewat jalur yang kita
+    // kontrol sendiri (tombol Tutup, Esc, atau "Lanjut"). overlayObs di bawah
+    // pakai flag ini buat bedain "user yang nutup" vs "ke-tutup sendiri" (mis.
+    // konversian.js masih punya rutinitas lama yang nutup modal ini begitu
+    // proses upload kelar) — kalau bukan dari flag ini, modal dibuka lagi,
+    // gak boleh ilang tanpa user yang mutusin nutup.
+    var userClosing = false;
+    function closeModal(){
+      userClosing = true;
+      overlay.classList.remove('show','open');
+      overlay.style.display = 'none';
+      setTimeout(function(){ userClosing = false; }, 0);
+    }
+
+    var driveOpenChip = document.getElementById('conv-step-drive-open');
+    var driveHintEl = document.getElementById('conv-step-drive-hint');
+
+    // currentLocationPath: path folder yang PASTI, dikirim konversian.js lewat
+    // window.convFlow.showSuccess('drive', {locationPath}) tepat pas upload
+    // beneran kelar (lihat uploadKonversianToDrive di konversian.js — folder-nya
+    // "{tahun dari tanggal Permintaan RS} / {Nama Sales}", BUKAN nama RS/tahun
+    // sekarang). buildLocationPath() di bawah cuma fallback KALAU BELUM ADA
+    // locationPath asli (mis. modal masih di fase loading, atau timeout jaga-jaga
+    // di resetToLoading kepicu tanpa convFlow sempat manggil) — makanya dia juga
+    // dibikin sedeket mungkin sama pola aslinya (sales + tahun), bukan RS.
+    var currentLocationPath = null;
+    function buildLocationPath(){
+      var sales = ((document.getElementById('inp-sales')||{}).value || '').trim();
+      var year = new Date().getFullYear();
+      return sales ? (year + ' / ' + sales) : (year + ' / Konversi');
+    }
+    function resolveLocationPath(){
+      return currentLocationPath || buildLocationPath();
+    }
+
+    function setLocationReady(url){
+      var box = document.getElementById('conv-location');
+      var status = document.getElementById('conv-location-status');
+      var actions = document.getElementById('conv-location-actions');
+      var openLink = document.getElementById('conv-location-open');
+      box.style.display = 'block';
+      status.className = 'conv-location-status is-ready';
+      status.innerHTML = '<i class="ti ti-circle-check"></i> Link folder ketemu — file ada di sini.';
+      actions.style.display = 'flex';
+      openLink.href = url;
+      if(driveOpenChip){ driveOpenChip.href = url; driveOpenChip.classList.add('show'); }
+      if(driveHintEl) driveHintEl.textContent = '✓ Tersimpan · ' + resolveLocationPath();
+    }
+
+    function setLocationPending(){
+      var box = document.getElementById('conv-location');
+      var status = document.getElementById('conv-location-status');
+      var actions = document.getElementById('conv-location-actions');
+      box.style.display = 'block';
+      document.getElementById('conv-location-path').textContent = resolveLocationPath();
+      status.className = 'conv-location-status is-pending';
+      status.innerHTML = '<i class="ti ti-loader-2"></i> Nyari link folder…';
+      actions.style.display = 'none';
+    }
+
+    function setLocationUnknown(){
+      var status = document.getElementById('conv-location-status');
+      var actions = document.getElementById('conv-location-actions');
+      status.className = 'conv-location-status is-unknown';
+      status.innerHTML = '<i class="ti ti-alert-triangle"></i> Link otomatis belum ketemu — file kemungkinan sudah ada, cek langsung di folder Drive di atas (tab Riwayat gak nampilin link ini).';
+      actions.style.display = 'none';
+      if(driveHintEl) driveHintEl.textContent = '✓ Tersimpan · ' + resolveLocationPath() + ' · link belum ketemu';
+    }
+
+    var activePollTimer = null;
+    function pollForDriveLink(maxTries, intervalMs){
+      var tries = 0;
+      var recLink = document.getElementById('rec-link');
+      if(activePollTimer) clearInterval(activePollTimer);
+      activePollTimer = setInterval(function(){
+        tries++;
+        var val = recLink ? (recLink.value || '') : '';
+        if(/^https?:\/\//.test(val)){
+          clearInterval(activePollTimer); activePollTimer = null;
+          setLocationReady(val);
+        } else if(tries >= maxTries){
+          clearInterval(activePollTimer); activePollTimer = null;
+          setLocationUnknown();
+        }
+      }, intervalMs);
+    }
+
+    var copyBtn = document.getElementById('conv-location-copy');
+    if(copyBtn) copyBtn.addEventListener('click', function(){
+      var url = document.getElementById('conv-location-open').href;
+      if(!url) return;
+      var reset = function(){ copyBtn.classList.remove('copied'); copyBtn.innerHTML = '<i class="ti ti-copy"></i> Salin link'; };
+      (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+        .then(function(){
+          copyBtn.classList.add('copied');
+          copyBtn.innerHTML = '<i class="ti ti-check"></i> Tersalin!';
+          setTimeout(reset, 1600);
+        })
+        .catch(function(){ /* clipboard API gak tersedia — link tetap kelihatan & bisa diklik/disalin manual */ });
+    });
+
+    function showSuccess(){
+      if(doneShown) return;
+      doneShown = true;
+      watching = false;
+      if(driveTimeoutTimer){ clearTimeout(driveTimeoutTimer); driveTimeoutTimer = null; }
+      var c = COPY[currentAction];
+      if(c.step){ c.step.classList.remove('is-loading'); c.step.classList.add('is-done'); }
+
+      document.getElementById('conv-success-title').textContent = c.successTitle;
+      document.getElementById('conv-success-sub').textContent = c.successSub();
+      document.getElementById('conv-success-file').style.display = 'none';
+
+      var locBox = document.getElementById('conv-location');
+      if(currentAction === 'drive'){
+        var recLink = document.getElementById('rec-link');
+        var val = recLink ? (recLink.value || '') : '';
+        if(/^https?:\/\//.test(val)){
+          document.getElementById('conv-location-path').textContent = resolveLocationPath();
+          setLocationReady(val);
+        } else {
+          setLocationPending();
+          pollForDriveLink(10, 400); // nyoba ~4 detik sebelum nyerah & bilang jujur
+        }
+      } else {
+        locBox.style.display = 'none';
+      }
+
+      var nextBtn = document.getElementById('conv-success-next');
+      if(c.nextTarget && !c.nextTarget.disabled){
+        nextBtn.style.display = 'flex';
+        nextBtn.innerHTML = c.nextLabel + ' <i class="ti ti-arrow-right"></i>';
+        if(c.nextTarget === stepDrive){
+          // Export -> Simpan ke Drive itu SATU overlay yang sama, cuma ganti
+          // tahap. Sebelumnya modal ditutup dulu (closeModal) lalu nunggu
+          // 150ms berharap konversian.js buka lagi buat mulai upload — kalau
+          // itu telat/gak kejadian, user ngeliatnya modal "ilang abis Lanjut".
+          // Sekarang kita pegang kendali penuh: pindah ke state loading di
+          // overlay yang SAMA tanpa pernah nutup dulu, baru trigger klik asli
+          // biar konversian.js jalanin upload beneran + isi progress-label.
+          nextBtn.onclick = function(){
+            resetToLoading('drive');
+            ensureOpen();
+            setTimeout(function(){ c.nextTarget.click(); }, 50);
+          };
+        } else {
+          // Drive -> Record Konversi buka MODAL LAIN (#record-modal), jadi
+          // overlay export-modal ini memang harus ditutup dulu.
+          nextBtn.onclick = function(){ closeModal(); setTimeout(function(){ c.nextTarget.click(); }, 150); };
+        }
+      } else {
+        nextBtn.style.display = 'none';
+      }
+
+      viewLoading.style.display = 'none';
+      if(viewError) viewError.style.display = 'none';
+      viewSuccess.style.display = 'flex';
+      ensureOpen();
+    }
+
+    var closeBtn = document.getElementById('conv-success-close');
+    if(closeBtn) closeBtn.addEventListener('click', closeModal);
+    var errCloseBtn = document.getElementById('conv-error-close');
+    if(errCloseBtn) errCloseBtn.addEventListener('click', function(){
+      var c = COPY[currentAction];
+      if(c && c.step) c.step.classList.remove('is-loading');
+      closeModal();
+    });
+
+    // Esc cuma boleh nutup pas lagi nunjukin state sukses/error — di state
+    // loading sengaja gak ada cara nutup (gak ada tombol Tutup juga di situ),
+    // biar user gak ninggalin proses yang masih jalan ngerasa udah kelar.
+    document.addEventListener('keydown', function(e){
+      if(e.key !== 'Escape') return;
+      var isOpen = overlay.style.display !== 'none' && (overlay.classList.contains('show') || overlay.classList.contains('open'));
+      if(!isOpen) return;
+      var onSuccess = viewSuccess.style.display !== 'none';
+      var onError = viewError && viewError.style.display !== 'none';
+      if(onSuccess || onError) closeModal();
+    });
+
+    // Deteksi progres selesai lewat teks "N / N" di #progress-label
+    var obs = new MutationObserver(function(){
+      if(!watching) return;
+      var m = (progressLabel.textContent||'').trim().match(/^(\d+)\s*\/\s*(\d+)$/);
+      if(m && m[2] !== '0' && m[1] === m[2]){
+        setTimeout(showSuccess, 350); // jeda dikit biar 100% kelihatan dulu
+      }
+    });
+    obs.observe(progressLabel, {childList:true, characterData:true, subtree:true});
+
+    // Jaring pengaman: modal ini CUMA boleh ilang lewat closeModal() kita
+    // sendiri (tombol Tutup, Esc, atau "Lanjut" — semuanya set userClosing).
+    // Kalau overlay ke-hide dari jalur lain (mis. konversian.js masih punya
+    // rutinitas lama yang nutup modal begitu request kelar — baik SEBELUM
+    // showSuccess sempat kepanggil, MAUPUN SESUDAH state sukses/error udah
+    // ditampilkan), buka lagi. User yang mutusin kapan modal ini nutup, bukan
+    // proses async yang kelar duluan.
+    var overlayObs = new MutationObserver(function(){
+      if(userClosing) return; // ini emang kita yang nutup, biarin
+      var hidden = overlay.style.display === 'none' || (!overlay.classList.contains('show') && !overlay.classList.contains('open'));
+      if(!hidden) return;
+      if(doneShown){
+        // Udah nunjukin sukses/error, tapi ke-tutup sendiri — buka lagi apa
+        // adanya, jangan reset ke loading.
+        ensureOpen();
+        return;
+      }
+      if(watching){
+        var m = (progressLabel.textContent||'').trim().match(/^(\d+)\s*\/\s*(\d+)$/);
+        if(m && m[2] !== '0' && m[1] === m[2]) showSuccess();
+      }
+    });
+    overlayObs.observe(overlay, {attributes:true, attributeFilter:['class','style']});
+
+    // API publik buat konversian.js panggil langsung — INI JALUR UTAMA sekarang
+    // buat step 'drive', karena gak ada sinyal DOM yang bisa dipercaya buat tau
+    // kapan upload-nya kelar (lihat komentar di driveTimeoutTimer di atas).
+    // opts.locationPath = path folder ASLI ("{tahun} / {namaSales}", sesuai
+    // struktur folder yang beneran dipakai uploadKonversianToDrive), bukan
+    // tebakan — pakai ini kalau ada, baru fallback ke buildLocationPath().
+    window.convFlow = {
+      showSuccess: function(action, opts){
+        opts = opts || {};
+        currentAction = action; watching = false; doneShown = false;
+        if(opts.locationPath) currentLocationPath = opts.locationPath;
+        if(opts.subtitle) COPY[action].successSub = function(){ return opts.subtitle; };
+        showSuccess();
+        if(opts.filename){
+          document.getElementById('conv-success-filename').textContent = opts.filename;
+          document.getElementById('conv-success-file').style.display = 'flex';
+        }
+        if(opts.driveUrl){
+          if(activePollTimer){ clearInterval(activePollTimer); activePollTimer = null; } // udah tau linknya pasti, gak perlu nunggu poll rec-link lagi kelar (biar gak ke-overwrite jadi 'unknown' beberapa detik kemudian)
+          document.getElementById('conv-location-path').textContent = resolveLocationPath();
+          setLocationReady(opts.driveUrl);
+        }
+      },
+      showError: function(action, message){
+        currentAction = action; watching = false; doneShown = false;
+        var c = COPY[action]; if(c && c.step) c.step.classList.remove('is-loading');
+        var errSub = document.getElementById('conv-error-sub');
+        if(errSub) errSub.textContent = message || 'Terjadi kendala saat memproses. Cek koneksi lalu ulangi.';
+        viewLoading.style.display = 'none';
+        viewSuccess.style.display = 'none';
+        if(viewError) viewError.style.display = 'flex';
+        ensureOpen();
+      }
+    };
+  });
+})();
+</script>
 
 <!-- RECORD KONVERSI MODAL -->
 <div class="modal-overlay" id="record-modal">
@@ -905,9 +1358,17 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
   </div>
 </div>
 
-<script src="konversian.js"></script>
-<script src="sph-module.js"></script>
+<!-- HARUS ada SEBELUM <script src="konversian.js">: konversian.js nangkep
+     document.getElementById('toast-container') di baris paling atas file
+     (top-level const, cuma dijalankan sekali). Kalau div ini nongol SETELAH
+     script tag-nya, browser belum sempet parse elemen ini pas konversian.js
+     jalan → toastContainer selamanya null → showToast() manapun di seluruh
+     app crash diam-diam (termasuk toast peringatan yang harusnya kasih tau
+     kenapa "Simpan ke Drive" gak jalan-jalan). -->
 <div id="toast-container"></div>
+
+<script src="konversian.js?v=20260812a"></script>
+<script src="sph-module.js?v=20260812a"></script>
 </div><!-- /#app-root -->
 </body>
 </html>

@@ -145,6 +145,46 @@ async function checkWhitelistAndShowApp(session){
   appWrap.style.display = 'flex';
   loadProduk();
   refreshProdukFilterCounts();
+  handleNavParamsIfAny();
+}
+
+// ══════════════════════════════════════════
+// NAVIGATION LAYER — konversian.html <-> crud-produk.html
+// ?edit=<kode_produk> otomatis buka modal edit produk itu. ?return_to=konversian
+// (+ opsional &return_sesi=<id>) nampilin tombol balik yang bawa user ke
+// konversian.html?resume=1&refreshed=<kode>&sesi=<id> — refresh 1 kartu +
+// resume sesi lewat mekanisme ?sesi= yang emang udah ada di sana (dipakai
+// fitur share WhatsApp). Semua opt-in lewat query param; kalau halaman ini
+// diakses langsung (bukan dari alur ini), gak ada bedanya sama sekarang.
+// ══════════════════════════════════════════
+let pnmReturnCtx = null; // {to, sesi, kode} — null kalau bukan hasil navigasi dari modul lain
+
+async function handleNavParamsIfAny() {
+  const params = new URLSearchParams(window.location.search);
+  const returnTo = params.get('return_to');
+  const editKode = params.get('edit');
+
+  if (returnTo === 'konversian') {
+    pnmReturnCtx = { to: 'konversian', sesi: params.get('return_sesi') || null, kode: editKode || null };
+    const btn = document.getElementById('btnKembaliKonversi');
+    btn.style.display = 'inline-flex';
+    btn.addEventListener('click', () => {
+      const url = new URL('konversian.html', window.location.href);
+      url.searchParams.set('resume', '1');
+      if (pnmReturnCtx.kode) url.searchParams.set('refreshed', pnmReturnCtx.kode);
+      if (pnmReturnCtx.sesi) url.searchParams.set('sesi', pnmReturnCtx.sesi);
+      window.location.href = url.toString();
+    });
+  }
+
+  if (editKode) {
+    const { data, error } = await sb.from('produk').select('id').eq('kode_produk', editKode).maybeSingle();
+    if (error || !data) {
+      showToast('Produk dengan kode ' + editKode + ' tidak ditemukan', true);
+      return;
+    }
+    openEdit(data.id);
+  }
 }
 
 logoutBtn.addEventListener('click', async () => { await sb.auth.signOut(); });

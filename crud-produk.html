@@ -15,10 +15,10 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="/shared/supabase-client.js"></script>
-<script src="/shared/auth-session.js"></script>
-<link rel="stylesheet" href="pnm-universal.css"/>
-<link rel="stylesheet" href="crud-produk.css"/>
+<script src="/shared/supabase-client.js?v=20260812a"></script>
+<script src="/shared/auth-session.js?v=20260812a"></script>
+<link rel="stylesheet" href="pnm-universal.css?v=20260812a"/>
+<link rel="stylesheet" href="crud-produk.css?v=20260812a"/>
 </head>
 <body>
 <script>
@@ -92,6 +92,7 @@
           <button id="viewCardBtn" title="Tampilan kartu"><i class="ti ti-layout-grid"></i></button>
         </div>
         <button class="btn btn-accent" id="addBtn"><i class="ti ti-plus"></i> Tambah Produk</button>
+        <button class="btn" id="btnKembaliKonversi" style="display:none;border:1px solid var(--accent-text);color:var(--accent-text);background:var(--accent-bg)" title="Balik ke Conversion Workspace"><i class="ti ti-arrow-back"></i> Kembali ke Konversi</button>
       </div>
     </div>
 
@@ -756,6 +757,6 @@
   </div>
 </div>
 
-<script src="crud-produk.js"></script>
+<script src="crud-produk.js?v=20260812a"></script>
 </body>
 </html>

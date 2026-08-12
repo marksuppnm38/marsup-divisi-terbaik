@@ -1,6 +1,13 @@
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
 
+// ── AUTO-UPLOAD KE GOOGLE DRIVE (via Apps Script Web App) ──
+// Isi 2 baris ini setelah deploy Apps Script (lihat Code.gs):
+//   DRIVE_UPLOAD_URL  = URL hasil "Deploy > New deployment > Web app"
+//   DRIVE_UPLOAD_TOKEN = token rahasia yang sama persis kayak SECRET_TOKEN di Code.gs
+const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbx2yJyrHhAcSohT2hIBwrpBrtw1M770u8Y2mbdCMTcAwrKUsLfKBsejuiMUG4keylhw/exec';
+const DRIVE_UPLOAD_TOKEN = '919c5baccb37060e50a35d5c10f1b6f3190cdee37e2f670f';
+
 // ══════════════════════════════════════════
 // SESI LOGIN PERSISTENT: seluruh aplikasi wajib login, tapi sesi disimpan
 // di localStorage supaya user gak perlu login ulang tiap buka tab/refresh.
@@ -55,6 +62,7 @@ function showApp() {
   appRoot.style.display = 'flex';
   openSesiFromUrlIfAny();
   loadSalesOptions();
+  restoreNavContext();
 }
 
 // Isi datalist "Nama Sales" dari tabel master `sales` (via RPC get_sales_aktif,
@@ -1408,6 +1416,61 @@ function switchDoor(door) {
 document.getElementById('door-btn-cari').addEventListener('click', () => switchDoor('cari'));
 document.getElementById('door-btn-konversi').addEventListener('click', () => switchDoor('konversi'));
 
+// ══════════════════════════════════════════
+// NAVIGATION LAYER — konversian.html <-> crud-produk.html
+// Murni URL query param, gak pakai sessionStorage sama sekali — ternyata
+// ?sesi=<id> buat resume sesi konversi UDAH ADA (dipakai fitur share link
+// WhatsApp, lihat openSesiFromUrlIfAny() di atas), jadi tinggal numpang
+// pola yang sama, bukan bikin mekanisme baru. Nggak butuh Vite/router,
+// nggak ubah cara deploy — tetap static file kayak sekarang.
+// ══════════════════════════════════════════
+
+function navigateToEditProduk(kode) {
+  const url = new URL('crud-produk.html', window.location.href);
+  url.searchParams.set('edit', kode);
+  url.searchParams.set('return_to', 'konversian');
+  if (currentSesiId) url.searchParams.set('return_sesi', currentSesiId);
+  window.location.href = url.toString();
+}
+
+// Dipanggil sekali dari showApp() setelah login sukses. Gak ngapa-ngapain
+// kalau bukan hasil balik dari crud-produk (?resume gak ada) — aman
+// dipanggil selalu, gak ganggu load biasa/link WhatsApp yang cuma bawa ?sesi=.
+async function restoreNavContext() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('resume') !== '1') return;
+
+  // ?sesi= (kalau ada) udah otomatis ke-handle sama openSesiFromUrlIfAny()
+  // yang dipanggil showApp() — di sini cuma mastiin door-nya Konversi dulu,
+  // soalnya default door pas fresh load itu 'cari' (lihat class awal
+  // #app-root di HTML), dan subtab-row disembunyikan total di door itu.
+  if (params.get('sesi')) switchDoor('konversi');
+
+  const refreshedKode = params.get('refreshed');
+  if (refreshedKode) refreshSingleProdukCard(refreshedKode);
+
+  // Bersihkan query string dari address bar SETELAH dipakai, biar reload
+  // manual berikutnya gak nyoba resume/refresh ulang ke state basi. Link
+  // ?sesi= murni (dari WhatsApp, tanpa resume=1) sengaja gak kena ini,
+  // biar tetap bisa di-bookmark/dibagi ulang seperti sebelumnya.
+  window.history.replaceState({}, '', window.location.pathname);
+}
+
+// Patch 1 card produk yang lagi tampil di hasil pencarian, tanpa re-search
+// semua — dipakai setelah balik dari edit produk di crud-produk.html.
+async function refreshSingleProdukCard(kode) {
+  if (!Array.isArray(lastResults) || !lastResults.some(r => r.kode_produk === kode)) return;
+  try {
+    const res = await sesiFetch(`produk?kode_produk=eq.${encodeURIComponent(kode)}&select=*&limit=1`);
+    if (!res.ok) return;
+    const rows = await res.json();
+    if (rows && rows[0]) {
+      lastResults = lastResults.map(r => r.kode_produk === kode ? rows[0] : r);
+      renderResults(lastResults);
+    }
+  } catch (e) { console.warn('Gagal refresh kartu produk:', e); }
+}
+
 function switchSubTab(tab) {
   subtabCari.classList.toggle('active', tab === 'cari');
   subtabSesi.classList.toggle('active', tab === 'sesi');
@@ -1702,6 +1765,7 @@ async function openSesi(id) {
 function resetChecklistUI() {
   checklistItems = [];
   checklistPermintaanId = null;
+  checklistTanggal = null;
   checklistExpandedId = null;
   checklistPickingId = null;
   // Cache saran Dictionary di-key pakai item.id — item.id sesi lama gak relevan
@@ -2099,6 +2163,11 @@ async function loadChecklistForSesi(sesiId) {
     checklistSales = data.pic_sales || '(tanpa nama sales)';
     checklistPagu = (data.pagu != null) ? data.pagu : checklistPagu;
     checklistPermintaanId = data.permintaan_id;
+    // ASUMSI: field 'tanggal' ada di hasil RPC ini (sama kayak p_tanggal pas submit).
+    // Kalau ternyata undefined terus (cek console: `checklistTanggal` selalu null padahal
+    // Permintaan RS jelas ada), berarti RPC get_permintaan_by_sesi di server belum
+    // nge-return kolom ini — perlu ditambahin di definisi function-nya di Supabase.
+    checklistTanggal = data.tanggal || null;
     // Buka otomatis requirement PENDING pertama, biar langsung ada yang bisa
     // dikerjain begitu Kebutuhan RS ini tampil — bukan daftar kolaps semua.
     const firstPending = checklistItems.find(i => i.status === 'PENDING');
@@ -2597,6 +2666,7 @@ function renderResults(data) {
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
           <button class="btn-lampiran" data-kode="${r.kode_produk}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>
+          <button class="btn-edit-produk" data-kode="${r.kode_produk}" title="Edit produk ini" style="font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-settings" style="font-size:12px"></i></button>
           ${inClip
             ? `<button class="btn-clip-toggle in-clip" data-kode="${r.kode_produk}" data-action="remove"><i class="ti ti-circle-check" style="font-size:12px"></i> Di Konversi</button>`
             : `<button class="btn-clip-toggle" data-kode="${r.kode_produk}" data-action="add"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambahkan ke Konversi</button>`}
@@ -2612,6 +2682,12 @@ function renderResults(data) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       handleClipToggleClick(btn.dataset.kode, btn.dataset.action);
+    });
+  });
+  resultsEl.querySelectorAll('.btn-edit-produk').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigateToEditProduk(btn.dataset.kode);
     });
   });
   resultsEl.querySelectorAll('.btn-lampiran').forEach(btn => {
@@ -2985,6 +3061,93 @@ async function getSetItems(kode_produk) {
   });
   const data = await r2.json();
   return data || [];
+}
+
+// ── SIMPAN KE DRIVE (manual, lewat tombol — bukan otomatis pas Export) ──
+// Export ke Excel cuma nyiapin file + download lokal seperti biasa. Blob hasil
+// export terakhir disimpan di sini, biar tombol "Simpan ke Drive" (terpisah,
+// diklik kapan aja setelah export) bisa reupload tanpa nge-generate ulang file.
+let lastExportBlob = null;
+let lastExportFilename = null;
+let lastExportNamaSales = null;
+const btnDriveUpload = document.getElementById('btn-drive-upload');
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function uploadKonversianToDrive(blob, fileName, tahun, namaSalesForFolder) {
+  try {
+    const fileBase64 = await blobToBase64(blob);
+    const res = await fetch(DRIVE_UPLOAD_URL, {
+      method: 'POST',
+      // Content-Type text/plain SENGAJA, biar browser gak ngirim OPTIONS preflight
+      // duluan — Apps Script Web App gak nanganin preflight CORS dengan baik.
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        token: DRIVE_UPLOAD_TOKEN,
+        jenis: 'konversian',
+        tahun: String(tahun),
+        namaSales: namaSalesForFolder,
+        fileName,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        fileBase64
+      })
+    });
+    const result = await res.json();
+    if (!result.success) throw new Error(result.error || 'Upload gagal');
+    showToast(`Tersimpan ke Drive ✓ (KONVERSI ${tahun} / ${namaSalesForFolder})`, 'success');
+    // Apps Script-nya udah balikin fileUrl (link file yang baru diupload) dan
+    // folderPath (path Drive yang BENERAN dipakai, termasuk penyesuaian nama
+    // folder kalau ternyata udah ada sebelumnya lewat findOrCreateFolder yang
+    // case-insensitive) — pakai itu, bukan tebak-tebak lagi.
+    if (window.convFlow) {
+      window.convFlow.showSuccess('drive', {
+        driveUrl: result.fileUrl,
+        locationPath: result.folderPath || `${tahun} / ${namaSalesForFolder}`,
+        subtitle: `File sudah ada di folder Drive ${result.folderPath || (tahun + ' / ' + namaSalesForFolder)}.`
+      });
+    }
+  } catch (e) {
+    showToast('Gagal simpan ke Drive: ' + e.message, 'error');
+    if (window.convFlow) window.convFlow.showError('drive', e.message);
+  }
+}
+
+if (btnDriveUpload) {
+  btnDriveUpload.addEventListener('click', async () => {
+    if (!lastExportBlob) {
+      const msg = 'Belum ada file yang di-export di sesi ini. Export ke Excel dulu ya.';
+      showToast(msg, 'error');
+      // setTimeout 0: modal progress (kalau lagi kebuka) baru masuk state loading
+      // SETELAH listener ini selesai (lihat resetToLoading('drive') di
+      // konversian.html, listener terpisah di tombol yang sama) — nunda
+      // sedikit biar showError ini gak ketimpa balik jadi loading.
+      if (window.convFlow) setTimeout(() => window.convFlow.showError('drive', msg), 0);
+      return;
+    }
+    // Dicek FRESH di sini (bukan pas Export), karena tombol ini biasa diklik
+    // beberapa saat setelah sesi dibuka/export — checklistTanggal lebih besar
+    // kemungkinan udah keisi dibanding ngecek pas tombol Export baru diklik.
+    if (!checklistPermintaanId || !checklistTanggal) {
+      const msg = 'Sesi ini belum ada Permintaan RS (atau tanggalnya belum tercatat) — isi Permintaan RS dulu, baru bisa simpan ke Drive.';
+      showToast(msg, 'error');
+      if (window.convFlow) setTimeout(() => window.convFlow.showError('drive', msg), 0);
+      return;
+    }
+    const tahunFolder = new Date(checklistTanggal).getFullYear();
+    btnDriveUpload.disabled = true;
+    try {
+      await uploadKonversianToDrive(lastExportBlob, lastExportFilename, tahunFolder, lastExportNamaSales);
+    } finally {
+      btnDriveUpload.disabled = false;
+    }
+  });
 }
 
 // EXPORT EXCEL
@@ -3406,6 +3569,12 @@ btnExport.addEventListener('click', async () => {
     const a = document.createElement('a');
     a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
+
+    // Simpen buat dipakai tombol "Simpan ke Drive" (klik terpisah, gak otomatis).
+    lastExportBlob = blob;
+    lastExportFilename = filename;
+    lastExportNamaSales = namaSales;
+    if (btnDriveUpload) btnDriveUpload.disabled = false;
 
   } catch(e) {
     showToast('Export gagal: ' + e.message, 'error');
@@ -4491,6 +4660,7 @@ var checklistNamaRs = '';
 var checklistSales = '';
 var checklistPagu = null;
 var checklistPermintaanId = null;
+var checklistTanggal = null; // dipakai buat nentuin folder tahun di Drive — diisi loadChecklistForSesi()
 var checklistPickingId = null; // id item yang lagi nampilin dropdown pilih produk (null = gak ada)
 // Accordion master-detail: cuma SATU requirement yang "kebuka" nunjukin detail
 // penuh dalam satu waktu, sisanya nyusut jadi baris ringkas — biar kerasa kayak
