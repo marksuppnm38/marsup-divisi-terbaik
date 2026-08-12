@@ -107,15 +107,15 @@
    document.documentElement.dataset.theme, never document.body. */
 html[data-theme="dark"]{
   color-scheme: dark;
-  --bg:#111318;
-  --surface:#1a1d24;
-  --surface-2:#22262e;
-  --surface-3:#23272d;
-  --border:#2c313b;
-  --border-strong:#3d4350;
-  --text:#f3f4f6;
-  --text-secondary:#cbd5e1;
-  --text-muted:#94a3b8;
+  --bg:#0d0d0d;
+  --surface:#171717;
+  --surface-2:#202020;
+  --surface-3:#262626;
+  --border:#2b2b2b;
+  --border-strong:#404040;
+  --text:#f0f0f0;
+  --text-secondary:#d4d4d4;
+  --text-muted:#a3a3a3;
   --accent:#0A84FF;
   --accent-strong:#409cff;
   --accent-hover:#409cff;
@@ -150,16 +150,16 @@ html[data-theme="dark"]{
   --teal-ok:#5fc3a4;
   --teal-ok-bg:#123329;
   --teal-ok-text:#8cdabf;
-  --gray-out:#787e86;
-  --gray-out-bg:#1e2226;
+  --gray-out:#8a8a8a;
+  --gray-out-bg:#232323;
   --navy:#3b5a9a;
   --navy-hover:#4a6bb0;
   --blue:#5b8def;
   --blue-soft:#1e2a45;
   --green:#3ccb6f;
   --green-soft:#16281d;
-  --gray-soft:#232733;
-  --overlay:rgba(10,12,16,.65);
+  --gray-soft:#262626;
+  --overlay:rgba(13,13,13,.65);
   --shadow:0 1px 0 rgba(0,0,0,.35),0 1px 2px rgba(0,0,0,.3);
   --shadow-lg:0 4px 20px rgba(0,0,0,.4);
 }
@@ -297,15 +297,12 @@ html[data-theme="light"] td{
 .pr-field label{display:block;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
 .pr-field input[type="email"],.pr-field input[type="password"]{width:100%;height:32px;padding:0 10px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none}
 
-/* HEADER — identik dengan tools lain di suite ini */
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0}
-.logo{height:34px;width:auto;object-fit:contain}
-.logo-text{font-size:14px;font-weight:600}
-.logo-sub{font-size:11px;color:var(--text-muted)}
-.header-right{margin-left:auto;display:flex;align-items:center;gap:8px}
-.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;text-decoration:none}
-.toggle-btn:hover{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
-.last-update{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px}
+/* NOTE: a duplicate `header{}` rule (padding:10px 16px + a second set of
+   .logo/.logo-text/.logo-sub/.header-right/.toggle-btn/.last-update decls)
+   used to live here. It was fully shadowed by the header rule further down
+   (same selector, later in source order always wins), so it never actually
+   rendered — removed as dead weight while auditing the nav/search spacing
+   chain. See the real, active header rule below. */
 
 /* dashboard main — higher specificity vs other modules */
 main,
@@ -512,7 +509,7 @@ th.checkbox-col,td.checkbox-col{width:30px;text-align:center;padding-left:12px;p
 .filter-count{font-size:9.5px;opacity:.75;font-family:var(--mono)}
 
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
-.detail-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:center;justify-content:center;padding:16px}
+.detail-modal-overlay{position:fixed;inset:0;background:rgba(10,12,16,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);will-change:backdrop-filter;z-index:200;display:none;align-items:center;justify-content:center;padding:16px}
 .detail-modal-overlay.show{display:flex}
 .detail-modal{background:var(--surface);border-radius:12px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
 .detail-modal-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:10px;position:sticky;top:0;background:var(--surface);z-index:1}
@@ -556,7 +553,7 @@ th.checkbox-col,td.checkbox-col{width:30px;text-align:center;padding-left:12px;p
 .auth-gate-status{font-size:12px;text-align:center;margin-top:10px;min-height:16px}
 
 /* HEADER */
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10}
 .header-brand{display:flex;align-items:center;gap:10px;flex-shrink:0;min-width:0}
 .header-brand-text{min-width:0;overflow:hidden}
 .logo{height:32px;width:auto;object-fit:contain;flex-shrink:0}
@@ -628,7 +625,7 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 
 /* PANEL KIRI */
 .panel-search{display:flex;flex-direction:column;flex:1;min-width:0;border-right:1px solid var(--border);overflow:hidden}
-.panel-header{padding:14px 16px 10px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.panel-header{padding:8px 16px 8px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
 .panel-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:10px}
 .search-wrap{position:relative;margin-bottom:8px}
 .search-wrap .ti-search{position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:16px;color:var(--text-muted);pointer-events:none}
@@ -645,7 +642,7 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .ac-name{flex:1;font-size:13px}
 .ac-code{font-size:11px;color:var(--text-muted);font-family:var(--mono)}
 .ac-badge{font-size:10px;padding:1px 6px;border-radius:20px;background:var(--accent-bg);color:var(--accent-text);font-weight:500}
-.subtab-row{display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--border);align-items:center}
+.subtab-row{display:flex;gap:4px;margin-bottom:8px;border-bottom:1px solid var(--border);align-items:center}
 .panel-collapse-btn{margin-left:auto;flex-shrink:0;background:none;border:1px solid var(--border-strong);border-radius:6px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);cursor:pointer;transition:all .15s;margin-bottom:6px}
 .panel-collapse-btn:hover{color:var(--text);background:var(--surface-2)}
 
@@ -710,7 +707,7 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .filter-select{height:30px;padding:0 8px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;outline:none}
 .toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;text-decoration:none;box-sizing:border-box}
 .toggle-btn.on{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);font-weight:500}
-.panel-body{flex:1;overflow-y:auto;padding:10px 12px}
+.panel-body{flex:1;overflow-y:auto;padding:8px 12px}
 #meta{font-size:12px;color:var(--text-muted);min-height:16px}
 .meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
 #sort-select{flex-shrink:0}
@@ -835,6 +832,13 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 /* TAB: Kebutuhan RS vs Clipboard — dua sisi dari proses konversi yang sama,
    sekarang dipisah tab (bukan ditumpuk vertikal) supaya yang lagi aktif dapat
    tinggi penuh panel, bukan rebutan ruang sama yang lain. */
+.clip-output-mode-row{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:11.5px;color:var(--text-secondary);background:var(--surface-2);border-bottom:1px solid var(--border);flex-shrink:0}
+.clip-output-mode-label{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.clip-output-mode-toggle{display:inline-flex;border:1px solid var(--border-strong);border-radius:6px;overflow:hidden}
+.com-btn{height:26px;padding:0 10px;font-size:11.5px;font-family:inherit;border:none;background:var(--surface);color:var(--text-secondary);cursor:pointer;transition:all .15s}
+.com-btn+.com-btn{border-left:1px solid var(--border-strong)}
+.com-btn:hover{background:var(--accent-bg);color:var(--accent-text)}
+.com-btn.active{background:var(--accent);color:#fff;font-weight:600}
 .clip-tab-row{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
 .clip-tab-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:38px;border:none;background:none;font-family:inherit;font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .12s}
 .clip-tab-btn i{font-size:14px}
@@ -848,7 +852,14 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .clip-tabs-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 .clip-tab-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 
-.clip-kebutuhan-section{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--accent-bg);min-height:0}
+.clip-kebutuhan-section{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+/* Empty (no Kebutuhan RS items loaded yet): hug the empty-state content
+   instead of stretching to fill the sidebar — the leftover vertical space
+   is just neutral page background now (no more solid-fill panel), so it
+   reads as whitespace rather than a dead zone. Once #kb-list has items,
+   this doesn't match and flex:1 above takes over so the list can fill/
+   scroll the available height normally (tested with 1 and ~15 items). */
+.clip-kebutuhan-section:has(#kb-list:empty){flex:0 1 auto;justify-content:center}
 /* Animated collapse (grid-rows trick): looks intentional instead of a hard
    display:none — content slides/fades shut instead of snapping away. */
 .kb-collapsible{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
@@ -962,7 +973,7 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
    iframe preview jadi lebar banget dgn bidang kosong gede di kanan-kirinya.
    Dibatasi max-width + di-center biar tetap proporsional & rapi. */
 .panel-clip.tab-sph-active{max-width:1100px;margin:0 auto}
-.clip-header{padding:12px 14px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
+.clip-header{padding:8px 14px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
 .clip-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .clip-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)}
 .clip-header-edit-btn{font-size:10.5px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 4px;display:flex;align-items:center;gap:3px}
@@ -1007,7 +1018,13 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 @keyframes sph-spin-anim{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .sph-preview-wrap{flex:1 1 360px;min-width:280px;display:flex;flex-direction:column;min-height:240px}
 #sph-preview-frame{width:100%;height:60vh;min-height:360px;border:1px solid var(--border);border-radius:8px;background:#fff}
-.clip-body{flex:1;overflow-y:auto;padding:10px 12px}
+.clip-body{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column}
+.clip-body>*{flex-shrink:0}
+/* Empty state (0 items): center the icon/text as a compact block instead of
+   letting it sit pinned to the top with a big dead gap down to the footer.
+   With items present, #clip-list is non-empty so this doesn't match and the
+   list stacks top-down + scrolls normally (tested with 1 and ~15 items). */
+.clip-body:has(#clip-list:empty){justify-content:center}
 .clip-empty{text-align:center;padding:32px 12px;color:var(--text-muted)}
 .clip-empty i{font-size:32px;display:block;margin-bottom:8px;color:var(--border-strong)}
 .clip-empty p{font-size:12px}
@@ -1113,7 +1130,7 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .pr-nudge-text b{color:var(--warning)}
 .pr-nudge-btn{background:none;border:1px solid var(--warning-border);color:var(--warning);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;margin-top:6px}
 .pr-nudge-btn:hover{background:var(--warning-bg)}
-.btn-record{width:100%;height:38px;background:var(--success);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s;margin-top:8px}
+.btn-record{width:100%;height:38px;background:var(--success);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s;margin-top:6px}
 .btn-record:hover{filter:brightness(0.92)}
 .btn-record:disabled{background:var(--border-strong);cursor:not-allowed;filter:none}
 .record-modal-box{background:var(--surface);border-radius:12px;padding:22px 24px;width:90vw;max-width:420px;text-align:left}
@@ -1342,7 +1359,7 @@ tbody tr.row-attention:hover{background:var(--amber-bg)}
 .gate-footer{margin-top:18px;font-size:11px;color:var(--text-muted);text-align:center}
 
 /* ================= MODAL ================= */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,12,16,.55);z-index:60;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,12,16,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);will-change:backdrop-filter;z-index:60;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px}
 .modal-overlay.open{display:flex}
 
 /* ---- Dialog konfirmasi "perubahan belum disimpan" — tampil DI ATAS modal
@@ -1980,7 +1997,7 @@ body:has(.stats-grid) .insight-card{padding:18px}
    visual (bukan cuma modal ilang) begitu proses selesai.
    ============================================================ */
 
-.conv-steps{display:flex;flex-direction:column;margin:2px 0 8px;position:relative}
+.conv-steps{display:flex;flex-direction:column;margin:2px 0 6px;position:relative}
 
 .conv-step{
   width:100%;height:auto;min-height:52px;

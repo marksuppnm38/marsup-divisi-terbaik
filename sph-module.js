@@ -7,9 +7,18 @@
 // File ini di-load lewat <script src="sph-module.js"> SETELAH konversian.js,
 // sebagai script classic biasa (bukan type="module") — jadi dia berbagi scope
 // global yang sama dan bisa langsung pakai variabel/fungsi yang udah ada di
-// konversian.js: `clipboard`, `modeSwasta`, `rupiah()`, `showToast()`,
+// konversian.js: `clipboard`, `modeSwastaOutput`, `rupiah()`, `showToast()`,
 // `inpRs`, `inpSales`. Dipisah ke file sendiri biar konversian.js (udah 4000+
 // baris) gak makin susah dibaca — tapi tetap satu halaman/satu app buat user.
+//
+// CATATAN mode harga: pakai `modeSwastaOutput` (toggle "Mode harga output" di
+// clip-output-mode-row), BUKAN `modeSwasta` (itu toggle "Harga Swasta" di
+// panel pencarian, cuma buat quick lookup pas browsing). Dulu modul ini
+// (keliru) ikutan `modeSwasta`, dan lebih parah lagi kolom link e-Katalog
+// selalu ditampilin apa pun mode-nya — padahal SPH mode swasta harusnya SAMA
+// SEKALI gak nunjukin link e-katalog ke customer, sama kayak Export Excel.
+// Sudah diperbaiki: link & kolom "E-Katalog v6" sekarang cuma muncul kalau
+// !modeSwastaOutput, konsisten sama logic di Export ke Excel (konversian.js).
 //
 // CATATAN CAKUPAN (v2):
 // - Yang di-generate: surat pengantar + tabel ringkasan produk + blok tanda
@@ -789,12 +798,15 @@ async function sphGenerate() {
 
     // Item diambil LANGSUNG dari clipboard yang lagi jalan di Konversian — bukan
     // dari file Excel yang diupload ulang. Ini inti bedanya dari SPH Generator lama.
-    // Sumber harga ikut toggle modeSwasta yang sama kayak Export ke Excel, biar
-    // konsisten dengan mode yang lagi aktif di seluruh app.
+    // Sumber harga ikut modeSwastaOutput (toggle "Mode harga output" di
+    // clip-output-mode-row), SAMA kayak Export ke Excel — bukan modeSwasta yang
+    // dipakai di panel pencarian. Pas mode swasta, link e-katalog SENGAJA
+    // di-null-in (bukan cuma disembunyiin di render): dokumen buat customer
+    // swasta gak boleh nunjukin link e-katalog resmi sama sekali.
     let no = 0;
     const items = clipboard.map(item => {
       no++;
-      const harga = modeSwasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
+      const harga = modeSwastaOutput ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
       const qty = item.qty || 1;
       return {
         no,
@@ -803,7 +815,7 @@ async function sphGenerate() {
         qty,
         harga,
         total: harga * qty,
-        link: item.link_v6 || null
+        link: modeSwastaOutput ? null : (item.link_v6 || null)
       };
     });
     const grandTotal = items.reduce((s, it) => s + it.total, 0);
@@ -838,8 +850,16 @@ async function sphGenerate() {
     doc.text(introLines, SPH_MARGIN_X, y);
     y += introLines.length * 5.5 + 7;
 
-    const headers = ['No', 'Kode', 'Deskripsi', 'Qty', 'Harga', 'Total', 'E-Katalog v6'];
-    const widths = [9, 24, 42, 11, 26, 30, 32];
+    // Kolom "E-Katalog v6" cuma ada di mode e-katalog — di mode swasta kolom ini
+    // dihilangkan total (bukan cuma dikosongin isinya), sisa lebarnya dialihin ke
+    // kolom Deskripsi biar tabel tetap kepake penuh. Konsisten sama sheet Ringkasan
+    // di Export ke Excel yang juga ganti dari 8 kolom jadi 7 kolom pas mode swasta.
+    const headers = modeSwastaOutput
+      ? ['No', 'Kode', 'Deskripsi', 'Qty', 'Harga', 'Total']
+      : ['No', 'Kode', 'Deskripsi', 'Qty', 'Harga', 'Total', 'E-Katalog v6'];
+    const widths = modeSwastaOutput
+      ? [9, 24, 74, 11, 26, 30]
+      : [9, 24, 42, 11, 26, 30, 32];
     function drawTableHeader(yy) {
       doc.setFillColor(29, 91, 212);
       doc.rect(SPH_MARGIN_X, yy, tableW, 8.5, 'F');
@@ -869,14 +889,16 @@ async function sphGenerate() {
       doc.text(String(item.qty), x + widths[3] / 2, y + 5.2, { align: 'center' }); x += widths[3];
       doc.text(rupiah(item.harga), x + widths[4] - 1.5, y + 5.2, { align: 'right' }); x += widths[4];
       doc.text(rupiah(item.total), x + widths[5] - 1.5, y + 5.2, { align: 'right' }); x += widths[5];
-      if (item.link) {
-        doc.setTextColor(29, 91, 212);
-        doc.textWithLink('Lihat di e-Katalog', x + widths[6] / 2, y + 5.2, { url: item.link, align: 'center' });
-        doc.setTextColor(17, 24, 39);
-      } else {
-        doc.setTextColor(156, 163, 175);
-        doc.text('-', x + widths[6] / 2, y + 5.2, { align: 'center' });
-        doc.setTextColor(17, 24, 39);
+      if (!modeSwastaOutput) {
+        if (item.link) {
+          doc.setTextColor(29, 91, 212);
+          doc.textWithLink('Lihat di e-Katalog', x + widths[6] / 2, y + 5.2, { url: item.link, align: 'center' });
+          doc.setTextColor(17, 24, 39);
+        } else {
+          doc.setTextColor(156, 163, 175);
+          doc.text('-', x + widths[6] / 2, y + 5.2, { align: 'center' });
+          doc.setTextColor(17, 24, 39);
+        }
       }
       y += rowH;
     });

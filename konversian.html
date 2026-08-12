@@ -348,6 +348,19 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         <i class="ti ti-file-text"></i> Buat SPH
       </button>
     </div>
+    <!-- MODE HARGA OUTPUT: state INDEPENDEN dari toggle "Harga Swasta" di panel
+         pencarian (tswasta/modeSwasta di konversian.js). Toggle di pencarian itu
+         cuma preferensi lihat² pas quick lookup; yang di bawah ini yang beneran
+         nentuin harga & kolom link e-Katalog yang dipakai di Clipboard/Pagu,
+         Record Konversi, Export ke Excel, dan Generate SPH — jadi gak kepaksa
+         ngubah tampilan pencarian cuma buat ganti mode output. -->
+    <div class="clip-output-mode-row" id="clip-output-mode-row" title="Nentuin harga & kolom link e-Katalog yang dipakai di Clipboard, Record, Export Excel, dan SPH">
+      <span class="clip-output-mode-label"><i class="ti ti-receipt"></i> Mode harga output:</span>
+      <div class="clip-output-mode-toggle">
+        <button type="button" class="com-btn active" id="com-ekat" data-mode="ekat">e-Katalog</button>
+        <button type="button" class="com-btn" id="com-swasta" data-mode="swasta">Swasta</button>
+      </div>
+    </div>
     <div class="clip-summary-strip" id="clip-summary-strip" style="display:none"></div>
 
     <div class="clip-tabs-wrap">

@@ -727,7 +727,8 @@ lampiranSaveBtn.addEventListener('click', async () => {
 let clipboard = [];
 let acItems = [], acIndex = -1, onlyAkd = false, selectedTipe = null, acTimer = null;
 let lastResults = [];
-let modeSwasta = false;
+let modeSwasta = false; // toggle "Harga Swasta" di panel PENCARIAN — cuma preferensi quick lookup (harga & link_v6 yang ditampilin pas browsing hasil cari). JANGAN dipakai buat nentuin harga output (clipboard/record/export/SPH) — lihat modeSwastaOutput.
+let modeSwastaOutput = false; // mode harga yang BENERAN dipakai buat Clipboard total & Pagu, Record Konversi, Export ke Excel, dan Generate SPH. Sengaja dipisah dari modeSwasta di atas biar user gak kepaksa ngubah tampilan pencarian cuma buat ganti mode output — lihat toggle #com-ekat/#com-swasta di clip-output-mode-row.
 let sortMode = 'relevance';
 let prioritizeLink = true; // produk yang ada link_v6 diprioritaskan (hanya berlaku saat mode e-katalog)
 const RESULTS_PER_PAGE = 20;
@@ -747,6 +748,8 @@ const errEl = document.getElementById('err');
 const tipeBtns = document.querySelectorAll('.tipe-btn');
 const takd = document.getElementById('takd');
 const tswasta = document.getElementById('tswasta');
+const comEkatBtn = document.getElementById('com-ekat');
+const comSwastaBtn = document.getElementById('com-swasta');
 const sortSelect = document.getElementById('sort-select');
 const clipList = document.getElementById('clip-list');
 const clipEmpty = document.getElementById('clip-empty');
@@ -2875,7 +2878,7 @@ function updateClipAggregates() {
   let totalHargaClip = 0;
   let adaHargaKosong = false;
   clipboard.forEach(item => {
-    const h = modeSwasta ? item.harga_swasta : item.harga_ekat;
+    const h = modeSwastaOutput ? item.harga_swasta : item.harga_ekat;
     if (h) totalHargaClip += h * item.qty;
     else adaHargaKosong = true;
   });
@@ -2908,7 +2911,7 @@ function updateClipAggregates() {
 function renderClipItemHtml(item) {
   const isSet = item.is_set;
   const tipeColor = isSet ? 'background:var(--success-bg);color:var(--success)' : 'background:var(--accent-bg);color:var(--accent-text)';
-  const hargaTampil = modeSwasta ? item.harga_swasta : item.harga_ekat;
+  const hargaTampil = modeSwastaOutput ? item.harga_swasta : item.harga_ekat;
   const totalHarga = hargaTampil ? hargaTampil * item.qty : null;
   return `<div class="clip-item" data-kode="${item.kode_produk}">
       <div class="clip-item-info">
@@ -3180,7 +3183,7 @@ btnExport.addEventListener('click', async () => {
     } catch { /* gagal cek revisi → export tetap jalan tanpa suffix, bukan blocking */ }
   }
 
-  const filename = `CONVERTED${modeSwasta?'-SWASTA':''}-${namaSales.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${namaRs.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${tanggal}${revSuffix}.xlsx`;
+  const filename = `CONVERTED${modeSwastaOutput?'-SWASTA':''}-${namaSales.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${namaRs.replace(/[^a-zA-Z0-9 ]/g,'').trim()}-${tanggal}${revSuffix}.xlsx`;
 
   exportModal.classList.add('show');
   setProgress(0, 1, 'Menyiapkan data…');
@@ -3261,7 +3264,7 @@ btnExport.addEventListener('click', async () => {
 
     // column headers (dinamis sesuai mode)
     const sumHdrRow = wsSummary.getRow(7);
-    const sumHeaders = modeSwasta
+    const sumHeaders = modeSwastaOutput
       ? ['No.','Kode Produk','Nama Produk / Deskripsi','QTY','Harga Swasta','Total Harga','Status Stok']
       : ['No.','Kode Produk','Nama Produk / Deskripsi','QTY','Harga e-Kat','Total Harga','Link e-Katalog v6','Status Stok'];
     sumHeaders.forEach((h,i) => {
@@ -3273,16 +3276,16 @@ btnExport.addEventListener('click', async () => {
       cell.border = {bottom:{style:'thin',color:{argb:'FFE2E4E9'}}};
     });
     sumHdrRow.height = 22;
-    wsSummary.columns = modeSwasta
+    wsSummary.columns = modeSwastaOutput
       ? [{width:5},{width:24},{width:50},{width:8},{width:18},{width:18},{width:14}]
       : [{width:5},{width:24},{width:50},{width:8},{width:18},{width:18},{width:45},{width:14}];
 
     let sumRow = 8;
     let grandTotal = 0;
-    const stokColIdx = modeSwasta ? 7 : 8;
+    const stokColIdx = modeSwastaOutput ? 7 : 8;
     clipboard.forEach((item, idx) => {
       const row = wsSummary.getRow(sumRow);
-      const hargaPakai = modeSwasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
+      const hargaPakai = modeSwastaOutput ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
       const total = hargaPakai * (item.qty || 1);
       grandTotal += total;
       row.getCell(1).value = idx + 1;
@@ -3291,7 +3294,7 @@ btnExport.addEventListener('click', async () => {
       row.getCell(4).value = item.qty || 1;
       row.getCell(5).value = hargaPakai || '';
       row.getCell(6).value = total || '';
-      if (!modeSwasta && item.link_v6) {
+      if (!modeSwastaOutput && item.link_v6) {
         row.getCell(7).value = {text:'Lihat di e-Katalog', hyperlink: item.link_v6};
         row.getCell(7).font = {color:{argb:'FF1D4ED8'}, underline:true};
       }
@@ -3305,7 +3308,7 @@ btnExport.addEventListener('click', async () => {
       else if (stokLabel === 'Indent') row.getCell(stokColIdx).font = {color:{argb:'FFB91C1C'}, bold:true};
       else if (stokLabel === 'Data blm lengkap') row.getCell(stokColIdx).font = {color:{argb:'FFB45309'}, bold:true};
       // zebra
-      const zebraCount = modeSwasta ? 7 : 8;
+      const zebraCount = modeSwastaOutput ? 7 : 8;
       if (idx % 2 === 0) {
         Array.from({length: zebraCount}, (_,c)=>c+1).forEach(c => {
           row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
@@ -3369,7 +3372,7 @@ btnExport.addEventListener('click', async () => {
           .filter(Boolean);
         const hargaTotalRow = matchedList.reduce((sum, m) => {
           const link = (item.matched_items || []).find(l => l.kode_produk === m.kode_produk);
-          const hargaSatuan = modeSwasta ? (m.harga_swasta || 0) : (m.harga_ekat || 0);
+          const hargaSatuan = modeSwastaOutput ? (m.harga_swasta || 0) : (m.harga_ekat || 0);
           const qty = (link && link.qty_alokasi != null) ? link.qty_alokasi : (item.qty_diminta || 1);
           return sum + hargaSatuan * qty;
         }, 0);
@@ -3381,7 +3384,7 @@ btnExport.addEventListener('click', async () => {
         row.getCell(3).value = item.qty_diminta || '';
         row.getCell(4).value = matchedList.map(m => m.kode_produk).join('; ');
         row.getCell(5).value = matchedList.map(m => m.nama_produk).join('; ');
-        row.getCell(6).value = matchedList.length === 1 ? (modeSwasta ? (matchedList[0].harga_swasta||0) : (matchedList[0].harga_ekat||0)) : '';
+        row.getCell(6).value = matchedList.length === 1 ? (modeSwastaOutput ? (matchedList[0].harga_swasta||0) : (matchedList[0].harga_ekat||0)) : '';
         row.getCell(7).value = matchedList.length ? hargaTotalRow : '';
 
         const statusLabel = item.status === 'TERPENUHI' ? 'Bisa Dipenuhi'
@@ -3628,8 +3631,19 @@ tswasta.addEventListener('click', () => {
   applySort();
   currentPage = 1;
   if (lastResults.length) renderResults(lastResults);
-  updateClipboard();
 });
+
+// MODE HARGA OUTPUT (clip-output-mode-row): independen dari toggle pencarian
+// di atas. Ini yang nentuin harga & kolom link e-Katalog buat Clipboard/Pagu,
+// Record Konversi, Export Excel, dan Generate SPH.
+function setModeSwastaOutput(swasta) {
+  modeSwastaOutput = swasta;
+  if (comEkatBtn) comEkatBtn.classList.toggle('active', !swasta);
+  if (comSwastaBtn) comSwastaBtn.classList.toggle('active', swasta);
+  updateClipboard(); // re-render daftar clipboard + total/pagu pakai mode baru
+}
+if (comEkatBtn) comEkatBtn.addEventListener('click', () => setModeSwastaOutput(false));
+if (comSwastaBtn) comSwastaBtn.addEventListener('click', () => setModeSwastaOutput(true));
 sortSelect.addEventListener('change', () => {
   sortMode = sortSelect.value;
   applySort();
@@ -3711,7 +3725,7 @@ function computeKonversiSummary() {
 
   let grandTotal = 0;
   clipboard.forEach(item => {
-    const hargaPakai = modeSwasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
+    const hargaPakai = modeSwastaOutput ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
     grandTotal += hargaPakai * (item.qty || 1);
   });
 
@@ -3841,7 +3855,7 @@ recordSubmitBtn.addEventListener('click', async () => {
     // Detail per item — ini yang bikin data granular buat insight nanti
     // (produk apa yang sering INDENT, revenue per kategori/produk, dst).
     const itemRows = clipboard.map(item => {
-      const hargaPakai = modeSwasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
+      const hargaPakai = modeSwastaOutput ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
       return {
         konversi_record_id: newRecordId,
         produk_id: item.produk_id || null,
