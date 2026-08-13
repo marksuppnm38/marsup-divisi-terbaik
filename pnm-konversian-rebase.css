@@ -315,30 +315,30 @@
 #app-root .dict-toolbar{margin-bottom:14px}
 
 /* ============================================================
-   10. AUTOCOMPLETE DROPDOWN — dua bug dari pnm-universal.css:
-   (1) #autocomplete gak punya max-height, cuma overflow:hidden —
-   JS render sampai N item (acItems = data.slice(0,N), lihat
-   renderAutocomplete di konversian.js), tiap item ~34-36px
-   (padding 8px 12px + border-bottom), jadi nabrak ke filters row
-   + meta-row + baris pertama list produk persis di bawahnya
-   (keluhan "nutupin list produk", termasuk pas masih 6 item —
-   6×36≈216px, max-height 200px kemarin masih ke-round hampir
-   sama, jadi ke-round jadi tetep nutup dikit; sekarang dikunci
-   jelas di bawah tinggi 4 item). (2) top:42px itu dihitung buat
-   tinggi input LAMA (38px) — sekarang #search-input 46px (section
-   2 di atas), jadi offset dropdown gak lagi pas.
-   Fix: samakan top ke tinggi input baru, dan kunci max-height
-   SETARA ±3.5 item (bukan dibulatkan ke atas) supaya baris ke-4
-   kepotong separuh sebagai sinyal visual "scroll buat lihat
-   lagi" — apapun jumlah hasilnya, dropdown gak akan pernah lebih
-   tinggi dari itu. Tambah fade-in halus (CSS animation restart
-   otomatis tiap display:none→block, gak perlu ubah JS) biar
-   transisi buka dropdown gak berasa "jetreng".
+   10. AUTOCOMPLETE DROPDOWN — tetap dipertahankan sebagai
+   quick-narrow query (BUKAN quick-select-ke-clipboard — itu
+   sengaja gak ada di sini, konsisten sama renderResults() yang
+   card-nya juga gak boleh commit ke server tanpa klik tombol
+   eksplisit "Tambahkan ke Konversi"). Dua bug lama dari
+   pnm-universal.css: (1) gak ada max-height sama sekali, jadi
+   ikut kepanjangan pas hasil banyak dan nabrak baris pertama
+   list produk di bawahnya; (2) top:42px dihitung buat tinggi
+   input LAMA (38px), sementara #search-input sekarang 46px
+   (section 2 di atas).
+   Fix akhir: JS (lihat renderAutocomplete di konversian.js) udah
+   dikunci render PALING BANYAK 4 item. Jadi max-height di sini
+   di-set PAS muat 4 item penuh (4 × ~36px + buffer) — bukan
+   dibulatkan ke bawah kayak sebelumnya, yang bikin item terakhir
+   ke-crop separuh. Hasilnya: gak akan pernah ada baris terpotong,
+   DAN gak butuh scrollbar sama sekali di kondisi normal (overflow
+   tetap dijaga sebagai pengaman kalau suatu saat cap-nya dinaikin
+   lagi). Fade-in halus pakai CSS animation (restart otomatis tiap
+   display:none→block, gak perlu ubah JS).
    ============================================================ */
 #app-root #autocomplete{
   top:52px;
   border-radius:10px;
-  max-height:130px;
+  max-height:154px;
   overflow-y:auto;
   box-shadow:0 12px 28px rgba(0,0,0,.14);
   animation:acFadeIn .12s ease-out;
@@ -351,7 +351,7 @@
   to{opacity:1;transform:translateY(0)}
 }
 @media (max-width:768px){
-  #app-root #autocomplete{top:48px;max-height:110px}
+  #app-root #autocomplete{top:48px}
 }
 
 /* ============================================================
