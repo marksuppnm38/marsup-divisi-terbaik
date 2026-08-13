@@ -2642,12 +2642,17 @@ async function fetchImageBase64(kode_asli, kode_produk) {
   } catch { return null; }
 }
 
-// AUTOCOMPLETE — reuses lastResults from runSearch, no separate API call needed
+// AUTOCOMPLETE — reuses lastResults from runSearch, no separate API call needed.
+// Dikurangin dari 6 ke 4 item: dropdown ini ngambang di atas list produk yang
+// sebenarnya udah kelihatan di bawahnya, jadi makin sedikit & padat makin gak
+// berasa nutup-nutupin — 4 quick-pick tercepat udah cukup, sisanya toh masih
+// kebaca lewat scroll di list produk itu sendiri. (lihat juga max-height di
+// pnm-konversian-rebase.css yang dikunci senada sama jumlah ini)
 function renderAutocomplete(data) {
   if (!searchInput.value.trim() || !data || !data.length) {
     acBox.style.display = 'none'; acItems = []; acIndex = -1; return;
   }
-  acItems = data.slice(0, 6);
+  acItems = data.slice(0, 4);
   acIndex = -1;
   acBox.innerHTML = acItems.map(r => {
     const t = (r.tipe || '').toUpperCase();
