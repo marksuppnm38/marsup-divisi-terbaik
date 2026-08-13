@@ -797,7 +797,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       var status = document.getElementById('conv-location-status');
       var actions = document.getElementById('conv-location-actions');
       status.className = 'conv-location-status is-unknown';
-      status.innerHTML = '<i class="ti ti-alert-triangle"></i> Link otomatis belum ketemu — file kemungkinan sudah ada, cek langsung di folder Drive di atas (tab Riwayat gak nampilin link ini).';
+      status.innerHTML = '<i class="ti ti-alert-triangle"></i> Link otomatis belum ketemu — file kemungkinan sudah ada, cek langsung di folder Drive di atas.';
       actions.style.display = 'none';
       if(driveHintEl) driveHintEl.textContent = '✓ Tersimpan · ' + resolveLocationPath() + ' · link belum ketemu';
     }
@@ -1197,11 +1197,20 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div class="modal-title" id="lampiran-title" style="margin:0">Lampiran Produk</div>
       <div style="display:flex;align-items:center;gap:8px">
+        <!-- Cuma dipakai buat item SET — toggle antara "Rincian Set" (default)
+             dan mode cari/upload PDF manual. Teks & aksi tombol ini diganti
+             dinamis dari JS (lihat openLampiranModal/runPdfLookupFlow di
+             konversian.js), disembunyikan total buat item non-SET. -->
+        <button id="lampiran-toggle-btn" style="display:none;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-size:12px;font-weight:500;padding:6px 12px;border-radius:20px;cursor:pointer;white-space:nowrap"></button>
         <button id="lampiran-ganti-btn" style="display:none;border:1px solid var(--accent-text);background:var(--accent-bg);color:var(--accent-text);font-size:12px;font-weight:500;padding:6px 12px;border-radius:20px;cursor:pointer;white-space:nowrap">Ganti Lampiran</button>
         <button id="lampiran-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
       </div>
     </div>
     <div id="lampiran-status" style="font-size:13px;color:var(--text-muted);padding:24px 0;text-align:center">Memuat lampiran…</div>
+    <!-- Tabel rincian isi set + gambar — default view buat item tipe SET,
+         dibangun on-the-fly dari get_set_items (sama sumber data yg dipakai
+         sheet per-set di export Excel), BUKAN PDF beneran. -->
+    <div id="lampiran-set-rincian" style="display:none;margin-bottom:14px"></div>
     <div id="lampiran-picker" style="display:none;margin-bottom:14px">
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">PDF tidak ketemu otomatis. Cari & klik file brosur yang sudah ada di bucket:</div>
       <input type="text" id="lampiran-search-input" placeholder="Ketik untuk cari nama file PDF…" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px"/>

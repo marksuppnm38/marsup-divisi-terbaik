@@ -300,6 +300,8 @@ const lampiranGantiBtn = document.getElementById('lampiran-ganti-btn');
 const lampiranDropzone = document.getElementById('lampiran-dropzone');
 const lampiranFileInput = document.getElementById('lampiran-file-input');
 const lampiranUploadStatus = document.getElementById('lampiran-upload-status');
+const lampiranSetRincian = document.getElementById('lampiran-set-rincian');
+const lampiranToggleBtn = document.getElementById('lampiran-toggle-btn');
 document.getElementById('lampiran-close').addEventListener('click', () => lampiranModal.classList.remove('show'));
 lampiranModal.addEventListener('click', (e) => { if (e.target === lampiranModal) lampiranModal.classList.remove('show'); });
 
@@ -601,14 +603,19 @@ async function getLampiranPagesForKode(kode_produk) {
   }
 }
 
-async function openLampiranModal(kode_produk) {
+let lampiranCurrentIsSet = false; // dipakai toggle-btn buat tau mode "kembali" yang bener
+
+async function openLampiranModal(kode_produk, isSet) {
   lampiranTitle.textContent = 'Lampiran — ' + kode_produk;
   lampiranPages.innerHTML = '';
+  lampiranSetRincian.innerHTML = '';
+  lampiranSetRincian.style.display = 'none';
   lampiranPicker.style.display = 'none';
   lampiranSuggestList.style.display = 'none';
   lampiranSearchInput.value = '';
   lampiranSaveRow.style.display = 'none';
   lampiranGantiBtn.style.display = 'none';
+  lampiranToggleBtn.style.display = 'none';
   lampiranUploadStatus.style.display = 'none';
   lampiranDropzone.classList.remove('dragover');
   lampiranSaveBtn.disabled = false;
@@ -618,13 +625,113 @@ async function openLampiranModal(kode_produk) {
   lampiranModal.classList.add('show');
   lampiranCurrentKode = kode_produk;
   lampiranCurrentFilename = null;
+  lampiranCurrentIsSet = !!isSet;
 
   const produk_id = await getProdukId(kode_produk);
   lampiranCurrentProdukId = produk_id;
 
+  if (lampiranCurrentIsSet) {
+    // Default buat SET: rincian isi set + gambar — "lampiran" SET pada
+    // dasarnya emang dari isi komponennya (persis sheet per-set di export
+    // Excel), bukan brosur terpisah yang perlu dicari/diupload. Pintu upload
+    // PDF manual TETAP dibuka lewat toggle-btn, buat kasus SET yang beneran
+    // punya brosur paket dari vendor.
+    await renderSetRincianInLampiranModal(kode_produk);
+    lampiranToggleBtn.textContent = 'Upload Lampiran PDF';
+    lampiranToggleBtn.style.display = 'inline-block';
+    lampiranToggleBtn.onclick = () => runPdfLookupFlow(kode_produk);
+    return;
+  }
+
+  await runPdfLookupFlow(kode_produk);
+}
+
+// Rincian isi set + gambar, ditampilkan sebagai tabel di modal Lampiran —
+// data & foto diambil dari sumber yang SAMA dengan sheet per-set di export
+// Excel (get_set_items via getSetItems + fetchImageBase64/removeBackground),
+// jadi apa yang keliatan di sini bakal konsisten sama isi file export nanti.
+async function renderSetRincianInLampiranModal(kode_produk) {
+  lampiranPages.innerHTML = '';
+  lampiranPicker.style.display = 'none';
+  lampiranSaveRow.style.display = 'none';
+  lampiranGantiBtn.style.display = 'none';
+  lampiranSetRincian.style.display = 'none';
+  lampiranStatus.style.display = 'block';
+  lampiranStatus.textContent = 'Memuat rincian set…';
+
+  let items;
+  try {
+    items = await getSetItems(kode_produk);
+  } catch (e) {
+    lampiranStatus.textContent = 'Gagal memuat rincian set: ' + (e.message || e);
+    return;
+  }
+  if (!items.length) {
+    lampiranStatus.textContent = 'Rincian isi set tidak ditemukan buat produk ini.';
+    return;
+  }
+
+  // Gambar tiap komponen diambil PARALEL (bukan satu-satu) — sama pola kayak
+  // worker pool di export Excel, biar gak lelet kalau isi setnya banyak.
+  const imgs = new Array(items.length);
+  await Promise.all(items.map(async (it, i) => {
+    const raw = await fetchImageBase64(it.kode_asli, it.kode_produk);
+    imgs[i] = raw ? await removeBackground(raw) : null;
+  }));
+
+  lampiranStatus.style.display = 'none';
+  const esc = (s) => String(s ?? '').replace(/</g, '&lt;');
+  const rows = items.map((it, i) => `
+    <tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px;text-align:center;color:var(--text-muted);font-size:12px">${it.urutan || i + 1}</td>
+      <td style="padding:8px;font-family:monospace;font-size:12px;white-space:nowrap">${esc(it.kode_produk)}</td>
+      <td style="padding:8px;font-size:13px">${esc(it.nama_produk)}</td>
+      <td style="padding:8px;text-align:center;font-size:13px">${it.qty ?? 1}</td>
+      <td style="padding:8px;text-align:center">${imgs[i]
+        ? `<img src="data:image/png;base64,${imgs[i]}" style="width:56px;height:56px;object-fit:contain"/>`
+        : '<span style="color:var(--text-muted);font-size:11px">—</span>'}</td>
+    </tr>`).join('');
+
+  lampiranSetRincian.innerHTML = `
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Rincian isi set — sama seperti sheet per-set di export Excel.</div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="background:var(--accent-bg);color:var(--accent-text)">
+          <th style="padding:8px;text-align:center;width:36px;font-size:12px">No</th>
+          <th style="padding:8px;text-align:left;font-size:12px">Kode</th>
+          <th style="padding:8px;text-align:left;font-size:12px">Nama Produk</th>
+          <th style="padding:8px;text-align:center;width:60px;font-size:12px">Qty</th>
+          <th style="padding:8px;text-align:center;width:80px;font-size:12px">Gambar</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  lampiranSetRincian.style.display = 'block';
+}
+
+// Flow cari/render/upload PDF — sama persis kayak isi openLampiranModal yang
+// lama, cuma dipisah jadi fungsi sendiri biar bisa dipanggil ULANG lewat
+// toggle-btn dari mode Rincian Set (item SET) tanpa perlu buka ulang modal
+// dari awal / fetch produk_id lagi.
+async function runPdfLookupFlow(kode_produk) {
+  lampiranPages.innerHTML = '';
+  lampiranSetRincian.style.display = 'none';
+  lampiranPicker.style.display = 'none';
+  lampiranSuggestList.style.display = 'none';
+  lampiranSaveRow.style.display = 'none';
+  lampiranGantiBtn.style.display = 'none';
+  lampiranStatus.style.display = 'block';
+  lampiranStatus.textContent = 'Memuat lampiran…';
+
+  if (lampiranCurrentIsSet) {
+    lampiranToggleBtn.textContent = 'Lihat Rincian Set';
+    lampiranToggleBtn.style.display = 'inline-block';
+    lampiranToggleBtn.onclick = () => renderSetRincianInLampiranModalAndResetToggle(kode_produk);
+  }
+
   // 1. Cek apakah sudah ada link tersimpan manual di produk_media
-  if (produk_id) {
-    const savedUrl = await getSavedBrosurUrl(produk_id);
+  if (lampiranCurrentProdukId) {
+    const savedUrl = await getSavedBrosurUrl(lampiranCurrentProdukId);
     if (savedUrl) {
       try {
         await renderPdfFromUrl(savedUrl);
@@ -645,6 +752,15 @@ async function openLampiranModal(kode_produk) {
     // 3. Gagal — tampilkan picker dengan daftar suggestion
     await showLampiranPicker();
   }
+}
+
+// Dipanggil dari toggle-btn pas lagi di mode PDF (item SET) buat balik ke
+// tabel rincian — sekalian nyiapin toggle-btn lagi ke arah sebaliknya.
+async function renderSetRincianInLampiranModalAndResetToggle(kode_produk) {
+  await renderSetRincianInLampiranModal(kode_produk);
+  lampiranToggleBtn.textContent = 'Upload Lampiran PDF';
+  lampiranToggleBtn.style.display = 'inline-block';
+  lampiranToggleBtn.onclick = () => runPdfLookupFlow(kode_produk);
 }
 
 async function showLampiranPicker() {
@@ -1554,6 +1670,13 @@ function renderRiwayatCard(s) {
   const versiChip = records.length > 1
     ? `<span class="mi"><i class="ti ti-versions"></i><span>${records.length} versi tersimpan</span></span>`
     : '';
+  // Link file/dokumen yang nempel di record terbaru (biasanya link Drive dari
+  // "Simpan ke Drive" → auto-filled ke rec-link → ikut kesimpen di sini).
+  // stopPropagation biar klik link gak ikut ngebuka sesi (card-nya sendiri
+  // punya click handler buat openSesi).
+  const linkChip = (latest && latest.link)
+    ? `<a class="mi" href="${latest.link.replace(/"/g, '&quot;')}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent-text)"><i class="ti ti-link"></i><span>Buka file</span></a>`
+    : '';
   return `<div class="rcard riwayat-card" data-id="${s.id}" style="position:relative">
     <div class="rcard-top" style="padding-right:8px">
       <div class="rcard-name">${s.nama_rs ? s.nama_rs : '(Nama RS belum diisi)'}</div>
@@ -1564,6 +1687,7 @@ function renderRiwayatCard(s) {
       <span class="mi"><i class="ti ti-users"></i><span>Sales: ${s.nama_sales || '-'}</span></span>
       <span class="mi"><i class="ti ti-package"></i><span>${itemCount} produk</span></span>
       ${versiChip}
+      ${linkChip}
       <span class="mi"><i class="ti ti-clock"></i><span>Selesai ${sesiTimeAgo(s.updated_at)}</span></span>
     </div>
   </div>`;
@@ -1583,7 +1707,7 @@ async function loadRiwayatList() {
       const esc = term.replace(/[,()]/g, ' ').trim();
       searchFilter = `&or=(nama_rs.ilike.*${encodeURIComponent(esc)}*,pic_marsup.ilike.*${encodeURIComponent(esc)}*,nama_sales.ilike.*${encodeURIComponent(esc)}*)`;
     }
-    const res = await sesiFetch(`${SESI_TABLE}?status=eq.selesai${searchFilter}&select=*,${SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi)&order=updated_at.desc&limit=100`);
+    const res = await sesiFetch(`${SESI_TABLE}?status=eq.selesai${searchFilter}&select=*,${SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link)&order=updated_at.desc&limit=100`);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
@@ -1763,6 +1887,9 @@ async function openSesi(id) {
 // Reset state checklist "Kebutuhan RS" di layar (dipanggil sebelum ganti sesi,
 // biar gak nyisa data dari sesi yang lain).
 function resetChecklistUI() {
+  // Sesi ganti total → link Drive sesi sebelumnya gak relevan lagi buat sesi
+  // yang baru dibuka/dimulai (lihat lastDriveUrl & openRecordModal()).
+  lastDriveUrl = null;
   checklistItems = [];
   checklistPermintaanId = null;
   checklistTanggal = null;
@@ -2665,7 +2792,7 @@ function renderResults(data) {
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
-          <button class="btn-lampiran" data-kode="${r.kode_produk}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>
+          <button class="btn-lampiran" data-kode="${r.kode_produk}" data-is-set="${isSet}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>
           <button class="btn-edit-produk" data-kode="${r.kode_produk}" title="Edit produk ini" style="font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-settings" style="font-size:12px"></i></button>
           ${inClip
             ? `<button class="btn-clip-toggle in-clip" data-kode="${r.kode_produk}" data-action="remove"><i class="ti ti-circle-check" style="font-size:12px"></i> Di Konversi</button>`
@@ -2693,7 +2820,7 @@ function renderResults(data) {
   resultsEl.querySelectorAll('.btn-lampiran').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      openLampiranModal(btn.dataset.kode);
+      openLampiranModal(btn.dataset.kode, btn.dataset.isSet === 'true');
     });
   });
   resultsEl.querySelectorAll('[data-role="link-katalog"]').forEach(a => {
@@ -3070,6 +3197,12 @@ async function getSetItems(kode_produk) {
 let lastExportBlob = null;
 let lastExportFilename = null;
 let lastExportNamaSales = null;
+// Link Drive terakhir yang beneran didapat dari upload sukses (result.fileUrl),
+// buat auto-fill #rec-link pas modal Record dibuka — sebelumnya link ini cuma
+// nyampe ke modal sukses convFlow (visual doang), gak pernah ditulis balik ke
+// field record-nya, jadi openRecordModal() nge-reset ke kosong lagi. Direset
+// balik ke null di resetChecklistUI() tiap kali sesi ganti/dibuka ulang.
+let lastDriveUrl = null;
 const btnDriveUpload = document.getElementById('btn-drive-upload');
 
 function blobToBase64(blob) {
@@ -3106,6 +3239,14 @@ async function uploadKonversianToDrive(blob, fileName, tahun, namaSalesForFolder
     // folderPath (path Drive yang BENERAN dipakai, termasuk penyesuaian nama
     // folder kalau ternyata udah ada sebelumnya lewat findOrCreateFolder yang
     // case-insensitive) — pakai itu, bukan tebak-tebak lagi.
+    // Simpan & langsung isi #rec-link juga di sini — INI titik yang beneran
+    // tau linknya, jangan nunggu openRecordModal() atau poll DOM convFlow yang
+    // cuma best-effort. lastDriveUrl dipakai openRecordModal() biar gak
+    // ke-reset ke kosong pas modal Record dibuka setelahnya.
+    if (result.fileUrl) {
+      lastDriveUrl = result.fileUrl;
+      if (recLink) recLink.value = result.fileUrl;
+    }
     if (window.convFlow) {
       window.convFlow.showSuccess('drive', {
         driveUrl: result.fileUrl,
@@ -3531,10 +3672,39 @@ btnExport.addEventListener('click', async () => {
         return final;
       }
 
+      // Ambil SEMUA lampiran secara PARALEL (worker pool, bukan satu-satu
+      // berurutan) — ini yang paling nyumbang lambatnya export sebelumnya:
+      // tiap item (SET/instrumen/unit) butuh 2-3 round-trip network (cek
+      // produk_id → cek saved URL di produk_media → coba fetch PDF auto-match)
+      // yang sebelumnya nunggu satu-satu pakai for-await. Semua tipe TETAP
+      // dicek (gak di-skip buat SET/instrumen) — brosur yang diupload manual
+      // buat tipe apa pun tetap kebawa ke Excel, cuma cara ngambilnya aja yang
+      // dibikin bareng-bareng. Concurrency dibatasi (bukan Promise.all polos
+      // sekaligus semua) biar gak nembak puluhan/ratusan request barengan
+      // kalau clipboard-nya gede — browser sendiri juga cuma bisa ~6 koneksi
+      // paralel per host, jadi angka ini udah pas gak nyia-nyiakan slot.
+      const LAMPIRAN_CONCURRENCY = 6;
+      const lampiranResults = new Array(lampiranCandidates.length);
+      let lampiranDone = 0;
+      let lampiranNextIdx = 0;
+      async function lampiranWorker() {
+        while (lampiranNextIdx < lampiranCandidates.length) {
+          const idx = lampiranNextIdx++;
+          lampiranResults[idx] = await getLampiranPagesForKode(lampiranCandidates[idx].kode_produk);
+          lampiranDone++;
+          setProgress(lampiranDone, lampiranCandidates.length, `Mengecek lampiran… (${lampiranDone}/${lampiranCandidates.length})`);
+        }
+      }
+      await Promise.all(
+        Array.from({ length: Math.min(LAMPIRAN_CONCURRENCY, lampiranCandidates.length) }, lampiranWorker)
+      );
+
+      // Bikin sheet-nya SEQUENTIAL (gak ada await di sini) biar urutan sheet
+      // di file Excel tetap deterministik & sama kayak urutan clipboard,
+      // walaupun proses ambil datanya di atas jalan paralel/gak berurutan.
       for (let u = 0; u < lampiranCandidates.length; u++) {
         const item = lampiranCandidates[u];
-        setProgress(u, lampiranCandidates.length, `Mengecek lampiran: ${item.nama_produk}`);
-        const { filename, pages } = await getLampiranPagesForKode(item.kode_produk);
+        const { filename, pages } = lampiranResults[u];
         if (!pages.length) continue; // gak ada lampiran buat produk ini — lewati, gak perlu sheet kosong
 
         const wsLamp = wb.addWorksheet(uniqueSheetName(filename));
@@ -3742,7 +3912,10 @@ function openRecordModal() {
   recKategori.textContent = kategori;
   recValue.textContent = rupiah(grandTotal);
   recNotes.value = '';
-  recLink.value = '';
+  // Auto-filled dari link Drive sesi ini kalau udah pernah diupload (lihat
+  // uploadKonversianToDrive) — JANGAN di-reset ke kosong, itu bikin link yang
+  // baru aja didapat ilang lagi pas modal ini dibuka.
+  recLink.value = lastDriveUrl || '';
   recordStatus.textContent = '';
   recordStatus.style.color = '';
   recordSubmitBtn.disabled = false;
@@ -3923,7 +4096,13 @@ recordSubmitBtn.addEventListener('click', async () => {
     kategori: kategori,
     value: grandTotal,
     notes: recNotes.value.trim(),
-    link: recLink.value.trim()
+    link: recLink.value.trim(),
+    // Idempotency key buat dedupe di sisi Apps Script (lihat RecordKonversi.gs).
+    // newRecordId STABIL di seluruh percobaan retry sesi ini — "Coba Sync ke
+    // Sheet Lagi" reuse ID yang sama, gak pernah insert record baru ke
+    // Supabase (lihat retryRecordId di atas), jadi aman dipakai buat nyocokin
+    // "request ini udah pernah beneran nyampe & keproses di Sheet apa belum".
+    record_id: newRecordId || null
   };
 
   try {
@@ -3935,7 +4114,26 @@ recordSubmitBtn.addEventListener('click', async () => {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight ke Apps Script
       body: JSON.stringify(sheetPayload)
     });
-    const result = await res.json();
+    // Apps Script kadang balikin halaman HTML (bukan JSON) walau row-nya SUDAH
+    // kesimpen di Sheet — biasanya karena ada kode SETELAH appendRow() di
+    // doPost yang throw exception gak ke-catch, jadi Google keburu ngasih
+    // halaman error bawaan sebelum sempat return JSON. Makanya res.json()
+    // langsung dipanggil bisa gagal padahal datanya udah nyangkut. Baca
+    // sebagai text dulu biar bisa kasih pesan yang jujur soal ini, bukan
+    // "Unexpected token" yang bikin orang kira datanya ilang.
+    const rawText = await res.text();
+    let result;
+    try {
+      result = JSON.parse(rawText);
+    } catch {
+      const looksLikeHtml = /^\s*<(!doctype|html)/i.test(rawText);
+      throw new Error(
+        (looksLikeHtml
+          ? 'Apps Script balikin halaman HTML, bukan JSON (kemungkinan besar ada error di script SETELAH baris tersimpan — cek Apps Script > Executions buat lihat detail errornya).'
+          : 'Respons Apps Script gak valid: ' + rawText.slice(0, 120))
+        + ' PENTING: baris ini kemungkinan SUDAH masuk ke Sheet meski response-nya error — cek Sheet dulu sebelum klik "Coba Sync ke Sheet Lagi", biar gak ke-duplikat.'
+      );
+    }
     if (!result.ok) throw new Error(result.error || 'Gagal menyimpan ke sheet');
 
     if (newRecordId) {
