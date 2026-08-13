@@ -732,8 +732,16 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
    ambil full width, subtab-row (cuma nyisain 1 opsi) ikut disembunyikan.
    Class door-* nempel di #app-root biar bisa nge-scope elemen header juga. */
 #app-root.door-cari .panel-clip{display:none !important}
-#app-root.door-cari .subtab-row{display:none}
+#app-root.door-cari .subtab-row{display:none !important}
 #app-root.door-cari .panel-search{border-right:none}
+/* Belt-and-suspenders for the header→search-bar gap specifically in
+   "Cari Cepat" mode: .subtab-row is display:none here so .panel-header's
+   padding-top:0 (set on the base .panel-header rule) should already be
+   enough on its own — but this scoped, !important, higher-specificity
+   copy guarantees zero gap even if an older/conflicting .panel-header
+   padding rule is still present anywhere else in the cascade. */
+#app-root.door-cari .panel-header{padding-top:0 !important}
+#app-root.door-cari #cari-controls{margin-top:0 !important}
 #hdr-clip-count-wrap{display:none}
 #app-root.door-konversi #hdr-clip-count-wrap{display:inline}
 #app-root.door-cari #btn-permintaan{display:none}
@@ -1650,7 +1658,23 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
     padding: 32px 24px 64px;
   }
 
-  header {
+  /* SCOPED under .wrap — this whole block used bare/generic selectors
+     (header, .header-right, footer, .brand, etc.) with no scoping, so on
+     any OTHER page sharing this stylesheet, they silently collided with
+     that page's own same-named rules. Since pnm-universal.css is loaded
+     globally (index.html, konversian.html, stok.html, ...), a bare
+     `header{padding-bottom:20px;margin-bottom:28px;...}` here was landing
+     on konversian.html's real <header> too — cascade order made it win
+     over konversian's own header{} rule for padding-bottom, and it
+     introduced a margin-bottom that never existed in konversian's own
+     CSS at all. That's the actual root cause of the header→workspace gap:
+     not a padding/margin/gap issue in the app's own layout chain, but an
+     unrelated landing-page rule bleeding through a shared stylesheet.
+     `.header-right` was colliding the same way (a real, used class in
+     konversian's own header). Scoping every selector below under `.wrap`
+     (this section's own real landing-page container) fixes the leak at
+     its source instead of overriding it downstream with !important. */
+  .wrap header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1661,38 +1685,38 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
     border-bottom: 1px solid var(--border);
   }
 
-  .brand {
+  .wrap .brand {
     display: flex;
     align-items: center;
     gap: 12px;
   }
 
-  .brand img {
+  .wrap .brand img {
     width: 40px;
     height: 40px;
     object-fit: contain;
     border-radius: 8px;
   }
 
-  .brand-text h1 {
+  .wrap .brand-text h1 {
     font-size: 18px;
     font-weight: 700;
     letter-spacing: -0.01em;
   }
 
-  .brand-text p {
+  .wrap .brand-text p {
     font-size: 13px;
     color: var(--text-muted);
     margin-top: 2px;
   }
 
-  .header-right {
+  .wrap .header-right {
     display: flex;
     align-items: center;
     gap: 14px;
   }
 
-  .breadcrumb {
+  .wrap .breadcrumb {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11.5px;
     color: var(--text-muted);
@@ -1700,7 +1724,7 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
     line-height: 1.5;
   }
 
-  .theme-toggle {
+  .wrap .theme-toggle {
     width: 34px;
     height: 34px;
     border-radius: 8px;
@@ -1714,14 +1738,14 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
     transition: border-color 0.15s ease, color 0.15s ease;
   }
 
-  .theme-toggle:hover {
+  .wrap .theme-toggle:hover {
     border-color: var(--blue);
     color: var(--blue);
   }
 
-  .theme-toggle svg { width: 16px; height: 16px; }
+  .wrap .theme-toggle svg { width: 16px; height: 16px; }
 
-  .section-label {
+  .wrap .section-label {
     font-size: 11.5px;
     font-weight: 600;
     letter-spacing: 0.08em;
@@ -1730,13 +1754,13 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
     margin-bottom: 14px;
   }
 
-  .modules {
+  .wrap .modules {
     display: grid;
     grid-template-columns: 1fr;
     gap: 12px;
   }
 
-  .module {
+  .wrap .module {
     display: flex;
     align-items: center;
     gap: 16px;
@@ -1750,12 +1774,12 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
     transition: border-color 0.15s ease, transform 0.1s ease;
   }
 
-  .module:hover {
+  .wrap .module:hover {
     border-color: var(--blue);
     transform: translateY(-1px);
   }
 
-  .module-icon {
+  .wrap .module-icon {
     flex: 0 0 42px;
     width: 42px;
     height: 42px;
@@ -1767,26 +1791,26 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
     justify-content: center;
   }
 
-  .module-icon svg { width: 20px; height: 20px; }
+  .wrap .module-icon svg { width: 20px; height: 20px; }
 
-  .module-body {
+  .wrap .module-body {
     flex: 1;
     min-width: 0;
   }
 
-  .module-title {
+  .wrap .module-title {
     font-size: 15.5px;
     font-weight: 600;
     margin-bottom: 3px;
   }
 
-  .module-desc {
+  .wrap .module-desc {
     font-size: 13.5px;
     color: var(--text-muted);
     line-height: 1.4;
   }
 
-  .status {
+  .wrap .status {
     flex: 0 0 auto;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 10.5px;
@@ -1798,22 +1822,22 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
     white-space: nowrap;
   }
 
-  .status.live {
+  .wrap .status.live {
     color: var(--green);
     background: var(--green-soft);
   }
 
-  .status.soon {
+  .wrap .status.soon {
     color: var(--text-muted);
     background: var(--gray-soft);
   }
 
-  .module.disabled {
+  .wrap .module.disabled {
     pointer-events: none;
     opacity: 0.6;
   }
 
-  footer {
+  .wrap footer {
     margin-top: 40px;
     padding-top: 18px;
     border-top: 1px solid var(--border);
@@ -1827,10 +1851,10 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
   }
 
   @media (max-width: 520px) {
-    .header-right { width: 100%; justify-content: space-between; }
-    .breadcrumb { text-align: left; }
-    .module { padding: 16px; }
-    .module-icon { flex-basis: 36px; width: 36px; height: 36px; }
+    .wrap .header-right { width: 100%; justify-content: space-between; }
+    .wrap .breadcrumb { text-align: left; }
+    .wrap .module { padding: 16px; }
+    .wrap .module-icon { flex-basis: 36px; width: 36px; height: 36px; }
   }
 
 /* ========== STOK / STOCK INVENTORY ========== */

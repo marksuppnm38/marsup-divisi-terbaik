@@ -1,4 +1,6 @@
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-08-13(2): fix stepper Export/Simpan ke Drive di konversian.html nyangkut nunjukin status sesi SEBELUMNYA pas Selesaikan Sesi/Mulai Sesi Baru/buka sesi lain — window.convFlow.reset() (baru) sekarang dipanggil dari resetChecklistUI(), plus lastExportBlob dkk ikut dikosongin di titik yang sama — Claude
+// 2026-08-13: fix bug "Sesi ini belum ada Permintaan RS (atau tanggalnya belum tercatat)" muncul palsu — startChecklistSession() gak pernah ngisi checklistTanggal pas Permintaan RS BARU disubmit (cuma loadChecklistForSesi yang ngisi, buat sesi yang DIBUKA ULANG). Sekarang startChecklistSession terima parameter tanggal & set checklistTanggal dari situ — Claude
 // 2026-08-12: shared auth layer + navigasi konversian<->crud-produk + theme-fix (single <html data-theme>) + cache-busting — Claude (sesi arsitektur)
 // Kalau kamu Claude/sesi lain yang mau edit file ini: tambahin baris baru di atas (jangan hapus riwayatnya), ringkas 1 baris apa yang berubah + tanggal.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1911,6 +1913,18 @@ function resetChecklistUI() {
   // Konteks sesi ganti total — kalau ada penolakan "Mulai Konversi Baru?" dari
   // form sebelumnya, itu gak relevan lagi buat konteks yang baru ini.
   headerFieldsSesiDeclined = false;
+  // BUGFIX: file Excel hasil export & status stepper "Export ✓ / Simpan ke
+  // Drive ✓" nempel ke sesi SEBELUMNYA — begitu pindah/tutup/hapus sesi,
+  // itu semua gak relevan lagi (mirip logika lastDriveUrl/resetSsReferences
+  // di atas), tapi sebelumnya gak pernah dibersihin sampai reload halaman
+  // manual. lastExportBlob dikosongin biar "Simpan ke Drive" gak bisa
+  // reupload file Excel sesi lama tanpa export ulang dulu; window.convFlow.
+  // reset() (konversian.html) yang beresin tampilan steppernya sendiri.
+  lastExportBlob = null;
+  lastExportFilename = null;
+  lastExportNamaSales = null;
+  if (typeof btnDriveUpload !== 'undefined' && btnDriveUpload) btnDriveUpload.disabled = true;
+  if (window.convFlow && typeof window.convFlow.reset === 'function') window.convFlow.reset();
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -4854,7 +4868,7 @@ prReviewSaveBtn.addEventListener('click', async () => {
     }
     const result = await res.json();
 
-    startChecklistSession(result, prNamaRs.value.trim(), prPicSales.value.trim(), parsePaguValue(prPagu.value));
+    startChecklistSession(result, prNamaRs.value.trim(), prPicSales.value.trim(), parsePaguValue(prPagu.value), prTanggal.value || null);
     closePrModal();
     if (typeof switchDoor === 'function') switchDoor('konversi');
 
@@ -4977,13 +4991,22 @@ function maybeFetchSuggestionForExpanded() {
   if (it && it.status === 'PENDING') fetchDictSuggestionFor(it);
 }
 
-function startChecklistSession(submitResult, namaRs, picSales, pagu) {
+function startChecklistSession(submitResult, namaRs, picSales, pagu, tanggal) {
   checklistItems = Array.isArray(submitResult.items) ? submitResult.items : [];
   checklistItems.forEach(it => { it.matched_items = normalizeMatchedItems(it); });
   checklistNamaRs = namaRs || '(tanpa nama RS)';
   checklistSales = picSales || '(tanpa nama sales)';
   checklistPagu = (pagu === undefined) ? null : pagu;
   checklistPermintaanId = submitResult.permintaan_id;
+  // BUGFIX: dulu checklistTanggal gak pernah di-set di sini (cuma di-set di
+  // loadChecklistForSesi buat sesi yang DIBUKA ULANG), jadi begitu Permintaan
+  // RS BARU disubmit, tombol "Simpan ke Drive" langsung nganggep sesi ini
+  // "belum ada Permintaan RS" walau permintaan_id-nya jelas keisi — soalnya
+  // pengecekannya butuh checklistTanggal juga (lihat listener btnDriveUpload),
+  // bukan cuma checklistPermintaanId. Sekarang diisi dari tanggal yang barusan
+  // disubmit di form (prTanggal.value), fallback ke submitResult.tanggal kalau
+  // RPC submit_permintaan_rs ternyata ikut mengembalikannya.
+  checklistTanggal = tanggal || submitResult.tanggal || null;
   // Sama kayak loadChecklistForSesi: buka otomatis requirement PENDING pertama.
   const firstPending = checklistItems.find(i => i.status === 'PENDING');
   checklistExpandedId = firstPending ? firstPending.id : null;

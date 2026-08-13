@@ -1,0 +1,334 @@
+/* ============================================================
+   KONVERSI WORKSPACE — VISUAL REBASE (override layer)
+   ------------------------------------------------------------
+   Ini FILE TERPISAH, dimuat SETELAH pnm-universal.css, dan hanya
+   di-link dari konversian.html. Sengaja tidak menyentuh
+   pnm-universal.css karena file itu dipakai bareng oleh
+   dashboard/stok/crud-produk — override di sini jadi aman,
+   scoped, dan gampang di-revert tanpa merusak modul lain.
+
+   Tidak ada perubahan struktur HTML, ID, class, atau JS. Murni
+   visual: spacing, border, hierarchy, typography.
+
+   Prinsip: less chrome, less borders, more breathing room,
+   stronger hierarchy, fewer visual containers. Semua diselaraskan
+   ke basis spacing 4/8px.
+   ============================================================ */
+
+#app-root{
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
+}
+
+/* ============================================================
+   1. HEADER — kurangi chrome, lebih pendek & tenang
+   ============================================================ */
+#app-root > header{
+  padding:10px 24px;
+  border-bottom:1px solid var(--border);
+  gap:16px;
+}
+#app-root .logo-text{font-size:14px;font-weight:600}
+#app-root .logo-sub{font-size:10.5px}
+
+/* Door switch: tetap ada, tapi lebih ringan — background nyaris polos,
+   cuma active state yang kelihatan jelas */
+#app-root .door-switch{
+  background:transparent;
+  border:none;
+  padding:0;
+  gap:4px;
+}
+#app-root .door-btn{
+  color:var(--text-muted);
+  height:30px;
+}
+#app-root .door-btn:hover:not(.active){background:var(--surface-2);color:var(--text)}
+#app-root .door-btn.active{background:var(--accent);color:#fff}
+
+/* Session indicator + realtime badge: quieter pill, less border weight */
+#app-root .session-indicator,
+#app-root .rt-live{
+  border-color:transparent;
+  background:var(--surface-2);
+}
+#app-root .session-indicator:hover{border-color:var(--accent)}
+#app-root .session-indicator.active{border-color:transparent}
+
+/* Header-right utility icons: ghost buttons, border only on hover — this is
+   tertiary/utility tier, shouldn't visually compete with search or actions */
+#app-root .header-right .toggle-btn{
+  border-color:transparent;
+  background:transparent;
+}
+#app-root .header-right .toggle-btn:hover{
+  background:var(--surface-2);
+  border-color:transparent;
+}
+#app-root .header-right .toggle-btn.on{
+  background:var(--accent-bg);
+  border-color:transparent;
+}
+#app-root .clip-count{font-size:11.5px}
+
+/* ============================================================
+   2 & 5. SEARCH PANEL — search = primary, filters = secondary,
+   subtabs = tertiary. Collapse the toolbar-stack feel.
+   ============================================================ */
+#app-root .panel-header{
+  padding:14px 20px 12px;
+  border-bottom:none;
+  background:var(--surface);
+}
+
+/* Subtabs (Cari Produk / Konversi Berjalan / Riwayat / ...): tertiary nav.
+   Lighter type, no full-width border-bottom rail, generous horizontal gap
+   so it doesn't read as its own toolbar row stacked on the header. */
+#app-root .subtab-row{
+  border-bottom:1px solid var(--border);
+  gap:18px;
+  margin-bottom:14px;
+  padding-bottom:0;
+}
+#app-root .subtab-btn{
+  font-size:12px;
+  font-weight:500;
+  color:var(--text-muted);
+  padding:0 0 10px;
+}
+#app-root .subtab-btn.active{font-weight:600}
+#app-root .panel-collapse-btn{
+  border-color:transparent;
+  background:transparent;
+}
+
+/* Search input: THE primary interaction. Bigger, quieter border at rest,
+   visible focus ring — visually the most prominent control in the header
+   area, everything else steps back from it. */
+#app-root .search-wrap{margin-bottom:12px}
+#app-root #search-input{
+  height:46px;
+  padding:0 40px;
+  font-size:15px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--surface-2);
+}
+#app-root #search-input:focus{
+  background:var(--surface);
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-ring);
+}
+#app-root .search-wrap .ti-search{font-size:17px;left:14px}
+#app-root .clear-btn{right:12px}
+
+/* Filters: secondary tier. Ghost/ text-style chips instead of full bordered
+   buttons all sharing the same weight as the search bar above them. */
+#app-root .filters{gap:6px}
+#app-root .filters .toggle-btn{
+  height:28px;
+  border-color:transparent;
+  background:var(--surface-2);
+  color:var(--text-secondary);
+  font-weight:500;
+}
+#app-root .filters .toggle-btn:hover{background:var(--surface-3)}
+#app-root .filters .toggle-btn.on{
+  background:var(--accent-bg);
+  color:var(--accent-text);
+  border-color:transparent;
+  font-weight:600;
+}
+
+#app-root .panel-body{padding:16px 20px}
+#app-root .meta-row{margin-bottom:12px}
+#app-root #results{gap:8px}
+
+/* ============================================================
+   3. EMPTY / HINT STATES — no card, no border. Icon + text,
+   generous whitespace, vertically centered in the workspace.
+   ============================================================ */
+#app-root #panel-body-cari{display:flex;flex-direction:column}
+#app-root #hint,
+#app-root #empty{
+  margin:auto;
+  padding:48px 20px;
+  max-width:360px;
+}
+#app-root #hint i,
+#app-root #empty i{
+  font-size:30px;
+  color:var(--border-strong);
+  margin-bottom:12px;
+}
+#app-root #hint p,
+#app-root #empty p{
+  font-size:13.5px;
+  line-height:1.6;
+  color:var(--text-muted);
+}
+
+#app-root .clip-empty,
+#app-root .setcari-empty{padding:48px 20px}
+#app-root .clip-body:has(#clip-list:empty){padding-top:0}
+
+/* Result cards: keep as list items (semantically products), but a touch
+   quieter at rest so the search bar above still reads as the focal point */
+#app-root .rcard{border-color:var(--border);padding:12px 14px}
+#app-root .rcard-name{font-size:13.5px}
+
+/* Dictionary stat cards / table: soften borders, they're data groupings,
+   not independent panels */
+#app-root .dict-stat-card{border-color:var(--border);background:var(--surface-2);border:none}
+#app-root .dict-table-wrap{border-color:var(--border)}
+
+/* ============================================================
+   4, 6, 7. RIGHT SIDEBAR — one continuous workspace, not a stack
+   of boxed sections. Remove separator borders/backgrounds between
+   Clipboard header → tabs → price mode → summary → footer; use
+   spacing + typography for hierarchy instead.
+   ============================================================ */
+#app-root .panel-clip{background:var(--surface)}
+
+#app-root .clip-header{
+  padding:18px 20px 14px;
+  border-bottom:none;
+}
+#app-root .clip-title{
+  font-size:11px;
+  letter-spacing:.06em;
+}
+#app-root .form-group{margin-bottom:10px}
+#app-root .form-group input,
+#app-root .form-group select{
+  border-color:var(--border);
+  background:var(--surface-2);
+}
+
+/* Tabs (Kebutuhan RS / Clipboard / Buat SPH): light text tabs, not three
+   equal-weight blocked buttons. No full-row border underneath — only the
+   active tab gets an indicator. */
+#app-root .clip-tab-row{
+  border-bottom:1px solid var(--border);
+  padding:0 20px;
+  gap:20px;
+}
+#app-root .clip-tab-btn{
+  flex:0 0 auto;
+  justify-content:flex-start;
+  height:40px;
+  font-size:12.5px;
+  font-weight:500;
+  color:var(--text-muted);
+  padding:0;
+}
+#app-root .clip-tab-btn.active{font-weight:600}
+
+/* Price-mode row: was its own boxed toolbar (surface-2 bg + border-bottom).
+   Now just an inline row in the same flow as everything else. */
+#app-root .clip-output-mode-row{
+  background:transparent;
+  border-bottom:none;
+  padding:14px 20px 0;
+}
+#app-root .clip-output-mode-toggle{border-color:var(--border)}
+
+/* Summary strip: same treatment — no separate boxed toolbar */
+#app-root .clip-summary-strip{
+  background:transparent;
+  border-bottom:none;
+  padding:8px 20px 4px;
+}
+
+#app-root .clip-body{padding:14px 20px}
+#app-root .clip-tab-panel .clip-empty{margin:auto}
+
+/* Clipboard/produk list items: keep as list rows, but border only appears
+   on hover/interaction, not sitting there constantly as visual noise */
+#app-root .clip-item{
+  border-color:transparent;
+  background:var(--surface-2);
+  padding:10px 12px;
+  margin-bottom:8px;
+}
+#app-root .clip-item:hover{border-color:var(--border)}
+
+/* Kebutuhan RS list */
+#app-root .kb-head{padding:14px 20px 8px}
+#app-root .kb-summary{padding:0 20px 8px}
+#app-root .kb-list{padding:0 16px 8px}
+#app-root .kb-item{border-color:transparent}
+#app-root .kb-item.expanded{border-color:var(--border)}
+#app-root .kb-footer{
+  padding:12px 20px;
+  border-top:1px solid var(--border);
+  background:transparent;
+}
+
+/* SPH form panel */
+#app-root .sph-panel{padding:18px 20px}
+
+/* Footer: Export/Drive/Record/Selesaikan. This is where hierarchy matters
+   most — Primary (Record) > Secondary (Export/Drive) > Tertiary
+   (Selesaikan Sesi, Hapus semua). Remove the boxed border-top and give it
+   real breathing room instead. */
+#app-root .clip-footer{
+  padding:16px 20px 20px;
+  border-top:1px solid var(--border);
+  gap:12px;
+}
+#app-root .clip-summary{font-size:11.5px}
+
+/* Secondary actions (Export ke Excel / Simpan ke Drive): lighter than
+   Record, still clearly actionable — flat surface tint instead of a hard
+   bordered card look */
+#app-root .conv-step{
+  background:var(--surface-2);
+  border-color:transparent;
+}
+#app-root .conv-step:not(:disabled):hover{border-color:var(--accent)}
+
+/* Primary action: Record Konversi — the one thing that should draw the eye
+   at the bottom of the sidebar */
+#app-root .btn-record{
+  height:44px;
+  font-size:14px;
+}
+
+/* Tertiary: Selesaikan Sesi — ghost button, quiet unless hovered */
+#app-root .btn-end-sesi{
+  border-color:transparent;
+  background:var(--surface-2);
+  height:34px;
+}
+#app-root .btn-end-sesi:hover:not(:disabled){background:var(--success-bg)}
+
+/* Resize handle stays functional but visually near-invisible at rest */
+#app-root .clip-resize-handle::after{background:transparent}
+#app-root .clip-resize-handle:hover::after,
+#app-root .clip-resize-handle.dragging::after{background:var(--accent)}
+
+/* ============================================================
+   9. SPACING RHYTHM — consistent control heights across the two
+   panels so alignment feels intentional, not accidental.
+   ============================================================ */
+#app-root .sesi-toolbar{margin-bottom:14px}
+#app-root .dict-toolbar{margin-bottom:14px}
+
+/* ============================================================
+   RESPONSIVE — keep existing collapse/drawer mechanics, just make
+   sure the extra padding above doesn't eat too much space on
+   narrow viewports.
+   ============================================================ */
+@media (max-width:768px){
+  #app-root > header{padding:10px 14px}
+  #app-root .panel-header{padding:12px 14px 10px}
+  #app-root .panel-body{padding:12px 14px}
+  #app-root #search-input{height:42px;font-size:14px}
+  #app-root .clip-header{padding:14px 14px 10px}
+  #app-root .clip-tab-row{padding:0 14px;gap:14px}
+  #app-root .clip-output-mode-row{padding:12px 14px 0}
+  #app-root .clip-summary-strip{padding:8px 14px 4px}
+  #app-root .clip-body{padding:12px 14px}
+  #app-root .clip-footer{padding:14px 14px 16px}
+  #app-root #hint, #app-root #empty{padding:32px 16px}
+}

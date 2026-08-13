@@ -25,6 +25,12 @@
 <script src="/shared/auth-session.js?v=20260812a"></script>
 <script src="/shared/toast.js?v=20260813a"></script>
 <link rel="stylesheet" href="pnm-universal.css?v=20260812a"/>
+<!-- VISUAL REBASE: override layer khusus workspace Konversi (spacious/flat/less-chrome).
+     Sengaja file terpisah, bukan edit pnm-universal.css langsung, karena stylesheet itu
+     dipakai bareng dashboard/stok/crud-produk — dengan file terpisah, rebase ini scoped
+     ke halaman ini aja dan gampang di-revert tanpa risiko ke modul lain. Murni CSS,
+     tidak ada perubahan HTML/ID/class/JS. -->
+<link rel="stylesheet" href="pnm-konversian-rebase.css?v=20260813a"/>
 </head>
 <body>
 <script>
@@ -980,6 +986,30 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         viewSuccess.style.display = 'none';
         if(viewError) viewError.style.display = 'flex';
         ensureOpen();
+      },
+      // BUGFIX: sebelumnya stepper Export/Drive (centang is-done, teks "✓
+      // Tersimpan · path", link "Buka di Drive") CUMA direset pas klik "Hapus
+      // Semua" (lihat btnClearAll listener di atas) — gak pernah direset pas
+      // Selesaikan Sesi / Mulai Sesi Baru / buka sesi lain / hapus sesi, jadi
+      // begitu pindah ke sesi berikutnya, stepper masih nunjukin status
+      // "Tersimpan" dari sesi SEBELUMNYA (lihat screenshot laporan bug).
+      // reset() dipanggil dari konversian.js di titik reset terpusat yang
+      // sudah ada (resetChecklistUI() — dipakai jua sama resetSsReferences()
+      // & unsubscribeFromSesiRealtime()), bukan bikin titik reset baru lagi.
+      reset: function(){
+        currentAction = 'export';
+        watching = false;
+        doneShown = false;
+        if(activePollTimer){ clearInterval(activePollTimer); activePollTimer = null; }
+        if(driveTimeoutTimer){ clearTimeout(driveTimeoutTimer); driveTimeoutTimer = null; }
+        currentLocationPath = null;
+        [stepExport, stepDrive].forEach(function(el){ if(el) el.classList.remove('is-done','is-loading'); });
+        var locBox = document.getElementById('conv-location');
+        if(locBox) locBox.style.display = 'none';
+        if(driveOpenChip){ driveOpenChip.classList.remove('show'); driveOpenChip.removeAttribute('href'); }
+        if(driveHintEl) driveHintEl.textContent = 'Aktif setelah Export selesai';
+        if(modalTitle) modalTitle.textContent = COPY.export.loadingTitle;
+        closeModal(); // jaga-jaga kalau kepanggil pas modal masih kebuka
       }
     };
   });
