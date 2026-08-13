@@ -315,33 +315,44 @@
 #app-root .dict-toolbar{margin-bottom:14px}
 
 /* ============================================================
-   10. AUTOCOMPLETE DROPDOWN — tetap dipertahankan sebagai
-   quick-narrow query (BUKAN quick-select-ke-clipboard — itu
-   sengaja gak ada di sini, konsisten sama renderResults() yang
-   card-nya juga gak boleh commit ke server tanpa klik tombol
-   eksplisit "Tambahkan ke Konversi"). Dua bug lama dari
-   pnm-universal.css: (1) gak ada max-height sama sekali, jadi
-   ikut kepanjangan pas hasil banyak dan nabrak baris pertama
-   list produk di bawahnya; (2) top:42px dihitung buat tinggi
-   input LAMA (38px), sementara #search-input sekarang 46px
-   (section 2 di atas).
+   10. AUTOCOMPLETE DROPDOWN — 3 masalah dari pnm-universal.css:
+   (1) gak ada max-height, ikut kepanjangan pas hasil banyak dan
+   nabrak baris pertama list produk. (2) top:42px dihitung buat
+   tinggi input LAMA (38px), sementara #search-input sekarang 46px
+   (section 2 di atas). (3) BUG LAMA GAK TERKAIT FIX INI — z-index
+   #autocomplete (100) ternyata lebih tinggi dari SELURUH keluarga
+   modal: .modal-overlay/.cmdk-overlay/.confirm-overlay (yang di
+   antara mereka sendiri sudah konsisten 60<80<90, tapi ketiganya
+   di bawah 100), jadi dropdown ini nimpa modal apapun yang lagi
+   kebuka (mis. Lampiran) selama dropdown belum sempat ke-hide.
+   .modal-overlay malah ke-define 2x di pnm-universal.css (baris
+   1196 z-index:999 vs baris 1408 z-index:60) — definisi kedua
+   menang karena lebih belakang, jadi efeknya 60. Fix scope di
+   sini aja: turunin z-index autocomplete ke bawah 60, gak sentuh
+   pnm-universal.css biar gak ganggu modul lain yang mungkin masih
+   gantung ke z-index:999 aslinya.
    Fix akhir: JS (lihat renderAutocomplete di konversian.js) udah
-   dikunci render PALING BANYAK 4 item. Jadi max-height di sini
-   di-set PAS muat 4 item penuh (4 × ~36px + buffer) — bukan
-   dibulatkan ke bawah kayak sebelumnya, yang bikin item terakhir
-   ke-crop separuh. Hasilnya: gak akan pernah ada baris terpotong,
-   DAN gak butuh scrollbar sama sekali di kondisi normal (overflow
-   tetap dijaga sebagai pengaman kalau suatu saat cap-nya dinaikin
-   lagi). Fade-in halus pakai CSS animation (restart otomatis tiap
-   display:none→block, gak perlu ubah JS).
+   dikunci render PALING BANYAK 4 item. max-height di sini di-set
+   PAS muat 4 item penuh (4 × ~36px + buffer) — TAPI ini cuma
+   valid kalau tinggi tiap item konsisten, makanya .ac-name juga
+   dikunci 1-baris + ellipsis di bawah (nama produk panjang kayak
+   "BASIC MINOR MATA (MINOR EYE) S." sebelumnya bisa wrap ke 2
+   baris dan bikin itung-itungan max-height meleset lagi).
    ============================================================ */
 #app-root #autocomplete{
   top:52px;
+  z-index:45;
   border-radius:10px;
   max-height:154px;
   overflow-y:auto;
   box-shadow:0 12px 28px rgba(0,0,0,.14);
   animation:acFadeIn .12s ease-out;
+}
+#app-root .ac-name{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  min-width:0;
 }
 #app-root #autocomplete::-webkit-scrollbar{width:8px}
 #app-root #autocomplete::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:8px}
