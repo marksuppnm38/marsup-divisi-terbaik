@@ -1,4 +1,5 @@
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-08-13(3): fix "kekick ke login padahal masih kerja" — sesiFetch()/rpc-manual-berautentikasi/upload/openPrModal dulu baca variabel stokAccessToken langsung (bisa basi kalau tab sempat di-background), sekarang lewat getFreshToken() (panggil PNMAuth.getAccessToken() -> cek-dan-refresh di momen request, bukan nunggu timer) — Claude
 // 2026-08-13(2): fix stepper Export/Simpan ke Drive di konversian.html nyangkut nunjukin status sesi SEBELUMNYA pas Selesaikan Sesi/Mulai Sesi Baru/buka sesi lain — window.convFlow.reset() (baru) sekarang dipanggil dari resetChecklistUI(), plus lastExportBlob dkk ikut dikosongin di titik yang sama — Claude
 // 2026-08-13: fix bug "Sesi ini belum ada Permintaan RS (atau tanggalnya belum tercatat)" muncul palsu — startChecklistSession() gak pernah ngisi checklistTanggal pas Permintaan RS BARU disubmit (cuma loadChecklistForSesi yang ngisi, buat sesi yang DIBUKA ULANG). Sekarang startChecklistSession terima parameter tanggal & set checklistTanggal dari situ — Claude
 // 2026-08-12: shared auth layer + navigasi konversian<->crud-produk + theme-fix (single <html data-theme>) + cache-busting — Claude (sesi arsitektur)
@@ -62,6 +63,25 @@ if (!rt) console.warn('Supabase Realtime SDK gagal dimuat — kolaborasi live ga
 // didapat/direfresh, sejalur sama titik-titik stokAccessToken diisi.
 function syncRealtimeAuth() {
   if (rt && stokAccessToken) rt.realtime.setAuth(stokAccessToken);
+}
+
+// FIX "kekick ke login padahal masih kerja": sesiFetch()/rpc-manual/upload di
+// bawah dulu baca stokAccessToken (variabel cache) langsung, yang cuma
+// keupdate lewat event TOKEN_REFRESHED punya SDK di background. Kalau tab ini
+// sempat di-background (browser nge-throttle timer refresh SDK — kejadian
+// wajar pas tab konversian dibiarin nganggur sambil kerja di Excel), token
+// bisa expired duluan sebelum event itu sempat jalan, jadi request pertama
+// abis balik ke tab kena 401 palsu walau sesi sebenarnya masih bisa direfresh.
+// getFreshToken() manggil PNMAuth.getAccessToken() -> sb.auth.getSession(),
+// yang ngecek-dan-refresh DI MOMEN ini juga (bukan nunggu timer) — sama
+// persis kayak yang otomatis dilakuin sb.from()/sb.rpc() di crud-produk.js.
+// Fallback ke stokAccessToken/ANON_KEY kalau PNMAuth somehow belum siap.
+async function getFreshToken() {
+  try {
+    const t = await PNMAuth.getAccessToken();
+    if (t) return t;
+  } catch { /* lanjut ke fallback di bawah */ }
+  return stokAccessToken || ANON_KEY;
 }
 function showApp() {
   authGate.style.display = 'none';
@@ -228,12 +248,13 @@ async function uploadToSupabaseStorage(bucket, path, fileOrBlob, contentType) {
   // Kalau pakai ANON_KEY, Supabase Storage nganggep request datang dari role 'anon',
   // jadi kalau policy RLS bucket-nya butuh role 'authenticated', request selalu ditolak
   // dgn error "new row violates row-level security policy" walau bucket-nya sendiri udah bener.
-  if (!stokAccessToken) throw new Error('Sesi login sudah habis / belum login — silakan login ulang dulu.');
+  const uploadToken = await getFreshToken();
+  if (!uploadToken || uploadToken === ANON_KEY) throw new Error('Sesi login sudah habis / belum login — silakan login ulang dulu.');
   const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${encodeURIComponent(path)}`, {
     method: 'POST',
     headers: {
       'apikey': ANON_KEY,
-      'Authorization': 'Bearer ' + stokAccessToken,
+      'Authorization': 'Bearer ' + uploadToken,
       'Content-Type': contentType || fileOrBlob.type || 'application/octet-stream',
       'x-upsert': 'true'
     },
@@ -1183,12 +1204,13 @@ sessionIndicator.addEventListener('click', () => {
 // Semua panggilan REST ke Supabase buat modul sesi lewat sini, supaya kalau
 // token expired di tengah jalan, langsung ditendang balik ke gerbang login.
 async function sesiFetch(path, options = {}) {
+  const token = await getFreshToken();
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       'apikey': ANON_KEY,
-      'Authorization': 'Bearer ' + stokAccessToken,
+      'Authorization': 'Bearer ' + token,
       ...(options.headers || {})
     }
   });
@@ -1758,7 +1780,7 @@ async function attachPermintaanSummary(sesiRows) {
       headers: {
         'Content-Type': 'application/json',
         'apikey': ANON_KEY,
-        'Authorization': 'Bearer ' + stokAccessToken
+        'Authorization': 'Bearer ' + (await getFreshToken())
       },
       body: JSON.stringify({ p_sesi_ids: sesiRows.map(s => s.id) })
     });
@@ -2290,7 +2312,7 @@ async function loadChecklistForSesi(sesiId) {
       headers: {
         'Content-Type': 'application/json',
         'apikey': ANON_KEY,
-        'Authorization': 'Bearer ' + stokAccessToken
+        'Authorization': 'Bearer ' + (await getFreshToken())
       },
       body: JSON.stringify({ p_sesi_id: sesiId })
     });
@@ -4458,7 +4480,7 @@ btnConvAddAll.addEventListener('click', async () => {
 // tampilkan mana yang match vs tidak. Pure data collection, bukan auto-konversi.
 // ══════════════════════════════════════════
 
-function openPrModal() {
+async function openPrModal() {
   prStatusMsg.textContent = '';
   prTeksFromOcr = false;
   prShowTab('teks');
@@ -4468,7 +4490,10 @@ function openPrModal() {
   if (!prTanggal.value) prTanggal.value = new Date().toISOString().slice(0,10);
 
   // Satu login di gerbang awal sudah cukup — kalau token expired, balik ke gerbang.
-  if (!stokAccessToken) {
+  // Pakai getFreshToken() (bukan baca stokAccessToken langsung) biar gak salah
+  // nendang ke login gara-gara token cache basi padahal sebenarnya masih bisa direfresh.
+  const prModalToken = await getFreshToken();
+  if (!prModalToken || prModalToken === ANON_KEY) {
     closePrModal();
     showGate('Sesi kamu habis, silakan masuk lagi.');
     return;
@@ -4850,7 +4875,7 @@ prReviewSaveBtn.addEventListener('click', async () => {
       headers: {
         'Content-Type': 'application/json',
         'apikey': ANON_KEY,
-        'Authorization': 'Bearer ' + stokAccessToken
+        'Authorization': 'Bearer ' + (await getFreshToken())
       },
       body: JSON.stringify({
         p_tanggal: prTanggal.value || null,
@@ -5490,7 +5515,7 @@ async function autoFinalizePermintaan() {
       headers: {
         'Content-Type': 'application/json',
         'apikey': ANON_KEY,
-        'Authorization': 'Bearer ' + stokAccessToken
+        'Authorization': 'Bearer ' + (await getFreshToken())
       },
       body: JSON.stringify({
         p_permintaan_id: checklistPermintaanId,
@@ -5893,7 +5918,7 @@ async function callUpdatePermintaanItemMulti(itemId, status, links) {
     headers: {
       'Content-Type': 'application/json',
       'apikey': ANON_KEY,
-      'Authorization': 'Bearer ' + stokAccessToken
+      'Authorization': 'Bearer ' + (await getFreshToken())
     },
     body: JSON.stringify({ p_item_id: itemId, p_status: status, p_links: links || [] })
   });
