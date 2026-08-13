@@ -357,6 +357,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
     <div class="clip-output-mode-row" id="clip-output-mode-row" title="Nentuin harga & kolom link e-Katalog yang dipakai di Clipboard, Record, Export Excel, dan SPH">
       <span class="clip-output-mode-label"><i class="ti ti-receipt"></i> Mode harga output:</span>
       <div class="clip-output-mode-toggle">
+        <span class="com-slider" aria-hidden="true"></span>
         <button type="button" class="com-btn active" id="com-ekat" data-mode="ekat">e-Katalog</button>
         <button type="button" class="com-btn" id="com-swasta" data-mode="swasta">Swasta</button>
       </div>
@@ -484,9 +485,17 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 
     <div class="clip-footer">
       <div class="clip-budget" id="clip-budget"></div>
-      <div class="clip-summary">
-        <span>Total: <span id="clip-total">0</span> produk dipilih</span>
-        <span id="clip-total-harga"></span>
+      <!-- clip-summary sekarang cuma info kecil/senyap di sini — angka yang
+           sama udah jadi headline di .clip-summary-strip di atas tab-tab.
+           Disatuin sebaris sama "Hapus semua" (yang sekarang jadi text-link
+           kecil, bukan tombol berbingkai selebar panel) biar gak nambah baris
+           penuh sendiri buat aksi yang jarang dipake & destruktif. -->
+      <div class="clip-utility-row">
+        <div class="clip-summary">
+          <span>Total: <span id="clip-total">0</span> produk dipilih</span>
+          <span id="clip-total-harga"></span>
+        </div>
+        <button class="btn-clear-all" id="btn-clear-all">Hapus semua</button>
       </div>
       <!-- ALUR KONVERSI: Export → Drive ditampilkan sebagai 2 langkah yang terhubung
            (bukan 2 tombol biru identik ditumpuk) biar kelihatan jelas ini satu alur
@@ -527,7 +536,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       <button class="btn-end-sesi" id="btn-end-sesi" type="button" disabled title="Tutup sesi ini tanpa Record — data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan">
         <i class="ti ti-square-check"></i> Selesaikan Sesi
       </button>
-      <button class="btn-clear-all" id="btn-clear-all">Hapus semua</button>
     </div>
   </div>
 </div>

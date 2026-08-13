@@ -625,7 +625,11 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 
 /* PANEL KIRI */
 .panel-search{display:flex;flex-direction:column;flex:1;min-width:0;border-right:1px solid var(--border);overflow:hidden}
-.panel-header{padding:8px 16px 8px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+/* No top padding here on purpose: header{} below already ends in an 8px
+   bottom padding + its own border-bottom, so a second 8px top-padding here
+   stacked on top of that read as two headers glued together (~17px of dead
+   space before the subtab row even starts). One 8px increment is enough. */
+.panel-header{padding:0 16px 8px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
 .panel-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:10px}
 .search-wrap{position:relative;margin-bottom:8px}
 .search-wrap .ti-search{position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:16px;color:var(--text-muted);pointer-events:none}
@@ -832,13 +836,21 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 /* TAB: Kebutuhan RS vs Clipboard — dua sisi dari proses konversi yang sama,
    sekarang dipisah tab (bukan ditumpuk vertikal) supaya yang lagi aktif dapat
    tinggi penuh panel, bukan rebutan ruang sama yang lain. */
-.clip-output-mode-row{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:11.5px;color:var(--text-secondary);background:var(--surface-2);border-bottom:1px solid var(--border);flex-shrink:0}
+.clip-output-mode-row{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:11.5px;color:var(--text-secondary);background:var(--surface-2);border-bottom:1px solid var(--border);flex-shrink:0}
 .clip-output-mode-label{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
-.clip-output-mode-toggle{display:inline-flex;border:1px solid var(--border-strong);border-radius:6px;overflow:hidden}
-.com-btn{height:26px;padding:0 10px;font-size:11.5px;font-family:inherit;border:none;background:var(--surface);color:var(--text-secondary);cursor:pointer;transition:all .15s}
-.com-btn+.com-btn{border-left:1px solid var(--border-strong)}
-.com-btn:hover{background:var(--accent-bg);color:var(--accent-text)}
-.com-btn.active{background:var(--accent);color:#fff;font-weight:600}
+/* Segmented pill toggle, Vercel-style: near-invisible border at rest, a single
+   sliding indicator (.com-slider) carries the accent fill between states
+   instead of each button hard-swapping its own background. The slider's
+   position is driven purely by :has(), so setModeSwastaOutput() in
+   konversian.js — which only ever toggles .active on #com-ekat/#com-swasta —
+   doesn't need to know about it. Both buttons are flex:1 or the slider (fixed
+   at 50% width) wouldn't line up with the button being highlighted. */
+.clip-output-mode-toggle{position:relative;display:flex;width:170px;padding:2px;gap:2px;border:1px solid var(--border);border-radius:20px;background:var(--surface)}
+.com-slider{position:absolute;top:2px;left:2px;width:calc(50% - 2px);height:calc(100% - 4px);border-radius:16px;background:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.18);transition:transform .25s var(--ease);z-index:0}
+.clip-output-mode-toggle:has(#com-swasta.active) .com-slider{transform:translateX(100%)}
+.com-btn{position:relative;z-index:1;flex:1;height:24px;padding:0 8px;font-size:11.5px;font-family:inherit;font-weight:600;border:none;border-radius:16px;background:none;color:var(--text-secondary);cursor:pointer;transition:color .2s var(--ease)}
+.com-btn:hover{color:var(--text)}
+.com-btn.active{color:#fff}
 .clip-tab-row{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
 .clip-tab-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:38px;border:none;background:none;font-family:inherit;font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .12s}
 .clip-tab-btn i{font-size:14px}
@@ -882,7 +894,14 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .kb-summary{padding:0 14px 8px;font-size:11px;display:flex;flex-direction:column;gap:2px}
 .kb-summary-row{display:flex;justify-content:space-between;gap:8px;color:var(--text-secondary)}
 .kb-summary-row b{color:var(--text);font-weight:600}
-.kb-list{overflow-y:auto;padding:0 10px 6px;flex:1}
+/* flex:0 1 auto (NOT flex:1) is the fix for the empty-gap bug: with flex:1 this
+   box always stretched to fill 100% of .kb-collapsible-content's height even
+   when the list only had 1-2 cards, leaving a big dead gap before .kb-footer.
+   flex-grow:0 lets it hug its own content height when short; flex-shrink:1 +
+   min-height:0 still let it get squeezed down to the remaining space (and
+   scroll via overflow-y:auto) when the list is long — same capped/scrolling
+   behavior as before for 15+ items, footer still stays put right after it. */
+.kb-list{overflow-y:auto;padding:0 10px 6px;flex:0 1 auto;min-height:0}
 .kb-item{display:flex;flex-direction:column;gap:0;padding:0;border-radius:8px;margin-bottom:6px;font-size:12px;background:var(--surface);border:1px solid transparent;transition:border-color .15s ease}
 .kb-item.terpenuhi{background:var(--success-bg)}
 .kb-item.tidak-terpenuhi{background:var(--danger-bg)}
@@ -973,7 +992,10 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
    iframe preview jadi lebar banget dgn bidang kosong gede di kanan-kirinya.
    Dibatasi max-width + di-center biar tetap proporsional & rapi. */
 .panel-clip.tab-sph-active{max-width:1100px;margin:0 auto}
-.clip-header{padding:8px 14px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
+/* Same fix as .panel-header: drop the redundant top padding stacked under
+   header{}'s own bottom padding+border, so the right panel starts at the
+   same single 8px rhythm as the left panel instead of visually doubling up. */
+.clip-header{padding:0 14px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
 .clip-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .clip-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)}
 .clip-header-edit-btn{font-size:10.5px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 4px;display:flex;align-items:center;gap:3px}
@@ -1018,7 +1040,11 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 @keyframes sph-spin-anim{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .sph-preview-wrap{flex:1 1 360px;min-width:280px;display:flex;flex-direction:column;min-height:240px}
 #sph-preview-frame{width:100%;height:60vh;min-height:360px;border:1px solid var(--border);border-radius:8px;background:#fff}
-.clip-body{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column}
+/* Same fix as .kb-list above: flex:0 1 auto instead of flex:1 so this hugs
+   its content height when there are only 1-2 items (no dead gap before the
+   Export/Record footer below), while still shrinking to the available space
+   and scrolling internally (overflow-y:auto) once the list is long. */
+.clip-body{flex:0 1 auto;min-height:0;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column}
 .clip-body>*{flex-shrink:0}
 /* Empty state (0 items): center the icon/text as a compact block instead of
    letting it sit pinned to the top with a big dead gap down to the footer.
@@ -1093,20 +1119,32 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .setcari-item-line.match{color:var(--success)}
 .setcari-item-tag{font-size:9.5px;padding:1px 6px;border-radius:10px;background:var(--accent-bg);color:var(--accent-text);margin-left:6px;font-family:inherit}
 
-.clip-footer{padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0}
-.clip-summary{font-size:12px;color:var(--text-muted);margin-bottom:4px;display:flex;justify-content:space-between;gap:8px}
-.clip-summary span{font-weight:600;color:var(--text)}
-.clip-budget{display:none;font-size:11.5px;padding:6px 8px;border-radius:6px;margin-bottom:8px;justify-content:space-between;gap:8px;font-weight:500}
+.clip-footer{padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;gap:8px}
+/* De-emphasized on purpose — the same total/price is the headline of
+   .clip-summary-strip above the tabs, so this copy shouldn't compete with it
+   or with .btn-record below; it's kept (not removed) because JS still reads
+   #clip-total for the collapsed-rail count. */
+.clip-utility-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.clip-summary{flex:1;min-width:0;font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:8px;overflow:hidden}
+.clip-summary span{font-weight:600;color:var(--text-secondary)}
+.clip-summary span#clip-total-harga{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clip-budget{display:none;font-size:11.5px;padding:6px 8px;border-radius:var(--radius-sm);justify-content:space-between;gap:8px;font-weight:500}
 .clip-budget.show{display:flex}
 .clip-budget.under{background:var(--success-bg);color:var(--success)}
 .clip-budget.over{background:var(--danger-bg);color:var(--danger)}
 .clip-budget b{font-weight:700}
-.btn-export{width:100%;height:38px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s}
+.btn-export{width:100%;height:38px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s}
 .btn-export:hover{background:var(--accent-hover)}
 .btn-export:disabled{background:var(--border-strong);cursor:not-allowed}
-.btn-clear-all{width:100%;height:30px;background:none;color:var(--text-muted);border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;cursor:pointer;margin-top:6px;transition:all .15s}
-.btn-clear-all:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-bg)}
-.btn-end-sesi{width:100%;height:32px;background:var(--surface);color:var(--text-secondary);border:1px solid var(--border-strong);border-radius:6px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
+/* Destruktif & jarang dipake — sekarang text-link kecil di pojok kanan baris
+   utility, bukan tombol berbingkai selebar panel numpuk sama tombol-tombol
+   penting lain (lihat clip-utility-row di HTML). */
+.btn-clear-all{flex-shrink:0;width:auto;height:auto;background:none;color:var(--text-muted);border:none;border-radius:0;padding:2px 0;margin:0;font-size:11px;font-family:inherit;font-weight:500;cursor:pointer;text-decoration:underline;text-decoration-color:transparent;transition:color .15s,text-decoration-color .15s}
+.btn-clear-all:hover{color:var(--danger);text-decoration-color:var(--danger)}
+/* Selesaikan Sesi: kept as a distinct outline button (still a real, if
+   secondary, action a user picks deliberately) but quieted down — smaller,
+   lighter border — so it doesn't compete visually with .btn-record. */
+.btn-end-sesi{width:100%;height:32px;background:none;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
 .btn-end-sesi:hover:not(:disabled){color:var(--success);border-color:var(--success-border);background:var(--success-bg)}
 .btn-end-sesi:disabled{opacity:.5;cursor:not-allowed}
 
@@ -1130,9 +1168,9 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .pr-nudge-text b{color:var(--warning)}
 .pr-nudge-btn{background:none;border:1px solid var(--warning-border);color:var(--warning);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;margin-top:6px}
 .pr-nudge-btn:hover{background:var(--warning-bg)}
-.btn-record{width:100%;height:38px;background:var(--success);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s;margin-top:6px}
+.btn-record{width:100%;height:40px;background:var(--success);color:#fff;border:none;border-radius:var(--radius);font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s,box-shadow .15s;box-shadow:0 2px 8px rgba(0,0,0,.12)}
 .btn-record:hover{filter:brightness(0.92)}
-.btn-record:disabled{background:var(--border-strong);cursor:not-allowed;filter:none}
+.btn-record:disabled{background:var(--border-strong);cursor:not-allowed;filter:none;box-shadow:none}
 .record-modal-box{background:var(--surface);border-radius:12px;padding:22px 24px;width:90vw;max-width:420px;text-align:left}
 .record-field{margin-bottom:12px}
 .record-field label{display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
@@ -1997,13 +2035,13 @@ body:has(.stats-grid) .insight-card{padding:18px}
    visual (bukan cuma modal ilang) begitu proses selesai.
    ============================================================ */
 
-.conv-steps{display:flex;flex-direction:column;margin:2px 0 6px;position:relative}
+.conv-steps{display:flex;flex-direction:column;position:relative}
 
 .conv-step{
-  width:100%;height:auto;min-height:52px;
+  width:100%;height:auto;min-height:46px;
   display:flex;align-items:center;gap:10px;
-  text-align:left;padding:9px 12px;
-  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  text-align:left;padding:8px 10px;
+  background:var(--surface-2);border:1px solid transparent;border-radius:var(--radius-sm);
   cursor:pointer;font-family:inherit;
   transition:border-color .15s,background .15s,opacity .15s;
 }
@@ -2012,18 +2050,18 @@ body:has(.stats-grid) .insight-card{padding:18px}
 .conv-step:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
 .conv-step-num,.conv-step-check{
-  width:22px;height:22px;border-radius:50%;flex-shrink:0;
+  width:20px;height:20px;border-radius:50%;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:700;
+  font-size:10.5px;font-weight:700;
 }
 .conv-step-num{background:var(--surface-3);color:var(--text-muted)}
-.conv-step-check{display:none;background:var(--success);color:#fff;font-size:12px}
+.conv-step-check{display:none;background:var(--success);color:#fff;font-size:11px}
 
 .conv-step-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.conv-step-label{font-size:12.5px;font-weight:600;color:var(--text);line-height:1.3}
+.conv-step-label{font-size:12px;font-weight:600;color:var(--text-secondary);line-height:1.3}
 .conv-step-hint{font-size:10.5px;color:var(--text-muted);line-height:1.3}
 
-.conv-step-icon{font-size:16px;color:var(--accent);flex-shrink:0}
+.conv-step-icon{font-size:15px;color:var(--text-muted);flex-shrink:0}
 .conv-step:disabled .conv-step-icon{color:var(--text-muted)}
 
 /* step aktif dikerjakan (dipicu convFlow.js saat tombol diklik & modal loading tampil) */
@@ -2034,8 +2072,12 @@ body:has(.stats-grid) .insight-card{padding:18px}
 .conv-step.is-done .conv-step-num{display:none}
 .conv-step.is-done .conv-step-check{display:flex}
 .conv-step.is-done .conv-step-hint{color:var(--success-text)}
+.conv-step.is-done .conv-step-label,.conv-step.is-done .conv-step-icon{color:var(--text)}
 
-.conv-step-connector{width:2px;height:12px;background:var(--border);margin-left:21px;transition:background .15s}
+/* Thicker + a small joining dot instead of a near-invisible 2px hairline —
+   reads as one connected sequence without adding real height. */
+.conv-step-connector{width:3px;height:14px;background:var(--border-strong);margin-left:19px;border-radius:2px;position:relative;transition:background .15s}
+.conv-step-connector::before{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:3px;height:3px;border-radius:50%;background:inherit}
 .conv-step.is-done + .conv-step-connector{background:var(--success-border)}
 
 /* ---------- Modal: loading / success / error states ---------- */
