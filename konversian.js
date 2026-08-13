@@ -1,4 +1,5 @@
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-08-13(4): fix duplikasi search-by-kode — matchOneKode() (Converter, ada retry timeout) dan addSetKodeToClip() (Cari SET Mendekati, TANPA retry) tadinya 2 salinan terpisah dari logika "exact match by kode via search_produk_dengan_harga", plus gak ada cache jadi kode duplikat dalam 1 batch paste = RPC berulang. Disatukan ke findProdukByKodeExact() + kodeExactCache (cache cuma hasil sukses, error tetap fresh-retry) — Claude
 // 2026-08-13(3): fix "kekick ke login padahal masih kerja" — sesiFetch()/rpc-manual-berautentikasi/upload/openPrModal dulu baca variabel stokAccessToken langsung (bisa basi kalau tab sempat di-background), sekarang lewat getFreshToken() (panggil PNMAuth.getAccessToken() -> cek-dan-refresh di momen request, bukan nunggu timer) — Claude
 // 2026-08-13(2): fix stepper Export/Simpan ke Drive di konversian.html nyangkut nunjukin status sesi SEBELUMNYA pas Selesaikan Sesi/Mulai Sesi Baru/buka sesi lain — window.convFlow.reset() (baru) sekarang dipanggil dari resetChecklistUI(), plus lastExportBlob dkk ikut dikosongin di titik yang sama — Claude
 // 2026-08-13: fix bug "Sesi ini belum ada Permintaan RS (atau tanggalnya belum tercatat)" muncul palsu — startChecklistSession() gak pernah ngisi checklistTanggal pas Permintaan RS BARU disubmit (cuma loadChecklistForSesi yang ngisi, buat sesi yang DIBUKA ULANG). Sekarang startChecklistSession terima parameter tanggal & set checklistTanggal dari situ — Claude
@@ -4325,39 +4326,68 @@ function renderConvResults(rows) {
   }).join('');
 }
 
-// Satu pencocokan kode → produk, dengan 1x retry otomatis kalau RPC-nya
-// timeout (backend search_produk_dengan_harga kadang timeout buat query
-// tertentu — beda kasus dari "genuinely not found"). Kalau retry juga gagal,
-// ditandai 'error' (bukan 'not_found') biar bisa diproses ulang belakangan.
-async function matchOneKode(kode, nama_input) {
-  const row = { kode, nama_input, status: 'not_found', produk: null, errMsg: null };
-  if (!kode) return row;
+// ══════════════════════════════════════════
+// PENCARIAN EXACT-BY-KODE (DISATUKAN): sebelumnya logika ini ada 2 salinan
+// terpisah — satu di modul Converter (matchOneKode, PUNYA retry timeout),
+// satu lagi di modul Cari SET Mendekati (addSetKodeToClip, TANPA retry) —
+// jadi kalau backend search_produk_dengan_harga timeout, "Tambah ke
+// Clipboard" di tab SET langsung gagal padahal produknya ada, sementara
+// Converter otomatis coba lagi. Disatukan ke findProdukByKodeExact() +
+// kodeExactCache biar (1) perilaku retry konsisten di kedua tempat, dan
+// (2) kode yang sama gak nembak RPC berkali-kali kalau muncul >1x dalam
+// satu proses (mis. daftar paste dari RS ada baris kode duplikat, beda
+// qty tapi kode sama — 20 baris duplikat dulu = 20x round-trip RPC yang
+// identik hasilnya, sekarang cukup 1x). Cache HANYA nyimpen hasil sukses
+// (produk ketemu ATAU genuinely not_found) — hasil error/timeout sengaja
+// TIDAK dicache, biar tombol "Proses Ulang yang Error" & percobaan
+// berikutnya tetap nembak RPC baru, bukan keulang errornya dari cache. — Claude
+// ══════════════════════════════════════════
+const kodeExactCache = new Map(); // kode (lowercase) -> { produk: row|null } — cuma hasil sukses
+
+async function findProdukByKodeExact(kode) {
+  const cacheKey = kode.toLowerCase();
+  if (kodeExactCache.has(cacheKey)) return kodeExactCache.get(cacheKey);
+
+  let result = { produk: null, errMsg: null };
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const { data, error } = await rpc('search_produk_dengan_harga', { q: kode, p_tipe: null, only_akd: false, only_kfa: false });
       if (error) {
         const msg = error.message || JSON.stringify(error);
         if ((msg.includes('timeout') || msg.includes('canceling')) && attempt === 0) continue; // retry sekali
-        row.status = 'error';
-        row.errMsg = msg;
-        return row;
+        result.errMsg = msg;
+        return result; // error: gak dicache, sengaja
       }
       if (data && data.length) {
-        const exact = data.find(r => r.kode_produk && r.kode_produk.toLowerCase() === kode.toLowerCase());
-        if (exact) {
-          row.produk = exact;
-          const namaKatalog = (exact.nama_produk || '').trim().toLowerCase();
-          const namaInputNorm = nama_input.trim().toLowerCase();
-          row.status = (!namaInputNorm || namaKatalog === namaInputNorm) ? 'exact' : 'code_found_name_diff';
-        }
+        result.produk = data.find(r => r.kode_produk && r.kode_produk.toLowerCase() === cacheKey) || null;
       }
-      return row;
+      kodeExactCache.set(cacheKey, result); // sukses (ketemu atau memang not_found) → aman dicache
+      return result;
     } catch (e) {
       if (attempt === 0) continue;
-      row.status = 'error';
-      row.errMsg = e.message;
-      return row;
+      result.errMsg = e.message;
+      return result; // error: gak dicache
     }
+  }
+  return result;
+}
+
+// Satu pencocokan kode → produk (dipakai modul Converter). Detail retry +
+// cache ditangani findProdukByKodeExact() di atas.
+async function matchOneKode(kode, nama_input) {
+  const row = { kode, nama_input, status: 'not_found', produk: null, errMsg: null };
+  if (!kode) return row;
+  const { produk, errMsg } = await findProdukByKodeExact(kode);
+  if (errMsg) {
+    row.status = 'error';
+    row.errMsg = errMsg;
+    return row;
+  }
+  if (produk) {
+    row.produk = produk;
+    const namaKatalog = (produk.nama_produk || '').trim().toLowerCase();
+    const namaInputNorm = nama_input.trim().toLowerCase();
+    row.status = (!namaInputNorm || namaKatalog === namaInputNorm) ? 'exact' : 'code_found_name_diff';
   }
   return row;
 }
@@ -5636,8 +5666,8 @@ function renderSetcariResults(rows, kodeList) {
 }
 
 // Tambah SET hasil pencarian langsung ke Clipboard tanpa harus balik ke tab
-// pencarian produk dulu — cari by kode_produk persis (RPC produk_by_kode kalau
-// ada; fallback ke pencarian biasa lewat search_produk yang sudah dipakai app).
+// pencarian produk dulu — cari by kode_produk persis lewat
+// findProdukByKodeExact() (shared sama modul Converter, lihat komentarnya).
 async function addSetKodeToClip(kode, btn) {
   if (!kode) return;
   if (clipboard.some(c => c.kode_produk === kode)) {
@@ -5648,9 +5678,8 @@ async function addSetKodeToClip(kode, btn) {
   const originalText = btn.textContent;
   btn.textContent = 'Menambahkan…';
   try {
-    const { data, error } = await rpc('search_produk_dengan_harga', { q: kode, p_tipe: null, only_akd: false, only_kfa: false });
-    if (error) throw new Error(error.message || 'Gagal mencari produk SET');
-    const match = Array.isArray(data) ? data.find(r => r.kode_produk && r.kode_produk.toLowerCase() === kode.toLowerCase()) : null;
+    const { produk: match, errMsg } = await findProdukByKodeExact(kode);
+    if (errMsg) throw new Error(errMsg);
     if (!match) throw new Error('Produk SET tidak ditemukan di database.');
     lastResults = lastResults && lastResults.length ? lastResults.concat([match]) : [match];
     addToClip(kode);
