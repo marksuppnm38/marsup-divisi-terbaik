@@ -1459,10 +1459,6 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
 
 .modal-actions{display:flex;justify-content:space-between;margin-top:22px;padding-top:14px;border-top:1px solid var(--border)}
 
-.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:11px 18px;border-radius:8px;font-size:12.5px;z-index:100;opacity:0;transition:opacity .2s;pointer-events:none}
-.toast.show{opacity:1}
-.toast.error{background:var(--rust)}
-
 /* ================= AKD PANEL ================= */
 .akd-box{border:1px solid var(--border);border-radius:9px;padding:12px;background:var(--surface-2)}
 .akd-current{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}

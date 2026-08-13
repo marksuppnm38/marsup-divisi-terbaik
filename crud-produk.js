@@ -1,3 +1,7 @@
+// ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-08-12: shared auth layer + navigasi konversian<->crud-produk + theme-fix + cache-busting — Claude (sesi arsitektur)
+// Kalau kamu Claude/sesi lain yang mau edit file ini: tambahin baris baru di atas (jangan hapus riwayatnya), ringkas 1 baris apa yang berubah + tanggal.
+// ═══════════════════════════════════════════════════════════════════════════
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
 // Instance client SEKARANG dari shared/supabase-client.js (satu client, satu
@@ -295,16 +299,13 @@ let currentAkdLinks = [];
 let currentView = localStorage.getItem('produkView') || 'table';
 
 function showToast(msg, isError){
-  const container = document.getElementById('toastContainer');
-  const t = document.createElement('div');
-  t.className = 'toast' + (isError ? ' error' : ' success');
-  t.innerHTML = `<i class="ti ${isError ? 'ti-alert-circle' : 'ti-check'}"></i><span>${escapeHtml(msg)}</span>`;
-  container.appendChild(t);
-  const duration = isError ? 4500 : 3000;
-  setTimeout(() => {
-    t.classList.add('fade-out');
-    setTimeout(() => t.remove(), 250); // samain sama durasi animasi toastOut di CSS
-  }, duration);
+  // Body delegate ke shared/toast.js — signature & 96 titik panggil di file
+  // ini sama sekali gak berubah, cuma implementasinya yang sekarang satu
+  // sumber sama konversian.js (lihat shared/toast.js buat detail/alasan).
+  // escapeHtml() manual gak dibutuhin lagi di sini (PNMToast pakai
+  // textContent, aman by construction) tapi dibiarin ada kalau kepakai
+  // di tempat lain di file ini.
+  PNMToast.show(msg, isError ? 'error' : 'success', { duration: isError ? 4500 : 3000 });
 }
 function escapeHtml(s){
   return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));

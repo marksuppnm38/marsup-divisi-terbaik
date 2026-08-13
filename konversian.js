@@ -1022,17 +1022,10 @@ const APP_TITLE_BASE = document.title; // "Conversion Workspace — PT Pionir Nu
 // untuk aksi yang sebelumnya senyap (bikin sesi, selesaikan sesi), biar user gak
 // ragu-ragu apakah aksinya beneran kejadian atau enggak.
 function showToast(msg, type = 'success') {
-  const el = document.createElement('div');
-  el.className = `toast toast-${type}`;
-  const icon = type === 'error' ? 'ti-alert-circle' : (type === 'presence' ? 'ti-users' : 'ti-circle-check');
-  el.innerHTML = `<i class="ti ${icon}"></i><span></span>`;
-  el.querySelector('span').textContent = msg;
-  toastContainer.appendChild(el);
-  requestAnimationFrame(() => el.classList.add('show'));
-  setTimeout(() => {
-    el.classList.remove('show');
-    setTimeout(() => el.remove(), 300);
-  }, 2600);
+  // Body delegate ke shared/toast.js — signature & 32 titik panggil di file
+  // ini sama sekali gak berubah, cuma implementasinya yang sekarang satu
+  // sumber sama crud-produk.js (lihat shared/toast.js buat detail/alasan).
+  PNMToast.show(msg, type);
 }
 
 // Render pesan error yang seragam buat daftar (Sesi/Riwayat/Dictionary), lengkap
