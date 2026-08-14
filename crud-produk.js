@@ -1,5 +1,4 @@
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
-// 2026-08-13: KFA data model fix (per diskusi manual) — Info Dasar (f_kode_kfa) jadi read-only + tombol lompat ke KFA Management (produk_kfa jadi satu-satunya tempat edit); SET diizinin masuk produk_kfa (dulu di-exclude, padahal SET punya izin edar sendiri); butuh migration SQL manual buat ganti trigger sync (dulu cuma sync pas status='terverifikasi', sekarang tiap disimpan) — Claude
 // 2026-08-12: shared auth layer + navigasi konversian<->crud-produk + theme-fix + cache-busting — Claude (sesi arsitektur)
 // Kalau kamu Claude/sesi lain yang mau edit file ini: tambahin baris baru di atas (jangan hapus riwayatnya), ringkas 1 baris apa yang berubah + tanggal.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1016,6 +1015,8 @@ function resetForm(){
    'f_kode_kfa','f_kode_cangkang','f_nama_cangkang','f_berat_gram','f_status_v6','f_link_v6',
    'f_spesifikasi','m_deskripsi_vendor','m_family','m_sub_family','m_manufacturer','m_capital'
   ].forEach(id => document.getElementById(id).value = '');
+  // f_kode_kfa/f_kode_cangkang/f_nama_cangkang sekarang read-only (disabled),
+  // sumber datanya produk_kfa -- lihat loadKfaInfoForProduk().
   document.getElementById('f_tipe').value = '';
   document.getElementById('f_is_active').checked = true;
   document.getElementById('masterFields').style.display = 'none';
@@ -1073,9 +1074,7 @@ async function openEdit(produkId){
   document.getElementById('f_no_akd').value = p.no_akd || '';
   document.getElementById('f_masa_berlaku').value = p.masa_berlaku || '';
   document.getElementById('f_golongan').value = p.golongan || '';
-  document.getElementById('f_kode_kfa').value = p.kode_kfa || '';
-  document.getElementById('f_kode_cangkang').value = p.kode_cangkang || '';
-  document.getElementById('f_nama_cangkang').value = p.nama_cangkang || '';
+  loadKfaInfoForProduk(produkId, p.kode_produk);
   document.getElementById('f_berat_gram').value = p.berat_gram ?? '';
   document.getElementById('f_status_v6').value = p.status_v6 || '';
   document.getElementById('f_link_v6').value = p.link_v6 || '';
@@ -1090,6 +1089,24 @@ async function openEdit(produkId){
   await loadMedia(produkId);
   await loadAkdLinks(produkId, p.tipe);
 }
+
+// ---- Info KFA read-only di Info Dasar (source of truth = produk_kfa) ----
+let currentInfoDasarKodeProduk = '';
+async function loadKfaInfoForProduk(produkId, kodeProduk){
+  currentInfoDasarKodeProduk = kodeProduk || '';
+  const { data } = await sb.from('produk_kfa').select('kode_kfa, kode_cangkang, nama_cangkang').eq('produk_id', produkId).maybeSingle();
+  document.getElementById('f_kode_kfa').value = data?.kode_kfa || '';
+  document.getElementById('f_kode_cangkang').value = data?.kode_cangkang || '';
+  document.getElementById('f_nama_cangkang').value = data?.nama_cangkang || '';
+}
+document.getElementById('jumpToKfaLink').addEventListener('click', () => {
+  closeModal();
+  switchView('kfa');
+  const input = document.getElementById('kfaSearchBoxInput');
+  input.value = currentInfoDasarKodeProduk;
+  kfaSearchQuery = currentInfoDasarKodeProduk;
+  loadKfa(1);
+});
 
 // ---- Master produk lookup ----
 document.getElementById('cekMasterBtn').addEventListener('click', () => {
@@ -1464,16 +1481,15 @@ async function saveProdukInner(){
 
   // no_akd/masa_berlaku/golongan sengaja TIDAK dikirim -> field itu read-only,
   // dikontrol sepenuhnya lewat relasi produk_akd + trigger sync.
-  // kode_kfa JUGA sengaja TIDAK dikirim (baru, per fix KFA) -> read-only,
-  // dikontrol lewat KFA Management (produk_kfa) + trigger sync, lihat
-  // gotoKfaManagementBtn & catatan migration SQL terpisah.
   const payload = {
     kode_asli: kodeAsli || null,
     kode_produk: kodeProduk,
     nama_produk: document.getElementById('f_nama_produk').value || null,
     tipe,
-    kode_cangkang: document.getElementById('f_kode_cangkang').value || null,
-    nama_cangkang: document.getElementById('f_nama_cangkang').value || null,
+    // kode_kfa/kode_cangkang/nama_cangkang SENGAJA tidak dikirim dari sini --
+    // field itu read-only di Info Dasar, satu-satunya jalur tulis yang sah
+    // adalah modal KFA Management (tabel produk_kfa). Trigger DB yang nyinkron
+    // kode_kfa balik ke produk.kode_kfa jalan otomatis dari sana.
     berat_gram: document.getElementById('f_berat_gram').value || null,
     status_v6: document.getElementById('f_status_v6').value || null,
     link_v6: document.getElementById('f_link_v6').value || null,
@@ -1960,44 +1976,6 @@ document.getElementById('openFullLogFromSetBtn').addEventListener('click', () =>
   document.getElementById('log_table').value = 'produk_set_item';
   logModalOverlay.classList.add('open');
   loadLog(1);
-});
-
-// FIX (fundamental, per diskusi): "Kode KFA" di Info Dasar dulu editable
-// langsung ke produk.kode_kfa — field kedua yang gak nyambung sama sekali ke
-// produk_kfa (KFA Management), jadi 2 tempat nulis yang gak sinkron. Sekarang
-// jadi read-only (lihat crud-produk.html, mirror pola f_no_akd yang juga udah
-// read-only) — KFA Management yang jadi satu-satunya tempat edit, hasilnya
-// disinkron balik ke produk.kode_kfa lewat trigger DB (lihat catatan migration
-// terpisah). Tombol ini cuma jalan pintas pindah + filter ke KFA Management.
-document.getElementById('gotoKfaManagementBtn').addEventListener('click', async () => {
-  const kode = document.getElementById('f_kode_produk').value.trim();
-  const produkId = currentProdukId;
-  closeModal();
-  switchView('kfa');
-  if (!kode) return;
-  // BUGFIX: produk yang BARU dilempar dari Info Dasar biasanya belum punya
-  // baris produk_kfa sama sekali (apalagi SET, baru boleh masuk KFA sekarang)
-  // -- kalau langsung diisi ke search box "record yang udah ada", hasilnya
-  // selalu "Tidak ada record ditemukan" walau produknya valid. Cek dulu ada
-  // baris produk_kfa-nya apa belum, baru arahin ke kotak yang bener: search
-  // list biasa (kalau udah ada) atau kotak "Tambah Produk ke KFA" (kalau belum).
-  let existing = null;
-  if (produkId) {
-    const { data } = await sb.from('produk_kfa').select('id').eq('produk_id', produkId).maybeSingle();
-    existing = data;
-  }
-  if (existing) {
-    const kfaSearchInput = document.getElementById('kfaSearchBoxInput');
-    kfaSearchInput.value = kode;
-    kfaSearchQuery = kode;
-    loadKfa(1);
-  } else {
-    document.getElementById('kfaAddBox').style.display = 'block';
-    const addInput = document.getElementById('kfaAddSearchInput');
-    addInput.value = kode;
-    addInput.dispatchEvent(new Event('input'));
-    addInput.focus();
-  }
 });
 
 // ---- Sesuaikan modal generic: sembunyikan Harga & AKD kelola kalau tipe SET ----
@@ -2672,16 +2650,10 @@ document.getElementById('deleteAkdBtn').addEventListener('click', async () => {
 });
 // ============================================================
 // ---- KFA Management ----
-// produk_kfa: 1 baris = 1 produk (unique produk_id), TERMASUK SET (SET punya
-// izin edar/KFA sendiri, bukan cuma bundel harga -- prosesnya identik produk
-// biasa). Source of truth buat kode_kfa & status pengajuan (pending/diajukan/
-// terverifikasi/ditolak). Setiap disimpan di sini (gak peduli status apa),
-// kode_kfa disinkron balik ke produk.kode_kfa lewat trigger DB (lihat
-// migration SQL terpisah, "kfa-sync-fix" — GANTIKAN trigger lama yang cuma
-// nyinkron pas status='terverifikasi', karena "udah masuk kamus alkes" itu
-// faktanya independen dari udah di-approve e-katalog apa belum).
-// Info Dasar (f_kode_kfa) read-only, gak pernah nulis ke sini -- edit HARUS
-// lewat modal ini.
+// produk_kfa: 1 baris = 1 produk (unique produk_id), berlaku sama buat SET
+// maupun instrumen satuan. KFA sifatnya biner (punya kode_kfa atau belum),
+// gak ada kolom status lagi. kode_kfa disini otomatis sync ke produk.kode_kfa
+// lewat trigger DB trg_sync_kode_kfa -- jadi gak perlu urus sync itu dari sini.
 // ============================================================
 const KFA_PAGE_SIZE = 30;
 let kfaPage = 1;
@@ -2691,17 +2663,14 @@ let currentKfaId = null;
 const kfaModalOverlay = document.getElementById('kfaModalOverlay');
 
 async function refreshKfaFilterCounts(){
-  const statuses = ['pending', 'diajukan', 'terverifikasi', 'ditolak'];
-  const results = await Promise.all(
-    statuses.map(s => sb.from('produk_kfa').select('id', { count: 'exact', head: true }).eq('status', s))
-  );
-  let total = 0;
-  statuses.forEach((s, i) => {
-    const c = results[i].count || 0;
-    total += c;
-    document.getElementById('fc-kfa-' + s).textContent = c;
-  });
-  document.getElementById('fc-kfa-all').textContent = total;
+  const [adaRes, belumRes, totalRes] = await Promise.all([
+    sb.from('produk_kfa').select('id', { count: 'exact', head: true }).not('kode_kfa', 'is', null),
+    sb.from('produk_kfa').select('id', { count: 'exact', head: true }).is('kode_kfa', null),
+    sb.from('produk_kfa').select('id', { count: 'exact', head: true }),
+  ]);
+  document.getElementById('fc-kfa-ada').textContent = adaRes.count || 0;
+  document.getElementById('fc-kfa-belum').textContent = belumRes.count || 0;
+  document.getElementById('fc-kfa-all').textContent = totalRes.count || 0;
 }
 
 async function loadKfa(page){
@@ -2712,7 +2681,8 @@ async function loadKfa(page){
 
   const from = (kfaPage - 1) * KFA_PAGE_SIZE, to = from + KFA_PAGE_SIZE - 1;
   let query = sb.from('produk_kfa').select('*, produk:produk_id(kode_produk, nama_produk, tipe)', { count: 'exact' });
-  if (kfaActiveFilter !== 'all') query = query.eq('status', kfaActiveFilter);
+  if (kfaActiveFilter === 'ada') query = query.not('kode_kfa', 'is', null);
+  else if (kfaActiveFilter === 'belum') query = query.is('kode_kfa', null);
 
   const q = kfaSearchQuery.trim();
   if (q) {
@@ -2734,11 +2704,9 @@ async function loadKfa(page){
   renderKfaTable(rows);
 }
 
-const KFA_STATUS_LABEL = { pending: 'Pending', diajukan: 'Diajukan', terverifikasi: 'Terverifikasi', ditolak: 'Ditolak' };
-const KFA_STATUS_PILL = { pending: 'neutral', diajukan: 'warn', terverifikasi: 'ok', ditolak: 'bad' };
 function renderKfaTable(rows){
   const tbody = document.getElementById('kfaTableBody');
-  if (!rows.length) { tbody.innerHTML = `<tr class="state-row"><td colspan="7">Tidak ada record KFA ditemukan.</td></tr>`; return; }
+  if (!rows.length) { tbody.innerHTML = `<tr class="state-row"><td colspan="8">Tidak ada record KFA ditemukan.</td></tr>`; return; }
   tbody.innerHTML = '';
   rows.forEach(r => {
     const p = r.produk || {};
@@ -2747,8 +2715,9 @@ function renderKfaTable(rows){
     tr.innerHTML = `
       <td class="kode-cell">${escapeHtml(p.kode_produk || '—')}</td>
       <td>${escapeHtml(p.nama_produk || '—')}</td>
-      <td><span class="status-pill ${KFA_STATUS_PILL[r.status] || 'neutral'}">${KFA_STATUS_LABEL[r.status] || r.status}</span></td>
       <td>${escapeHtml(r.kode_kfa || '—')}</td>
+      <td>${escapeHtml(r.kode_cangkang || '—')}</td>
+      <td>${escapeHtml(r.nama_cangkang || '—')}</td>
       <td>${escapeHtml(r.no_akd_rujukan || '—')}</td>
       <td>${r.tanggal_verifikasi || '—'}</td>
       <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.catatan || '')}">${escapeHtml(r.catatan || '—')}</td>
@@ -2778,9 +2747,10 @@ function openEditKfa(row){
   const p = row.produk || {};
   document.getElementById('kfaModalTitle').textContent = p.kode_produk || 'Detail KFA';
   document.getElementById('kfaModalSub').textContent = p.nama_produk || '—';
-  document.getElementById('k_status').value = row.status || 'pending';
   document.getElementById('k_tanggal_verifikasi').value = row.tanggal_verifikasi || '';
   document.getElementById('k_kode_kfa').value = row.kode_kfa || '';
+  document.getElementById('k_kode_cangkang').value = row.kode_cangkang || '';
+  document.getElementById('k_nama_cangkang').value = row.nama_cangkang || '';
   document.getElementById('k_no_akd_rujukan').value = row.no_akd_rujukan || '';
   document.getElementById('k_catatan').value = row.catatan || '';
   kfaModalOverlay.classList.add('open');
@@ -2791,12 +2761,11 @@ document.getElementById('kfaCancelBtn').addEventListener('click', closeKfaModal)
 
 document.getElementById('kfaSaveBtn').addEventListener('click', async () => {
   if (!currentKfaId) return;
-  const status = document.getElementById('k_status').value;
   const kodeKfa = document.getElementById('k_kode_kfa').value.trim() || null;
-  if (status === 'terverifikasi' && !kodeKfa) { showToast('Kode KFA wajib diisi kalau status Terverifikasi', true); return; }
   const payload = {
-    status,
     kode_kfa: kodeKfa,
+    kode_cangkang: document.getElementById('k_kode_cangkang').value.trim() || null,
+    nama_cangkang: document.getElementById('k_nama_cangkang').value.trim() || null,
     no_akd_rujukan: document.getElementById('k_no_akd_rujukan').value.trim() || null,
     tanggal_verifikasi: document.getElementById('k_tanggal_verifikasi').value || null,
     catatan: document.getElementById('k_catatan').value.trim() || null,
@@ -2836,9 +2805,8 @@ document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
   const resultsEl = document.getElementById('kfaAddResults');
   if (!q) { resultsEl.innerHTML = ''; return; }
   kfaAddSearchDebounce = setTimeout(async () => {
-    // cari produk yang cocok DAN belum punya baris di produk_kfa sama sekali.
-    // SET juga boleh (SET punya izin edar/KFA sendiri, bukan cuma bundel harga
-    // dari instrumen di dalamnya — proses KFA-nya identik sama produk biasa).
+    // cari produk yang cocok DAN belum punya baris di produk_kfa sama sekali
+    // (SET ikut disertakan -- SET juga wajib lewat proses KFA sama kayak instrumen satuan)
     const { data: matched } = await sb.from('produk').select('id, kode_produk, nama_produk')
       .or(`kode_produk.ilike.%${q}%,nama_produk.ilike.%${q}%`).limit(15);
     if (!matched || !matched.length) { resultsEl.innerHTML = `<div class="akd-hint">Tidak ada produk cocok.</div>`; return; }
@@ -2853,7 +2821,7 @@ document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
       div.className = 'akd-result-row';
       div.innerHTML = `<span class="ar-no">${escapeHtml(p.kode_produk)}</span><span class="ar-nama">${escapeHtml(p.nama_produk || '')}</span>`;
       div.addEventListener('click', async () => {
-        const { data: inserted, error } = await sb.from('produk_kfa').insert({ produk_id: p.id, status: 'pending' }).select('*, produk:produk_id(kode_produk, nama_produk, tipe)').single();
+        const { data: inserted, error } = await sb.from('produk_kfa').insert({ produk_id: p.id }).select('*, produk:produk_id(kode_produk, nama_produk, tipe)').single();
         if (error) { showToast('Gagal tambah record: ' + error.message, true); return; }
         showToast('Record KFA dibuat, isi detailnya');
         document.getElementById('kfaAddSearchInput').value = '';

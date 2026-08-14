@@ -18,7 +18,7 @@
 <script src="/shared/supabase-client.js?v=20260812a"></script>
 <script src="/shared/auth-session.js?v=20260812a"></script>
 <script src="/shared/toast.js?v=20260813a"></script>
-<link rel="stylesheet" href="pnm-universal.css?v=20260813b"/>
+<link rel="stylesheet" href="pnm-universal.css?v=20260812a"/>
 <link rel="stylesheet" href="crud-produk.css?v=20260812a"/>
 </head>
 <body>
@@ -296,10 +296,8 @@
 
       <div class="filter-bar" id="kfaFilterBar">
         <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-kfa-all"></span></button>
-        <button class="filter-chip" data-filter="pending">Pending<span class="fc-count" id="fc-kfa-pending"></span></button>
-        <button class="filter-chip" data-filter="diajukan">Diajukan<span class="fc-count" id="fc-kfa-diajukan"></span></button>
-        <button class="filter-chip" data-filter="terverifikasi">Terverifikasi<span class="fc-count" id="fc-kfa-terverifikasi"></span></button>
-        <button class="filter-chip" data-filter="ditolak">Ditolak<span class="fc-count" id="fc-kfa-ditolak"></span></button>
+        <button class="filter-chip" data-filter="ada">Sudah Ada Kode<span class="fc-count" id="fc-kfa-ada"></span></button>
+        <button class="filter-chip" data-filter="belum">Belum Ada Kode<span class="fc-count" id="fc-kfa-belum"></span></button>
       </div>
 
       <div class="akd-toolbar">
@@ -312,10 +310,10 @@
       <div class="table-card akd-table-scroll">
         <table>
           <thead>
-            <tr><th>Kode Produk</th><th>Nama Produk</th><th>Status</th><th>Kode KFA</th><th>No. AKD Rujukan</th><th>Tgl Verifikasi</th><th>Catatan</th></tr>
+            <tr><th>Kode Produk</th><th>Nama Produk</th><th>Kode KFA</th><th>Kode Cangkang</th><th>Nama Cangkang</th><th>No. AKD Rujukan</th><th>Tgl Verifikasi</th><th>Catatan</th></tr>
           </thead>
           <tbody id="kfaTableBody">
-            <tr class="state-row"><td colspan="7">Memuat data...</td></tr>
+            <tr class="state-row"><td colspan="8">Memuat data...</td></tr>
           </tbody>
         </table>
       </div>
@@ -477,10 +475,10 @@
           </select>
         </div>
         <div class="f full"><label>Nama Produk</label><input type="text" id="f_nama_produk"/></div>
-        <div class="f"><label>Kode KFA</label><input type="text" id="f_kode_kfa" readonly placeholder="Dikelola di KFA Management"/></div>
-        <div class="f" style="align-self:end;padding-bottom:2px"><button type="button" class="btn btn-ghost btn-sm" id="gotoKfaManagementBtn" style="width:100%"><i class="ti ti-barcode"></i> Kelola di KFA Management</button></div>
-        <div class="f"><label>Kode Cangkang</label><input type="text" id="f_kode_cangkang"/></div>
-        <div class="f"><label>Nama Cangkang</label><input type="text" id="f_nama_cangkang"/></div>
+        <div class="f"><label>Kode KFA</label><input type="text" id="f_kode_kfa" disabled placeholder="—"/></div>
+        <div class="f"><label>Kode Cangkang</label><input type="text" id="f_kode_cangkang" disabled placeholder="—"/></div>
+        <div class="f"><label>Nama Cangkang</label><input type="text" id="f_nama_cangkang" disabled placeholder="—"/></div>
+        <div class="f full akd-hint" style="margin-top:-4px;"><i class="ti ti-info-circle"></i> Kode KFA &amp; Cangkang dikelola di menu <a href="javascript:void(0)" id="jumpToKfaLink">KFA Management</a>, bukan di sini.</div>
         <div class="f"><label>Berat (gram)</label><input type="number" step="any" id="f_berat_gram"/></div>
         <div class="f"><label>Link V6</label><input type="text" id="f_link_v6"/></div>
         <div class="f full" id="inaprocIndikator" style="display:none;"></div>
@@ -732,22 +730,16 @@
       </div>
     </div>
 
-    <div class="sec-label">Status Verifikasi</div>
+    <div class="sec-label">Data KFA</div>
     <div class="grid2">
-      <div class="f"><label>Status *</label>
-        <select id="k_status">
-          <option value="pending">Pending</option>
-          <option value="diajukan">Diajukan</option>
-          <option value="terverifikasi">Terverifikasi</option>
-          <option value="ditolak">Ditolak</option>
-        </select>
-      </div>
+      <div class="f full"><label>Kode KFA</label><input type="text" id="k_kode_kfa" placeholder="Kosongkan kalau belum dapet kode"/></div>
+      <div class="f"><label>Kode Cangkang</label><input type="text" id="k_kode_cangkang" placeholder="cth. 82xxxxxx"/></div>
+      <div class="f"><label>Nama Cangkang</label><input type="text" id="k_nama_cangkang" placeholder="cth. Cangkang Bedah Ortopedi"/></div>
       <div class="f"><label>Tgl Verifikasi</label><input type="date" id="k_tanggal_verifikasi"/></div>
-      <div class="f full"><label>Kode KFA</label><input type="text" id="k_kode_kfa" placeholder="Isi kalau status Terverifikasi"/></div>
-      <div class="f full"><label>No. AKD Rujukan</label><input type="text" id="k_no_akd_rujukan" placeholder="Dasar verifikasi KFA ini"/></div>
+      <div class="f full"><label>No. AKD Rujukan</label><input type="text" id="k_no_akd_rujukan" placeholder="Dasar pengajuan KFA ini"/></div>
       <div class="f full"><label>Catatan</label><textarea id="k_catatan" placeholder="Catatan bebas..."></textarea></div>
     </div>
-    <div class="akd-hint" style="margin-top:6px;"><i class="ti ti-info-circle"></i> Kode KFA cuma otomatis kepakai di data produk (menggantikan field lama) kalau statusnya Terverifikasi — di luar itu dianggap belum resmi.</div>
+    <div class="akd-hint" style="margin-top:6px;"><i class="ti ti-info-circle"></i> Kode KFA di sini otomatis kesinkron ke data produk. Berlaku sama buat SET maupun instrumen satuan.</div>
 
     <div class="modal-actions">
       <button class="btn btn-danger-ghost" id="deleteKfaBtn"><i class="ti ti-trash"></i> Hapus Record</button>
@@ -759,6 +751,6 @@
   </div>
 </div>
 
-<script src="crud-produk.js?v=20260813b"></script>
+<script src="crud-produk.js?v=20260814a"></script>
 </body>
 </html>
