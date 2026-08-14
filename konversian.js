@@ -4056,8 +4056,15 @@ updateClipboard();
 // RECORD KONVERSI → GOOGLE SHEETS (Apps Script webhook)
 // ══════════════════════════════════════════
 
-// GANTI dengan URL Web App hasil deploy Google Apps Script kamu.
-const GAS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbylWyYXD5HQG2vEFhUG4vekkuJEyOfTFQmY-UOgn1CKvBgZ9z3JLkA8Ke2zgTVdEWWTkQ/exec';
+// SECURITY FIX 2026-08-14: dulu manggil GAS_WEBHOOK_URL langsung dari
+// browser tanpa proteksi apapun (bukan cuma token doang yang gak ada — URL
+// Apps Script-nya sendiri jadi satu-satunya "kunci", padahal itu keliatan
+// telanjang di bundle JS publik). Sekarang lewat Edge Function
+// sheets-webhook-proxy, yang wajib verify JWT user login dulu sebelum
+// nembak ke Apps Script — orang yang gak login gak bisa nyuntik baris palsu
+// ke Sheet lagi. URL Apps Script asli sekarang cuma disimpan di server
+// (Supabase secret), gak pernah nyampe ke client.
+const SHEETS_PROXY_URL = `${SUPABASE_URL}/functions/v1/sheets-webhook-proxy`;
 
 // Ingat nama PIC Marsup di browser supaya ga perlu ketik ulang tiap buka
 (function initMarsupName() {
@@ -4299,13 +4306,15 @@ recordSubmitBtn.addEventListener('click', async () => {
   };
 
   try {
-    if (!GAS_WEBHOOK_URL || GAS_WEBHOOK_URL.startsWith('PASTE_URL')) {
-      throw new Error('URL webhook Apps Script belum diisi di kode (GAS_WEBHOOK_URL).');
-    }
-    const res = await fetch(GAS_WEBHOOK_URL, {
+    const uploadToken = await getFreshToken();
+    if (!uploadToken || uploadToken === ANON_KEY) throw new Error('Sesi login sudah habis / belum login — silakan login ulang dulu.');
+    const res = await fetch(SHEETS_PROXY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight ke Apps Script
-      body: JSON.stringify(sheetPayload)
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + uploadToken
+      },
+      body: JSON.stringify({ target: 'konversi', data: sheetPayload })
     });
     // Apps Script kadang balikin halaman HTML (bukan JSON) walau row-nya SUDAH
     // kesimpen di Sheet — biasanya karena ada kode SETELAH appendRow() di

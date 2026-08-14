@@ -386,11 +386,16 @@ const sphRecordBtn = document.getElementById('sph-record-btn');
 // dua konsep beda, sesi yang sama bisa aja gak pernah bikin SPH, atau bikin
 // beberapa revisi SPH). Sama persis 2-tahap-nya kayak generatesph.html:
 //   1. Supabase sph_records + sph_record_items — insight granular (query SQL).
-//   2. Google Sheet (GAS_SPH_WEBHOOK_URL) — mirror, format lama dipertahankan.
+//   2. Google Sheet (lewat sheets-webhook-proxy) — mirror, format lama dipertahankan.
 // Auth & fetch-nya pakai sesiFetch()/stokAccessToken yang sudah ada di
 // konversian.js (bukan pola sphRest terpisah dari generatesph.html), biar
 // konsisten satu sesi login yang sama dgn seluruh app.
-const GAS_SPH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbypJFkyvDTxGqxiA6cjQ0aiP05q_i4_lf3fshLNcnOxCjNG4PHFpESJvcETEMkbNMv49w/exec';
+// SECURITY FIX 2026-08-14: sama seperti GAS_WEBHOOK_URL di konversian.js —
+// dulu URL Apps Script dipanggil langsung dari browser tanpa proteksi sama
+// sekali. Sekarang lewat SHEETS_PROXY_URL (Edge Function yang wajib verify
+// JWT dulu), pakai konstanta SUPABASE_URL yang sudah didefinisikan global di
+// konversian.js.
+const SHEETS_PROXY_URL = `${SUPABASE_URL}/functions/v1/sheets-webhook-proxy`;
 const recordSphModal = document.getElementById('record-sph-modal');
 const rsphNomor = document.getElementById('rsph-nomor');
 const rsphDistributor = document.getElementById('rsph-distributor');
@@ -521,10 +526,18 @@ recordSphSubmitBtn.addEventListener('click', async () => {
     controller: ''
   };
   try {
-    const res = await fetch(GAS_SPH_WEBHOOK_URL, {
+    // SECURITY FIX 2026-08-14: lewat proxy + wajib token user login, bukan
+    // manggil Apps Script langsung tanpa proteksi. getFreshToken() &
+    // ANON_KEY dari konversian.js (satu scope global, sudah dimuat duluan).
+    const uploadToken = await getFreshToken();
+    if (!uploadToken || uploadToken === ANON_KEY) throw new Error('Sesi login sudah habis / belum login — silakan login ulang dulu.');
+    const res = await fetch(SHEETS_PROXY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight ke Apps Script
-      body: JSON.stringify(sheetPayload)
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + uploadToken
+      },
+      body: JSON.stringify({ target: 'sph', data: sheetPayload })
     });
     const result = await res.json();
     if (!result.ok) throw new Error(result.error || 'Gagal menyimpan ke sheet');
