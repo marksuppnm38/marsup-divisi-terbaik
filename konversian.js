@@ -12,12 +12,18 @@
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
 
-// ── AUTO-UPLOAD KE GOOGLE DRIVE (via Apps Script Web App) ──
-// Isi 2 baris ini setelah deploy Apps Script (lihat Code.gs):
-//   DRIVE_UPLOAD_URL  = URL hasil "Deploy > New deployment > Web app"
-//   DRIVE_UPLOAD_TOKEN = token rahasia yang sama persis kayak SECRET_TOKEN di Code.gs
-const DRIVE_UPLOAD_URL = 'https://script.google.com/macros/s/AKfycbx2yJyrHhAcSohT2hIBwrpBrtw1M770u8Y2mbdCMTcAwrKUsLfKBsejuiMUG4keylhw/exec';
-const DRIVE_UPLOAD_TOKEN = '919c5baccb37060e50a35d5c10f1b6f3190cdee37e2f670f';
+// ── AUTO-UPLOAD KE GOOGLE DRIVE (via Edge Function proxy, BUKAN langsung ke
+// Apps Script dari client) ──
+// SECURITY FIX 2026-08-14: DRIVE_UPLOAD_URL & DRIVE_UPLOAD_TOKEN dulu ada di
+// sini sebagai string hardcoded — artinya siapapun yang buka devtools/view
+// source bisa nyomot token itu dan manggil Apps Script langsung, bypass
+// login aplikasi ini sepenuhnya. Sekarang browser cuma manggil Edge Function
+// upload-drive-proxy (nempel SUPABASE_URL yg sudah ada di atas), yang baru
+// verify user beneran login (JWT) lalu die-yang nempelin token rahasia ke
+// Apps Script dari sisi server — token gak pernah nyampe ke client lagi.
+// Rahasia yang lama (919c5bac...) SUDAH di-rotate di Code.gs, jadi walau
+// masih ada di git history versi lama, sudah gak berguna lagi.
+const DRIVE_PROXY_URL = `${SUPABASE_URL}/functions/v1/upload-drive-proxy`;
 
 // ══════════════════════════════════════════
 // SESI LOGIN PERSISTENT: seluruh aplikasi wajib login, tapi sesi disimpan
@@ -3358,13 +3364,19 @@ function blobToBase64(blob) {
 async function uploadKonversianToDrive(blob, fileName, tahun, namaSalesForFolder) {
   try {
     const fileBase64 = await blobToBase64(blob);
-    const res = await fetch(DRIVE_UPLOAD_URL, {
+    // Lewat Edge Function sekarang (server-to-server ke Apps Script), jadi
+    // gak ada masalah preflight CORS yang dulu diakalin pakai text/plain —
+    // Authorization di sini pakai token SESI USER (buat verifikasi di Edge
+    // Function), BUKAN token rahasia Drive lagi.
+    const uploadToken = await getFreshToken();
+    if (!uploadToken || uploadToken === ANON_KEY) throw new Error('Sesi login sudah habis / belum login — silakan login ulang dulu.');
+    const res = await fetch(DRIVE_PROXY_URL, {
       method: 'POST',
-      // Content-Type text/plain SENGAJA, biar browser gak ngirim OPTIONS preflight
-      // duluan — Apps Script Web App gak nanganin preflight CORS dengan baik.
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + uploadToken
+      },
       body: JSON.stringify({
-        token: DRIVE_UPLOAD_TOKEN,
         jenis: 'konversian',
         tahun: String(tahun),
         namaSales: namaSalesForFolder,
