@@ -1,4 +1,5 @@
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-08-13: KFA data model fix (per diskusi manual) — Info Dasar (f_kode_kfa) jadi read-only + tombol lompat ke KFA Management (produk_kfa jadi satu-satunya tempat edit); SET diizinin masuk produk_kfa (dulu di-exclude, padahal SET punya izin edar sendiri); butuh migration SQL manual buat ganti trigger sync (dulu cuma sync pas status='terverifikasi', sekarang tiap disimpan) — Claude
 // 2026-08-12: shared auth layer + navigasi konversian<->crud-produk + theme-fix + cache-busting — Claude (sesi arsitektur)
 // Kalau kamu Claude/sesi lain yang mau edit file ini: tambahin baris baru di atas (jangan hapus riwayatnya), ringkas 1 baris apa yang berubah + tanggal.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1463,12 +1464,14 @@ async function saveProdukInner(){
 
   // no_akd/masa_berlaku/golongan sengaja TIDAK dikirim -> field itu read-only,
   // dikontrol sepenuhnya lewat relasi produk_akd + trigger sync.
+  // kode_kfa JUGA sengaja TIDAK dikirim (baru, per fix KFA) -> read-only,
+  // dikontrol lewat KFA Management (produk_kfa) + trigger sync, lihat
+  // gotoKfaManagementBtn & catatan migration SQL terpisah.
   const payload = {
     kode_asli: kodeAsli || null,
     kode_produk: kodeProduk,
     nama_produk: document.getElementById('f_nama_produk').value || null,
     tipe,
-    kode_kfa: document.getElementById('f_kode_kfa').value || null,
     kode_cangkang: document.getElementById('f_kode_cangkang').value || null,
     nama_cangkang: document.getElementById('f_nama_cangkang').value || null,
     berat_gram: document.getElementById('f_berat_gram').value || null,
@@ -1957,6 +1960,25 @@ document.getElementById('openFullLogFromSetBtn').addEventListener('click', () =>
   document.getElementById('log_table').value = 'produk_set_item';
   logModalOverlay.classList.add('open');
   loadLog(1);
+});
+
+// FIX (fundamental, per diskusi): "Kode KFA" di Info Dasar dulu editable
+// langsung ke produk.kode_kfa — field kedua yang gak nyambung sama sekali ke
+// produk_kfa (KFA Management), jadi 2 tempat nulis yang gak sinkron. Sekarang
+// jadi read-only (lihat crud-produk.html, mirror pola f_no_akd yang juga udah
+// read-only) — KFA Management yang jadi satu-satunya tempat edit, hasilnya
+// disinkron balik ke produk.kode_kfa lewat trigger DB (lihat catatan migration
+// terpisah). Tombol ini cuma jalan pintas pindah + filter ke KFA Management.
+document.getElementById('gotoKfaManagementBtn').addEventListener('click', () => {
+  const kode = document.getElementById('f_kode_produk').value.trim();
+  closeModal();
+  switchView('kfa');
+  const kfaSearchInput = document.getElementById('kfaSearchBoxInput');
+  if (kode && kfaSearchInput) {
+    kfaSearchInput.value = kode;
+    kfaSearchQuery = kode;
+    loadKfa(1);
+  }
 });
 
 // ---- Sesuaikan modal generic: sembunyikan Harga & AKD kelola kalau tipe SET ----
@@ -2631,9 +2653,16 @@ document.getElementById('deleteAkdBtn').addEventListener('click', async () => {
 });
 // ============================================================
 // ---- KFA Management ----
-// produk_kfa: 1 baris = 1 produk (unique produk_id). status terverifikasi
-// men-sync kode_kfa balik ke produk.kode_kfa lewat trigger DB (lihat
-// setup_produk_kfa_v2.sql) -- jadi kita gak perlu urus sync itu dari sini.
+// produk_kfa: 1 baris = 1 produk (unique produk_id), TERMASUK SET (SET punya
+// izin edar/KFA sendiri, bukan cuma bundel harga -- prosesnya identik produk
+// biasa). Source of truth buat kode_kfa & status pengajuan (pending/diajukan/
+// terverifikasi/ditolak). Setiap disimpan di sini (gak peduli status apa),
+// kode_kfa disinkron balik ke produk.kode_kfa lewat trigger DB (lihat
+// migration SQL terpisah, "kfa-sync-fix" — GANTIKAN trigger lama yang cuma
+// nyinkron pas status='terverifikasi', karena "udah masuk kamus alkes" itu
+// faktanya independen dari udah di-approve e-katalog apa belum).
+// Info Dasar (f_kode_kfa) read-only, gak pernah nulis ke sini -- edit HARUS
+// lewat modal ini.
 // ============================================================
 const KFA_PAGE_SIZE = 30;
 let kfaPage = 1;
@@ -2788,9 +2817,11 @@ document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
   const resultsEl = document.getElementById('kfaAddResults');
   if (!q) { resultsEl.innerHTML = ''; return; }
   kfaAddSearchDebounce = setTimeout(async () => {
-    // cari produk yang cocok DAN belum punya baris di produk_kfa sama sekali
+    // cari produk yang cocok DAN belum punya baris di produk_kfa sama sekali.
+    // SET juga boleh (SET punya izin edar/KFA sendiri, bukan cuma bundel harga
+    // dari instrumen di dalamnya — proses KFA-nya identik sama produk biasa).
     const { data: matched } = await sb.from('produk').select('id, kode_produk, nama_produk')
-      .or(`kode_produk.ilike.%${q}%,nama_produk.ilike.%${q}%`).neq('tipe', 'SET').limit(15);
+      .or(`kode_produk.ilike.%${q}%,nama_produk.ilike.%${q}%`).limit(15);
     if (!matched || !matched.length) { resultsEl.innerHTML = `<div class="akd-hint">Tidak ada produk cocok.</div>`; return; }
     const ids = matched.map(p => p.id);
     const { data: existing } = await sb.from('produk_kfa').select('produk_id').in('produk_id', ids);

@@ -3,9 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Dashboard Produk — PT Pionir Nusantara Manufacturing</title>
-<meta name="description" content="Dashboard internal PT Pionir Nusantara Manufacturing: ringkasan konversi, kelengkapan data produk, forecasting stok, dan populasi produk per wilayah."/>
-<meta name="theme-color" content="#f0f2f5"/>
+<title>Produk — Pionir Nusantara Manufacturing</title>
 <link rel="icon" type="image/png" href="favicon/favicon-96x96.png" sizes="96x96" />
 <link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
 <link rel="shortcut icon" href="favicon/favicon.ico" />
@@ -13,325 +11,754 @@
 <link rel="manifest" href="favicon/site.webmanifest" />
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"/>
-<link rel="stylesheet" href="pnm-universal.css"/>
-<script>
-(function(){
-  var stored = localStorage.getItem('theme') || localStorage.getItem('pnum-theme');
-  var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  if (theme === 'dark') {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    document.documentElement.style.colorScheme = 'dark';
-  } else {
-    document.documentElement.setAttribute('data-theme', 'light');
-    document.documentElement.style.colorScheme = 'light';
-  }
-  document.addEventListener('DOMContentLoaded', function(){
-    if (theme === 'dark') document.body.setAttribute('data-theme', 'dark');
-    else document.body.setAttribute('data-theme', 'light');
-  });
-})();
-</script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="/shared/supabase-client.js?v=20260812a"></script>
+<script src="/shared/auth-session.js?v=20260812a"></script>
+<script src="/shared/toast.js?v=20260813a"></script>
+<link rel="stylesheet" href="pnm-universal.css?v=20260813b"/>
+<link rel="stylesheet" href="crud-produk.css?v=20260812a"/>
 </head>
 <body>
-<!-- AUTH GATE: sesi persistent, konsisten dengan Conversion Workspace -->
-<div id="auth-gate" class="auth-gate">
-  <div class="auth-gate-box">
-    <img src="favicon/favicon-96x96.png" alt="PNM Logo" class="auth-gate-logo"/>
-    <div class="auth-gate-title">Dashboard Produk</div>
-    <div class="auth-gate-sub">Masuk untuk melanjutkan.</div>
-    <div class="pr-field">
-      <label>Email</label>
-      <input type="email" id="gate-email" placeholder="nama@email.com" autocomplete="email"/>
-    </div>
-    <div class="pr-field">
-      <label>Password</label>
-      <input type="password" id="gate-password" placeholder="••••••••" autocomplete="current-password"/>
-    </div>
-    <button id="gate-login-btn" class="auth-gate-btn">Masuk</button>
-    <div id="gate-status" class="auth-gate-status"></div>
-  </div>
-</div>
-
-<div id="app-root" style="display:none">
-<header>
-  <img src="favicon/favicon-96x96.png" alt="PNM Logo" class="logo"/>
-  <div>
-    <div class="logo-text">PT Pionir Nusantara Manufacturing</div>
-    <div class="logo-sub">Dashboard Produk</div>
-  </div>
-  <div class="header-right">
-    <span class="last-update"><i class="ph ph-arrows-clockwise" id="refresh-icon"></i> <span id="last-update-text">Memuat…</span></span>
-    <a class="toggle-btn" href="index.html"><i class="ph ph-house"></i> Beranda</a>
-    <button class="toggle-btn" id="reload-btn" title="Muat ulang"><i class="ph ph-arrow-clockwise"></i> Muat ulang</button>
-    <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
-  </div>
-</header>
-
-<main>
-
-  <div class="err-banner" id="err-banner"><i class="ph ph-warning-circle"></i> <span id="err-text"></span></div>
-
-  <div class="section-label"><i class="ph ph-arrows-clockwise"></i> Konversi Hari Ini</div>
-  <div class="stats-grid" id="stats-grid-konversi">
-    <div class="stat-card blue"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-    <div class="stat-card green"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-    <div class="stat-card purple"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-  </div>
-
-  <div class="section-label"><i class="ph ph-database"></i> Ringkasan Database</div>
-  <div class="stats-grid" id="stats-grid">
-    <div class="stat-card blue"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-    <div class="stat-card green"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-    <div class="stat-card warning"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-    <div class="stat-card purple"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-    <div class="stat-card danger"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-  </div>
-
-  <div class="section-label"><i class="ph ph-chart-bar"></i> Kelengkapan Data</div>
-  <div class="prog-cards">
-    <div class="prog-card">
-      <div class="prog-card-title"><i class="ph ph-money" style="color:var(--success)"></i> Harga e-Katalog</div>
-      <div id="prog-harga">
-        <div class="skeleton" style="height:36px;margin-bottom:9px"></div>
-        <div class="skeleton" style="height:36px;margin-bottom:9px"></div>
-        <div class="skeleton" style="height:36px"></div>
-      </div>
-    </div>
-    <div class="prog-card">
-      <div class="prog-card-title"><i class="ph ph-link" style="color:var(--accent)"></i> e-Katalog v6</div>
-      <div id="prog-link">
-        <div class="skeleton" style="height:36px;margin-bottom:9px"></div>
-        <div class="skeleton" style="height:36px"></div>
-      </div>
-    </div>
-    <div class="prog-card">
-      <div class="prog-card-title"><i class="ph ph-seal-check" style="color:var(--warning)"></i> Nomor AKD</div>
-      <div id="prog-akd">
-        <div class="skeleton" style="height:36px;margin-bottom:9px"></div>
-        <div class="skeleton" style="height:36px"></div>
-      </div>
-    </div>
-  </div>
-<div class="section-label"><i class="ph ph-trend-up"></i> Insight Konversi</div>
-  <div class="insight-cards">
-<div class="insight-grid">
-    <div class="insight-col-left">
-      <div class="insight-card">
-        <div class="insight-card-title"><i class="ph ph-chart-bar" style="color:var(--accent)"></i> Trend 7 Hari Terakhir</div>
-        <div id="trend-chart-box"><div class="skeleton" style="height:120px"></div></div>
-      </div>
-      <div class="insight-card">
-        <div class="insight-card-title"><i class="ph ph-chart-line" style="color:var(--success)"></i> Trend Value Harian (7 hari)</div>
-        <div id="linechart-box"><div class="skeleton" style="height:150px"></div></div>
-      </div>
-      <div class="insight-card">
-        <div class="insight-card-title"><i class="ph ph-chart-donut" style="color:var(--purple)"></i> Distribusi Kategori (30 hari)</div>
-        <div id="donut-chart-box"><div class="skeleton" style="height:140px"></div></div>
-      </div>
-    </div>
-    <div class="insight-card insight-card-tall">
-      <div class="insight-card-title"><i class="ph ph-trophy" style="color:var(--warning)"></i> Leaderboard Sales (30 hari)</div>
-      <div id="leaderboard-box">
-        <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
-        <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
-        <div class="skeleton" style="height:38px"></div>
-      </div>
-    </div>
-  </div>
-  <div class="section-label"><i class="ph ph-tree-structure"></i> Peta Kebutuhan ↔ SKU</div>
-  <div class="insight-card" style="margin-bottom:26px">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-      <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-share-network" style="color:var(--accent)"></i> Word Tree — Kebutuhan Customer ke SKU</div>
-      <select class="filter-select" id="wordtree-root-select" onchange="onWordtreeRootChange(this.value)" style="min-width:220px"></select>
-    </div>
-    <div id="wordtree-box"><div class="skeleton" style="height:260px"></div></div>
-  </div>
-  <div class="section-label"><i class="ph ph-chart-line-down"></i> Forecasting Stok</div>
-  <div class="insight-card" style="margin-bottom:26px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-warning" style="color:var(--warning)"></i> Produk Berisiko Habis (berdasarkan laju konversi)</div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <span style="font-size:11px;color:var(--text-muted)">Periode analisis:</span>
-        <button class="forecast-period-btn" data-days="7" onclick="setForecastPeriod(7,this)">7 hari</button>
-        <button class="forecast-period-btn active" data-days="30" onclick="setForecastPeriod(30,this)">30 hari</button>
-        <button class="forecast-period-btn" data-days="90" onclick="setForecastPeriod(90,this)">90 hari</button>
-      </div>
-    </div>
-    <div id="forecast-box"><div class="skeleton" style="height:200px"></div></div>
-  </div>
-  <div class="section-label"><i class="ph ph-list"></i> Daftar Produk</div>
-  <div class="table-section">
-    <div class="table-header">
-      <div class="table-title"><i class="ph ph-funnel"></i> Filter &amp; Telusuri Produk</div>
-      <div class="filter-bar">
-        <button class="filter-btn active" data-f="all" onclick="setFilter('all',this)"><i class="ph ph-squares-four"></i> Semua</button>
-        <button class="filter-btn f-noharga" data-f="noharga" onclick="setFilter('noharga',this)"><i class="ph ph-currency-circle-dollar"></i> Tanpa Harga</button>
-        <button class="filter-btn f-nolink" data-f="nolink" onclick="setFilter('nolink',this)"><i class="ph ph-link-break"></i> Tanpa Link</button>
-        <button class="filter-btn f-noakd" data-f="noakd" onclick="setFilter('noakd',this)"><i class="ph ph-shield-slash"></i> Tanpa AKD</button>
-        <select class="filter-select" id="tipe-filter" onchange="setTipe(this.value)">
-          <option value="">Semua Tipe</option>
-          <option value="INSTRUMENT">Instrumen</option>
-          <option value="SET">Set</option>
-          <option value="UNIT">Unit</option>
-        </select>
-        <span class="search-wrap-mini" style="position:relative">
-  <input class="search-mini" id="tbl-search" type="search" placeholder="Cari kode / nama…" oninput="onSearch()" onfocus="showSearchHistory()" style="padding-right:24px"/>
-  <i class="ph ph-circle-notch spinner search-spinner" id="search-spinner"></i>
-  <div class="search-history" id="search-history"></div>
-</span>
-      </div>
-    </div>
-    <div class="table-header" style="border-top:none;padding-top:0">
-      <div class="preset-bar" id="preset-bar"></div>
-      <button class="preset-save-btn" onclick="savePreset()"><i class="ph ph-bookmark-simple"></i> Simpan Filter Ini</button>
-      </div>
-      <div class="bulk-bar" id="bulk-bar">
-      <span class="bulk-bar-text"><span id="bulk-count">0</span> produk dipilih</span>
-      <div class="bulk-bar-actions">
-        <button class="bulk-btn export" onclick="exportSelected()"><i class="ph ph-file-csv"></i> Export CSV</button>
-        <button class="bulk-btn clear" onclick="clearSelection()"><i class="ph ph-x"></i> Batal</button>
-      </div>
-    </div>
-    <div class="table-scroll">
-    <table>
-        <thead>
-  <tr>
-    <th class="checkbox-col"><input type="checkbox" class="row-checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)"/></th>
-    <th>Kode Produk</th>
-            <th>Nama Produk</th>
-            <th>Tipe</th>
-            <th>Harga e-Kat</th>
-            <th>Link v6</th>
-            <th>No. AKD</th>
-          </tr>
-        </thead>
-        <tbody id="tbl-body">
-          <tr class="loading-row"><td colspan="7"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="table-footer">
-      <span id="tbl-info">—</span>
-      <div class="pagination" id="pagination"></div>
-    </div>
-  </div>
-
-  <div id="pop-section">
-  <div class="section-label"><i class="ph ph-map-trifold"></i> Populasi Produk per Wilayah</div>
-  <div class="stats-grid" id="pop-summary-grid" style="margin-bottom:14px">
-    <div class="stat-card blue"><div class="skeleton" style="height:60px"></div></div>
-    <div class="stat-card green"><div class="skeleton" style="height:60px"></div></div>
-    <div class="stat-card purple"><div class="skeleton" style="height:60px"></div></div>
-    <div class="stat-card warning"><div class="skeleton" style="height:60px"></div></div>
-  </div>
-  <div class="table-section">
-    <div class="table-header">
-      <div class="table-title"><i class="ph ph-funnel"></i> Filter Populasi Produk</div>
-      <div class="filter-bar">
-        <select class="filter-select" id="pop-wilayah-filter" onchange="popSetWilayah(this.value)">
-          <option value="">Semua Wilayah</option>
-        </select>
-        <select class="filter-select" id="pop-entitas-filter" onchange="popSetEntitas(this.value)">
-          <option value="">Semua Entitas</option>
-        </select>
-        <select class="filter-select" id="pop-channel-filter" onchange="popSetChannel(this.value)">
-          <option value="">Semua Channel</option>
-        </select>
-        <span class="search-wrap-mini" style="position:relative">
-          <input class="search-mini" id="pop-search" type="search" placeholder="Cari kode / nama produk…" oninput="popOnSearch()" style="padding-right:24px;width:220px"/>
-          <i class="ph ph-circle-notch spinner search-spinner" id="pop-search-spinner"></i>
-        </span>
-        <button class="bulk-btn export" onclick="popExportExcel(event)" style="margin-left:auto">
-          <i class="ph ph-file-xls"></i> Export Excel
-        </button>
-      </div>
-    </div>
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Kode Produk</th>
-            <th>Nama Produk</th>
-            <th>Entitas</th>
-            <th>Channel</th>
-            <th>Wilayah</th>
-            <th style="text-align:right">Total Qty</th>
-            <th style="text-align:right">Jml Customer</th>
-            <th style="text-align:right">Jml Dokumen</th>
-            <th>Order Terakhir</th>
-          </tr>
-        </thead>
-        <tbody id="pop-tbl-body">
-          <tr class="loading-row"><td colspan="9"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="table-footer">
-      <span id="pop-tbl-info">—</span>
-      <div class="pagination" id="pop-pagination"></div>
-    </div>
-  </div>
-  </div>
-</main>
-</div>
-<div class="toast-container" id="toast-container"></div>
-<div class="detail-modal-overlay" id="detail-modal-overlay">
-  <div class="detail-modal" id="detail-modal">
-    <div class="detail-modal-head">
-      <div>
-        <div class="detail-modal-title" id="dm-title">—</div>
-        <div class="detail-modal-sub" id="dm-kode">—</div>
-      </div>
-      <button class="detail-modal-close" id="dm-close">&times;</button>
-    </div>
-    <div class="detail-modal-body" id="dm-body">
-      <div class="detail-loading"><i class="ph ph-circle-notch spinner"></i> Memuat detail…</div>
-    </div>
-  </div>
-</div>
-
 <script>
-/* Theme toggle — standalone, works even if dashboard.js omits it */
 (function(){
-  function applyTheme(theme){
-    theme = theme === 'dark' ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    if (document.body) document.body.setAttribute('data-theme', theme);
-    document.documentElement.style.colorScheme = theme;
-    localStorage.setItem('theme', theme);
-    localStorage.setItem('pnum-theme', theme);
-    var icon = document.getElementById('theme-icon');
-    if (icon) {
-      icon.className = theme === 'dark' ? 'ph ph-sun' : 'ph ph-moon';
-    }
-  }
-  function currentTheme(){
-    return document.documentElement.getAttribute('data-theme')
-      || (document.body && document.body.getAttribute('data-theme'))
-      || localStorage.getItem('theme')
-      || localStorage.getItem('pnum-theme')
-      || 'light';
-  }
-  function bind(){
-    var btn = document.getElementById('theme-toggle');
-    if (!btn || btn.dataset.themeBound) return;
-    btn.dataset.themeBound = '1';
-    applyTheme(currentTheme());
-    btn.addEventListener('click', function(e){
-      e.preventDefault();
-      applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
-    });
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bind);
-  } else {
-    bind();
-  }
+  const saved = localStorage.getItem('theme') || localStorage.getItem('pnum-theme');
+  const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.style.colorScheme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
 
-<script src="dashboard.js"></script>
+<!-- AUTH GATE -->
+<div class="gate-wrap" id="gateWrap">
+  <div class="gate-card">
+    <div class="gate-icon"><i class="ti ti-lock"></i></div>
+    <div class="gate-title" id="gateTitle">Masuk ke Produk</div>
+    <div class="gate-desc" id="gateDesc">Khusus tim internal.</div>
+
+    <form id="loginFormWrap">
+      <label class="field-label" for="loginEmail">Email</label>
+      <input type="email" id="loginEmail" class="field-input" placeholder="nama@email.com" autocomplete="email"/>
+      <label class="field-label" style="margin-top:10px;" for="loginPassword">Password</label>
+      <input type="password" id="loginPassword" class="field-input" placeholder="••••••••" autocomplete="current-password"/>
+      <button class="btn-primary" id="loginBtn" type="submit">Masuk</button>
+    </form>
+
+    <div class="gate-msg" id="gateMsg"></div>
+    <div class="gate-footer">Akses dibatasi hanya untuk email yang terdaftar di tim.</div>
+  </div>
+</div>
+
+<!-- APP SHELL -->
+<div class="shell" id="appWrap" style="display:none;">
+  <aside class="sidebar">
+    <div class="sb-brand">
+      <img src="favicon/favicon-96x96.png" alt="PNM Logo" class="logo">
+      <div class="sb-brand-text">
+        <div class="sb-brand-title">Product Manager</div>
+        <div class="sb-brand-sub">PNM · SMY · METO</div>
+      </div>
+    </div>
+    <button class="sb-collapse-btn" id="sidebarCollapseBtn" title="Ciutkan sidebar" type="button"><i class="ti ti-chevron-left"></i></button>
+    <nav class="sb-nav">
+      <button class="sb-item" data-view="dashboard" title="Dashboard"><i class="ti ti-layout-dashboard"></i><span class="sb-label">Dashboard</span> <span class="soon">segera</span></button>
+      <button class="sb-item active" data-view="produk" title="Produk"><i class="ti ti-package"></i><span class="sb-label">Produk</span></button>
+      <button class="sb-item" data-view="set" title="Set Management"><i class="ti ti-stack-2"></i><span class="sb-label">Set Management</span></button>
+      <button class="sb-item" data-view="akd" title="AKD"><i class="ti ti-shield-check"></i><span class="sb-label">AKD</span></button>
+      <button class="sb-item" data-view="kfa" title="KFA Management"><i class="ti ti-barcode"></i><span class="sb-label">KFA Management</span></button>
+      <button class="sb-item" data-view="bulk" title="Bulk Edit"><i class="ti ti-table"></i><span class="sb-label">Bulk Edit</span></button>
+    </nav>
+    <div class="sb-spacer"></div>
+    <div class="sb-foot">
+      <button class="sb-item" id="logToggle" title="Log Aktivitas"><i class="ti ti-history"></i><span class="sb-label">Log Aktivitas</span></button>
+      <div class="sb-user" title=""><i class="ti ti-user-circle"></i><span id="userEmailLabel" class="sb-label"></span></div>
+      <button class="sb-item" id="logoutBtn" title="Keluar"><i class="ti ti-logout"></i><span class="sb-label">Keluar</span></button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="top-search">
+        <i class="ti ti-search"></i>
+        <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama... (filter langsung di daftar)"/>
+        <button class="clear-btn" id="topSearchClear" title="Bersihkan"><i class="ti ti-x"></i></button>
+      </div>
+      <button class="cmdk-launch" id="cmdkTrigger" title="Buka pencarian cepat lintas halaman"><i class="ti ti-command"></i> Spotlight <kbd>⌘K</kbd></button>
+      <div class="theme-switch" id="themeToggle" title="Ganti tema"><div class="knob"><i class="ti ti-sun" id="themeIcon"></i></div></div>
+      <div class="topbar-actions">
+        <div class="view-toggle">
+          <button id="viewTableBtn" class="active" title="Tampilan tabel"><i class="ti ti-list"></i></button>
+          <button id="viewCardBtn" title="Tampilan kartu"><i class="ti ti-layout-grid"></i></button>
+        </div>
+        <button class="btn btn-accent" id="addBtn"><i class="ti ti-plus"></i> Tambah Produk</button>
+        <button class="btn" id="btnKembaliKonversi" style="display:none;border:1px solid var(--accent-text);color:var(--accent-text);background:var(--accent-bg)" title="Balik ke Conversion Workspace"><i class="ti ti-arrow-back"></i> Kembali ke Konversi</button>
+      </div>
+    </div>
+
+    <!-- PRODUK VIEW -->
+    <div class="content" id="viewProduk">
+      <div class="content-head">
+        <div>
+          <div class="content-title">Produk</div>
+          <div class="content-sub" id="produkCount">Memuat...</div>
+        </div>
+        <button class="btn btn-ghost excel-export-btn" id="produkExportBtn"><i class="ti ti-file-spreadsheet"></i> Download Excel (hasil filter)</button>
+      </div>
+
+      <div class="filter-bar" id="produkFilterBar">
+        <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-all"></span></button>
+        <button class="filter-chip" data-filter="belum_diajukan">Perlu AKD<span class="fc-count" id="fc-belum_diajukan"></span></button>
+        <button class="filter-chip" data-filter="belum_firm">Belum Firm<span class="fc-count" id="fc-belum_firm"></span></button>
+        <button class="filter-chip" data-filter="di_luar_cakupan">Di Luar Cakupan<span class="fc-count" id="fc-di_luar_cakupan"></span></button>
+        <button class="filter-chip" data-filter="terhubung">Terhubung<span class="fc-count" id="fc-terhubung"></span></button>
+        <button class="filter-chip" data-filter="disetujui_tanpa_link">Disetujui, Belum Ada Link<span class="fc-count" id="fc-disetujui_tanpa_link"></span></button>
+      </div>
+
+      <div class="stacked-filters-row">
+        <div class="stacked-filter-chips" id="produkFilterChips"></div>
+        <div class="add-filter-wrap">
+          <button class="add-filter-btn" id="produkAddFilterBtn"><i class="ti ti-plus"></i> Tambah Filter</button>
+          <div class="add-filter-pop" id="produkAddFilterPop"></div>
+        </div>
+      </div>
+
+      <div class="table-card" id="tableWrap">
+        <table>
+          <thead>
+            <tr><th>Kode Produk</th><th>Nama Produk</th><th>Tipe</th><th>Status AKD</th><th></th></tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr class="state-row"><td colspan="5">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card-grid" id="cardWrap" style="display:none;"></div>
+      <div class="pg-bar" id="produkPagination" style="display:none;"></div>
+    </div>
+
+    <!-- STUB VIEWS -->
+    <div class="content" id="viewDashboard" style="display:none;">
+      <div class="stub-box"><i class="ti ti-layout-dashboard"></i><b>Dashboard menyusul</b>Ringkasan status AKD, KFA, dan data yang perlu ditindaklanjuti — modul berikutnya.</div>
+    </div>
+    <!-- SET MANAGEMENT VIEW -->
+    <div class="content" id="viewSet" style="display:none;">
+      <div id="setListWrap">
+        <div class="content-head">
+          <div>
+            <div class="content-title">Set Management</div>
+            <div class="content-sub" id="setListCount">Memuat...</div>
+          </div>
+          <button class="btn btn-accent" id="addSetBtn"><i class="ti ti-plus"></i> Set Baru</button>
+        </div>
+        <div id="setListBody"></div>
+        <div class="pg-bar" id="setListPagination" style="display:none;"></div>
+      </div>
+
+      <div id="setDetailWrap" style="display:none;">
+        <div class="set-back" id="setBackBtn"><i class="ti ti-arrow-left"></i> Kembali ke daftar set</div>
+        <div class="set-detail-head">
+          <div>
+            <div class="set-detail-title" id="setDetailNama">—</div>
+            <div class="set-detail-meta">
+              <span class="kode-cell" id="setDetailKode"></span>
+              <span><b id="setDetailJumlahItem">0</b> item</span>
+              <span><b id="setDetailQty">0</b> total qty</span>
+              <span id="setDetailHarga">Belum ada harga</span>
+              <span id="setDetailSeal"></span>
+            </div>
+          </div>
+          <button class="btn btn-ghost" id="editSetOverviewBtn"><i class="ti ti-pencil"></i> Edit Info Dasar</button>
+        </div>
+
+        <div class="set-tabs">
+          <button class="set-tab active" data-tab="composition">Composition</button>
+          <button class="set-tab" data-tab="pricing">Pricing</button>
+          <button class="set-tab" data-tab="akd">AKD</button>
+          <button class="set-tab" data-tab="history">History</button>
+        </div>
+
+        <div class="set-tab-panel active" id="tab-composition">
+          <div class="comp-summary">
+            <span>Jenis item: <b id="compJumlahJenis">0</b></span>
+            <span>Total qty: <b id="compTotalQty">0</b></span>
+            <span>Estimasi berat: <b id="compEstBerat">0 g</b></span>
+          </div>
+          <div id="compList"></div>
+          <div class="comp-add">
+            <label class="field-label">Tambah item (cari instrumen/unit)</label>
+            <input type="text" class="field-input" id="compSearchInput" placeholder="Ketik nama atau kode produk..."/>
+            <div class="akd-results" id="compSearchResults"></div>
+          </div>
+          <div class="akd-hint" style="margin-top:10px;"><i class="ti ti-device-floppy"></i> Perubahan (tambah/hapus item, ubah qty) tersimpan otomatis ke database — tidak ada tombol Simpan terpisah.</div>
+
+          <div class="sec-label" style="margin-top:22px;">Atau Paste Rincian Set</div>
+          <div class="paste-hint">
+            Paste langsung dari sheet Rincian Set kamu apa adanya (kode_set, nama_set, kode_item, nama_item, qty — kolom kode_set/nama_set diabaikan karena udah jelas set-nya set ini), atau cukup 2 kolom <code>kode_item</code> — <code>qty</code>.
+          </div>
+          <textarea class="paste-area" id="compPasteArea" placeholder="RB999-KE921-B99-U667&#9;BASIC SPINE LAMINECTOMY S.&#9;RB10-KE130-B003-U07&#9;SCALPEL HANDLE, NO. 3, 12 CM&#9;1"></textarea>
+          <div class="bulk-actions">
+            <button class="btn btn-ghost" id="compPastePreviewBtn" type="button"><i class="ti ti-eye"></i> Preview</button>
+            <label class="check-row-inline"><input type="checkbox" id="compPasteTimpaMode"/> Mode Timpa Total (hapus item lama yang tidak disebut di paste ini)</label>
+            <button class="btn btn-accent" id="compPasteProsesBtn" type="button" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+          </div>
+          <div class="bulk-summary" id="compPasteSummary"></div>
+          <div class="preview-table-wrap" id="compPastePreviewWrap" style="display:none;">
+            <table>
+              <thead><tr><th>Kode Item</th><th>Nama Item</th><th>Qty</th><th>Status</th></tr></thead>
+              <tbody id="compPastePreviewBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="set-tab-panel" id="tab-pricing">
+          <div class="table-card">
+            <table>
+              <thead><tr><th>Tahun</th><th>Harga EKATALOG</th><th>Turunan (otomatis)</th><th></th></tr></thead>
+              <tbody id="setHargaTableBody"><tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr></tbody>
+            </table>
+          </div>
+          <div class="harga-add harga-add-set">
+            <div class="f"><label>Tahun</label><input type="number" id="sh_tahun" placeholder="2026"/></div>
+            <div class="f"><label>Harga EKATALOG (Rp)</label><input type="number" step="any" id="sh_harga" placeholder="0"/></div>
+            <button class="btn btn-ghost" id="hitungKomposisiBtn" type="button" title="Isi otomatis dari jumlah (harga item × qty)"><i class="ti ti-calculator"></i> Hitung dari Komposisi</button>
+            <button class="btn btn-ghost" id="addSetHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
+          </div>
+          <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG. "Hitung dari Komposisi" cuma mengisi kotak — kamu tetap bisa timpa manual (mis. buat pas-kan pagu) sebelum klik Tambah.</div>
+        </div>
+
+        <div class="set-tab-panel" id="tab-akd">
+          <div class="akd-box" style="display:block;">
+            <div class="akd-current" id="setAkdCurrentList"></div>
+            <div class="akd-search-wrap">
+              <input type="text" class="field-input" id="setAkdSearchInput" placeholder="Cari nomor AKD atau nama set..." style="padding:8px 10px;font-size:12.5px;"/>
+              <div class="akd-results" id="setAkdResults"></div>
+            </div>
+            <div class="akd-hint">Pencarian dibatasi ke AKD tipe "set".</div>
+          </div>
+        </div>
+
+        <div class="set-tab-panel" id="tab-history">
+          <div id="setHistoryList" style="display:flex;flex-direction:column;gap:8px;"></div>
+          <button class="btn btn-ghost btn-sm" id="openFullLogFromSetBtn" style="margin-top:10px;"><i class="ti ti-external-link"></i> Buka Log Aktivitas Lengkap</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="content" id="viewAkd" style="display:none;">
+      <div class="content-head">
+        <div>
+          <div class="content-title">AKD Management</div>
+          <div class="content-sub" id="akdCount">Memuat...</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-accent" id="addAkdBtn"><i class="ti ti-plus"></i> Tambah AKD</button>
+        </div>
+      </div>
+
+      <div class="akd-toolbar">
+        <div class="akd-search-box">
+          <i class="ti ti-search"></i>
+          <input type="text" id="akdSearchBoxInput" placeholder="Cari no. AKD, nama AKD, kode set..."/>
+        </div>
+      </div>
+
+      <div class="table-card akd-table-scroll">
+        <table>
+          <thead>
+            <tr><th>No. AKD</th><th>Nama AKD</th><th>Tipe</th><th>Golongan</th><th>Kategori Set</th><th>Masa Berlaku</th><th>Status Terupdate</th><th>Link Dok.</th><th>Produk Terhubung</th></tr>
+          </thead>
+          <tbody id="akdTableBody">
+            <tr class="state-row"><td colspan="9">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="akdPagination" style="display:none;"></div>
+    </div>
+    <div class="content" id="viewKfa" style="display:none;">
+      <div class="content-head">
+        <div>
+          <div class="content-title">KFA Management</div>
+          <div class="content-sub" id="kfaCount">Memuat...</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-accent" id="addKfaBtn"><i class="ti ti-plus"></i> Tambah Produk ke KFA</button>
+        </div>
+      </div>
+
+      <div id="kfaAddBox" class="akd-box" style="display:none;margin-bottom:14px;">
+        <div class="akd-search-wrap">
+          <input type="text" class="field-input" id="kfaAddSearchInput" placeholder="Cari kode/nama produk yang belum ada record KFA-nya..." style="padding:8px 10px;font-size:12.5px;"/>
+          <div class="akd-results" id="kfaAddResults"></div>
+        </div>
+      </div>
+
+      <div class="filter-bar" id="kfaFilterBar">
+        <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-kfa-all"></span></button>
+        <button class="filter-chip" data-filter="pending">Pending<span class="fc-count" id="fc-kfa-pending"></span></button>
+        <button class="filter-chip" data-filter="diajukan">Diajukan<span class="fc-count" id="fc-kfa-diajukan"></span></button>
+        <button class="filter-chip" data-filter="terverifikasi">Terverifikasi<span class="fc-count" id="fc-kfa-terverifikasi"></span></button>
+        <button class="filter-chip" data-filter="ditolak">Ditolak<span class="fc-count" id="fc-kfa-ditolak"></span></button>
+      </div>
+
+      <div class="akd-toolbar">
+        <div class="akd-search-box">
+          <i class="ti ti-search"></i>
+          <input type="text" id="kfaSearchBoxInput" placeholder="Cari kode/nama produk atau kode KFA..."/>
+        </div>
+      </div>
+
+      <div class="table-card akd-table-scroll">
+        <table>
+          <thead>
+            <tr><th>Kode Produk</th><th>Nama Produk</th><th>Status</th><th>Kode KFA</th><th>No. AKD Rujukan</th><th>Tgl Verifikasi</th><th>Catatan</th></tr>
+          </thead>
+          <tbody id="kfaTableBody">
+            <tr class="state-row"><td colspan="7">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pg-bar" id="kfaPagination" style="display:none;"></div>
+    </div>
+    <div class="content" id="viewBulk" style="display:none;">
+      <div class="content-head">
+        <div>
+          <div class="content-title">Bulk Edit</div>
+          <div class="content-sub">Paste data langsung dari Excel/Google Sheets, preview dulu sebelum diproses</div>
+        </div>
+      </div>
+
+      <div class="bulk-tabs">
+        <button class="bulk-tab active" data-bulk="harga">Harga Massal</button>
+        <button class="bulk-tab" data-bulk="link">Link V6 Massal</button>
+        <button class="bulk-tab" data-bulk="inaproc">INAPROC Tracker</button>
+      </div>
+
+      <!-- BULK HARGA -->
+      <div class="bulk-panel active" id="bulk-harga">
+        <div class="paste-hint">
+          Paste tanpa header, tab-separated, 3 kolom per baris: <code>kode_produk</code> — <code>tahun</code> — <code>harga_ekat</code>.
+          SWASTA (×1,3) &amp; UPLOAD (÷1,11) dihitung otomatis. Bisa langsung select+copy dari Excel/Sheets.
+        </div>
+        <textarea class="paste-area" id="bulkHargaPaste" placeholder="RB999-KE921-B99-U667&#9;2026&#9;1500000&#10;RB10-KE130-B003-U07&#9;2026&#9;250000"></textarea>
+        <div class="bulk-actions">
+          <button class="btn btn-ghost" id="bulkHargaPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
+          <button class="btn btn-accent" id="bulkHargaProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+        </div>
+        <div class="bulk-summary" id="bulkHargaSummary"></div>
+        <div class="preview-table-wrap" id="bulkHargaPreviewWrap" style="display:none;">
+          <table>
+            <thead><tr><th>Kode Produk</th><th>Nama</th><th>Tahun</th><th>EKATALOG</th><th>SWASTA (auto)</th><th>UPLOAD (auto)</th><th>Status</th></tr></thead>
+            <tbody id="bulkHargaPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- BULK KOMPOSISI SET dipindah ke Set Management > tab Composition (per-set, gak lintas-set lagi) -->
+
+      <!-- BULK LINK V6 -->
+      <div class="bulk-panel" id="bulk-link">
+        <div class="paste-hint">
+          Paste tanpa header, tab-separated, 2 kolom per baris: <code>kode_produk</code> — <code>link_v6</code> (URL e-katalog).
+        </div>
+        <textarea class="paste-area" id="bulkLinkPaste" placeholder="RB999-KE921-B99-U667&#9;https://e-katalog.lkpp.go.id/produk/xxxxx"></textarea>
+        <div class="bulk-actions">
+          <button class="btn btn-ghost" id="bulkLinkPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
+          <button class="btn btn-accent" id="bulkLinkProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+        </div>
+        <div class="bulk-summary" id="bulkLinkSummary"></div>
+        <div class="preview-table-wrap" id="bulkLinkPreviewWrap" style="display:none;">
+          <table>
+            <thead><tr><th>Kode Produk</th><th>Nama</th><th>Link Lama</th><th>Link Baru</th><th>Status</th></tr></thead>
+            <tbody id="bulkLinkPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- BULK INAPROC TRACKER -->
+      <div class="bulk-panel" id="bulk-inaproc">
+        <div class="paste-hint">
+          Paste tanpa header, tab-separated, 7 kolom persis hasil curl INAPROC kamu: <code>No</code> — <code>Nama</code> — <code>Kategori</code> — <code>Nomor Permohonan</code> — <code>Tgl Pengajuan</code> — <code>Status</code> — <code>Alasan Ditolak</code>.
+          Kode produk otomatis diambil dari dalam kurung di kolom Nama. Paste ulang aman — data lama (berdasarkan Nomor Permohonan) akan di-update, bukan dobel.
+        </div>
+        <textarea class="paste-area" id="bulkInaprocPaste" placeholder="1&#9;Dental operative unit (RB-KRC-DTC.07-U01, ROBUST)&#9;Alat Kesehatan&#9;33190423&#9;10 Juli 2026&#9;Menunggu Persetujuan&#9;"></textarea>
+        <div class="bulk-actions">
+          <button class="btn btn-ghost" id="bulkInaprocPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
+          <button class="btn btn-accent" id="bulkInaprocProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+        </div>
+        <div class="bulk-summary" id="bulkInaprocSummary"></div>
+        <div class="preview-table-wrap" id="bulkInaprocPreviewWrap" style="display:none;">
+          <table>
+            <thead><tr><th>No. Permohonan</th><th>Kode Terbaca</th><th>Nama</th><th>Tgl</th><th>Status</th><th>Match Produk</th></tr></thead>
+            <tbody id="bulkInaprocPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- COMMAND PALETTE -->
+<div class="cmdk-overlay" id="cmdkOverlay">
+  <div class="cmdk-box">
+    <div class="cmdk-input-wrap">
+      <div class="mac-traffic" style="margin-bottom:0;">
+        <button class="mac-dot red" id="cmdkCloseBtn" title="Tutup"></button>
+        <span class="mac-dot yellow"></span>
+        <span class="mac-dot green"></span>
+      </div>
+      <i class="ti ti-search"></i>
+      <input type="text" class="cmdk-input" id="cmdkInput" placeholder="Cari kode produk atau nama..."/>
+    </div>
+    <div class="cmdk-list" id="cmdkList">
+      <div class="cmdk-empty">Ketik untuk mencari produk...</div>
+    </div>
+    <div class="cmdk-foot">
+      <span><kbd>↑↓</kbd> pilih</span>
+      <span><kbd>Enter</kbd> buka</span>
+      <span><kbd>Esc</kbd> tutup</span>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL FORM -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-card">
+    <div class="mac-traffic">
+      <button class="mac-dot red" id="modalCloseBtn" title="Tutup"></button>
+      <span class="mac-dot yellow"></span>
+      <span class="mac-dot green"></span>
+    </div>
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="modalTitle">Tambah Produk</div>
+        <div class="modal-sub" id="modalSub">Isi data produk baru</div>
+      </div>
+    </div>
+
+    <div class="prod-tabs" id="prodTabs">
+      <button class="prod-tab active" data-tab="dasar" type="button">Info Dasar <i class="ti ti-circle-check prod-step-check" id="prodTabDasarCheck" style="display:none;"></i></button>
+      <button class="prod-tab locked" data-tab="akd" type="button" title="Simpan Info Dasar dulu">Legalitas AKD</button>
+      <button class="prod-tab locked" data-tab="harga" type="button" title="Simpan Info Dasar dulu">Harga</button>
+      <button class="prod-tab locked" data-tab="media" type="button" title="Simpan Info Dasar dulu">Media</button>
+      <button class="prod-tab locked" data-tab="lanjutan" type="button" title="Simpan Info Dasar dulu">Lanjutan</button>
+    </div>
+
+    <div class="prod-tab-panel active" id="ptab-dasar">
+      <div class="sec-label">Kode Asli / Master Produk</div>
+      <div class="f full">
+        <label>Kode Asli</label>
+        <div class="f-row">
+          <input type="text" id="f_kode_asli" placeholder="Ketik kode_asli..."/>
+          <button class="btn btn-ghost btn-sm" id="cekMasterBtn" type="button"><i class="ti ti-search"></i> Cek</button>
+        </div>
+        <div id="masterLookupMsg"></div>
+      </div>
+      <div id="masterFields" style="display:none;margin-top:10px;">
+        <div class="grid2">
+          <div class="f full"><label>Deskripsi Vendor</label><input type="text" id="m_deskripsi_vendor"/></div>
+          <div class="f"><label>Family</label><input type="text" id="m_family"/></div>
+          <div class="f"><label>Sub Family</label><input type="text" id="m_sub_family"/></div>
+          <div class="f"><label>Manufacturer</label><input type="text" id="m_manufacturer"/></div>
+          <div class="f"><label>Capital</label><input type="text" id="m_capital"/></div>
+        </div>
+      </div>
+
+      <div class="sec-label">Data Produk</div>
+      <div class="grid2">
+        <div class="f"><label>Kode Produk *</label><input type="text" id="f_kode_produk"/></div>
+        <div class="f"><label>Tipe *</label>
+          <select id="f_tipe">
+            <option value="">— pilih —</option>
+            <option value="UNIT">UNIT</option>
+            <option value="INSTRUMENT">INSTRUMENT</option>
+            <option value="SET">SET</option>
+          </select>
+        </div>
+        <div class="f full"><label>Nama Produk</label><input type="text" id="f_nama_produk"/></div>
+        <div class="f"><label>Kode KFA</label><input type="text" id="f_kode_kfa" readonly placeholder="Dikelola di KFA Management"/></div>
+        <div class="f" style="align-self:end;padding-bottom:2px"><button type="button" class="btn btn-ghost btn-sm" id="gotoKfaManagementBtn" style="width:100%"><i class="ti ti-barcode"></i> Kelola di KFA Management</button></div>
+        <div class="f"><label>Kode Cangkang</label><input type="text" id="f_kode_cangkang"/></div>
+        <div class="f"><label>Nama Cangkang</label><input type="text" id="f_nama_cangkang"/></div>
+        <div class="f"><label>Berat (gram)</label><input type="number" step="any" id="f_berat_gram"/></div>
+        <div class="f"><label>Link V6</label><input type="text" id="f_link_v6"/></div>
+        <div class="f full" id="inaprocIndikator" style="display:none;"></div>
+        <div class="f full"><label>Spesifikasi</label><textarea id="f_spesifikasi"></textarea></div>
+        <div class="f full check-row">
+          <input type="checkbox" id="f_is_active" checked/>
+          <label for="f_is_active">Produk aktif</label>
+        </div>
+      </div>
+
+      <div id="gambarInstrumenSection" style="display:none;">
+        <div class="sec-label">Gambar Instrumen (Bucket)</div>
+        <div class="akd-box" style="display:flex;align-items:center;gap:12px;">
+          <div id="gambarInstrumenPreviewWrap" style="display:none;flex-shrink:0;">
+            <img id="gambarInstrumenPreview" alt="Preview gambar instrumen" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);display:block;"/>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <span id="gambarInstrumenBadge" class="status-pill neutral">Mengecek...</span>
+            <div id="gambarInstrumenHint" class="akd-hint" style="margin-top:4px;"></div>
+          </div>
+          <div style="flex-shrink:0;">
+            <input type="file" id="gambarInstrumenFileInput" accept="image/png" style="display:none;"/>
+            <button class="btn btn-ghost btn-sm" id="gambarInstrumenUploadBtn" type="button"><i class="ti ti-upload"></i> Upload Gambar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="prod-tab-panel" id="ptab-akd">
+      <div class="sec-label">Status Legalitas (AKD) <span id="akdSealHolder"></span></div>
+      <div class="grid2" style="margin-bottom:10px;">
+        <div class="f"><label>No. AKD</label><input type="text" id="f_no_akd" readonly placeholder="Otomatis dari relasi AKD"/></div>
+        <div class="f"><label>Masa Berlaku</label><input type="text" id="f_masa_berlaku" readonly/></div>
+        <div class="f"><label>Golongan</label><input type="text" id="f_golongan" readonly/></div>
+        <div class="f" style="justify-content:flex-end;">
+          <button class="btn btn-ghost btn-sm" id="toggleAkdBoxBtn" type="button"><i class="ti ti-link"></i> Kelola AKD</button>
+        </div>
+      </div>
+      <div class="akd-box" id="akdBox" style="display:none;">
+        <div class="akd-current" id="akdCurrentList"></div>
+        <div class="akd-search-wrap">
+          <input type="text" class="field-input" id="akdSearchInput" placeholder="Cari nomor AKD atau nama..." style="padding:8px 10px;font-size:12.5px;"/>
+          <div class="akd-results" id="akdResults"></div>
+        </div>
+        <div class="akd-hint" id="akdHint"></div>
+      </div>
+    </div>
+
+    <div class="prod-tab-panel" id="ptab-harga">
+      <div id="hargaSection">
+        <div class="sec-label">Harga</div>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Tahun</th><th>Harga EKATALOG</th><th>Turunan (otomatis)</th><th></th></tr></thead>
+            <tbody id="hargaTableBody">
+              <tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="harga-add">
+          <div class="f"><label>Tahun</label><input type="number" id="h_tahun" placeholder="2026"/></div>
+          <div class="f"><label>Harga EKATALOG (Rp)</label><input type="number" step="any" id="h_harga" placeholder="0"/></div>
+          <button class="btn btn-ghost" id="addHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
+        </div>
+        <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG.</div>
+      </div>
+    </div>
+
+    <div class="prod-tab-panel" id="ptab-media">
+      <div id="mediaSection">
+        <div class="sec-label">Brosur & Gambar</div>
+        <div class="table-card">
+          <table>
+            <thead><tr><th>Jenis</th><th>Judul</th><th>URL</th><th>Utama</th><th></th></tr></thead>
+            <tbody id="mediaTableBody">
+              <tr><td colspan="5" style="color:var(--text-muted);padding:14px;">Belum ada media</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="media-add">
+          <div class="f"><label>Jenis</label>
+            <select id="md_jenis">
+              <option value="brosur">Brosur</option>
+              <option value="gambar">Gambar</option>
+            </select>
+          </div>
+          <div class="f"><label>Judul</label><input type="text" id="md_judul" placeholder="Judul singkat"/></div>
+          <div class="f full"><label>URL</label><input type="text" id="md_url" placeholder="https://..."/></div>
+          <div class="f"><label>Urutan</label><input type="number" id="md_urutan" value="1" min="1"/></div>
+          <div class="check-row" style="margin-top:20px;">
+            <input type="checkbox" id="md_primary"/>
+            <label for="md_primary">Jadikan utama</label>
+          </div>
+          <button class="btn btn-ghost" id="addMediaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="prod-tab-panel" id="ptab-lanjutan">
+      <div class="sec-label">Field Lanjutan</div>
+      <div class="akd-hint" style="margin-bottom:10px;">Jarang dipakai — belum terhubung ke query/filter mana pun saat ini.</div>
+      <div class="grid2">
+        <div class="f"><label>Status V6</label><input type="text" id="f_status_v6"/></div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="deleteBtn" style="display:none;"><i class="ti ti-trash"></i> Hapus Produk</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" id="cancelBtn">Batal</button>
+        <button class="btn btn-accent" id="saveBtn"><i class="ti ti-check"></i> Simpan &amp; Lanjut</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- KONFIRMASI PERUBAHAN BELUM DISIMPAN -->
+<div class="confirm-overlay" id="unsavedConfirmOverlay">
+  <div class="confirm-card">
+    <h3><i class="ti ti-alert-triangle"></i> Perubahan belum disimpan</h3>
+    <p>Ada perubahan yang belum di-klik "Simpan". Kalau ditutup sekarang, perubahan itu bakal hilang.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-ghost" id="unsavedStayBtn" type="button">Tetap Edit</button>
+      <button class="btn btn-danger-ghost" id="unsavedDiscardBtn" type="button">Buang Perubahan</button>
+      <button class="btn btn-accent" id="unsavedSaveBtn" type="button"><i class="ti ti-check"></i> Simpan &amp; Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOG AKTIVITAS MODAL -->
+<div class="modal-overlay" id="logModalOverlay">
+  <div class="modal-card log-modal">
+    <div class="mac-traffic">
+      <button class="mac-dot red" id="logModalCloseBtn" title="Tutup"></button>
+      <span class="mac-dot yellow"></span>
+      <span class="mac-dot green"></span>
+    </div>
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Log Aktivitas</div>
+        <div class="modal-sub">Riwayat tambah/ubah/hapus di produk, harga, media, AKD & set</div>
+      </div>
+    </div>
+
+    <div class="log-toolbar">
+      <div class="f"><label>Tanggal</label><input type="date" id="log_tanggal"/></div>
+      <div class="f">
+        <label>Tabel</label>
+        <select id="log_table">
+          <option value="">Semua tabel</option>
+          <option value="produk">produk</option>
+          <option value="produk_harga">produk_harga</option>
+          <option value="produk_media">produk_media</option>
+          <option value="master_produk">master_produk</option>
+          <option value="produk_akd">produk_akd</option>
+          <option value="produk_set_item">produk_set_item</option>
+          <option value="akd">akd</option>
+        </select>
+      </div>
+      <div class="f">
+        <label>Aksi</label>
+        <select id="log_action">
+          <option value="">Semua aksi</option>
+          <option value="INSERT">Tambah</option>
+          <option value="UPDATE">Ubah</option>
+          <option value="DELETE">Hapus</option>
+        </select>
+      </div>
+      <button class="btn btn-ghost" id="log_refresh"><i class="ti ti-refresh"></i> Muat ulang</button>
+    </div>
+
+    <div class="log-list" id="logList">
+      <div style="color:var(--text-muted);padding:14px;">Memuat log...</div>
+    </div>
+    <div class="pg-bar" id="logPagination" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- AKD ADD/EDIT MODAL -->
+<div class="modal-overlay" id="akdModalOverlay">
+  <div class="modal-card">
+    <div class="mac-traffic">
+      <button class="mac-dot red" id="akdModalCloseBtn" title="Tutup"></button>
+      <span class="mac-dot yellow"></span>
+      <span class="mac-dot green"></span>
+    </div>
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="akdModalTitle">Tambah AKD</div>
+        <div class="modal-sub" id="akdModalSub">Isi data AKD baru</div>
+      </div>
+    </div>
+
+    <div class="sec-label">Identitas AKD</div>
+    <div class="grid2">
+      <div class="f"><label>Tipe AKD *</label>
+        <select id="a_tipe_akd">
+          <option value="">— pilih —</option>
+          <option value="satuan">satuan</option>
+          <option value="set">set</option>
+          <option value="unit">unit</option>
+        </select>
+      </div>
+      <div class="f"><label>No. AKD *</label><input type="text" id="a_no_akd"/></div>
+      <div class="f full"><label>Nama AKD</label><input type="text" id="a_nama_akd"/></div>
+      <div class="f"><label>Nama Database</label><input type="text" id="a_nama_database"/></div>
+      <div class="f"><label>Kode Set</label><input type="text" id="a_kode_set" placeholder="Isi kalau tipe AKD = set"/></div>
+      <div class="f"><label>Kategori Set</label><input type="text" id="a_kategori_set"/></div>
+      <div class="f"><label>Penanda Kode</label><input type="text" id="a_penanda_kode"/></div>
+      <div class="f"><label>Golongan</label><input type="text" id="a_golongan" list="akd_golongan_list"/><datalist id="akd_golongan_list"></datalist></div>
+    </div>
+
+    <div class="sec-label">Status &amp; Jadwal</div>
+    <div class="grid2">
+      <div class="f"><label>Masa Berlaku</label><input type="date" id="a_masa_berlaku"/></div>
+      <div class="f"><label>Tgl Maju Mas Munir</label><input type="date" id="a_tgl_maju_mas_munir"/></div>
+      <div class="f full"><label>Status Terupdate</label><input type="text" id="a_status_terupdate" list="akd_status_list"/><datalist id="akd_status_list"></datalist></div>
+      <div class="f full"><label>Link Dokumen</label><input type="text" id="a_link_dokumen" placeholder="https://..."/></div>
+      <div class="f full"><label>Update Progres</label><textarea id="a_update_progres" placeholder="Catatan progres..."></textarea></div>
+    </div>
+    <div class="akd-hint" style="margin-top:6px;"><i class="ti ti-info-circle"></i> Arti pasti kolom "Tgl Maju Mas Munir" &amp; "Status Terupdate" masih perlu dikonfirmasi ke tim — sementara ditampilkan apa adanya sesuai nama kolom di database.</div>
+
+    <div class="sec-label" id="akdLinkedProdukLabel" style="display:none;">Produk Terhubung</div>
+    <div id="akdLinkedProdukList" style="display:none;"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="deleteAkdBtn" style="display:none;"><i class="ti ti-trash"></i> Hapus AKD</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" id="akdCancelBtn">Batal</button>
+        <button class="btn btn-accent" id="akdSaveBtn"><i class="ti ti-check"></i> Simpan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="kfaModalOverlay">
+  <div class="modal-card">
+    <div class="mac-traffic">
+      <button class="mac-dot red" id="kfaModalCloseBtn" title="Tutup"></button>
+      <span class="mac-dot yellow"></span>
+      <span class="mac-dot green"></span>
+    </div>
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="kfaModalTitle">Detail KFA</div>
+        <div class="modal-sub" id="kfaModalSub">—</div>
+      </div>
+    </div>
+
+    <div class="sec-label">Status Verifikasi</div>
+    <div class="grid2">
+      <div class="f"><label>Status *</label>
+        <select id="k_status">
+          <option value="pending">Pending</option>
+          <option value="diajukan">Diajukan</option>
+          <option value="terverifikasi">Terverifikasi</option>
+          <option value="ditolak">Ditolak</option>
+        </select>
+      </div>
+      <div class="f"><label>Tgl Verifikasi</label><input type="date" id="k_tanggal_verifikasi"/></div>
+      <div class="f full"><label>Kode KFA</label><input type="text" id="k_kode_kfa" placeholder="Isi kalau status Terverifikasi"/></div>
+      <div class="f full"><label>No. AKD Rujukan</label><input type="text" id="k_no_akd_rujukan" placeholder="Dasar verifikasi KFA ini"/></div>
+      <div class="f full"><label>Catatan</label><textarea id="k_catatan" placeholder="Catatan bebas..."></textarea></div>
+    </div>
+    <div class="akd-hint" style="margin-top:6px;"><i class="ti ti-info-circle"></i> Kode KFA cuma otomatis kepakai di data produk (menggantikan field lama) kalau statusnya Terverifikasi — di luar itu dianggap belum resmi.</div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="deleteKfaBtn"><i class="ti ti-trash"></i> Hapus Record</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" id="kfaCancelBtn">Batal</button>
+        <button class="btn btn-accent" id="kfaSaveBtn"><i class="ti ti-check"></i> Simpan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="crud-produk.js?v=20260813a"></script>
 </body>
 </html>
