@@ -1969,15 +1969,34 @@ document.getElementById('openFullLogFromSetBtn').addEventListener('click', () =>
 // read-only) — KFA Management yang jadi satu-satunya tempat edit, hasilnya
 // disinkron balik ke produk.kode_kfa lewat trigger DB (lihat catatan migration
 // terpisah). Tombol ini cuma jalan pintas pindah + filter ke KFA Management.
-document.getElementById('gotoKfaManagementBtn').addEventListener('click', () => {
+document.getElementById('gotoKfaManagementBtn').addEventListener('click', async () => {
   const kode = document.getElementById('f_kode_produk').value.trim();
+  const produkId = currentProdukId;
   closeModal();
   switchView('kfa');
-  const kfaSearchInput = document.getElementById('kfaSearchBoxInput');
-  if (kode && kfaSearchInput) {
+  if (!kode) return;
+  // BUGFIX: produk yang BARU dilempar dari Info Dasar biasanya belum punya
+  // baris produk_kfa sama sekali (apalagi SET, baru boleh masuk KFA sekarang)
+  // -- kalau langsung diisi ke search box "record yang udah ada", hasilnya
+  // selalu "Tidak ada record ditemukan" walau produknya valid. Cek dulu ada
+  // baris produk_kfa-nya apa belum, baru arahin ke kotak yang bener: search
+  // list biasa (kalau udah ada) atau kotak "Tambah Produk ke KFA" (kalau belum).
+  let existing = null;
+  if (produkId) {
+    const { data } = await sb.from('produk_kfa').select('id').eq('produk_id', produkId).maybeSingle();
+    existing = data;
+  }
+  if (existing) {
+    const kfaSearchInput = document.getElementById('kfaSearchBoxInput');
     kfaSearchInput.value = kode;
     kfaSearchQuery = kode;
     loadKfa(1);
+  } else {
+    document.getElementById('kfaAddBox').style.display = 'block';
+    const addInput = document.getElementById('kfaAddSearchInput');
+    addInput.value = kode;
+    addInput.dispatchEvent(new Event('input'));
+    addInput.focus();
   }
 });
 
