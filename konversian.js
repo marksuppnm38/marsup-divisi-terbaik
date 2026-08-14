@@ -247,7 +247,7 @@ function isValidStorageKey(key) {
 function sanitizeStorageFileName(name) {
   const dotIdx = name.lastIndexOf('.');
   const base = dotIdx > -1 ? name.slice(0, dotIdx) : name;
-  const ext = dotIdx > -1 ? name.slice(dotIdx) : '';
+  const rawExt = dotIdx > -1 ? name.slice(dotIdx) : '';
   const cleanBase = base
     .normalize('NFKC')                              // normalisasi variasi unicode
     .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')    // hapus control char tak terlihat
@@ -256,7 +256,43 @@ function sanitizeStorageFileName(name) {
     .replace(/[^a-zA-Z0-9._-]/g, '')                 // buang sisa char di luar whitelist aman
     .replace(/_+/g, '_')                             // rapikan underscore berulang
     .replace(/^_+|_+$/g, '');                        // trim underscore di ujung
-  return (cleanBase || 'file') + ext.toLowerCase();
+  // SECURITY FIX: dulu ekstensi (rawExt) dipakai mentah tanpa filter sama sekali —
+  // kalau nama file kebetulan punya titik lain + karakter aneh/slash setelah titik
+  // terakhir, itu lolos apa adanya ke storage key. Sekarang ekstensi juga disaring
+  // whitelist yang sama, cuma dibolehin alnum (buat jaga-jaga kalau ada ekstensi
+  // ganda semacam .tar.gz, walau di app ini praktiknya cuma .pdf/.png dst).
+  const cleanExt = rawExt.toLowerCase().replace(/[^a-z0-9.]/g, '');
+  let finalName = (cleanBase || 'file') + cleanExt;
+  // SECURITY FIX: isValidStorageKey() sebelumnya didefinisikan tapi TIDAK PERNAH
+  // dipanggil di manapun (dead code) — jadi validasi whitelist karakter S3-safe yang
+  // dimaksud gak pernah benar-benar dieksekusi. Sekarang dipakai sebagai pengecekan
+  // akhir; kalau karena suatu hal hasil sanitasi di atas masih lolos karakter yang
+  // gak aman, fallback ke nama generik + timestamp biar upload tetap gak gagal diam-diam
+  // tapi juga gak pernah kirim key yang gak divalidasi ke Storage.
+  if (!isValidStorageKey(finalName)) {
+    finalName = 'file_' + Date.now() + cleanExt;
+  }
+  return finalName;
+}
+
+// Batas ukuran file upload lampiran/gambar (client-side, defense-in-depth —
+// idealnya bucket/Edge Function juga membatasi ini di sisi server).
+const MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
+function formatFileSizeMb(bytes) {
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// SECURITY: cek magic bytes PDF (%PDF di awal file), bukan cuma percaya
+// file.type/nama ekstensi yang gampang dispoof (rename file apa saja jadi .pdf).
+async function looksLikePdf(file) {
+  try {
+    const head = await file.slice(0, 5).arrayBuffer();
+    const bytes = new Uint8Array(head);
+    const sig = String.fromCharCode(...bytes);
+    return sig.startsWith('%PDF');
+  } catch {
+    return false;
+  }
 }
 
 // upload file ke Supabase Storage bucket (dipakai fitur drag & drop brosur/gambar).
@@ -481,6 +517,14 @@ async function handleGambarFileDropped(file) {
     showToast('File harus berupa gambar (foto/screenshot).', 'error');
     return;
   }
+  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    showToast(`File terlalu besar (${formatFileSizeMb(file.size)}). Maksimal ${formatFileSizeMb(MAX_UPLOAD_SIZE_BYTES)}.`, 'error');
+    return;
+  }
+  // Catatan: validasi isi file "beneran gambar" sudah otomatis terjadi di
+  // imageFileToPngBlob() di bawah — file didekode lewat <img>/<canvas> dan
+  // di-re-encode jadi PNG asli, jadi file non-gambar yang cuma diganti nama
+  // ekstensinya akan gagal di sini (img.onerror) dan ditolak.
   gambarDropzone.style.display = 'none';
   gambarUploadStatus.style.display = 'block';
   gambarUploadStatus.textContent = `Mengunggah "${file.name}"…`;
@@ -523,9 +567,15 @@ async function getSavedBrosurUrl(produk_id) {
 
 async function listLampiranBucket() {
   if (lampiranBucketFiles) return lampiranBucketFiles;
+  // SECURITY FIX: dulu pakai ANON_KEY buat list SELURUH isi bucket — karena
+  // ANON_KEY public (ada di bundle JS), ini artinya siapapun tanpa login bisa
+  // enumerasi semua nama file lampiran tanpa buka aplikasi sama sekali. Bucket ini
+  // memang punya URL publik utk file individual (by design), tapi listing massal
+  // gak perlu ikut dibuka ke non-user — sekarang pakai token sesi user yang login.
+  const listToken = await getFreshToken();
   const r = await fetch(`${SUPABASE_URL}/storage/v1/object/list/lampiran-unit`, {
     method: 'POST',
-    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY,'Content-Type':'application/json'},
+    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+(listToken || ANON_KEY),'Content-Type':'application/json'},
     body: JSON.stringify({prefix:'', limit:1000, offset:0, sortBy:{column:'name',order:'asc'}})
   });
   const data = await r.json();
@@ -826,9 +876,21 @@ setupDropzone(lampiranDropzone, lampiranFileInput, handleLampiranFileDropped);
 
 // upload brosur baru (dari WA/HP/dll, belum ada di bucket) lalu langsung dipakai sbg lampiran
 async function handleLampiranFileDropped(file) {
-  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-  if (!isPdf) {
+  // SECURITY FIX: dulu cuma cek file.type/nama ekstensi — nilai itu ditentukan
+  // browser dari EKSTENSI NAMA FILE, bukan isi asli, jadi gampang dilewati (rename
+  // file apapun jadi ".pdf"). Sekarang dicek juga magic bytes (%PDF di awal file)
+  // sebelum diupload ke bucket publik dengan Content-Type dipaksa application/pdf.
+  const extLooksLikePdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  if (!extLooksLikePdf) {
     showToast('File harus berupa PDF.', 'error');
+    return;
+  }
+  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    showToast(`File terlalu besar (${formatFileSizeMb(file.size)}). Maksimal ${formatFileSizeMb(MAX_UPLOAD_SIZE_BYTES)}.`, 'error');
+    return;
+  }
+  if (!(await looksLikePdf(file))) {
+    showToast('File ini bukan PDF asli (isi file tidak cocok) — cek lagi atau ganti nama file yang benar.', 'error');
     return;
   }
   lampiranSuggestList.style.display = 'none';
@@ -858,10 +920,17 @@ lampiranSaveBtn.addEventListener('click', async () => {
   lampiranSaveBtn.disabled = true;
   lampiranSaveBtn.textContent = 'Menyimpan…';
   try {
+    // SECURITY FIX: dulu pakai ANON_KEY (public, ada di bundle JS) buat Authorization
+    // di POST ini — artinya SIAPAPUN tanpa login bisa nembak endpoint ini langsung
+    // (bypass auth-gate total) dan set produk_media.url bebas ke domain manapun kalau
+    // RLS tabel ini kebetulan mengizinkan role anon nulis. Sekarang wajib pakai token
+    // sesi user yang beneran login, sejalan sama uploadToSupabaseStorage() di atas.
+    const writeToken = await getFreshToken();
+    if (!writeToken || writeToken === ANON_KEY) throw new Error('Sesi login sudah habis / belum login — silakan login ulang dulu.');
     const url = LAMPIRAN_BASE + encodeURIComponent(lampiranCurrentFilename);
     const r = await fetch(`${SUPABASE_URL}/rest/v1/produk_media`, {
       method: 'POST',
-      headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
+      headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+writeToken,'Content-Type':'application/json','Prefer':'return=minimal'},
       body: JSON.stringify({
         produk_id: lampiranCurrentProdukId,
         jenis: 'brosur',
