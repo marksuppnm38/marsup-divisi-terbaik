@@ -1698,10 +1698,16 @@ function sesiTimeAgo(iso) {
 
 function renderSesiCard(s) {
   const itemCount = (s.sesi_konversi_item && s.sesi_konversi_item[0] && s.sesi_konversi_item[0].count) || 0;
-  const namaAman = (s.nama_rs || '(Nama RS belum diisi)').replace(/"/g, '&quot;');
+  // SECURITY FIX 2026-08-14: nama_rs/pic_marsup/nama_sales itu free-text yang
+  // diketik user & disebar ke SEMUA kolaborator lewat Realtime — dulu
+  // ditulis mentah ke innerHTML (stored XSS). Sekarang semua di-escape lewat
+  // escapeHtmlAttr() sebelum masuk template.
+  const namaSafe = escapeHtmlAttr(s.nama_rs || '(Nama RS belum diisi)');
+  const picSafe = escapeHtmlAttr(s.pic_marsup || '-');
+  const salesSafe = escapeHtmlAttr(s.nama_sales || '-');
   const bantuanBadge = s.butuh_bantuan
     ? `<span class="tipe-badge" style="background:var(--danger-bg);color:var(--danger)">🙋 Butuh bantuan</span>
-       <button class="sesi-wa-btn" data-id="${s.id}" data-nama="${namaAman}" title="Kirim link sesi ini ke WhatsApp" type="button" style="position:absolute;top:8px;right:38px;width:24px;height:24px;border:1px solid var(--success-border);border-radius:6px;background:var(--success-bg);color:var(--success);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center"><i class="ti ti-brand-whatsapp"></i></button>`
+       <button class="sesi-wa-btn" data-id="${s.id}" data-nama="${namaSafe}" title="Kirim link sesi ini ke WhatsApp" type="button" style="position:absolute;top:8px;right:38px;width:24px;height:24px;border:1px solid var(--success-border);border-radius:6px;background:var(--success-bg);color:var(--success);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center"><i class="ti ti-brand-whatsapp"></i></button>`
     : '';
   // Ringkasan Permintaan RS (kalau ada) — biar temen yang lagi liat daftar
   // "Konversi Berjalan" langsung tau ada permintaan apa gak di sesi ini,
@@ -1711,14 +1717,14 @@ function renderSesiCard(s) {
     ? `<span class="mi"><i class="ph ph-clipboard-text"></i><span>Permintaan RS: ${p.items_terpenuhi}/${p.items_total} terpenuhi${p.items_pending > 0 ? ' · ' + p.items_pending + ' belum dicek' : ''}</span></span>`
     : '';
   return `<div class="rcard sesi-card" data-id="${s.id}" style="position:relative">
-    <button class="sesi-delete-btn" data-id="${s.id}" data-nama="${(s.nama_rs || '(Nama RS belum diisi)').replace(/"/g, '&quot;')}" title="Hapus sesi ini" type="button"><i class="ti ti-trash"></i></button>
+    <button class="sesi-delete-btn" data-id="${s.id}" data-nama="${namaSafe}" title="Hapus sesi ini" type="button"><i class="ti ti-trash"></i></button>
     <div class="rcard-top" style="padding-right:66px">
-      <div class="rcard-name">${s.nama_rs ? s.nama_rs : '(Nama RS belum diisi)'}</div>
+      <div class="rcard-name">${namaSafe}</div>
       ${bantuanBadge}
     </div>
     <div class="rcard-meta">
-      <span class="mi"><i class="ti ti-user"></i><span>PIC: ${s.pic_marsup || '-'}</span></span>
-      <span class="mi"><i class="ti ti-users"></i><span>Sales: ${s.nama_sales || '-'}</span></span>
+      <span class="mi"><i class="ti ti-user"></i><span>PIC: ${picSafe}</span></span>
+      <span class="mi"><i class="ti ti-users"></i><span>Sales: ${salesSafe}</span></span>
       <span class="mi"><i class="ti ti-package"></i><span>${itemCount} produk</span></span>
       ${permintaanChip}
       <span class="mi"><i class="ti ti-clock"></i><span>${sesiTimeAgo(s.updated_at)}</span></span>
@@ -1739,6 +1745,11 @@ function renderSesiCard(s) {
 // soal hasil order.
 function renderRiwayatCard(s) {
   const itemCount = (s.sesi_konversi_item && s.sesi_konversi_item[0] && s.sesi_konversi_item[0].count) || 0;
+  // SECURITY FIX 2026-08-14: sama seperti renderSesiCard — escape free-text
+  // sebelum masuk innerHTML (stored XSS fix).
+  const namaSafe = escapeHtmlAttr(s.nama_rs || '(Nama RS belum diisi)');
+  const picSafe = escapeHtmlAttr(s.pic_marsup || '-');
+  const salesSafe = escapeHtmlAttr(s.nama_sales || '-');
   const records = s.konversi_record || [];
   const latest = records.length ? records.reduce((a, b) => (b.revisi > a.revisi ? b : a)) : null;
   const hasilOrder = s.hasil_order || null; // null | 'jadi_order' | 'tanpa_order'
@@ -1760,12 +1771,12 @@ function renderRiwayatCard(s) {
     : '';
   return `<div class="rcard riwayat-card" data-id="${s.id}" style="position:relative">
     <div class="rcard-top" style="padding-right:8px">
-      <div class="rcard-name">${s.nama_rs ? s.nama_rs : '(Nama RS belum diisi)'}</div>
+      <div class="rcard-name">${namaSafe}</div>
       ${orderBadge}
     </div>
     <div class="rcard-meta">
-      <span class="mi"><i class="ti ti-user"></i><span>PIC: ${s.pic_marsup || '-'}</span></span>
-      <span class="mi"><i class="ti ti-users"></i><span>Sales: ${s.nama_sales || '-'}</span></span>
+      <span class="mi"><i class="ti ti-user"></i><span>PIC: ${picSafe}</span></span>
+      <span class="mi"><i class="ti ti-users"></i><span>Sales: ${salesSafe}</span></span>
       <span class="mi"><i class="ti ti-package"></i><span>${itemCount} produk</span></span>
       ${versiChip}
       ${linkChip}
@@ -2473,7 +2484,12 @@ function updateClipHeaderCompact() {
   const rs = rsRaw || '(nama RS belum diisi)';
   const sales = inpSales.value.trim();
   const marsup = inpMarsup.value.trim();
-  clipHeaderCompact.innerHTML = `<b>${rs}</b>${sales ? ' · Sales: ' + sales : ''}${marsup ? ' · PIC: ' + marsup : ''}`;
+  // SECURITY FIX 2026-08-14: input ini diketik langsung oleh user (bukan dari
+  // DB), tapi tetap wajib di-escape sebelum innerHTML — kalau enggak, orang
+  // yang isi field ini bisa nginjek script yang jalan di browsernya sendiri
+  // (dan kalau field ini ke-sync/keliatan kolaborator lain via Realtime,
+  // jalan juga di browser mereka).
+  clipHeaderCompact.innerHTML = `<b>${escapeHtmlAttr(rs)}</b>${sales ? ' · Sales: ' + escapeHtmlAttr(sales) : ''}${marsup ? ' · PIC: ' + escapeHtmlAttr(marsup) : ''}`;
   updateSessionIndicatorAndTitle(rsRaw, sales);
 }
 
@@ -2914,9 +2930,11 @@ function renderResults(data) {
           : r.stok_status === 'INDENT'
             ? `<span class="mi stok-indent"><i class="ph ph-clock-countdown"></i><span>Indent${r.stok_qty ? ' · '+r.stok_qty+' pcs' : ''}</span></span>`
             : `<span class="mi stok-unknown"><i class="ph ph-question"></i><span>Stok: -</span></span>`);
+    // SECURITY FIX 2026-08-14: konsisten dengan renderClipItemHtml — escape
+    // nama_produk sebelum masuk innerHTML (defense in depth).
     return `<div class="rcard${inClip?' selected':''}" data-kode="${r.kode_produk}">
       <div class="rcard-top">
-        <span class="rcard-name">${r.nama_produk||'—'}</span>
+        <span class="rcard-name">${escapeHtmlAttr(r.nama_produk||'—')}</span>
         ${r.tipe?`<span class="tipe-badge ${tipeClass}">${r.tipe}</span>`:''}
       </div>
       <div class="rcard-meta">
@@ -3180,9 +3198,12 @@ function renderClipItemHtml(item) {
   const tipeColor = isSet ? 'background:var(--success-bg);color:var(--success)' : 'background:var(--accent-bg);color:var(--accent-text)';
   const hargaTampil = modeSwastaOutput ? item.harga_swasta : item.harga_ekat;
   const totalHarga = hargaTampil ? hargaTampil * item.qty : null;
+  // SECURITY FIX 2026-08-14: nama_produk ditampilin mentah — escape jaga-jaga
+  // (produk-produk ini biasa dari katalog terkontrol, tapi tetap defense in
+  // depth kalau ada nama produk yang mengandung karakter HTML).
   return `<div class="clip-item" data-kode="${item.kode_produk}">
       <div class="clip-item-info">
-        <div class="clip-item-name">${item.nama_produk}</div>
+        <div class="clip-item-name">${escapeHtmlAttr(item.nama_produk)}</div>
         <div class="clip-item-meta">
           <span class="clip-item-code">${item.kode_produk}</span>
           <span class="clip-item-tipe" style="${tipeColor}">${item.tipe||'—'}</span>
@@ -5289,10 +5310,13 @@ function renderChecklistItemHtml(item) {
     const more = item.matched_items.length - 1;
     compactMatchedTxt = `<div class="kb-item-compact-matched">→ ${namaFirst}${more > 0 ? ` +${more} lainnya` : ''}</div>`;
   }
+  // SECURITY FIX 2026-08-14: raw_text itu teks bebas hasil paste/OCR user
+  // (Permintaan RS) yang disimpan ke DB & ditampilin ke semua kolaborator —
+  // wajib di-escape sebelum masuk innerHTML (stored XSS fix).
   const headerHtml = `<div class="kb-item-header" data-action="toggle-expand" data-id="${item.id}">
     <span class="kb-item-status-icon">${statusIcon}</span>
     <div class="kb-item-header-text">
-      <div class="kb-item-text">${item.raw_text}${qtyTxt}${paguTxt}</div>
+      <div class="kb-item-text">${escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
       ${!isExpanded ? compactMatchedTxt : ''}
     </div>
     <i class="ti ti-chevron-down kb-item-chevron"></i>
@@ -5387,8 +5411,9 @@ function renderChecklistItemHtml(item) {
 function renderChecklist() {
   updateKbCounts();
 
+  // SECURITY FIX 2026-08-14: checklistNamaRs juga free-text, escape dulu.
   kbSummary.innerHTML = `
-    <div class="kb-summary-row"><span>Nama RS</span><b>${checklistNamaRs || '-'}</b></div>
+    <div class="kb-summary-row"><span>Nama RS</span><b>${escapeHtmlAttr(checklistNamaRs || '-')}</b></div>
     <div class="kb-summary-row"><span>Pagu</span><b>${checklistPagu != null ? rupiah(checklistPagu) : '-'}</b></div>
   `;
 
@@ -6155,7 +6180,7 @@ function normalizeMatchedItems(item) {
       + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase">Link</th></tr></thead><tbody>';
     rows.forEach(r => {
       html += '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + esc(r.desc) + '</td>'
-        + '<td style="padding:6px 8px;border-bottom:1px solid var(--border);word-break:break-all"><a href="' + esc(r.link) + '" target="_blank" style="color:var(--accent-text)">' + esc(r.link) + '</a></td></tr>';
+        + '<td style="padding:6px 8px;border-bottom:1px solid var(--border);word-break:break-all"><a href="' + esc(r.link) + '" target="_blank" rel="noopener noreferrer" style="color:var(--accent-text)">' + esc(r.link) + '</a></td></tr>';
     });
     html += '</tbody></table>';
     outputEl.innerHTML = html;
