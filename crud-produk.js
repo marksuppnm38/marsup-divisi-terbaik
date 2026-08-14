@@ -1,4 +1,7 @@
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-08-14: fix dedup bulk INAPROC tracker — status "Disetujui" menang duluan atas nomor
+//   permohonan duplikat, tanggal cuma dipakai buat tie-break (dulu murni tanggal terbaru,
+//   ada edge case "Disetujui" ketiban "Ditolak" dari baris duplikat bertanggal lebih baru) — Claude
 // 2026-08-12: shared auth layer + navigasi konversian<->crud-produk + theme-fix + cache-busting — Claude (sesi arsitektur)
 // Kalau kamu Claude/sesi lain yang mau edit file ini: tambahin baris baru di atas (jangan hapus riwayatnya), ringkas 1 baris apa yang berubah + tanggal.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2212,7 +2215,15 @@ document.getElementById('bulkInaprocPreviewBtn').addEventListener('click', async
   // (misal status-nya di-update dari "Ditolak" jadi "Disetujui" untuk nomor yang sama),
   // upsert bakal nimpa baris itu berkali-kali. Tanpa dedup, yang menang adalah baris yang
   // urutannya paling belakang di teks paste — bukan yang tgl_pengajuan-nya paling baru.
-  // Jadi ambil cuma satu per nomor_permohonan: yang tgl_pengajuan-nya terbesar (null dianggap paling lama).
+  //
+  // Prioritas menang: status "Disetujui" duluan, BARU tgl_pengajuan terbesar buat tie-break.
+  // Kenapa gak murni tanggal terbaru (logic lama): ada edge case duplikasi pengajuan di mana
+  // baris dengan tanggal lebih baru justru berstatus "Ditolak", padahal ada baris lain (tanggal
+  // lebih lama) untuk nomor yang sama yang udah "Disetujui". Kalau murni pilih tanggal terbesar,
+  // status "Disetujui" itu ketiban jadi "Ditolak" — salah. Jadi begitu ada baris "Disetujui"
+  // buat suatu nomor permohonan, dia otomatis menang, gak peduli baris lain tanggalnya lebih baru.
+  // Tie-break tanggal (leksikografis ISO string, null dianggap paling lama) cuma dipakai kalau
+  // dua-duanya sama-sama "Disetujui", atau dua-duanya sama-sama bukan "Disetujui".
   const byNomor = new Map();
   let dilewatiKarenaDuplikat = 0;
   const parsed = [];
@@ -2222,12 +2233,17 @@ document.getElementById('bulkInaprocPreviewBtn').addEventListener('click', async
     if (!existing) {
       byNomor.set(p.nomorPermohonan, p);
     } else {
-      // bandingin tgl (format ISO string, aman dibandingin secara leksikografis); null dianggap paling lama
-      const tglBaru = p.tgl || '';
-      const tglLama = existing.tgl || '';
-      if (tglBaru > tglLama) {
-        byNomor.set(p.nomorPermohonan, p); // yang baru menang, yang lama dibuang
+      const existingDisetujui = existing.status === 'Disetujui';
+      const baruDisetujui = p.status === 'Disetujui';
+      let baruMenang;
+      if (existingDisetujui !== baruDisetujui) {
+        baruMenang = baruDisetujui; // status "Disetujui" otomatis menang, gak peduli tanggal
+      } else {
+        const tglBaru = p.tgl || '';
+        const tglLama = existing.tgl || '';
+        baruMenang = tglBaru > tglLama;
       }
+      if (baruMenang) byNomor.set(p.nomorPermohonan, p); // yang menang gantiin, yang kalah dibuang
       dilewatiKarenaDuplikat++;
     }
   }
