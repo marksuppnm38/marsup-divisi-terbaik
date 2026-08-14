@@ -1,4 +1,5 @@
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-08-13(5): fix "mode harga (Swasta/E-Katalog) gak ikut realtime" — modeSwastaOutput dulu variabel lokal per-tab doang, gak pernah ditulis/dibaca dari sesi_konversi, jadi kolaborator yang buka sesi yang sama selalu mulai dari default E-Katalog walau pembuat sesi udah set Swasta (bisa keluar harga salah di Record/Export/SPH tanpa tanda apapun). Sekarang persisted ke kolom BARU sesi_konversi.mode_harga_swasta (perlu migration SQL manual dulu sebelum dipush, lihat catatan terpisah) + disinkron lewat handleSesiRowChange() sama kayak pagu/butuh_bantuan — Claude
 // 2026-08-13(4): fix duplikasi search-by-kode — matchOneKode() (Converter, ada retry timeout) dan addSetKodeToClip() (Cari SET Mendekati, TANPA retry) tadinya 2 salinan terpisah dari logika "exact match by kode via search_produk_dengan_harga", plus gak ada cache jadi kode duplikat dalam 1 batch paste = RPC berulang. Disatukan ke findProdukByKodeExact() + kodeExactCache (cache cuma hasil sukses, error tetap fresh-retry) — Claude
 // 2026-08-13(3): fix "kekick ke login padahal masih kerja" — sesiFetch()/rpc-manual-berautentikasi/upload/openPrModal dulu baca variabel stokAccessToken langsung (bisa basi kalau tab sempat di-background), sekarang lewat getFreshToken() (panggil PNMAuth.getAccessToken() -> cek-dan-refresh di momen request, bukan nunggu timer) — Claude
 // 2026-08-13(2): fix stepper Export/Simpan ke Drive di konversian.html nyangkut nunjukin status sesi SEBELUMNYA pas Selesaikan Sesi/Mulai Sesi Baru/buka sesi lain — window.convFlow.reset() (baru) sekarang dipanggil dari resetChecklistUI(), plus lastExportBlob dkk ikut dikosongin di titik yang sama — Claude
@@ -1239,7 +1240,8 @@ async function ensureSesi() {
     pic_marsup: inpMarsup.value.trim() || null,
     pagu: (typeof checklistPagu !== 'undefined' ? checklistPagu : null),
     status: 'berjalan',
-    butuh_bantuan: currentButuhBantuan
+    butuh_bantuan: currentButuhBantuan,
+    mode_harga_swasta: modeSwastaOutput
   };
   const res = await sesiFetch(SESI_TABLE, {
     method: 'POST',
@@ -1890,7 +1892,9 @@ async function openSesi(id) {
 
     clipboard = items.map(mapSesiItemRowToClipItem);
 
-    updateClipboard();
+    // Mode harga ikut sesi (ditetapkan pembuatnya), bukan default lokal —
+    // setModeSwastaOutput() di bawah juga manggil updateClipboard().
+    setModeSwastaOutput(!!sesi.mode_harga_swasta);
     if (lastResults.length) renderResults(lastResults);
     renderButuhBantuanBtn();
     setClipHeaderCollapsed(false);
@@ -2117,6 +2121,12 @@ function handleSesiRowChange(payload) {
     currentButuhBantuan = !!row.butuh_bantuan;
     if (typeof renderButuhBantuanBtn === 'function') renderButuhBantuanBtn();
     pushActivity(currentButuhBantuan ? 'Minta bantuan diaktifkan' : 'Minta bantuan dibatalkan');
+  }
+  // Mode harga (E-Katalog/Swasta) ditetapkan pembuat sesi — kolaborator lain harus
+  // ikut, bukan mulai dari default lokal masing-masing (lihat COORD LOG di atas).
+  if (!!row.mode_harga_swasta !== modeSwastaOutput && !isEchoOfLocalWrite(SESI_TABLE, row.id, 'mode_harga_swasta', row.mode_harga_swasta)) {
+    setModeSwastaOutput(!!row.mode_harga_swasta);
+    pushActivity(row.mode_harga_swasta ? 'Mode harga diubah ke Swasta oleh kolaborator' : 'Mode harga diubah ke E-Katalog oleh kolaborator');
   }
 }
 
@@ -3841,14 +3851,33 @@ tswasta.addEventListener('click', () => {
 // MODE HARGA OUTPUT (clip-output-mode-row): independen dari toggle pencarian
 // di atas. Ini yang nentuin harga & kolom link e-Katalog buat Clipboard/Pagu,
 // Record Konversi, Export Excel, dan Generate SPH.
+// setModeSwastaOutput() = apply state lokal + render doang (dipakai juga pas
+// load sesi & terima update realtime, JANGAN dikasih efek nulis ke server di
+// sini). persistModeSwastaOutput() = yang dipanggil pas user KLIK toggle-nya
+// sendiri — apply lokal + tulis ke sesi_konversi biar kolaborator lain ikut
+// kesinkron lewat handleSesiRowChange().
 function setModeSwastaOutput(swasta) {
   modeSwastaOutput = swasta;
   if (comEkatBtn) comEkatBtn.classList.toggle('active', !swasta);
   if (comSwastaBtn) comSwastaBtn.classList.toggle('active', swasta);
   updateClipboard(); // re-render daftar clipboard + total/pagu pakai mode baru
 }
-if (comEkatBtn) comEkatBtn.addEventListener('click', () => setModeSwastaOutput(false));
-if (comSwastaBtn) comSwastaBtn.addEventListener('click', () => setModeSwastaOutput(true));
+async function persistModeSwastaOutput(swasta) {
+  setModeSwastaOutput(swasta);
+  try {
+    const sesiId = await ensureSesi();
+    markLocalWrite(SESI_TABLE, sesiId, 'mode_harga_swasta', swasta);
+    await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ mode_harga_swasta: swasta, updated_at: new Date().toISOString() })
+    });
+  } catch (err) {
+    console.error('Gagal simpan mode harga ke server', err);
+    showToast('Mode harga ganti di layar ini, tapi gagal kesimpen ke server — kolaborator lain belum ikut kesinkron. Coba lagi.', 'error');
+  }
+}
+if (comEkatBtn) comEkatBtn.addEventListener('click', () => persistModeSwastaOutput(false));
+if (comSwastaBtn) comSwastaBtn.addEventListener('click', () => persistModeSwastaOutput(true));
 sortSelect.addEventListener('change', () => {
   sortMode = sortSelect.value;
   applySort();
