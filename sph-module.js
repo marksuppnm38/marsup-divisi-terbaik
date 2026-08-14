@@ -550,6 +550,30 @@ function sphPrefillFromSession() {
   sphItemCountEl.textContent = String(clipboard.length);
 }
 
+// FIX "isian SPH nyangkut di info SPH terakhir yang dibuat": sphPrefillFromSession()
+// di atas SENGAJA cuma ngisi field yang MASIH KOSONG (biar gak nimpa ketikan manual
+// user SELAMA masih di sesi yang sama) — tapi itu artinya begitu field udah keisi
+// sekali, nilainya nempel SELAMANYA lintas sesi, walau sesi/RS/clipboard-nya udah
+// beda total. Dipanggil dari resetChecklistUI() (titik pusat "sesi ganti") di
+// konversian.js, SEBELUM sphPrefillFromSession jalan lagi pas tab SPH dibuka —
+// jadi field kosong lagi dan keisi FRESH dari sesi yang baru dibuka.
+window.sphFlow = {
+  reset() {
+    sphTanggalInput.value = '';
+    sphRsInput.value = '';
+    sphSalesInput.value = '';
+    if (sphNomorInput) sphNomorInput.value = ''; // nomor SPH sesi lama gak relevan lagi
+    sphLastRecord = null;
+    sphAlreadySentToSheet = false;
+    if (sphValidationEl) sphValidationEl.style.display = 'none';
+    if (sphStatusEl) sphStatusEl.textContent = '';
+    if (sphPreviewFrame) { sphPreviewFrame.src = ''; sphPreviewFrame.style.display = 'none'; }
+    if (sphPreviewEmpty) sphPreviewEmpty.style.display = '';
+    if (sphDownloadLink) sphDownloadLink.style.display = 'none';
+    sphItemCountEl.textContent = String(clipboard.length);
+  }
+};
+
 // Dipanggil dari switchClipTab() di konversian.js pas tab "Buat SPH" diklik.
 window.onSphTabOpen = function () {
   if (!sphInitialized) {

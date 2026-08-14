@@ -302,6 +302,16 @@
 }
 #app-root .btn-end-sesi:hover:not(:disabled){background:var(--success-bg)}
 
+/* Tertiary juga: Keluar dari Sesi — sama level visual sama Selesaikan Sesi,
+   biar gak keliatan salah satunya "lebih penting" (dua-duanya cara keluar,
+   bedanya di konsekuensinya, bukan di kepentingannya). */
+#app-root .btn-leave-sesi{
+  border-color:transparent;
+  background:var(--surface-2);
+  height:34px;
+}
+#app-root .btn-leave-sesi:hover:not(:disabled){background:var(--accent-bg)}
+
 /* Resize handle stays functional but visually near-invisible at rest */
 #app-root .clip-resize-handle::after{background:transparent}
 #app-root .clip-resize-handle:hover::after,

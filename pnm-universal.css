@@ -1,3 +1,13 @@
+/* ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+   2026-08-13: fix .modal-overlay yang dulu didefinisikan 2x (konversian pakai
+   .show/solid-bg/z-999/center, crud-produk pakai .open/blur/z-60/top-align) —
+   sama-sama nyasar selector .modal-overlay, jadi diam-diam saling menang di
+   cascade (persis kasus toast, lihat COORD LOG di shared/toast.js). Digabung
+   jadi SATU definisi kanonik (versi blur punya crud-produk), .open dan .show
+   sekarang sama-sama trigger style yang sama. Efek visual ke modal konversian
+   nyaris nol karena versi blur ini emang udah menang duluan sebelum fix ini. — Claude
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 /* ============================================================
    PNM Universal Stylesheet
    Digabung dari: dashboard.css, konversian.css, crud-produk.css,
@@ -766,8 +776,13 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .badge-katalog-no{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px}
 .btn-preview-gambar{font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-family:inherit;transition:all .15s}
 .btn-preview-gambar:hover{border-color:var(--accent);color:var(--accent-text)}
-.badge-jadi-order{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px;white-space:nowrap}
-.badge-tanpa-order{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px;white-space:nowrap}
+/* FIX (fundamental): hasil order dipindah dari badge auto-derived jadi
+   <select> manual (lihat renderRiwayatCard()) — 3 state, .hasil-order-nunggu
+   default netral (warning), BUKAN diasumsikan gagal/tanpa-order. */
+.hasil-order-select{display:inline-flex;align-items:center;font-size:10px;font-weight:600;padding:2px 6px;border-radius:20px;white-space:nowrap;cursor:pointer;font-family:inherit;appearance:none;-webkit-appearance:none}
+.hasil-order-select.hasil-order-jadi{color:var(--success);background:var(--success-bg);border:1px solid var(--success-border)}
+.hasil-order-select.hasil-order-tanpa{color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border)}
+.hasil-order-select.hasil-order-nunggu{color:var(--warning);background:var(--warning-bg);border:1px solid var(--warning-border)}
 .rcard-meta{display:flex;flex-wrap:wrap;gap:3px 12px}
 .mi{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary)}
 .mi i{font-size:12px;color:var(--text-muted)}
@@ -1155,6 +1170,12 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .btn-end-sesi{width:100%;height:32px;background:none;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
 .btn-end-sesi:hover:not(:disabled){color:var(--success);border-color:var(--success-border);background:var(--success-bg)}
 .btn-end-sesi:disabled{opacity:.5;cursor:not-allowed}
+/* Beda dari .btn-end-sesi: ini gak nyentuh status sesi sama sekali (lihat
+   handler-nya di konversian.js), jadi warnanya sengaja netral — bukan hijau
+   "penyelesaian" kayak Selesaikan Sesi, biar gak kesan sama-sama nutup sesi. */
+.btn-leave-sesi{width:100%;height:32px;background:none;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
+.btn-leave-sesi:hover:not(:disabled){color:var(--accent-text);border-color:var(--accent);background:var(--accent-bg)}
+.btn-leave-sesi:disabled{opacity:.5;cursor:not-allowed}
 
 /* OFFLINE BANNER */
 #offline-banner{display:none;align-items:center;justify-content:center;gap:8px;background:var(--danger);color:#fff;font-size:12.5px;font-weight:600;padding:7px 12px;flex-shrink:0;text-align:center}
@@ -1192,9 +1213,11 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 #record-cancel-btn{background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border)}
 #record-status{font-size:12px;margin-top:10px;text-align:center;min-height:16px}
 
-/* PROGRESS MODAL */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:none;align-items:center;justify-content:center}
-.modal-overlay.show{display:flex}
+/* PROGRESS MODAL — .modal-overlay base rule dipindah, digabung ke satu
+   definisi kanonik di section ================= MODAL ================= di
+   bawah (dulu ada 2 blok .modal-overlay yang saling menang-kalahin di
+   cascade, lihat COORD LOG di atas file ini). .modal-box tetap di sini,
+   class ini gak collide sama apapun. */
 .modal-box{background:var(--surface);border-radius:var(--radius);padding:28px 32px;width:360px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.15)}
 .modal-title{font-size:15px;font-weight:600;margin-bottom:6px}
 .modal-sub{font-size:13px;color:var(--text-muted);margin-bottom:20px}
@@ -1404,9 +1427,13 @@ tbody tr.row-attention:hover{background:var(--amber-bg)}
 .gate-msg.error{background:var(--rust-bg);color:var(--rust-text);border:1px solid var(--rust)}
 .gate-footer{margin-top:18px;font-size:11px;color:var(--text-muted);text-align:center}
 
-/* ================= MODAL ================= */
+/* ================= MODAL =================
+   Satu-satunya definisi .modal-overlay (dulu duplikat, lihat COORD LOG).
+   .open dipicu dari crud-produk.js, .show dipicu dari konversian.js — dua
+   nama trigger class beda, tapi sekarang nyasar ke style yang SAMA persis,
+   jadi tampilan modal seragam di semua modul. */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,12,16,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);will-change:backdrop-filter;z-index:60;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px}
-.modal-overlay.open{display:flex}
+.modal-overlay.open,.modal-overlay.show{display:flex}
 
 /* ---- Dialog konfirmasi "perubahan belum disimpan" — tampil DI ATAS modal
    edit (z-index lebih tinggi dari .modal-overlay), muncul kalau user coba

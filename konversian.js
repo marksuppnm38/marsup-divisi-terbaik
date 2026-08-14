@@ -1,4 +1,5 @@
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-08-13(7): 3 behavior fix fundamental (per diskusi manual): (a) isian tab Buat SPH nempel ke SPH terakhir — sph-module.js sekarang expose window.sphFlow.reset() dipanggil dari resetChecklistUI(); (b) nambah tombol "Keluar dari Sesi" (btn-leave-sesi) — beda dari Selesaikan Sesi, cuma bersihin tampilan lokal, GAK ngubah status server, sesi tetap 'berjalan'; (c) badge "Jadi Order"/"Ditutup Tanpa Order" di kartu riwayat dulu auto-derived dari ada-gaknya konversi_record (keliru — itu nunjukin "Record diklik", bukan "beneran jadi order"), sekarang dropdown manual hasil_order (kolom BARU sesi_konversi, perlu migration SQL manual dulu, lihat catatan terpisah), default null = "Menunggu Feedback Sales" — Claude
 // 2026-08-13(6): fix "notif kolaborator (mode harga, dll) kadang muncul kadang enggak" — syncRealtimeAuth() dulu baca stokAccessToken (cache) langsung buat auth socket Realtime, dan cuma kepanggil pas event TOKEN_REFRESHED/(re)subscribe channel. Kalau tab di-background lama, timer refresh SDK bisa ke-throttle, socket kepasang token basi, dan RLS DIAM-DIAM nge-filter postgres_changes tanpa error apapun (beda dari REST yang minimal 401 kelihatan). Sekarang syncRealtimeAuth() ambil token fresh (getFreshToken()) + dipaksa kepanggil ulang pas tab balik visible (bukan cuma nunggu TOKEN_REFRESHED) — Claude
 // 2026-08-13(5): fix "mode harga (Swasta/E-Katalog) gak ikut realtime" — modeSwastaOutput dulu variabel lokal per-tab doang, gak pernah ditulis/dibaca dari sesi_konversi, jadi kolaborator yang buka sesi yang sama selalu mulai dari default E-Katalog walau pembuat sesi udah set Swasta (bisa keluar harga salah di Record/Export/SPH tanpa tanda apapun). Sekarang persisted ke kolom BARU sesi_konversi.mode_harga_swasta (perlu migration SQL manual dulu sebelum dipush, lihat catatan terpisah) + disinkron lewat handleSesiRowChange() sama kayak pagu/butuh_bantuan — Claude
 // 2026-08-13(4): fix duplikasi search-by-kode — matchOneKode() (Converter, ada retry timeout) dan addSetKodeToClip() (Cari SET Mendekati, TANPA retry) tadinya 2 salinan terpisah dari logika "exact match by kode via search_produk_dengan_harga", plus gak ada cache jadi kode duplikat dalam 1 batch paste = RPC berulang. Disatukan ke findProdukByKodeExact() + kodeExactCache (cache cuma hasil sukses, error tetap fresh-retry) — Claude
@@ -1165,6 +1166,7 @@ const sessionIndicator = document.getElementById('session-indicator');
 const sessionIndicatorDot = document.getElementById('session-indicator-dot');
 const sessionIndicatorText = document.getElementById('session-indicator-text');
 const btnEndSesi = document.getElementById('btn-end-sesi');
+const btnLeaveSesi = document.getElementById('btn-leave-sesi');
 const toastContainer = document.getElementById('toast-container');
 const APP_TITLE_BASE = document.title; // "Conversion Workspace — PT Pionir Nusantara Manufacturing"
 
@@ -1188,11 +1190,13 @@ function renderListError(el, msg, retryFn) {
   if (btn) btn.addEventListener('click', retryFn);
 }
 
-// Tombol "Selesaikan Sesi" cuma boleh aktif kalau memang lagi ada sesi yang
-// berjalan di server (currentSesiId keisi) — jadi state-nya selalu nyambung
-// sama kenyataan, gak pernah nampilin tombol aktif buat sesi yang gak ada.
+// Tombol "Selesaikan Sesi"/"Keluar dari Sesi" cuma boleh aktif kalau memang
+// lagi ada sesi yang berjalan di server (currentSesiId keisi) — jadi state-nya
+// selalu nyambung sama kenyataan, gak pernah nampilin tombol aktif buat sesi
+// yang gak ada.
 function updateEndSesiBtnState() {
   btnEndSesi.disabled = !currentSesiId;
+  if (btnLeaveSesi) btnLeaveSesi.disabled = !currentSesiId;
 }
 
 function setSesiSavedStatus(text, isError) {
@@ -1504,6 +1508,32 @@ btnSesiBaru.addEventListener('click', startNewSesi);
 // Nutup sesi yang lagi dibuka tanpa harus lewat Record — buat kasus sesi cuma
 // dipakai cek-cek/diskusi dan gak jadi ada transaksi, tapi user tetap mau
 // "beresin" biar gak numpuk di daftar Konversi Berjalan.
+// FIX (fundamental, per diskusi): dulu SATU-SATUNYA cara keluar dari sesi
+// adalah "Selesaikan Sesi" — yang "mahal" karena ngubah status:'selesai' di
+// server (sesi ilang dari Konversi Berjalan, otomatis dianggap tertutup buat
+// keperluan riwayat). Ini nambah opsi "murah": Keluar dari Sesi — cuma
+// bersihin TAMPILAN lokal browser ini doang, gak nyentuh server sama sekali.
+// Sesi tetap 'berjalan', tetap di daftar Konversi Berjalan, kolaborator lain
+// (kalau ada) sama sekali gak keganggu — bisa dibuka lagi kapan aja lanjut
+// dari kondisi terakhir, gak ada state yang keubah/ke-reset di server.
+btnLeaveSesi.addEventListener('click', () => {
+  if (!currentSesiId) return;
+  currentSesiId = null;
+  currentButuhBantuan = false;
+  clipboard = [];
+  inpRs.value = '';
+  inpSales.value = '';
+  updateClipboard();
+  renderResults(lastResults);
+  setClipHeaderCollapsed(false);
+  updateClipHeaderCompact();
+  renderButuhBantuanBtn();
+  setSesiSavedStatus('');
+  resetChecklistUI();
+  updateEndSesiBtnState();
+  showToast('Keluar dari sesi — sesi tetap berjalan, bisa dibuka lagi lewat daftar Konversi Berjalan');
+  loadSesiList();
+});
 btnEndSesi.addEventListener('click', async () => {
   if (!currentSesiId) return;
   const namaAktif = inpRs.value.trim() || '(Nama RS belum diisi)';
@@ -1690,19 +1720,28 @@ function renderSesiCard(s) {
   </div>`;
 }
 
-// Kartu riwayat: sesi yang statusnya 'selesai', apapun hasilnya. Dibedain visual
-// pake badge "Jadi Order" (kalau ada baris konversi_record nempel di sesi ini,
-// lewat kolom konversi_record.sesi_id) vs "Ditutup Tanpa Order" (kalau enggak —
-// artinya ditutup lewat "Selesaikan Sesi", bukan "Record Konversi"). Kalau sesi
-// ini udah pernah direvisi (>1 baris konversi_record), badge-nya nunjukin nomor
-// REV terakhir + berapa versi yang kesimpen semuanya.
+// Kartu riwayat: sesi yang statusnya 'selesai', apapun hasilnya.
+// FIX (fundamental, per diskusi): "Jadi Order"/"Ditutup Tanpa Order" DULU
+// didiktein otomatis dari ada-gaknya baris konversi_record (Record Konversi
+// pernah diklik atau enggak) — itu keliru, karena "pernah di-Record" beda
+// sama "beneran jadi order", yang faktanya nunggu feedback sales dan bisa
+// berubah lama SETELAH sesi ditutup. Sekarang hasil_order itu field manual
+// (kolom baru di sesi_konversi, lihat migration terpisah) yang manusia set
+// sendiri lewat dropdown di kartu ini — default null = "Menunggu Feedback
+// Sales" (netral, BUKAN diasumsikan gagal). REV/grand_total/link tetap dari
+// konversi_record seperti biasa, itu emang soal dokumennya sendiri, bukan
+// soal hasil order.
 function renderRiwayatCard(s) {
   const itemCount = (s.sesi_konversi_item && s.sesi_konversi_item[0] && s.sesi_konversi_item[0].count) || 0;
   const records = s.konversi_record || [];
   const latest = records.length ? records.reduce((a, b) => (b.revisi > a.revisi ? b : a)) : null;
-  const orderBadge = latest
-    ? `<span class="badge-jadi-order"><i class="ti ti-circle-check"></i> Jadi Order${latest.revisi > 0 ? ' · REV' + latest.revisi : ''}${latest.grand_total != null ? ' · Rp' + Number(latest.grand_total).toLocaleString('id-ID') : ''}</span>`
-    : `<span class="badge-tanpa-order"><i class="ti ti-square-off"></i> Ditutup Tanpa Order</span>`;
+  const hasilOrder = s.hasil_order || null; // null | 'jadi_order' | 'tanpa_order'
+  const hasilOrderCls = hasilOrder === 'jadi_order' ? 'hasil-order-jadi' : hasilOrder === 'tanpa_order' ? 'hasil-order-tanpa' : 'hasil-order-nunggu';
+  const orderBadge = `<select class="hasil-order-select ${hasilOrderCls}" data-id="${s.id}" onclick="event.stopPropagation()" title="Hasil order ditentukan manusia, bukan otomatis — nunggu feedback sales">
+      <option value="" ${!hasilOrder ? 'selected' : ''}>⏳ Menunggu Feedback Sales</option>
+      <option value="jadi_order" ${hasilOrder === 'jadi_order' ? 'selected' : ''}>✅ Jadi Order</option>
+      <option value="tanpa_order" ${hasilOrder === 'tanpa_order' ? 'selected' : ''}>◻️ Tidak Jadi Order</option>
+    </select>${latest ? `<span class="mi" style="margin-left:4px"><i class="ti ti-file-text"></i><span>${latest.revisi > 0 ? 'REV' + latest.revisi : 'Ada Record'}${latest.grand_total != null ? ' · Rp' + Number(latest.grand_total).toLocaleString('id-ID') : ''}</span></span>` : ''}`;
   const versiChip = records.length > 1
     ? `<span class="mi"><i class="ti ti-versions"></i><span>${records.length} versi tersimpan</span></span>`
     : '';
@@ -1727,6 +1766,30 @@ function renderRiwayatCard(s) {
       <span class="mi"><i class="ti ti-clock"></i><span>Selesai ${sesiTimeAgo(s.updated_at)}</span></span>
     </div>
   </div>`;
+}
+
+// Nulis hasil_order (manual, dari dropdown kartu riwayat) ke server. Optimistic
+// UI — dropdown udah kepilih duluan pas ini jalan — jadi kalau gagal, dropdown
+// dibalikin ke value lama + toast error, biar gak nampilin state yang gak
+// beneran kesimpen.
+async function persistHasilOrder(sesiId, value, selectEl) {
+  const prevValue = selectEl.dataset.prevValue || '';
+  selectEl.dataset.prevValue = value;
+  selectEl.classList.remove('hasil-order-jadi', 'hasil-order-tanpa', 'hasil-order-nunggu');
+  selectEl.classList.add(value === 'jadi_order' ? 'hasil-order-jadi' : value === 'tanpa_order' ? 'hasil-order-tanpa' : 'hasil-order-nunggu');
+  try {
+    const res = await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ hasil_order: value || null, updated_at: new Date().toISOString() })
+    });
+    if (!res.ok) throw new Error('PATCH gagal');
+  } catch (err) {
+    selectEl.value = prevValue;
+    selectEl.dataset.prevValue = prevValue;
+    selectEl.classList.remove('hasil-order-jadi', 'hasil-order-tanpa', 'hasil-order-nunggu');
+    selectEl.classList.add(prevValue === 'jadi_order' ? 'hasil-order-jadi' : prevValue === 'tanpa_order' ? 'hasil-order-tanpa' : 'hasil-order-nunggu');
+    showToast('Gagal simpan hasil order, coba lagi', 'error');
+  }
 }
 
 async function loadRiwayatList() {
@@ -1759,6 +1822,11 @@ async function loadRiwayatList() {
     riwayatList.innerHTML = data.map(renderRiwayatCard).join('');
     riwayatList.querySelectorAll('.riwayat-card').forEach(card => {
       card.addEventListener('click', () => openSesi(card.dataset.id));
+    });
+    riwayatList.querySelectorAll('.hasil-order-select').forEach(sel => {
+      sel.addEventListener('click', (e) => e.stopPropagation());
+      sel.addEventListener('mousedown', (e) => e.stopPropagation());
+      sel.addEventListener('change', (e) => persistHasilOrder(sel.dataset.id, sel.value, sel));
     });
   } catch (err) {
     renderListError(riwayatListError, err.message, loadRiwayatList);
@@ -1961,6 +2029,13 @@ function resetChecklistUI() {
   lastExportNamaSales = null;
   if (typeof btnDriveUpload !== 'undefined' && btnDriveUpload) btnDriveUpload.disabled = true;
   if (window.convFlow && typeof window.convFlow.reset === 'function') window.convFlow.reset();
+  // BUGFIX: isian tab "Buat SPH" (RS/Sales/Tanggal/Nomor/preview) nempel ke sesi
+  // SEBELUMNYA — sphPrefillFromSession() di sph-module.js sengaja cuma ngisi field
+  // kosong (biar gak nimpa ketikan manual DALAM 1 sesi yang sama), tapi itu bikin
+  // isian gak pernah kereset begitu pindah/tutup/buka sesi lain. sphFlow.reset()
+  // kosongin dulu di sini, biar sphPrefillFromSession() ngisi ulang FRESH dari
+  // sesi yang baru begitu tab SPH dibuka.
+  if (window.sphFlow && typeof window.sphFlow.reset === 'function') window.sphFlow.reset();
 }
 
 // ══════════════════════════════════════════════════════════════════════════
