@@ -1,4 +1,5 @@
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-08-13(6): fix "notif kolaborator (mode harga, dll) kadang muncul kadang enggak" — syncRealtimeAuth() dulu baca stokAccessToken (cache) langsung buat auth socket Realtime, dan cuma kepanggil pas event TOKEN_REFRESHED/(re)subscribe channel. Kalau tab di-background lama, timer refresh SDK bisa ke-throttle, socket kepasang token basi, dan RLS DIAM-DIAM nge-filter postgres_changes tanpa error apapun (beda dari REST yang minimal 401 kelihatan). Sekarang syncRealtimeAuth() ambil token fresh (getFreshToken()) + dipaksa kepanggil ulang pas tab balik visible (bukan cuma nunggu TOKEN_REFRESHED) — Claude
 // 2026-08-13(5): fix "mode harga (Swasta/E-Katalog) gak ikut realtime" — modeSwastaOutput dulu variabel lokal per-tab doang, gak pernah ditulis/dibaca dari sesi_konversi, jadi kolaborator yang buka sesi yang sama selalu mulai dari default E-Katalog walau pembuat sesi udah set Swasta (bisa keluar harga salah di Record/Export/SPH tanpa tanda apapun). Sekarang persisted ke kolom BARU sesi_konversi.mode_harga_swasta (perlu migration SQL manual dulu sebelum dipush, lihat catatan terpisah) + disinkron lewat handleSesiRowChange() sama kayak pagu/butuh_bantuan — Claude
 // 2026-08-13(4): fix duplikasi search-by-kode — matchOneKode() (Converter, ada retry timeout) dan addSetKodeToClip() (Cari SET Mendekati, TANPA retry) tadinya 2 salinan terpisah dari logika "exact match by kode via search_produk_dengan_harga", plus gak ada cache jadi kode duplikat dalam 1 batch paste = RPC berulang. Disatukan ke findProdukByKodeExact() + kodeExactCache (cache cuma hasil sukses, error tetap fresh-retry) — Claude
 // 2026-08-13(3): fix "kekick ke login padahal masih kerja" — sesiFetch()/rpc-manual-berautentikasi/upload/openPrModal dulu baca variabel stokAccessToken langsung (bisa basi kalau tab sempat di-background), sekarang lewat getFreshToken() (panggil PNMAuth.getAccessToken() -> cek-dan-refresh di momen request, bukan nunggu timer) — Claude
@@ -63,8 +64,16 @@ if (!rt) console.warn('Supabase Realtime SDK gagal dimuat — kolaborasi live ga
 // sama kayak dipakai sesiFetch() — kalau enggak, channel subscribe tapi gak pernah
 // nerima row apapun (RLS nge-filter diem-diem). Dipanggil tiap kali token baru
 // didapat/direfresh, sejalur sama titik-titik stokAccessToken diisi.
-function syncRealtimeAuth() {
-  if (rt && stokAccessToken) rt.realtime.setAuth(stokAccessToken);
+// FIX "notif kolaborator kadang muncul kadang enggak": dulu baca stokAccessToken
+// (cache) langsung — sama kelasnya sama bug "kekick ke login" di getFreshToken()
+// bawah, tapi di sini akibatnya lebih diam-diam: token basi bukan bikin error,
+// cuma bikin RLS nge-filter update orang lain tanpa tanda apapun, jadi kerasanya
+// "kadang jalan kadang enggak" tergantung sempat-gaknya tab di-background pas
+// token mepet expired. Sekarang ambil token fresh tiap dipanggil.
+async function syncRealtimeAuth() {
+  if (!rt) return;
+  const token = await getFreshToken();
+  if (token) rt.realtime.setAuth(token);
 }
 
 // FIX "kekick ke login padahal masih kerja": sesiFetch()/rpc-manual/upload di
@@ -2066,6 +2075,11 @@ function handleVisibilityForPresence() {
     }, 30000);
   } else {
     sesiPresenceChannel.track({ nama: currentDisplayName(), status: 'online', joined_at: new Date().toISOString() }).catch(() => {});
+    // Tab baru balik kelihatan — jangan andelin TOKEN_REFRESHED (bisa telat/
+    // ke-throttle browser pas tab tadi di-background), paksa re-sync token
+    // realtime di sini juga biar postgres_changes gak kena filter diam-diam
+    // gara-gara token basi (lihat komentar di syncRealtimeAuth()).
+    syncRealtimeAuth();
   }
 }
 
