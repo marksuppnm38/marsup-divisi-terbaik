@@ -784,7 +784,12 @@ async function renderSetRincianInLampiranModal(kode_produk) {
     </tr>`).join('');
 
   lampiranSetRincian.innerHTML = `
-    <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Rincian isi set — sama seperti sheet per-set di export Excel.</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+      <div style="font-size:12px;color:var(--text-muted)">Rincian isi set — sama seperti sheet per-set di export Excel.</div>
+      <button id="lampiran-copy-sheet-btn" title="Copy kode, deskripsi, qty — siap paste ke Google Sheet (tanpa gambar)" style="border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-size:12px;font-weight:500;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">
+        <i class="ti ti-copy"></i><span>Copy buat Sheet</span>
+      </button>
+    </div>
     <table style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="background:var(--accent-bg);color:var(--accent-text)">
@@ -798,6 +803,44 @@ async function renderSetRincianInLampiranModal(kode_produk) {
       <tbody>${rows}</tbody>
     </table>`;
   lampiranSetRincian.style.display = 'block';
+
+  // Tombol copy: kode + deskripsi (nama_produk) + qty aja, format TSV (tab-separated)
+  // biar pas di-paste ke Google Sheet langsung kepisah otomatis per kolom — gambar
+  // sengaja gak diikutkan karena gambar gak bisa ditempel lewat clipboard teks biasa.
+  const copyBtn = document.getElementById('lampiran-copy-sheet-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => copySetRincianToClipboard(items, copyBtn));
+  }
+}
+
+async function copySetRincianToClipboard(items, btnEl) {
+  const clean = (s) => String(s ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ').trim();
+  const tsv = items.map((it) => [clean(it.kode_produk), clean(it.nama_produk), it.qty ?? 1].join('\t')).join('\n');
+
+  try {
+    await navigator.clipboard.writeText(tsv);
+  } catch (e) {
+    // Fallback buat browser/context yang gak dukung Clipboard API (misal non-HTTPS)
+    const ta = document.createElement('textarea');
+    ta.value = tsv;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e2) {
+      showToast('Gagal copy ke clipboard: ' + (e2.message || e2), 'error');
+      document.body.removeChild(ta);
+      return;
+    }
+    document.body.removeChild(ta);
+  }
+
+  showToast(`Tersalin ${items.length} baris (kode, deskripsi, qty) — siap paste ke Google Sheet ✓`);
+  if (btnEl) {
+    const original = btnEl.innerHTML;
+    btnEl.innerHTML = '<i class="ti ti-check"></i><span>Tersalin!</span>';
+    setTimeout(() => { btnEl.innerHTML = original; }, 1500);
+  }
 }
 
 // Flow cari/render/upload PDF — sama persis kayak isi openLampiranModal yang
