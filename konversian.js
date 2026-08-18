@@ -2915,9 +2915,6 @@ function renderSkeletons(count) {
 let searchSeq = 0;
 async function runSearch() {
   const q = searchInput.value.trim();
-  console.log('DEBUG q:', JSON.stringify(q));
-  console.log('DEBUG codes:', [...q].map(c => c.charCodeAt(0)));
-  
   if (!q) { reset(); return; }
   const mySeq = ++searchSeq; // request lama yang telat balik nanti diabaikan, bukan nimpa hasil yang lebih baru
   errEl.style.display = 'none';
@@ -2931,8 +2928,6 @@ async function runSearch() {
     q, p_tipe: selectedTipe, only_akd: onlyAkd, only_kfa: false
   });
   if (mySeq !== searchSeq) return; // sudah ada pencarian lebih baru — buang hasil basi ini
-  console.log('DEBUG data length:', data ? data.length : null);
-  console.log('DEBUG error:', error);
 
   loadingEl.style.display = 'none'; // FIX: matikan loading begitu response datang (sebelum branching)
 
