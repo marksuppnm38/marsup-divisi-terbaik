@@ -395,7 +395,15 @@ const sphRecordBtn = document.getElementById('sph-record-btn');
 // sekali. Sekarang lewat SHEETS_PROXY_URL (Edge Function yang wajib verify
 // JWT dulu), pakai konstanta SUPABASE_URL yang sudah didefinisikan global di
 // konversian.js.
-const SHEETS_PROXY_URL = `${SUPABASE_URL}/functions/v1/sheets-webhook-proxy`;
+// BUGFIX 2026-08-18: SHEETS_PROXY_URL SUDAH dideklarasi duluan di
+// konversian.js (const, top-level) — konversian.js di-load SEBELUM file ini
+// lewat <script> classic biasa (bukan type="module"), jadi keduanya berbagi
+// satu global scope. Redeklarasi `const SHEETS_PROXY_URL` di sini bikin
+// browser lempar "Identifier 'SHEETS_PROXY_URL' has already been declared"
+// pas parsing file ini — akibatnya SELURUH sph-module.js gagal dieksekusi,
+// termasuk baris addEventListener buat tombol Generate SPH di paling bawah
+// (makanya tombolnya keliatan "gak ngapa-ngapain" pas diklik). Cukup numpang
+// pakai punya konversian.js, sama kayak SUPABASE_URL.
 const recordSphModal = document.getElementById('record-sph-modal');
 const rsphNomor = document.getElementById('rsph-nomor');
 const rsphDistributor = document.getElementById('rsph-distributor');
