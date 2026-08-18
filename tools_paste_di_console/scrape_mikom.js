@@ -101,30 +101,45 @@
       endPeriod: comp.endPeriod,
       shipment_city: comp.shipment?.city || "",
       shipment_province: comp.shipment?.province || "",
-      institution: comp.assignedUser?.institutionName || "",
-      total_penawaran_saya_versi_list: comp.total ?? ""
+      institution: comp.assignedUser?.institutionName || ""
     };
 
     const items = competitionData?.items || [];
     const proposals = competitionData?.proposals || [];
-    // Gabungkan semua item proposal dari semua proposal (biasanya cuma 1 proposal)
-    const myProposalItems = proposals.flatMap(p => (p.items || []).map(it => ({ ...it, proposalTotal: p.total, proposalId: p.id })));
+    // Kumpulkan SEMUA entry item dari SEMUA proposal (bisa lebih dari satu opsi produk per item)
+    const allProposalItems = proposals.flatMap(p =>
+      (p.items || []).map(it => ({ ...it, proposalTotal: p.total, proposalId: p.id }))
+    );
 
     if (items.length === 0) {
-      // Tidak ada detail item (mungkin masih berjalan / belum ada evaluasi)
       rows.push({ ...baseRow, note: "belum ada data evaluasi item" });
     } else {
       for (const item of items) {
-        const myItem = myProposalItems.find(mi => mi.competitionItemId === item.id);
+        // Cari kandidat harga saya untuk item ini
+        const candidates = allProposalItems.filter(mi => mi.competitionItemId === item.id);
+        // PRIORITASKAN yang isSelected === true; kalau tidak ada, ambil yang pertama tapi tandai
+        let myItem = candidates.find(c => c.isSelected === true);
+        let isPriceConfirmed = true;
+        if (!myItem && candidates.length > 0) {
+          myItem = candidates[0];
+          isPriceConfirmed = false; // harga ini bukan yang confirmed/selected, hati-hati
+        }
+
         const winner = item.winner || {};
         const hpsUnit = item.price ?? "";
         const qty = item.qty ?? "";
         const hpsTotalEst = (typeof hpsUnit === "number" && typeof qty === "number") ? hpsUnit * qty : "";
+
         const myUnit = myItem?.price ?? "";
-        const myTotal = myItem?.proposalTotal ?? "";
+        // Total dihitung ULANG dari unit x qty (apple-to-apple dengan winner.total),
+        // BUKAN pakai proposal.total mentah (bisa gabungan beberapa opsi produk / item lain)
+        const myTotalCalc = (typeof myUnit === "number" && typeof qty === "number") ? myUnit * qty : "";
         const winnerTotal = winner.total ?? "";
-        const gap = (typeof myTotal === "number" && typeof winnerTotal === "number" && winnerTotal !== 0)
-          ? (myTotal - winnerTotal) : "";
+        const winnerUnit = (typeof winnerTotal === "number" && typeof qty === "number" && qty !== 0)
+          ? winnerTotal / qty : "";
+
+        const gap = (typeof myTotalCalc === "number" && typeof winnerTotal === "number")
+          ? (myTotalCalc - winnerTotal) : "";
         const gapPct = (typeof gap === "number" && typeof winnerTotal === "number" && winnerTotal !== 0)
           ? ((gap / winnerTotal) * 100).toFixed(2) : "";
 
@@ -138,8 +153,10 @@
           hps_unit_price: hpsUnit,
           hps_total_estimasi: hpsTotalEst,
           harga_saya_per_unit: myUnit,
-          total_penawaran_saya: myTotal,
+          total_penawaran_saya: myTotalCalc,
+          harga_confirmed: isPriceConfirmed, // FALSE = data harga ini bukan opsi yang isSelected, perlu dicek manual
           pemenang_nama: winner.sellerName || (item.isNoWinner ? "TIDAK ADA PEMENANG" : ""),
+          pemenang_unit_price: winnerUnit,
           pemenang_total: winnerTotal,
           pemenang_rank: winner.rank ?? "",
           selisih_saya_vs_pemenang: gap,
@@ -164,8 +181,12 @@
   const blob = new Blob([tsv], { type: "text/tab-separated-values" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = "evaluasi-mikom-lengkap.tsv";
+  link.download = "evaluasi-mikom-lengkap-v2.tsv";
   link.click();
 
-  console.log(`Selesai! Total baris: ${rows.length}. File evaluasi-mikom-lengkap.tsv sudah didownload.`);
+  const unconfirmedCount = rows.filter(r => r.harga_confirmed === false).length;
+  console.log(`Selesai! Total baris: ${rows.length}. File evaluasi-mikom-lengkap-v2.tsv sudah didownload.`);
+  if (unconfirmedCount > 0) {
+    console.warn(`Perhatian: ${unconfirmedCount} baris punya harga_confirmed=false, artinya sistem tidak menandai opsi produk mana yang final dipakai — cek manual di halaman aslinya kalau perlu.`);
+  }
 })();
