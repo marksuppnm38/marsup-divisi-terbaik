@@ -2040,6 +2040,14 @@ document.querySelectorAll('.bulk-tab').forEach(btn => {
 function parsePasteLines(raw){
   return raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim() !== '').map(l => l.split('\t').map(c => c.trim()));
 }
+// Pecah array jadi potongan-potongan kecil sebelum dikirim ke RPC — satu potongan
+// = satu panggilan jaringan (bukan satu panggilan per baris kayak sebelumnya), dan
+// tetap di bawah cap ukuran batch yang divalidasi di sisi RPC (lihat bulk_rpc_migration.sql).
+function chunkArray(arr, size){
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 // ---- BULK HARGA ----
 let bulkHargaRows = [];
@@ -2096,14 +2104,27 @@ document.getElementById('bulkHargaProsesBtn').addEventListener('click', async ()
   const rows = bulkHargaRows.filter(r => r.status === 'ok');
   if (rows.length === 0) return;
   const btn = document.getElementById('bulkHargaProsesBtn');
+  const labelAsal = btn.textContent;
   btn.disabled = true;
+
+  // RPC bulk_upsert_harga: 1 panggilan hitung + upsert EKATALOG/SWASTA/UPLOAD
+  // sekaligus utk semua baris di batch itu (dulu: 3-6 query per baris di client).
+  const items = rows.map(r => ({ produk_id: r.produk.id, tahun: r.tahun, harga_ekat: r.hargaEkat }));
+  const chunks = chunkArray(items, 300);
   let sukses = 0, gagal = 0;
-  for (const r of rows) {
-    const ok = await upsertHargaDariEkat(r.produk.id, r.tahun, r.hargaEkat);
-    if (ok) sukses++; else gagal++;
+  for (let i = 0; i < chunks.length; i++) {
+    btn.textContent = chunks.length > 1 ? `Memproses batch ${i + 1}/${chunks.length}...` : labelAsal;
+    const { data, error } = await sb.rpc('bulk_upsert_harga', { p_items: chunks[i] });
+    if (error) {
+      console.error('BULK HARGA RPC ERROR (batch ' + (i + 1) + '):', JSON.stringify(error, null, 2));
+      gagal += chunks[i].length;
+    } else {
+      sukses += data?.processed ?? chunks[i].length;
+    }
   }
   btn.disabled = false;
-  showToast(`Selesai — ${sukses} produk ter-update${gagal ? `, ${gagal} gagal` : ''}`, gagal > 0);
+  btn.textContent = labelAsal;
+  showToast(`Selesai — ${sukses} produk ter-update${gagal ? `, ${gagal} baris gagal (lihat console)` : ''}`, gagal > 0);
   document.getElementById('bulkHargaPaste').value = '';
   document.getElementById('bulkHargaPreviewWrap').style.display = 'none';
   document.getElementById('bulkHargaSummary').innerHTML = '';
@@ -2163,14 +2184,25 @@ document.getElementById('bulkLinkProsesBtn').addEventListener('click', async () 
   const rows = bulkLinkRows.filter(r => r.status === 'ok');
   if (rows.length === 0) return;
   const btn = document.getElementById('bulkLinkProsesBtn');
+  const labelAsal = btn.textContent;
   btn.disabled = true;
+
+  const items = rows.map(r => ({ produk_id: r.produk.id, link: r.link }));
+  const chunks = chunkArray(items, 500);
   let sukses = 0, gagal = 0;
-  for (const r of rows) {
-    const { error } = await sb.from('produk').update({ link_v6: r.link }).eq('id', r.produk.id);
-    if (error) gagal++; else sukses++;
+  for (let i = 0; i < chunks.length; i++) {
+    btn.textContent = chunks.length > 1 ? `Memproses batch ${i + 1}/${chunks.length}...` : labelAsal;
+    const { data, error } = await sb.rpc('bulk_update_link_v6', { p_items: chunks[i] });
+    if (error) {
+      console.error('BULK LINK V6 RPC ERROR (batch ' + (i + 1) + '):', JSON.stringify(error, null, 2));
+      gagal += chunks[i].length;
+    } else {
+      sukses += data?.processed ?? chunks[i].length;
+    }
   }
   btn.disabled = false;
-  showToast(`Selesai — ${sukses} link ter-update${gagal ? `, ${gagal} gagal` : ''}`, gagal > 0);
+  btn.textContent = labelAsal;
+  showToast(`Selesai — ${sukses} link ter-update${gagal ? `, ${gagal} baris gagal (lihat console)` : ''}`, gagal > 0);
   document.getElementById('bulkLinkPaste').value = '';
   document.getElementById('bulkLinkPreviewWrap').style.display = 'none';
   document.getElementById('bulkLinkSummary').innerHTML = '';
@@ -2324,12 +2356,16 @@ document.getElementById('bulkInaprocProsesBtn').addEventListener('click', async 
     return;
   }
 
-  let sukses = 0, gagal = 0, diproses = 0, berhentiKarenaAuth = false;
-  const sisaRows = [];
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    btn.textContent = `Memproses ${i + 1}/${rows.length}...`;
-    const { error } = await sb.from('inaproc_pengajuan').upsert({
+  // RPC bulk_upsert_inaproc: 1 panggilan per CHUNK baris, bukan 1 panggilan per baris.
+  // CHUNK juga jadi unit retry kalau sesi putus di tengah jalan.
+  const CHUNK = 300;
+  const chunks = chunkArray(rows, CHUNK);
+
+  let sukses = 0, gagal = 0, diprosesRows = 0, berhentiKarenaAuth = false;
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    btn.textContent = `Memproses batch ${i + 1}/${chunks.length} (${diprosesRows}/${rows.length} baris)...`;
+    const items = chunk.map(r => ({
       nomor_permohonan: r.nomorPermohonan,
       nama_raw: r.nama,
       kode_produk_terbaca: r.kode,
@@ -2338,32 +2374,33 @@ document.getElementById('bulkInaprocProsesBtn').addEventListener('click', async 
       tgl_pengajuan: r.tgl,
       status: r.status,
       alasan_ditolak: r.alasan
-    }, { onConflict: 'nomor_permohonan' });
+    }));
+    const { data, error } = await sb.rpc('bulk_upsert_inaproc', { p_items: items });
     if (error) {
-      console.error('INAPROC UPSERT ERROR (baris ' + (i+1) + ', nomor ' + r.nomorPermohonan + '):', JSON.stringify(error, null, 2));
-      gagal++;
+      console.error('BULK INAPROC RPC ERROR (batch ' + (i + 1) + '):', JSON.stringify(error, null, 2));
       if (isAuthError(error)) {
         berhentiKarenaAuth = true;
-        sisaRows.push(...rows.slice(i)); // simpan baris ini + sisanya yang belum sempat dicoba
-        break;
+        break; // chunk ini + sisanya belum sempat dicoba, dihitung dari diprosesRows di bawah
       }
+      gagal += chunk.length;
     } else {
-      sukses++;
+      sukses += data?.processed ?? chunk.length;
     }
-    diproses++;
+    diprosesRows += chunk.length;
   }
   btn.disabled = false;
   btn.textContent = btnLabelAsal;
 
   if (berhentiKarenaAuth) {
-    showToast(`Berhenti di baris ${diproses + 1}/${rows.length} — sesi login expired. Refresh halaman, login ulang, lalu klik Proses lagi buat lanjutin ${sisaRows.length} baris sisanya.`, true);
+    const sisaRows = rows.slice(diprosesRows);
+    showToast(`Berhenti di baris ${diprosesRows + 1}/${rows.length} — sesi login expired. Refresh halaman, login ulang, lalu klik Proses lagi buat lanjutin ${sisaRows.length} baris sisanya.`, true);
     // ganti isi bulkInaprocRows dengan sisa baris yang belum ke-proses, biar preview & tombol tetap muncul
     bulkInaprocRows = bulkInaprocRows.filter(r => r.status_ !== 'ok').concat(sisaRows);
     renderBulkInaprocPreview();
     return;
   }
 
-  showToast(`Selesai — ${sukses} pengajuan tersimpan${gagal ? `, ${gagal} gagal` : ''}`, gagal > 0);
+  showToast(`Selesai — ${sukses} pengajuan tersimpan${gagal ? `, ${gagal} baris gagal (lihat console)` : ''}`, gagal > 0);
   document.getElementById('bulkInaprocPaste').value = '';
   document.getElementById('bulkInaprocPreviewWrap').style.display = 'none';
   document.getElementById('bulkInaprocSummary').innerHTML = '';
