@@ -2054,25 +2054,34 @@ let bulkHargaRows = [];
 document.getElementById('bulkHargaPreviewBtn').addEventListener('click', async () => {
   const lines = parsePasteLines(document.getElementById('bulkHargaPaste').value);
   if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
-  const kodeSet = [...new Set(lines.map(l => l[0]).filter(Boolean))];
-  const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk, nama_produk').in('kode_produk', kodeSet);
-  if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
-  const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
+  const btn = document.getElementById('bulkHargaPreviewBtn');
+  const btnHtmlAsal = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span> Memeriksa ${lines.length} baris...`;
+  try {
+    const kodeSet = [...new Set(lines.map(l => l[0]).filter(Boolean))];
+    const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk, nama_produk').in('kode_produk', kodeSet);
+    if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
+    const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
 
-  bulkHargaRows = lines.map(l => {
-    const [kode, tahunStr, hargaStr] = l;
-    const tahun = parseInt(tahunStr, 10);
-    const hargaEkat = parseFloat((hargaStr || '').replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.'));
-    const produk = byKode[kode];
-    let status = 'ok', msg = 'Siap diproses';
-    if (!kode) { status = 'err'; msg = 'Kode produk kosong'; }
-    else if (!produk) { status = 'err'; msg = 'Kode produk tidak ditemukan'; }
-    else if (!tahun) { status = 'err'; msg = 'Tahun tidak valid'; }
-    else if (isNaN(hargaEkat)) { status = 'err'; msg = 'Harga tidak valid'; }
-    return { kode, tahun, hargaEkat, produk, status, msg };
-  });
+    bulkHargaRows = lines.map(l => {
+      const [kode, tahunStr, hargaStr] = l;
+      const tahun = parseInt(tahunStr, 10);
+      const hargaEkat = parseFloat((hargaStr || '').replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.'));
+      const produk = byKode[kode];
+      let status = 'ok', msg = 'Siap diproses';
+      if (!kode) { status = 'err'; msg = 'Kode produk kosong'; }
+      else if (!produk) { status = 'err'; msg = 'Kode produk tidak ditemukan'; }
+      else if (!tahun) { status = 'err'; msg = 'Tahun tidak valid'; }
+      else if (isNaN(hargaEkat)) { status = 'err'; msg = 'Harga tidak valid'; }
+      return { kode, tahun, hargaEkat, produk, status, msg };
+    });
 
-  renderBulkHargaPreview();
+    renderBulkHargaPreview();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = btnHtmlAsal;
+  }
 });
 function renderBulkHargaPreview(){
   const wrap = document.getElementById('bulkHargaPreviewWrap');
@@ -2142,21 +2151,30 @@ let bulkLinkRows = [];
 document.getElementById('bulkLinkPreviewBtn').addEventListener('click', async () => {
   const lines = parsePasteLines(document.getElementById('bulkLinkPaste').value);
   if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
-  const kodeSet = [...new Set(lines.map(l => l[0]).filter(Boolean))];
-  const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk, nama_produk, link_v6').in('kode_produk', kodeSet);
-  if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
-  const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
+  const btn = document.getElementById('bulkLinkPreviewBtn');
+  const btnHtmlAsal = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span> Memeriksa ${lines.length} baris...`;
+  try {
+    const kodeSet = [...new Set(lines.map(l => l[0]).filter(Boolean))];
+    const { data: produkRows, error } = await sb.from('produk').select('id, kode_produk, nama_produk, link_v6').in('kode_produk', kodeSet);
+    if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
+    const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
 
-  bulkLinkRows = lines.map(l => {
-    const [kode, link] = l;
-    const produk = byKode[kode];
-    let status = 'ok', msg = 'Siap diproses';
-    if (!kode) { status = 'err'; msg = 'Kode produk kosong'; }
-    else if (!produk) { status = 'err'; msg = 'Kode produk tidak ditemukan'; }
-    else if (!link) { status = 'err'; msg = 'Link kosong'; }
-    return { kode, link, produk, status, msg };
-  });
-  renderBulkLinkPreview();
+    bulkLinkRows = lines.map(l => {
+      const [kode, link] = l;
+      const produk = byKode[kode];
+      let status = 'ok', msg = 'Siap diproses';
+      if (!kode) { status = 'err'; msg = 'Kode produk kosong'; }
+      else if (!produk) { status = 'err'; msg = 'Kode produk tidak ditemukan'; }
+      else if (!link) { status = 'err'; msg = 'Link kosong'; }
+      return { kode, link, produk, status, msg };
+    });
+    renderBulkLinkPreview();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = btnHtmlAsal;
+  }
 });
 function renderBulkLinkPreview(){
   const wrap = document.getElementById('bulkLinkPreviewWrap');
@@ -2235,6 +2253,11 @@ let bulkInaprocRows = [];
 document.getElementById('bulkInaprocPreviewBtn').addEventListener('click', async () => {
   const lines = parsePasteLines(document.getElementById('bulkInaprocPaste').value);
   if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
+  const btn = document.getElementById('bulkInaprocPreviewBtn');
+  const btnHtmlAsal = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span> Memeriksa ${lines.length} baris...`;
+  try {
 
   const parsedRaw = lines.map(l => {
     const [, nama, kategori, nomorPermohonan, tglStr, status, alasan] = l;
@@ -2289,6 +2312,10 @@ document.getElementById('bulkInaprocPreviewBtn').addEventListener('click', async
   let produkRows = [];
   for (let i = 0; i < kodeList.length; i += CHUNK_SIZE) {
     const chunk = kodeList.slice(i, i + CHUNK_SIZE);
+    const totalChunks = Math.ceil(kodeList.length / CHUNK_SIZE);
+    if (totalChunks > 1) {
+      btn.innerHTML = `<span class="spinner"></span> Memeriksa produk (${Math.floor(i / CHUNK_SIZE) + 1}/${totalChunks})...`;
+    }
     const { data, error } = await sb.from('produk').select('id, kode_produk').in('kode_produk', chunk);
     if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
     produkRows = produkRows.concat(data || []);
@@ -2305,6 +2332,10 @@ document.getElementById('bulkInaprocPreviewBtn').addEventListener('click', async
     return { ...p, produk, status_, msg };
   });
   renderBulkInaprocPreview();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = btnHtmlAsal;
+  }
 });
 function renderBulkInaprocPreview(){
   const wrap = document.getElementById('bulkInaprocPreviewWrap');
