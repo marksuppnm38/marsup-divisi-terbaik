@@ -63,7 +63,7 @@ themeToggle.addEventListener('click', () => {
 // ---- Sidebar nav (stub views) ----
 function switchView(view){
   document.querySelectorAll('.sb-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  ['produk','dashboard','set','akd','kfa','bulk'].forEach(v => {
+  ['produk','set','akd','kfa','bulk'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
   document.getElementById('addBtn').style.display = (view === 'produk') ? '' : 'none';
