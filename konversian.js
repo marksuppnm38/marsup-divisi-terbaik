@@ -1,4 +1,5 @@
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-08-18: SECURITY — RLS produk/produk_harga/produk_set_item/akd/produk_akd/master_produk diketatin dari publik jadi allowed_users-only (harga_swasta sempat bisa dibaca siapa aja tanpa login). getProdukId/rpc()/getSetItems/enrichStok diganti dari ANON_KEY mentah ke sesiFetch(token sesi). Login gate sekarang juga checkWhitelist() ke allowed_users (dulu cuma cek kredensial valid, gak cek whitelist) — Claude
 // 2026-08-13(7): 3 behavior fix fundamental (per diskusi manual): (a) isian tab Buat SPH nempel ke SPH terakhir — sph-module.js sekarang expose window.sphFlow.reset() dipanggil dari resetChecklistUI(); (b) nambah tombol "Keluar dari Sesi" (btn-leave-sesi) — beda dari Selesaikan Sesi, cuma bersihin tampilan lokal, GAK ngubah status server, sesi tetap 'berjalan'; (c) badge "Jadi Order"/"Ditutup Tanpa Order" di kartu riwayat dulu auto-derived dari ada-gaknya konversi_record (keliru — itu nunjukin "Record diklik", bukan "beneran jadi order"), sekarang dropdown manual hasil_order (kolom BARU sesi_konversi, perlu migration SQL manual dulu, lihat catatan terpisah), default null = "Menunggu Feedback Sales" — Claude
 // 2026-08-13(6): fix "notif kolaborator (mode harga, dll) kadang muncul kadang enggak" — syncRealtimeAuth() dulu baca stokAccessToken (cache) langsung buat auth socket Realtime, dan cuma kepanggil pas event TOKEN_REFRESHED/(re)subscribe channel. Kalau tab di-background lama, timer refresh SDK bisa ke-throttle, socket kepasang token basi, dan RLS DIAM-DIAM nge-filter postgres_changes tanpa error apapun (beda dari REST yang minimal 401 kelihatan). Sekarang syncRealtimeAuth() ambil token fresh (getFreshToken()) + dipaksa kepanggil ulang pas tab balik visible (bukan cuma nunggu TOKEN_REFRESHED) — Claude
 // 2026-08-13(5): fix "mode harga (Swasta/E-Katalog) gak ikut realtime" — modeSwastaOutput dulu variabel lokal per-tab doang, gak pernah ditulis/dibaca dari sesi_konversi, jadi kolaborator yang buka sesi yang sama selalu mulai dari default E-Katalog walau pembuat sesi udah set Swasta (bisa keluar harga salah di Record/Export/SPH tanpa tanda apapun). Sekarang persisted ke kolom BARU sesi_konversi.mode_harga_swasta (perlu migration SQL manual dulu sebelum dipush, lihat catatan terpisah) + disinkron lewat handleSesiRowChange() sama kayak pagu/butuh_bantuan — Claude
@@ -157,6 +158,32 @@ function showGate(msg) {
   if (msg) { gateStatus.style.color = 'var(--danger)'; gateStatus.textContent = msg; }
 }
 
+// SECURITY FIX 2026-08-18: dulu file ini cuma ngecek "kredensial valid di
+// Supabase Auth" — TIDAK pernah ngecek allowed_users kayak crud-produk.js.
+// Sekarang RLS produk/produk_harga/dll udah diketatin ke allowed_users doang
+// (lihat 14_restrict_catalog_read_to_internal.sql), jadi orang yang berhasil
+// login tapi gak terdaftar tetap gak bisa lihat data apa pun — tapi tanpa
+// cek ini, pengalamannya jadi "app-nya kosong/gak jalan" (bikin bingung),
+// bukan pesan yang jujur soal kenapa. checkWhitelist() nutup celah UX itu,
+// SAMA PERSIS pola checkWhitelistAndShowApp() di crud-produk.js.
+async function checkWhitelist(session) {
+  const email = (session.user.email || '').toLowerCase();
+  const r = await sesiFetch(`allowed_users?select=email&email=eq.${encodeURIComponent(email)}&limit=1`);
+  if (!r.ok) {
+    // Query gagal (network/timeout dll) — BUKAN bukti email nggak terdaftar.
+    // Jangan sign-out paksa gara-gara koneksi bermasalah.
+    showGate('Gagal cek akses (koneksi bermasalah), coba lagi.');
+    return false;
+  }
+  const rows = await r.json();
+  if (!rows || !rows.length) {
+    await PNMAuth.logout();
+    showGate('Email ' + email + ' belum terdaftar sebagai tim. Hubungi admin kalau ini seharusnya salah.');
+    return false;
+  }
+  return true;
+}
+
 // refreshAuthSession() manual SUDAH DIGANTIKAN oleh autoRefreshToken bawaan
 // SDK (diaktifkan di shared/supabase-client.js) — PNMAuth.getSession() di
 // bawah otomatis kepicu refresh sendiri kalau token yang tersimpan sudah
@@ -167,6 +194,7 @@ async function initAuth() {
   if (!session) { showGate(); return; }
   stokAccessToken = session.access_token;
   currentUser = session.user ? { id: session.user.id, email: session.user.email } : null;
+  if (!(await checkWhitelist(session))) return; // showGate() sudah dipanggil di dalamnya kalau gagal
   syncRealtimeAuth();
   showApp();
 }
@@ -205,6 +233,7 @@ gateLoginBtn.addEventListener('click', async () => {
     const { session } = await PNMAuth.login(email, password);
     stokAccessToken = session.access_token;
     currentUser = session.user ? { id: session.user.id, email: session.user.email } : null;
+    if (!(await checkWhitelist(session))) return; // showGate() sudah dipanggil di dalamnya kalau gagal
     syncRealtimeAuth();
     gatePassword.value = '';
     showApp();
@@ -550,9 +579,7 @@ let lampiranCurrentKode = null;
 let lampiranCurrentFilename = null;
 
 async function getProdukId(kode_produk) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/produk?kode_produk=eq.${encodeURIComponent(kode_produk)}&select=id&limit=1`, {
-    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY}
-  });
+  const r = await sesiFetch(`produk?kode_produk=eq.${encodeURIComponent(kode_produk)}&select=id&limit=1`);
   const data = await r.json();
   return (data && data.length) ? data[0].id : null;
 }
@@ -2802,9 +2829,8 @@ const modalSub = document.getElementById('modal-sub');
 
 // SUPABASE
 async function rpc(fn, params) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+  const res = await sesiFetch(`rpc/${fn}`, {
     method: 'POST',
-    headers: {'Content-Type':'application/json','apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY},
     body: JSON.stringify(params)
   });
   const data = await res.json();
@@ -3449,16 +3475,13 @@ function setProgress(current, total, label) {
 
 // GET SET ITEMS
 async function getSetItems(kode_produk) {
-  const r1 = await fetch(`${SUPABASE_URL}/rest/v1/produk?kode_produk=eq.${encodeURIComponent(kode_produk)}&select=id&limit=1`, {
-    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY}
-  });
+  const r1 = await sesiFetch(`produk?kode_produk=eq.${encodeURIComponent(kode_produk)}&select=id&limit=1`);
   const prodList = await r1.json();
   if (!prodList || !prodList.length) return [];
   const set_id = prodList[0].id;
-  
-  const r2 = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_set_items`, {
+
+  const r2 = await sesiFetch(`rpc/get_set_items`, {
     method: 'POST',
-    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY,'Content-Type':'application/json'},
     body: JSON.stringify({p_set_id: set_id})
   });
   const data = await r2.json();
@@ -4499,10 +4522,7 @@ async function enrichNonSetStok(results) {
 
   try {
     const inList = kodeAsliList.map(k => `"${k.replace(/"/g,'')}"`).join(',');
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/v_stok_status?kode_asli=in.(${inList})&select=kode_asli,qty,status`,
-      { headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + ANON_KEY } }
-    );
+    const res = await sesiFetch(`v_stok_status?kode_asli=in.(${inList})&select=kode_asli,qty,status`);
     if (!res.ok) return; // kalau gagal, biarin badge stok gak muncul, jangan blokir search
     const stokData = await res.json();
     const stokMap = new Map(stokData.map(s => [s.kode_asli, s]));
@@ -4522,10 +4542,7 @@ async function enrichSetStok(results) {
 
   try {
     const inList = kodeSetList.map(k => `"${k.replace(/"/g,'')}"`).join(',');
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/v_stok_status_set?kode_produk=in.(${inList})&select=kode_produk,buildable_qty,status,jumlah_komponen,jumlah_komponen_terdata`,
-      { headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + ANON_KEY } }
-    );
+    const res = await sesiFetch(`v_stok_status_set?kode_produk=in.(${inList})&select=kode_produk,buildable_qty,status,jumlah_komponen,jumlah_komponen_terdata`);
     if (!res.ok) return;
     const stokData = await res.json();
     const stokMap = new Map(stokData.map(s => [s.kode_produk, s]));
