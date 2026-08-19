@@ -585,8 +585,13 @@ async function getProdukId(kode_produk) {
 }
 
 async function getSavedBrosurUrl(produk_id) {
+  // Dulu sengaja pakai ANON_KEY karena policy anon_select brosur mengizinkan itu.
+  // Sekarang policy-nya sudah disempitkan ke `authenticated` saja, jadi wajib
+  // pakai token sesi user yang login, konsisten sama fungsi lain di file ini.
+  const token = await getFreshToken();
+  if (!token) return null; // belum/nggak login — anggap saja belum ada brosur tersimpan
   const r = await fetch(`${SUPABASE_URL}/rest/v1/produk_media?produk_id=eq.${produk_id}&jenis=eq.brosur&select=url&limit=1`, {
-    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+ANON_KEY}
+    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+token}
   });
   const data = await r.json();
   return (data && data.length) ? data[0].url : null;
@@ -600,9 +605,14 @@ async function listLampiranBucket() {
   // memang punya URL publik utk file individual (by design), tapi listing massal
   // gak perlu ikut dibuka ke non-user — sekarang pakai token sesi user yang login.
   const listToken = await getFreshToken();
+  // SECURITY FIX (round 2): fallback `|| ANON_KEY` di sini sebenarnya membatalkan
+  // fix di comment lama di atas — kalau getFreshToken() balikin null (sesi habis),
+  // request tetep jalan pakai anon key, jadi listing bucket bisa diakses ulang tanpa
+  // login. Sekarang wajib ada token sesi; kalau nggak ada, gagal terang-terangan.
+  if (!listToken) throw new Error('Sesi login sudah habis / belum login — silakan login ulang dulu.');
   const r = await fetch(`${SUPABASE_URL}/storage/v1/object/list/lampiran-unit`, {
     method: 'POST',
-    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+(listToken || ANON_KEY),'Content-Type':'application/json'},
+    headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+listToken,'Content-Type':'application/json'},
     body: JSON.stringify({prefix:'', limit:1000, offset:0, sortBy:{column:'name',order:'asc'}})
   });
   const data = await r.json();
