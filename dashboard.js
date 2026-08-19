@@ -281,12 +281,20 @@ function clearError(){ document.getElementById('err-banner').classList.remove('s
 // cuma anon key) supaya RLS produk/produk_harga konsisten dengan
 // tools lain. Kalau token expired di tengah jalan, lempar ke gate lagi.
 async function rpc(fn, params){
+  // SECURITY FIX: dulu fallback ke ANON_KEY kalau accessToken belum/nggak ke-set
+  // (race condition saat load, atau token expired) — artinya RPC ini bisa diam-diam
+  // jalan sebagai anon. Sekarang wajib ada token sesi user yang login; kalau nggak,
+  // lempar ke gate daripada nembak pakai anon key.
+  if (!accessToken) {
+    showGate('Sesi kamu sudah habis, silakan masuk lagi.');
+    throw new Error('unauthorized: no access token');
+  }
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'apikey': ANON_KEY,
-      'Authorization': 'Bearer ' + (accessToken || ANON_KEY)
+      'Authorization': 'Bearer ' + accessToken
     },
     body: JSON.stringify(params || {})
   });
