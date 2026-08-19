@@ -174,30 +174,63 @@
     }).join(" || ");
   }
 
-  // ---------- v11: data terstruktur SEMUA seller (bukan cuma isCurrentUserSeller) utk item ini ----------
-  // Dipakai buat kolom baru kompetitor_produk_json -- gampang di-parse/pivot belakangan.
-  function buildCompetitorProducts(entries, itemId) {
-    if (!entries || entries.length === 0) return [];
-    return entries.map(e => {
+  // ---------- v12: File 2 (long/tidy format) -- 1 baris = 1 kompetitor per item ----------
+  // Dipanggil sekali per item, isi detailRowsOut & uniqueProductsMapOut (side-effect, biar gak perlu return besar).
+  function pushCompetitorDetailRows(entries, itemId, ctx, detailRowsOut, uniqueProductsMapOut) {
+    if (!entries || entries.length === 0) return;
+    entries.forEach((e, idx) => {
       const detail = (e.items || []).find(d => d.competitionDetailId === itemId) || (e.items || [])[0] || {};
-      return {
-        sellerName: e.sellerName || "",
-        isMe: !!e.isCurrentUserSeller,
-        proposalStatus: e.status ?? "",
-        total: e.total ?? "",
-        productName: detail.productName ?? "",
-        productPath: detail.productPath ?? "",
-        productId: detail.productId ?? "",
-        productVersion: detail.productVersion ?? "",
-        price: detail.price ?? "",
-        subtotalWithTax: detail.subtotalWithTax ?? "",
+
+      detailRowsOut.push({
+        competition_id: ctx.compId,
+        competition_title: ctx.compTitle,
+        competition_status: ctx.compStatus,
+        item_id: itemId,
+        item_name: ctx.itemName,
+        category_item: ctx.categoryItem,
+        item_qty: ctx.qty,
+        item_unit: ctx.itemUnit,
+        posisi_ranking: idx + 1,
+        seller_name: e.sellerName || "",
+        is_saya: e.isCurrentUserSeller ? "YA" : "",
+        proposal_status: e.status ?? "",
+        total_proposal: e.total ?? "",
+        harga_penawaran_item: detail.price ?? "",
+        subtotal_with_tax: detail.subtotalWithTax ?? "",
         tkdn: detail.tkdn ?? "",
         bmp: detail.bmp ?? "",
-        isPdn: detail.isPdn ?? "",
-        itemStatus: detail.status ?? "",
+        is_pdn: detail.isPdn ?? "",
+        item_status: detail.status ?? "",
         reason: detail.reason ?? "",
-        subReason: detail.subReason ?? ""
-      };
+        sub_reason: detail.subReason ?? "",
+        product_id: detail.productId ?? "",
+        product_version: detail.productVersion ?? "",
+        product_path: detail.productPath ?? "",
+        product_name: detail.productName ?? ""
+      });
+
+      // ---------- File 3: dedupe produk unik per (seller, product) biar gak scrape toko yg sama berkali-kali ----------
+      const prodKey = detail.productId
+        ? `id:${detail.productId}`
+        : (detail.productPath ? `path:${detail.productPath}` : `name:${e.sellerName}|${detail.productName}`);
+      if (!prodKey || prodKey === "id:" || prodKey === "path:") return;
+
+      if (!uniqueProductsMapOut.has(prodKey)) {
+        uniqueProductsMapOut.set(prodKey, {
+          seller_name: e.sellerName || "",
+          is_saya: e.isCurrentUserSeller ? "YA" : "",
+          product_id: detail.productId || "",
+          product_path: detail.productPath || "",
+          product_name: detail.productName || "",
+          competitionIds: new Set(),
+          hargaPenawaranTerlihat: new Set()
+        });
+      }
+      const rec = uniqueProductsMapOut.get(prodKey);
+      rec.competitionIds.add(ctx.compId);
+      if (detail.price !== undefined && detail.price !== null && detail.price !== "") {
+        rec.hargaPenawaranTerlihat.add(detail.price);
+      }
     });
   }
 
@@ -366,7 +399,9 @@
   console.log(`Selesai ambil daftar. Total kompetisi: ${allItems.length}`);
 
   // ---------- 2. Ambil detail evaluasi + ranking (GraphQL) + snapshot produk tiap kompetisi ----------
-  const rows = [];
+  const rows = [];           // File 1: ringkasan, 1 baris per item
+  const detailRows = [];     // File 2: long/tidy, 1 baris per kompetitor per item
+  const uniqueProducts = new Map(); // File 3: dedupe produk kompetitor unik (buat di-scrape ke toko masing2)
   const skippedComps = [];
   let i = 0;
   for (const comp of allItems) {
@@ -445,7 +480,6 @@
         // ---------- ranking + alasan kalah dari GraphQL (SEMUA seller, gak cuma saya) ----------
         const rankingResult = await fetchRanking(comp.id, item.id);
         const myReason = extractMyReason(rankingResult.entries, item.id);
-        const competitorProducts = buildCompetitorProducts(rankingResult.entries, item.id);
         await sleep(200);
 
         // ---------- nama produk item saya: utamakan dari GraphQL, fallback scrape HTML kalau kosong ----------
@@ -454,6 +488,17 @@
           productName = await fetchProductName(comp.id, item.id);
           await sleep(150);
         }
+
+        // ---------- v12: isi File 2 (long format per kompetitor) + File 3 (produk unik) ----------
+        pushCompetitorDetailRows(rankingResult.entries, item.id, {
+          compId: comp.id,
+          compTitle: comp.title,
+          compStatus: comp.status,
+          itemName: productName || myReason.productName || "",
+          categoryItem: item.category?.name || "",
+          qty,
+          itemUnit: item.unit || ""
+        }, detailRows, uniqueProducts);
 
         // ---------- snapshot produk tayang punya SAYA (detail paling lengkap: spek, gambar, dll) ----------
         let productSnapshot = { ok: false, raw: null };
@@ -493,8 +538,7 @@
           alasan_kalah: myReason.reason,
           alasan_kalah_detail: myReason.subReason,
           ranking_summary: buildRankingSummary(rankingResult.entries, item.id),
-          // ---------- NEW v11: data produk + TKDN/BMP/PDN + alasan SEMUA kompetitor, sudah tersedia di response ranking yang sama ----------
-          kompetitor_produk_json: JSON.stringify(competitorProducts),
+          // (detail per-kompetitor + produk unik sekarang ada di File 2 & File 3, lihat akhir script)
           // ---------- produk tayang punya SAYA (dari /snapshot-product) ----------
           produk_tayang_fetch_ok: productSnapshot.ok,
           produk_tayang_nama: productSnapshot.nama || "",
@@ -517,20 +561,44 @@
     await sleep(250);
   }
 
-  // ---------- 3. Build TSV ----------
-  const allColumns = new Set();
-  rows.forEach(r => Object.keys(r).forEach(k => allColumns.add(k)));
-  const columns = [...allColumns];
+  // ---------- 3. Build & download 3 file TSV ----------
   const escape = (v) => String(v ?? "").replace(/\t/g, " ").replace(/\n/g, " ").replace(/\r/g, "");
-  const header = columns.join("\t");
-  const body = rows.map(r => columns.map(c => escape(r[c])).join("\t")).join("\n");
-  const tsv = header + "\n" + body;
 
-  const blob = new Blob([tsv], { type: "text/tab-separated-values" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "evaluasi-mikom-lengkap-v11.tsv";
-  link.click();
+  function downloadTSV(dataRows, filename) {
+    if (dataRows.length === 0) {
+      console.warn(`${filename}: tidak ada baris, skip download.`);
+      return;
+    }
+    const cols = new Set();
+    dataRows.forEach(r => Object.keys(r).forEach(k => cols.add(k)));
+    const columns = [...cols];
+    const header = columns.join("\t");
+    const body = dataRows.map(r => columns.map(c => escape(r[c])).join("\t")).join("\n");
+    const tsv = header + "\n" + body;
+    const blob = new Blob([tsv], { type: "text/tab-separated-values" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+  }
+
+  // File 1: ringkasan per item (harga saya vs pemenang, status, alasan_kalah, dll)
+  downloadTSV(rows, "1-ringkasan-per-item-v12.tsv");
+
+  // File 2: long/tidy format, 1 baris = 1 kompetitor per item -- gampang di-pivot/filter di Excel
+  downloadTSV(detailRows, "2-detail-per-kompetitor-v12.tsv");
+
+  // File 3: daftar unik produk kompetitor -- feed ini ke scraper toko terpisah biar gak scrape yg sama 2x
+  const uniqueProductRows = [...uniqueProducts.values()].map(rec => ({
+    seller_name: rec.seller_name,
+    is_saya: rec.is_saya,
+    product_id: rec.product_id,
+    product_path: rec.product_path,
+    product_name: rec.product_name,
+    jumlah_kompetisi_muncul: rec.competitionIds.size,
+    harga_penawaran_terlihat: [...rec.hargaPenawaranTerlihat].join(", ")
+  }));
+  downloadTSV(uniqueProductRows, "3-produk-kompetitor-unik-v12.tsv");
 
   if (skippedComps.length > 0) {
     const skippedTsv = "id\tkey\ttitle\n" + skippedComps.map(c => `${c.id}\t${c.key}\t${escape(c.title)}`).join("\n");
@@ -547,7 +615,7 @@
   const missingProductNameCount = rows.filter(r => "nama_produk_item" in r && !r.nama_produk_item).length;
   const snapshotFailCount = rows.filter(r => r.produk_tayang_fetch_ok === false).length;
 
-  console.log(`Selesai! Total baris: ${rows.length}. File evaluasi-mikom-lengkap-v11.tsv sudah didownload.`);
+  console.log(`Selesai! ${rows.length} baris ringkasan item, ${detailRows.length} baris detail kompetitor, ${uniqueProductRows.length} produk kompetitor unik. 3 file TSV sudah didownload.`);
   if (skippedComps.length > 0) {
     console.warn(`PENTING: ${skippedComps.length} kompetisi BELUM diproses krn token/session expired di tengah jalan. File SISA-belum-diproses-refresh-lalu-rerun.tsv sudah didownload berisi daftarnya. Silakan REFRESH HALAMAN (biar dapet token baru), lalu jalankan script ini lagi -- baris yang sudah ada gak akan hilang, cukup gabung 2 file TSV-nya nanti.`);
   }
