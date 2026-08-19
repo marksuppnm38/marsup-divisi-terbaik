@@ -35,41 +35,7 @@
     return null;
   }
 
-  // Cari object pertama yang cocok salah satu dari beberapa kandidat key (urutan prioritas)
-  function findFirstKeyDeep(obj, targetKeys, seen = new Set()) {
-    for (const key of targetKeys) {
-      const found = findKeyDeep(obj, key, new Set());
-      if (found !== null && found !== undefined) return { key, value: found };
-    }
-    return null;
-  }
-
-  // ---------- NEW v8: cari object mana pun yang punya property bernilai persis `targetValue`.
-  // Ini lebih robust daripada nebak nama key: berapapun namanya, kalau ada objek dengan
-  // field yg nilainya == productId yang kita cari, itu HAMPIR PASTI object detail produknya
-  // (karena productId biasanya jadi salah satu field di object detail tsb).
-  function findObjectsContainingValue(root, targetValue, seen = new Set()) {
-    const results = [];
-    function walk(obj) {
-      if (obj === null || typeof obj !== "object") return;
-      if (seen.has(obj)) return;
-      seen.add(obj);
-      if (!Array.isArray(obj)) {
-        for (const v of Object.values(obj)) {
-          if (v === targetValue) {
-            results.push(obj);
-            break;
-          }
-        }
-      }
-      const values = Array.isArray(obj) ? obj : Object.values(obj);
-      for (const v of values) walk(v);
-    }
-    walk(root);
-    return results;
-  }
-
-  // ---------- NEW v4: fetch ranking via GraphQL (ini yang beneran punya data "kenapa kalah") ----------
+  // ---------- GraphQL ranking query ----------
   const RANKING_QUERY = `query minikomProposalRanking($_v1_input: ProposalRankingInput!) {
     _v1_minikomProposalRanking: minikomProposalRanking(input: $_v1_input) {
       ... on ProposalRankingResponse {
@@ -119,11 +85,7 @@
     }
   }`;
 
-  // ---------- NEW v8: circuit breaker kalau token/session expired di tengah jalan ----------
-  // Kalau GraphQL balikin non-2xx berkali-kali berturut-turut, kemungkinan besar
-  // gtp.accessToken sudah expired (token-nya short-lived, ~15 menit) dan REFRESH HALAMAN
-  // gak akan kebantu tanpa rerun script. Daripada nyoba 400 terus sampai kelar (buang waktu +
-  // ngerusak data jadi seolah "belum ada ranking"), kita stop lebih awal & kasih tau user.
+  // ---------- Circuit breaker kalau token/session expired di tengah jalan ----------
   let consecutiveGraphQLFailures = 0;
   const MAX_CONSECUTIVE_GRAPHQL_FAILURES = 5;
   let tokenLikelyExpired = false;
@@ -194,19 +156,52 @@
     };
   }
 
-  function buildRankingSummary(entries) {
+  // ---------- v11: ringkasan ranking, sekarang termasuk produk + TKDN/BMP/PDN + alasan SEMUA seller ----------
+  function buildRankingSummary(entries, itemId) {
     if (!entries || entries.length === 0) return "";
     return entries.map((e, idx) => {
       const tag = e.isCurrentUserSeller ? " (SAYA)" : "";
-      let line = `${idx + 1}. ${e.sellerName}${tag} - ${e.status} - Rp${e.total}`;
-      return line;
-    }).join(" | ");
+      const detail = (e.items || []).find(d => d.competitionDetailId === itemId) || (e.items || [])[0] || {};
+      const parts = [`${idx + 1}. ${e.sellerName}${tag}`, e.status, `Rp${e.total}`];
+      if (detail.productName) parts.push(`Produk: ${detail.productName}`);
+      if (detail.tkdn !== undefined && detail.tkdn !== null && detail.tkdn !== "") parts.push(`TKDN: ${detail.tkdn}`);
+      if (detail.bmp !== undefined && detail.bmp !== null && detail.bmp !== "") parts.push(`BMP: ${detail.bmp}`);
+      if (detail.isPdn !== undefined && detail.isPdn !== null && detail.isPdn !== "") parts.push(`PDN: ${detail.isPdn}`);
+      if (detail.status) parts.push(`ItemStatus: ${detail.status}`);
+      if (detail.reason) parts.push(`Alasan: ${detail.reason}`);
+      if (detail.subReason) parts.push(`SubAlasan: ${detail.subReason}`);
+      return parts.join(" | ");
+    }).join(" || ");
+  }
+
+  // ---------- v11: data terstruktur SEMUA seller (bukan cuma isCurrentUserSeller) utk item ini ----------
+  // Dipakai buat kolom baru kompetitor_produk_json -- gampang di-parse/pivot belakangan.
+  function buildCompetitorProducts(entries, itemId) {
+    if (!entries || entries.length === 0) return [];
+    return entries.map(e => {
+      const detail = (e.items || []).find(d => d.competitionDetailId === itemId) || (e.items || [])[0] || {};
+      return {
+        sellerName: e.sellerName || "",
+        isMe: !!e.isCurrentUserSeller,
+        proposalStatus: e.status ?? "",
+        total: e.total ?? "",
+        productName: detail.productName ?? "",
+        productPath: detail.productPath ?? "",
+        productId: detail.productId ?? "",
+        productVersion: detail.productVersion ?? "",
+        price: detail.price ?? "",
+        subtotalWithTax: detail.subtotalWithTax ?? "",
+        tkdn: detail.tkdn ?? "",
+        bmp: detail.bmp ?? "",
+        isPdn: detail.isPdn ?? "",
+        itemStatus: detail.status ?? "",
+        reason: detail.reason ?? "",
+        subReason: detail.subReason ?? ""
+      };
+    });
   }
 
   // Ambil baris "alasan" milik kita sendiri (isCurrentUserSeller true), untuk item spesifik ini
-  // NOTE v6: productName/productPath sudah ada di response GraphQL ini (lihat RANKING_QUERY items),
-  // jadi dipakai langsung sebagai nama_produk_item — gak perlu fetch halaman ranking terpisah lagi.
-  // NOTE v7: sekarang juga ambil productId + productVersion dari sini, dipakai buat fetch snapshot-product.
   function extractMyReason(entries, itemId) {
     const mine = (entries || []).find(e => e.isCurrentUserSeller === true);
     if (!mine) {
@@ -229,8 +224,8 @@
     };
   }
 
-  // ---------- NEW v5/v6: fetch nama produk dari halaman ranking (SSR HTML) - dipakai sbg FALLBACK saja ----------
-  const productNameCache = new Map(); // key: `${compId}|${itemId}` -> nama produk
+  // ---------- Fallback: fetch nama produk dari halaman ranking (SSR HTML), cuma dipakai kalau field kosong ----------
+  const productNameCache = new Map();
 
   function extractProductNameFromHTML(html) {
     try {
@@ -256,9 +251,6 @@
       });
       const html = await res.text();
       name = extractProductNameFromHTML(html);
-      if (!name) {
-        console.warn(`Nama produk kosong utk ${compId}/${itemId} (cek selector, mungkin markup berubah)`);
-      }
     } catch (e) {
       console.error(`Gagal fetch nama produk ${compId}/${itemId}:`, e);
     }
@@ -266,19 +258,7 @@
     return name;
   }
 
-  // ---------- NEW v9: fetch "produk tayang" via /snapshot-product ----------
-  // Struktur ASLI sudah dikonfirmasi dari sample nyata (bukan tebakan lagi):
-  // chunk RSC berisi 1 object dgn key "data" (persis 1x kemunculan di seluruh payload) yg isinya:
-  //   data.images: string[]  (URL gambar produk)
-  //   data.productInformation: { name, labels[], slug, isFtz }
-  //   data.pdnInformation: { tkdn: {value, bmpValue, status, companyName, url, number}, pdn: {type, countryName, countryCode} }
-  //   data.detailInformation: { description, category, productType, shipping, primaryUnit,
-  //                              mainInformations: [{name, value}, ...],  <- spesifikasi teknis lengkap
-  //                              additionalInformations: [...], brand: {brandName, url, status},
-  //                              sni, klpdDescription, kbki, sku, documents: [...], tax }
-  //   data.date: { dateLabel, timeLabel }
-  //   data.sellerInformation: { name, isUmkk, username, city }
-  // TIDAK ADA field harga di snapshot ini (harga penawaran sudah diambil terpisah dari GraphQL ranking).
+  // ---------- fetch "produk tayang" via /snapshot-product (masih dipakai utk produk SAYA, detail lengkap) ----------
   function findProductSnapshotData(chunks) {
     for (const c of chunks) {
       const found = findKeyDeep(c, "data");
@@ -287,7 +267,7 @@
     return null;
   }
 
-  const productSnapshotCache = new Map(); // key: `${compId}|${productId}|${productVersion}` -> hasil
+  const productSnapshotCache = new Map();
 
   async function fetchProductSnapshot(compId, compKey, productId, productVersion) {
     if (!productId) {
@@ -343,7 +323,6 @@
           raw: d
         };
       } else {
-        // Gak ketemu -> simpan preview mentah (dipotong) buat debug lanjutan kalau formatnya beda2 per kompetisi
         result = { ok: false, raw: null, rawTextPreview: raw.slice(0, 500), rawTextLength: raw.length };
         console.warn(`[snapshot-product] Data produk gak ketemu utk productId=${productId} (panjang respons: ${raw.length} karakter). Struktur mungkin beda utk kompetisi ini.`);
       }
@@ -390,11 +369,9 @@
   const rows = [];
   const skippedComps = [];
   let i = 0;
-  let snapshotDebugLogged = false;
   for (const comp of allItems) {
     i++;
 
-    // ---------- NEW v8: kalau token kelihatan expired, STOP proses sisanya (bukan terus gagal 400 sampai habis) ----------
     if (tokenLikelyExpired) {
       const remaining = allItems.slice(i - 1);
       skippedComps.push(...remaining.map(c => ({ id: c.id, key: c.key, title: c.title })));
@@ -465,19 +442,20 @@
         const gapPct = (typeof gap === "number" && typeof winnerTotal === "number" && winnerTotal !== 0)
           ? ((gap / winnerTotal) * 100).toFixed(2) : "";
 
-        // ---------- ranking + alasan kalah dari GraphQL ----------
+        // ---------- ranking + alasan kalah dari GraphQL (SEMUA seller, gak cuma saya) ----------
         const rankingResult = await fetchRanking(comp.id, item.id);
         const myReason = extractMyReason(rankingResult.entries, item.id);
+        const competitorProducts = buildCompetitorProducts(rankingResult.entries, item.id);
         await sleep(200);
 
-        // ---------- nama produk item: utamakan dari GraphQL, fallback scrape halaman ranking ----------
+        // ---------- nama produk item saya: utamakan dari GraphQL, fallback scrape HTML kalau kosong ----------
         let productName = myReason.productName;
-        if (!productName) {
+        if (!productName && rankingResult.ok && rankingResult.entries.length > 0) {
           productName = await fetchProductName(comp.id, item.id);
           await sleep(150);
         }
 
-        // ---------- NEW v9: snapshot produk tayang (detail lengkap dari /snapshot-product) ----------
+        // ---------- snapshot produk tayang punya SAYA (detail paling lengkap: spek, gambar, dll) ----------
         let productSnapshot = { ok: false, raw: null };
         if (myReason.productId) {
           productSnapshot = await fetchProductSnapshot(comp.id, comp.key, myReason.productId, myReason.productVersion);
@@ -506,7 +484,7 @@
           pemenang_rank: winner.rank ?? "",
           selisih_saya_vs_pemenang: gap,
           selisih_persen: gapPct,
-          // ---------- kolom ranking & alasan (dari GraphQL minikomProposalRanking) ----------
+          // ---------- ranking & alasan (dari GraphQL minikomProposalRanking) ----------
           ranking_fetch_ok: rankingResult.ok,
           my_rank: rankingResult.sellerRank,
           total_bidder_ranking: rankingResult.totalBidderRanking ?? "",
@@ -514,8 +492,10 @@
           my_item_status: myReason.detailStatus,
           alasan_kalah: myReason.reason,
           alasan_kalah_detail: myReason.subReason,
-          ranking_summary: buildRankingSummary(rankingResult.entries),
-          // ---------- kolom produk tayang (dari /snapshot-product, struktur asli terkonfirmasi v9) ----------
+          ranking_summary: buildRankingSummary(rankingResult.entries, item.id),
+          // ---------- NEW v11: data produk + TKDN/BMP/PDN + alasan SEMUA kompetitor, sudah tersedia di response ranking yang sama ----------
+          kompetitor_produk_json: JSON.stringify(competitorProducts),
+          // ---------- produk tayang punya SAYA (dari /snapshot-product) ----------
           produk_tayang_fetch_ok: productSnapshot.ok,
           produk_tayang_nama: productSnapshot.nama || "",
           produk_tayang_slug: productSnapshot.slug || "",
@@ -549,10 +529,9 @@
   const blob = new Blob([tsv], { type: "text/tab-separated-values" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = "evaluasi-mikom-lengkap-v8.tsv";
+  link.download = "evaluasi-mikom-lengkap-v11.tsv";
   link.click();
 
-  // ---------- NEW v8: kalau ada kompetisi yang di-skip krn token expired, download daftar sisanya ----------
   if (skippedComps.length > 0) {
     const skippedTsv = "id\tkey\ttitle\n" + skippedComps.map(c => `${c.id}\t${c.key}\t${escape(c.title)}`).join("\n");
     const skippedBlob = new Blob([skippedTsv], { type: "text/tab-separated-values" });
@@ -568,7 +547,7 @@
   const missingProductNameCount = rows.filter(r => "nama_produk_item" in r && !r.nama_produk_item).length;
   const snapshotFailCount = rows.filter(r => r.produk_tayang_fetch_ok === false).length;
 
-  console.log(`Selesai! Total baris: ${rows.length}. File evaluasi-mikom-lengkap-v8.tsv sudah didownload.`);
+  console.log(`Selesai! Total baris: ${rows.length}. File evaluasi-mikom-lengkap-v11.tsv sudah didownload.`);
   if (skippedComps.length > 0) {
     console.warn(`PENTING: ${skippedComps.length} kompetisi BELUM diproses krn token/session expired di tengah jalan. File SISA-belum-diproses-refresh-lalu-rerun.tsv sudah didownload berisi daftarnya. Silakan REFRESH HALAMAN (biar dapet token baru), lalu jalankan script ini lagi -- baris yang sudah ada gak akan hilang, cukup gabung 2 file TSV-nya nanti.`);
   }
