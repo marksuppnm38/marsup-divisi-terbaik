@@ -186,7 +186,6 @@
         competition_title: ctx.compTitle,
         competition_status: ctx.compStatus,
         item_id: itemId,
-        item_name: ctx.itemName,
         category_item: ctx.categoryItem,
         item_qty: ctx.qty,
         item_unit: ctx.itemUnit,
@@ -494,7 +493,6 @@
           compId: comp.id,
           compTitle: comp.title,
           compStatus: comp.status,
-          itemName: productName || myReason.productName || "",
           categoryItem: item.category?.name || "",
           qty,
           itemUnit: item.unit || ""
@@ -583,10 +581,10 @@
   }
 
   // File 1: ringkasan per item (harga saya vs pemenang, status, alasan_kalah, dll)
-  downloadTSV(rows, "1-ringkasan-per-item-v12.tsv");
+  downloadTSV(rows, "1-ringkasan-per-item-v13.tsv");
 
   // File 2: long/tidy format, 1 baris = 1 kompetitor per item -- gampang di-pivot/filter di Excel
-  downloadTSV(detailRows, "2-detail-per-kompetitor-v12.tsv");
+  downloadTSV(detailRows, "2-detail-per-kompetitor-v13.tsv");
 
   // File 3: daftar unik produk kompetitor -- feed ini ke scraper toko terpisah biar gak scrape yg sama 2x
   const uniqueProductRows = [...uniqueProducts.values()].map(rec => ({
@@ -598,7 +596,7 @@
     jumlah_kompetisi_muncul: rec.competitionIds.size,
     harga_penawaran_terlihat: [...rec.hargaPenawaranTerlihat].join(", ")
   }));
-  downloadTSV(uniqueProductRows, "3-produk-kompetitor-unik-v12.tsv");
+  downloadTSV(uniqueProductRows, "3-produk-kompetitor-unik-v13.tsv");
 
   if (skippedComps.length > 0) {
     const skippedTsv = "id\tkey\ttitle\n" + skippedComps.map(c => `${c.id}\t${c.key}\t${escape(c.title)}`).join("\n");
