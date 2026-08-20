@@ -1908,8 +1908,14 @@ function renderRiwayatCard(s) {
       <option value="jadi_order" ${hasilOrder === 'jadi_order' ? 'selected' : ''}>✅ Jadi Order</option>
       <option value="tanpa_order" ${hasilOrder === 'tanpa_order' ? 'selected' : ''}>◻️ Tidak Jadi Order</option>
     </select>${latest ? `<span class="mi" style="margin-left:4px"><i class="ti ti-file-text"></i><span>${latest.revisi > 0 ? 'REV' + latest.revisi : 'Ada Record'}${latest.grand_total != null ? ' · Rp' + Number(latest.grand_total).toLocaleString('id-ID') : ''}</span></span>` : ''}`;
+  // Chip "X versi tersimpan" — dulu cuma teks statis, sekarang tombol yang
+  // buka modal "Riwayat Konversi" (lihat setupKonversiRiwayatModal di bawah),
+  // pola sama persis kayak sphChip/openSphRiwayatModal di bawahnya. Sengaja
+  // fetch ulang per-sesi di modal (bukan pakai `records` yang udah kebawa di
+  // sini) karena kartu ini cuma minta grand_total/kategori/revisi/link —
+  // gak ada notes/pic/item, jadi modal butuh query sendiri yang lebih detail.
   const versiChip = records.length > 1
-    ? `<span class="mi"><i class="ti ti-versions"></i><span>${records.length} versi tersimpan</span></span>`
+    ? `<button type="button" class="mi konversi-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}" style="border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit"><i class="ti ti-versions"></i><span>${records.length} versi tersimpan</span></button>`
     : '';
   // Jumlah SPH yang pernah digenerate dari sesi ini — sekarang bisa dihitung
   // beneran (sph_records.sesi_id) bukan tebak-tebakan, lihat migration
@@ -2007,6 +2013,12 @@ async function loadRiwayatList() {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         openSphRiwayatModal(btn.dataset.id, btn.dataset.nama);
+      });
+    });
+    riwayatList.querySelectorAll('.konversi-riwayat-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openKonversiRiwayatModal(btn.dataset.id, btn.dataset.nama);
       });
     });
   } catch (err) {
@@ -6500,6 +6512,125 @@ async function openSphRiwayatModal(sesiId, namaRs) {
     }
     list.innerHTML = rows.map((r, idx) => sphRiwayatRowHtml(r, idx)).join('');
     list.querySelectorAll('.sph-riwayat-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = document.getElementById(btn.dataset.target);
+        const icon = btn.querySelector('i');
+        const isOpen = target.style.display !== 'none';
+        target.style.display = isOpen ? 'none' : 'block';
+        if (icon) icon.className = isOpen ? 'ti ti-chevron-down' : 'ti ti-chevron-up';
+      });
+    });
+  } catch (err) {
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${err.message}</div>`;
+  }
+}
+
+// ===== RIWAYAT KONVERSI per sesi =====
+// Modal buat lihat semua REVISI Record Konversi yang pernah disimpan dari
+// satu sesi (konversi_record.sesi_id + konversi_item.konversi_record_id) —
+// data ini SUDAH ada dari awal (tiap kali tombol "Record Konversi" diklik,
+// handleRecordSubmit selalu INSERT baris baru dengan nomor revisi naik,
+// bukan UPDATE nimpa yang lama, lihat komentar "DUAL WRITE" & "dianggap
+// REVISI" di atas). Makanya TIDAK butuh migration/backfill SQL apa pun —
+// beda dari sph_records yang baru dapet kolom sesi_id belakangan (lihat
+// migration_sph_link_sesi.sql) — konversi_record dari lahir udah nyatet
+// sesi_id + revisi, jadi modal ini tinggal query langsung. Pola dan gaya
+// (IIFE inject modal sekali, row toggle collapsible per revisi) sengaja
+// dibikin sama persis kayak setupSphRiwayatModal/openSphRiwayatModal di
+// atas biar konsisten & gampang dirawat bareng.
+(function setupKonversiRiwayatModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'konversi-riwayat-modal';
+  modal.innerHTML = `
+    <div class="modal-box" style="width:92vw;max-width:560px;max-height:82vh;overflow-y:auto;text-align:left;padding:22px 24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="modal-title" style="margin:0" id="konversi-riwayat-title"><i class="ti ti-versions"></i> Riwayat Konversi</div>
+        <button id="konversi-riwayat-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
+      </div>
+      <div class="modal-sub" style="margin-bottom:12px">Semua revisi Record Konversi yang pernah disimpan dari sesi ini, urut dari revisi terbaru.</div>
+      <div id="konversi-riwayat-list"></div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('show'); });
+  modal.querySelector('#konversi-riwayat-close').addEventListener('click', () => modal.classList.remove('show'));
+})();
+
+function konversiRiwayatRowHtml(r, idx) {
+  const revLabel = 'REV' + (r.revisi || 0);
+  const kategoriSafe = escapeHtmlAttr(r.kategori || '-');
+  const tgl = r.tanggal || '-';
+  const total = r.grand_total != null ? rupiah(r.grand_total) : '-';
+  const salesSafe = escapeHtmlAttr(r.pic_sales || '-');
+  const marsupSafe = escapeHtmlAttr(r.pic_marsup || '-');
+  const rowId = `konversi-riwayat-row-${idx}`;
+  const items = r.konversi_item || [];
+  const itemRows = items.map(it => {
+    const hargaSafe = it.harga != null ? Number(it.harga).toLocaleString('id-ID') : '-';
+    const subtotal = (it.harga != null && it.qty != null) ? Number(it.harga * it.qty).toLocaleString('id-ID') : '-';
+    return `<tr>
+      <td style="padding:5px 6px;font-family:var(--mono);font-size:11px">${escapeHtmlAttr(it.kode_produk || '-')}</td>
+      <td style="padding:5px 6px;font-size:11.5px">${escapeHtmlAttr(it.nama_produk || '-')}</td>
+      <td style="padding:5px 6px;font-size:11.5px;text-align:right">${it.qty ?? '-'}</td>
+      <td style="padding:5px 6px;font-size:11.5px;text-align:right">${hargaSafe}</td>
+      <td style="padding:5px 6px;font-size:11.5px;text-align:right">${subtotal}</td>
+    </tr>`;
+  }).join('');
+  const itemsTable = items.length
+    ? `<div style="margin-top:8px;overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+          <thead><tr style="color:var(--text-muted);text-align:left">
+            <th style="padding:5px 6px">Kode</th><th style="padding:5px 6px">Produk</th>
+            <th style="padding:5px 6px;text-align:right">Qty</th><th style="padding:5px 6px;text-align:right">Harga</th>
+            <th style="padding:5px 6px;text-align:right">Subtotal</th>
+          </tr></thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+      </div>`
+    : `<div style="margin-top:8px;font-size:11.5px;color:var(--text-muted)">Gak ada detail item tersimpan buat revisi ini.</div>`;
+  const notesLine = r.notes
+    ? `<div style="margin-top:8px;font-size:11.5px;color:var(--text-muted)"><i class="ti ti-note"></i> ${escapeHtmlAttr(r.notes)}</div>`
+    : '';
+  const linkLine = r.link
+    ? `<div style="margin-top:6px"><a href="${r.link.replace(/"/g, '&quot;')}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent-text);font-size:11.5px"><i class="ti ti-link"></i> Buka file</a></div>`
+    : '';
+  const expandBody = `<div id="${rowId}" style="display:none">${itemsTable}${notesLine}${linkLine}</div>`;
+  return `<div class="rcard" style="margin-bottom:8px;padding:10px 12px">
+    <button type="button" class="konversi-riwayat-toggle" data-target="${rowId}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit;text-align:left">
+      <div>
+        <div style="font-weight:600;font-size:12.5px">${revLabel} · ${kategoriSafe}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${tgl} · ${total} · ${items.length} produk</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Sales: ${salesSafe} · Marsup: ${marsupSafe}</div>
+      </div>
+      <i class="ti ti-chevron-down" style="flex-shrink:0"></i>
+    </button>
+    ${expandBody}
+  </div>`;
+}
+
+async function openKonversiRiwayatModal(sesiId, namaRs) {
+  const modal = document.getElementById('konversi-riwayat-modal');
+  const list = document.getElementById('konversi-riwayat-list');
+  const title = document.getElementById('konversi-riwayat-title');
+  title.innerHTML = `<i class="ti ti-versions"></i> Riwayat Konversi — ${escapeHtmlAttr(namaRs || '')}`;
+  list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-muted)">Memuat…</div>`;
+  modal.classList.add('show');
+  try {
+    // Nested select PostgREST: konversi_record + konversi_item sekaligus
+    // dalam satu request, gak perlu N+1 query per revisi — sama pola kayak
+    // openSphRiwayatModal di atas.
+    const res = await sesiFetch(`konversi_record?sesi_id=eq.${sesiId}&select=*,konversi_item(kode_produk,nama_produk,qty,harga)&order=revisi.desc,created_at.desc`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat konversi.');
+    }
+    const rows = await res.json();
+    if (!rows.length) {
+      list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-muted)">Belum ada Record Konversi tersimpan buat sesi ini.</div>`;
+      return;
+    }
+    list.innerHTML = rows.map((r, idx) => konversiRiwayatRowHtml(r, idx)).join('');
+    list.querySelectorAll('.konversi-riwayat-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
         const target = document.getElementById(btn.dataset.target);
         const icon = btn.querySelector('i');
