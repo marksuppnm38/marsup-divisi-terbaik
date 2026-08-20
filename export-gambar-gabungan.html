@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Export Gambar Gabungan</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/shared/supabase-client.js"></script>
+<script src="/shared/auth-session.js"></script>
 <style>
   @import url('https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=general-sans@400,500,600&display=swap');
 
@@ -152,7 +155,7 @@
     letter-spacing:0.02em;
   }
 
-  input[type=text], select{
+  input[type=text], input[type=password], select{
     width:100%;
     font-family:'General Sans', sans-serif;
     font-size:14.5px;
@@ -166,12 +169,12 @@
     appearance:none;
     -webkit-appearance:none;
   }
-  input[type=text]::placeholder{ color:#5C5C62; }
-  input[type=text]:focus, select:focus{
+  input[type=text]::placeholder, input[type=password]::placeholder{ color:#5C5C62; }
+  input[type=text]:focus, input[type=password]:focus, select:focus{
     border-color:rgba(167,139,250,0.55);
     background:rgba(167,139,250,0.06);
   }
-  input[type=text]:focus-visible, select:focus-visible, .btn:focus-visible{
+  input[type=text]:focus-visible, input[type=password]:focus-visible, select:focus-visible, .btn:focus-visible{
     outline:2px solid rgba(167,139,250,0.7);
     outline-offset:2px;
   }
@@ -334,7 +337,7 @@
     .page{ padding:64px 18px 90px; }
     .bezel-inner{ padding:26px 22px; }
     .btn{ padding-left:22px; }
-    input[type=text], select{ padding:15px 16px; }
+    input[type=text], input[type=password], select{ padding:15px 16px; }
   }
 
   /* ── Toast ───────────────────────────── */
@@ -453,10 +456,78 @@
     transition:background 200ms cubic-bezier(0.32,0.72,0,1);
   }
   .chip button:hover{ background:rgba(255,255,255,0.2); }
+
+  /* ── Auth gate ───────────────────────────── */
+  .gate-wrap{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    position:relative;
+    z-index:2;
+  }
+  .gate-card{
+    width:100%;
+    max-width:380px;
+    padding:6px;
+    border-radius:32px;
+    background:var(--glass-outer);
+    border:1px solid var(--hairline);
+  }
+  .gate-card-inner{
+    background:var(--glass-inner);
+    border-radius:26px;
+    box-shadow:inset 0 1px 1px rgba(255,255,255,0.06);
+    padding:32px 28px;
+    text-align:left;
+  }
+  .gate-title{
+    font-family:'Clash Display', 'General Sans', sans-serif;
+    font-weight:600;
+    font-size:20px;
+    margin:0 0 6px;
+    color:var(--fg);
+  }
+  .gate-desc{ font-size:13px; color:var(--fg-dim); margin:0 0 22px; line-height:1.5; }
+  .gate-msg{ margin-top:14px; padding:10px 14px; border-radius:12px; font-size:12.5px; display:none; }
+  .gate-msg.show{ display:block; }
+  .gate-msg.error{ border:1px solid rgba(248,113,113,0.3); background:rgba(248,113,113,0.08); color:#FCA5A5; }
+  .gate-msg.success{ border:1px solid rgba(52,211,153,0.3); background:rgba(52,211,153,0.08); color:var(--accent-2); }
+  .gate-footer{ margin-top:18px; font-size:11px; color:var(--fg-dim); text-align:center; }
 </style>
 </head>
 <body>
-<div class="page">
+
+<!-- AUTH GATE -->
+<div class="gate-wrap" id="gateWrap">
+  <div class="gate-card">
+    <div class="gate-card-inner">
+      <div class="gate-title" id="gateTitle">Masuk dulu ya</div>
+      <div class="gate-desc" id="gateDesc">Khusus tim internal — pakai akun yang sama seperti Konversian/Produk.</div>
+
+      <form id="loginFormWrap">
+        <div class="field">
+          <label for="loginEmail">Email</label>
+          <input type="text" id="loginEmail" placeholder="nama@email.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary" id="loginBtn" type="submit">
+          <span class="btn-text">Masuk</span>
+        </button>
+      </form>
+
+      <div class="gate-msg" id="gateMsg"></div>
+      <div class="gate-footer">Akses dibatasi hanya untuk email yang terdaftar di tim.</div>
+    </div>
+  </div>
+</div>
+
+<!-- APP SHELL -->
+<div class="page" id="appWrap" style="display:none;">
 
   <div class="eyebrow"><span class="dot"></span>Image Compositing Tool</div>
   <h1>Merge &amp; <span class="accent">Export</span></h1>
@@ -524,9 +595,89 @@
 <div id="toastRoot" aria-live="assertive"></div>
 
 <script>
-    const sheetId = "1ORz0OUqzKSZI56lUaZV5i7ZPRCYuFSYBP7QF4pn4-e8";
-    const range = "Sheet1!A:Z";
-    const apiKey = "AIzaSyB1LxflUKkZLISYa8Eyd6CVuxweaPuH8ko";
+    // Sumber gambar sekarang Supabase Storage bucket "thumbnails" (public, key by
+    // kode_asli). URL/anon key project sendiri memang publik (dilindungi RLS di server)
+    // dan sudah tersedia dari shared/supabase-client.js — jadi dipakai dari situ langsung,
+    // gak perlu dobel-declare di sini.
+    const SUPABASE_URL = window.PNM_SUPABASE_URL;
+    const THUMBNAILS_BUCKET = "thumbnails";
+    const TEMPLATE_URL = `${SUPABASE_URL}/storage/v1/object/public/${THUMBNAILS_BUCKET}/TEMPLATE_THUMBNAIL_ROBUST.png`;
+
+    const sb = window.pnmSupabase;
+
+    // ── Auth gate — sama persis pola shared-auth di crud-produk.html, jadi kalau user
+    // udah login di modul lain (Konversian, Produk), sesi kesini otomatis kebawa dari
+    // storage key `pnm_auth_session` yang sama, tanpa perlu login ulang. ──
+    const gateWrap = document.getElementById('gateWrap');
+    const appWrap = document.getElementById('appWrap');
+    const gateTitle = document.getElementById('gateTitle');
+    const gateDesc = document.getElementById('gateDesc');
+    const loginFormWrap = document.getElementById('loginFormWrap');
+    const loginEmail = document.getElementById('loginEmail');
+    const loginPassword = document.getElementById('loginPassword');
+    const loginBtn = document.getElementById('loginBtn');
+    const gateMsg = document.getElementById('gateMsg');
+
+    function showGateMsg(text, type){
+        gateMsg.textContent = text;
+        gateMsg.className = 'gate-msg show ' + type;
+    }
+
+    loginFormWrap.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = loginEmail.value.trim().toLowerCase();
+        const password = loginPassword.value;
+        if (!email || !email.includes('@')) { showGateMsg('Masukkan email yang valid dulu ya.', 'error'); return; }
+        if (!password) { showGateMsg('Masukkan password.', 'error'); return; }
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Memproses...';
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Masuk';
+        if (error) {
+            showGateMsg('Gagal masuk: ' + error.message, 'error');
+        }
+    });
+
+    let alreadyShownForUserId = null; // guard: cegah checkWhitelistAndShowApp()/loadFileList() kepanggil dobel
+                                       // kalau SDK nembak INITIAL_SESSION lalu SIGNED_IN buat sesi yang sama
+
+    async function checkWhitelistAndShowApp(session){
+        if (alreadyShownForUserId === session.user.id) return;
+
+        const email = session.user.email.toLowerCase();
+        const { data, error } = await sb.from('allowed_users').select('email').eq('email', email).maybeSingle();
+        if (error) {
+            showGateMsg('Gagal cek akses (koneksi bermasalah), coba lagi: ' + error.message, 'error');
+            return;
+        }
+        if (!data) {
+            await sb.auth.signOut();
+            gateTitle.textContent = 'Akses Ditolak';
+            gateDesc.textContent = 'Email ' + email + ' belum terdaftar sebagai tim.';
+            loginFormWrap.style.display = 'none';
+            showGateMsg('Hubungi admin untuk ditambahkan ke daftar akses.', 'error');
+            return;
+        }
+        alreadyShownForUserId = session.user.id;
+        gateWrap.style.display = 'none';
+        appWrap.style.display = 'flex';
+        loadFileList();
+    }
+
+    const AUTH_EVENTS_YANG_MEMICU_GATE = new Set(['SIGNED_IN', 'INITIAL_SESSION']);
+    sb.auth.onAuthStateChange((event, session) => {
+        if (session && AUTH_EVENTS_YANG_MEMICU_GATE.has(event)) {
+            checkWhitelistAndShowApp(session);
+        } else if (!session) {
+            alreadyShownForUserId = null;
+            gateWrap.style.display = 'flex';
+            appWrap.style.display = 'none';
+            loginFormWrap.style.display = 'block';
+            gateTitle.textContent = 'Masuk dulu ya';
+            gateDesc.textContent = 'Khusus tim internal — pakai akun yang sama seperti Konversian/Produk.';
+        }
+    });
 
     // Input cepat: cocokkan tiap baris terhadap nama file (atau file ID) di daftar,
     // lalu pilih otomatis (maks 4).
@@ -550,9 +701,7 @@
 
         lines.forEach(line => {
             const target = stripExt(line);
-            const found = allFiles.find(f =>
-                f.row.some(cell => cell && stripExt(cell) === target)
-            );
+            const found = allFiles.find(f => stripExt(f.id) === target);
             if (found) {
                 if (!matchedIds.includes(found.id)) matchedIds.push(found.id);
             } else {
@@ -602,28 +751,49 @@
         }
     }
 
-    let allFiles = [];       // {id, name}
+    let allFiles = [];       // {id, name} — id & name sama-sama kode_asli (nama file tanpa ekstensi)
     const selectedIds = [];  // max 4
     const MAX_IMAGES = 4;
 
+    // Nama file template ini sendiri juga hidup di bucket "thumbnails" yang sama,
+    // jadi harus difilter supaya nggak nongol sebagai "produk" di daftar pilihan.
+    const EXCLUDED_FILENAMES = new Set(["TEMPLATE_THUMBNAIL_ROBUST.png"]);
+
     async function loadFileList() {
-        console.log("[INFO] Mengambil data dari Google Sheets...");
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`;
+        console.log("[INFO] Mengambil daftar file dari Supabase Storage...");
+        const url = `${SUPABASE_URL}/storage/v1/object/list/${THUMBNAILS_BUCKET}`;
         try {
-            let response = await fetch(url);
+            // Ambil token fresh tiap request (bukan cached), sama kayak pola getFreshToken()
+            // di konversian.js -- kalau tab lama di-background terus token expire, ini tetap benar.
+            const { data: { session } } = await sb.auth.getSession();
+            if (!session) { showGateMsg('Sesi habis, silakan masuk lagi.', 'error'); return; }
+            let response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "apikey": window.PNM_SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${session.access_token}`,
+                },
+                // limit 1000 per page, paginasi via offset kalau bucket-nya makin gede
+                // prefix wajib diisi walau kosong (artinya: list semua file di root bucket)
+                body: JSON.stringify({ prefix: "", limit: 1000, offset: 0, sortBy: { column: "name", order: "asc" } }),
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             let data = await response.json();
-            console.log("[DATA] Data dari Google Sheets:", data);
-            if (!data.values || !data.values.length) {
+            console.log("[DATA] Data dari Supabase Storage:", data);
+            if (!Array.isArray(data) || !data.length) {
                 toast("Daftar file kosong atau tidak ditemukan.", "error");
                 return;
             }
-            allFiles = data.values
-                .filter(row => row[3])
-                .map(row => ({ id: row[3], name: row[0], row })); // simpan seluruh baris untuk pencocokan kode
+            allFiles = data
+                .filter(obj => obj.name && !EXCLUDED_FILENAMES.has(obj.name) && obj.id) // obj.id null = folder, bukan file
+                .map(obj => {
+                    const kode = obj.name.replace(/\.[a-z0-9]{2,5}$/i, ""); // buang ekstensi buat display
+                    return { id: kode, name: kode };
+                });
             renderFileList();
         } catch (error) {
-            console.error("[ERROR] Gagal mengambil data dari Google Sheets!", error);
+            console.error("[ERROR] Gagal mengambil daftar file dari Supabase Storage!", error);
             toast("Gagal memuat daftar file. Coba muat ulang halaman.", "error");
         }
     }
@@ -677,12 +847,10 @@
     // Cache supaya gambar yang sama tidak difetch ulang ke Google
     const imageCache = {};
 
-    async function getDriveImageUrl(fileId) {
-        // Pakai Google Drive API resmi (files.get?alt=media), jauh lebih stabil
-        // dan tidak gampang kena rate-limit 429 dibanding lh3.googleusercontent.com.
-        // CATATAN: file di Drive harus di-share "Anyone with the link" dan
-        // Drive API harus diaktifkan untuk API key ini di Google Cloud Console.
-        return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${apiKey}`;
+    function getSupabaseImageUrl(kode) {
+        // Bucket "thumbnails" publik & gambar disimpan by kode_asli — URL-nya deterministik,
+        // nggak perlu API call/API key sama sekali buat ambil gambar individual.
+        return `${SUPABASE_URL}/storage/v1/object/public/${THUMBNAILS_BUCKET}/${encodeURIComponent(kode)}.png`;
     }
 
     // Load gambar dengan retry + exponential backoff, khusus menangani 429
@@ -707,15 +875,15 @@
     }
 
     // Ambil overlay (sudah diproses hapus background) dengan cache per fileId
-    async function getOverlayCanvasCached(fileId) {
-        if (imageCache[fileId]) {
-            console.log("[CACHE] Pakai gambar overlay dari cache untuk:", fileId);
-            return imageCache[fileId];
+    async function getOverlayCanvasCached(kode) {
+        if (imageCache[kode]) {
+            console.log("[CACHE] Pakai gambar overlay dari cache untuk:", kode);
+            return imageCache[kode];
         }
-        const overlaySrc = await getDriveImageUrl(fileId);
+        const overlaySrc = getSupabaseImageUrl(kode);
         const overlayImg = await loadImageWithRetry(overlaySrc);
         const processedOverlay = await removeBackgroundHighQuality(overlayImg);
-        imageCache[fileId] = processedOverlay;
+        imageCache[kode] = processedOverlay;
         return processedOverlay;
     }
     async function removeBackgroundHighQuality(image) {
@@ -822,9 +990,9 @@
         });
     }
 
-    // fileId Google Drive hanya berisi huruf, angka, - dan _
+    // kode_asli tervalidasi longgar — cukup pastikan nggak kosong/aneh sebelum dipakai di URL
     function isValidFileId(id) {
-        return /^[a-zA-Z0-9_-]+$/.test(id);
+        return typeof id === "string" && id.trim().length > 0;
     }
 
     let isMerging = false; // guard supaya tidak ada request bertumpuk
@@ -849,15 +1017,13 @@
         setButtonLoading(btn, true, "Memproses...");
 
         try {
-            const templateFileId = "1uZiM5HO748yItSjYS17OgCmw71uK5xPN";
             console.log("[INFO] Mengambil gambar template & overlay...");
 
-            const templateImg = imageCache[templateFileId]
-                ? imageCache[templateFileId]
+            const templateImg = imageCache[TEMPLATE_URL]
+                ? imageCache[TEMPLATE_URL]
                 : await (async () => {
-                    const src = await getDriveImageUrl(templateFileId);
-                    const img = await loadImageWithRetry(src);
-                    imageCache[templateFileId] = img;
+                    const img = await loadImageWithRetry(TEMPLATE_URL);
+                    imageCache[TEMPLATE_URL] = img;
                     return img;
                 })();
 
@@ -883,10 +1049,10 @@
             setButtonLoading(btn, false);
         }
     }
-    window.onload = () => {
-        console.log("[INFO] Memuat halaman dan mengambil daftar file...");
-        loadFileList();
-    };
+    // loadFileList() sekarang dipanggil dari checkWhitelistAndShowApp() setelah auth gate
+    // lolos, bukan langsung di window.onload -- biar gak nembak Storage API sebelum ada
+    // sesi/token yang valid.
+
     function exportCanvasAsPNG() {
         let canvas = document.getElementById("finalCanvas");
         let link = document.createElement("a");
