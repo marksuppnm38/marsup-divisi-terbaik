@@ -743,11 +743,23 @@ async function sphDrawLampiranTablePage(doc, title, tableItems, safeBottom) {
     if (idx % 2 === 0) { doc.setFillColor(245, 246, 248); doc.rect(SPH_MARGIN_X, ly, tableW, rowH, 'F'); }
 
     doc.setFontSize(SPH_FONT_SIZE);
-    let x = SPH_MARGIN_X;
-    doc.text(String(item.no ?? idx + 1), x + 1.5, ly + 5.2); x += lWidths[0];
-    doc.text(kodeLines, x + 1.5, ly + 5.2); x += lWidths[1];
-    doc.text(descLines, x + 1.5, ly + 5.2); x += lWidths[2];
-    doc.text(String(item.qty ?? 1), x + lWidths[3] / 2, ly + 5.2, { align: 'center' }); x += lWidths[3];
+
+    // Sama kayak tabel utama SPH: ditulis per-baris biar urutan teks di PDF
+    // ikut urutan baca tabel, bukan keblok per kolom pas dicopas.
+    const lLineH = doc.getLineHeight();
+    const lLineCount = Math.max(kodeLines.length, descLines.length, 1);
+    for (let li = 0; li < lLineCount; li++) {
+      const lly = ly + 5.2 + li * lLineH;
+      let lx = SPH_MARGIN_X;
+      if (li === 0) doc.text(String(item.no ?? idx + 1), lx + 1.5, lly);
+      lx += lWidths[0];
+      if (kodeLines[li] !== undefined) doc.text(kodeLines[li], lx + 1.5, lly);
+      lx += lWidths[1];
+      if (descLines[li] !== undefined) doc.text(descLines[li], lx + 1.5, lly);
+      lx += lWidths[2];
+      if (li === 0) doc.text(String(item.qty ?? 1), lx + lWidths[3] / 2, lly, { align: 'center' });
+    }
+    let x = SPH_MARGIN_X + lWidths[0] + lWidths[1] + lWidths[2] + lWidths[3];
 
     if (item.gambar) {
       try {
@@ -927,22 +939,38 @@ async function sphGenerate() {
       }
       if (idx % 2 === 0) { doc.setFillColor(245, 246, 248); doc.rect(SPH_MARGIN_X, y, tableW, rowH, 'F'); }
       doc.setFontSize(SPH_FONT_SIZE);
-      let x = SPH_MARGIN_X;
-      doc.text(String(item.no), x + 1.5, y + 5.2); x += widths[0];
-      doc.text(kodeLines, x + 1.5, y + 5.2); x += widths[1];
-      doc.text(descLines, x + 1.5, y + 5.2); x += widths[2];
-      doc.text(String(item.qty), x + widths[3] / 2, y + 5.2, { align: 'center' }); x += widths[3];
-      doc.text(rupiah(item.harga), x + widths[4] - 1.5, y + 5.2, { align: 'right' }); x += widths[4];
-      doc.text(rupiah(item.total), x + widths[5] - 1.5, y + 5.2, { align: 'right' }); x += widths[5];
-      if (!modeSwastaOutput) {
-        if (item.link) {
-          doc.setTextColor(29, 91, 212);
-          doc.textWithLink('Lihat di e-Katalog', x + widths[6] / 2, y + 5.2, { url: item.link, align: 'center' });
-          doc.setTextColor(17, 24, 39);
-        } else {
-          doc.setTextColor(156, 163, 175);
-          doc.text('-', x + widths[6] / 2, y + 5.2, { align: 'center' });
-          doc.setTextColor(17, 24, 39);
+
+      // Ditulis per-BARIS (bukan per-kolom) biar urutan teks di dalam PDF ikut
+      // urutan baca tabel — kalau ditulis per-kolom (semua baris Kode dulu baru
+      // semua baris Deskripsi), pas dicopas dari PDF teksnya keblok per kolom
+      // dan tabelnya jadi berantakan/kepotong.
+      const lineH = doc.getLineHeight();
+      const lineCount = Math.max(kodeLines.length, descLines.length, 1);
+      for (let li = 0; li < lineCount; li++) {
+        const ly2 = y + 5.2 + li * lineH;
+        let x = SPH_MARGIN_X;
+        if (li === 0) doc.text(String(item.no), x + 1.5, ly2);
+        x += widths[0];
+        if (kodeLines[li] !== undefined) doc.text(kodeLines[li], x + 1.5, ly2);
+        x += widths[1];
+        if (descLines[li] !== undefined) doc.text(descLines[li], x + 1.5, ly2);
+        x += widths[2];
+        if (li === 0) doc.text(String(item.qty), x + widths[3] / 2, ly2, { align: 'center' });
+        x += widths[3];
+        if (li === 0) doc.text(rupiah(item.harga), x + widths[4] - 1.5, ly2, { align: 'right' });
+        x += widths[4];
+        if (li === 0) doc.text(rupiah(item.total), x + widths[5] - 1.5, ly2, { align: 'right' });
+        x += widths[5];
+        if (li === 0 && !modeSwastaOutput) {
+          if (item.link) {
+            doc.setTextColor(29, 91, 212);
+            doc.textWithLink('Lihat di e-Katalog', x + widths[6] / 2, ly2, { url: item.link, align: 'center' });
+            doc.setTextColor(17, 24, 39);
+          } else {
+            doc.setTextColor(156, 163, 175);
+            doc.text('-', x + widths[6] / 2, ly2, { align: 'center' });
+            doc.setTextColor(17, 24, 39);
+          }
         }
       }
       y += rowH;
