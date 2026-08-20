@@ -6556,6 +6556,11 @@ async function openSphRiwayatModal(sesiId, namaRs) {
   modal.querySelector('#konversi-riwayat-close').addEventListener('click', () => modal.classList.remove('show'));
 })();
 
+// Cache baris riwayat yang lagi ditampilin di modal (hasil query nested
+// konversi_record+konversi_item dari openKonversiRiwayatModal) — dipakai
+// tombol "Muat ke Clipboard" biar gak perlu fetch ulang pas diklik.
+let konversiRiwayatRowsCache = [];
+
 function konversiRiwayatRowHtml(r, idx) {
   const revLabel = 'REV' + (r.revisi || 0);
   const kategoriSafe = escapeHtmlAttr(r.kategori || '-');
@@ -6595,15 +6600,25 @@ function konversiRiwayatRowHtml(r, idx) {
     ? `<div style="margin-top:6px"><a href="${r.link.replace(/"/g, '&quot;')}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent-text);font-size:11.5px"><i class="ti ti-link"></i> Buka file</a></div>`
     : '';
   const expandBody = `<div id="${rowId}" style="display:none">${itemsTable}${notesLine}${linkLine}</div>`;
+  // Tombol "Muat ke Clipboard" — restore produk+qty revisi ini ke clipboard
+  // kerja biar bisa di-Export ke Excel / Generate SPH ulang. Disabled kalau
+  // revisi ini gak punya item tersimpan (kasus jarang, tapi bisa aja kalau
+  // insert konversi_item gagal partial dulu). Taruh di luar tombol toggle
+  // (bukan di dalam <button> toggle) + stopPropagation di listener-nya, biar
+  // klik tombol ini gak ikut expand/collapse baris.
+  const loadBtn = `<button type="button" class="konversi-riwayat-load-btn" data-idx="${idx}" ${items.length ? '' : 'disabled'} style="flex-shrink:0;display:flex;align-items:center;gap:5px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:600;cursor:${items.length ? 'pointer' : 'not-allowed'};font-family:inherit;opacity:${items.length ? '1' : '.5'}"><i class="ti ti-clipboard-copy"></i>Muat ke Clipboard</button>`;
   return `<div class="rcard" style="margin-bottom:8px;padding:10px 12px">
-    <button type="button" class="konversi-riwayat-toggle" data-target="${rowId}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit;text-align:left">
-      <div>
-        <div style="font-weight:600;font-size:12.5px">${revLabel} · ${kategoriSafe}</div>
-        <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${tgl} · ${total} · ${items.length} produk</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Sales: ${salesSafe} · Marsup: ${marsupSafe}</div>
-      </div>
-      <i class="ti ti-chevron-down" style="flex-shrink:0"></i>
-    </button>
+    <div style="display:flex;align-items:flex-start;gap:8px">
+      <button type="button" class="konversi-riwayat-toggle" data-target="${rowId}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex:1;min-width:0;border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit;text-align:left">
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:12.5px">${revLabel} · ${kategoriSafe}</div>
+          <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${tgl} · ${total} · ${items.length} produk</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Sales: ${salesSafe} · Marsup: ${marsupSafe}</div>
+        </div>
+        <i class="ti ti-chevron-down" style="flex-shrink:0"></i>
+      </button>
+      ${loadBtn}
+    </div>
     ${expandBody}
   </div>`;
 }
@@ -6625,6 +6640,7 @@ async function openKonversiRiwayatModal(sesiId, namaRs) {
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat konversi.');
     }
     const rows = await res.json();
+    konversiRiwayatRowsCache = rows;
     if (!rows.length) {
       list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-muted)">Belum ada Record Konversi tersimpan buat sesi ini.</div>`;
       return;
@@ -6639,7 +6655,137 @@ async function openKonversiRiwayatModal(sesiId, namaRs) {
         if (icon) icon.className = isOpen ? 'ti ti-chevron-down' : 'ti ti-chevron-up';
       });
     });
+    list.querySelectorAll('.konversi-riwayat-load-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        muatRevisiKeClipboard(parseInt(btn.dataset.idx, 10), btn);
+      });
+    });
   } catch (err) {
     list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${err.message}</div>`;
+  }
+}
+
+// "Muat ke Clipboard" — restore produk+qty dari SATU REVISI riwayat konversi
+// ke clipboard kerja, biar bisa di-Export ke Excel / Generate SPH lagi tanpa
+// input ulang manual.
+//
+// konversi_item nyimpen SNAPSHOT item yang beneran direkam waktu itu
+// (kode_produk, nama_produk, qty, harga) — itu yang mau di-REUSE apa adanya,
+// harganya PERSIS yang kesimpen, bukan diganti harga katalog terkini (harga
+// katalog bisa udah berubah sejak direkam, tapi angka yang direkam itulah
+// yang beneran dipakai/disepakati waktu itu). Yang gak kesimpen di
+// konversi_item cuma field TEKNIS yang dibutuhin mesin Export/kategori
+// (tipe/is_set buat computeKonversiSummary & pemisahan sheet Set vs Satuan
+// di btnExport, link_v6 buat kolom link e-katalog, kode_asli+stok buat
+// thumbnail & badge stok) — makanya field itu doang yang di-lengkapi lewat
+// fetch fresh ke tabel produk pakai kode_produk (pola query "in.()" sama
+// kayak enrichNonSetStok). Harga TETAP dari konversi_item, harga_ekat dan
+// harga_swasta sengaja diisi NILAI YANG SAMA (persis harga yang direkam)
+// biar hasilnya konsisten mau toggle mode Rp E-Katalog/Swasta yang mana pun.
+// Produk yang udah dihapus/berubah kode dari katalog tetap dimasukin apa
+// adanya (item + qty + harga dari catatan lama, cuma tanpa gambar/link/badge
+// stok), dan ditandain di toast biar user tau mana yang perlu dicek manual.
+//
+// Restore-nya JUGA bikin SESI BARU (pola sama kayak startNewSesi()) — bukan
+// nulis ke sesi lama yang statusnya udah 'selesai', biar histori lama gak
+// keutak-atik dan kolaborasi realtime tetap konsisten sama siklus 1
+// currentSesiId = 1 live workspace.
+async function muatRevisiKeClipboard(idx, btnEl) {
+  const row = konversiRiwayatRowsCache[idx];
+  if (!row) return;
+  const items = row.konversi_item || [];
+  if (!items.length) {
+    showToast('Gak ada item tersimpan buat revisi ini', 'error');
+    return;
+  }
+  if (clipboard.length && !(await showConfirmModal({
+    title: 'Muat Revisi ke Clipboard',
+    text: `Clipboard yang lagi kebuka bakal ditinggalkan (datanya tetap tersimpan, bisa dibuka lagi lewat daftar Konversi Berjalan) dan diganti sama ${items.length} produk dari REV${row.revisi || 0}. Lanjut?`,
+    okText: 'Ya, Muat'
+  }))) return;
+
+  const originalLabel = btnEl ? btnEl.innerHTML : '';
+  if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<i class="ti ti-loader-2"></i> Memuat…'; }
+
+  try {
+    const kodeList = [...new Set(items.map(it => it.kode_produk).filter(Boolean))];
+    let produkMap = new Map();
+    if (kodeList.length) {
+      const inList = kodeList.map(k => `"${k.replace(/"/g, '')}"`).join(',');
+      const res = await sesiFetch(`produk?kode_produk=in.(${inList})&select=*`);
+      if (res.ok) {
+        const produkRows = await res.json();
+        produkMap = new Map(produkRows.map(p => [p.kode_produk, p]));
+      }
+    }
+
+    const notFound = [];
+    const mapped = items.map(it => {
+      const p = produkMap.get(it.kode_produk);
+      // Harga SELALU dari catatan lama (it.harga) — persis yang direkam,
+      // diisi ke harga_ekat & harga_swasta biar konsisten di mode manapun.
+      // p (kalau ketemu) cuma nyumbang field teknis (tipe/is_set/link_v6/
+      // kode_asli/stok) buat kebutuhan Export/kategori, BUKAN buat nimpa harga.
+      if (!p) notFound.push(it.kode_produk);
+      const isSet = p && p.tipe && p.tipe.toLowerCase() === 'set';
+      return {
+        kode_produk: it.kode_produk,
+        kode_asli: (p && p.kode_asli) || null,
+        nama_produk: it.nama_produk,
+        tipe: (p && p.tipe) || '-',
+        is_set: !!isSet,
+        produk_id: it.produk_id || (p && p.id) || null,
+        no_akd: (p && p.no_akd) || null,
+        kode_kfa: (p && p.kode_kfa) || null,
+        link_v6: (p && p.link_v6) || null,
+        harga_ekat: it.harga != null ? it.harga : null,
+        tahun_harga: null,
+        harga_swasta: it.harga != null ? it.harga : null,
+        tahun_harga_swasta: null,
+        stok_status: (p && p.stok_status) || null,
+        stok_qty: p ? (p.stok_qty ?? null) : null,
+        qty: it.qty || 1
+      };
+    });
+
+    // ---- Reset clipboard/sesi kerja (pola sama kayak startNewSesi()) ----
+    const modal = document.getElementById('konversi-riwayat-modal');
+    if (modal) modal.classList.remove('show');
+    currentSesiId = null;
+    currentButuhBantuan = false;
+    clipboard = [];
+    inpRs.value = row.nama_rs || '';
+    inpSales.value = row.pic_sales || '';
+    if (row.pic_marsup) inpMarsup.value = row.pic_marsup;
+    resetChecklistUI();
+    setClipHeaderCollapsed(false);
+    renderButuhBantuanBtn();
+    setSesiSavedStatus('');
+    updateEndSesiBtnState();
+    switchSubTab('cari');
+    if (typeof switchDoor === 'function') switchDoor('konversi');
+    if (window.innerWidth <= 860 && typeof switchTab === 'function') switchTab('clip');
+
+    // ---- Isi ulang clipboard + render (harga_ekat === harga_swasta di
+    // semua item, jadi mode toggle gak ngubah total — gak perlu diutak-atik) ----
+    clipboard = mapped;
+    updateClipboard();
+    renderResults(lastResults);
+    updateClipHeaderCompact();
+
+    // ---- Persist jadi SESI BARU (bukan nimpa sesi lama yang udah 'selesai') ----
+    await ensureSesi();
+    await Promise.all(mapped.map(item => persistAddItem(item)));
+    updateEndSesiBtnState();
+    loadSesiList();
+
+    showToast(`${mapped.length} produk dari REV${row.revisi || 0} dimuat ke clipboard ✓`);
+    if (notFound.length) {
+      showToast(`${notFound.length} produk (${notFound.slice(0, 3).join(', ')}${notFound.length > 3 ? ', …' : ''}) gak ketemu lagi di katalog — gambar/link/badge stok gak ikut kebawa, tapi nama/qty/harga tetap ada dari catatan lama`, 'error');
+    }
+  } catch (err) {
+    showToast('Gagal muat revisi ke clipboard: ' + err.message, 'error');
+    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = originalLabel; }
   }
 }
