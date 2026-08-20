@@ -446,7 +446,52 @@ if (recordSphCancelBtn) recordSphCancelBtn.addEventListener('click', () => recor
 if (recordSphModal) recordSphModal.addEventListener('click', (e) => { if (e.target === recordSphModal) recordSphModal.classList.remove('show'); });
 
 // Tahap 1: Supabase (sph_records + sph_record_items) — fondasi wajib sukses.
+//
+// LINK KE SESI/KONVERSI (biar "SPH ini dari konversi mana" kejawab dari SQL,
+// bukan nebak dari nama file/customer): currentSesiId sudah global (dideklarasi
+// di konversian.js, di-load sebelum file ini via <script> classic — scope sama
+// persis kayak SUPABASE_URL/SHEETS_PROXY_URL, lihat catatan di atas), tinggal
+// dipakai. konversi_record_id-nya diambil dengan query "revisi terakhir untuk
+// sesi ini", pola sama persis kayak pengecekan revisi di handleRecordSubmit()
+// konversian.js — sengaja best-effort (try/catch, gak blocking): kalau sesi
+// belum pernah di-Record saat SPH ini dibikin, konversi_record_id-nya null,
+// bukan bikin seluruh proses Record SPH gagal.
+async function sphGetLatestKonversiRecordId(sesiId) {
+  if (!sesiId) return null;
+  try {
+    const res = await sesiFetch(`konversi_record?sesi_id=eq.${sesiId}&select=id,revisi&order=revisi.desc&limit=1`);
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return rows.length ? rows[0].id : null;
+  } catch {
+    return null;
+  }
+}
+
+// Nomor revisi SPH per sesi — pola sama persis kayak revisi konversi_record
+// (baris terakhir + 1), tapi tabelnya beda (sph_records). Sengaja terpisah dari
+// revisi konversi_record karena satu sesi bisa Record Konversi sekali tapi
+// generate+kirim SPH berkali-kali (revisi harga/nomor surat dsb tanpa
+// clipboard-nya berubah).
+async function sphGetNextRevisi(sesiId) {
+  if (!sesiId) return 0;
+  try {
+    const res = await sesiFetch(`sph_records?sesi_id=eq.${sesiId}&select=revisi&order=revisi.desc&limit=1`);
+    if (!res.ok) return 0;
+    const rows = await res.json();
+    return rows.length ? (rows[0].revisi || 0) + 1 : 0;
+  } catch {
+    return 0;
+  }
+}
+
 async function sphRecordToSupabase(record, ownerValue) {
+  const sesiIdUntukSph = (typeof currentSesiId !== 'undefined') ? currentSesiId : null;
+  const [konversiRecordId, revisiKe] = await Promise.all([
+    sphGetLatestKonversiRecordId(sesiIdUntukSph),
+    sphGetNextRevisi(sesiIdUntukSph)
+  ]);
+
   const headerRes = await sesiFetch('sph_records', {
     method: 'POST',
     headers: { 'Prefer': 'return=representation' },
@@ -459,7 +504,10 @@ async function sphRecordToSupabase(record, ownerValue) {
       pic_owner: ownerValue,
       total_value: record.totalValue,
       nama_file: record.namaFile,
-      status: 'Terkirim'
+      status: 'Terkirim',
+      sesi_id: sesiIdUntukSph,
+      konversi_record_id: konversiRecordId,
+      revisi: revisiKe
     })
   });
   if (!headerRes.ok) {

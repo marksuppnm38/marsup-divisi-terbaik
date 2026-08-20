@@ -1911,6 +1911,14 @@ function renderRiwayatCard(s) {
   const versiChip = records.length > 1
     ? `<span class="mi"><i class="ti ti-versions"></i><span>${records.length} versi tersimpan</span></span>`
     : '';
+  // Jumlah SPH yang pernah digenerate dari sesi ini — sekarang bisa dihitung
+  // beneran (sph_records.sesi_id) bukan tebak-tebakan, lihat migration
+  // migration_sph_link_sesi.sql. Cuma nongol kalau ada, biar kartu yang belum
+  // pernah bikin SPH gak penuh chip kosong.
+  const sphCount = (s.sph_records && s.sph_records[0] && s.sph_records[0].count) || 0;
+  const sphChip = sphCount > 0
+    ? `<button type="button" class="mi sph-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}" style="border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit"><i class="ti ti-file-invoice"></i><span>${sphCount} SPH — lihat riwayat</span></button>`
+    : '';
   // Link file/dokumen yang nempel di record terbaru (biasanya link Drive dari
   // "Simpan ke Drive" → auto-filled ke rec-link → ikut kesimpen di sini).
   // stopPropagation biar klik link gak ikut ngebuka sesi (card-nya sendiri
@@ -1928,6 +1936,7 @@ function renderRiwayatCard(s) {
       <span class="mi"><i class="ti ti-users"></i><span>Sales: ${salesSafe}</span></span>
       <span class="mi"><i class="ti ti-package"></i><span>${itemCount} produk</span></span>
       ${versiChip}
+      ${sphChip}
       ${linkChip}
       <span class="mi"><i class="ti ti-clock"></i><span>Selesai ${sesiTimeAgo(s.updated_at)}</span></span>
     </div>
@@ -1972,7 +1981,7 @@ async function loadRiwayatList() {
       const esc = term.replace(/[,()]/g, ' ').trim();
       searchFilter = `&or=(nama_rs.ilike.*${encodeURIComponent(esc)}*,pic_marsup.ilike.*${encodeURIComponent(esc)}*,nama_sales.ilike.*${encodeURIComponent(esc)}*)`;
     }
-    const res = await sesiFetch(`${SESI_TABLE}?status=eq.selesai${searchFilter}&select=*,${SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link)&order=updated_at.desc&limit=100`);
+    const res = await sesiFetch(`${SESI_TABLE}?status=eq.selesai${searchFilter}&select=*,${SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link),sph_records(count)&order=updated_at.desc&limit=100`);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
@@ -1993,6 +2002,12 @@ async function loadRiwayatList() {
       sel.addEventListener('click', (e) => e.stopPropagation());
       sel.addEventListener('mousedown', (e) => e.stopPropagation());
       sel.addEventListener('change', (e) => persistHasilOrder(sel.dataset.id, sel.value, sel));
+    });
+    riwayatList.querySelectorAll('.sph-riwayat-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openSphRiwayatModal(btn.dataset.id, btn.dataset.nama);
+      });
     });
   } catch (err) {
     renderListError(riwayatListError, err.message, loadRiwayatList);
@@ -6395,4 +6410,105 @@ function showConfirmModal({ title = 'Konfirmasi', text = '', okText = 'Ya, Lanju
     document.addEventListener('keydown', onKey);
     modal.classList.add('show');
   });
+}
+// ===== RIWAYAT SPH per sesi =====
+// Modal buat lihat semua revisi SPH yang pernah digenerate dari satu sesi
+// (sph_records.sesi_id, lihat migration_sph_link_sesi.sql) + donlot ulang
+// file PDF/docx-nya dari Supabase Storage. Modal-nya di-inject lewat JS
+// (bukan ditulis manual di konversian.html) — polanya sama kayak #settings-list
+// yang dirender dari SETTINGS_SCHEMA, biar nambah modal kayak gini nanti gak
+// perlu ubah-ubah HTML.
+(function setupSphRiwayatModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'sph-riwayat-modal';
+  modal.innerHTML = `
+    <div class="modal-box" style="width:92vw;max-width:520px;max-height:82vh;overflow-y:auto;text-align:left;padding:22px 24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="modal-title" style="margin:0" id="sph-riwayat-title"><i class="ti ti-file-invoice"></i> Riwayat SPH</div>
+        <button id="sph-riwayat-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
+      </div>
+      <div class="modal-sub" style="margin-bottom:12px">Semua SPH yang pernah digenerate dari sesi ini, urut dari revisi terbaru.</div>
+      <div id="sph-riwayat-list"></div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('show'); });
+  modal.querySelector('#sph-riwayat-close').addEventListener('click', () => modal.classList.remove('show'));
+})();
+
+function sphRiwayatRowHtml(r, idx) {
+  const noSafe = escapeHtmlAttr(r.no_sph || '(tanpa nomor)');
+  const revLabel = 'REV' + (r.revisi || 0);
+  const tgl = r.tanggal_surat || '-';
+  const total = r.total_value != null ? 'Rp' + Number(r.total_value).toLocaleString('id-ID') : '-';
+  const rowId = `sph-riwayat-row-${idx}`;
+  const items = r.sph_record_items || [];
+  const itemRows = items.map(it => {
+    const hargaSafe = it.harga_satuan != null ? Number(it.harga_satuan).toLocaleString('id-ID') : '-';
+    const totalSafe = it.total != null ? Number(it.total).toLocaleString('id-ID') : '-';
+    return `<tr>
+      <td style="padding:5px 6px;font-family:var(--mono);font-size:11px">${escapeHtmlAttr(it.kode_produk || '-')}</td>
+      <td style="padding:5px 6px;font-size:11.5px">${escapeHtmlAttr(it.deskripsi || '-')}</td>
+      <td style="padding:5px 6px;font-size:11.5px;text-align:right">${it.qty ?? '-'}</td>
+      <td style="padding:5px 6px;font-size:11.5px;text-align:right">${hargaSafe}</td>
+      <td style="padding:5px 6px;font-size:11.5px;text-align:right">${totalSafe}</td>
+    </tr>`;
+  }).join('');
+  const itemsTable = items.length
+    ? `<div id="${rowId}" style="display:none;margin-top:8px;overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+          <thead><tr style="color:var(--text-muted);text-align:left">
+            <th style="padding:5px 6px">Kode</th><th style="padding:5px 6px">Deskripsi</th>
+            <th style="padding:5px 6px;text-align:right">Qty</th><th style="padding:5px 6px;text-align:right">Harga</th>
+            <th style="padding:5px 6px;text-align:right">Total</th>
+          </tr></thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+      </div>`
+    : `<div id="${rowId}" style="display:none;margin-top:8px;font-size:11.5px;color:var(--text-muted)">Gak ada detail item tersimpan buat revisi ini.</div>`;
+  return `<div class="rcard" style="margin-bottom:8px;padding:10px 12px">
+    <button type="button" class="sph-riwayat-toggle" data-target="${rowId}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit;text-align:left">
+      <div>
+        <div style="font-weight:600;font-size:12.5px">${revLabel} · ${noSafe}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${tgl} · ${total} · ${items.length} produk</div>
+      </div>
+      <i class="ti ti-chevron-down" style="flex-shrink:0"></i>
+    </button>
+    ${itemsTable}
+  </div>`;
+}
+
+async function openSphRiwayatModal(sesiId, namaRs) {
+  const modal = document.getElementById('sph-riwayat-modal');
+  const list = document.getElementById('sph-riwayat-list');
+  const title = document.getElementById('sph-riwayat-title');
+  title.innerHTML = `<i class="ti ti-file-invoice"></i> Riwayat SPH — ${escapeHtmlAttr(namaRs || '')}`;
+  list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-muted)">Memuat…</div>`;
+  modal.classList.add('show');
+  try {
+    // Nested select PostgREST: sph_records + sph_record_items sekaligus dalam
+    // satu request, gak perlu N+1 query per revisi.
+    const res = await sesiFetch(`sph_records?sesi_id=eq.${sesiId}&select=*,sph_record_items(kode_produk,deskripsi,qty,harga_satuan,total)&order=revisi.desc,created_at.desc`);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat SPH.');
+    }
+    const rows = await res.json();
+    if (!rows.length) {
+      list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-muted)">Belum ada SPH tersimpan buat sesi ini.</div>`;
+      return;
+    }
+    list.innerHTML = rows.map((r, idx) => sphRiwayatRowHtml(r, idx)).join('');
+    list.querySelectorAll('.sph-riwayat-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = document.getElementById(btn.dataset.target);
+        const icon = btn.querySelector('i');
+        const isOpen = target.style.display !== 'none';
+        target.style.display = isOpen ? 'none' : 'block';
+        if (icon) icon.className = isOpen ? 'ti ti-chevron-down' : 'ti ti-chevron-up';
+      });
+    });
+  } catch (err) {
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${err.message}</div>`;
+  }
 }
