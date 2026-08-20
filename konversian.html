@@ -18,6 +18,11 @@
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<!-- Dipakai buat export SPH ke .docx (tabel item, biar copas rekap/audit gak
+     tergantung urutan-baca tebakan PDF viewer — lihat sph-module.js
+     sphBuildDocxBlob()). Tabelnya beneran <w:tbl> OOXML, bukan teks diposisi
+     manual kayak jsPDF, jadi copy-paste-nya selalu bener di Word/Sheets/Excel. -->
+<script src="https://cdn.jsdelivr.net/npm/docx@8/build/index.umd.js"></script>
 <!-- Dipakai CUMA buat client Realtime (channel/presence/broadcast) — semua query data
      tetap lewat sesiFetch()/REST kayak biasa, gak ada yang dipindah ke SDK ini. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -477,6 +482,9 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
             <iframe id="sph-preview-frame" title="Preview SPH" style="display:none"></iframe>
             <a class="pr-add-clip-btn sph-btn-block" id="sph-download-link" style="display:none;margin-top:10px" download>
               <i class="ti ti-download"></i> Download PDF
+            </a>
+            <a class="pr-add-clip-btn sph-btn-block" id="sph-download-link-docx" style="display:none;margin-top:8px" download title="Tabel item versi Word — copas ke Excel/Sheets buat rekap/audit selalu rapi, gak kayak copas dari PDF">
+              <i class="ti ti-file-type-docx"></i> Download DOCX (buat rekap/audit)
             </a>
             <button class="btn-record" id="sph-record-btn" type="button" style="display:none">
               <i class="ti ti-clipboard-check"></i> Record SPH

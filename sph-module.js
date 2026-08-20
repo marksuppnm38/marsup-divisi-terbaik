@@ -378,6 +378,7 @@ const sphGenerateBtn = document.getElementById('sph-generate-btn');
 const sphPreviewFrame = document.getElementById('sph-preview-frame');
 const sphPreviewEmpty = document.getElementById('sph-preview-empty');
 const sphDownloadLink = document.getElementById('sph-download-link');
+const sphDownloadLinkDocx = document.getElementById('sph-download-link-docx');
 const sphIncludeLampiranCheckbox = document.getElementById('sph-include-lampiran');
 const sphRecordBtn = document.getElementById('sph-record-btn');
 
@@ -591,6 +592,7 @@ window.sphFlow = {
     if (sphPreviewFrame) { sphPreviewFrame.src = ''; sphPreviewFrame.style.display = 'none'; }
     if (sphPreviewEmpty) sphPreviewEmpty.style.display = '';
     if (sphDownloadLink) sphDownloadLink.style.display = 'none';
+    if (sphDownloadLinkDocx) sphDownloadLinkDocx.style.display = 'none';
     sphItemCountEl.textContent = String(clipboard.length);
   }
 };
@@ -823,6 +825,127 @@ async function sphDrawLampiranUnitPages(doc, title, pages, safeBottom) {
 }
 
 // ===== GENERATE =====
+// ===== EXPORT TABEL ITEM KE .DOCX (buat rekap/audit) =====
+// Bukan pengganti PDF (PDF tetap dokumen resmi buat kirim ke customer) — ini
+// cuma versi kedua khusus tabel item pakai <w:tbl> Word ASLI, biar pas
+// disimpan di Drive terus di-copas buat rekap/audit hasilnya SELALU rapi per
+// kolom di Excel/Sheets. PDF gak bisa dijamin gitu (jsPDF nempel teks di
+// koordinat X,Y mentah, gak ada info "ini tabel" di dalam filenya — beda
+// PDF viewer bisa beda urutan pas dicopas, lihat diskusi taknis terpisah).
+// Word/OOXML tabel selalu punya struktur baris/kolom eksplisit, jadi
+// copy-paste-nya gak pernah tergantung tebakan software.
+function sphBuildDocxBlob(items, meta) {
+  const {
+    Document, Packer, Table, TableRow, TableCell, Paragraph, TextRun,
+    ExternalHyperlink, WidthType, AlignmentType, VerticalAlign, BorderStyle, HeadingLevel
+  } = window.docx;
+
+  const cellBorder = { style: BorderStyle.SINGLE, size: 2, color: 'CBD5E1' };
+  const borders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
+
+  const headers = meta.modeSwastaOutput
+    ? ['No', 'Kode', 'Deskripsi', 'Qty', 'Harga', 'Total']
+    : ['No', 'Kode', 'Deskripsi', 'Qty', 'Harga', 'Total', 'E-Katalog v6'];
+  const widthsPct = meta.modeSwastaOutput
+    ? [6, 15, 39, 6, 17, 17]
+    : [6, 13, 27, 6, 15, 15, 18];
+
+  function headerCell(text, pct) {
+    return new TableCell({
+      width: { size: pct, type: WidthType.PERCENTAGE },
+      shading: { fill: '1D5BD4' },
+      verticalAlign: VerticalAlign.CENTER,
+      borders,
+      children: [new Paragraph({ children: [new TextRun({ text, bold: true, color: 'FFFFFF', size: 18 })] })],
+    });
+  }
+  function bodyCell(text, pct, opts = {}) {
+    return new TableCell({
+      width: { size: pct, type: WidthType.PERCENTAGE },
+      verticalAlign: VerticalAlign.CENTER,
+      borders,
+      shading: opts.shade ? { fill: 'F5F6F8' } : undefined,
+      children: [new Paragraph({
+        alignment: opts.align || AlignmentType.LEFT,
+        children: [new TextRun({ text: String(text), size: 18 })],
+      })],
+    });
+  }
+  function linkCell(url, pct, opts = {}) {
+    const children = url
+      ? [new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [new ExternalHyperlink({
+            link: url,
+            children: [new TextRun({ text: 'Lihat di e-Katalog', style: 'Hyperlink', size: 18 })],
+          })],
+        })]
+      : [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: '-', size: 18 })] })];
+    return new TableCell({
+      width: { size: pct, type: WidthType.PERCENTAGE },
+      verticalAlign: VerticalAlign.CENTER,
+      borders,
+      shading: opts.shade ? { fill: 'F5F6F8' } : undefined,
+      children,
+    });
+  }
+
+  const headerRow = new TableRow({ tableHeader: true, children: headers.map((h, i) => headerCell(h, widthsPct[i])) });
+
+  const bodyRows = items.map((it, idx) => {
+    const shade = idx % 2 === 0;
+    const cells = [
+      bodyCell(it.no, widthsPct[0], { align: AlignmentType.CENTER, shade }),
+      bodyCell(it.kode_produk, widthsPct[1], { shade }),
+      bodyCell(it.deskripsi, widthsPct[2], { shade }),
+      bodyCell(it.qty, widthsPct[3], { align: AlignmentType.CENTER, shade }),
+      bodyCell(rupiah(it.harga), widthsPct[4], { align: AlignmentType.RIGHT, shade }),
+      bodyCell(rupiah(it.total), widthsPct[5], { align: AlignmentType.RIGHT, shade }),
+    ];
+    if (!meta.modeSwastaOutput) cells.push(linkCell(it.link, widthsPct[6], { shade }));
+    return new TableRow({ children: cells });
+  });
+
+  const preTotalCols = meta.modeSwastaOutput ? [0, 1, 2, 3, 4] : [0, 1, 2, 3, 4];
+  const labelSpanPct = widthsPct.slice(0, 5).reduce((a, b) => a + b, 0);
+  const valueSpanPct = widthsPct.slice(5).reduce((a, b) => a + b, 0);
+  const totalRow = new TableRow({
+    children: [
+      new TableCell({
+        columnSpan: 5,
+        width: { size: labelSpanPct, type: WidthType.PERCENTAGE },
+        shading: { fill: '1D5BD4' },
+        borders,
+        children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: 'TOTAL VALUE', bold: true, color: 'FFFFFF', size: 18 })] })],
+      }),
+      new TableCell({
+        columnSpan: meta.modeSwastaOutput ? 1 : 2,
+        width: { size: valueSpanPct, type: WidthType.PERCENTAGE },
+        shading: { fill: '1D5BD4' },
+        borders,
+        children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: rupiah(meta.grandTotal), bold: true, color: 'FFFFFF', size: 18 })] })],
+      }),
+    ],
+  });
+
+  const table = new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [headerRow, ...bodyRows, totalRow] });
+
+  const doc = new Document({
+    sections: [{
+      children: [
+        new Paragraph({ text: 'PENAWARAN HARGA', heading: HeadingLevel.HEADING_1 }),
+        new Paragraph({ children: [new TextRun({ text: `No.  : ${meta.nomorSph}` })] }),
+        new Paragraph({ children: [new TextRun({ text: `Tanggal : ${meta.tanggalSurat}` })] }),
+        new Paragraph({ children: [new TextRun({ text: `Kepada  : Direktur Utama ${meta.namaRs}` })] }),
+        new Paragraph({ text: '' }),
+        table,
+      ],
+    }],
+  });
+
+  return Packer.toBlob(doc);
+}
+
 async function sphGenerate() {
   const errs = sphValidate();
   if (errs.length) {
@@ -1117,10 +1240,28 @@ async function sphGenerate() {
     sphPreviewFrame.src = url;
     sphPreviewFrame.style.display = 'block';
     sphPreviewEmpty.style.display = 'none';
-    const fileName = sphBuildFileBaseName(sphNomorInput.value, tanggalDate, namaRs, namaSales) + '.pdf';
+    const fileBaseName = sphBuildFileBaseName(sphNomorInput.value, tanggalDate, namaRs, namaSales);
+    const fileName = fileBaseName + '.pdf';
     sphDownloadLink.href = url;
     sphDownloadLink.download = fileName;
     sphDownloadLink.style.display = 'flex';
+
+    // Versi .docx tabel item — buat rekap/audit cepat, gak dari PDF (lihat
+    // sphBuildDocxBlob). Kegagalan bikin docx JANGAN sampai gagalin PDF-nya
+    // yang udah jadi (PDF tetap dokumen utama) — cuma disembunyikan tombolnya.
+    try {
+      const docxBlob = await sphBuildDocxBlob(items, { nomorSph, namaRs, tanggalSurat, grandTotal, modeSwastaOutput });
+      const docxUrl = URL.createObjectURL(docxBlob);
+      if (sphDownloadLinkDocx) {
+        sphDownloadLinkDocx.href = docxUrl;
+        sphDownloadLinkDocx.download = fileBaseName + '.docx';
+        sphDownloadLinkDocx.style.display = 'flex';
+      }
+    } catch (eDocx) {
+      if (sphDownloadLinkDocx) sphDownloadLinkDocx.style.display = 'none';
+      console.error('Gagal bikin docx rekap:', eDocx);
+    }
+
     sphStatusEl.textContent = `Siap — ${items.length} produk, total ${rupiah(grandTotal)}.`;
 
     // ── Simpan data buat Record SPH ──
