@@ -4611,6 +4611,23 @@ const btnConvClear = document.getElementById('btn-conv-clear');
 const btnConvAddAll = document.getElementById('btn-conv-add-all');
 let convRows = [];
 
+// ══════════════════════════════════════════
+// RESOLVE MANUAL BUAT BARIS YANG GAK KETEMU (2026-08-22): sebelum ini, baris
+// "❌ Tidak ditemukan" / "🔄 Error" itu dead-end — checkbox-nya disabled dan
+// gak ada jalan lain selain pindah tab buat cari manual, kehilangan konteks
+// batch paste yang lagi dikerjain. Sekarang baris begitu jadi accordion
+// (reuse .kb-item/.kb-item-header dari Kebutuhan RS, biar konsisten & gak
+// nambah CSS baru buat struktur), auto-expanded pas hasil pertama kali keluar,
+// isinya search manual ke katalog (RPC yang sama kayak search utama) — pilih
+// hasil langsung nge-update row itu jadi 'manual_matched' tanpa keluar dari
+// Converter. — Claude
+// ══════════════════════════════════════════
+let convExpandedIdx = new Set();   // idx baris yang accordion-nya lagi kebuka
+let convManualResults = {};        // idx -> null | {loading:true} | {items:[...]} | {error:msg}
+let convManualQuery = {};          // idx -> teks yang lagi diketik, biar gak ilang pas re-render
+let convManualTimers = {};         // idx -> setTimeout handle (debounce input)
+let convManualSeq = {};            // idx -> counter, buang response basi kalau user ngetik cepat
+
 function parseConverterLine(line) {
   const idx = line.indexOf('\t');
   if (idx !== -1) {
@@ -4623,33 +4640,134 @@ function parseConverterLine(line) {
   return { kode: line.trim(), nama_input: '' };
 }
 
-function renderConvResults(rows) {
-  convResultsEl.innerHTML = rows.map((r, i) => {
-    let badge, color, sub = '';
-    if (r.status === 'exact') { badge = '✅ Cocok'; color = 'var(--success)'; }
-    else if (r.status === 'code_found_name_diff') {
-      badge = '⚠️ Kode ketemu, nama beda';
-      color = 'var(--warning)';
-      sub = `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Input: "${escapeHtmlAttr(r.nama_input)}" · Katalog: "${escapeHtmlAttr(r.produk.nama_produk)}"</div>`;
-    } else if (r.status === 'error') {
-      badge = '🔄 Error / timeout — belum sempat dicek';
-      color = 'var(--warning)';
-      sub = `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${escapeHtmlAttr(r.errMsg || '')}</div>`;
-    } else { badge = '❌ Tidak ditemukan'; color = 'var(--danger)'; }
-    const disabled = r.produk ? '' : 'disabled';
-    const checked = r.produk ? 'checked' : '';
-    return `<div class="clip-item" style="align-items:flex-start">
-      <input type="checkbox" class="conv-check" data-idx="${i}" ${checked} ${disabled} style="margin-top:4px"/>
+// Badge/warna/sub-caption per status — satu titik dipakai baris compact
+// (produk ketemu) maupun baris accordion (produk gak ketemu), biar teksnya
+// gak keulang nulis beda-beda di dua tempat.
+function convStatusMeta(r) {
+  if (r.status === 'exact') return { badge: '✅ Cocok', color: 'var(--success)' };
+  if (r.status === 'manual_matched') return { badge: '✅ Dipilih manual', color: 'var(--success)' };
+  if (r.status === 'code_found_name_diff') return { badge: '⚠️ Kode ketemu, nama beda', color: 'var(--warning)' };
+  if (r.status === 'error') return { badge: '🔄 Error / timeout — belum sempat dicek', color: 'var(--warning)' };
+  return { badge: '❌ Tidak ditemukan', color: 'var(--danger)' };
+}
+
+// Hasil pencarian manual buat baris ke-i, dirender di dalam accordion.
+function convManualResultsHtml(i) {
+  const st = convManualResults[i];
+  if (!st) return '';
+  if (st.loading) return `<div class="conv-manual-status">Mencari…</div>`;
+  if (st.error) return `<div class="conv-manual-status">Gagal mencari: ${escapeHtmlAttr(st.error)}</div>`;
+  if (!st.items.length) return `<div class="conv-manual-status">Tidak ada hasil.</div>`;
+  return st.items.map(p => `<div class="conv-manual-row">
+    <div class="conv-manual-row-info">
+      <span class="conv-manual-row-nama">${escapeHtmlAttr(p.nama_produk)}</span>
+      <span class="conv-manual-row-kode">${escapeHtmlAttr(p.kode_produk)}</span>
+    </div>
+    <button type="button" class="conv-manual-pick" data-idx="${i}" data-kode="${escapeHtmlAttr(p.kode_produk)}">Pilih</button>
+  </div>`).join('');
+}
+
+// Satu baris hasil Converter. Kalau produk-nya ketemu (exact/nama beda/manual),
+// tampil compact kayak semula. Kalau enggak (not_found/error), jadi accordion
+// (.kb-item, reuse style dari Kebutuhan RS) yang bisa dibuka buat search manual.
+function convRowHtml(r, i) {
+  const meta = convStatusMeta(r);
+  const nama = r.produk ? r.produk.nama_produk : (r.nama_input || '(tanpa nama)');
+  const metaLine = `<div class="clip-item-meta">
+    <span class="clip-item-code">${escapeHtmlAttr(r.kode)}</span>
+    <span style="color:${meta.color};font-size:11px">${meta.badge}</span>
+  </div>`;
+
+  if (r.produk) {
+    const sub = r.status === 'code_found_name_diff'
+      ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Input: "${escapeHtmlAttr(r.nama_input)}" · Katalog: "${escapeHtmlAttr(r.produk.nama_produk)}"</div>`
+      : '';
+    return `<div class="clip-item" style="align-items:flex-start" data-idx="${i}">
+      <input type="checkbox" class="conv-check" data-idx="${i}" checked style="margin-top:4px"/>
       <div class="clip-item-info" style="margin-left:8px">
-        <div class="clip-item-name">${escapeHtmlAttr(r.produk ? r.produk.nama_produk : r.nama_input || '(tanpa nama)')}</div>
-        <div class="clip-item-meta">
-          <span class="clip-item-code">${escapeHtmlAttr(r.kode)}</span>
-          <span style="color:${color};font-size:11px">${badge}</span>
-        </div>
+        <div class="clip-item-name">${escapeHtmlAttr(nama)}</div>
+        ${metaLine}
         ${sub}
       </div>
     </div>`;
-  }).join('');
+  }
+
+  const isExpanded = convExpandedIdx.has(i);
+  const cls = 'kb-item tidak-terpenuhi' + (isExpanded ? ' expanded' : ' collapsed');
+  const errSub = r.status === 'error' ? `<div class="kb-item-sub">${escapeHtmlAttr(r.errMsg || '')}</div>` : '';
+  const headerHtml = `<div class="kb-item-header" data-action="conv-toggle" data-idx="${i}">
+    <input type="checkbox" class="conv-check" data-idx="${i}" disabled style="margin-top:2px"/>
+    <div class="kb-item-header-text">
+      <div class="kb-item-text">${escapeHtmlAttr(nama)}</div>
+      ${metaLine}
+    </div>
+    <i class="ti ti-chevron-down kb-item-chevron"></i>
+  </div>`;
+  const detailHtml = isExpanded ? `<div class="kb-item-detail">
+    ${errSub}
+    <div class="conv-manual-search">
+      <input type="text" class="conv-manual-input" data-idx="${i}" placeholder="Cari produk yang benar di katalog…" value="${escapeHtmlAttr(convManualQuery[i] || '')}" autocomplete="off"/>
+      <div class="conv-manual-results" data-idx="${i}">${convManualResultsHtml(i)}</div>
+    </div>
+  </div>` : '';
+
+  return `<div class="${cls}" data-idx="${i}">${headerHtml}${detailHtml}</div>`;
+}
+
+function renderConvResults(rows) {
+  convResultsEl.innerHTML = rows.map((r, i) => convRowHtml(r, i)).join('');
+}
+
+// Patch 1 baris aja (dipanggil abis toggle expand / hasil search manual masuk
+// / pilih produk manual) — gak perlu re-render seluruh daftar tiap kali,
+// dan kalau lagi ngetik di search manual, inputnya gak kehilangan fokus tiap
+// hasil baru datang. Mirip pola patchChecklistItem() di Kebutuhan RS.
+function patchConvRow(i, opts = {}) {
+  const old = convResultsEl.querySelector(`[data-idx="${i}"]`);
+  if (!old || !convRows[i]) { renderConvResults(convRows); return; }
+  const temp = document.createElement('div');
+  temp.innerHTML = convRowHtml(convRows[i], i);
+  const fresh = temp.firstElementChild;
+  old.replaceWith(fresh);
+  if (opts.keepFocus) {
+    const inp = fresh.querySelector('.conv-manual-input');
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  }
+}
+
+// Ringkasan status (teks "Selesai — N cocok…" + tombol Tambah/Proses Ulang)
+// — dipisah dari finishConvBatch() biar bisa dipanggil ulang abis user
+// nyelesein satu baris lewat search manual, tanpa harus re-match semua baris.
+function updateConvSummary() {
+  const rows = convRows;
+  const foundProduk = rows.filter(r => r.produk).map(r => r.produk);
+  const nExact = rows.filter(r => r.status === 'exact').length;
+  const nDiff = rows.filter(r => r.status === 'code_found_name_diff').length;
+  const nManual = rows.filter(r => r.status === 'manual_matched').length;
+  const nErr = rows.filter(r => r.status === 'error').length;
+  const nNotFound = rows.filter(r => r.status === 'not_found').length;
+  convStatus.textContent = `Selesai — ${nExact} cocok penuh, ${nDiff} kode ketemu (nama beda)`
+    + (nManual ? `, ${nManual} dipilih manual` : '')
+    + `, ${nNotFound} tidak ditemukan`
+    + (nErr ? `, ${nErr} error/timeout (klik "Proses Ulang yang Error").` : '.');
+  convActions.style.display = foundProduk.length ? 'block' : 'none';
+  btnConvRetryErr.style.display = nErr ? 'inline-flex' : 'none';
+}
+
+// Cari manual ke katalog buat baris ke-i, RPC sama kayak search utama biar
+// hasilnya konsisten (harga/stok/link_v6 dst ikut ke-resolve pas dipilih).
+async function convManualSearch(i, qRaw) {
+  const q = qRaw.trim();
+  if (!q) { convManualResults[i] = null; patchConvRow(i, { keepFocus: true }); return; }
+  const mySeq = (convManualSeq[i] = (convManualSeq[i] || 0) + 1);
+  convManualResults[i] = { loading: true };
+  patchConvRow(i, { keepFocus: true });
+  const { data, error } = await rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
+  if (mySeq !== convManualSeq[i]) return; // udah ada ketikan baru nyusul, buang hasil basi ini
+  convManualResults[i] = error
+    ? { error: error.message || JSON.stringify(error) }
+    : { items: (data || []).slice(0, 6) }; // sinyal kontekstual, bukan halaman browse penuh
+  patchConvRow(i, { keepFocus: true });
 }
 
 // ══════════════════════════════════════════
@@ -4725,15 +4843,14 @@ async function finishConvBatch(rows) {
     await enrichResultsWithStok(foundProduk);
   }
   convRows = rows;
+  // Auto-expand baris yang butuh tindakan (gak ketemu/error), biar user
+  // langsung lihat & bisa cari manual tanpa klik buka satu-satu dulu. Baris
+  // yang udah ketemu tetap compact/collapsed, gak perlu perhatian.
+  convExpandedIdx = new Set(rows.map((r, i) => r.produk ? -1 : i).filter(i => i >= 0));
+  Object.values(convManualTimers).forEach(clearTimeout);
+  convManualResults = {}; convManualQuery = {}; convManualTimers = {}; convManualSeq = {};
   renderConvResults(rows);
-  const nExact = rows.filter(r => r.status === 'exact').length;
-  const nDiff = rows.filter(r => r.status === 'code_found_name_diff').length;
-  const nErr = rows.filter(r => r.status === 'error').length;
-  const nNotFound = rows.filter(r => r.status === 'not_found').length;
-  convStatus.textContent = `Selesai — ${nExact} cocok penuh, ${nDiff} kode ketemu (nama beda), ${nNotFound} tidak ditemukan`
-    + (nErr ? `, ${nErr} error/timeout (klik "Proses Ulang yang Error").` : '.');
-  convActions.style.display = foundProduk.length ? 'block' : 'none';
-  btnConvRetryErr.style.display = nErr ? 'inline-flex' : 'none';
+  updateConvSummary();
 }
 
 async function processConverter() {
@@ -4773,6 +4890,48 @@ btnConvClear.addEventListener('click', () => {
   convActions.style.display = 'none';
   btnConvRetryErr.style.display = 'none';
   convRows = [];
+  Object.values(convManualTimers).forEach(clearTimeout);
+  convExpandedIdx = new Set();
+  convManualResults = {}; convManualQuery = {}; convManualTimers = {}; convManualSeq = {};
+});
+
+// Toggle accordion + klik "Pilih" di hasil search manual.
+convResultsEl.addEventListener('click', (e) => {
+  const pickBtn = e.target.closest('.conv-manual-pick');
+  if (pickBtn) {
+    const i = parseInt(pickBtn.dataset.idx, 10);
+    const kode = pickBtn.dataset.kode;
+    const st = convManualResults[i];
+    const produk = st && st.items && st.items.find(p => p.kode_produk === kode);
+    if (!produk || !convRows[i]) return;
+    pickBtn.disabled = true;
+    convRows[i].produk = produk;
+    convRows[i].status = 'manual_matched';
+    convRows[i].errMsg = null;
+    convExpandedIdx.delete(i);
+    convManualResults[i] = null;
+    convManualQuery[i] = '';
+    enrichResultsWithStok([produk]).finally(() => { patchConvRow(i); updateConvSummary(); });
+    return;
+  }
+  const toggleHeader = e.target.closest('.kb-item-header[data-action="conv-toggle"]');
+  if (toggleHeader) {
+    const i = parseInt(toggleHeader.dataset.idx, 10);
+    if (!convRows[i] || convRows[i].produk) return; // cuma baris belum-ketemu yang punya detail buat dibuka
+    if (convExpandedIdx.has(i)) convExpandedIdx.delete(i); else convExpandedIdx.add(i);
+    patchConvRow(i);
+  }
+});
+
+// Search manual, di-debounce biar gak nembak RPC tiap ketikan huruf (konsisten
+// sama debounce search utama di tab Cari Cepat).
+convResultsEl.addEventListener('input', (e) => {
+  const inp = e.target.closest('.conv-manual-input');
+  if (!inp) return;
+  const i = parseInt(inp.dataset.idx, 10);
+  convManualQuery[i] = inp.value;
+  clearTimeout(convManualTimers[i]);
+  convManualTimers[i] = setTimeout(() => convManualSearch(i, inp.value), 300);
 });
 
 btnConvAddAll.addEventListener('click', async () => {
