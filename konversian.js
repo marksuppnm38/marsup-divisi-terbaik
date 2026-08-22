@@ -1299,7 +1299,12 @@ const setcariSearchBtn = document.getElementById('setcari-search-btn');
 const setcariStatus = document.getElementById('setcari-status');
 const setcariEmpty = document.getElementById('setcari-empty');
 const setcariList = document.getElementById('setcari-list');
-const setcariSourceCount = document.getElementById('setcari-source-count');
+const setcariSourceLabel = document.getElementById('setcari-source-label');
+const setcariSrcClip = document.getElementById('setcari-src-clip');
+const setcariSrcPaste = document.getElementById('setcari-src-paste');
+const setcariPasteWrap = document.getElementById('setcari-paste-wrap');
+const setcariPasteInput = document.getElementById('setcari-paste-input');
+let setcariSourceMode = 'clip'; // 'clip' | 'paste' — pintu sumber kode buat Cari SET Mendekati
 const riwayatList = document.getElementById('riwayat-list');
 const riwayatListEmpty = document.getElementById('riwayat-list-empty');
 const riwayatListLoading = document.getElementById('riwayat-list-loading');
@@ -6063,8 +6068,12 @@ async function autoFinalizePermintaan() {
 // read-only/security-definer).
 // ══════════════════════════════════════════
 // Kode sumber = kode_produk unik dari clipboard (kode_asli dipakai kalau ada,
-// sama kayak konvensi kode buat gambar/thumbnail di bagian lain app ini).
+// sama kayak konvensi kode buat gambar/thumbnail di bagian lain app ini) —
+// ATAU dari textarea paste-an, tergantung pintu (setcariSourceMode) yang
+// lagi aktif. Satu titik dipanggil runCariSetMendekati() & updateSetcariSourceCount(),
+// jadi kedua pintu otomatis konsisten tanpa logic ganda.
 function setcariSourceKodeList() {
+  if (setcariSourceMode === 'paste') return parseSetcariPasteKode(setcariPasteInput.value);
   const seen = new Set();
   const out = [];
   clipboard.forEach(c => {
@@ -6074,11 +6083,51 @@ function setcariSourceKodeList() {
   return out;
 }
 
+// Pisah per baris ATAU koma (dua-duanya sering kepake pas paste dari Excel/
+// chat WA) — kode produk sendiri gak pernah punya spasi/koma di dalamnya,
+// jadi aman displit begini. Dedupe biar gak nembak kode yang sama 2x.
+function parseSetcariPasteKode(raw) {
+  const seen = new Set();
+  const out = [];
+  raw.split(/[\n,]/).map(s => s.trim()).filter(Boolean).forEach(kode => {
+    if (!seen.has(kode)) { seen.add(kode); out.push(kode); }
+  });
+  return out;
+}
+
 function updateSetcariSourceCount() {
   const n = setcariSourceKodeList().length;
-  setcariSourceCount.textContent = n;
+  const noun = setcariSourceMode === 'paste' ? 'kode yang di-paste' : 'produk yang lagi ada di Clipboard';
+  setcariSourceLabel.innerHTML = `Nyari SET dengan isi paling mirip <b>${n}</b> ${noun}`;
   setcariSearchBtn.disabled = n === 0;
 }
+
+function updateSetcariEmptyHint() {
+  const p = setcariEmpty.querySelector('p');
+  p.textContent = setcariSourceMode === 'paste'
+    ? 'Paste daftar kode produk di atas (1 per baris atau dipisah koma), lalu klik "Cari SET Mendekati" buat lihat SET yang isinya paling mirip.'
+    : 'Tambahkan produk ke Clipboard dulu, lalu klik "Cari SET Mendekati" buat lihat SET yang isinya paling mirip sama produk-produk itu.';
+}
+
+// Pindah pintu sumber: hasil pencarian sebelumnya (dari sumber lain) udah
+// gak relevan lagi, jadi di-reset — daripada nampilin hasil SET yang
+// ternyata bukan dari kode yang lagi aktif dipakai.
+function setSetcariSourceMode(mode) {
+  if (setcariSourceMode === mode) return;
+  setcariSourceMode = mode;
+  setcariSrcClip.classList.toggle('on', mode === 'clip');
+  setcariSrcPaste.classList.toggle('on', mode === 'paste');
+  setcariPasteWrap.style.display = mode === 'paste' ? 'block' : 'none';
+  setcariList.innerHTML = '';
+  setcariBadge.style.display = 'none';
+  setcariSetStatus('');
+  setcariEmpty.style.display = 'block';
+  updateSetcariEmptyHint();
+  updateSetcariSourceCount();
+}
+setcariSrcClip.addEventListener('click', () => setSetcariSourceMode('clip'));
+setcariSrcPaste.addEventListener('click', () => setSetcariSourceMode('paste'));
+setcariPasteInput.addEventListener('input', () => updateSetcariSourceCount());
 
 function setcariSetStatus(msg, isError) {
   setcariStatus.textContent = msg || '';
@@ -6094,7 +6143,7 @@ function setcariSkorClass(skor) {
 async function runCariSetMendekati() {
   const kodeList = setcariSourceKodeList();
   if (kodeList.length === 0) {
-    setcariSetStatus('Clipboard masih kosong — tambahkan produk dulu.', true);
+    setcariSetStatus(setcariSourceMode === 'paste' ? 'Paste kode produk dulu di kotak atas.' : 'Clipboard masih kosong — tambahkan produk dulu.', true);
     return;
   }
   setcariSearchBtn.disabled = true;
