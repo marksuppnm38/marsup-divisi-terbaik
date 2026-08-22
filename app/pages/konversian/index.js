@@ -94,11 +94,20 @@ function ensureVendorScripts() {
   return vendorReady;
 }
 
-// pnm-universal.css itu SHARED (dashboard/stok/crud-produk juga pakainya) —
-// jadi di-link dengan id tetap biar halaman lain yang migrasi belakangan
-// nge-skip kalau udah ada, bukan double-load. pnm-konversian-rebase.css
-// (style.css di folder ini) khusus halaman ini doang, sama kayak
-// export-gambar/kompres-pdf.
+// pnm-universal.css dulu dianggap "SHARED, tetap nempel selamanya" (biar
+// halaman lain yang migrasi belakangan nge-skip re-load) — tapi itu yang
+// bikin bug "tema kacau"/"blink aneh" pas balik ke #home atau modul lain:
+// begitu di-load sekali, dia gak pernah lepas dari <head> sepanjang sesi
+// SPA, dan berisi selector bare/unscoped (header{}, .stat-val, dst — lihat
+// map.md sesi keenam) yang bocor ke halaman manapun yang kebetulan mount
+// setelahnya. Fix: sekarang di-treat sama kayak stylesheet page-scoped
+// lainnya (page-konversian-style, kompres-pdf/style.css, dst) — di-load pas
+// mount(), DILEPAS pas unmount() (lihat unmount() di bawah). Browser HTTP
+// cache bikin re-load ini nyaris instant (URL persis sama, gak berubah),
+// jadi gak ada biaya nyata — cuma DOM <link> tag-nya yang gak lagi nempel
+// permanen. Kalau nanti crud-produk/dashboard/stok ikut dimigrasi ke SPA
+// dan butuh pnm-universal.css juga, mereka pakai pola yang sama: load di
+// mount(), lepas di unmount() masing-masing.
 const SHARED_LINKS = [
   { id: 'shared-google-fonts', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap' },
   { id: 'shared-phosphor-icons', href: 'https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css' },
@@ -9010,6 +9019,13 @@ export function unmount() {
   // di sini, mereka nyisa nempel ke body walau halaman ini udah di-unmount.
   document.getElementById('sph-riwayat-modal')?.remove();
   document.getElementById('konversi-riwayat-modal')?.remove();
+
+  // Lepas pnm-universal.css — lihat komentar di SHARED_LINKS di atas. HANYA
+  // ini yang dilepas (bukan Google Fonts/icon links di SHARED_LINKS
+  // lainnya) karena cuma file ini yang punya selector bare/unscoped yang
+  // kebukti bocor ke halaman lain; font/icon stylesheet aman dibiarkan
+  // nempel (gak ada elemen yang mereka style tanpa class eksplisit).
+  document.getElementById('shared-pnm-universal-css')?.remove();
 
   delete window.__konvBridge;
   delete window.switchTab;
