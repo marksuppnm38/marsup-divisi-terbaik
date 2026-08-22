@@ -3,6 +3,7 @@
 // Add a page here only once it's actually migrated (see map.md bagian 4).
 
 const ROUTES = {
+  'home': () => import('./pages/home/index.js'),
   'kompres-pdf': () => import('./pages/kompres-pdf/index.js'),
   'export-gambar': () => import('./pages/export-gambar/index.js'),
   'konversian': () => import('./pages/konversian/index.js'),

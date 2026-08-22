@@ -1,0 +1,295 @@
+/* Home page (gerbang) — flat, minimal, modern. No 3D cube, no aurora blobs,
+   no cursor glow, no glassmorphism. Colors follow the same light/dark
+   convention as pnm-universal.css (data-theme on <html>), but the token set
+   here is flat-surface only (no glass/blur gradients). */
+
+.app-wrap {
+  --home-bg: #F8FAFC;
+  --home-surface: #FFFFFF;
+  --home-border: #E2E8F0;
+  --home-text: #0F172A;
+  --home-text-muted: #64748B;
+  --home-text-dim: #94A3B8;
+  --home-accent: #2563EB;
+  --home-badge-bg: #EFF6FF;
+  --home-badge-text: #1D4ED8;
+
+  position: relative;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 32px 56px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  color: var(--home-text);
+}
+
+[data-theme="dark"] .app-wrap {
+  --home-bg: #0B1120;
+  --home-surface: #131B2E;
+  --home-border: #1E293B;
+  --home-text: #F1F5F9;
+  --home-text-muted: #94A3B8;
+  --home-text-dim: #64748B;
+  --home-accent: #3B82F6;
+  --home-badge-bg: rgba(59, 130, 246, 0.15);
+  --home-badge-text: #60A5FA;
+}
+
+body:has(#app .app-wrap) {
+  background-color: var(--home-bg);
+  transition: background-color 0.2s ease;
+}
+
+.app-wrap * { box-sizing: border-box; }
+
+/* Header. Explicit background/gap/z-index/flex-shrink resets below are not
+   decorative — pnm-universal.css (loaded globally and left in <head> once
+   any other tool has been visited, see map.md bagian 1) defines a bare,
+   unscoped `header{...}` element rule with those exact 4 properties. Class
+   selectors here already beat it on shared properties (0,1,0 > 0,0,1), but
+   for anything this rule *doesn't* set, the leaked pnm-universal.css value
+   would otherwise win once that stylesheet loads — this is what caused the
+   "back button makes it scale poorly" bug (confirmed via grep: pnm-universal
+   .css's `header{}` and `.stat-val{}` were leaking into this page). */
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--home-border);
+  margin-bottom: 40px;
+  background: transparent;
+  gap: 0;
+  flex-shrink: initial;
+  z-index: auto;
+}
+
+.home-header .brand-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.home-header .brand-logo-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--home-surface);
+  border: 1px solid var(--home-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-header .brand-logo-wrap img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.home-header .brand-titles h1 {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.home-header .brand-titles p {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--home-text-muted);
+  margin: 2px 0 0;
+}
+
+.home-header .home-header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.home-header .breadcrumb-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--home-text-muted);
+  background: var(--home-surface);
+  border: 1px solid var(--home-border);
+  padding: 6px 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-header .pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #10B981;
+}
+
+.home-header .theme-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--home-surface);
+  border: 1px solid var(--home-border);
+  color: var(--home-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.home-header .theme-btn:hover {
+  border-color: var(--home-accent);
+  color: var(--home-accent);
+}
+
+.home-header .theme-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Hero */
+.home-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+.home-hero .hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: var(--home-badge-bg);
+  color: var(--home-badge-text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.home-hero h2 {
+  font-size: clamp(28px, 3.6vw, 40px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.home-hero .hero-desc {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--home-text-muted);
+  max-width: 480px;
+  margin: 0;
+}
+
+.home-hero .hero-stats {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding-top: 16px;
+  margin-top: 4px;
+  border-top: 1px solid var(--home-border);
+  width: 100%;
+  max-width: 520px;
+}
+
+.home-stat-item { display: flex; flex-direction: column; gap: 2px; }
+
+.home-stat-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--home-text);
+}
+
+.home-stat-lbl { font-size: 11px; color: var(--home-text-muted); }
+
+/* Module grid */
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.module-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--home-surface);
+  border: 1px solid var(--home-border);
+  text-decoration: none;
+  color: var(--home-text);
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.module-card:hover {
+  border-color: var(--home-accent);
+  transform: translateY(-2px);
+}
+
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-icon svg { width: 18px; height: 18px; stroke-width: 2; }
+
+.card-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10B981;
+  letter-spacing: 0.05em;
+}
+
+.module-card h3 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.module-card p {
+  font-size: 12.5px;
+  color: var(--home-text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+@media (max-width: 720px) {
+  .app-wrap { padding: 0 18px 40px; }
+  .home-hero h2 { font-size: 26px; }
+}

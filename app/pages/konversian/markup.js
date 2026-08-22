@@ -55,7 +55,7 @@ export const KONVERSIAN_MARKUP = `
   </div>
   <div class="header-right">
     <span class="clip-count" id="hdr-clip-count-wrap">Clipboard: <span id="hdr-count">0</span> item</span>
-    <a class="toggle-btn" href="/index.html" title="Kembali ke Beranda"><i class="ph ph-house"></i> <span class="toggle-btn-label">Beranda</span></a>
+    <a class="toggle-btn" href="/app/shell.html#home" title="Kembali ke Beranda"><i class="ph ph-house"></i> <span class="toggle-btn-label">Beranda</span></a>
     <a class="toggle-btn" href="/stok.html" title="Buka modul Stok"><i class="ph ph-truck"></i> <span class="toggle-btn-label">Stok</span></a>
     <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ph ph-clipboard-text"></i> <span class="toggle-btn-label">Permintaan RS</span></button>
     <button class="toggle-btn" id="settings-toggle" title="Preferensi" aria-label="Preferensi"><i class="ph ph-gear-six"></i></button>

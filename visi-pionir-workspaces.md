@@ -200,6 +200,17 @@ banyak perubahan sekaligus sebelum ketauan jalan apa nggak) — pola yang sama
 kayak kenapa 3 migrasi tool sebelumnya juga dipisah per-sesi, bukan
 sekaligus.
 
+**Status — 23 Agustus 2026 (sesi kelima):** Langkah 1 SELESAI —
+`app/pages/home/` udah ada, route `'home'` udah masuk `router.js`
+(`DEFAULT_ROUTE` masih `'kompres-pdf'`, sengaja belum diubah). Detail teknis
++ penyimpangan desain (kubus 3D/aurora/cursor-glow dibuang, diganti flat
+module-card grid — permintaan user, bukan bagian rencana port verbatim) ada
+di `map.md` (update sesi kelima). Langkah 2–5 di atas BELUM dikerjakan — root
+`index.html` masih file standalone terpisah (isinya udah ikut didesain ulang
+flat juga, tapi strukturnya belum jadi shell), `router.js` `DEFAULT_ROUTE`
+belum diganti, pill/cube-face belum hash-nav, `app/pages.js` registry belum
+dibikin.
+
 ---
 
 ## 6. Konteks deployment (Vercel, `cleanUrls: true`)
