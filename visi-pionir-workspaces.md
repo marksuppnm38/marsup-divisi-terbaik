@@ -244,6 +244,43 @@ di bagian 4 (`crud-produk.js` baris ~187, audit string literal
 jalan seperti sebelumnya karena `app/shell.html` sengaja dipertahankan
 sebagai alias di atas, jadi gak ada yang patah, cuma belum "bersih".
 
+**Status — 23 Agustus 2026 (sesi kedelapan):** Bugfix + langkah 3 SELESAI.
+- **Bugfix duluan**: user testing manual (push ke Vercel, PowerShell) nemu
+  `Uncaught SyntaxError: Unexpected token '<'` di `router.js:1`. Root cause:
+  isi `app\router.js` (624 bytes) ketimpa konten `index.html`/`shell.html`
+  (juga 624 bytes) pas copy-paste manual — jadi browser coba parse HTML
+  sebagai JS. User benerin sendiri di sisi dia dan push ulang (commit "router
+  salah copas anjing wkwkwk") — dikonfirmasi lewat `git pull` fresh:
+  `app/router.js` sekarang 1537 bytes, isinya JS asli lagi.
+- **Langkah 3**: pill link di `app/pages/home/markup.js` (`MODULES` array)
+  buat 3 modul yang sudah `status: migrated` (`konversian`, `kompres-pdf`,
+  `export-gambar`) diganti dari `/app/shell.html#<id>` jadi fragment-only
+  `#<id>` — ini otomatis jadi hash-nav asli TANPA butuh JS/click-handler
+  tambahan sama sekali, karena `<a href="#id">` native men-trigger
+  `hashchange` di window, dan `router.js` udah dengar event itu dari awal
+  (lihat `router.js` baris 45). 3 modul yang masih `status: legacy` (`stok`,
+  `crud-produk`, `dashboard`) SENGAJA DIBIARKAN full-page `.html` link,
+  belum jadi route SPA. Field `migrated: true/false` ditambahin ke tiap
+  entri `MODULES` (dipakai buat komentar/dokumentasi array ini sekarang,
+  belum dikonsumsi `router.js`/logic apapun — itu baru relevan pas
+  `app/pages.js` registry dibikin di langkah 4).
+- Diverifikasi: `node --check` (syntax valid) di `markup.js`/`index.js`, dan
+  `python -m http.server` lokal + `curl` — konten `MODULES` array kekonfirmasi
+  isinya `#konversian`/`#kompres-pdf`/`#export-gambar` (bukan lagi
+  `/app/shell.html#...`) buat yang migrated, `/stok.html` dkk tetap apa
+  adanya buat yang legacy. **Belum diverifikasi klik asli di browser** —
+  sandbox ini tetap gak punya akses ke `fonts.googleapis.com`. Sesi
+  berikutnya/kamu sendiri: klik tiap kartu modul yang migrated dari `#home`,
+  pastikan URL address bar berubah jadi `/#konversian` dkk TANPA reload
+  (cek Network tab — harusnya nol request dokumen baru), baru lanjut ke
+  langkah 4 (`app/pages.js` registry).
+
+Langkah 4–5 masih belum dikerjakan: `app/pages.js` registry belum dibikin,
+follow-up bagian 4 (`crud-produk.js` baris ~187, audit
+`konversian/markup.js` baris 58 yang masih `/app/shell.html#home` buat
+tombol "Beranda") belum disentuh — sengaja, ngikutin urutan, dan gak ada
+yang patah karena `app/shell.html` masih alias yang hidup.
+
 ---
 
 ## 6. Konteks deployment (Vercel, `cleanUrls: true`)
