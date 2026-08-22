@@ -25,16 +25,22 @@
   color: var(--home-text);
 }
 
+/* Dark palette matches konversian's (pnm-universal.css html[data-theme="dark"])
+   value-for-value — same near-black/graphite surfaces + Apple-system-blue
+   accent, not the bluish-navy set this page shipped with originally. Colors
+   are hardcoded here rather than linking pnm-universal.css itself: home is
+   deliberately kept independent of that stylesheet to avoid the class-name
+   collision risk documented in map.md (sesi keenam, .stat-val/header bug). */
 [data-theme="dark"] .app-wrap {
-  --home-bg: #0B1120;
-  --home-surface: #131B2E;
-  --home-border: #1E293B;
-  --home-text: #F1F5F9;
-  --home-text-muted: #94A3B8;
-  --home-text-dim: #64748B;
-  --home-accent: #3B82F6;
-  --home-badge-bg: rgba(59, 130, 246, 0.15);
-  --home-badge-text: #60A5FA;
+  --home-bg: #0d0d0d;
+  --home-surface: #171717;
+  --home-border: #2b2b2b;
+  --home-text: #f0f0f0;
+  --home-text-muted: #a3a3a3;
+  --home-text-dim: #7a7a7a;
+  --home-accent: #0A84FF;
+  --home-badge-bg: #152a4d;
+  --home-badge-text: #6bb0ff;
 }
 
 body:has(#app .app-wrap) {

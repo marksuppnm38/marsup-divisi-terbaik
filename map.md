@@ -4,7 +4,7 @@ Peta singkat repo ini, plus rencana pindah ke vanilla SPA. Tujuan file ini: siap
 
 Cara baca: bagian 1–2 itu potret KONDISI SEKARANG (apa adanya, termasuk bagian yang berantakan). Bagian 3–5 itu RENCANA.
 
-**Baca juga `visi-pionir-workspaces.md`** (dibuat 23 Agustus 2026) — dokumen terpisah soal keputusan arsitektur level lebih tinggi: `index.html` (gerbang kubus 3D) sendiri akan jadi route `#home` di dalam SPA yang sama, bukan halaman terpisah yang ngelink masuk ke SPA. File ini (`map.md`) tetap jadi log progres migrasi per-halaman; `visi-pionir-workspaces.md` yang jadi acuan KE MANA arahnya.
+**Baca juga `visi-pionir-workspaces.md`** (dibuat 23 Agustus 2026) — dokumen terpisah soal keputusan arsitektur level lebih tinggi: `index.html` (gerbang kubus 3D, lalu flat module grid) sudah jadi shell SPA per sesi ketujuh — baca update sesi ketujuh di `visi-pionir-workspaces.md` buat status lengkap langkah 2, dan bagian 5 dokumen itu buat langkah 3-5 yang masih tersisa.
 
 ---
 

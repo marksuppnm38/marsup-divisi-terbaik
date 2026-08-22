@@ -1,47 +1,17 @@
-// Minimal hash router. Zero-build: native <script type="module">, native import().
-// Each route lazily imports a page module exposing mount(container) / unmount().
-// Add a page here only once it's actually migrated (see map.md bagian 4).
-
-const ROUTES = {
-  'home': () => import('./pages/home/index.js'),
-  'kompres-pdf': () => import('./pages/kompres-pdf/index.js'),
-  'export-gambar': () => import('./pages/export-gambar/index.js'),
-  'konversian': () => import('./pages/konversian/index.js'),
-};
-
-const DEFAULT_ROUTE = 'kompres-pdf';
-
-const container = document.getElementById('app');
-let currentPage = null; // the mounted module, so we can call .unmount()
-
-function currentRoute() {
-  const hash = location.hash.replace(/^#\/?/, '').split('?')[0].trim();
-  return hash || DEFAULT_ROUTE;
-}
-
-async function render() {
-  const route = currentRoute();
-  const load = ROUTES[route];
-
-  if (currentPage && typeof currentPage.unmount === 'function') {
-    try { currentPage.unmount(); } catch (err) { console.error('unmount gagal:', err); }
-  }
-  currentPage = null;
-  container.innerHTML = '';
-
-  if (!load) {
-    container.innerHTML = `<div style="max-width:520px;margin:60px auto;font-family:sans-serif;">
-      <p>Halaman "${route}" belum dipindah ke SPA.</p>
-      <p><a href="/${route}.html">Buka versi lama</a></p>
-    </div>`;
-    return;
-  }
-
-  const mod = await load();
-  await mod.mount(container);
-  currentPage = mod;
-}
-
-window.addEventListener('hashchange', render);
-window.addEventListener('DOMContentLoaded', render);
-render();
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pionir Workspaces</title>
+<link rel="icon" type="image/png" href="/favicon/favicon-96x96.png" sizes="96x96" />
+<link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg" />
+<link rel="shortcut icon" href="/favicon/favicon.ico" />
+<link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
+<link rel="manifest" href="/favicon/site.webmanifest" />
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="/app/router.js"></script>
+</body>
+</html>

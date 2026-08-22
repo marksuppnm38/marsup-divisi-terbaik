@@ -211,6 +211,39 @@ flat juga, tapi strukturnya belum jadi shell), `router.js` `DEFAULT_ROUTE`
 belum diganti, pill/cube-face belum hash-nav, `app/pages.js` registry belum
 dibikin.
 
+**Status — 23 Agustus 2026 (sesi ketujuh):** Langkah 2 SELESAI. Root
+`index.html` ditimpa jadi isi `app/shell.html` persis (diff-checked identik —
+`<div id="app"></div>` + `<script type="module" src="/app/router.js">` +
+head boilerplate/favicon, gak ada perubahan lain). Isi lama (flat module-card
+grid hasil sesi kelima) HILANG dari root `index.html` sebagai standalone
+file — tapi gak hilang dari aplikasi, karena isinya sudah dipindah ke
+`app/pages/home/` dari sesi kelima, dan sekarang itulah yang dirender lewat
+router pas route `home` aktif. `router.js`: `DEFAULT_ROUTE` diganti dari
+`'kompres-pdf'` ke `'home'`. `app/shell.html` SENGAJA DIBIARKAN ADA (opsi
+"alias" dari bagian 3.2 di atas, bukan dihapus) — sekarang isinya
+duplikat 100% sama kayak root `index.html`, jadi bookmark lama ke
+`/app/shell.html#...` tetap jalan tanpa perubahan apapun.
+Diverifikasi: `node --check app/router.js` (syntax valid), dan
+`python -m http.server` lokal + `curl` — `/`, `/app/router.js`,
+`/app/pages/home/index.js`, `/app/shell.html` semua balas 200, dan body
+`/` dicek mengandung `<div id="app"></div>` (bukan markup lama). **Belum
+diverifikasi pakai browser asli** (sandbox investigasi ini gak punya akses
+network ke `fonts.googleapis.com` atau CDN lain — sama keterbatasan yang
+disebut di update sesi keempat/kelima `map.md`). Sesi berikutnya/kamu sendiri
+yang `serve` lokal: WAJIB buka `/` di browser dan pastikan route `#home`
+langsung ke-render pas pertama kali landing (bukan cuma lewat `/#home`
+eksplisit), sebelum lanjut ke langkah 3 (pill/cube-face jadi hash-nav).
+
+Langkah 3–5 MASIH BELUM dikerjakan sesi ini (sengaja, ngikutin urutan
+per-langkah di bagian 5 — tiap langkah dites sendiri dulu sebelum lanjut):
+pill link di `app/pages/home/markup.js` dan cube-face url-nya masih
+`window.location.href`-style ke `/app/shell.html#...`/`.html` legacy (bukan
+`location.hash = ...`), `app/pages.js` registry belum dibikin, dan follow-up
+di bagian 4 (`crud-produk.js` baris ~187, audit string literal
+`"app/shell.html"` di `konversian/index.js`) belum disentuh — semua masih
+jalan seperti sebelumnya karena `app/shell.html` sengaja dipertahankan
+sebagai alias di atas, jadi gak ada yang patah, cuma belum "bersih".
+
 ---
 
 ## 6. Konteks deployment (Vercel, `cleanUrls: true`)
