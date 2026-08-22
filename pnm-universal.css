@@ -960,6 +960,23 @@ body:has(.workspace){height:100vh;display:flex;flex-direction:column;overflow:hi
 .kb-item-links{display:flex;gap:12px;margin-top:2px}
 .kb-item-links a{font-size:10.5px;cursor:pointer;color:var(--text-secondary);text-decoration:underline}
 .kb-item-links a.kb-batal-link{color:var(--danger)}
+
+/* Search manual inline buat baris Converter yang gak ketemu/error (dalam
+   accordion .kb-item, reuse style di atas) — biar user gak mentok & gak
+   perlu pindah tab buat nyari produk yang benar. */
+.conv-manual-search{margin-top:4px}
+.conv-manual-input{width:100%;height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);outline:none;transition:border-color .15s,box-shadow .15s}
+.conv-manual-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+.conv-manual-input::placeholder{color:var(--text-muted)}
+.conv-manual-status{font-size:10.5px;color:var(--text-muted);padding:6px 2px;font-style:italic}
+.conv-manual-results{margin-top:4px;max-height:220px;overflow-y:auto}
+.conv-manual-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 2px;border-bottom:1px solid var(--border)}
+.conv-manual-row:last-child{border-bottom:none}
+.conv-manual-row-info{display:flex;flex-direction:column;gap:1px;min-width:0}
+.conv-manual-row-nama{font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv-manual-row-kode{font-size:10px;color:var(--text-muted);font-family:var(--mono)}
+.conv-manual-pick{flex-shrink:0;font-size:10px;font-weight:600;padding:3px 9px;border-radius:12px;border:1px solid var(--accent-text);background:var(--accent-bg);color:var(--accent-text);cursor:pointer}
+.conv-manual-pick:disabled{opacity:.5;cursor:not-allowed}
 .kb-picker{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px;animation:kbPickerIn .15s var(--ease)}
 .kb-picker-empty{font-size:11.5px;color:var(--text-muted);padding:10px;text-align:center}
 .kb-picker-list{display:flex;flex-direction:column;gap:2px;max-height:220px;overflow-y:auto;margin-bottom:6px}
