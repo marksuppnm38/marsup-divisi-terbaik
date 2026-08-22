@@ -176,11 +176,19 @@ async function handleNavParamsIfAny() {
     const btn = document.getElementById('btnKembaliKonversi');
     btn.style.display = 'inline-flex';
     btn.addEventListener('click', () => {
-      const url = new URL('konversian.html', window.location.href);
+      // SPA migration: dulu balik ke '/konversian.html' (halaman standalone).
+      // Sekarang konversian sudah pindah ke '/app/shell.html#konversian' —
+      // query string (?resume=1&...) HARUS di luar hash (konversian baca
+      // window.location.search, bukan query yang nempel di dalam hash),
+      // makanya di-set dulu baru '#konversian' ditempel di paling akhir.
+      // crud-produk.html sendiri MASIH standalone (belum ikut migrasi SPA),
+      // jadi baris ini gak nunggu itu — cuma ngarahin tombol "kembali" ke
+      // tujuan yang sudah bener.
+      const url = new URL('/app/shell.html', window.location.href);
       url.searchParams.set('resume', '1');
       if (pnmReturnCtx.kode) url.searchParams.set('refreshed', pnmReturnCtx.kode);
       if (pnmReturnCtx.sesi) url.searchParams.set('sesi', pnmReturnCtx.sesi);
-      window.location.href = url.toString();
+      window.location.href = url.toString() + '#konversian';
     });
   }
 
