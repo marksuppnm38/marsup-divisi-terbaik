@@ -30,20 +30,29 @@ function ensureVendorScripts() {
 }
 
 function ensureStyle() {
-  if (document.getElementById('page-kompres-pdf-style')) return;
-  const link = document.createElement('link');
-  link.id = 'page-kompres-pdf-style';
-  link.rel = 'stylesheet';
-  link.href = new URL('./style.css', import.meta.url).href;
-  document.head.appendChild(link);
+  if (document.getElementById('page-kompres-pdf-style')) return Promise.resolve();
+  return new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.id = 'page-kompres-pdf-style';
+    link.rel = 'stylesheet';
+    link.href = new URL('./style.css', import.meta.url).href;
+    link.onload = () => resolve();
+    link.onerror = () => resolve(); // don't block forever if this fails
+    document.head.appendChild(link);
+  });
 }
 
 let mountedContainer = null;
 
 export async function mount(container) {
   mountedContainer = container;
-  ensureStyle();
-  await ensureVendorScripts();
+  // Sesi kesepuluh fix (FOUC/flash bug — sama kelas bug yang dibenerin di
+  // app/pages/home/index.js): dulu ensureStyle() gak di-await, jadi ada
+  // celah 1 frame di mana markup mentah bisa ke-paint sebelum style.css
+  // kelar. Sekarang di-await bareng ensureVendorScripts() (Promise.all,
+  // bukan berurutan, biar CSS dan vendor scripts sama-sama jalan paralel
+  // — gak nambah waktu tunggu dibanding sebelumnya).
+  await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.classList.add('wrap'); // style.css's .wrap sets max-width/centering, previously the outer <div class="wrap">
   container.innerHTML = KOMPRES_PDF_MARKUP;
 

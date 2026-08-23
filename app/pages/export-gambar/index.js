@@ -50,12 +50,16 @@ function ensureVendorScripts() {
 }
 
 function ensureStyle() {
-  if (document.getElementById('page-export-gambar-style')) return;
-  const link = document.createElement('link');
-  link.id = 'page-export-gambar-style';
-  link.rel = 'stylesheet';
-  link.href = new URL('./style.css', import.meta.url).href;
-  document.head.appendChild(link);
+  if (document.getElementById('page-export-gambar-style')) return Promise.resolve();
+  return new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.id = 'page-export-gambar-style';
+    link.rel = 'stylesheet';
+    link.href = new URL('./style.css', import.meta.url).href;
+    link.onload = () => resolve();
+    link.onerror = () => resolve(); // don't block forever if this fails
+    document.head.appendChild(link);
+  });
 }
 
 let mountedContainer = null;
@@ -64,8 +68,10 @@ let authUnsubscribe = null;
 
 export async function mount(container) {
   mountedContainer = container;
-  ensureStyle();
-  await ensureVendorScripts();
+  // Sesi kesepuluh fix (FOUC/flash bug — sama kelas bug yang dibenerin di
+  // app/pages/home/index.js): ensureStyle() sekarang di-await, paralel
+  // sama ensureVendorScripts() (dua-duanya independen, gak saling nunggu).
+  await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.innerHTML = EXPORT_GAMBAR_MARKUP;
 
       // Sumber gambar sekarang Supabase Storage bucket "thumbnails" (public, key by

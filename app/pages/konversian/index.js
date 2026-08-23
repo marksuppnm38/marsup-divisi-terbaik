@@ -115,29 +115,36 @@ const SHARED_LINKS = [
   { id: 'shared-pnm-universal-css', href: '/pnm-universal.css?v=20260813b' },
 ];
 
-function ensureStyle() {
-  SHARED_LINKS.forEach(({ id, href }) => {
-    if (document.getElementById(id)) return;
+function loadLink(id, href) {
+  if (document.getElementById(id)) return Promise.resolve();
+  return new Promise((resolve) => {
     const link = document.createElement('link');
     link.id = id;
     link.rel = 'stylesheet';
     link.href = href;
+    link.onload = () => resolve();
+    link.onerror = () => resolve(); // don't block forever if a CDN is down
     document.head.appendChild(link);
   });
-  if (document.getElementById('page-konversian-style')) return;
-  const link = document.createElement('link');
-  link.id = 'page-konversian-style';
-  link.rel = 'stylesheet';
-  link.href = new URL('./style.css', import.meta.url).href;
-  document.head.appendChild(link);
+}
+
+function ensureStyle() {
+  // Sesi kesepuluh fix (FOUC/blank-then-flash bug — sama kelas bug yang
+  // dibenerin di app/pages/home/index.js dan kompres-pdf/export-gambar):
+  // dulu ensureStyle() gak nunggu satupun link ini kelar sebelum mount()
+  // lanjut ke container.innerHTML — sekarang balikin Promise gabungan biar
+  // mount() bisa await-nya duluan.
+  return Promise.all([
+    ...SHARED_LINKS.map(({ id, href }) => loadLink(id, href)),
+    loadLink('page-konversian-style', new URL('./style.css', import.meta.url).href),
+  ]);
 }
 
 let mountedContainer = null;
 
 export async function mount(container) {
   mountedContainer = container;
-  ensureStyle();
-  await ensureVendorScripts();
+  await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.innerHTML = KONVERSIAN_MARKUP;
 
   // ── inline script #1 (theme-init) — set <html data-theme> SEBELUM app

@@ -5,36 +5,55 @@
 // module-card grid. That's a user-requested redesign ("lose the cube
 // gimmick, minimal modern flat design"), done at this step rather than
 // deferred, so there's no drag/rotate physics or requestAnimationFrame loop
-// left to port at all. Nav links are UNCHANGED from index.html (still plain
-// <a href>, still pointing at /app/shell.html#... or the legacy .html files)
-// — hash-nav (visi-pionir-workspaces.md bagian 3.1/5 langkah 3) is a later step.
+// left to port at all.
+// Nav links: as of sesi kedelapan, migrated modules (konversian/kompres-pdf/
+// export-gambar) use fragment-only `#<id>` hash-nav; legacy modules
+// (stok/crud-produk/dashboard) still full-page `.html` links — see
+// markup.js MODULES array.
 
 import { HOME_MARKUP } from './markup.js';
 
 const FONT_LINK_ID = 'shared-plus-jakarta-sans';
 const FONT_HREF = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap';
 
+// Sesi kesepuluh fix (FOUC/flash bug): sebelumnya ensureStyle() nge-append
+// <link> tag terus LANGSUNG lanjut ke `container.innerHTML = HOME_MARKUP`
+// tanpa nunggu stylesheet-nya kelar di-download — jadi ada 1 frame (kadang
+// lebih lama di koneksi lambat/cold cache di Vercel) di mana markup mentah
+// sempat ke-paint pakai default browser style (serif font, SVG icon gak
+// dibatasi 18x18 jadi tampil raksasa) sebelum CSS kelar. Fix: ensureStyle()
+// sekarang balikin Promise yang resolve pas link udah ke-load (event
+// 'load') ATAU udah ada duluan (skip nunggu) ATAU gagal load (event
+// 'error' — tetap resolve, bukan reject, biar app gak nyangkut nge-block
+// selamanya kalau CDN font down; halaman tetap muncul, cuma mungkin pakai
+// fallback font). mount() sekarang `await` ini SEBELUM nge-set innerHTML,
+// jadi container tetap kosong (bukan markup mentah) selama nunggu.
+function loadLink(id, href) {
+  const existing = document.getElementById(id);
+  if (existing) return Promise.resolve();
+  return new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.onload = () => resolve();
+    link.onerror = () => resolve(); // don't block forever if a CDN is down
+    document.head.appendChild(link);
+  });
+}
+
 function ensureStyle() {
-  if (!document.getElementById(FONT_LINK_ID)) {
-    const font = document.createElement('link');
-    font.id = FONT_LINK_ID;
-    font.rel = 'stylesheet';
-    font.href = FONT_HREF;
-    document.head.appendChild(font);
-  }
-  if (document.getElementById('page-home-style')) return;
-  const link = document.createElement('link');
-  link.id = 'page-home-style';
-  link.rel = 'stylesheet';
-  link.href = new URL('./style.css', import.meta.url).href;
-  document.head.appendChild(link);
+  return Promise.all([
+    loadLink(FONT_LINK_ID, FONT_HREF),
+    loadLink('page-home-style', new URL('./style.css', import.meta.url).href),
+  ]);
 }
 
 let mountedContainer = null;
 
 export async function mount(container) {
   mountedContainer = container;
-  ensureStyle();
+  await ensureStyle();
   container.classList.add('app-wrap');
   container.innerHTML = HOME_MARKUP;
 
