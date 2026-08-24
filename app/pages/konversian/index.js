@@ -2384,17 +2384,21 @@ document.getElementById('door-btn-konversi').addEventListener('click', () => swi
 // ══════════════════════════════════════════
 
 function navigateToEditProduk(kode) {
-  // SPA migration: dulu relatif ('crud-produk.html', window.location.href)
-  // waktu halaman ini masih berdiri sendiri di /konversian.html. Sekarang
-  // window.location.href ada di /app/shell.html#konversian, jadi harus
-  // absolute ke root, bukan relatif ke /app/ — crud-produk.html BELUM
-  // dimigrasi ke SPA (map.md bagian 4 urutan #4), jadi tetap nembak file
-  // .html standalone di root, sama seperti sebelum migrasi ini.
-  const url = new URL('/crud-produk.html', window.location.href);
+  // SPA migration (sesi kesebelas): crud-produk sekarang juga sudah SPA
+  // (map.md bagian 4 urutan #4 selesai) — target berubah dari
+  // '/crud-produk.html' (file standalone) ke '/' + '#crud-produk' (root =
+  // shell sejak sesi ketujuh). Query string TETAP di luar hash, sama pola
+  // yang dipakai crud-produk/index.js's handleNavParamsIfAny() (baca
+  // window.location.search) dan btnKembaliKonversi buat arah sebaliknya —
+  // ini genuine full-page navigation (window.location.href), bukan
+  // in-place hashchange, biar crud-produk's mount() dapat window.location.search
+  // yang valid dari fresh page load, sama persis kayak konversian sendiri
+  // butuh itu buat restoreNavContext() di atas.
+  const url = new URL('/', window.location.href);
   url.searchParams.set('edit', kode);
   url.searchParams.set('return_to', 'konversian');
   if (currentSesiId) url.searchParams.set('return_sesi', currentSesiId);
-  window.location.href = url.toString();
+  window.location.href = url.toString() + '#crud-produk';
 }
 
 // Dipanggil sekali dari showApp() setelah login sukses. Gak ngapa-ngapain
@@ -2427,7 +2431,8 @@ async function restoreNavContext() {
 }
 
 // Patch 1 card produk yang lagi tampil di hasil pencarian, tanpa re-search
-// semua — dipakai setelah balik dari edit produk di crud-produk.html.
+// semua — dipakai setelah balik dari edit produk di crud-produk (sekarang
+// rute SPA #crud-produk, sebelumnya file standalone crud-produk.html).
 async function refreshSingleProdukCard(kode) {
   if (!Array.isArray(lastResults) || !lastResults.some(r => r.kode_produk === kode)) return;
   try {
