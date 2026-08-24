@@ -1,0 +1,269 @@
+/* Shared sidebar nav — see design.md at repo root for the full spec this
+   implements. NOT YET WIRED IN (see nav.js header comment) — built ready to
+   go, activated when stok/dashboard get migrated so they can be designed
+   around this sidebar from day one, instead of retrofitting 5 already-
+   working pages' layouts at the same time. Do not import/mount this from
+   router.js until that migration session, unless explicitly told otherwise.
+
+   TOKEN SCOPING: design.md's token block uses the exact unprefixed names
+   (--bg, --surface, --accent, etc.) it wants to eventually be the single
+   global :root set. pnm-universal.css ALREADY defines --bg/--accent at
+   :root with DIFFERENT values (its --accent is #007AFF Apple-blue vs this
+   doc's #0070F3 Vercel-blue) — dumping these at :root globally would not
+   break anything by itself (CSS custom properties don't "clash", the
+   narrower scope simply wins for its own descendants) but WOULD make two
+   sibling pages disagree about what "--accent" means depending on which
+   stylesheet last set it at :root, which is exactly the kind of ambiguity
+   design.md is trying to eliminate. So: scoped to .pw-shell here, same
+   scoping *pattern* home/style.css uses for --home-* (see its own COORD-LOG-
+   style comment) — but with design.md's real intended names, since those
+   ARE meant to become canonical later, not another one-off prefixed set. */
+
+.pw-shell {
+  --bg:             #FAFAFA;
+  --surface:        #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --border:         #EAEAEA;
+  --border-strong:  #D4D4D4;
+  --text:           #0A0A0A;
+  --text-secondary: #666666;
+  --text-muted:     #8F8F8F;
+  --accent:         #0070F3;
+  --success-dot:    #3BA55D;
+  --warning-dot:    #C99A2C;
+  --danger-dot:     #E5484D;
+  --radius:         8px;
+  --radius-lg:      12px;
+  --font-sans:      'Geist', 'Inter', system-ui, sans-serif;
+  --font-mono:      'Geist Mono', 'JetBrains Mono', monospace;
+
+  --fill-ghost-hover:    rgba(0, 0, 0, 0.04);
+  --fill-ghost-selected: rgba(0, 112, 243, 0.08);
+}
+
+[data-theme="dark"] .pw-shell {
+  --bg:             #0A0A0A;
+  --surface:        #111111;
+  --surface-raised: #171717;
+  --border:         #1F1F1F;
+  --border-strong:  #333333;
+  --text:           #EDEDED;
+  --text-secondary: #A1A1A1;
+  --text-muted:     #6E6E6E;
+  --accent:         #3291FF;
+
+  --fill-ghost-hover:    rgba(255, 255, 255, 0.06);
+  --fill-ghost-selected: rgba(50, 145, 255, 0.12);
+}
+
+.pw-shell { display: flex; min-height: 100vh; }
+.pw-shell * { box-sizing: border-box; }
+
+/* ---- Sidebar ---- */
+
+.pw-nav {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 0.5px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  font-family: var(--font-sans);
+  color: var(--text);
+  transition: width 0.15s ease;
+}
+
+.pw-nav-brand {
+  height: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.pw-nav-brand img { height: 20px; width: auto; }
+.pw-nav-brand span {
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.pw-nav-search {
+  margin: 12px 12px 4px;
+  height: 32px;
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.pw-nav-search:hover { border-color: var(--border-strong); }
+.pw-nav-search i { font-size: 15px; }
+.pw-nav-search kbd {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  background: var(--surface-raised);
+  border: 0.5px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-muted);
+}
+
+.pw-nav-eyebrow {
+  margin: 16px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pw-nav-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pw-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.pw-nav-item:hover { background: var(--fill-ghost-hover); }
+.pw-nav-item.active {
+  background: var(--fill-ghost-selected);
+  color: var(--text);
+  font-weight: 600;
+}
+.pw-nav-item i { font-size: 16px; width: 18px; text-align: center; flex-shrink: 0; }
+.pw-nav-item span { overflow: hidden; text-overflow: ellipsis; }
+
+.pw-nav-user {
+  flex-shrink: 0;
+  border-top: 0.5px solid var(--border);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pw-nav-user-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface-raised);
+  border: 0.5px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.pw-nav-user-name {
+  font-size: 12.5px; font-weight: 500; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1;
+}
+.pw-nav-theme-toggle {
+  width: 26px; height: 26px; border-radius: var(--radius);
+  border: 0.5px solid var(--border);
+  background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer; flex-shrink: 0;
+}
+.pw-nav-theme-toggle:hover { background: var(--fill-ghost-hover); }
+.pw-nav-theme-toggle i { font-size: 14px; }
+
+/* ---- Collapsed rail (<768px): icon-only, 48px ---- */
+
+@media (max-width: 767px) {
+  .pw-nav {
+    width: 48px;
+  }
+  .pw-nav-brand span,
+  .pw-nav-search kbd,
+  .pw-nav-search span,
+  .pw-nav-eyebrow,
+  .pw-nav-item span,
+  .pw-nav-user-name {
+    display: none;
+  }
+  .pw-nav-brand { justify-content: center; padding: 0; }
+  .pw-nav-search { justify-content: center; padding: 0; }
+  .pw-nav-item { justify-content: center; padding: 0; }
+  .pw-nav-user { justify-content: center; padding: 10px 0; }
+}
+
+/* ---- Content area (sibling of .pw-nav inside .pw-shell) ---- */
+
+.pw-content {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+}
+
+/* ---- Top bar (per-page, rendered by each page inside .pw-content) ---- */
+
+.pw-topbar {
+  height: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 0.5px solid var(--border);
+  background: var(--surface);
+  font-family: var(--font-sans);
+}
+.pw-topbar-crumb {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.pw-topbar-crumb strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.pw-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- Neutral 32px icon-square treatment (module cards, wherever a module
+   needs an icon outside the nav itself — e.g. a future flat home rebuild) ---- */
+
+.pw-icon-square {
+  width: 32px; height: 32px;
+  border-radius: 7px;
+  border: 0.5px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.pw-icon-square i { font-size: 18px; }
+
+/* ---- Status dot (design.md "Status" component pattern) ---- */
+
+.pw-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
+.pw-status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.pw-status-dot.success { background: var(--success-dot); }
+.pw-status-dot.warning { background: var(--warning-dot); }
+.pw-status-dot.danger  { background: var(--danger-dot); }

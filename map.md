@@ -6,6 +6,7 @@ Cara baca: bagian 1–2 itu potret KONDISI SEKARANG (apa adanya, termasuk bagian
 
 **Baca juga:**
 - `visi-pionir-workspaces.md` — keputusan arsitektur level lebih tinggi soal `index.html`/shell SPA.
+- `design.md` — spec desain (warna, spacing, komponen shared nav) buat nyeragamin visual semua halaman. Belum di-wire ke halaman manapun kecuali `app/pages/_nav/` (dibangun 24 Agustus, siap pakai tapi SENGAJA belum diaktifkan — lihat komentar header `nav.js` buat urutan wiring-nya).
 - `map-history.md` — riwayat lengkap tiap sesi migrasi, urut tanggal. Baca ini kalau butuh tau KENAPA sesuatu dikerjain kayak sekarang, atau detail bug/fix spesifik. Bagian di bawah ini cuma nyimpen HASIL AKHIRNYA, bukan prosesnya.
 
 ---
