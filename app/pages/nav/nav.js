@@ -25,7 +25,7 @@
 //      individually retrofitted per design.md's own migration checklist
 //      (separate, later task — see design.md + map.md).
 
-import { navMarkup } from './markup.js';
+import { navMarkup } from './nav-markup.js';
 
 const TABLER_ID = 'shared-tabler-icons';
 const TABLER_HREF = 'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css';
