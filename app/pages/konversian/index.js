@@ -8453,7 +8453,10 @@ async function sphDrawLampiranTablePage(doc, title, tableItems, safeBottom) {
 
     // Sama kayak tabel utama SPH: ditulis per-baris biar urutan teks di PDF
     // ikut urutan baca tabel, bukan keblok per kolom pas dicopas.
-    const lLineH = doc.getLineHeight();
+    // BUGFIX (24 Agustus 2026): sama persis kayak fix di tabel utama SPH
+    // (sphGenerate() di atas) — doc.getLineHeight() balikin points, bukan mm,
+    // kudu dibagi doc.internal.scaleFactor.
+    const lLineH = doc.getLineHeight() / doc.internal.scaleFactor;
     const lLineCount = Math.max(kodeLines.length, descLines.length, 1);
     for (let li = 0; li < lLineCount; li++) {
       const lly = ly + 5.2 + li * lLineH;
@@ -8772,7 +8775,17 @@ async function sphGenerate() {
       // urutan baca tabel — kalau ditulis per-kolom (semua baris Kode dulu baru
       // semua baris Deskripsi), pas dicopas dari PDF teksnya keblok per kolom
       // dan tabelnya jadi berantakan/kepotong.
-      const lineH = doc.getLineHeight();
+      // BUGFIX (24 Agustus 2026): doc.getLineHeight() jsPDF balikin nilainya
+      // dalam POINTS, BUKAN dalam unit dokumen (mm, sesuai `unit: 'mm'` pas
+      // new jsPDF(...) di atas) — kudu dibagi doc.internal.scaleFactor
+      // (≈2.83 buat dokumen mm) buat dapet nilai mm yang bener. Sebelum fix
+      // ini, lineH dipakai APA ADANYA sebagai mm (12.65 buat fontSize 11),
+      // padahal seharusnya cuma ~4.46mm — jarak antar baris deskripsi yang
+      // wrap jadi ~2.83x kegedean, bikin baris ke-2/ke-3 tumpang tindih ke
+      // baris tabel berikutnya (persis gejala di laporan user: teks
+      // overlap/terlihat "coret-coret", tabel geser turun gak sesuai rowH
+      // yang udah dihitung).
+      const lineH = doc.getLineHeight() / doc.internal.scaleFactor;
       const lineCount = Math.max(kodeLines.length, descLines.length, 1);
       for (let li = 0; li < lineCount; li++) {
         const ly2 = y + 5.2 + li * lineH;
