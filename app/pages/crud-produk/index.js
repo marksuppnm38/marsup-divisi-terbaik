@@ -136,7 +136,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // storageKey pnm_auth_session, dipakai semua modul) -- bukan bikin baru lagi
 // di sini. sb.from/sb.rpc/sb.storage/sb.auth di bawah SEMUA tetap jalan sama
 // persis, gak ada titik lain di file ini yang perlu diubah.
-const sb = window.pnmSupabase;
+// SPA migration FIX: `const sb = window.pnmSupabase` TIDAK BOLEH di module
+// scope (di sini) -- module ini di-import() router.js SEBELUM
+// ensureVendorScripts() sempat jalan, jadi window.pnmSupabase masih undefined
+// pas baris ini dieksekusi (beda dari classic-script asli, di mana urutan
+// <script> tag di <head> udah menjamin shared/supabase-client.js kelar duluan
+// sebelum crud-produk.js ini dievaluasi). Sekarang di-assign di DALAM mount(),
+// SETELAH await ensureVendorScripts() -- lihat di bawah.
 const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
 
 const SEAL_LABELS = {
@@ -170,6 +176,10 @@ function renderInaprocIndikator(statusInaproc, linkV6){
 export async function mount(container) {
   mountedContainer = container;
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
+  // sb baru bisa di-assign DI SINI, bukan module scope -- lihat catatan
+  // panjang di komentar THUMB_BASE di atas. window.pnmSupabase dijamin ada
+  // di titik ini karena baris di atas sudah nunggu ensureVendorScripts().
+  const sb = window.pnmSupabase;
   container.innerHTML = CRUD_PRODUK_MARKUP;
 
   // ── inline script (theme-init) — SEBELUMNYA hidup sebagai <script> inline
