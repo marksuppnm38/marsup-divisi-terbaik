@@ -89,7 +89,7 @@ async function walk(dir) {
         loader: 'js',
         minify: true,
         legalComments: 'none', // strip all comments, including /*! */ license ones
-        target: 'es2019',
+        target: 'es2020',
         sourcemap: false, // no source map -> no way to recover original source in DevTools
       });
       await fs.writeFile(outPath, result.code);
