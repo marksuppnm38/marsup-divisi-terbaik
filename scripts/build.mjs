@@ -25,9 +25,10 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { transform } from 'esbuild';
 
-const ROOT = path.resolve(new URL('.', import.meta.url).pathname, '..');
+const ROOT = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const OUT = path.join(ROOT, 'dist');
 
 // Dev-only / documentation / tooling -- not part of the served app, never
