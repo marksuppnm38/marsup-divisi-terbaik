@@ -5,56 +5,34 @@
 // top-of-<body> are NOT here -- <script> elements inside HTML assigned via
 // innerHTML don't execute (DOM quirk), so that logic moved into index.js's
 // mount() as real JS instead. See index.js for where.
+//
+// UPDATE (sesi lanjutan -- "double nav" fix): this page's own <aside
+// class="sidebar"> is REMOVED ENTIRELY (was: brand link, collapse button,
+// 5 data-view nav buttons, Log Aktivitas toggle, user email, logout). The
+// 5 nav buttons now live in the GLOBAL sidebar's accordion instead (see
+// app/pages/nav/ + crud-produk/subnav.js) -- that was the actual "double
+// nav" complaint, two sidebars rendering side by side. Brand/user-email/
+// logout were pure duplicates of what the global nav already shows, so
+// just dropped, not relocated anywhere. Log Aktivitas is the one item
+// that's a real page ACTION (opens a modal), not navigation -- moved into
+// `.topbar-actions` instead (see below, next to Tambah Produk), same spot
+// the design.md topbar pattern already uses for per-page actions.
+// `.main{flex:1}` in pnm-universal.css already sizes `<main>` to fill
+// 100% of `.shell` on its own with no sibling `.sidebar` present -- no
+// layout CSS changed, confirmed before editing (see map-history.md sesi
+// lanjutan for the full before/after).
 
 export const CRUD_PRODUK_MARKUP = `
-<!-- AUTH GATE -->
-<div class="gate-wrap" id="gateWrap">
-  <div class="gate-card">
-    <div class="gate-icon"><i class="ti ti-lock"></i></div>
-    <div class="gate-title" id="gateTitle">Masuk ke Produk</div>
-    <div class="gate-desc" id="gateDesc">Khusus tim internal.</div>
-
-    <form id="loginFormWrap">
-      <label class="field-label" for="loginEmail">Email</label>
-      <input type="email" id="loginEmail" class="field-input" placeholder="nama@email.com" autocomplete="email"/>
-      <label class="field-label" style="margin-top:10px;" for="loginPassword">Password</label>
-      <input type="password" id="loginPassword" class="field-input" placeholder="••••••••" autocomplete="current-password"/>
-      <button class="btn-primary" id="loginBtn" type="submit">Masuk</button>
-    </form>
-
-    <div class="gate-msg" id="gateMsg"></div>
-    <div class="gate-footer">Akses dibatasi hanya untuk email yang terdaftar di tim.</div>
-  </div>
-</div>
+<!-- Sesi kesembilan belas: per-page auth-gate (gateWrap/loginFormWrap/gateMsg)
+     DIHAPUS -- router.js gak mount() halaman ini kecuali shared/auth-gate.js
+     sudah lolos, lihat map-history.md. -->
 
 <!-- APP SHELL -->
-<div class="shell" id="appWrap" style="display:none;">
-  <aside class="sidebar">
-    <a class="sb-brand" href="/index.html" title="Kembali ke Beranda (index.html)">
-      <img src="favicon/favicon-96x96.png" alt="PNM Logo" class="logo">
-      <div class="sb-brand-text">
-        <div class="sb-brand-title">Product Manager</div>
-        <div class="sb-brand-sub">PNM · SMY · METO</div>
-      </div>
-    </a>
-    <button class="sb-collapse-btn" id="sidebarCollapseBtn" title="Ciutkan sidebar" type="button"><i class="ti ti-chevron-left"></i></button>
-    <nav class="sb-nav">
-      <a class="sb-item" href="/dashboard.html" title="Dashboard"><i class="ti ti-layout-dashboard"></i><span class="sb-label">Dashboard</span></a>
-      <button class="sb-item active" data-view="produk" title="Produk"><i class="ti ti-package"></i><span class="sb-label">Produk</span></button>
-      <button class="sb-item" data-view="set" title="Set Management"><i class="ti ti-stack-2"></i><span class="sb-label">Set Management</span></button>
-      <button class="sb-item" data-view="akd" title="AKD"><i class="ti ti-shield-check"></i><span class="sb-label">AKD</span></button>
-      <button class="sb-item" data-view="kfa" title="KFA Management"><i class="ti ti-barcode"></i><span class="sb-label">KFA Management</span></button>
-      <button class="sb-item" data-view="bulk" title="Bulk Edit"><i class="ti ti-table"></i><span class="sb-label">Bulk Edit</span></button>
-    </nav>
-    <div class="sb-spacer"></div>
-    <div class="sb-foot">
-      <button class="sb-item" id="logToggle" title="Log Aktivitas"><i class="ti ti-history"></i><span class="sb-label">Log Aktivitas</span></button>
-      <div class="sb-user" title=""><i class="ti ti-user-circle"></i><span id="userEmailLabel" class="sb-label"></span></div>
-      <button class="sb-item" id="logoutBtn" title="Keluar"><i class="ti ti-logout"></i><span class="sb-label">Keluar</span></button>
-    </div>
-  </aside>
-
+<div class="shell" id="appWrap">
   <main class="main">
+    <div class="pw-topbar">
+      <div class="pw-topbar-crumb"><strong>CRUD Produk</strong></div>
+    </div>
     <div class="topbar">
       <div class="top-search">
         <i class="ti ti-search"></i>
@@ -62,12 +40,12 @@ export const CRUD_PRODUK_MARKUP = `
         <button class="clear-btn" id="topSearchClear" title="Bersihkan"><i class="ti ti-x"></i></button>
       </div>
       <button class="cmdk-launch" id="cmdkTrigger" title="Buka pencarian cepat lintas halaman"><i class="ti ti-command"></i> Spotlight <kbd>⌘K</kbd></button>
-      <div class="theme-switch" id="themeToggle" title="Ganti tema"><div class="knob"><i class="ti ti-sun" id="themeIcon"></i></div></div>
       <div class="topbar-actions">
         <div class="view-toggle">
           <button id="viewTableBtn" class="active" title="Tampilan tabel"><i class="ti ti-list"></i></button>
           <button id="viewCardBtn" title="Tampilan kartu"><i class="ti ti-layout-grid"></i></button>
         </div>
+        <button class="btn" id="logToggle" title="Log Aktivitas"><i class="ti ti-history"></i> Log Aktivitas</button>
         <button class="btn btn-accent" id="addBtn"><i class="ti ti-plus"></i> Tambah Produk</button>
         <button class="btn" id="btnKembaliKonversi" style="display:none;border:1px solid var(--accent-text);color:var(--accent-text);background:var(--accent-bg)" title="Balik ke Conversion Workspace"><i class="ti ti-arrow-back"></i> Kembali ke Konversi</button>
       </div>

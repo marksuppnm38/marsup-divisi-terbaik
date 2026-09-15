@@ -1,0 +1,147 @@
+/* app/pages/dashboard/style.css
+   design.md steps 2-6 retrofit for Dashboard Produk (steps 1/7 -- topbar +
+   route wiring -- were already done in sesi kelima belas; this is the
+   deferred "content still uses old color-coded classes" follow-up that
+   comment explicitly flagged, see index.js's header comment).
+
+   Approach: page-scoped OVERRIDE of pnm-universal.css's dashboard-only
+   classes (.stat-card.blue etc, .chip-yes/no, .badge-instrument/set/unit,
+   .days-kritis/warn/aman) -- not an edit to pnm-universal.css itself.
+   Every selector here is prefixed #app-root (this page's mount root), so:
+     (a) specificity (1 id + 1 class) beats pnm-universal.css's un-prefixed
+         2-class rules (e.g. `.stat-card.blue::before`) regardless of link
+         load order -- no !important needed for that part;
+     (b) zero bare/unscoped selectors, same discipline established for
+         konversian's style.css (map-history.md sesi kesembilan belas) --
+         safe to leave this link mounted, and per this page's own established
+         pattern it's still removed in unmount() anyway (belt and suspenders).
+     (c) nothing outside this page is affected -- pnm-universal.css's
+         original rules stay intact for any other consumer (real repo may
+         still have a legacy dashboard.html standalone reading them as-is).
+   Loaded in mount() / removed in unmount() via ensureStyle(), same pattern
+   as every other page's style.css -- see index.js.
+
+   NOT retrofitted this session (out of scope, flagged for later): the
+   charts (trend bar / line chart / donut / wordtree / forecast bars) draw
+   raw SVG with hardcoded var(--accent)/var(--success)/var(--warning)/
+   var(--purple) fills in index.js -- those are per-series/semantic chart
+   colors, not the "different hex per card" anti-pattern design.md singles
+   out, so left as-is rather than guessing at a retrofit with no visual
+   verification available in this sandbox (see map-history.md's running
+   "no browser access" caveat -- applies here too).
+
+   CORRECTION (sesi lanjutan): first cut of this file reused
+   pnm-universal.css's existing --success/--warning/--danger for the status
+   dots below. design.md's own Color tokens section is explicit that any
+   edited page must use its EXACT token set, including --success-dot/
+   --warning-dot/--danger-dot (distinct names/values from the old
+   --success/--warning/--danger), precisely so pages converge cleanly once
+   pnm-universal.css's :root and design.md's token block eventually merge.
+   Defined locally here (scoped under #app-root, not touching
+   pnm-universal.css's :root) rather than hardcoding the hex inline, so the
+   intent is self-documenting and this block deletes cleanly once that
+   future merge happens. */
+
+#app-root{
+  --success-dot: #3BA55D;
+  --warning-dot: #C99A2C;
+  --danger-dot: #E5484D;
+}
+
+/* Same seam bug fixed on konversian/crud-produk (see those pages' style.css
+   files): .pw-topbar carries background:var(--surface) (white, nav.css),
+   but its sibling <main> (pnm-universal.css line ~326) has no background of
+   its own and falls through to body's var(--bg) (#f0f2f5 gray) -- so the
+   topbar reads as a white slab against a visibly greyer canvas right below
+   it. .stat-card/.prog-card/.insight-card already have their own white
+   bordered surface *inside* main, so this isn't about removing that
+   grouping -- it's about the topbar no longer looking like a floating card
+   against main itself.
+   FULLBLEED PASS: that same bare `main{}` rule also carries
+   max-width:1280px + margin:0 auto (pnm-universal.css line ~326) -- an
+   intentional centered-canvas contract for pages with a plain <main>, but
+   the user wants every module edge-to-edge like konversian/crud-produk now,
+   not just crud-produk's accidental case of it. Neutralizing max-width/
+   margin here (keeping the rule's own padding for breathing room -- this
+   page's direct children have no side padding of their own, unlike crud-
+   produk's, so padding:0 would run content into the viewport edge). */
+#app-root main{
+  max-width: none;
+  margin: 0;
+  background: var(--surface);
+}
+
+/* ---- Step 2/3: stat cards -- kill the per-item color stripe + icon tint,
+   replace with the neutral bordered-square icon treatment. ---- */
+#app-root .stat-card::before{
+  content: none; /* removes the .blue/.green/.purple/.warning/.danger top stripe entirely */
+}
+#app-root .stat-icon{
+  background: transparent;
+  color: var(--text-secondary);
+  border: 0.5px solid var(--border);
+  border-radius: 7px;
+  margin-bottom: 8px; /* was 10px in pnm-universal.css -- not on the 8pt scale */
+}
+
+/* prog-card-title / insight-card-title icons carry inline per-instance
+   color (style="color:var(--success)" / var(--accent) / var(--warning) /
+   var(--purple), set directly in markup.js) -- inline styles win over any
+   class-based override here, so those are neutralized in markup.js itself
+   (see that file's diff) rather than fought with CSS specificity tricks. */
+
+/* ---- Step 4: status -- dot + label, not a colored pill background. ----
+   .chip (Ada/Belum -- harga/link_v6/no_akd presence) and .days-pill (stok
+   risk level) are genuine status, so they get the dot. .badge
+   (Tipe/Entitas/Channel) is a plain category label, not a status, so it
+   gets design.md's neutral hairline-bordered pill instead -- no dot
+   (a dot would wrongly imply a good/bad axis these values don't have). */
+#app-root .badge{
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+  border: 0.5px solid var(--border-strong) !important;
+  border-radius: 4px !important;
+  padding: 1px 6px !important;
+  font-weight: 500;
+}
+
+#app-root .chip,
+#app-root .days-pill{
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  color: var(--text-secondary) !important;
+  font-weight: 500;
+  gap: 5px;
+}
+#app-root .chip::before,
+#app-root .days-pill::before{
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+#app-root .chip-yes::before,
+#app-root .days-aman::before{ background: var(--success-dot); }
+#app-root .chip-no::before,
+#app-root .days-kritis::before{ background: var(--danger-dot); }
+#app-root .days-warn::before{ background: var(--warning-dot); }
+/* the ph-x / ph-arrow-square-out icons inside .chip are now redundant with
+   the dot (design.md: status conveyed by the dot, not an icon) */
+#app-root .chip i{ display: none; }
+
+/* ---- Step 5: spacing -- 18px paddings weren't on the 8pt scale ---- */
+#app-root .prog-card,
+#app-root .insight-card{ padding: 16px; }
+
+/* ---- Step 6: mono for tabular/numeric text ----
+   kode-text/stat-val/harga/qty/customer/dokumen columns already use
+   var(--font-mono) (either via their own pnm-universal.css class or an
+   inline style already present in index.js) -- verified by grep before
+   writing this file, nothing left to add there. The one gap found:
+   Populasi table's "Order Terakhir" (date) column had no mono -- fixed in
+   index.js directly (single inline-style addition, not worth a CSS hook
+   for one column) rather than here. */

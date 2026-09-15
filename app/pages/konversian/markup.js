@@ -5,45 +5,52 @@
 // from index.js's mount() instead, in the same relative order as the original page.
 export const KONVERSIAN_MARKUP = `
 
-<!-- AUTH GATE: seluruh aplikasi wajib login, sesi tersimpan (persistent) -->
-<div id="auth-gate" class="auth-gate">
-  <div class="auth-gate-box">
-    <img src="/favicon/favicon-96x96.png" alt="PNM Logo" class="auth-gate-logo">
-    <div class="auth-gate-title">Conversion Workspace</div>
-    <div class="auth-gate-sub">Masuk untuk melanjutkan.</div>
-    <div class="pr-field">
-      <label>Email</label>
-      <input type="email" id="gate-email" placeholder="nama@email.com" autocomplete="email"/>
-    </div>
-    <div class="pr-field">
-      <label>Password</label>
-      <input type="password" id="gate-password" placeholder="••••••••" autocomplete="current-password"/>
-    </div>
-    <button id="gate-login-btn" class="auth-gate-btn">Masuk</button>
-    <div id="gate-status" class="auth-gate-status"></div>
+<!-- AUTH: this module used to have its own login gate here (#auth-gate/
+     #gate-email/#gate-password/#gate-login-btn/#gate-status), kept separate
+     from router.js's shared/auth-gate.js because konversian was the
+     largest/most delicate file in the app and there was no browser access
+     to verify a change to its auth-critical path (see map-history.md
+     "sesi kesembilan belas"). It's consolidated now, same as dashboard/
+     stok/crud-produk/export-gambar: router.js never mount()s this module
+     until the ONE shared gate confirms a session that is both
+     authenticated AND allowed_users-whitelisted -- so by the time this
+     markup is ever inserted into the DOM, login is already done. See
+     index.js's mount() for what replaced the old initAuth()/
+     checkWhitelist()/showGate() trio. #app-root therefore no longer needs
+     to start hidden. -->
+<div id="app-root" class="door-cari" style="display:flex;flex-direction:column;height:100vh;overflow:hidden">
+<!-- SPA integration fix: this used to be a hand-styled <header> that only
+     LOOKED similar to the shared topbar after enough CSS tweaks -- it was
+     never actually the same component, which is exactly why it still read
+     as "a second app" next to the sidebar even once colors/height/borders
+     were made to match. This is now the literal .pw-topbar/.pw-topbar-crumb/
+     .pw-topbar-actions markup every other module (dashboard/stok/
+     crud-produk/export-gambar/kompres-pdf) uses -- same class, same
+     component, not a lookalike. Everything this module actually needs
+     beyond a breadcrumb (the Cari Cepat/Konversi tabs, session status,
+     presence, clipboard count, "Catat Permintaan RS") moved into its own
+     .konv-toolbar row directly underneath -- a second, module-scoped row
+     is a normal pattern (Vercel/Linear both do a thin identity bar + a
+     tab/status row below it for a specific view), not a compromise. -->
+<div class="pw-topbar">
+  <!-- Was a static "Conversion Workspace" -- word-for-word the same
+     string the sidebar already shows as this module's own section
+     header (see MODULES in app/pages/home/markup.js), so it was pure
+     duplication sitting right next to the thing it duplicated. This now
+     tracks whichever tab is actually active (switchSubTab() in index.js
+     keeps #pw-topbar-crumb-text in sync) -- "Cari Produk" on load,
+     "Konversi Berjalan" once you're looking at a session, etc. -- so the
+     topbar tells you where you ARE instead of repeating what module
+     you're in. -->
+  <div class="pw-topbar-crumb"><strong id="pw-topbar-crumb-text">Cari Produk</strong></div>
+  <div class="pw-topbar-actions">
+    <button class="toggle-btn" id="settings-toggle" title="Preferensi" aria-label="Preferensi"><i class="ti ti-settings"></i></button>
   </div>
 </div>
-
-<div id="app-root" class="door-cari" style="display:none;flex-direction:column;height:100vh;overflow:hidden">
-<header>
-  <div class="header-brand">
-    <img src="/favicon/favicon-96x96.png" alt="PNM Logo" class="logo">
-    <div class="header-brand-text">
-      <div class="logo-text">Pionir Nusantara Manufacturing</div>
-      <div class="logo-sub">Conversion Workspace</div>
-    </div>
-  </div>
-  <!-- DUA PINTU: Cari Cepat (murni lookup, gak nyentuh database sama sekali)
-       vs Konversi (workspace requirement↔produk yang butuh sesi). Ini pilihan
-       navigasi PALING dasar di app ini sekarang — makanya ditaruh paling depan,
-       sebelum status sesi. Lihat switchDoor() di konversian.js. -->
-  <div class="door-switch" id="door-switch">
-    <button class="door-btn active" id="door-btn-cari" type="button" data-door="cari"><i class="ti ti-search"></i> Cari Cepat</button>
-    <button class="door-btn" id="door-btn-konversi" type="button" data-door="konversi"><i class="ti ti-clipboard-list"></i> Konversi</button>
-  </div>
+<div class="konv-toolbar" id="konv-toolbar">
   <button class="session-indicator empty" id="session-indicator" type="button" title="Klik untuk lihat daftar Konversi Berjalan">
     <span class="session-indicator-dot" id="session-indicator-dot"></span>
-    <i class="ph ph-hospital"></i>
+    <i class="ti ti-building-hospital"></i>
     <span id="session-indicator-text">Belum ada sesi — klik "Mulai Sesi Baru"</span>
   </button>
   <!-- Gabungan status koneksi + siapa aja yang online, satu badge aja (dulu 2
@@ -55,16 +62,44 @@ export const KONVERSIAN_MARKUP = `
   </div>
   <div class="header-right">
     <span class="clip-count" id="hdr-clip-count-wrap">Clipboard: <span id="hdr-count">0</span> item</span>
-    <a class="toggle-btn" href="/app/shell.html#home" title="Kembali ke Beranda"><i class="ph ph-house"></i> <span class="toggle-btn-label">Beranda</span></a>
-    <a class="toggle-btn" href="/stok.html" title="Buka modul Stok"><i class="ph ph-truck"></i> <span class="toggle-btn-label">Stok</span></a>
-    <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ph ph-clipboard-text"></i> <span class="toggle-btn-label">Permintaan RS</span></button>
-    <button class="toggle-btn" id="settings-toggle" title="Preferensi" aria-label="Preferensi"><i class="ph ph-gear-six"></i></button>
-    <button class="toggle-btn" id="theme-toggle" title="Ganti tema" aria-label="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
-    <button class="toggle-btn" id="btn-logout" title="Keluar" aria-label="Keluar"><i class="ph ph-sign-out"></i> <span class="toggle-btn-label">Keluar</span></button>
+    <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ti ti-clipboard-text"></i> <span class="toggle-btn-label">Permintaan RS</span></button>
   </div>
-</header>
+</div>
+<!-- The Cari Cepat / Konversi door-switch pills that used to live here are
+     gone -- see index.js's switchDoor()/session-indicator click handler.
+     They were a real, separate mechanism (door-cari mode hides the
+     subtab-row + clipboard panel for a stripped-down search-only view;
+     door-konversi shows everything), NOT the same thing as the subtab
+     row -- but as a pair of manually-clicked topbar buttons, sitting
+     right next to a status pill that ALREADY jumps straight into the
+     full "Konversi Berjalan" view, they were a second way to do the same
+     navigation, in a filled-blue pill style that didn't match anything
+     else in the app besides itself. The underlying door mechanism is
+     untouched and still auto-escalates from minimal to full exactly like
+     before (opening a session, adding a first item to the clipboard,
+     clicking the status pill below) -- only the redundant manual toggle
+     UI is gone. 
+<!-- Beranda/Stok links from the old header are gone for real (not just
+     hidden) -- both were plain <a> tags with zero JS binding anywhere in
+     this file, 100% redundant with the sidebar's own Dashboard/Stok
+     entries, so there was nothing to preserve by keeping them.
+     #theme-toggle and #btn-logout are NOT the same situation -- they stay,
+     unrendered, for a real functional reason: index.js's settings-modal
+     theme switch calls \`document.getElementById('theme-toggle').click()\`
+     to reuse the one real toggle implementation (see renderSettingsList()),
+     and #btn-logout's listener is this page's actual call to
+     PNMAuth.logout(). Removing these nodes -- not just hiding them --
+     would need refactoring that logic to not depend on the DOM element,
+     which is out of scope for a visual-integration pass on this file's
+     ~2400 lines. display:none is enough to make them invisible while
+     keeping both working exactly as before. -->
+<div class="konv-legacy-controls">
+  <button id="theme-toggle" aria-label="Ganti tema"><i class="ti ti-moon" id="theme-icon"></i></button>
+  <button id="btn-logout" aria-label="Keluar"><i class="ti ti-logout"></i> <span class="toggle-btn-label">Keluar</span></button>
+</div>
 
-<div id="offline-banner"><i class="ph ph-wifi-slash"></i><span>Koneksi internet terputus — perubahan mungkin belum tersimpan.</span></div>
+
+<div id="offline-banner"><i class="ti ti-wifi-off"></i><span>Koneksi internet terputus — perubahan mungkin belum tersimpan.</span></div>
 
 <div class="workspace" id="workspace">
   <!-- PANEL KIRI: SEARCH -->
@@ -269,6 +304,11 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 
   <!-- PANEL KANAN: CLIPBOARD -->
   <div class="panel-clip" id="panel-clip">
+    <!-- FIX: header+tabs+mode-toggle+summary dibungkus 1 wrapper sticky (lihat
+         .clip-sticky-top di pnm-universal.css) supaya nempel jadi satu unit di
+         atas panel-clip yang sekarang scrollable, bukan numpuk saling tindih
+         kalau masing2 dikasih position:sticky sendiri-sendiri. -->
+    <div class="clip-sticky-top" id="clip-sticky-top">
     <div class="clip-header" id="clip-header">
       <div class="clip-title-row">
         <div class="clip-title"><i class="ti ti-clipboard" style="font-size:11px"></i> Clipboard Konversi</div>
@@ -320,14 +360,14 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
          rebutan tinggi di panel yang sempit — sekarang dipisah tab, jadi yang lagi
          dikerjakan dapat tinggi penuh, bukan diciutkan ke sebagian kecil layar. -->
     <div class="clip-tab-row" id="clip-tab-row">
-      <button class="clip-tab-btn" id="clip-tab-btn-kb" type="button" data-tab="kb">
-        <i class="ti ti-clipboard-text"></i> Kebutuhan RS <span class="clip-tab-badge" id="clip-tab-badge-kb" style="display:none">0</span>
+      <button class="clip-tab-btn" id="clip-tab-btn-kb" type="button" data-tab="kb" title="Kebutuhan RS">
+        <i class="ti ti-clipboard-text"></i> <span class="clip-tab-label">Kebutuhan RS</span> <span class="clip-tab-badge" id="clip-tab-badge-kb" style="display:none">0</span>
       </button>
-      <button class="clip-tab-btn active" id="clip-tab-btn-list" type="button" data-tab="list">
-        <i class="ti ti-clipboard"></i> Clipboard <span class="clip-tab-badge" id="clip-tab-badge-list" style="display:none">0</span>
+      <button class="clip-tab-btn active" id="clip-tab-btn-list" type="button" data-tab="list" title="Clipboard">
+        <i class="ti ti-clipboard"></i> <span class="clip-tab-label">Clipboard</span> <span class="clip-tab-badge" id="clip-tab-badge-list" style="display:none">0</span>
       </button>
-      <button class="clip-tab-btn" id="clip-tab-btn-sph" type="button" data-tab="sph">
-        <i class="ti ti-file-text"></i> Buat SPH
+      <button class="clip-tab-btn" id="clip-tab-btn-sph" type="button" data-tab="sph" title="Buat SPH">
+        <i class="ti ti-file-text"></i> <span class="clip-tab-label">Buat SPH</span>
       </button>
     </div>
     <!-- MODE HARGA OUTPUT: state INDEPENDEN dari toggle "Harga Swasta" di panel
@@ -345,6 +385,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       </div>
     </div>
     <div class="clip-summary-strip" id="clip-summary-strip" style="display:none"></div>
+    </div><!-- /clip-sticky-top -->
 
     <div class="clip-tabs-wrap">
       <div class="clip-tab-panel" id="clip-tab-panel-kb" style="display:none">
@@ -368,6 +409,12 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
               </div>
             </div>
             <div class="kb-summary" id="kb-summary"></div>
+            <!-- Tab section: 1 tab = 1 "sheet" (ruangan/kategori) di Excel RS,
+                 persis kayak tab sheet Excel — klik ganti section aktif, +
+                 nambah section baru, dobel-klik nama buat rename, drag buat
+                 reorder. Diisi renderChecklist()/renderSectionTabs(), bukan
+                 statis di markup ini. -->
+            <div id="kb-section-tabs" class="kb-section-tabs" style="display:none"></div>
             <!-- Strip referensi screenshot yang sama kayak di modal intake — ditaruh di
                  luar kb-collapsible biar tetap keliatan walau daftar item lagi diciutkan. -->
             <div id="kb-ss-ref-strip" style="display:none"></div>
@@ -612,7 +659,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
     <div class="modal-title" style="margin-bottom:14px">Record ke Sheet Konversi</div>
 
     <div class="pr-nudge" id="pr-nudge">
-      <i class="ph ph-warning-circle"></i>
+      <i class="ti ti-alert-circle"></i>
       <div class="pr-nudge-text">
         <b>Belum ada Permintaan RS</b> yang dicatat buat sesi ini. Kalau ada, isi dulu biar ke-link ke record ini — kalau memang gak ada (mis. cek stok internal), lanjut aja gapapa.
         <div><button type="button" class="pr-nudge-btn" id="pr-nudge-btn">Isi Permintaan RS dulu</button></div>
@@ -940,7 +987,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 <div class="modal-overlay" id="settings-modal">
   <div class="modal-box" style="width:90vw;max-width:440px;padding:22px 24px;text-align:left">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <div class="modal-title" style="margin:0"><i class="ph ph-gear-six"></i> Preferensi</div>
+      <div class="modal-title" style="margin:0"><i class="ti ti-settings"></i> Preferensi</div>
       <button id="settings-modal-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
     </div>
     <div class="modal-sub" style="margin-bottom:6px">Atur tampilan dan perilaku workspace sesuai kebiasaan kerja kamu.</div>
@@ -952,7 +999,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
   <div class="modal-box" style="width:90vw;max-width:420px;padding:24px 26px;text-align:left">
     <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:18px">
       <div id="confirm-modal-icon" style="width:38px;height:38px;border-radius:10px;background:var(--warn-soft);color:var(--warn-text);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">
-        <i class="ph ph-warning-circle"></i>
+        <i class="ti ti-alert-circle"></i>
       </div>
       <div style="flex:1">
         <div class="modal-title" id="confirm-modal-title" style="margin-bottom:6px">Konfirmasi</div>
@@ -960,11 +1007,31 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       </div>
     </div>
     <div class="record-actions">
-      <button id="confirm-modal-cancel">Batal</button>
+      <button id="confirm-modal-cancel" style="background:var(--surface-2);color:var(--text-secondary)">Batal</button>
       <button id="confirm-modal-ok" style="background:var(--accent);color:#fff">Ya, Lanjutkan</button>
     </div>
   </div>
 </div>
+
+<!-- MODAL NAMA SECTION: pengganti prompt()/window.confirm() bawaan browser buat
+     tambah/rename/hapus section Kebutuhan RS. Satu modal dipakai untuk 2 mode
+     (tambah/rename) — bedanya cuma title/sub/initial-value/submit-label, di-set
+     dari JS (lihat showSectionNameModal di dictionary.js), sama pola-nya kayak
+     showConfirmModal yang generic-purpose. -->
+<div class="modal-overlay" id="section-name-modal">
+  <div class="modal-box" style="width:90vw;max-width:400px;padding:24px 26px;text-align:left">
+    <div class="modal-title" id="section-name-modal-title" style="margin-bottom:6px">Tambah Section</div>
+    <div class="modal-sub" id="section-name-modal-sub" style="margin:0 0 14px">Section = 1 sheet di Excel RS — mis. nama ruangan atau kategori barang.</div>
+    <input type="text" id="section-name-modal-input" maxlength="60" placeholder="mis. Ruang OK, Radiologi, Farmasi"
+      style="width:100%;padding:9px 12px;border:1px solid var(--border-strong);border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);outline:none"/>
+    <div id="section-name-modal-error" style="display:none;color:var(--danger);font-size:11.5px;margin-top:6px"></div>
+    <div class="record-actions" style="margin-top:18px">
+      <button id="section-name-modal-cancel" style="background:var(--surface-2);color:var(--text-secondary)">Batal</button>
+      <button id="section-name-modal-ok" style="background:var(--accent);color:#fff">Simpan</button>
+    </div>
+  </div>
+</div>
+
 
 <!-- HARUS ada SEBELUM <script src="konversian.js">: konversian.js nangkep
      document.getElementById('toast-container') di baris paling atas file

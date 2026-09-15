@@ -1,20 +1,37 @@
 // export-gambar page module: mount(container) / unmount().
-// Logic below is the original export-gambar-gabungan.html script, transformed per
-// map.md's per-page checklist:
-//   - DOM lookups scoped to `container` instead of `document`.
-//   - Manual sb.auth.* calls replaced with PNMAuth.* (this page was "setengah jalan":
-//     it already used the shared pnmSupabase client for URL/anon-key, but was still
-//     calling sb.auth.signInWithPassword/signOut/onAuthStateChange/getSession
-//     directly instead of going through shared/auth-session.js).
-//   - sb.from('allowed_users') query kept as direct pnmSupabase call on purpose —
-//     PNMAuth only wraps session management, not arbitrary table/storage queries
-//     (see shared/auth-session.js's own header comment).
-//   - This page's own local toast()/#toastRoot system is NOT the same as
-//     shared/toast.js (PNMToast) — it's a third, page-specific implementation with
-//     its own CSS tied to this page's dark "glass" theme. Left as-is; unifying it
-//     with PNMToast is a separate decision, not part of this migration step.
+// Originally the export-gambar-gabungan.html script, transformed per
+// map.md's per-page checklist (DOM lookups scoped to `container`, manual
+// sb.auth.* calls replaced with PNMAuth.*, sb.from('allowed_users') kept as
+// direct pnmSupabase call on purpose — see shared/auth-session.js's header).
+//
+// Sesi kesembilan belas: two more changes on top of that —
+//   1. Per-page auth-gate removed entirely (see AUTH comment in mount()
+//      below and shared/auth-gate.js).
+//   2. Visual rewrite per design.md — markup.js and style.css both
+//      REWRITTEN from scratch, dark-glass theme gone, now reuses
+//      pnm-universal.css's shared components like dashboard/stok.
+//   This page's own local toast()/#toastRoot function is STILL NOT the
+//   same as shared/toast.js (PNMToast) — kept as its own lightweight
+//   implementation (now with flat styling matching design.md instead of
+//   the old glass theme). Unifying it with PNMToast is still a separate
+//   decision, not part of this pass either.
 
 import { EXPORT_GAMBAR_MARKUP } from './markup.js';
+
+// SECURITY FIX: renderFileList() below renders `f.name` (from File.name,
+// the name of a file the user picked/dropped) straight into innerHTML.
+// File.name is attacker-controlled the moment a file has been renamed on
+// disk to something like `<img src=x onerror=...>` — same class of bug,
+// same fix, as kompres-pdf/index.js (see that file's comment for the full
+// rationale). Used at every filename interpolation point below.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 const VENDOR_SCRIPTS = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
@@ -49,9 +66,40 @@ function ensureVendorScripts() {
   return vendorReady;
 }
 
-function ensureStyle() {
-  if (document.getElementById('page-export-gambar-style')) return Promise.resolve();
+// Sesi kesembilan belas: sekarang ikut pola dashboard/stok -- load
+// pnm-universal.css (buat .page-head/.card/.btn/.field-input/.stat-pill/
+// .pw-topbar dkk yang dipakai markup.js yang baru) + Google Fonts (Inter/
+// JetBrains Mono, id+href SAMA PERSIS kayak dashboard/konversian/stok biar
+// beneran satu <link> kalau kebetulan aktif bareng), keduanya dilepas di
+// unmount(). Tabler icons TIDAK perlu di-load di sini -- nav.js udah
+// muatin 'shared-tabler-icons' secara global SEBELUM mount() halaman
+// manapun dipanggil (lihat router.js's render()). style.css halaman ini
+// sendiri (sisa CSS yang bener-bener spesifik: file-list/chip/canvas/
+// toast) tetap punya link terpisah, id 'page-export-gambar-style', SEKARANG
+// fully scoped di bawah `.eg-page` -- nol bare selector (lihat style.css),
+// jadi remove()-nya di unmount() adalah lapis pertahanan kedua, bukan
+// satu-satunya (beda dari sebelum sesi ini, waktu itu satu-satunya).
+const SHARED_LINKS = [
+  { id: 'shared-google-fonts', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap' },
+  { id: 'shared-pnm-universal-css', href: '/pnm-universal.css?v=20260813b' },
+];
+
+function loadLink(id, href) {
+  if (document.getElementById(id)) return Promise.resolve();
   return new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.onload = () => resolve();
+    link.onerror = () => resolve();
+    document.head.appendChild(link);
+  });
+}
+
+function ensureStyle() {
+  const ownStyle = new Promise((resolve) => {
+    if (document.getElementById('page-export-gambar-style')) return resolve();
     const link = document.createElement('link');
     link.id = 'page-export-gambar-style';
     link.rel = 'stylesheet';
@@ -60,14 +108,29 @@ function ensureStyle() {
     link.onerror = () => resolve(); // don't block forever if this fails
     document.head.appendChild(link);
   });
+  return Promise.all([ownStyle, ...SHARED_LINKS.map(({ id, href }) => loadLink(id, href))]);
 }
 
 let mountedContainer = null;
 let activeObserver = null;
-let authUnsubscribe = null;
+// FIX (sesi lanjutan, bug ditemukan lewat testing browser beneran): guard
+// buat async operation yang nyambung setelah user udah pindah halaman.
+// loadFileList() (dipanggil di bawah, fire-and-forget) nge-fetch dari
+// Supabase Storage -- kalau user navigasi PERGI dari export-gambar SEBELUM
+// fetch itu kelar (gampang kejadian sekarang, navigasi antar-modul udah
+// instant lewat nav baru, beda dari dulu yang full page reload), promise-nya
+// tetep resolve belakangan dan nyoba nulis ke DOM yang udah bukan punya
+// export-gambar lagi (container.innerHTML-nya udah diganti markup halaman
+// lain sama router.js) -- `container.querySelector('#searchInput')`
+// balikin null, `.value`-nya throw "Cannot read properties of null". Sama
+// buat toast()'s `#toastRoot`. Diset false di unmount(), dicek di titik-
+// titik yang nyambung DOM manipulation abis `await` sebelum benar-benar
+// nulis apa pun.
+let isMounted = false;
 
 export async function mount(container) {
   mountedContainer = container;
+  isMounted = true;
   // Sesi kesepuluh fix (FOUC/flash bug — sama kelas bug yang dibenerin di
   // app/pages/home/index.js): ensureStyle() sekarang di-await, paralel
   // sama ensureVendorScripts() (dua-duanya independen, gak saling nunggu).
@@ -83,82 +146,15 @@ export async function mount(container) {
       const TEMPLATE_URL = `${SUPABASE_URL}/storage/v1/object/public/${THUMBNAILS_BUCKET}/TEMPLATE_THUMBNAIL_ROBUST.png`;
   
       const sb = window.pnmSupabase;
-  
-      // ── Auth gate — sama persis pola shared-auth di crud-produk.html, jadi kalau user
-      // udah login di modul lain (Konversian, Produk), sesi kesini otomatis kebawa dari
-      // storage key `pnm_auth_session` yang sama, tanpa perlu login ulang. ──
-      const gateWrap = container.querySelector('#' + 'gateWrap');
-      const appWrap = container.querySelector('#' + 'appWrap');
-      const gateTitle = container.querySelector('#' + 'gateTitle');
-      const gateDesc = container.querySelector('#' + 'gateDesc');
-      const loginFormWrap = container.querySelector('#' + 'loginFormWrap');
-      const loginEmail = container.querySelector('#' + 'loginEmail');
-      const loginPassword = container.querySelector('#' + 'loginPassword');
-      const loginBtn = container.querySelector('#' + 'loginBtn');
-      const gateMsg = container.querySelector('#' + 'gateMsg');
-  
-      function showGateMsg(text, type){
-          gateMsg.textContent = text;
-          gateMsg.className = 'gate-msg show ' + type;
-      }
-  
-      loginFormWrap.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const email = loginEmail.value.trim().toLowerCase();
-          const password = loginPassword.value;
-          if (!email || !email.includes('@')) { showGateMsg('Masukkan email yang valid dulu ya.', 'error'); return; }
-          if (!password) { showGateMsg('Masukkan password.', 'error'); return; }
-          loginBtn.disabled = true;
-          loginBtn.textContent = 'Memproses...';
-          try {
-              await PNMAuth.login(email, password); // dulu: sb.auth.signInWithPassword langsung
-          } catch (error) {
-              showGateMsg('Gagal masuk: ' + error.message, 'error');
-          }
-          loginBtn.disabled = false;
-          loginBtn.textContent = 'Masuk';
-      });
-  
-      let alreadyShownForUserId = null; // guard: cegah checkWhitelistAndShowApp()/loadFileList() kepanggil dobel
-                                         // kalau SDK nembak INITIAL_SESSION lalu SIGNED_IN buat sesi yang sama
-  
-      async function checkWhitelistAndShowApp(session){
-          if (alreadyShownForUserId === session.user.id) return;
-  
-          const email = session.user.email.toLowerCase();
-          const { data, error } = await sb.from('allowed_users').select('email').eq('email', email).maybeSingle();
-          if (error) {
-              showGateMsg('Gagal cek akses (koneksi bermasalah), coba lagi: ' + error.message, 'error');
-              return;
-          }
-          if (!data) {
-              await PNMAuth.logout(); // dulu: sb.auth.signOut() langsung
-              gateTitle.textContent = 'Akses Ditolak';
-              gateDesc.textContent = 'Email ' + email + ' belum terdaftar sebagai tim.';
-              loginFormWrap.style.display = 'none';
-              showGateMsg('Hubungi admin untuk ditambahkan ke daftar akses.', 'error');
-              return;
-          }
-          alreadyShownForUserId = session.user.id;
-          gateWrap.style.display = 'none';
-          appWrap.style.display = 'flex';
-          loadFileList();
-      }
-  
-      const AUTH_EVENTS_YANG_MEMICU_GATE = new Set(['SIGNED_IN', 'INITIAL_SESSION']);
-      authUnsubscribe = PNMAuth.onAuthStateChange((event, session) => { // dulu: sb.auth.onAuthStateChange langsung
-          if (session && AUTH_EVENTS_YANG_MEMICU_GATE.has(event)) {
-              checkWhitelistAndShowApp(session);
-          } else if (!session) {
-              alreadyShownForUserId = null;
-              gateWrap.style.display = 'flex';
-              appWrap.style.display = 'none';
-              loginFormWrap.style.display = 'block';
-              gateTitle.textContent = 'Masuk dulu ya';
-              gateDesc.textContent = 'Khusus tim internal — pakai akun yang sama seperti Konversian/Produk.';
-          }
-      });
-  
+
+      // ══════════════════════════════════════════
+      // AUTH — sesi kesembilan belas: per-page gate (gateWrap/appWrap/
+      // loginFormWrap/checkWhitelistAndShowApp/local onAuthStateChange)
+      // DIHAPUS SELURUHNYA. router.js gak pernah mount() modul ini sampai
+      // shared/auth-gate.js konfirmasi sesi valid + whitelisted duluan --
+      // begitu mount() jalan, sesi SUDAH PASTI ada. Langsung loadFileList().
+      // ══════════════════════════════════════════
+      loadFileList();
       // Input cepat: cocokkan tiap baris terhadap nama file (atau file ID) di daftar,
       // lalu pilih otomatis (maks 4).
       function applyBulkInput() {
@@ -211,7 +207,7 @@ export async function mount(container) {
           const root = container.querySelector('#' + "toastRoot");
           const el = document.createElement("div");
           el.className = `toast ${type}`;
-          el.innerHTML = `<span class="dot" aria-hidden="true"></span><span>${message}</span>`;
+          el.innerHTML = `<span class="dot" aria-hidden="true"></span><span>${escapeHtml(message)}</span>`;
           root.appendChild(el);
           requestAnimationFrame(() => el.classList.add("in"));
           setTimeout(() => {
@@ -246,7 +242,8 @@ export async function mount(container) {
               // Ambil token fresh tiap request (bukan cached), sama kayak pola getFreshToken()
               // di konversian.js -- kalau tab lama di-background terus token expire, ini tetap benar.
               const session = await PNMAuth.getSession(); // dulu: sb.auth.getSession() langsung
-              if (!session) { showGateMsg('Sesi habis, silakan masuk lagi.', 'error'); return; }
+              if (!isMounted) return; // sama alasan (lihat isMounted's komentar) -- await pertama di fungsi ini
+              if (!session) { window.PNMAuth.logout(); return; } // trigger shared gate via router.js's onLoggedOut, bukan showGateMsg() lokal (sudah dihapus)
               let response = await fetch(url, {
                   method: "POST",
                   headers: {
@@ -260,6 +257,7 @@ export async function mount(container) {
               });
               if (!response.ok) throw new Error(`HTTP ${response.status}`);
               let data = await response.json();
+              if (!isMounted) return; // user udah pindah halaman sebelum fetch ini kelar -- lihat isMounted's komentar di atas
               console.log("[DATA] Data dari Supabase Storage:", data);
               if (!Array.isArray(data) || !data.length) {
                   toast("Daftar file kosong atau tidak ditemukan.", "error");
@@ -274,6 +272,7 @@ export async function mount(container) {
               renderFileList();
           } catch (error) {
               console.error("[ERROR] Gagal mengambil daftar file dari Supabase Storage!", error);
+              if (!isMounted) return; // sama alasan -- jangan toast() ke halaman yang udah bukan ini lagi
               toast("Gagal memuat daftar file. Coba muat ulang halaman.", "error");
           }
       }
@@ -284,7 +283,7 @@ export async function mount(container) {
           const filtered = allFiles.filter(f => f.name.toLowerCase().includes(query));
   
           if (filtered.length === 0) {
-              listEl.innerHTML = `<div class="file-list-empty">Tidak ada hasil yang cocok.</div>`;
+              listEl.innerHTML = `<div class="eg-file-list-empty">Tidak ada hasil yang cocok.</div>`;
               return;
           }
   
@@ -292,11 +291,11 @@ export async function mount(container) {
               const isSelected = selectedIds.includes(f.id);
               const isDisabled = !isSelected && selectedIds.length >= MAX_IMAGES;
               return `
-                  <div class="file-item ${isSelected ? "selected" : ""} ${isDisabled ? "disabled" : ""}"
+                  <div class="eg-file-item ${isSelected ? "selected" : ""} ${isDisabled ? "disabled" : ""}"
                        role="option" aria-selected="${isSelected}"
                        onclick="${isDisabled ? "" : `toggleFile('${f.id}')`}">
-                      <span class="check" aria-hidden="true">${isSelected ? "✓" : ""}</span>
-                      <span class="name">${f.name}</span>
+                      <span class="eg-check" aria-hidden="true">${isSelected ? "✓" : ""}</span>
+                      <span class="eg-name">${escapeHtml(f.name)}</span>
                   </div>`;
           }).join("");
       }
@@ -320,7 +319,8 @@ export async function mount(container) {
           const chipsEl = container.querySelector('#' + "selectedChips");
           chipsEl.innerHTML = selectedIds.map(id => {
               const file = allFiles.find(f => f.id === id);
-              const name = file ? file.name : id;
+              const rawName = file ? file.name : id;
+              const name = escapeHtml(rawName);
               return `<span class="chip">${name}<button type="button" aria-label="Hapus ${name}" onclick="toggleFile('${id}')">✕</button></span>`;
           }).join("");
       }
@@ -517,9 +517,6 @@ export async function mount(container) {
               container.querySelector('#' + "metaCount").textContent = String(selectedIds.length);
               container.querySelector('#' + "previewContainer").style.display = "block";
               container.querySelector('#' + "exportBtn").style.display = "inline-flex";
-              requestAnimationFrame(() => {
-                  container.querySelector('#' + "previewContainer").classList.add("in-view");
-              });
               toast("Preview berhasil dibuat.", "success", 2500);
           } catch (error) {
               console.error("[ERROR] Gagal memproses gambar:", error);
@@ -529,9 +526,9 @@ export async function mount(container) {
               setButtonLoading(btn, false);
           }
       }
-      // loadFileList() sekarang dipanggil dari checkWhitelistAndShowApp() setelah auth gate
-      // lolos, bukan langsung di window.onload -- biar gak nembak Storage API sebelum ada
-      // sesi/token yang valid.
+      // loadFileList() dipanggil langsung setelah mount() (lihat atas) -- router.js
+      // udah mastiin sesi valid sebelum modul ini di-mount, jadi gak perlu nunggu
+      // gate apapun lagi di sini.
   
       function exportCanvasAsPNG() {
           let canvas = container.querySelector('#' + "finalCanvas");
@@ -542,13 +539,13 @@ export async function mount(container) {
           toast("Gambar berhasil diunduh.", "success", 2500);
       }
   
-      // Scroll / entry reveal for bezel modules
-      activeObserver = new IntersectionObserver((entries) => {
-          entries.forEach(entry => {
-              if (entry.isIntersecting) entry.target.classList.add("in-view");
-          });
-      }, { threshold: 0.15 });
-      container.querySelectorAll(".bezel").forEach(el => activeObserver.observe(el));
+      // Sesi kesembilan belas: IntersectionObserver scroll-reveal buat elemen
+      // `.bezel` DIHAPUS -- itu bagian dari dark-glass theme yang baru
+      // dibuang (lihat markup.js/style.css), gak ada `.bezel` lagi di markup
+      // yang baru. activeObserver tetap dideklarasikan (let activeObserver =
+      // null; di atas) buat konsistensi shape unmount() sama modul lain,
+      // walau sekarang gak pernah diisi -- unmount()'s activeObserver?.disconnect()
+      // jadi no-op yang aman.
 
   // Inline onclick/oninput attributes in the markup (applyBulkInput(),
   // renderFileList(), mergeAndPreview(), exportCanvasAsPNG(), toggleFile(id))
@@ -562,14 +559,32 @@ export async function mount(container) {
 }
 
 export function unmount() {
+  isMounted = false;
   activeObserver?.disconnect();
   activeObserver = null;
-  authUnsubscribe?.();
-  authUnsubscribe = null;
   delete window.applyBulkInput;
   delete window.renderFileList;
   delete window.mergeAndPreview;
   delete window.exportCanvasAsPNG;
   delete window.toggleFile;
+
+  // Sesi kesembilan belas: sebelum rewrite ini, style.css halaman ini TIDAK
+  // PERNAH dilepas di sini -- itu bug-nya (lihat map-history.md untuk root
+  // cause lengkap: bare :root/body/h1 yang bocor ke modul lain). Sekarang
+  // style.css-nya sendiri sudah di-scope penuh di bawah `.eg-page` (nol
+  // bare selector), jadi baris remove() ini murni lapis pertahanan kedua.
+  // UPDATE (jank fix): shared-pnm-universal-css and shared-google-fonts are
+  // NO LONGER removed here. The "remove tiap unmount()" pattern this
+  // comment used to describe -- copied from dashboard/stok/crud-produk/
+  // konversian -- turned out to be the actual root cause of a reported
+  // "jaggy zoom" flicker on every module navigation: unmount() doesn't
+  // clear the old page's DOM, so ripping its stylesheet out while it's
+  // still on screen (during the async gap before the next mount() reloads
+  // it) made the still-visible old content visibly lose its styling and
+  // snap back once the new page took over. Both are now permanent <link>s
+  // loaded once by shell.html/index.html instead -- see the
+  // shared-pnm-universal-css comment there.
+  document.getElementById('page-export-gambar-style')?.remove();
+
   mountedContainer = null;
 }

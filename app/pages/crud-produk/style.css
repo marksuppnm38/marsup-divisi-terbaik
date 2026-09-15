@@ -7,6 +7,50 @@
    Kalau butuh ubah tampilan yang sudah ada di universal, edit di sana.
    ============================================================ */
 
+/* Same seam bug fixed on konversian (see that page's style.css): .pw-topbar
+   and .topbar both carry background:var(--surface) (white, pnm-universal.css
+   lines ~1392/1977), but their sibling .content has no background of its
+   own and falls through to body's var(--bg) (#f0f2f5 gray) -- so the
+   identity bar + search/actions toolbar read as a separate white slab
+   sitting on a visibly greyer canvas right underneath, the same abrupt
+   two-tone seam flagged as awkward on the konversian page. .table-card
+   already gives the table its own white bordered surface *inside* .content,
+   so this isn't about removing that grouping -- it's about the topbar
+   stack no longer looking like a floating card against .content itself.
+   Scoped to #appWrap (this page's own shell id) rather than editing
+   .content in pnm-universal.css directly, since that class is shared with
+   dashboard/stok and this pass is crud-produk only. */
+/* pnm-universal.css has a BARE `main{max-width:1280px;margin:0 auto;
+   padding:32px 20px 44px}` tag selector (line ~326) that's an intentional
+   shared "content canvas" contract for pages using a plain, class-less
+   <main> (dashboard, stok) -- see that rule's own comment. crud-produk's
+   <main class="main"> was never meant to opt into that canvas: `.main` is
+   this page's own structural flex wrapper (flex:1, column layout holding
+   .pw-topbar + .topbar + .content stacked, the direct equivalent of
+   konversian's #app-root), not prose/dashboard content that wants a
+   readable capped width. But a bare TAG selector still applies to an
+   element regardless of its class, and `.main{flex:1;...}` (crud-produk's
+   own class rule, higher specificity) never SET max-width/margin/padding
+   itself, so those three properties still cascade in from the universal
+   tag rule uncontested -- the exact same "bare selector leaks into a
+   module that didn't ask for it" bug class already caught and fixed once
+   before on export-gambar (see that page's own header comment). Net
+   effect: the whole CRUD Produk screen (topbar, toolbar, table) rendered
+   as a 1280px card centered with grey gutters on every side -- "shrunk,
+   not fullscreen" -- while konversian's #app-root (no bare-tag leak to
+   fight) filled the viewport edge-to-edge. Resetting the three leaked
+   properties back to konversian's fullbleed behavior, scoped to #appWrap
+   so nothing outside this page is touched. */
+#appWrap .main{
+  max-width:none;
+  margin:0;
+  padding:0;
+}
+
+#appWrap .content{
+  background:var(--surface);
+}
+
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;padding:10px 14px;background:var(--surface-2);color:var(--text-muted);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)}
 td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}

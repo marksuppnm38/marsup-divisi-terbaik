@@ -13,21 +13,13 @@
 
 import { HOME_MARKUP } from './markup.js';
 
-const FONT_LINK_ID = 'shared-plus-jakarta-sans';
-const FONT_HREF = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap';
-
-// Sesi kesepuluh fix (FOUC/flash bug): sebelumnya ensureStyle() nge-append
-// <link> tag terus LANGSUNG lanjut ke `container.innerHTML = HOME_MARKUP`
-// tanpa nunggu stylesheet-nya kelar di-download — jadi ada 1 frame (kadang
-// lebih lama di koneksi lambat/cold cache di Vercel) di mana markup mentah
-// sempat ke-paint pakai default browser style (serif font, SVG icon gak
-// dibatasi 18x18 jadi tampil raksasa) sebelum CSS kelar. Fix: ensureStyle()
-// sekarang balikin Promise yang resolve pas link udah ke-load (event
-// 'load') ATAU udah ada duluan (skip nunggu) ATAU gagal load (event
-// 'error' — tetap resolve, bukan reject, biar app gak nyangkut nge-block
-// selamanya kalau CDN font down; halaman tetap muncul, cuma mungkin pakai
-// fallback font). mount() sekarang `await` ini SEBELUM nge-set innerHTML,
-// jadi container tetap kosong (bukan markup mentah) selama nunggu.
+// FONT (polish pass): used to load its own dedicated Plus Jakarta Sans
+// Google Font here, separate from the rest of the app. Now that
+// style.css's font-family matches konversian's system-font stack (see that
+// file's comment), Plus Jakarta Sans is never referenced anymore, and
+// JetBrains Mono is already loaded globally by shell.html's shared Google
+// Fonts link — so this page-specific font <link> is gone; ensureStyle()
+// only loads this page's own CSS now.
 function loadLink(id, href) {
   const existing = document.getElementById(id);
   if (existing) return Promise.resolve();
@@ -44,7 +36,6 @@ function loadLink(id, href) {
 
 function ensureStyle() {
   return Promise.all([
-    loadLink(FONT_LINK_ID, FONT_HREF),
     loadLink('page-home-style', new URL('./style.css', import.meta.url).href),
   ]);
 }

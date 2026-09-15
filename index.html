@@ -9,9 +9,19 @@
 <link rel="shortcut icon" href="/favicon/favicon.ico" />
 <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
 <link rel="manifest" href="/favicon/site.webmanifest" />
+<!-- Kept in sync with app/shell.html -- see the comments there for why these
+     two links are here (shell-audit "font loading/layout shifts" fix, and
+     its follow-up "jaggy zoom on navigation" fix for pnm-universal.css). -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="shared-google-fonts" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link id="shared-pnm-universal-css" rel="stylesheet" href="/pnm-universal.css?v=20260813b">
 </head>
 <body>
-<div id="app"></div>
+<div class="pw-shell">
+  <nav id="app-nav" class="pw-nav"></nav>
+  <div id="app" class="pw-content"></div>
+</div>
 <script type="module" src="/app/router.js"></script>
 </body>
 </html>

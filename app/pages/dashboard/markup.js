@@ -1,73 +1,34 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Dashboard Produk — PT Pionir Nusantara Manufacturing</title>
-<meta name="description" content="Dashboard internal PT Pionir Nusantara Manufacturing: ringkasan konversi, kelengkapan data produk, forecasting stok, dan populasi produk per wilayah."/>
-<meta name="theme-color" content="#f0f2f5"/>
-<link rel="icon" type="image/png" href="favicon/favicon-96x96.png" sizes="96x96" />
-<link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
-<link rel="shortcut icon" href="favicon/favicon.ico" />
-<link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png" />
-<link rel="manifest" href="favicon/site.webmanifest" />
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"/>
-<link rel="stylesheet" href="pnm-universal.css"/>
-<script>
-(function(){
-  var stored = localStorage.getItem('theme') || localStorage.getItem('pnum-theme');
-  var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  if (theme === 'dark') {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    document.documentElement.style.colorScheme = 'dark';
-  } else {
-    document.documentElement.setAttribute('data-theme', 'light');
-    document.documentElement.style.colorScheme = 'light';
-  }
-  document.addEventListener('DOMContentLoaded', function(){
-    if (theme === 'dark') document.body.setAttribute('data-theme', 'dark');
-    else document.body.setAttribute('data-theme', 'light');
-  });
-})();
-</script>
-</head>
-<body>
-<!-- AUTH GATE: sesi persistent, konsisten dengan Conversion Workspace -->
-<div id="auth-gate" class="auth-gate">
-  <div class="auth-gate-box">
-    <img src="favicon/favicon-96x96.png" alt="PNM Logo" class="auth-gate-logo"/>
-    <div class="auth-gate-title">Dashboard Produk</div>
-    <div class="auth-gate-sub">Masuk untuk melanjutkan.</div>
-    <div class="pr-field">
-      <label>Email</label>
-      <input type="email" id="gate-email" placeholder="nama@email.com" autocomplete="email"/>
-    </div>
-    <div class="pr-field">
-      <label>Password</label>
-      <input type="password" id="gate-password" placeholder="••••••••" autocomplete="current-password"/>
-    </div>
-    <button id="gate-login-btn" class="auth-gate-btn">Masuk</button>
-    <div id="gate-status" class="auth-gate-status"></div>
+// dashboard page markup: the original dashboard.html body content
+// (auth-gate through detail-modal-overlay), ported with the structural
+// change from design.md's migration checklist step 1 (old per-page
+// <header> replaced by the shared pw-topbar) in sesi kelima belas.
+//
+// UPDATE (sesi retrofit design.md): steps 2-6 (color/spacing/icon/status
+// tokens) done this session -- see style.css in this folder for the full
+// rationale. The only markup.js change needed for that was stripping the
+// per-instance inline `style="color:var(--success/accent/warning/purple)"`
+// on prog-card-title/insight-card-title icons (design.md: icon color
+// shouldn't carry per-card meaning) -- everything else (stat-card/chip/
+// badge/days-pill color removal) is handled purely via CSS specificity in
+// style.css, no other markup change needed.
+//
+// Theme-init <script> from the original <head> is NOT here -- <script>
+// elements inside HTML assigned via innerHTML don't execute (DOM quirk),
+// so that logic moved into index.js's mount() as real JS instead.
+
+export const DASHBOARD_MARKUP = `
+<!-- Sesi kesembilan belas: per-page auth-gate DIHAPUS -- router.js sekarang
+     gak pernah mount() halaman ini kecuali shared/auth-gate.js sudah
+     konfirmasi sesi valid + whitelisted, jadi #app-root gak perlu lagi
+     nunggu/nge-toggle display:none -- always visible dari awal. -->
+<div id="app-root">
+<div class="pw-topbar">
+  <div class="pw-topbar-crumb"><strong>Dashboard Produk</strong></div>
+  <div class="pw-topbar-actions">
+    <span class="last-update"><i class="ph ph-arrows-clockwise" id="refresh-icon"></i> <span id="last-update-text">Memuat…</span></span>
+    <button class="toggle-btn" id="reload-btn" title="Muat ulang"><i class="ph ph-arrow-clockwise"></i> Muat ulang</button>
   </div>
 </div>
-
-<div id="app-root" style="display:none">
-<header>
-  <img src="favicon/favicon-96x96.png" alt="PNM Logo" class="logo"/>
-  <div>
-    <div class="logo-text">PT Pionir Nusantara Manufacturing</div>
-    <div class="logo-sub">Dashboard Produk</div>
-  </div>
-  <div class="header-right">
-    <span class="last-update"><i class="ph ph-arrows-clockwise" id="refresh-icon"></i> <span id="last-update-text">Memuat…</span></span>
-    <a class="toggle-btn" href="index.html"><i class="ph ph-house"></i> Beranda</a>
-    <button class="toggle-btn" id="reload-btn" title="Muat ulang"><i class="ph ph-arrow-clockwise"></i> Muat ulang</button>
-    <button class="toggle-btn" id="theme-toggle" title="Ganti tema"><i class="ph ph-moon" id="theme-icon"></i></button>
-  </div>
-</header>
 
 <main>
 
@@ -92,7 +53,7 @@
   <div class="section-label"><i class="ph ph-chart-bar"></i> Kelengkapan Data</div>
   <div class="prog-cards">
     <div class="prog-card">
-      <div class="prog-card-title"><i class="ph ph-money" style="color:var(--success)"></i> Harga e-Katalog</div>
+      <div class="prog-card-title"><i class="ph ph-money"></i> Harga e-Katalog</div>
       <div id="prog-harga">
         <div class="skeleton" style="height:36px;margin-bottom:9px"></div>
         <div class="skeleton" style="height:36px;margin-bottom:9px"></div>
@@ -100,14 +61,14 @@
       </div>
     </div>
     <div class="prog-card">
-      <div class="prog-card-title"><i class="ph ph-link" style="color:var(--accent)"></i> e-Katalog v6</div>
+      <div class="prog-card-title"><i class="ph ph-link"></i> e-Katalog v6</div>
       <div id="prog-link">
         <div class="skeleton" style="height:36px;margin-bottom:9px"></div>
         <div class="skeleton" style="height:36px"></div>
       </div>
     </div>
     <div class="prog-card">
-      <div class="prog-card-title"><i class="ph ph-seal-check" style="color:var(--warning)"></i> Nomor AKD</div>
+      <div class="prog-card-title"><i class="ph ph-seal-check"></i> Nomor AKD</div>
       <div id="prog-akd">
         <div class="skeleton" style="height:36px;margin-bottom:9px"></div>
         <div class="skeleton" style="height:36px"></div>
@@ -119,20 +80,20 @@
 <div class="insight-grid">
     <div class="insight-col-left">
       <div class="insight-card">
-        <div class="insight-card-title"><i class="ph ph-chart-bar" style="color:var(--accent)"></i> Trend 7 Hari Terakhir</div>
+        <div class="insight-card-title"><i class="ph ph-chart-bar"></i> Trend 7 Hari Terakhir</div>
         <div id="trend-chart-box"><div class="skeleton" style="height:120px"></div></div>
       </div>
       <div class="insight-card">
-        <div class="insight-card-title"><i class="ph ph-chart-line" style="color:var(--success)"></i> Trend Value Harian (7 hari)</div>
+        <div class="insight-card-title"><i class="ph ph-chart-line"></i> Trend Value Harian (7 hari)</div>
         <div id="linechart-box"><div class="skeleton" style="height:150px"></div></div>
       </div>
       <div class="insight-card">
-        <div class="insight-card-title"><i class="ph ph-chart-donut" style="color:var(--purple)"></i> Distribusi Kategori (30 hari)</div>
+        <div class="insight-card-title"><i class="ph ph-chart-donut"></i> Distribusi Kategori (30 hari)</div>
         <div id="donut-chart-box"><div class="skeleton" style="height:140px"></div></div>
       </div>
     </div>
     <div class="insight-card insight-card-tall">
-      <div class="insight-card-title"><i class="ph ph-trophy" style="color:var(--warning)"></i> Leaderboard Sales (30 hari)</div>
+      <div class="insight-card-title"><i class="ph ph-trophy"></i> Leaderboard Sales (30 hari)</div>
       <div id="leaderboard-box">
         <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
         <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
@@ -143,7 +104,7 @@
   <div class="section-label"><i class="ph ph-tree-structure"></i> Peta Kebutuhan ↔ SKU</div>
   <div class="insight-card" style="margin-bottom:26px">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-      <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-share-network" style="color:var(--accent)"></i> Word Tree — Kebutuhan Customer ke SKU</div>
+      <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-share-network"></i> Word Tree — Kebutuhan Customer ke SKU</div>
       <select class="filter-select" id="wordtree-root-select" onchange="onWordtreeRootChange(this.value)" style="min-width:220px"></select>
     </div>
     <div id="wordtree-box"><div class="skeleton" style="height:260px"></div></div>
@@ -151,7 +112,7 @@
   <div class="section-label"><i class="ph ph-chart-line-down"></i> Forecasting Stok</div>
   <div class="insight-card" style="margin-bottom:26px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-warning" style="color:var(--warning)"></i> Produk Berisiko Habis (berdasarkan laju konversi)</div>
+      <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-warning"></i> Produk Berisiko Habis (berdasarkan laju konversi)</div>
       <div style="display:flex;gap:6px;align-items:center">
         <span style="font-size:11px;color:var(--text-muted)">Periode analisis:</span>
         <button class="forecast-period-btn" data-days="7" onclick="setForecastPeriod(7,this)">7 hari</button>
@@ -291,47 +252,4 @@
     </div>
   </div>
 </div>
-
-<script>
-/* Theme toggle — standalone, works even if dashboard.js omits it */
-(function(){
-  function applyTheme(theme){
-    theme = theme === 'dark' ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    if (document.body) document.body.setAttribute('data-theme', theme);
-    document.documentElement.style.colorScheme = theme;
-    localStorage.setItem('theme', theme);
-    localStorage.setItem('pnum-theme', theme);
-    var icon = document.getElementById('theme-icon');
-    if (icon) {
-      icon.className = theme === 'dark' ? 'ph ph-sun' : 'ph ph-moon';
-    }
-  }
-  function currentTheme(){
-    return document.documentElement.getAttribute('data-theme')
-      || (document.body && document.body.getAttribute('data-theme'))
-      || localStorage.getItem('theme')
-      || localStorage.getItem('pnum-theme')
-      || 'light';
-  }
-  function bind(){
-    var btn = document.getElementById('theme-toggle');
-    if (!btn || btn.dataset.themeBound) return;
-    btn.dataset.themeBound = '1';
-    applyTheme(currentTheme());
-    btn.addEventListener('click', function(e){
-      e.preventDefault();
-      applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
-    });
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bind);
-  } else {
-    bind();
-  }
-})();
-</script>
-
-<script src="dashboard.js"></script>
-</body>
-</html>
+`;

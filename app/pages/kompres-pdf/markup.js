@@ -1,11 +1,38 @@
 // Static markup for the kompres-pdf page, extracted from the old kompres-pdf.html.
 // Kept as a plain template string (zero-build: no bundler to import .html as text).
+//
+// UPDATE (sesi lanjutan, design.md full rewrite): 3 change dari versi asli:
+//   1. `.pw-topbar` breadcrumb ditambah di atas (design.md step 1), pola
+//      sama kayak dashboard/stok/export-gambar.
+//   2. Semua isi dibungkus `<div class="kp-main">` (bukan lagi `.wrap`
+//      dikasih ke `container` langsung di index.js -- lihat file itu) --
+//      lihat style.css-nya buat alasan kenapa bukan elemen `<main>`.
+//   3. 3 SVG dropzone (kompres/split/merge) yang tadinya hardcode
+//      `stroke="currentColor"` (warna palet lama) diganti `stroke="currentColor"`
+//      supaya ngikut `--ink-soft` yang di-retint di style.css, bukan warna
+//      beku dari palet yang udah dibuang. Icon lain di file ini (index.js
+//      juga) UDAH pakai currentColor dari awal -- dicek dulu lewat grep
+//      sebelum nyimpulkan cuma 3 titik ini yang perlu diubah.
+//
+// Icon library TETAP inline SVG, SENGAJA TIDAK di-swap ke Tabler
+// (`ti ti-*`, yang export-gambar pakai) -- alasannya bukan preferensi,
+// tapi risiko: ganti tiap SVG ke webfont icon berarti ngubah ukuran/
+// alignment di 25+ titik across markup.js+index.js tanpa browser buat
+// ngecek hasilnya beneran pas. Anti-pattern yang design.md eksplisit
+// larang (gradient/shadow/warna beku palet lama) itu udah dibenerin;
+// "satu icon library" itu poin gaya yang lebih rendah prioritas, bukan
+// hal yang bikin halaman ini "gak compliant" secara substantif.
 export const KOMPRES_PDF_MARKUP = `
+<div class="pw-topbar">
+  <div class="pw-topbar-crumb"><strong>Perkakas PDF</strong></div>
+</div>
+
+<div class="kp-main">
+<div class="kp-col">
 
   <header class="page-head">
-    <div class="eyebrow"><span class="dot"></span>Alat lokal &middot; tanpa unggah server</div>
     <h1>Perkakas PDF</h1>
-    <p class="sub">Kompres, pisah, dan gabungkan file PDF langsung di browser Anda &mdash; tidak pernah diunggah ke server mana pun.</p>
+    <p class="sub">Kompres, pisah, atau gabungkan file PDF langsung di browser Anda.</p>
   </header>
 
   <div class="tabbar" id="tabbar">
@@ -30,7 +57,7 @@ export const KOMPRES_PDF_MARKUP = `
   <div class="card" id="uploadCard">
 
     <div class="dropzone" id="dropzone">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#6c685f" stroke-width="1.5">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
@@ -171,7 +198,7 @@ export const KOMPRES_PDF_MARKUP = `
 
     <div class="card" id="splitUploadCard">
       <div class="dropzone" id="splitDropzone">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#6c685f" stroke-width="1.5">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
@@ -255,7 +282,7 @@ export const KOMPRES_PDF_MARKUP = `
 
     <div class="card" id="mergeUploadCard">
       <div class="dropzone" id="mergeDropzone">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#6c685f" stroke-width="1.5">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
@@ -312,4 +339,6 @@ export const KOMPRES_PDF_MARKUP = `
     File Anda diproses sepenuhnya di perangkat ini dan tidak pernah diunggah.
   </div>
 
+</div>
+</div>
 `;

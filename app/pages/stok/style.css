@@ -1,0 +1,190 @@
+/* app/pages/stok/style.css
+   design.md steps 2-6 retrofit for Stock Inventory (steps 1/7 -- topbar +
+   route wiring -- already done, same session as dashboard's step 1; this
+   closes the same deferred gap dashboard's style.css closed there).
+
+   Same approach/guarantees as app/pages/dashboard/style.css (read that
+   file's header first if this is your first time in this pair) -- page-
+   scoped OVERRIDE of pnm-universal.css's stok-only classes, zero bare
+   selectors, loaded/removed in mount()/unmount() alongside it.
+
+   Uses design.md's EXACT token names for the status dots
+   (--success-dot/--warning-dot/--danger-dot), not pnm-universal.css's
+   existing --success/--warning/--danger -- same correction applied to
+   dashboard's style.css after that file's first pass got this wrong, see
+   that file's own CORRECTION comment for the full reasoning. Defined
+   locally under #app-root rather than touching pnm-universal.css's :root.
+*/
+
+#app-root{
+  --success-dot: #3BA55D;
+  --warning-dot: #C99A2C;
+  --danger-dot: #E5484D;
+}
+
+/* Same seam bug fixed on konversian/crud-produk/dashboard (see those pages'
+   style.css files): .pw-topbar is white (nav.css), <main> has no background
+   of its own (pnm-universal.css line ~326) and falls through to body's gray
+   var(--bg) -- topbar reads as a white slab against a greyer canvas right
+   underneath it. .card already carries its own white bordered surface
+   inside main, so this only removes the seam at the topbar/main boundary.
+   FULLBLEED PASS: stok's <main> also matches `#app:has(.dropzone) main`
+   (pnm-universal.css ~line 2002, stok's own dropzone makes it live) on top
+   of the bare `main{}` rule -- that :has() selector is HIGHER specificity
+   (id + pseudo-class + tag) than a plain `#app-root main` reset can beat,
+   so max-width/margin need !important here to actually win. Its
+   padding/display:flex/flex-direction/gap are left alone -- stok's cards
+   genuinely rely on that flex-column + gap for vertical stacking, this is
+   only about killing the 820px cap + auto-centering. */
+#app-root main{
+  max-width: none !important;
+  margin: 0 !important;
+  background: var(--surface);
+}
+
+/* ---- Step 2/3: icon squares -- neutral, no per-instance tint, resized to
+   design.md's 32px/7px-radius spec (.icon-box was 42px/11px, oversized
+   relative to that spec; .metric-icon was already 32px, just needed the
+   radius + color fix). ---- */
+#app-root .icon-box,
+#app-root .metric-icon{
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 0.5px solid var(--border);
+}
+
+/* .dropzone-icon is a large hero/call-to-action graphic, not the module
+   icon-square component design.md's Iconography section targets -- left
+   at its existing 52px size. Only its per-instance color tint is in
+   scope: neutral at rest, keeping the existing accent highlight ONLY on
+   the active drag state (design.md's "one accent... for a single primary
+   button/focus" extends naturally to "the one thing you're about to drop
+   a file onto being highlighted while you're doing it" -- judgment call,
+   flagged here rather than silently decided). */
+#app-root .dropzone-icon{
+  background: transparent;
+  color: var(--text-secondary);
+  border: 0.5px solid var(--border);
+}
+#app-root .dropzone.drag .dropzone-icon{
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* ---- Step 4: status -- dot + label instead of colored fills/pills. ----
+   stat-pill (precheck: total/match/skip), metric (Last Sync: updated/
+   skipped), act-num (history table: updated/skipped columns) are all the
+   SAME two states (neutral count vs "match"/"ok" vs "skip"/"warn")
+   repeated across three components -- flatten all three to neutral text
+   + a leading dot, dropping the tinted background/border fills. */
+#app-root .stat-pill{
+  background: transparent !important;
+  border: 0.5px solid var(--border) !important;
+}
+#app-root .stat-pill .num{
+  color: var(--text) !important;
+  font-family: var(--font-mono);
+}
+#app-root .stat-pill.ok .num,
+#app-root .stat-pill.warn .num{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+#app-root .stat-pill.ok .num::before,
+#app-root .stat-pill.warn .num::before{
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+#app-root .stat-pill.ok .num::before{ background: var(--success-dot); }
+#app-root .stat-pill.warn .num::before{ background: var(--warning-dot); }
+
+#app-root .metric-icon.green,
+#app-root .metric-icon.amber,
+#app-root .metric.green .num,
+#app-root .metric.amber .num,
+#app-root .act-num.green,
+#app-root .act-num.amber{
+  color: var(--text) !important;
+}
+#app-root .metric .num{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+}
+#app-root .metric .num::before{
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+#app-root .metric.green .num::before{ background: var(--success-dot); }
+#app-root .metric.amber .num::before{ background: var(--warning-dot); }
+
+#app-root .act-num{
+  font-family: var(--font-mono);
+}
+#app-root .act-num.green::before,
+#app-root .act-num.amber::before{
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+#app-root .act-num.green::before{ background: var(--success-dot); }
+#app-root .act-num.amber::before{ background: var(--warning-dot); }
+
+/* skip-panel: was a full warning-tinted surface (bg + border both
+   --warn). Flattened to the same neutral card treatment as everything
+   else, with the dot+label pattern carried onto its own title instead of
+   painting the whole panel -- consistent with "no saturated status
+   pills" extended to this banner-shaped instance of the same pattern. */
+#app-root .skip-panel{
+  background: var(--surface) !important;
+  border: 0.5px solid var(--border) !important;
+}
+#app-root .skip-head-title{
+  color: var(--text-secondary) !important;
+}
+#app-root .skip-head-title::before{
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning-dot);
+  margin-right: 2px;
+}
+#app-root .skip-head-title i{ display: none; } /* redundant with the dot now */
+
+/* ---- Step 5: spacing -- 8pt scale + no shadow ---- */
+#app-root .card{
+  padding: 16px;      /* was 22px 24px */
+  box-shadow: none;   /* design.md: flat surfaces + hairline borders only, no shadow */
+}
+#app-root .card-head{ margin-bottom: 16px; }     /* was 18px */
+#app-root .stat-row{ gap: 12px; }                /* was 10px */
+#app-root .summary-row{ gap: 16px; }             /* was 20px */
+#app-root .metric-group{ gap: 16px; }            /* was 22px */
+#app-root .dropzone{ padding: 32px 16px; }       /* was 36px 16px */
+
+/* ---- Step 6: mono for tabular/numeric text ----
+   stat-pill/metric/act-num nums covered above (added inline with their
+   dot rules, same declaration doing double duty). Remaining gap found:
+   Recent Activity table's Waktu (date/time) column had no mono. */
+#app-root .act-when .d,
+#app-root .act-when .t{
+  font-family: var(--font-mono);
+}

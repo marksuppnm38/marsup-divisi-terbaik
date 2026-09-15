@@ -1,74 +1,194 @@
-// Inisialisasi tema (dark/light) sebelum render — mencegah flash of unstyled theme
-(function(){
-  const saved = localStorage.getItem('theme');
-  const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  if (theme === 'dark') document.body.setAttribute('data-theme', 'dark');
-})();
+// dashboard page module: mount(container) / unmount().
+// Per map.md bagian 4 urutan #5 (dashboard duluan dari 2 sisa halaman --
+// stok.html masih ada di sesi berikutnya -- karena dashboard.js udah
+// terpisah dari HTML-nya sejak awal, satu langkah restrukturisasi lebih
+// sedikit dibanding stok.html yang masih inline <script>).
+//
+// INI HALAMAN PERTAMA YANG DIBANGUN LANGSUNG PAKAI design.md's shared nav +
+// topbar (app/pages/nav/) -- bukan gaya lama dulu direskin belakangan.
+// design.md's migration checklist taruh langkah desain SEBELUM wire-up
+// logic; sesi kelima belas ngerjain langkah 1 (structural: shared topbar
+// ganti <header> lama) + langkah 7 (wire-up logic) sekaligus, TAPI BUKAN
+// langkah 2-6 (token warna/spacing/icon/status-dot per design.md) --
+// ditunda sengaja waktu itu (scope sesi itu udah besar: auth rewrite + 24
+// fungsi window-exposed + wiring nav buat pertama kali).
+//
+// UPDATE (sesi retrofit design.md): langkah 2-6 sekarang DIKERJAKAN --
+// lihat style.css baru di folder ini buat detail lengkap tiap langkah
+// (stat-card/stat-icon color-per-item dihapus, chip/days-pill jadi dot+
+// label, badge jadi neutral bordered pill, spacing 18px->16px, mono gap
+// terakhir). Charts (SVG trend/line/donut/wordtree/forecast, semua di file
+// ini) SENGAJA belum disentuh -- lihat catatan di style.css kenapa.
+//
+// AUTH: file asli (dashboard.js) SAMA SEKALI GAK PAKAI SDK Supabase --
+// murni raw fetch() manual ke endpoint /auth/v1/token, token disimpan
+// manual di localStorage, didekode manual dari JWT. Ini beda dari
+// konversian (udah PNMAuth penuh dari awal) DAN crud-produk (udah pakai
+// SDK, cuma salah panggil sb.auth.* langsung) -- di sini SELURUH auth
+// layer diganti ke PNMAuth.*, perubahan yang jauh lebih besar dari
+// sekadar swap panggilan. Lihat komentar "SPA migration" di titik-titik
+// auth di bawah buat detail masing-masing.
+//
+// document.getElementById(...) TIDAK di-rescope ke container.querySelector
+// (sama kayak konversian/crud-produk) -- aman selama cuma satu halaman yang
+// termount di satu waktu, dijamin router.js.
+//
+// BUG NYATA yang ketemu & difix selama port (bukan disengaja dibikin,
+// ketemu pas baca kode buat portingnya):
+//   1. Theme toggle baca/tulis document.body, tapi pnm-universal.css cuma
+//      react ke <html> -- tombol nampak "jalan" (icon ganti) tapi warna
+//      GAK PERNAH beneran berubah. Sekarang moot: toggle-nya dihapus
+//      total, digantiin toggle di shared nav yang udah bener.
+//   2. Detail-modal wiring dibungkus document.addEventListener(
+//      'DOMContentLoaded', ...) -- event itu cuma nembak SEKALI per real
+//      page load, jadi bakal gak pernah jalan lagi tiap user hash-navigate
+//      balik ke #dashboard (kunjungan ke-2+). Fix: dijalanin langsung.
+//
+// 24 FUNGSI di-expose ke window.* di akhir mount() (dan di-delete di
+// unmount()) -- markup lama penuh inline onclick="..."/onchange="..." yang
+// nunjuk fungsi-fungsi ini; di classic script (dashboard.js asli) mereka
+// otomatis jadi window.* lewat top-level function declaration, tapi begitu
+// dibungkus mount() (function scope, bukan lagi top-level classic-script
+// scope), alias otomatis itu hilang -- sama kelas fix kayak window.openEdit
+// di crud-produk, cuma jauh lebih banyak titiknya di sini.
+
+import { DASHBOARD_MARKUP } from './markup.js';
+
+const VENDOR_CHAIN = [
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+  '/shared/supabase-client.js',
+  '/shared/auth-session.js',
+];
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Gagal memuat ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+let vendorReady = null;
+function ensureVendorScripts() {
+  if (window.PNMAuth && window.pnmSupabase) return Promise.resolve();
+  if (!vendorReady) {
+    vendorReady = VENDOR_CHAIN.reduce((p, src) => p.then(() => loadScript(src)), Promise.resolve());
+  }
+  return vendorReady;
+}
+
+// shared-google-fonts / shared-phosphor-icons: id+href SAMA PERSIS kayak
+// yang dipakai konversian/index.js -- dashboard.html asli kebetulan makai
+// resource IDENTIK (dicek dulu sebelum nulis ini, bukan asumsi), jadi
+// beneran share satu <link> kalau dua-duanya kebetulan aktif bareng.
+// pnm-universal.css: pola sama kayak konversian/crud-produk (load di
+// mount(), lepas di unmount(), bukan "shared selamanya" -- lihat map-
+// history.md sesi kesembilan buat kenapa).
+const SHARED_LINKS = [
+  { id: 'shared-google-fonts', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap' },
+  { id: 'shared-phosphor-icons', href: 'https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css' },
+  { id: 'shared-pnm-universal-css', href: '/pnm-universal.css?v=20260813b' },
+];
+
+function loadLink(id, href) {
+  if (document.getElementById(id)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.onload = () => resolve();
+    link.onerror = () => resolve();
+    document.head.appendChild(link);
+  });
+}
+
+// SPA migration note: dashboard.html asli TIDAK punya stylesheet sendiri --
+// itu berubah sesi ini (design.md steps 2-6 retrofit, lihat style.css baru
+// di folder ini) -- sekarang page-specific style.css DI-LOAD, pola sama
+// kayak konversian/crud-produk/kompres-pdf/export-gambar: di mount(),
+// dilepas di unmount(). .pw-topbar/.pw-content yang dipakai markup.js udah
+// otomatis kesedia dari app/pages/nav/nav.css (dimuat router.js lewat
+// navMount() SEBELUM mount() halaman manapun dipanggil -- lihat
+// router.js's render()), gak perlu di-load ulang di sini.
+function ensureStyle() {
+  return Promise.all([
+    ...SHARED_LINKS.map(({ id, href }) => loadLink(id, href)),
+    loadLink('page-dashboard-style', new URL('./style.css', import.meta.url).href),
+  ]);
+}
+
+let mountedContainer = null;
+let dashKeydownHandler = null;
+let dashClickHandler = null;
 
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
 
-// ══════════════════════════════════════════
-// SESI LOGIN PERSISTENT — sama persis dengan Conversion Workspace,
-// jadi login sekali dan tersimpan di seluruh tools PNM-BARE.
-// ══════════════════════════════════════════
-const AUTH_STORAGE_KEY = 'pnm_auth_session';
-let accessToken = null;
+export async function mount(container) {
+  mountedContainer = container;
+  await Promise.all([ensureStyle(), ensureVendorScripts()]);
+  container.innerHTML = DASHBOARD_MARKUP;
 
-const authGate = document.getElementById('auth-gate');
-const appRoot = document.getElementById('app-root');
-const gateEmail = document.getElementById('gate-email');
-const gatePassword = document.getElementById('gate-password');
-const gateLoginBtn = document.getElementById('gate-login-btn');
-const gateStatus = document.getElementById('gate-status');
+  // theme-init: dashboard.html asli nyetel INI di <head>, sebelum <body>
+  // ke-parse (cegah flash tema salah) -- dipindah ke sini sebagai kode JS
+  // beneran (script di dalam markup yang di-assign lewat innerHTML gak
+  // otomatis jalan), posisi sama kayak pola di halaman lain yang udah
+  // dimigrasi. HANYA nyetel <html> (bukan lagi document.body juga kayak
+  // versi lama) -- lihat catatan BUG #1 di komentar atas.
+  (function(){
+    const saved = localStorage.getItem('theme');
+    const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.style.colorScheme = theme;
+  })();
 
-function saveAuthSession(data) {
-  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600)
-  }));
-}
-function clearAuthSession() { localStorage.removeItem(AUTH_STORAGE_KEY); }
-function readAuthSession() {
-  try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null'); } catch { return null; }
-}
-function showApp() {
-  authGate.style.display = 'none';
-  appRoot.style.display = 'block';
-  loadEverything();
-}
-function showGate(msg) {
-  accessToken = null;
-  appRoot.style.display = 'none';
-  authGate.style.display = 'flex';
-  if (msg) { gateStatus.style.color = 'var(--danger)'; gateStatus.textContent = msg; }
-}
-async function refreshAuthSession(refreshToken) {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
-    body: JSON.stringify({ refresh_token: refreshToken })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error_description || data.msg || 'Sesi habis, silakan masuk lagi.');
-  return data;
-}
+// ══════════════════════════════════════════
+// AUTH — sesi kesembilan belas: per-page gate (auth-gate/gate-email/
+// gate-password/gate-login-btn, showApp()/showGate(), onAuthStateChange
+// subscription) DIHAPUS SELURUHNYA. router.js sekarang gak pernah
+// mount() modul ini sampai shared/auth-gate.js konfirmasi sesi valid +
+// whitelisted duluan (lihat shared/auth-gate.js) -- jadi begitu mount()
+// jalan, sesi SUDAH PASTI ada, tinggal langsung loadEverything(), gak
+// perlu nunggu event/gate lokal apapun lagi. accessToken tetap diambil
+// fresh tiap request lewat PNMAuth.getAccessToken() di rpc() (gak
+// berubah dari sesi kelima belas -- itu bukan bagian dari gate, itu fix
+// token-basi terpisah, lihat komentar rpc() di bawah).
+//
+// PERUBAHAN PERILAKU yang perlu dicatat (lihat juga shared/auth-gate.js):
+// dashboard.html ASLI gak pernah ngecek allowed_users sama sekali --
+// siapapun yang berhasil login (kredensial valid) langsung dapet akses.
+// Sekarang halaman ini mount() di belakang SATU gate yang sama dengan
+// modul lain, dan gate itu SELALU cek whitelist -- jadi dashboard
+// SEKARANG ikut ke-whitelist-check juga, bukan lagi pengecualian. Efek
+// samping yang gak terhindarkan dari "satu gate buat semua", bukan
+// keputusan diam-diam.
+loadEverything();
 
 // DETAIL MODAL
-let detailOverlay;
-document.addEventListener('DOMContentLoaded', () => {
-  detailOverlay = document.getElementById('detail-modal-overlay');
-  if(detailOverlay){
-    function closeDetailModal(){
-      detailOverlay.classList.remove('show');
-      document.querySelectorAll('#tbl-body tr').forEach(tr => tr.classList.remove('row-active'));
-      activeDetailKode = null;
-    }
-    document.getElementById('dm-close').addEventListener('click', closeDetailModal);
-    detailOverlay.addEventListener('click', e => { if(e.target===detailOverlay) closeDetailModal(); });
+// SPA migration BUGFIX: ini dulu dibungkus document.addEventListener(
+// 'DOMContentLoaded', ...) -- event itu cuma nembak SEKALI per real page
+// load. Di SPA ini, mount() bisa kepanggil berkali-kali sepanjang satu page
+// load yang sama (tiap kali user hash-navigate balik ke #dashboard) --
+// DOMContentLoaded udah lama nembak duluan, gak akan pernah nembak lagi,
+// jadi listener ini gak akan PERNAH jalan lagi di kunjungan ke-2+ dan
+// detailOverlay bakal tetap undefined selamanya, closeDetailModal() gak
+// kepasang ke mana-mana. Fix: jalanin LANGSUNG (bukan nunggu event) --
+// container.innerHTML udah di-set sebelum baris ini jalan, jadi DOM-nya
+// udah pasti ada, gak perlu nunggu apa-apa lagi.
+let detailOverlay = document.getElementById('detail-modal-overlay');
+if(detailOverlay){
+  function closeDetailModal(){
+    detailOverlay.classList.remove('show');
+    document.querySelectorAll('#tbl-body tr').forEach(tr => tr.classList.remove('row-active'));
+    activeDetailKode = null;
   }
-});
+  document.getElementById('dm-close').addEventListener('click', closeDetailModal);
+  detailOverlay.addEventListener('click', e => { if(e.target===detailOverlay) closeDetailModal(); });
+}
 
 let activeDetailKode = null;
 async function openDetail(kode){
@@ -200,69 +320,18 @@ function copyKode(e, kode){
     .catch(() => showToast('Gagal menyalin', 'error'));
 }
 function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`; }
-async function initAuth() {
-  const saved = readAuthSession();
-  if (!saved) { showGate(); return; }
-  if (saved.expires_at && saved.expires_at - Math.floor(Date.now() / 1000) > 60) {
-    accessToken = saved.access_token;
-    showApp();
-    return;
-  }
-  try {
-    const data = await refreshAuthSession(saved.refresh_token);
-    accessToken = data.access_token;
-    saveAuthSession(data);
-    showApp();
-  } catch (err) {
-    clearAuthSession();
-    showGate('Sesi kamu sudah habis, silakan masuk lagi.');
-  }
-}
-gateLoginBtn.addEventListener('click', async () => {
-  const email = gateEmail.value.trim().toLowerCase();
-  const password = gatePassword.value;
-  if (!email || !password) {
-    gateStatus.style.color = 'var(--danger)';
-    gateStatus.textContent = 'Isi email dan password dulu.';
-    return;
-  }
-  gateLoginBtn.disabled = true;
-  gateLoginBtn.textContent = 'Memproses…';
-  gateStatus.style.color = 'var(--text-muted)';
-  gateStatus.textContent = '';
-  try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || data.msg || 'Login gagal');
-    accessToken = data.access_token;
-    saveAuthSession(data);
-    gatePassword.value = '';
-    showApp();
-  } catch (err) {
-    gateStatus.style.color = 'var(--danger)';
-    gateStatus.textContent = 'Gagal masuk: ' + err.message;
-  } finally {
-    gateLoginBtn.disabled = false;
-    gateLoginBtn.textContent = 'Masuk';
-  }
-});
-gatePassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') gateLoginBtn.click(); });
 
 // THEME
-const themeBtn = document.getElementById('theme-toggle');
-const themeIcon = document.getElementById('theme-icon');
-function syncIcon(){ themeIcon.className = document.body.getAttribute('data-theme')==='dark' ? 'ph ph-sun' : 'ph ph-moon'; }
-syncIcon();
-themeBtn.addEventListener('click', () => {
-  const dark = document.body.getAttribute('data-theme') === 'dark';
-  dark ? document.body.removeAttribute('data-theme') : document.body.setAttribute('data-theme','dark');
-  localStorage.setItem('theme', dark ? 'light' : 'dark');
-  syncIcon();
-});
+// SPA migration (design.md structural step 1): dashboard's OWN theme
+// toggle button/logic REMOVED entirely (not just fixed) -- design.md's
+// shared nav (app/pages/nav/) now owns theming globally for every page
+// that adopts it, so a second per-page toggle would just be redundant UI
+// fighting over the same <html data-theme> attribute. File asli juga
+// ternyata punya BUG (baca/tulis document.body, tapi pnm-universal.css cuma
+// react ke <html>, jadi tombol itu keliatan "kerja" tapi warna gak pernah
+// berubah) plus SATU LAGI toggle dobel di inline <script> standalone HTML
+// yang gak diport sama sekali ke sini -- baik bug maupun duplikasinya jadi
+// moot sekarang karena keduanya dihapus, bukan diwariskan.
 document.getElementById('reload-btn').addEventListener('click', loadEverything);
 
 function fmt(n){ return Number(n||0).toLocaleString('id-ID'); }
@@ -281,12 +350,22 @@ function clearError(){ document.getElementById('err-banner').classList.remove('s
 // cuma anon key) supaya RLS produk/produk_harga konsisten dengan
 // tools lain. Kalau token expired di tengah jalan, lempar ke gate lagi.
 async function rpc(fn, params){
-  // SECURITY FIX: dulu fallback ke ANON_KEY kalau accessToken belum/nggak ke-set
-  // (race condition saat load, atau token expired) — artinya RPC ini bisa diam-diam
-  // jalan sebagai anon. Sekarang wajib ada token sesi user yang login; kalau nggak,
-  // lempar ke gate daripada nembak pakai anon key.
+  // SPA migration: accessToken (variable lokal yang di-set manual saat login/
+  // refresh) diganti PNMAuth.getAccessToken() dipanggil FRESH tiap request --
+  // sama fix persis kayak getFreshToken() di konversian/index.js (bug asalnya:
+  // variable lokal bisa basi kalau tab dibackground lama, browser throttle
+  // timer refresh SDK-nya, RPC lanjut jalan pakai token expired sampai user
+  // ngerjain sesuatu yang minta re-check). getAccessToken() baca session SDK
+  // yang aktif, bukan snapshot yang mungkin udah gak valid.
+  const accessToken = await window.PNMAuth.getAccessToken();
   if (!accessToken) {
-    showGate('Sesi kamu sudah habis, silakan masuk lagi.');
+    // Sesi kesembilan belas: dulu manggil showGate() (fungsi lokal modul
+    // ini, sudah dihapus bareng auth-gate). Sekarang cukup logout() --
+    // itu men-triggerkan window.PNMAuth.onAuthStateChange(null) yang
+    // didengarkan shared/auth-gate.js, yang otomatis nampilin gate lagi
+    // DAN (lewat router.js's onLoggedOut) unmount modul ini + bersihin
+    // container, jadi gak ada UI dashboard basi ketinggalan di belakang gate.
+    window.PNMAuth.logout();
     throw new Error('unauthorized: no access token');
   }
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
@@ -299,7 +378,7 @@ async function rpc(fn, params){
     body: JSON.stringify(params || {})
   });
   if (res.status === 401) {
-    showGate('Sesi kamu sudah habis, silakan masuk lagi.');
+    window.PNMAuth.logout();
     throw new Error('unauthorized');
   }
   const data = await res.json();
@@ -548,7 +627,7 @@ function renderTable(total, rows){
       <input type="checkbox" class="row-checkbox" data-kode="${r.kode_produk}" data-row='${JSON.stringify(r).replace(/'/g,"&apos;")}' ${selectedRows.has(r.kode_produk)?'checked':''} onchange="toggleRowSelect(this,'${r.kode_produk}', ${JSON.stringify(r).replace(/"/g,'&quot;')})"/>
     </td>
     <td><span class="kode-text">${r.kode_produk || '—'}</span><button class="copy-kode-btn" onclick="copyKode(event,'${r.kode_produk}')" title="Salin kode"><i class="ph ph-copy"></i></button></td>
-        <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.nama_produk || '—'}</td>
+        <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtmlAttr(r.nama_produk || '—')}</td>
         <td><span class="badge ${tipeClass[r.tipe] || ''}">${r.tipe || '—'}</span></td>
         <td>${r.harga ? `<span style="font-family:var(--mono);font-size:11.5px;color:var(--success);font-weight:600">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="ph ph-x"></i> Belum ada</span>`}</td>
         <td>${r.link_v6 ? `<a href="${r.link_v6}" target="_blank" class="chip chip-yes" style="text-decoration:none"><i class="ph ph-arrow-square-out"></i> Ada</a>` : `<span class="chip chip-no"><i class="ph ph-x"></i> Belum</span>`}</td>
@@ -589,7 +668,11 @@ async function loadEverything(){
     handleLoadError(err);
   }
 }
-document.addEventListener('keydown', (e) => {
+// SPA migration: di-nama-in + ditangkep ke var module-scope biar unmount()
+// bisa removeEventListener -- listener document-level ini gak otomatis
+// ke-GC pas container.innerHTML dikosongin (beda dari listener yang nempel
+// ke elemen DALAM container).
+dashKeydownHandler = (e) => {
   const isTyping = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
 
   // Esc: tutup modal detail
@@ -616,7 +699,8 @@ document.addEventListener('keydown', (e) => {
       if (prevBtn && prevBtn.classList.contains('page-btn')) prevBtn.click();
     }
   }
-});
+};
+document.addEventListener('keydown', dashKeydownHandler);
 // ══════════════════════════════════════════
 // RIWAYAT PENCARIAN
 // ══════════════════════════════════════════
@@ -651,10 +735,11 @@ function applySearchHistory(term){
   clearPageCache();
   loadTable().catch(handleLoadError);
 }
-document.addEventListener('click', (e) => {
+dashClickHandler = (e) => {
   const box = document.getElementById('search-history');
   if (box && !e.target.closest('.search-wrap-mini')) box.classList.remove('show');
-});
+};
+document.addEventListener('click', dashClickHandler);
 
 // ══════════════════════════════════════════
 // PRESET FILTER TERSIMPAN
@@ -1060,7 +1145,7 @@ async function loadForecastStok(){
           ${data.map(d => `
             <tr>
               <td><span class="kode-text">${d.kode_produk}</span></td>
-              <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.nama_produk}</td>
+              <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtmlAttr(d.nama_produk)}</td>
               <td style="text-align:right;font-family:var(--mono);font-weight:600">${fmt(d.stok_sekarang)}</td>
               <td style="text-align:right;font-family:var(--mono)">${fmt(d.terpakai_periode)}</td>
               <td style="text-align:right;font-family:var(--mono)">${d.rata_harian}</td>
@@ -1210,14 +1295,14 @@ function popRenderTable(total, rows){
     document.getElementById('pop-tbl-body').innerHTML = rows.map(r => `
       <tr>
         <td><span class="kode-text">${r.kode_produk || '—'}</span></td>
-        <td style="max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(r.nama_produk||'').replace(/"/g,'&quot;')}">${r.nama_produk || '—'}</td>
+        <td style="max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtmlAttr(r.nama_produk||'')}">${escapeHtmlAttr(r.nama_produk || '—')}</td>
         <td><span class="badge badge-instrument">${r.entitas || '—'}</span></td>
         <td><span class="badge badge-instrument">${r.channel || '—'}</span></td>
         <td>${r.wilayah || '—'}</td>
         <td style="text-align:right;font-family:var(--mono);font-weight:600">${fmt(r.total_qty)}</td>
         <td style="text-align:right;font-family:var(--mono)">${fmt(r.jumlah_customer)}</td>
         <td style="text-align:right;font-family:var(--mono)">${fmt(r.jumlah_dokumen)}</td>
-        <td style="font-size:11px;color:var(--text-muted)">${r.order_terakhir || '—'}</td>
+        <td style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">${r.order_terakhir || '—'}</td>
       </tr>
     `).join('');
   }
@@ -1293,4 +1378,80 @@ async function popExportExcel(ev){
   }
 }
 
-initAuth();
+  // (Fix sesi lanjutan: stray `initAuth();` call di sini DIHAPUS -- gak ada
+  // fungsi bernama itu di file ini sama sekali, cuma leftover dari refactor
+  // auth sebelum sesi ini [dashboard sekarang pakai window.PNMAuth langsung
+  // di mana-mana, lihat komentar atas file]. Setiap panggilan ke fungsi yang
+  // gak pernah didefinisikan langsung throw ReferenceError SEBELUM baris
+  // apa pun sesudahnya sempet jalan -- jadi mount() dashboard selalu gagal
+  // total dari titik ini, user baru laporan lewat console error beneran.)
+  // Expose ke window.* -- lihat catatan panjang di komentar atas file ini.
+  Object.assign(window, {
+    applyPreset,
+    applySearchHistory,
+    clearSearchHistory,
+    clearSelection,
+    copyKode,
+    deletePreset,
+    exportSelected,
+    goPage,
+    onSearch,
+    onWordtreeRootChange,
+    openDetail,
+    popExportExcel,
+    popGoPage,
+    popOnSearch,
+    popSetChannel,
+    popSetEntitas,
+    popSetWilayah,
+    savePreset,
+    setFilter,
+    setForecastPeriod,
+    setTipe,
+    showSearchHistory,
+    toggleRowSelect,
+    toggleSelectAll,
+  });
+}
+
+export function unmount() {
+  if (dashKeydownHandler) document.removeEventListener('keydown', dashKeydownHandler);
+  if (dashClickHandler) document.removeEventListener('click', dashClickHandler);
+  dashKeydownHandler = null;
+  dashClickHandler = null;
+
+  // shared-pnm-universal-css NO LONGER removed here (jank fix, see the
+  // shared-pnm-universal-css comment in app/shell.html) -- it's now a
+  // permanent <link> loaded once by shell.html/index.html, same treatment
+  // Google Fonts already got. Tearing it down on every unmount() was
+  // causing a brief unstyled flash on every module navigation (read as a
+  // slight "zoom" jump) while the next module's mount() reloaded it.
+  document.getElementById('page-dashboard-style')?.remove();
+
+  delete window.applyPreset;
+  delete window.applySearchHistory;
+  delete window.clearSearchHistory;
+  delete window.clearSelection;
+  delete window.copyKode;
+  delete window.deletePreset;
+  delete window.exportSelected;
+  delete window.goPage;
+  delete window.onSearch;
+  delete window.onWordtreeRootChange;
+  delete window.openDetail;
+  delete window.popExportExcel;
+  delete window.popGoPage;
+  delete window.popOnSearch;
+  delete window.popSetChannel;
+  delete window.popSetEntitas;
+  delete window.popSetWilayah;
+  delete window.savePreset;
+  delete window.setFilter;
+  delete window.setForecastPeriod;
+  delete window.setTipe;
+  delete window.showSearchHistory;
+  delete window.toggleRowSelect;
+  delete window.toggleSelectAll;
+
+  mountedContainer = null;
+}

@@ -1,68 +1,128 @@
 /* Shared sidebar nav — see design.md at repo root for the full spec this
-   implements. NOT YET WIRED IN (see nav.js header comment) — built ready to
-   go, activated when stok/dashboard get migrated so they can be designed
-   around this sidebar from day one, instead of retrofitting 5 already-
-   working pages' layouts at the same time. Do not import/mount this from
-   router.js until that migration session, unless explicitly told otherwise.
+   implements. WIRED IN as of sesi kelima belas (dashboard is the first page
+   built to actually use it) — see router.js/shell.html for the activation,
+   and map-history.md sesi kelima belas for the full story including a real
+   token-leak bug caught before shipping (see below).
 
-   TOKEN SCOPING: design.md's token block uses the exact unprefixed names
-   (--bg, --surface, --accent, etc.) it wants to eventually be the single
-   global :root set. pnm-universal.css ALREADY defines --bg/--accent at
-   :root with DIFFERENT values (its --accent is #007AFF Apple-blue vs this
-   doc's #0070F3 Vercel-blue) — dumping these at :root globally would not
-   break anything by itself (CSS custom properties don't "clash", the
-   narrower scope simply wins for its own descendants) but WOULD make two
-   sibling pages disagree about what "--accent" means depending on which
-   stylesheet last set it at :root, which is exactly the kind of ambiguity
-   design.md is trying to eliminate. So: scoped to .pw-shell here, same
-   scoping *pattern* home/style.css uses for --home-* (see its own COORD-LOG-
-   style comment) — but with design.md's real intended names, since those
-   ARE meant to become canonical later, not another one-off prefixed set. */
+   TOKEN SCOPING — READ THIS BEFORE ADDING A NEW SELECTOR HERE: design.md's
+   token block uses exact unprefixed names (--bg, --surface, --accent, etc.)
+   meant to eventually be the single global :root set. pnm-universal.css
+   ALREADY defines --bg/--accent at :root with DIFFERENT values (its
+   --accent is #007AFF Apple-blue vs this doc's #0070F3 Vercel-blue).
+   Scoping these to .pw-shell (the outer wrapper in app/shell.html, ancestor
+   of EVERY page's content via #app/.pw-content) was tried first and was a
+   real bug: CSS custom properties cascade to all descendants, so it silently
+   recolored konversian/crud-produk/export-gambar (which all use
+   var(--accent) etc from pnm-universal.css extensively) the moment
+   .pw-shell became their ancestor — without their own files being touched
+   at all. Caught and fixed before shipping. Tokens are now scoped to
+   .pw-nav and .pw-topbar SPECIFICALLY — both are siblings of a page's own
+   content (not ancestors of it), so the tokens apply to the nav/topbar
+   chrome only and do not leak into whatever a page renders next to them.
+   .pw-shell/.pw-content themselves carry ZERO color tokens, pure layout —
+   keep it that way. When a page is eventually retrofitted to design.md for
+   real (steps 2-6 of the checklist, not yet done for any page), that
+   page's OWN stylesheet should define these tokens for itself (e.g. scoped
+   to that page's own wrapper class), not inherit them by nesting accident. */
 
-.pw-shell {
-  --bg:             #FAFAFA;
-  --surface:        #FFFFFF;
-  --surface-raised: #FFFFFF;
-  --border:         #EAEAEA;
-  --border-strong:  #D4D4D4;
-  --text:           #0A0A0A;
-  --text-secondary: #666666;
-  --text-muted:     #8F8F8F;
-  --accent:         #0070F3;
-  --success-dot:    #3BA55D;
-  --warning-dot:    #C99A2C;
-  --danger-dot:     #E5484D;
+/* SPA migration BUGFIX (caught before shipping, sesi kelima belas): tokens
+   awalnya di-scope ke .pw-shell (wrapper terluar di app/shell.html, jadi
+   ANCESTOR dari #app/.pw-content juga). pnm-universal.css's :root pakai
+   NAMA VARIABEL YANG SAMA PERSIS (--bg, --accent, --border, --text, dst)
+   dengan NILAI BEDA -- karena CSS custom property cascade turun ke semua
+   descendant, scoping ke .pw-shell berarti KONVERSIAN/CRUD-PRODUK/EXPORT-
+   GAMBAR (yang semua load pnm-universal.css dan pakai var(--accent) dkk
+   secara ekstensif) diam-diam kewarisan nilai token BARU ini -- padahal
+   ketiganya belum di-retrofit ke design.md sama sekali (steps 2-6 checklist
+   masih pending, disengaja). Fix: token SEKARANG di-scope ke .pw-nav dan
+   .pw-topbar SAJA (komponen baru yang beneran perlu), bukan .pw-shell yang
+   jadi ancestor semua konten halaman. .pw-nav dan .pw-topbar adalah SIBLING
+   dari sisa konten halaman (bukan ancestor-nya) -- lihat struktur markup di
+   app/pages/dashboard/markup.js: <div id="app-root"><div class="pw-topbar">
+   ...</div><main>...</main></div> -- jadi token di .pw-topbar TIDAK bocor
+   ke <main> di sebelahnya. .pw-shell sendiri sekarang PURE LAYOUT (flex/
+   sizing doang), zero asumsi warna -- warna tetap sepenuhnya tanggung jawab
+   halaman yang di-mount di dalamnya, sampai masing-masing di-retrofit nanti. */
+
+/* Values below are pnm-universal.css's ACTUAL :root/[data-theme=dark]
+   numbers, not design.md's spec numbers -- those two were never fully
+   reconciled (design.md says so itself), and using the spec numbers here
+   caused a visible drift between the sidebar/topbar (this scope) and every
+   page's own content (styled from pnm-universal.css) -- same root cause
+   already found and fixed in kompres-pdf/style.css. Since .pw-nav and
+   .pw-topbar render on literally every page, this one fix is higher
+   leverage than that page-level one was. --surface-raised/--success-dot/
+   --warning-dot/--danger-dot/--fill-ghost-* have no exact same-name
+   equivalent in pnm-universal.css; mapped to the closest semantic token
+   there (--surface-2 for a genuinely distinct elevated tier, --success/
+   --warning/--danger for the dot colors, accent-rgb recomputed for the
+   ghost-selected tint) rather than left on the old spec numbers. */
+.pw-nav,
+.pw-topbar {
+  --bg:             #f0f2f5;
+  --surface:        #ffffff;
+  --surface-raised: #f5f6f8;
+  --border:         #e2e4e9;
+  --border-strong:  #c8ccd6;
+  --text:           #0b1220;
+  --text-secondary: #334155;
+  --text-muted:     #64748b;
+  --accent:         #007AFF;
+  --success-dot:    #15803d;
+  --warning-dot:    #b45309;
+  --danger-dot:     #b91c1c;
   --radius:         8px;
   --radius-lg:      12px;
-  --font-sans:      'Geist', 'Inter', system-ui, sans-serif;
-  --font-mono:      'Geist Mono', 'JetBrains Mono', monospace;
+  /* FONT (polish pass): was 'Geist'/'Geist Mono' -- neither is ever loaded
+     (shell.html only loads Inter + JetBrains Mono), so these silently fell
+     back to Inter for text and JetBrains Mono for code. Every page's own
+     content (styled from pnm-universal.css's --font-body/--mono) uses the
+     OS system font stack instead, NOT Inter -- so the topbar breadcrumb and
+     sidebar text were rendering in a visibly different typeface than the
+     content directly next to them. Copied here value-for-value from
+     pnm-universal.css's --font-body/--mono so nav+topbar chrome matches
+     every page's content exactly instead of just being "close enough". */
+  --font-sans:      -apple-system,"SF Pro Display","SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-mono:      'SF Mono','JetBrains Mono', monospace;
 
   --fill-ghost-hover:    rgba(0, 0, 0, 0.04);
-  --fill-ghost-selected: rgba(0, 112, 243, 0.08);
+  --fill-ghost-selected: rgba(0, 122, 255, 0.08);
 }
 
-[data-theme="dark"] .pw-shell {
-  --bg:             #0A0A0A;
-  --surface:        #111111;
-  --surface-raised: #171717;
-  --border:         #1F1F1F;
-  --border-strong:  #333333;
-  --text:           #EDEDED;
-  --text-secondary: #A1A1A1;
-  --text-muted:     #6E6E6E;
-  --accent:         #3291FF;
+[data-theme="dark"] .pw-nav,
+[data-theme="dark"] .pw-topbar {
+  --bg:             #0d0d0d;
+  --surface:        #171717;
+  --surface-raised: #202020;
+  --border:         #2b2b2b;
+  --border-strong:  #404040;
+  --text:           #f0f0f0;
+  --text-secondary: #d4d4d4;
+  --text-muted:     #a3a3a3;
+  --accent:         #0A84FF;
+  --success-dot:    #86efac;
+  --warning-dot:    #fcd34d;
+  --danger-dot:     #fca5a5;
 
   --fill-ghost-hover:    rgba(255, 255, 255, 0.06);
-  --fill-ghost-selected: rgba(50, 145, 255, 0.12);
+  --fill-ghost-selected: rgba(10, 132, 255, 0.12);
 }
 
 .pw-shell { display: flex; min-height: 100vh; }
 .pw-shell * { box-sizing: border-box; }
+.pw-content { flex: 1; min-width: 0; }
 
 /* ---- Sidebar ---- */
 
 .pw-nav {
-  width: 200px;
+  /* 200px -> 224px: design.md's original 200px spec predates the brand
+     logo mark (added later, see .pw-nav-brand img below) -- at 200px the
+     24px logo + gap left too little room for "Pionir Workspaces" and it
+     hard-clipped mid-word ("Pionir Workspac"). 224px is the smallest bump
+     that fits the full wordmark at the brand's actual font-size/weight
+     with the logo in place; text-overflow:ellipsis below is a safety net
+     for anything longer (module names, user name), not the primary fix. */
+  width: 224px;
   flex-shrink: 0;
   background: var(--surface);
   border-right: 0.5px solid var(--border);
@@ -86,12 +146,13 @@
   border-bottom: 0.5px solid var(--border);
 }
 
-.pw-nav-brand img { height: 20px; width: auto; }
+.pw-nav-brand img { height: 18px; width: auto; flex-shrink: 0; }
 .pw-nav-brand span {
   font-size: 13.5px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pw-nav-search {
@@ -120,6 +181,107 @@
   padding: 1px 5px;
   color: var(--text-muted);
 }
+
+/* ---- Search (real input + results dropdown) ----
+   UPDATE (sesi lanjutan): .pw-nav-search above (decorative <div>, "/" key
+   focused nothing because there was nothing to focus) is REPLACED by this
+   block -- kept the old rules above rather than deleting them outright
+   since .pw-nav-search's shape/spacing is identical and still referenced
+   as the visual baseline; nav-markup.js no longer emits a `.pw-nav-search`
+   element at all though, so these specific old rules are now dead CSS. Not
+   deleted -- low-value churn for zero behavior change, and it's a small
+   block that documents what changed if someone diffs this file later. */
+.pw-nav-search-wrap {
+  position: relative;
+  margin: 12px 12px 4px;
+}
+.pw-nav-search-wrap > i {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.pw-nav-search-input {
+  width: 100%;
+  height: 32px;
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border);
+  background: var(--bg);
+  padding: 0 28px 0 28px;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  outline: none;
+}
+.pw-nav-search-input::placeholder { color: var(--text-muted); }
+.pw-nav-search-input:hover { border-color: var(--border-strong); }
+.pw-nav-search-input:focus { border-color: var(--accent); background: var(--surface); }
+.pw-nav-search-kbd {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  background: var(--surface-raised);
+  border: 0.5px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+/* hide the kbd hint once there's real text (mirrors how every OS combobox
+   swaps a hint for a clear affordance -- there's no clear button here yet,
+   simplest correct behavior is just "get out of the way") */
+.pw-nav-search-input:not(:placeholder-shown) ~ .pw-nav-search-kbd { display: none; }
+
+.pw-nav-search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface-raised, #ffffff);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 20;
+  padding: 4px;
+  isolation: isolate;
+}
+.pw-nav-search-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.pw-nav-search-result i { font-size: 14px; width: 16px; text-align: center; flex-shrink: 0; }
+.pw-nav-search-result .label { color: var(--text); font-weight: 500; }
+.pw-nav-search-result .sublabel { color: var(--text-muted); margin-left: auto; font-size: 11px; }
+.pw-nav-search-result:hover,
+.pw-nav-search-result.active { background: var(--fill-ghost-hover); }
+.pw-nav-search-empty {
+  padding: 10px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Hiding the eyebrow + module list while the search dropdown is open (it
+   overlaps them) is done via direct inline style.visibility, set by
+   setSearchOverlayState() in nav.js -- NOT a CSS class here. A class-based
+   toggle was tried first and reported still buggy in dark mode (couldn't
+   confirm why without live rendering); inline style removes any cascade/
+   specificity ambiguity to debug. See nav.js for the actual rule. */
 
 .pw-nav-eyebrow {
   margin: 16px 16px 4px;
@@ -158,7 +320,50 @@
   font-weight: 600;
 }
 .pw-nav-item i { font-size: 16px; width: 18px; text-align: center; flex-shrink: 0; }
-.pw-nav-item span { overflow: hidden; text-overflow: ellipsis; }
+.pw-nav-item span { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.pw-nav-item-chevron {
+  font-size: 13px !important;
+  width: auto !important;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+.pw-nav-item-chevron.open { transform: rotate(0deg); }
+
+/* ---- Sub-navigation accordion (design.md "double nav" fix) ----
+   Only rendered (in the DOM at all -- see nav-markup.js's navItemHtml)
+   while the parent module is the active route, so there's no separate
+   expand/collapse click state to track here -- CSS is pure presentation. */
+.pw-nav-subitems {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 20px;
+  margin: 2px 0 4px;
+  border-left: 1px solid var(--border);
+  margin-left: 17px;
+}
+.pw-nav-subitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.pw-nav-subitem:hover { background: var(--fill-ghost-hover); }
+.pw-nav-subitem.active {
+  background: var(--fill-ghost-selected);
+  color: var(--text);
+  font-weight: 600;
+}
+.pw-nav-subitem i { font-size: 14px; width: 16px; text-align: center; flex-shrink: 0; }
+.pw-nav-subitem span { overflow: hidden; text-overflow: ellipsis; }
 
 .pw-nav-user {
   flex-shrink: 0;
@@ -192,33 +397,123 @@
 .pw-nav-theme-toggle:hover { background: var(--fill-ghost-hover); }
 .pw-nav-theme-toggle i { font-size: 14px; }
 
-/* ---- Collapsed rail (<768px): icon-only, 48px ---- */
+/* ---- Manual collapse toggle (desktop) ----
+   A small round button pinned to the sidebar's right edge, same pattern as
+   Notion/Linear -- click to toggle between the full 224px sidebar and a
+   56px icon-only rail. State persists across reloads via localStorage
+   (see nav.js's COLLAPSE_KEY) and survives route changes since the class
+   lives on navEl itself (the .pw-nav container, never replaced by
+   navSetActive()'s innerHTML re-renders -- only its contents are). Only
+   shown >=768px -- below that the existing auto-collapse media query
+   already forces the icon-only rail unconditionally, so a manual toggle
+   there would be redundant (and there's no room for a floating button at
+   48px anyway). */
+.pw-nav-collapse-btn {
+  position: absolute;
+  top: 44px;
+  right: -11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 0.5px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  z-index: 5;
+  padding: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.pw-nav:hover .pw-nav-collapse-btn,
+.pw-nav-collapse-btn:focus-visible {
+  opacity: 1;
+}
+.pw-nav-collapse-btn:hover { background: var(--fill-ghost-hover); }
+.pw-nav-collapse-btn i {
+  font-size: 13px;
+  transition: transform 0.15s ease;
+}
+.pw-nav.collapsed .pw-nav-collapse-btn i { transform: rotate(180deg); }
+
+@media (max-width: 767px) {
+  .pw-nav-collapse-btn { display: none; } /* redundant below the auto-collapse breakpoint, see comment above */
+}
+
+/* ---- Collapsed rail: icon-only ----
+   Two triggers share the exact same rule shape below, kept intentionally
+   mirrored rather than combined into one selector list (mixing a class
+   selector and a @media block isn't valid CSS as a single rule):
+     1. .pw-nav.collapsed  -- manual toggle, any width >=768px (see button
+        above; <768px hides the button since case 2 below already forces
+        this regardless of the toggle's state).
+     2. @media (max-width: 767px) -- always-on regardless of the manual
+        toggle, there's never room for the full sidebar below that width.
+   If you change one, change the other the same way. */
+
+.pw-nav.collapsed {
+  width: 56px;
+}
+.pw-nav.collapsed .pw-nav-brand span,
+.pw-nav.collapsed .pw-nav-search-wrap,
+.pw-nav.collapsed .pw-nav-eyebrow,
+.pw-nav.collapsed .pw-nav-item span,
+.pw-nav.collapsed .pw-nav-item-chevron,
+.pw-nav.collapsed .pw-nav-subitems,
+.pw-nav.collapsed .pw-nav-user-name {
+  display: none;
+}
+.pw-nav.collapsed .pw-nav-brand { justify-content: center; padding: 0; }
+.pw-nav.collapsed .pw-nav-item { justify-content: center; padding: 0; }
+/* BUGFIX: .pw-nav-user is avatar(26px)+name+theme-btn(26px)+logout-btn(26px)
+   in one row with 8px gaps. With the name hidden at this width, the 3
+   remaining fixed-size elements (26+8+26+8+26=94px) no longer fit the
+   56px rail and overflow/wrap messily ("icon kiri bawah tidak rapi").
+   Fix: drop the avatar (redundant with the sidebar itself — you already
+   know who you are) and stack theme-toggle + logout vertically instead
+   of side-by-side, so only ever one 26px-wide element sits in the row. */
+.pw-nav.collapsed .pw-nav-user-avatar { display: none; }
+.pw-nav.collapsed .pw-nav-user {
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+}
 
 @media (max-width: 767px) {
   .pw-nav {
     width: 48px;
   }
   .pw-nav-brand span,
-  .pw-nav-search kbd,
-  .pw-nav-search span,
+  .pw-nav-search-input,
+  .pw-nav-search-kbd,
   .pw-nav-eyebrow,
   .pw-nav-item span,
+  .pw-nav-item-chevron,
+  .pw-nav-subitems,
   .pw-nav-user-name {
     display: none;
   }
   .pw-nav-brand { justify-content: center; padding: 0; }
-  .pw-nav-search { justify-content: center; padding: 0; }
+  .pw-nav-search-wrap { display: none; } /* no room for a meaningful search UI at 48px -- revisit if this becomes a real complaint */
   .pw-nav-item { justify-content: center; padding: 0; }
-  .pw-nav-user { justify-content: center; padding: 10px 0; }
+  /* Same overflow bug as .pw-nav.collapsed above, just worse (48px instead
+     of 56px) -- same fix: drop the avatar, stack theme+logout vertically. */
+  .pw-nav-user-avatar { display: none; }
+  .pw-nav-user {
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 0;
+  }
 }
+
 
 /* ---- Content area (sibling of .pw-nav inside .pw-shell) ---- */
-
-.pw-content {
-  flex: 1;
-  min-width: 0;
-  background: var(--bg);
-}
+/* .pw-content's flex sizing is already declared up top alongside .pw-shell
+   (pure layout, no color token — see the BUGFIX comment at the top of this
+   file for why .pw-content must NOT set var(--bg)/etc itself). */
 
 /* ---- Top bar (per-page, rendered by each page inside .pw-content) ---- */
 

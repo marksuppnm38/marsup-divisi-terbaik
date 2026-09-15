@@ -10,7 +10,7 @@
   --home-text: #0F172A;
   --home-text-muted: #64748B;
   --home-text-dim: #94A3B8;
-  --home-accent: #2563EB;
+  --home-accent: #007AFF; /* polish: was #2563EB, now matches konversian's light-mode --accent exactly (dark mode below already did) */
   --home-badge-bg: #EFF6FF;
   --home-badge-text: #1D4ED8;
 
@@ -21,7 +21,16 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  /* FONT (polish pass): was 'Plus Jakarta Sans' (its own dedicated Google
+     Fonts load, see index.js's FONT_HREF) -- a genuinely different typeface
+     from every other page. Konversian (pnm-universal.css's --font-body,
+     the de-facto reference typography for this app) uses the OS system
+     font stack, not any Google web font. Copied here value-for-value so
+     Home reads identical to Konversian/Dashboard/Stok/etc instead of
+     visibly switching typeface the moment you land on it. The Plus Jakarta
+     Sans <link> load in index.js is removed alongside this -- see that
+     file's own comment. */
+  font-family: -apple-system,"SF Pro Display","SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   color: var(--home-text);
 }
 
@@ -116,7 +125,7 @@ body:has(#app .app-wrap) {
 }
 
 .home-header .breadcrumb-tag {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'SF Mono','JetBrains Mono', monospace; /* aligned to pnm-universal.css --mono order */
   font-size: 11px;
   font-weight: 500;
   color: var(--home-text-muted);
@@ -218,7 +227,7 @@ body:has(#app .app-wrap) {
 .home-stat-item { display: flex; flex-direction: column; gap: 2px; }
 
 .home-stat-val {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'SF Mono','JetBrains Mono', monospace; /* aligned to pnm-universal.css --mono order */
   font-size: 16px;
   font-weight: 700;
   color: var(--home-text);
@@ -270,7 +279,7 @@ body:has(#app .app-wrap) {
 .card-icon svg { width: 18px; height: 18px; stroke-width: 2; }
 
 .card-badge {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'SF Mono','JetBrains Mono', monospace; /* aligned to pnm-universal.css --mono order */
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;

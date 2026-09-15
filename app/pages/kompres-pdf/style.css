@@ -1,332 +1,465 @@
-  :root{
-    --bg:#f5f4f0;
-    --surface:#ffffff;
-    --border:#e3e0d8;
-    --ink:#1b1a17;
-    --ink-soft:#6c685f;
-    --accent:#0f6b5c;
-    --accent-ink:#ffffff;
-    --accent-soft:#e6efec;
-    --danger:#b3261e;
-    --danger-soft:#fbeceb;
-    --warn:#8a6d1c;
-    --warn-soft:#faf3df;
-    --radius-lg:20px;
-    --radius-md:12px;
-    --radius-sm:8px;
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", ui-sans-serif, system-ui, sans-serif;
-    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  }
-  *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
-  body{
-    font-family:var(--font);
-    background:
-      radial-gradient(circle at 15% -10%, #ffffff 0%, transparent 45%),
-      var(--bg);
-    color:var(--ink);
-    min-height:100vh;
-    padding:48px 20px 80px;
-    -webkit-font-smoothing:antialiased;
-  }
-  .wrap{max-width:660px;margin:0 auto;}
+/* app/pages/kompres-pdf/style.css
+   Sesi lanjutan (sesudah dashboard/stok): FULL REWRITE, bukan CSS-override
+   kayak dua modul itu -- halaman ini butuh lebih dari itu (lihat alasan di
+   bawah), jadi ini beneran sesi kesembilan belas-style rewrite, sama kelas
+   kerjanya kayak export-gambar.
 
-  .tabbar{
-    display:flex;gap:4px;background:#efece4;padding:4px;border-radius:14px;
-    margin-bottom:20px;
-  }
-  .tab{
-    flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-    border:none;background:transparent;color:var(--ink-soft);
-    font-family:var(--font);font-size:13.5px;font-weight:600;
-    padding:10px 8px;border-radius:10px;cursor:pointer;transition:all .15s ease;
-  }
-  .tab.active{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,0.12);}
-  .tab:hover:not(.active){color:var(--ink);}
-  .panel{display:none;}
-  .panel.active{display:block;}
+   KENAPA full rewrite (bukan override tipis kayak dashboard/stok):
+   - `body{background:radial-gradient(...)}` -- gradient, dilarang total
+     sama design.md ("No shadows, no blur, no gradients, no glass").
+   - `.card`/`.tab.active` pakai `box-shadow` -- juga dilarang.
+   - Punya `:root` token set sendiri yang sama sekali beda dari
+     pnm-universal.css (`--ink`/`--ink-soft` dkk, bukan `--text`/
+     `--text-secondary`), dan sebelum sesi ini TIDAK memuat
+     pnm-universal.css sama sekali -- jadi nol dark-mode support (satu
+     blok :root doang, gak ada `html[data-theme="dark"]` variant), bakal
+     kelihatan patah begitu user toggle dark mode dari sidebar nav global
+     (yang sekarang selalu ada di semua halaman).
+   - Body-level `padding:48px 20px 80px` di-set langsung ke `body` (bare,
+     gak di-scope) -- persis kelas bug CSS-leak yang sama yang udah
+     ketemu & difix di halaman lain (nav.css/export-gambar's komentar).
 
-  header.page-head{margin-bottom:32px;}
-  .eyebrow{
-    display:inline-flex;align-items:center;gap:8px;
-    font-size:12px;letter-spacing:.08em;text-transform:uppercase;
-    color:var(--accent);font-weight:600;margin-bottom:10px;
-  }
-  .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);}
-  h1{
-    font-size:clamp(28px,4vw,36px);
-    line-height:1.08;
-    letter-spacing:-0.02em;
-    margin:0 0 10px;
-    font-weight:700;
-  }
-  .sub{
-    color:var(--ink-soft);
-    font-size:15px;
-    line-height:1.55;
-    max-width:56ch;
-    margin:0;
-  }
+   PENDEKATAN: kebalikan dari export-gambar (yang ngadopsi HABIS-HABISAN
+   class pnm-universal.css: .card/.btn/.field-input/.stat-pill dst, style.css
+   sisa cuma ~85 baris) -- halaman ini TETAP pakai nama class dia sendiri
+   (`.tab`, `.segmented`, `.gauge`, `.chip`, `.badge`, `.card`, `.btn`, dst,
+   SAMA PERSIS kayak sebelumnya) karena markup.js/index.js yang 1400+ baris
+   gabungan itu terus-menerus rujuk nama-nama itu lewat classList.toggle()/
+   querySelector() -- ganti nama class di 25+ titik tanpa browser buat tes
+   drag-drop/tab-switch/compress-split-merge flow itu risiko yang gak
+   sepadan buat manfaat "1 nama class doang" waktu solusi yang sama amannya
+   (scoping) udah cukup. Yang berubah:
+     1. SETIAP selector di bawah di-scope di bawah `.kp-page` (element
+        classList container dapetin di index.js's mount(), ganti dari
+        `.wrap` yang lama) -- termasuk `.card`/`.btn`/`.chip`/`.hidden`/
+        `.field`, yang SEKARANG PENTING karena pnm-universal.css (baru
+        dimuat sesi ini, lihat index.js) definisiin ulang nama-nama itu
+        secara global juga -- tanpa scope, dua definisi bakal tabrakan.
+        Spesifisitas `.kp-page .card` (2 kelas) otomatis menang lawan
+        pnm-universal.css punya `.card` (1 kelas) -- gak butuh
+        `!important` di mana pun di file ini.
+     2. `:root` -> `.kp-page` (custom property TETEP nama sama --bg/--ink/
+        --accent dst, cuma sekarang di-scope + NILAI diganti ke token
+        design.md yang persis, plus varian dark mode baru).
+     3. Semua `box-shadow` dicopot. Gradient body dicopot, diganti flat
+        `--bg`. Padding body pindah ke `.kp-page .kp-main` (div baru,
+        BUKAN elemen `<main>` -- pnm-universal.css punya rule
+        `body:has(.dropzone) main{...}` yang di-scope buat stok, sengaja
+        dihindari biar gak nabrak/ambigu, meskipun secara spesifisitas
+        rule ini bakal tetep menang -- lebih aman gak pake `<main>` sama
+        sekali daripada ngandelin itung-itungan spesifisitas).
+     4. Icon warna: SVG di markup.js yang tadinya hardcode
+        `stroke="#6c685f"` (warna palet lama, 3 titik: dropzone kompres/
+        split/merge) diganti `stroke="currentColor"` di markup.js (lihat
+        file itu) supaya ngikut `.kp-page` punya `--ink-soft`/`--ink` yang
+        udah di-retint -- BUKAN diganti Tabler icon (lihat markup.js's
+        komentar buat alasan icon library tetep inline SVG, bukan
+        di-swap).
+     5. `.badge` (status file: Menunggu/Memproses/Selesai/Gagal) yang
+        tadinya full-tint pill jadi dot+label, sama pola kayak dashboard/
+        stok's chip/days-pill retrofit -- pake `--success-dot`/
+        `--warning-dot`/`--danger-dot` token persis design.md, didefinisikan
+        lokal di `.kp-page` (bukan `:root` global), sama alasan/pola kayak
+        dashboard & stok's style.css.
+*/
 
-  .card{
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:var(--radius-lg);
-    padding:28px;
-    box-shadow:0 20px 40px -28px rgba(27,26,23,0.18);
-  }
-  .card + .card{margin-top:16px;}
+.kp-page{
+  /* NOTE (session after the shell-audit pass): these values used to be
+     design.md's exact spec numbers (#0070F3 accent, #FAFAFA bg, etc).
+     That's what caused the "color is off, feels like a patch job"
+     complaint -- pnm-universal.css's ACTUAL :root tokens never got fully
+     reconciled to design.md's numbers (see design.md's own note on this),
+     so every other page in the app renders a slightly different blue/gray
+     than this one did. Values below are now copied from pnm-universal.css's
+     real :root/[data-theme=dark] blocks instead, keyed onto this page's own
+     existing variable NAMES (--ink/--ink-soft/etc, unchanged, still
+     referenced ~25+ places in markup.js/index.js) so nothing downstream of
+     this block needed to change. */
+  --bg:#f0f2f5;
+  --surface:#ffffff;
+  --border:#e2e4e9;
+  --ink:#0b1220;
+  --ink-soft:#64748b;
+  --accent:#007AFF;
+  --accent-ink:#FFFFFF;
+  --accent-soft:#eaf2ff;
+  --danger:#b91c1c;
+  --danger-soft:#fff5f5;
+  --warn:#b45309;
+  --warn-soft:#fffbeb;
+  --success-dot:#15803d;
+  --warning-dot:#b45309;
+  --danger-dot:#b91c1c;
+  --radius-lg:12px;
+  --radius-md:10px;
+  --radius-sm:6px;
+  /* FONT (polish pass): was 'Inter' first + a Windows-flavored fallback
+     chain (BlinkMacSystemFont/ui-sans-serif) that doesn't match ANY other
+     page. Konversian (pnm-universal.css's --font-body, the de-facto
+     reference typography for this app) never references Inter at all --
+     it's the OS system font stack. Since Inter WAS actually loading
+     (shell.html's shared Google Fonts link), this page was the only one
+     silently rendering in Inter instead of the system font every other
+     page uses -- copied here value-for-value from --font-body so it's
+     identical, not just similar. Same story for --mono: order now matches
+     pnm-universal's --mono exactly (SF Mono first, not JetBrains Mono). */
+  --font:-apple-system,"SF Pro Display","SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:'SF Mono','JetBrains Mono',monospace;
 
-  /* Dropzone */
-  .dropzone{
-    border:1.5px dashed #c9c5ba;
-    border-radius:var(--radius-md);
-    padding:32px 20px;
-    text-align:center;
-    cursor:pointer;
-    transition:border-color .18s ease, background .18s ease;
-    background:#fafaf8;
-  }
-  .dropzone:hover, .dropzone.drag{
-    border-color:var(--accent);
-    background:var(--accent-soft);
-  }
-  .dropzone svg{margin-bottom:12px;opacity:.75;}
-  .dropzone .dz-title{font-weight:600;font-size:15px;margin-bottom:4px;}
-  .dropzone .dz-sub{font-size:13px;color:var(--ink-soft);}
-  input[type=file]{display:none;}
+  display:block;
+  background:var(--surface);
+  color:var(--ink);
+  font-family:var(--font);
+  min-height:100%;
+  -webkit-font-smoothing:antialiased;
+}
+html[data-theme="dark"] .kp-page{
+  --bg:#0d0d0d;
+  --surface:#171717;
+  --border:#2b2b2b;
+  --ink:#f0f0f0;
+  --ink-soft:#a3a3a3;
+  --accent:#0A84FF;
+  --accent-soft:#152a4d;
+  --danger:#f87171;
+  --danger-soft:#3a1a1a;
+  --warn:#fbbf24;
+  --warn-soft:#332405;
+  --success-dot:#86efac;
+  --warning-dot:#fcd34d;
+  --danger-dot:#f87171;
+}
 
-  /* File list */
-  .list-head{
-    display:flex;align-items:center;justify-content:space-between;
-    margin-bottom:12px;
-  }
-  .list-head .count{font-size:13px;font-weight:600;color:var(--ink);}
-  .list-head .add-more{
-    font-size:12.5px;font-weight:600;color:var(--accent);
-    background:none;border:none;cursor:pointer;padding:4px 0;
-  }
-  .file-list{display:flex;flex-direction:column;gap:8px;margin-bottom:6px;}
+/* Same seam bug fixed on the other modules (konversian/crud-produk/
+   dashboard/stok/export-gambar): .pw-topbar is white (nav.css), but this
+   page's own .kp-page used to set background:var(--bg) (gray) on itself
+   and .kp-main inherited that with nothing of its own -- so the topbar
+   read as a white slab against a greyer strip right underneath it. Fixed
+   by flattening .kp-page itself to white above, rather than only its
+   .kp-main child, so there's no gray anywhere on this page's own canvas
+   for .card's white bordered surface to sit apart from.
+   FULLBLEED PASS (superseded below): this page was originally capped at
+   660px/centered, then widened to edge-to-edge to match every other
+   module. UPDATE (visual polish pass): kp-main itself stays edge-to-edge
+   (padding/background below, unchanged), but its actual content is now
+   wrapped in .kp-col, a centered 640px column -- reintroducing a
+   comfortable reading/form width WITHOUT undoing the fullbleed request,
+   same reasoning as export-gambar's .eg-col (see that page's style.css).
+   Compress/split/merge are single-column workflows; letting the dropzone,
+   segmented controls and result cards stretch to a 1600px+ viewport just
+   made every row of controls harder to scan, not more spacious. */
+.kp-page .kp-main{max-width:none;margin:0;padding:40px 20px 64px;}
+.kp-page .kp-col{max-width:640px;margin:0 auto;}
 
-  .file-item{
-    display:flex;align-items:center;gap:12px;
-    padding:12px 14px;
-    background:#fafaf8;
-    border:1px solid var(--border);
-    border-radius:var(--radius-md);
-  }
-  .file-icon{
-    width:36px;height:36px;flex:none;border-radius:9px;
-    background:var(--accent-soft);color:var(--accent);
-    display:flex;align-items:center;justify-content:center;
-  }
-  .file-icon.error{background:var(--danger-soft);color:var(--danger);}
-  .file-meta{min-width:0;flex:1;}
-  .file-row{
-    display:flex;align-items:center;gap:12px;
-    padding:12px 14px;
-    background:#fafaf8;
-    border:1px solid var(--border);
-    border-radius:var(--radius-md);
-  }
-  .file-size{font-size:12px;color:var(--ink-soft);margin-top:2px;}
-  .file-name{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .file-status{font-size:12px;color:var(--ink-soft);margin-top:2px;display:flex;align-items:center;gap:6px;}
-  .file-status .badge{
-    font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
-    padding:1px 6px;border-radius:5px;background:#efece4;color:var(--ink-soft);
-  }
-  .file-status .badge.done{background:var(--accent-soft);color:var(--accent);}
-  .file-status .badge.error{background:var(--danger-soft);color:var(--danger);}
-  .file-status .badge.processing{background:var(--warn-soft);color:var(--warn);}
-  .file-mini-progress{
-    height:4px;border-radius:2px;background:#e9e6dd;margin-top:6px;overflow:hidden;width:100%;
-  }
-  .file-mini-fill{height:100%;background:var(--accent);width:0%;transition:width .2s ease;}
-  .file-actions{flex:none;display:flex;align-items:center;gap:4px;}
-  .icon-btn{
-    border:none;background:transparent;color:var(--ink-soft);
-    cursor:pointer;padding:6px;border-radius:8px;display:flex;
-  }
-  .icon-btn:hover{background:#efece5;color:var(--ink);}
-  .icon-btn.accent{color:var(--accent);}
-  .icon-btn.accent:hover{background:var(--accent-soft);}
+.kp-page .tabbar{
+  display:flex;gap:4px;background:var(--border);padding:4px;border-radius:var(--radius-lg);
+  margin-bottom:20px;
+}
+.kp-page .tab{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+  border:none;background:transparent;color:var(--ink-soft);
+  font-family:var(--font);font-size:13.5px;font-weight:600;
+  padding:10px 8px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s ease;
+}
+.kp-page .tab.active{background:var(--surface);color:var(--ink);border:0.5px solid var(--border);}
+.kp-page .tab:hover:not(.active){color:var(--ink);}
+.kp-page .panel{display:none;}
+.kp-page .panel.active{display:block;}
 
-  .file-remove{
-    flex:none;display:inline-flex;align-items:center;gap:6px;
-    border:1px solid var(--border);background:var(--surface);
-    color:var(--ink-soft);
-    font-family:var(--font);font-size:12.5px;font-weight:600;
-    padding:7px 13px;border-radius:999px;cursor:pointer;
-    transition:all .15s ease;
-  }
-  .file-remove:hover{
-    border-color:var(--accent);color:var(--accent);background:var(--accent-soft);
-  }
-  .file-remove:active{transform:scale(0.97);}
-  .file-remove svg{flex:none;transition:transform .25s ease;}
-  .file-remove:hover svg{transform:rotate(180deg);}
+.kp-page header.page-head{margin-bottom:32px;}
+.kp-page .eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-soft);font-weight:600;margin-bottom:10px;
+}
+.kp-page .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--ink-soft);}
+.kp-page h1{
+  font-size:clamp(28px,4vw,36px);
+  line-height:1.08;
+  letter-spacing:-0.02em;
+  margin:0 0 10px;
+  font-weight:700;
+}
+.kp-page .sub{
+  color:var(--ink-soft);
+  font-size:15px;
+  line-height:1.55;
+  max-width:56ch;
+  margin:0;
+}
 
-  /* Options */
-  .field{margin-top:22px;}
-  .field-label{
-    font-size:13px;font-weight:600;margin-bottom:10px;
-    display:flex;align-items:center;justify-content:space-between;
-  }
-  .field-hint{font-size:12.5px;color:var(--ink-soft);font-weight:400;}
+.kp-page .card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  padding:28px;
+}
+.kp-page .card + .card{margin-top:16px;}
 
-  .segmented{
-    display:grid;grid-template-columns:1fr 1fr;
-    background:#efece4;border-radius:var(--radius-sm);padding:3px;gap:3px;
-  }
-  .segmented.level4{grid-template-columns:repeat(4,1fr);}
-  .segmented button{
-    border:none;background:transparent;padding:10px 8px;
-    font-family:var(--font);font-size:13px;font-weight:600;color:var(--ink-soft);
-    border-radius:7px;cursor:pointer;transition:all .15s ease;
-  }
-  .segmented button.active{
-    background:var(--surface);color:var(--ink);
-    box-shadow:0 1px 3px rgba(0,0,0,0.12);
-  }
-  .segmented button:hover:not(.active){color:var(--ink);}
+/* Dropzone */
+.kp-page .dropzone{
+  border:1.5px dashed var(--border);
+  border-radius:var(--radius-md);
+  padding:32px 20px;
+  text-align:center;
+  cursor:pointer;
+  transition:border-color .18s ease, background .18s ease;
+  background:var(--bg);
+}
+.kp-page .dropzone:hover, .kp-page .dropzone.drag{
+  border-color:var(--accent);
+  background:var(--accent-soft);
+}
+.kp-page .dropzone svg{margin-bottom:12px;color:var(--ink-soft);}
+.kp-page .dropzone .dz-title{font-weight:600;font-size:15px;margin-bottom:4px;}
+.kp-page .dropzone .dz-sub{font-size:13px;color:var(--ink-soft);}
+.kp-page input[type=file]{display:none;}
 
-  .mode-desc{
-    margin-top:10px;font-size:12.5px;color:var(--ink-soft);
-    line-height:1.5;padding:10px 12px;background:#fafaf8;
-    border-radius:var(--radius-sm);border:1px solid var(--border);
-  }
+/* File list */
+.kp-page .list-head{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:12px;
+}
+.kp-page .list-head .count{font-size:13px;font-weight:600;color:var(--ink);}
+.kp-page .list-head .add-more{
+  font-size:12.5px;font-weight:600;color:var(--accent);
+  background:none;border:none;cursor:pointer;padding:4px 0;
+}
+.kp-page .file-list{display:flex;flex-direction:column;gap:8px;margin-bottom:6px;}
 
-  .gauge{display:flex;gap:4px;margin-top:8px;}
-  .gauge span{
-    height:4px;flex:1;border-radius:2px;background:#e3e0d8;
-    transition:background .2s ease;
-  }
-  .gauge span.on{background:var(--accent);}
+.kp-page .file-item{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 14px;
+  background:var(--bg);
+  border:1px solid var(--border);
+  border-radius:var(--radius-md);
+}
+.kp-page .file-icon{
+  width:32px;height:32px;flex:none;border-radius:7px;
+  background:transparent;color:var(--ink-soft);border:0.5px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+}
+.kp-page .file-icon.error{color:var(--danger);border-color:var(--danger);}
+.kp-page .file-meta{min-width:0;flex:1;}
+.kp-page .file-row{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 14px;
+  background:var(--bg);
+  border:1px solid var(--border);
+  border-radius:var(--radius-md);
+}
+.kp-page .file-size{font-size:12px;color:var(--ink-soft);margin-top:2px;font-family:var(--mono);}
+.kp-page .file-name{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kp-page .file-status{font-size:12px;color:var(--ink-soft);margin-top:2px;display:flex;align-items:center;gap:6px;}
+/* status badge: dot + label, not a tinted pill (design.md step 4, same
+   pattern as dashboard's chip/days-pill and stok's stat-pill/metric) */
+.kp-page .file-status .badge{
+  font-size:11px;font-weight:600;text-transform:none;letter-spacing:normal;
+  padding:0;border-radius:0;background:transparent;color:var(--ink-soft);
+  display:inline-flex;align-items:center;gap:5px;
+}
+.kp-page .file-status .badge::before{
+  content:'';width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--ink-soft);
+}
+.kp-page .file-status .badge.done{color:var(--ink);}
+.kp-page .file-status .badge.done::before{background:var(--success-dot);}
+.kp-page .file-status .badge.error{color:var(--ink);}
+.kp-page .file-status .badge.error::before{background:var(--danger-dot);}
+.kp-page .file-status .badge.processing{color:var(--ink);}
+.kp-page .file-status .badge.processing::before{background:var(--warning-dot);}
+.kp-page .file-mini-progress{
+  height:4px;border-radius:2px;background:var(--border);margin-top:6px;overflow:hidden;width:100%;
+}
+.kp-page .file-mini-fill{height:100%;background:var(--accent);width:0%;transition:width .2s ease;}
+.kp-page .file-actions{flex:none;display:flex;align-items:center;gap:4px;}
+.kp-page .icon-btn{
+  border:none;background:transparent;color:var(--ink-soft);
+  cursor:pointer;padding:6px;border-radius:var(--radius-sm);display:flex;
+}
+.kp-page .icon-btn:hover{background:var(--bg);color:var(--ink);}
+.kp-page .icon-btn.accent{color:var(--accent);}
+.kp-page .icon-btn.accent:hover{background:var(--accent-soft);}
 
-  .target-row{display:flex;align-items:center;gap:8px;}
-  .target-row input[type=number]{
-    flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
-    font-family:var(--font);font-size:14px;color:var(--ink);background:#fafaf8;
-  }
-  .target-row input[type=number]:focus{outline:none;border-color:var(--accent);background:#fff;}
+.kp-page .file-remove{
+  flex:none;display:inline-flex;align-items:center;gap:6px;
+  border:1px solid var(--border);background:var(--surface);
+  color:var(--ink-soft);
+  font-family:var(--font);font-size:12.5px;font-weight:600;
+  padding:7px 13px;border-radius:999px;cursor:pointer;
+  transition:all .15s ease;
+}
+.kp-page .file-remove:hover{
+  border-color:var(--accent);color:var(--accent);background:var(--accent-soft);
+}
+.kp-page .file-remove:active{transform:scale(0.97);}
+.kp-page .file-remove svg{flex:none;transition:transform .25s ease;}
+.kp-page .file-remove:hover svg{transform:rotate(180deg);}
 
-  #splitRangeInput{
-    width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
-    font-family:var(--font);font-size:14px;color:var(--ink);background:#fafaf8;
-  }
-  #splitRangeInput:focus{outline:none;border-color:var(--accent);background:#fff;}
-  .target-unit{font-size:13px;color:var(--ink-soft);font-weight:600;flex:none;}
-  .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
-  .chip{
-    border:1px solid var(--border);background:#fafaf8;color:var(--ink-soft);
-    font-family:var(--font);font-size:12px;font-weight:600;
-    padding:6px 10px;border-radius:999px;cursor:pointer;transition:all .15s ease;
-  }
-  .chip:hover{border-color:var(--accent);color:var(--accent);}
-  .chip.active{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
+/* Options */
+.kp-page .field{margin-top:16px;}
+.kp-page .field-label{
+  font-size:13px;font-weight:600;margin-bottom:10px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.kp-page .field-hint{font-size:12.5px;color:var(--ink-soft);font-weight:400;}
 
-  /* Button */
-  .btn{
-    width:100%;margin-top:24px;
-    padding:14px 18px;border:none;border-radius:var(--radius-md);
-    background:var(--accent);color:var(--accent-ink);
-    font-family:var(--font);font-size:15px;font-weight:600;
-    cursor:pointer;transition:transform .12s ease, background .15s ease;
-    display:flex;align-items:center;justify-content:center;gap:8px;
-  }
-  .btn:hover:not(:disabled){background:#0c5449;}
-  .btn:active:not(:disabled){transform:scale(0.98) translateY(1px);}
-  .btn:disabled{opacity:.5;cursor:not-allowed;}
-  .btn.ghost{
-    background:transparent;color:var(--ink);border:1px solid var(--border);
-    margin-top:12px;
-  }
-  .btn.ghost:hover:not(:disabled){background:#fafaf8;}
-  .btn.secondary{
-    background:var(--ink);
-  }
-  .btn.secondary:hover:not(:disabled){background:#000000;}
+.kp-page .segmented{
+  display:grid;grid-template-columns:1fr 1fr;
+  background:var(--border);border-radius:var(--radius-sm);padding:3px;gap:3px;
+}
+.kp-page .segmented.level4{grid-template-columns:repeat(4,1fr);}
+.kp-page .segmented button{
+  border:none;background:transparent;padding:10px 8px;
+  font-family:var(--font);font-size:13px;font-weight:600;color:var(--ink-soft);
+  border-radius:var(--radius-sm);cursor:pointer;transition:all .15s ease;
+}
+.kp-page .segmented button.active{
+  background:var(--surface);color:var(--ink);border:0.5px solid var(--border);
+}
+.kp-page .segmented button:hover:not(.active){color:var(--ink);}
 
-  /* Overall progress */
-  .progress-wrap{margin-top:22px;}
-  .progress-track{
-    height:8px;border-radius:999px;background:#efece4;overflow:hidden;
-  }
-  .progress-fill{
-    height:100%;background:var(--accent);border-radius:999px;
-    width:0%;transition:width .25s ease;
-  }
-  .progress-label{
-    display:flex;justify-content:space-between;
-    font-size:12.5px;color:var(--ink-soft);margin-top:8px;
-  }
+.kp-page .mode-desc{
+  margin-top:10px;font-size:12.5px;color:var(--ink-soft);
+  line-height:1.5;padding:10px 12px;background:var(--bg);
+  border-radius:var(--radius-sm);border:1px solid var(--border);
+}
 
-  /* Summary */
-  .result-head{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
-  .result-badge{
-    width:36px;height:36px;border-radius:50%;background:var(--accent-soft);
-    color:var(--accent);display:flex;align-items:center;justify-content:center;flex:none;
-  }
-  .result-title{font-size:16px;font-weight:700;}
-  .result-sub{font-size:13px;color:var(--ink-soft);margin-top:1px;}
+.kp-page .gauge{display:flex;gap:4px;margin-top:8px;}
+.kp-page .gauge span{
+  height:4px;flex:1;border-radius:2px;background:var(--border);
+  transition:background .2s ease;
+}
+.kp-page .gauge span.on{background:var(--accent);}
 
-  .size-compare{display:flex;align-items:center;gap:14px;margin:18px 0 6px;}
-  .size-box{flex:1;text-align:center;}
-  .size-value{font-family:var(--mono);font-size:20px;font-weight:700;letter-spacing:-0.01em;}
-  .size-value.after{color:var(--accent);}
-  .size-tag{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
-  .size-arrow{color:var(--ink-soft);flex:none;}
+.kp-page .target-row{display:flex;align-items:center;gap:8px;}
+.kp-page .target-row input[type=number]{
+  flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  font-family:var(--font);font-size:14px;color:var(--ink);background:var(--bg);
+}
+.kp-page .target-row input[type=number]:focus{outline:none;border-color:var(--accent);background:var(--surface);}
 
-  .bar-compare{margin:18px 0;}
-  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
-  .bar-row .lbl{width:64px;flex:none;font-size:12px;color:var(--ink-soft);}
-  .bar-track{flex:1;height:14px;background:#efece4;border-radius:7px;overflow:hidden;}
-  .bar-fill{height:100%;border-radius:7px;transition:width .5s cubic-bezier(.2,.8,.2,1);}
-  .bar-fill.before{background:#cfcbc0;width:100%;}
-  .bar-fill.after{background:var(--accent);width:0%;}
+.kp-page #splitRangeInput{
+  width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  font-family:var(--font);font-size:14px;color:var(--ink);background:var(--bg);
+}
+.kp-page #splitRangeInput:focus{outline:none;border-color:var(--accent);background:var(--surface);}
+.kp-page .target-unit{font-size:13px;color:var(--ink-soft);font-weight:600;flex:none;}
+.kp-page .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.kp-page .chip{
+  border:1px solid var(--border);background:var(--bg);color:var(--ink-soft);
+  font-family:var(--font);font-size:12px;font-weight:600;
+  padding:6px 10px;border-radius:999px;cursor:pointer;transition:all .15s ease;
+}
+.kp-page .chip:hover{border-color:var(--accent);color:var(--accent);}
+.kp-page .chip.active{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
 
-  .reduction-pill{
-    display:inline-flex;align-items:center;gap:6px;
-    background:var(--accent-soft);color:var(--accent);
-    font-size:13px;font-weight:700;padding:6px 12px;border-radius:999px;
-    margin-top:4px;
-  }
+/* Button */
+.kp-page .btn{
+  width:100%;margin-top:16px;
+  padding:14px 18px;border:none;border-radius:var(--radius-md);
+  background:var(--accent);color:var(--accent-ink);
+  font-family:var(--font);font-size:15px;font-weight:600;
+  cursor:pointer;transition:transform .12s ease, background .15s ease;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.kp-page .btn:hover:not(:disabled){background:#0059c8;}
+html[data-theme="dark"] .kp-page .btn:hover:not(:disabled){background:#5aa6ff;}
+.kp-page .btn:active:not(:disabled){transform:scale(0.98) translateY(1px);}
+.kp-page .btn:disabled{opacity:.5;cursor:not-allowed;}
+.kp-page .btn.ghost{
+  background:transparent;color:var(--ink);border:1px solid var(--border);
+  margin-top:12px;
+}
+.kp-page .btn.ghost:hover:not(:disabled){background:var(--bg);}
+.kp-page .btn.secondary{
+  background:var(--ink);color:var(--bg);
+}
 
-  .result-file-head{
-    font-size:12.5px;font-weight:700;color:var(--ink-soft);
-    text-transform:uppercase;letter-spacing:.05em;
-    margin-top:22px;margin-bottom:10px;
-  }
+/* Overall progress */
+.kp-page .progress-wrap{margin-top:16px;}
+.kp-page .progress-track{
+  height:8px;border-radius:999px;background:var(--border);overflow:hidden;
+}
+.kp-page .progress-fill{
+  height:100%;background:var(--accent);border-radius:999px;
+  width:0%;transition:width .25s ease;
+}
+.kp-page .progress-label{
+  display:flex;justify-content:space-between;
+  font-size:12.5px;color:var(--ink-soft);margin-top:8px;
+  font-family:var(--mono);
+}
 
-  .btn-row{display:flex;gap:10px;margin-top:24px;}
-  .btn-row .btn{margin-top:0;}
+/* Summary */
+.kp-page .result-head{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+.kp-page .result-badge{
+  width:32px;height:32px;border-radius:7px;background:transparent;
+  color:var(--ink-soft);border:0.5px solid var(--border);
+  display:flex;align-items:center;justify-content:center;flex:none;
+}
+.kp-page .result-title{font-size:16px;font-weight:700;}
+.kp-page .result-sub{font-size:13px;color:var(--ink-soft);margin-top:1px;}
 
-  .note{
-    display:flex;gap:8px;align-items:flex-start;
-    font-size:12.5px;color:var(--ink-soft);line-height:1.5;
-    margin-top:18px;padding-top:16px;border-top:1px solid var(--border);
-  }
-  .note svg{flex:none;margin-top:1px;opacity:.7;}
+.kp-page .size-compare{display:flex;align-items:center;gap:14px;margin:16px 0 6px;}
+.kp-page .size-box{flex:1;text-align:center;}
+.kp-page .size-value{font-family:var(--mono);font-size:20px;font-weight:700;letter-spacing:-0.01em;}
+.kp-page .size-value.after{color:var(--accent);}
+.kp-page .size-tag{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
+.kp-page .size-arrow{color:var(--ink-soft);flex:none;}
 
-  .error-box{
-    display:flex;gap:10px;align-items:flex-start;
-    background:var(--danger-soft);color:var(--danger);
-    border-radius:var(--radius-md);padding:12px 14px;margin-top:16px;
-    font-size:13px;line-height:1.5;
-  }
+.kp-page .bar-compare{margin:16px 0;}
+.kp-page .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.kp-page .bar-row .lbl{width:64px;flex:none;font-size:12px;color:var(--ink-soft);}
+.kp-page .bar-track{flex:1;height:14px;background:var(--border);border-radius:7px;overflow:hidden;}
+.kp-page .bar-fill{height:100%;border-radius:7px;transition:width .5s cubic-bezier(.2,.8,.2,1);}
+.kp-page .bar-fill.before{background:var(--ink-soft);opacity:.35;width:100%;}
+.kp-page .bar-fill.after{background:var(--accent);width:0%;}
 
-  .privacy{
-    display:flex;align-items:center;justify-content:center;gap:7px;
-    text-align:center;font-size:12.5px;color:var(--ink-soft);
-    margin-top:22px;
-  }
+.kp-page .reduction-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  background:transparent;color:var(--ink);border:0.5px solid var(--border);
+  font-size:13px;font-weight:700;font-family:var(--mono);padding:6px 12px;border-radius:999px;
+  margin-top:4px;
+}
+.kp-page .reduction-pill::before{
+  content:'';width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--success-dot);
+}
 
-  .hidden{display:none !important;}
+.kp-page .result-file-head{
+  font-size:12.5px;font-weight:700;color:var(--ink-soft);
+  text-transform:uppercase;letter-spacing:.05em;
+  margin-top:16px;margin-bottom:10px;
+}
 
-  @media (max-width:420px){
-    .card{padding:20px;}
-    .size-compare{gap:8px;}
-    .size-value{font-size:16px;}
-    .btn-row{flex-direction:column;}
-  }
+.kp-page .btn-row{display:flex;gap:10px;margin-top:16px;}
+.kp-page .btn-row .btn{margin-top:0;}
+
+.kp-page .note{
+  display:flex;gap:8px;align-items:flex-start;
+  font-size:12.5px;color:var(--ink-soft);line-height:1.5;
+  margin-top:16px;padding-top:16px;border-top:1px solid var(--border);
+}
+.kp-page .note svg{flex:none;margin-top:1px;color:var(--ink-soft);}
+
+.kp-page .error-box{
+  display:flex;gap:10px;align-items:flex-start;
+  background:transparent;color:var(--ink);border:0.5px solid var(--danger);
+  border-radius:var(--radius-md);padding:12px 14px;margin-top:16px;
+  font-size:13px;line-height:1.5;
+}
+.kp-page .error-box svg{color:var(--danger);flex-shrink:0;}
+
+.kp-page .privacy{
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  text-align:center;font-size:12.5px;color:var(--ink-soft);
+  margin-top:16px;
+}
+
+.kp-page .hidden{display:none !important;}
+
+@media (max-width:420px){
+  .kp-page .card{padding:20px;}
+  .kp-page .size-compare{gap:8px;}
+  .kp-page .size-value{font-size:16px;}
+  .kp-page .btn-row{flex-direction:column;}
+}

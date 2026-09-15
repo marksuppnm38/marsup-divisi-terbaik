@@ -117,10 +117,13 @@ function ensureStyle() {
 }
 
 let mountedContainer = null;
-let authUnsubscribe = null;
 let filterPopOutsideClickHandler = null;
 let resizeHandler = null;
 let cmdkKeydownHandler = null;
+// Module-level indirection for setSubroute() (real top-level export, see
+// far below near unmount()) to reach switchView(), which stays a NESTED
+// function inside mount() -- see switchView()'s own comment for why.
+let _switchView = null;
 let beforeUnloadHandler = null;
 
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
@@ -158,6 +161,17 @@ function sealHtml(status){
 }
 const TIPE_TO_AKD = { INSTRUMENT: 'satuan', SET: 'set', UNIT: 'unit' };
 
+// BUGFIX (sesi keamanan, 15 September 2026): escapeHtml() dulu cuma
+// dideklarasikan di dalam mount()'s closure (baris jauh di bawah), padahal
+// renderInaprocIndikator() ini -- pemanggilnya -- ada di scope MODUL (luar
+// mount()). ReferenceError: escapeHtml is not defined tiap buka detail
+// produk yang punya status INAPROC. Dipindah ke sini (scope modul) supaya
+// kepanggil dari mana aja, termasuk dari dalam mount() (closure bisa lihat
+// ke luar, bukan sebaliknya).
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
 function renderInaprocIndikator(statusInaproc, linkV6){
   const el = document.getElementById('inaprocIndikator');
   if (!statusInaproc) { el.style.display = 'none'; return; }
@@ -173,7 +187,7 @@ function renderInaprocIndikator(statusInaproc, linkV6){
   el.innerHTML = `<span style="font-size:11px;color:var(--text-muted);">Status INAPROC:</span> <span class="seal ${cls}">${escapeHtml(label)}</span>${extra}`;
 }
 
-export async function mount(container) {
+export async function mount(container, initialSub) {
   mountedContainer = container;
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
   // sb baru bisa di-assign DI SINI, bukan module scope -- lihat catatan
@@ -195,27 +209,46 @@ export async function mount(container) {
     document.documentElement.setAttribute('data-theme', theme);
   })();
 
-// ---- Theme toggle ----
+// ---- Theme ----
 // NOTE: data-theme attribute is already set as early as possible by the
 // inline script right after <body> (prevents flash of light theme before
-// this external file loads). Here we just sync the icon + wire the toggle.
-// Single source of truth: <html data-theme>, not <body> — pnm-universal.css
-// only reacts to the attribute on <html>.
-const themeToggle = document.getElementById('themeToggle');
-const themeIcon = document.getElementById('themeIcon');
-function applyTheme(t){
-  document.documentElement.setAttribute('data-theme', t);
-  themeIcon.className = t === 'dark' ? 'ti ti-moon' : 'ti ti-sun';
-  localStorage.setItem('theme', t);
-}
-themeIcon.className = document.documentElement.getAttribute('data-theme') === 'dark' ? 'ti ti-moon' : 'ti ti-sun';
-themeToggle.addEventListener('click', () => {
-  applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
-});
+// this external file loads). The toggle control itself now lives ONLY in
+// the shared sidebar nav (app/pages/nav/nav.js) -- it already reads/writes
+// the same "theme" localStorage key and the same <html data-theme>
+// attribute this page's own CSS reacts to, so removing this page's own
+// duplicate toggle (was: #themeToggle/#themeIcon in the topbar) needed no
+// other change here. Single source of truth: <html data-theme>, not
+// <body> — pnm-universal.css only reacts to the attribute on <html>.
 
 // ---- Sidebar nav (stub views) ----
+// UPDATE (sesi lanjutan -- "double nav" fix): this page's own <aside
+// class="sidebar"> (5 data-view buttons + brand/collapse/user/logout) is
+// GONE from markup.js -- those 5 views now live in the GLOBAL sidebar's
+// accordion instead (app/pages/nav/, expands under crud-produk's item
+// automatically since crud-produk/subnav.js registers them). This was
+// the literal "double nav" complaint: two sidebars rendering side by
+// side, one from the shared shell and one from this page. switchView()
+// itself is UNCHANGED in what it does (still just toggles which
+// #view<Name> block is visible) -- only the "how do I get called" side
+// changed: previously a click listener on THIS page's own buttons,
+// now setSubroute() (module-level, see far below) is called by router.js
+// when the URL's sub-route changes, and an initial call happens at the
+// bottom of mount(). See crud-produk/subnav.js + router.js for the other
+// half of this.
+//
+// switchView() itself stays a NESTED function inside mount() (unchanged
+// from before this session) rather than moving to module top-level -- it
+// closes over DOM references cached earlier in mount()'s body, moving it
+// out would risk breaking those. Instead, mount() hands a reference to it
+// to `_switchView` (declared at true module top-level, above mount()) so
+// the real top-level `export function setSubroute` below can reach it.
+// (Fix: an EARLIER version of this edit put `export function setSubroute`
+// directly here, nested INSIDE mount()'s body -- invalid ES module syntax,
+// `export` must be top-level. node --check didn't catch it; a browser or
+// any real module-aware parser -- including the TS language server, which
+// is how this got caught -- does. This comment + the top-level
+// `_switchView`/`setSubroute` pair below is the fix.)
 function switchView(view){
-  document.querySelectorAll('.sb-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   ['produk','set','akd','kfa','bulk'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
@@ -223,99 +256,51 @@ function switchView(view){
   document.querySelector('.view-toggle').style.display = (view === 'produk') ? '' : 'none';
   if (view === 'akd' && !akdLoadedOnce) { akdLoadedOnce = true; loadAkdDistinctValues(); loadAkd(); }
   if (view === 'kfa' && !kfaLoadedOnce) { kfaLoadedOnce = true; loadKfa(); refreshKfaFilterCounts(); }
+  // 'set' punya semantik beda dari akd/kfa's "sekali doang" -- dipindah
+  // dari listener terpisah yang tadinya nempel di tombol sidebar sendiri
+  // (`.sb-item[data-view="set"]`, gak ada lagi): reload SETIAP kali masuk
+  // view Set, KECUALI lagi ada detail panel yang lagi kebuka (biar gak
+  // ilang begitu aja). Behavior persis sama kayak sebelumnya, cuma
+  // tempat manggilnya yang pindah.
+  if (view === 'set' && (!document.getElementById('setDetailWrap') || document.getElementById('setDetailWrap').style.display === 'none')) {
+    loadSetList();
+  }
 }
 let akdLoadedOnce = false;
 let kfaLoadedOnce = false;
-document.querySelectorAll('.sb-item[data-view]').forEach(btn => {
-  btn.addEventListener('click', () => switchView(btn.dataset.view));
-});
+_switchView = switchView; // expose to the real top-level setSubroute() far below
 
-// ---- Sidebar collapse/expand (desktop) — state disimpen di localStorage biar
-// nempel walau reload/pindah tool, sama kayak preferensi theme & view lain. ----
-const sidebarEl = document.querySelector('.sidebar');
-const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
-function setSidebarCollapsed(collapsed){
-  sidebarEl.classList.toggle('collapsed', collapsed);
-  sidebarCollapseBtn.title = collapsed ? 'Perluas sidebar' : 'Ciutkan sidebar';
-  localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
-}
-setSidebarCollapsed(localStorage.getItem('sidebarCollapsed') === '1');
-sidebarCollapseBtn.addEventListener('click', () => setSidebarCollapsed(!sidebarEl.classList.contains('collapsed')));
-
-// ---- Auth elements ----
-const gateWrap = document.getElementById('gateWrap');
-const appWrap = document.getElementById('appWrap');
-const gateTitle = document.getElementById('gateTitle');
-const gateDesc = document.getElementById('gateDesc');
-const loginFormWrap = document.getElementById('loginFormWrap');
-const loginEmail = document.getElementById('loginEmail');
-const loginPassword = document.getElementById('loginPassword');
-const loginBtn = document.getElementById('loginBtn');
-const gateMsg = document.getElementById('gateMsg');
-const userEmailLabel = document.getElementById('userEmailLabel');
-const logoutBtn = document.getElementById('logoutBtn');
-
-function showMsg(text, type){
-  gateMsg.textContent = text;
-  gateMsg.className = 'gate-msg show ' + type;
-}
-
-loginFormWrap.addEventListener('submit', async (e) => {
-  e.preventDefault(); // form asli mau reload halaman kalau di-submit -- ini yang bikin Enter kerasa "gak ngapa-ngapain" sebelumnya
-  const email = loginEmail.value.trim().toLowerCase();
-  const password = loginPassword.value;
-  if (!email || !email.includes('@')) { showMsg('Masukkan email yang valid dulu ya.', 'error'); return; }
-  if (!password) { showMsg('Masukkan password.', 'error'); return; }
-  loginBtn.disabled = true;
-  loginBtn.textContent = 'Memproses...';
-  // SPA migration: sb.auth.signInWithPassword langsung -> PNMAuth.login (satu-satunya
-  // titik login yang boleh dipakai modul manapun -- lihat shared/auth-session.js).
-  // PNMAuth.login throw kalau gagal (bukan return {error}), jadi dibungkus try/catch.
-  try {
-    await PNMAuth.login(email, password);
-  } catch (error) {
-    loginBtn.disabled = false;
-    loginBtn.textContent = 'Masuk';
-    showMsg(error.message.toLowerCase().includes('email not confirmed')
-      ? 'Email belum dikonfirmasi. Cek inbox kamu buat klik link konfirmasi dulu.'
-      : 'Gagal masuk: ' + error.message, 'error');
-    return;
-  }
-  loginBtn.disabled = false;
-  loginBtn.textContent = 'Masuk';
-});
-
-async function checkWhitelistAndShowApp(session){
-  const email = session.user.email.toLowerCase();
-  const { data, error } = await sb.from('allowed_users').select('email, role').eq('email', email).maybeSingle();
-  if (error) {
-    // Query gagal (network/timeout, dll) — ini BUKAN bukti email nggak terdaftar.
-    // Jangan sign-out paksa di tengah kerjaan; cukup kasih tahu dan biarkan sesi tetap hidup.
-    showToast('Gagal cek akses (koneksi bermasalah), coba lagi: ' + error.message, true);
-    return;
-  }
-  if (!data) {
-    // Ini baru konfirmasi valid: query sukses, dan emailnya memang nggak ada di whitelist.
-    await PNMAuth.logout(); // SPA migration: sb.auth.signOut() -> PNMAuth.logout()
-    gateTitle.textContent = 'Akses Ditolak';
-    gateDesc.textContent = 'Email ' + email + ' belum terdaftar sebagai tim. Hubungi admin kalau ini seharusnya salah.';
-    loginFormWrap.style.display = 'none';
-    gateMsg.className = 'gate-msg show error';
-    gateMsg.textContent = 'Silakan hubungi admin untuk ditambahkan ke daftar akses.';
-    gateWrap.style.display = 'flex';
-    appWrap.style.display = 'none';
-    return;
-  }
-  userEmailLabel.textContent = email;
-  gateWrap.style.display = 'none';
-  appWrap.style.display = 'flex';
-  loadProduk();
-  refreshProdukFilterCounts();
-  handleNavParamsIfAny();
-}
-
-// ══════════════════════════════════════════
-// NAVIGATION LAYER — konversian.html <-> crud-produk.html
+// ---- Auth ----
+// Sesi kesembilan belas: per-page gate (gateWrap/loginFormWrap/gateMsg,
+// checkWhitelistAndShowApp(), local onAuthStateChange subscription for
+// gate purposes) DIHAPUS SELURUHNYA. router.js gak pernah mount() modul
+// ini sampai shared/auth-gate.js konfirmasi sesi valid + whitelisted
+// duluan -- jadi begitu mount() jalan, sesi SUDAH PASTI ada dan SUDAH
+// PASTI whitelisted.
+//
+// UPDATE (sesi lanjutan): userEmailLabel/logoutBtn (+ the PNMAuth.getUser()
+// call that filled the former) DIHAPUS -- keduanya cuma dupliat dari apa
+// yang GLOBAL nav udah tampilin (.pw-nav-user-name/.pw-nav-logoutBtn di
+// app/pages/nav/), sekarang satu-satunya sumber begitu sidebar page ini
+// sendiri dibongkar (lihat komentar switchView() di atas). Tetep langsung
+// load konten seperti biasa.
+//
+// FIX (koreksi lagi): 3 baris ini SEMPET ditaro persis di sini (posisi
+// paling awal, niatnya "fire secepat mungkin, paralel sama setup
+// lainnya" -- sama kayak sebelum sesi lanjutan) -- TAPI `loadProduk()`
+// baca/nulis `lastQuery`, sebuah `let` yang baru DIDEKLARASIKAN ratusan
+// baris di bawah sini (lihat dekat `topSearchInput`). Manggil fungsi yang
+// butuh binding `let` itu SEBELUM baris deklarasinya sendiri sempet
+// jalan = `ReferenceError: Cannot access 'lastQuery' before
+// initialization` (temporal dead zone) -- persis error yang user laporan
+// dari browser beneran. Dipindah ke UJUNG mount() (tepat sebelum
+// `switchView(initialSub || 'produk')` yang udah ada di situ) supaya
+// SEMUA `let`/`const` di seluruh body mount() udah pasti kejalanin
+// duluan -- satu-satunya titik yang dijamin aman dari TDZ tanpa harus
+// nelusurin semua dependency loadProduk()/refreshProdukFilterCounts()/
+// handleNavParamsIfAny() satu-satu. Delay-nya gak berarti (masih di
+// dalam pemanggilan mount() yang sama, sinkron, bukan nunggu event loop
+// balik dulu).
 // ?edit=<kode_produk> otomatis buka modal edit produk itu. ?return_to=konversian
 // (+ opsional &return_sesi=<id>) nampilin tombol balik yang bawa user ke
 // konversian.html?resume=1&refreshed=<kode>&sesi=<id> — refresh 1 kartu +
@@ -338,17 +323,16 @@ async function handleNavParamsIfAny() {
       // SPA migration (sesi kesebelas): '/app/shell.html' -> '/' (root
       // sudah jadi shell sejak sesi ketujuh; /app/shell.html masih hidup
       // sebagai alias tapi gak ada alasan lagi buat dipakai eksplisit di
-      // sini). Query string (?resume=1&...) HARUS di luar hash (konversian
-      // baca window.location.search, bukan query yang nempel di dalam
-      // hash), makanya di-set dulu baru '#konversian' ditempel di paling
-      // akhir. Ini genuine full-page navigation (bukan hashchange di dalam
-      // SPA yang sama) — sama persis pola yang dipakai navigateToEditProduk()
-      // di konversian/index.js buat arah sebaliknya.
-      const url = new URL('/', window.location.href);
+      // sini). CLEAN URLS (sesi lanjutan): target sekarang '/konversian'
+      // langsung (real path), bukan '/' + '#konversian' lagi. Ini genuine
+      // full-page navigation (bukan in-place SPA nav) — sama persis pola
+      // yang dipakai navigateToEditProduk() di konversian/index.js buat
+      // arah sebaliknya.
+      const url = new URL('/konversian', window.location.href);
       url.searchParams.set('resume', '1');
       if (pnmReturnCtx.kode) url.searchParams.set('refreshed', pnmReturnCtx.kode);
       if (pnmReturnCtx.sesi) url.searchParams.set('sesi', pnmReturnCtx.sesi);
-      window.location.href = url.toString() + '#konversian';
+      window.location.href = url.toString();
     });
   }
 
@@ -361,28 +345,6 @@ async function handleNavParamsIfAny() {
     openEdit(data.id);
   }
 }
-
-logoutBtn.addEventListener('click', async () => { await PNMAuth.logout(); }); // SPA migration: sb.auth.signOut() -> PNMAuth.logout()
-
-// Cuma jalanin gate whitelist di event login yang beneran baru (sign-in awal / load pertama).
-// Event lain kayak TOKEN_REFRESHED juga bawa `session`, tapi itu cuma refresh token di
-// background — nggak perlu (dan berbahaya kalau) re-check whitelist tiap kali itu terjadi,
-// karena query yang gagal gara-gara network sibuk (mis. lagi proses bulk upsert) bisa
-// kepicu sign-out paksa padahal user sebenarnya masih valid login.
-const AUTH_EVENTS_YANG_MEMICU_GATE = new Set(['SIGNED_IN', 'INITIAL_SESSION']);
-// SPA migration: sb.auth.onAuthStateChange -> PNMAuth.onAuthStateChange, dan return
-// value-nya (unsubscribe function) ditangkep ke authUnsubscribe (var module-scope,
-// lihat atas) biar unmount() bisa lepas listener ini -- kalau kebiarin nempel, dia
-// bakal tetap ngerespon event auth walau halaman ini udah gak ke-mount lagi.
-authUnsubscribe = PNMAuth.onAuthStateChange((event, session) => {
-  if (session && AUTH_EVENTS_YANG_MEMICU_GATE.has(event)) {
-    checkWhitelistAndShowApp(session);
-  } else if (!session) {
-    gateWrap.style.display = 'flex'; appWrap.style.display = 'none'; loginFormWrap.style.display = 'block'; gateTitle.textContent = 'Masuk ke Produk'; gateDesc.textContent = 'Khusus tim internal.';
-  }
-  // event lain (TOKEN_REFRESHED, USER_UPDATED, dll) dengan session yang masih ada: diamkan,
-  // sesi tetap jalan seperti biasa tanpa re-gate.
-});
 
 // ---- Log Aktivitas ----
 const LOG_ACTION_LABELS = { INSERT: 'Tambah', UPDATE: 'Ubah', DELETE: 'Hapus' };
@@ -482,15 +444,23 @@ function showToast(msg, isError){
   // di tempat lain di file ini.
   PNMToast.show(msg, isError ? 'error' : 'success', { duration: isError ? 4500 : 3000 });
 }
-function escapeHtml(s){
-  return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
 
 // ---- Pagination reusable — dipakai di Produk, Set Management, Log Aktivitas ----
 // el: elemen container. page: halaman aktif (mulai dari 1). pageSize: item per
 // halaman. total: total item keseluruhan (dari count exact / panjang array).
 // onPageChange(newPage): dipanggil pas user klik halaman lain.
 function renderPgBar(el, { page, pageSize, total, onPageChange }){
+  // FIX: el bisa null kalau pemanggil (loadProduk() dkk, semua async & await
+  // network) resolve SETELAH user udah pindah halaman -- router.js ngosongin
+  // container.innerHTML SEBELUM mount() halaman baru jalan, jadi
+  // document.getElementById('produkPagination') yang dipanggil fresh di
+  // loadProduk() balik null, bukan elemen basi. Dulu ini gak dicek -> throw
+  // "Cannot read properties of null (reading 'style')" tiap kali fetch produk
+  // lambat pas user buru-buru pindah tab/menu. Guard di sini + guard tambahan
+  // di loadProduk() sendiri (lihat `if (!mountedContainer) return;` sebelum
+  // baris ini dipanggil) -- dua-duanya dijaga karena renderPgBar dipanggil
+  // dari banyak tempat lain (Set/AKD/KFA) yang punya race serupa.
+  if (!el) return;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   if (total === 0 || totalPages <= 1) { el.innerHTML = ''; el.style.display = 'none'; return; }
   el.style.display = 'flex';
@@ -757,7 +727,17 @@ async function loadProduk(q, page){
     total = count || 0;
   }
 
- produkCount.textContent = total + ' produk' + (qq ? ` untuk "${qq}"` : '') +
+ // FIX: loadProduk() ini async dengan beberapa await ke Supabase di atas --
+  // kalau user pindah halaman (menu lain) SEBELUM salah satu await itu
+  // resolve, container udah dikosongin router.js dan mountedContainer di-null-
+  // kan di unmount() sebelum kode di bawah ini sempet lanjut. Tanpa guard ini,
+  // produkCount.textContent/tableBody.innerHTML masih "aman" (nunjuk elemen
+  // lama yang cuma detached, gak throw), TAPI
+  // document.getElementById('produkPagination') query FRESH dan balik null ->
+  // renderPgBar(null, ...) throw. Bail out di sini daripada nunggu ketauan di
+  // renderPgBar.
+  if (!mountedContainer) return;
+  produkCount.textContent = total + ' produk' + (qq ? ` untuk "${qq}"` : '') +
     (produkActiveFilters.length ? ` · ${produkActiveFilters.length} filter tambahan aktif` : '');
   renderPgBar(document.getElementById('produkPagination'), {
     page: produkPage, pageSize: PRODUK_PAGE_SIZE, total,
@@ -770,16 +750,24 @@ async function loadProduk(q, page){
     return;
   }
 
-  // Cek ketersediaan harga KHUSUS untuk baris yang lagi tampil di halaman ini
-  // (bukan semua produk) — biar ringan, query kecil nempel ke tiap ganti halaman.
-  // Dipakai buat kasih visual cue "butuh perhatian" di tabel/card, bukan buat
-  // nampilin nominal harganya (itu tetap di modal edit / tab Pricing).
-  const idsOnPage = rows.map(p => p.id);
-  let hargaExistIds = new Set();
-  if (idsOnPage.length) {
-    const { data: hargaRows } = await sb.from('produk_harga').select('produk_id').in('produk_id', idsOnPage);
-    hargaExistIds = new Set((hargaRows || []).map(h => h.produk_id));
-  }
+  // FIX (urgent — "harga mismatch crud vs konversi"): this used to be a raw
+  // `sb.from('produk_harga').select('produk_id').in('produk_id', idsOnPage)`.
+  // produk_harga stores one row per (tahun x jenis) -- every price write
+  // inserts 3 rows (EKATALOG/SWASTA/UPLOAD, see upsertHargaDariEkat) -- so
+  // for a page of 20-50 products with any meaningful price history, that
+  // query could return hundreds of rows with no .limit()/pagination.
+  // PostgREST caps unbounded selects like that around 1000 rows by default,
+  // so on unlucky pages the response got silently truncated and the last
+  // few products' rows dropped out, making them wrongly show "belum ada
+  // harga" even though konversian (which gets harga_ekat/harga_swasta
+  // pre-resolved one-per-product from search_produk_dengan_harga, never a
+  // raw multi-row pull) showed the price fine. This is the EXACT bug class
+  // already diagnosed & fixed once in this file for the filter-dimension
+  // case (see ensureProdukHargaSet()'s comment above, get_produk_harga_ids
+  // RPC) -- just never applied here. Reusing that same cached, RPC-backed
+  // Set instead of a fresh row-limited query fixes it the same way.
+  await ensureProdukHargaSet();
+  const hargaExistIds = produkHargaIdSet;
   const ONE_DAY = 24 * 60 * 60 * 1000;
   function attentionMeta(p){
     const noHarga = !hargaExistIds.has(p.id);
@@ -1542,6 +1530,9 @@ function renderHargaGroupInto(tbody, rows, onAfterDelete){
       const produkId = ekat.produk_id;
       const { error } = await sb.from('produk_harga').delete().eq('produk_id', produkId).eq('tahun', tahun);
       if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
+      // FIX (urgent — harga mismatch): same missing invalidation as
+      // addHargaBtn above, but for delete.
+      invalidateProdukStackCache();
       showToast('Harga tahun ' + tahun + ' dihapus');
       onAfterDelete();
     });
@@ -1578,6 +1569,12 @@ document.getElementById('addHargaBtn').addEventListener('click', async () => {
   if (!tahun || isNaN(hargaEkat)) { showToast('Lengkapi tahun dan harga EKATALOG', true); return; }
   const ok = await upsertHargaDariEkat(currentProdukId, tahun, hargaEkat);
   if (!ok) return;
+  // FIX (urgent — harga mismatch): produkHargaIdSet (now also used for the
+  // list-page "belum ada harga" badge, see loadProduk() above) was never
+  // invalidated after adding a price, so a product could keep showing the
+  // stale badge/filter result until some UNRELATED mutation happened to
+  // invalidate the cache first.
+  invalidateProdukStackCache();
   document.getElementById('h_tahun').value = '';
   document.getElementById('h_harga').value = '';
   showToast('Harga EKATALOG, SWASTA & UPLOAD tersimpan');
@@ -1772,14 +1769,13 @@ async function loadSetList(page){
   });
   if (!data || data.length === 0) { wrap.innerHTML = '<div class="stub-box">Belum ada produk tipe SET.</div>'; return; }
 
-  // Sama kayak di list Produk: cek ketersediaan harga khusus buat set yang
-  // lagi tampil di halaman ini aja.
-  const setIdsOnPage = data.map(s => s.set_id);
-  let hargaExistIds = new Set();
-  if (setIdsOnPage.length) {
-    const { data: hargaRows } = await sb.from('produk_harga').select('produk_id').in('produk_id', setIdsOnPage);
-    hargaExistIds = new Set((hargaRows || []).map(h => h.produk_id));
-  }
+  // FIX (urgent — same row-limit truncation bug as loadProduk() above, see
+  // its comment): was a raw .select('produk_id').in('produk_id', ...) query
+  // vulnerable to PostgREST's default ~1000-row cap once enough sets on a
+  // page have real price history. Switched to the same cached, RPC-backed
+  // produkHargaIdSet.
+  await ensureProdukHargaSet();
+  const hargaExistIds = produkHargaIdSet;
   const ONE_DAY = 24 * 60 * 60 * 1000;
 
   wrap.innerHTML = '';
@@ -2217,11 +2213,11 @@ openEdit = async function(produkId){
 const _origLoadProdukRowClick = null; // handled inline below via monkey-patch approach not needed; see loadProduk edits
 
 // ---- Muat awal saat pertama masuk view Set (lazy) ----
-document.querySelector('.sb-item[data-view="set"]').addEventListener('click', () => {
-  if (!document.getElementById('setDetailWrap') || document.getElementById('setDetailWrap').style.display === 'none') {
-    loadSetList();
-  }
-});
+// UPDATE (sesi lanjutan): logic ini (reload list Set setiap masuk view,
+// kecuali detail panel lagi kebuka) SEKARANG hidup di dalam switchView()
+// itu sendiri, dipicu dari sana -- listener terpisah yang nempel di sini
+// (`.sb-item[data-view="set"]`) DIHAPUS karena tombolnya sendiri udah gak
+// ada lagi di halaman ini (lihat switchView()'s komentar buat detail).
 
 // ================================================================
 // BULK EDIT
@@ -3115,6 +3111,36 @@ document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
     });
   }, 300);
 });
+
+  // Kick off the initial data load now -- moved here from near the top of
+  // mount() (see the long comment by the old spot, near the auth section)
+  // specifically to land after every `let`/`const` this depends on has
+  // executed. Still fires synchronously within this same mount() call,
+  // same as before.
+  loadProduk();
+  refreshProdukFilterCounts();
+  handleNavParamsIfAny();
+
+  // Initial view: whatever sub-route the URL had when this page first
+  // mounted (deep link from the sidebar accordion or a bookmark/refresh),
+  // defaulting to 'produk' same as before this session (previously the
+  // default was implicit -- markup.js's static HTML just happened to
+  // start with viewProduk visible and nothing else; now explicit since a
+  // direct link to e.g. #crud-produk/kfa needs this to actually land on
+  // KFA Management instead of Produk).
+  switchView(initialSub || 'produk');
+}
+
+/** Dipanggil router.js tiap kali URL sub-route berubah TANPA modul-nya
+ * ikut berubah (misal user klik dari "Produk" ke "KFA Management" di
+ * sidebar accordion, keduanya di bawah crud-produk yang sama) -- lihat
+ * router.js's render() buat kapan persisnya ini vs mount() penuh yang
+ * dipanggil. Ini fungsi TOP-LEVEL beneran (bukan nested di dalam mount()
+ * kayak percobaan pertama yang salah) -- lewat `_switchView` (module-level,
+ * lihat deklarasinya dekat `mountedContainer`) buat nyampe ke switchView()
+ * yang tetep nested di dalam mount(). */
+export function setSubroute(sub) {
+  _switchView?.(sub || 'produk');
 }
 
 export function unmount() {
@@ -3131,12 +3157,21 @@ export function unmount() {
   cmdkKeydownHandler = null;
   beforeUnloadHandler = null;
 
-  if (authUnsubscribe) { authUnsubscribe(); authUnsubscribe = null; }
+  // UPDATE (jank fix): pnm-universal.css NO LONGER removed here. It's now
+  // a permanent <link> loaded once by shell.html/index.html -- see the
+  // shared-pnm-universal-css comment in app/shell.html for why (removing
+  // and reloading it on every navigation caused a brief unstyled flash
+  // that read as a slight "zoom" jump). Same treatment font/tabler-icons
+  // already had, noted in the line above.
 
-  // Lepas pnm-universal.css -- sama alasan kayak konversian/index.js. Font
-  // JetBrains Mono + tabler-icons SENGAJA TETAP nempel (gak ada elemen yang
-  // mereka style tanpa class eksplisit, aman dibiarkan).
-  document.getElementById('shared-pnm-universal-css')?.remove();
+  // Fix (sesi kedua puluh dua, 28 Agustus 2026): style.css halaman ini
+  // (page-crud-produk-style) juga TIDAK PERNAH dilepas -- kelas bug yang
+  // sama dengan export-gambar/kompres-pdf, versi lebih ringan (cuma bare
+  // `table`/`th`/`td`, bukan `:root`/`body`/`h1`), jadi dampaknya kebatas
+  // ke elemen <table> di halaman lain kalau user pernah mampir ke sini
+  // duluan. Diflag sejak sesi kedelapan belas, baru sekarang difix.
+  document.getElementById('page-crud-produk-style')?.remove();
 
+  _switchView = null; // avoid a stale closure over this mount's DOM being callable after teardown
   mountedContainer = null;
 }
