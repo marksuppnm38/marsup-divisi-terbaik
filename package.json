@@ -1,0 +1,12 @@
+{
+  "name": "pionir-workspaces",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Zero-build vanilla JS static app. `npm run build` only runs in Vercel production deploys to produce a minified/obfuscated dist/ — local development stays plain static files, no build step needed.",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

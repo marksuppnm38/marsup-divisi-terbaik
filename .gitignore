@@ -11,4 +11,5 @@ folder_output*
 .vscode
 output/
 node_modules/
+dist/
 output_abadinusa/
