@@ -595,3 +595,12 @@
   #app-root .clip-footer{padding:14px 14px 16px}
   #app-root #hint, #app-root #empty{padding:32px 16px}
 }
+/* ============================================================
+   Sep 2026: dict-modal ("Tambah Istilah"/detail Dictionary) ada
+   lebih belakang di DOM daripada lampiran-modal/gambar-modal, jadi
+   menang z-order default walau lampiran/gambar dibuka BELAKANGAN
+   dari dalam dict-modal (Lihat Gambar/Lihat Lampiran per baris
+   produk) — kelihatannya numpuk di belakang. Naikkan z-index
+   keduanya pas lagi .show biar selalu di atas modal lain.
+   ============================================================ */
+#lampiran-modal.show, #gambar-modal.show { z-index: 70; }
