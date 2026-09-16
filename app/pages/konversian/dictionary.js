@@ -1013,6 +1013,16 @@ const dictModalLoading = document.getElementById('dict-modal-loading');
 const dictModalError = document.getElementById('dict-modal-error');
 const dictModalList = document.getElementById('dict-modal-list');
 const dictPaginationEl = document.getElementById('dict-pagination');
+const btnDictTambah = document.getElementById('btn-dict-tambah');
+const dictNewModal = document.getElementById('dict-new-modal');
+const dictNewInput = document.getElementById('dict-new-input');
+const dictNewError = document.getElementById('dict-new-error');
+const dictNewOk = document.getElementById('dict-new-ok');
+const dictNewCancel = document.getElementById('dict-new-cancel');
+const dictModalAddInput = document.getElementById('dict-modal-add-input');
+const dictModalAddResults = document.getElementById('dict-modal-add-results');
+const dictModalHiddenWrap = document.getElementById('dict-modal-hidden-wrap');
+const dictModalHiddenList = document.getElementById('dict-modal-hidden-list');
 
 const DICT_PAGE_SIZE = 20;
 let dictCurrentPage = 1;
@@ -1163,37 +1173,81 @@ dictFilterSelect.addEventListener('change', () => { dictCurrentPage = 1; loadDic
 dictSortSelect.addEventListener('change', () => { dictCurrentPage = 1; loadDictionary(); });
 btnDictRefresh.addEventListener('click', () => { dictStatsLoaded = false; loadDictionary(); });
 
+// istilah lagi kebuka di modal saat ini — dipakai widget "+ Tambah produk" &
+// tombol hapus/kembalikan biar tau mesti update pair yang mana.
+let dictModalCurrentIstilah = null;
+
+function dictDetailRowHtml(d, isManual) {
+  return `
+    <div class="dict-detail-row" style="display:block" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div>
+          <div class="dict-detail-produk">${S.escapeHtmlAttr(d.nama_produk || '(nama produk tidak tersedia)')}
+            ${isManual ? '<span class="dict-badge" style="font-size:9px;padding:1px 5px;margin-left:6px">MANUAL</span>' : ''}
+          </div>
+          <div class="dict-detail-kode">${S.escapeHtmlAttr(d.kode_produk || '-')}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;display:flex;align-items:center;gap:10px">
+          <div>
+            <div class="dict-detail-freq">${Number(d.jumlah_pemakaian).toLocaleString('id-ID')}×</div>
+            <div class="dict-detail-pct">${d.persentase != null ? d.persentase + '%' : ''}</div>
+          </div>
+          <button type="button" class="dict-detail-hapus-btn" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}"
+            title="Tandai link ini kurang akurat / gak relevan" style="border:none;background:none;color:var(--text-muted);cursor:pointer;padding:4px">
+            <i class="ti ti-trash"></i>
+          </button>
+        </div>
+      </div>
+      <div class="dict-detail-bar-wrap"><div class="dict-detail-bar" style="width:${d.persentase != null ? d.persentase : 0}%"></div></div>
+    </div>
+  `;
+}
+
 async function openDictionaryDetail(istilah) {
+  dictModalCurrentIstilah = istilah;
   dictModalTitle.textContent = istilah;
   dictModalList.innerHTML = '';
   dictModalError.style.display = 'none';
   dictModalLoading.style.display = 'block';
+  dictModalAddInput.value = '';
+  dictModalAddResults.style.display = 'none';
+  dictModalAddResults.innerHTML = '';
+  dictModalHiddenWrap.style.display = 'none';
+  dictModalHiddenList.innerHTML = '';
   dictModal.classList.add('show');
 
   try {
-    const { data, error } = await S.rpc('get_dictionary_detail', { p_istilah: istilah });
-    if (error) throw new Error(error.message || error.hint || 'Gagal memuat detail istilah');
-    if (!data || data.length === 0) {
-      dictModalList.innerHTML = '<div style="padding:16px 0;text-align:center;color:var(--text-muted);font-size:13px">Tidak ada data.</div>';
-      return;
+    // Detail (link aktif, histori + manual sudah di-blend di RPC) DAN daftar
+    // override manual (buat tau mana yang MANUAL badge-nya + isi bagian
+    // "Disembunyikan") ditarik bareng — dua RPC ringan, gak perlu nunggu urut.
+    const [detailRes, overrideRes] = await Promise.all([
+      S.rpc('get_dictionary_detail', { p_istilah: istilah }),
+      S.rpc('get_dictionary_overrides', { p_istilah: istilah })
+    ]);
+    if (detailRes.error) throw new Error(detailRes.error.message || detailRes.error.hint || 'Gagal memuat detail istilah');
+    const data = detailRes.data || [];
+    const overrides = overrideRes.error ? [] : (overrideRes.data || []);
+    const manualAddedKodes = new Set(overrides.filter(o => o.included).map(o => o.kode_produk));
+    const hiddenRows = overrides.filter(o => !o.included);
+
+    if (!data.length) {
+      dictModalList.innerHTML = '<div style="padding:16px 0;text-align:center;color:var(--text-muted);font-size:13px">Belum ada produk yang dihubungkan ke istilah ini — tambah lewat kolom di bawah.</div>';
+    } else {
+      // Sudah terurut dari server berdasarkan frekuensi terbesar (JANGAN diurutkan ulang —
+      // satu istilah customer memang wajar punya beberapa produk Robust, ini bukan error).
+      dictModalList.innerHTML = data.map(d => dictDetailRowHtml(d, manualAddedKodes.has(d.kode_produk))).join('');
     }
-    // Sudah terurut dari server berdasarkan frekuensi terbesar (JANGAN diurutkan ulang —
-    // satu istilah customer memang wajar punya beberapa produk Robust, ini bukan error).
-    dictModalList.innerHTML = data.map(d => `
-      <div class="dict-detail-row" style="display:block">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-          <div>
-            <div class="dict-detail-produk">${S.escapeHtmlAttr(d.nama_produk || '(nama produk tidak tersedia)')}</div>
-            <div class="dict-detail-kode">${S.escapeHtmlAttr(d.kode_produk || '-')}</div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div class="dict-detail-freq">${Number(d.jumlah_pemakaian).toLocaleString('id-ID')}×</div>
-            <div class="dict-detail-pct">${d.persentase != null ? d.persentase + '%' : ''}</div>
-          </div>
+
+    if (hiddenRows.length) {
+      dictModalHiddenWrap.style.display = 'block';
+      dictModalHiddenList.innerHTML = hiddenRows.map(h => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;font-size:12px">
+          <span style="color:var(--text-muted)">${S.escapeHtmlAttr(h.nama_produk || h.kode_produk)} <span class="dict-detail-kode">${S.escapeHtmlAttr(h.kode_produk)}</span></span>
+          <button type="button" class="dict-detail-kembalikan-btn" data-kode="${S.escapeHtmlAttr(h.kode_produk)}"
+            style="font-size:11.5px;padding:4px 10px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);cursor:pointer">Kembalikan</button>
         </div>
-        <div class="dict-detail-bar-wrap"><div class="dict-detail-bar" style="width:${d.persentase != null ? d.persentase : 0}%"></div></div>
-      </div>
-    `).join('');
+      `).join('');
+    }
   } catch (err) {
     dictModalError.textContent = err.message;
     dictModalError.style.display = 'block';
@@ -1201,8 +1255,157 @@ async function openDictionaryDetail(istilah) {
     dictModalLoading.style.display = 'none';
   }
 }
+S.openDictionaryDetail = openDictionaryDetail;
 dictModalClose.addEventListener('click', () => dictModal.classList.remove('show'));
 dictModal.addEventListener('click', (e) => { if (e.target === dictModal) dictModal.classList.remove('show'); });
+
+// Klik "Hapus" di satu baris produk (link asli dari histori ATAU manual) —
+// gak beneran hapus histori permintaan_item-nya, cuma nyimpen override
+// included=false biar RPC berikutnya nyembunyiin pasangan istilah+produk ini.
+// Reversible lewat "Kembalikan" di bagian "Disembunyikan".
+dictModalList.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.dict-detail-hapus-btn');
+  if (!btn || !dictModalCurrentIstilah) return;
+  const kode = btn.dataset.kode;
+  if (!kode) return;
+  btn.disabled = true;
+  try {
+    const { error } = await S.rpc('upsert_dictionary_override', {
+      p_istilah: dictModalCurrentIstilah, p_kode_produk: kode, p_produk_id: null, p_included: false
+    });
+    if (error) throw new Error(error.message || error.hint || 'Gagal menyembunyikan link');
+    await openDictionaryDetail(dictModalCurrentIstilah);
+    loadDictionary(); // status/jumlah produk di tabel utama bisa ikut geser
+  } catch (err) {
+    S.showToast('Gagal: ' + err.message, 'error');
+    btn.disabled = false;
+  }
+});
+
+// Klik "Kembalikan" di bagian "Disembunyikan" — hapus override-nya sekalian
+// (bukan sekadar toggle included=true), biar balik ke keadaan alami: kalau
+// link itu emang dari histori asli, dia otomatis muncul lagi di detail tanpa
+// perlu nyimpen override apa pun.
+dictModalList.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.dict-detail-kembalikan-btn');
+  if (!btn || !dictModalCurrentIstilah) return;
+  const kode = btn.dataset.kode;
+  if (!kode) return;
+  btn.disabled = true;
+  try {
+    const { error } = await S.rpc('delete_dictionary_override', { p_istilah: dictModalCurrentIstilah, p_kode_produk: kode });
+    if (error) throw new Error(error.message || error.hint || 'Gagal mengembalikan link');
+    await openDictionaryDetail(dictModalCurrentIstilah);
+    loadDictionary();
+  } catch (err) {
+    S.showToast('Gagal: ' + err.message, 'error');
+    btn.disabled = false;
+  }
+});
+
+// "Kembalikan" ada di dictModalHiddenList, bukan dictModalList — event di atas
+// gak nyampe ke situ (elemen beda). Delegasikan sekali lagi dari parent yang
+// beneran ngandung tombolnya.
+dictModalHiddenList.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.dict-detail-kembalikan-btn');
+  if (!btn || !dictModalCurrentIstilah) return;
+  const kode = btn.dataset.kode;
+  if (!kode) return;
+  btn.disabled = true;
+  try {
+    const { error } = await S.rpc('delete_dictionary_override', { p_istilah: dictModalCurrentIstilah, p_kode_produk: kode });
+    if (error) throw new Error(error.message || error.hint || 'Gagal mengembalikan link');
+    await openDictionaryDetail(dictModalCurrentIstilah);
+    loadDictionary();
+  } catch (err) {
+    S.showToast('Gagal: ' + err.message, 'error');
+    btn.disabled = false;
+  }
+});
+
+// ---- Widget "+ Tambah / hubungkan produk lain" (search sambil ketik) ----
+let dictAddSearchDebounce = null;
+dictModalAddInput.addEventListener('input', () => {
+  clearTimeout(dictAddSearchDebounce);
+  const q = dictModalAddInput.value.trim();
+  if (!q) { dictModalAddResults.style.display = 'none'; dictModalAddResults.innerHTML = ''; return; }
+  dictAddSearchDebounce = setTimeout(async () => {
+    try {
+      // RPC yang sama dipakai search utama Konversian — biar konsisten hasilnya
+      // (harga/status/dsb sekalian ada kalau nanti mau ditampilin juga).
+      const { data, error } = await S.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
+      if (error || !data || !data.length) {
+        dictModalAddResults.style.display = 'block';
+        dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--text-muted)">Gak ketemu.</div>`;
+        return;
+      }
+      dictModalAddResults.style.display = 'block';
+      dictModalAddResults.innerHTML = data.slice(0, 8).map(p => `
+        <div class="dict-add-result-row" data-kode="${S.escapeHtmlAttr(p.kode_produk)}" data-produk-id="${p.id || ''}"
+          style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--border)">
+          <span>${S.escapeHtmlAttr(p.kode_produk)} — ${S.escapeHtmlAttr(p.nama_produk || '')}</span>
+          <i class="ti ti-plus" style="flex-shrink:0"></i>
+        </div>
+      `).join('');
+    } catch (err) {
+      dictModalAddResults.style.display = 'block';
+      dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--danger)">${err.message}</div>`;
+    }
+  }, 300);
+});
+
+dictModalAddResults.addEventListener('click', async (e) => {
+  const row = e.target.closest('.dict-add-result-row');
+  if (!row || !dictModalCurrentIstilah) return;
+  const kode = row.dataset.kode;
+  const produkId = row.dataset.produkId ? parseInt(row.dataset.produkId, 10) : null;
+  row.style.pointerEvents = 'none';
+  row.style.opacity = '.5';
+  try {
+    const { error } = await S.rpc('upsert_dictionary_override', {
+      p_istilah: dictModalCurrentIstilah, p_kode_produk: kode, p_produk_id: produkId, p_included: true
+    });
+    if (error) throw new Error(error.message || error.hint || 'Gagal menambahkan link');
+    dictModalAddInput.value = '';
+    dictModalAddResults.style.display = 'none';
+    dictModalAddResults.innerHTML = '';
+    await openDictionaryDetail(dictModalCurrentIstilah);
+    loadDictionary();
+  } catch (err) {
+    S.showToast('Gagal: ' + err.message, 'error');
+    row.style.pointerEvents = '';
+    row.style.opacity = '';
+  }
+});
+
+// ---- Modal "Tambah Istilah" — cuma minta teks istilahnya, produk pertama
+// dihubungkan lewat widget "+ Tambah produk" di dalam modal detail yang sama
+// (dibuka otomatis begitu istilah baru diisi), biar gak ada 2 form beda gaya. ----
+function openDictNewModal() {
+  dictNewInput.value = '';
+  dictNewError.style.display = 'none';
+  dictNewModal.classList.add('show');
+  setTimeout(() => dictNewInput.focus(), 50);
+}
+function closeDictNewModal() { dictNewModal.classList.remove('show'); }
+
+btnDictTambah.addEventListener('click', openDictNewModal);
+dictNewCancel.addEventListener('click', closeDictNewModal);
+dictNewModal.addEventListener('click', (e) => { if (e.target === dictNewModal) closeDictNewModal(); });
+dictNewInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDictNewModal(); if (e.key === 'Enter') dictNewOk.click(); });
+dictNewOk.addEventListener('click', () => {
+  const istilah = dictNewInput.value.trim();
+  if (!istilah) {
+    dictNewError.textContent = 'Istilah gak boleh kosong.';
+    dictNewError.style.display = 'block';
+    return;
+  }
+  closeDictNewModal();
+  // Belum ke-INSERT apa pun ke DB di titik ini (tabel manual override butuh
+  // kode_produk NOT NULL) — baru beneran kesimpen begitu produk pertama
+  // dipilih lewat widget "+ Tambah produk" di modal detail ini.
+  openDictionaryDetail(istilah);
+});
 
 // p_links: array of {produk_id, kode_produk, qty_alokasi} — boleh kosong ([])
 // kalau statusnya PENDING/TIDAK_TERPENUHI. Ganti total (replace-all) per item,

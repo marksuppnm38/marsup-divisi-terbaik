@@ -271,13 +271,14 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
           <option value="terbaru">Terbaru digunakan</option>
         </select>
         <button class="toggle-btn" id="btn-dict-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
+        <button class="toggle-btn" id="btn-dict-tambah" type="button" title="Tambah istilah manual"><i class="ti ti-plus"></i> Tambah Istilah</button>
       </div>
 
       <div id="dict-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat dictionary…</div>
       <div id="dict-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
       <div class="clip-empty" id="dict-empty" style="display:none">
         <i class="ti ti-book-2"></i>
-        <p>Belum ada data dictionary.<br>Dictionary otomatis terisi setiap kali item permintaan RS ditandai "TERPENUHI".</p>
+        <p>Belum ada data dictionary.<br>Otomatis terisi tiap item permintaan RS ditandai "TERPENUHI", atau tambah manual lewat tombol "Tambah Istilah".</p>
       </div>
 
       <div class="dict-table-wrap" id="dict-table-wrap" style="display:none">
@@ -909,6 +910,32 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
     <div id="dict-modal-loading" style="display:none;text-align:center;padding:20px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat detail…</div>
     <div id="dict-modal-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px"></div>
     <div id="dict-modal-list"></div>
+
+    <div id="dict-modal-add-wrap" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:600;margin-bottom:6px">+ Tambah / hubungkan produk lain</div>
+      <div style="position:relative">
+        <input id="dict-modal-add-input" type="text" placeholder="Cari kode/nama produk…" autocomplete="off" style="width:100%;height:34px;padding:0 10px;font-size:12.5px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--text);outline:none"/>
+        <div id="dict-modal-add-results" style="display:none;margin-top:4px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:7px"></div>
+      </div>
+    </div>
+
+    <div id="dict-modal-hidden-wrap" style="display:none;margin-top:14px">
+      <div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:600;margin-bottom:6px">Disembunyikan (ditandai kurang akurat)</div>
+      <div id="dict-modal-hidden-list"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dict-new-modal">
+  <div class="modal-box" style="width:90vw;max-width:400px;text-align:left;padding:22px 24px">
+    <div class="modal-title" style="margin:0 0 4px">Tambah Istilah Baru</div>
+    <div class="modal-sub" style="margin-bottom:14px">Istilah customer yang mau dicatat manual — belum tentu pernah muncul di histori konversi.</div>
+    <input id="dict-new-input" type="text" placeholder="mis. gunting jaringan" autocomplete="off" style="width:100%;height:38px;padding:0 12px;font-size:13px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:6px;outline:none"/>
+    <div id="dict-new-error" style="display:none;color:var(--danger);font-size:12px;margin-bottom:6px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+      <button id="dict-new-cancel" type="button" style="font-size:12.5px;padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);cursor:pointer">Batal</button>
+      <button id="dict-new-ok" type="button" style="font-size:12.5px;padding:8px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer">Lanjut</button>
+    </div>
   </div>
 </div>
 
