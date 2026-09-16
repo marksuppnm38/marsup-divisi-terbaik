@@ -1177,9 +1177,22 @@ async function loadForecastStok(){
 // ══════════════════════════════════════════
 // POPULASI PRODUK PER WILAYAH — searchable & filterable, dihitung
 // server-side lewat RPC get_dashboard_populasi_produk (lihat
-// populasi_produk_schema.sql). Wilayah dideteksi otomatis dari
-// ALAMAT_KIRIM lewat tabel referensi + trigger di Supabase, jadi
-// tidak perlu isi manual tiap dokumen.
+// populasi_produk_schema.sql, view v_orderan_populasi di atas tabel
+// orderan_lintas_entitas yang sudah live disync syncOrderan.gs).
+//
+// Definisi "populasi" (bukan sekadar jumlah order): channel_sumber
+// (dari kolom ekat_non_ekat, BUKAN dari suffix kode PO) termasuk
+// INAPROC_PNM / INAPROC_SAMAYA / PEMBELIAN_LANGSUNG, dan bukan baris
+// yang ke-flag sample (lihat fn_is_sample di schema). RETAIL &
+// KONSINYASI dikecualikan dari populasi secara sengaja.
+//
+// Wilayah dideteksi dari ALAMAT_KIRIM lewat fn_detect_wilayah()
+// (keyword-match terhadap tabel wilayah_keyword) dihitung tiap query
+// via VIEW — bukan trigger, bukan kolom yang diisi manual/pre-compute.
+// (Tabel orderan_lintas_entitas punya kolom `wilayah` lama dari
+// percobaan skema sebelumnya — 7.229 baris terisi tapi datanya salah,
+// makanya diabaikan total di view ini, ganti nama jadi
+// `wilayah_deteksi` biar gak collide pas SELECT o.*.)
 // ══════════════════════════════════════════
 const POP_PAGE_SIZE = 25;
 let popPage = 1;
@@ -1208,12 +1221,99 @@ async function popInit(){
     sel.innerHTML = '<option value="">Semua Channel</option>' +
       (list || []).map(c => `<option value="${c.channel}">${c.channel} (${fmt(c.jumlah)})</option>`).join('');
   } catch(e) { /* RPC belum ada — dropdown tetap default sampai SQL channel dijalankan */ }
-  await Promise.all([popLoadSummary(), popLoadTable()]);
+  await Promise.all([popLoadSummary(), popLoadTable(), popLoadTrend(), popLoadDataQuality()]);
+}
+
+// Tren populasi kumulatif — qty terkirim per bulan + running total.
+// Reuses the same SVG line-chart approach as loadValueLineChart() diatas
+// (path + area gradient + dot/tooltip per titik), tapi dengan DUA garis:
+// batang bulanan (area) + garis kumulatif (populasi total dari waktu ke
+// waktu, ini poin utama dashboard populasi yang gak bisa ditunjukkan
+// tabel flat).
+async function popLoadTrend(){
+  const box = document.getElementById('pop-trend-box');
+  try {
+    const data = await rpc('get_dashboard_populasi_trend', { p_entitas: popEntitas || null, p_channel: popChannel || null });
+    if (!data || !data.length){
+      box.innerHTML = `<div class="insight-empty">Belum ada data delivered dengan tanggal yang bisa diparse.</div>`;
+      return;
+    }
+    const W = 700, H = 180, PAD = 28;
+    const maxCum = Math.max(...data.map(d => d.qty_kumulatif || 0), 1);
+    const n = data.length;
+    const stepX = (W - PAD*2) / (n - 1 || 1);
+    const points = data.map((d,i) => {
+      const x = PAD + i * stepX;
+      const y = H - PAD - ((d.qty_kumulatif / maxCum) * (H - PAD*2));
+      return { x, y, ...d };
+    });
+    const pathD = points.map((p,i) => `${i===0?'M':'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+    const areaD = pathD + ` L ${points[points.length-1].x.toFixed(1)} ${H-PAD} L ${points[0].x.toFixed(1)} ${H-PAD} Z`;
+    const monthLabel = (b) => new Date(b + 'T00:00:00').toLocaleDateString('id-ID', { month: 'short', year: '2-digit' });
+    // Cuma tampilin label tiap beberapa titik biar gak numpuk pas datanya banyak bulan.
+    const labelEvery = Math.max(1, Math.ceil(n / 10));
+    const dots = points.map((p,i) => `<g>
+        <circle class="linechart-tooltip-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="var(--success)">
+          <title>${monthLabel(p.bulan)}: ${fmt(p.qty_bulan)} bulan ini, ${fmt(p.qty_kumulatif)} kumulatif</title>
+        </circle>
+        ${i % labelEvery === 0 ? `<text x="${p.x.toFixed(1)}" y="${H-6}" font-size="9.5" fill="var(--text-muted)" text-anchor="middle">${monthLabel(p.bulan)}</text>` : ''}
+      </g>`).join('');
+    box.innerHTML = `<svg class="linechart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="popTrendFade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--success)" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="var(--success)" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="${areaD}" fill="url(#popTrendFade)"/>
+      <path d="${pathD}" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}
+    </svg>
+    <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+      <i class="ph ph-info"></i> Garis = populasi kumulatif (qty TERKIRIM, tanggal terparse dari status). Hover titik untuk qty per bulan.
+    </div>`;
+  } catch(e) {
+    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat tren: ${e.message}</div>`;
+  }
+}
+
+// Panel kualitas data — nunjukkin baris yang butuh perbaikan manual
+// (channel gak kebaca, tanggal gak keparse, wilayah gak kedeteksi, dst)
+// SUPAYA angka populasi gak diam-diam salah karena data kotor yang
+// gak keliatan. Lihat get_dashboard_populasi_data_quality() di
+// populasi_produk_schema.sql buat definisi tiap angka.
+async function popLoadDataQuality(){
+  const box = document.getElementById('pop-dq-box');
+  try {
+    const dq = await rpc('get_dashboard_populasi_data_quality', {});
+    const items = [
+      { label: 'Channel tidak terklasifikasi', val: dq.channel_unclassified, icon: 'ph-question' },
+      { label: 'Channel INAPROC (bukan PNM/SAMAYA)', val: dq.channel_inaproc_lain, icon: 'ph-flag' },
+      { label: 'Status TERKIRIM tanpa tanggal terparse', val: dq.delivered_missing_date, icon: 'ph-calendar-x' },
+      { label: 'Tanggal produksi tidak terparse', val: dq.production_date_unparsed, icon: 'ph-calendar-x' },
+      { label: 'Tanggal pengiriman tidak terparse', val: dq.delivery_date_unparsed, icon: 'ph-calendar-x' },
+      { label: 'Wilayah tidak terdeteksi dari alamat', val: dq.wilayah_undetected, icon: 'ph-map-pin-line' },
+      { label: 'Nama distributor belum di-alias-kan', val: dq.distributor_unmapped, icon: 'ph-buildings' },
+    ];
+    box.innerHTML = `<div class="dq-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+      ${items.map(it => `
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px">
+          <i class="ph ${it.icon}" style="font-size:16px;color:${it.val ? 'var(--warning)' : 'var(--text-muted)'}"></i>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-muted)">${it.label}</div>
+            <div style="font-family:var(--mono);font-weight:600">${fmt(it.val || 0)}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>`;
+  } catch(e) {
+    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat data quality: ${e.message}</div>`;
+  }
 }
 
 function popSetWilayah(v){ popWilayah = v; popPage = 1; popLoadTable(); popLoadSummary(); }
-function popSetEntitas(v){ popEntitas = v; popPage = 1; popLoadTable(); popLoadSummary(); }
-function popSetChannel(v){ popChannel = v; popPage = 1; popLoadTable(); popLoadSummary(); }
+function popSetEntitas(v){ popEntitas = v; popPage = 1; popLoadTable(); popLoadSummary(); popLoadTrend(); }
+function popSetChannel(v){ popChannel = v; popPage = 1; popLoadTable(); popLoadSummary(); popLoadTrend(); }
 
 function popOnSearch(){
   clearTimeout(popSearchDebounce);
@@ -1275,7 +1375,7 @@ async function popLoadTable(){
     tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">
       <i class="ph ph-database" style="font-size:26px;display:block;margin-bottom:8px"></i>
       Tabel/RPC populasi produk belum tersedia di Supabase.<br>
-      <span style="font-size:11px">Jalankan <code>populasi_produk_schema.sql</code> di SQL Editor Supabase, lalu sync data (lihat <code>sync_ke_supabase.gs</code>).</span>
+      <span style="font-size:11px">RPC populasi belum ada di Supabase. Jalankan <code>populasi_produk_schema.sql</code> di SQL Editor Supabase (view + function di atas <code>orderan_lintas_entitas</code>, yang sudah disync <code>syncOrderan</code> — tidak perlu script sync baru).</span>
     </td></tr>`;
     document.getElementById('pop-tbl-info').textContent = '—';
     document.getElementById('pop-pagination').innerHTML = '';

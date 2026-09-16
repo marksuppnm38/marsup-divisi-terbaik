@@ -187,6 +187,14 @@ export const DASHBOARD_MARKUP = `
     <div class="stat-card purple"><div class="skeleton" style="height:60px"></div></div>
     <div class="stat-card warning"><div class="skeleton" style="height:60px"></div></div>
   </div>
+  <div class="insight-card" style="margin-bottom:14px">
+    <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-chart-line"></i> Tren Populasi Kumulatif (qty terkirim per bulan)</div>
+    <div id="pop-trend-box"><div class="skeleton" style="height:150px"></div></div>
+  </div>
+  <div class="insight-card" style="margin-bottom:14px">
+    <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-warning-circle"></i> Kualitas Data Populasi</div>
+    <div id="pop-dq-box"><div class="skeleton" style="height:60px"></div></div>
+  </div>
   <div class="table-section">
     <div class="table-header">
       <div class="table-title"><i class="ph ph-funnel"></i> Filter Populasi Produk</div>
