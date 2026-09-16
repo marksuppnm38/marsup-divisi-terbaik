@@ -57,6 +57,14 @@
 
 import { navMount, navSetActive } from './pages/nav/nav.js';
 import { initAuthGate } from '../shared/auth-gate.js';
+// Same two registries nav-markup.js already imports to draw the sidebar
+// accordion (see app/pages/nav/nav-markup.js's SUBNAV) -- reused here as
+// the single source of truth for "is this sub-route real", so router.js
+// never has its own separate, driftable copy of the 5/6 valid ids. Any
+// module NOT in SUBROUTES below (dashboard/stok/kompres-pdf/export-gambar)
+// simply has no legitimate sub-routes at all -- see isValidSub().
+import { CRUD_PRODUK_SUBNAV } from './pages/crud-produk/subnav.js';
+import { KONVERSIAN_SUBNAV } from './pages/konversian/subnav.js';
 
 const ROUTES = {
   'kompres-pdf': () => import('./pages/kompres-pdf/index.js'),
@@ -66,6 +74,22 @@ const ROUTES = {
   'dashboard': () => import('./pages/dashboard/index.js'),
   'stok': () => import('./pages/stok/index.js'),
 };
+
+const SUBROUTES = {
+  'crud-produk': CRUD_PRODUK_SUBNAV.map((s) => s.id),
+  'konversian': KONVERSIAN_SUBNAV.map((s) => s.id),
+};
+
+// A sub-route is legitimate only if: no sub was requested at all, OR the
+// module has a registry above AND the requested sub is actually in it.
+// Anything else -- a module with no sub-routes getting one anyway, or a
+// sub id that isn't one of the real ones -- is treated the same as a
+// dead top-level route (see `tampered` in render()).
+function isValidSub(module, sub) {
+  if (!sub) return true;
+  const allowed = SUBROUTES[module];
+  return !!allowed && allowed.includes(sub);
+}
 
 // 'home' RETIRED sesi keenam belas: with the persistent shared nav sidebar
 // always showing the module list, home's own page (which was ALSO just a
@@ -89,8 +113,14 @@ let routingEnabled = false; // false while the gate is showing (logged out / not
 
 function currentRoute() {
   const path = location.pathname.replace(/^\/+/, '').replace(/\/+$/, '').trim();
-  const [module, sub] = (path || DEFAULT_ROUTE).split('/');
-  return { module, sub: sub || null };
+  const [module, sub, ...rest] = (path || DEFAULT_ROUTE).split('/');
+  // `rest` is anything past the module/sub pair -- e.g. the
+  // "RB999-KE878-B089-U09" in /crud-produk/produk/RB999-KE878-B089-U09.
+  // No route in this app is ever 3 segments deep on purpose (see ROUTES +
+  // SUBROUTES above), so any non-empty `rest` is someone hand-editing the
+  // URL bar looking for a page that isn't there, same as an unknown module
+  // or sub id -- render() treats all three identically as `tampered`.
+  return { module, sub: sub || null, extra: rest.length > 0 };
 }
 
 // Single choke point for every in-app path change -- both the internal
@@ -110,13 +140,37 @@ function navigate(path, { replace = false } = {}) {
 
 async function render() {
   if (!routingEnabled) return; // popstate fired while logged out -- ignore, gate owns the screen
-  let { module, sub } = currentRoute();
+  clearPendingKick(); // any earlier "you're about to be logged out" from a previous bad URL no longer applies
+  let { module, sub, extra } = currentRoute();
   if (RETIRED_REDIRECTS[module]) {
     module = RETIRED_REDIRECTS[module];
     navigate('/' + module + (sub ? '/' + sub : ''), { replace: true });
     return; // navigate() above already re-runs render() with the new route
   }
   const load = ROUTES[module];
+
+  // FIX ("mbalik dengan aman ke crud"): this check used to not exist at
+  // all -- an unknown top-level module fell through to the `!load` 404
+  // below, but a KNOWN module with a bogus/extra sub-path (e.g.
+  // /crud-produk/produk/RB999-KE878-B089-U09) never got that far. It hit
+  // the `setSubroute` fast-path right below instead, which only ever reads
+  // the module+sub pair and silently ignores anything past it -- so it just
+  // quietly re-rendered crud-produk's real "produk" view as if nothing had
+  // been typed after it. Checked BEFORE that fast-path (and before nav even
+  // mounts) so a tampered URL can never reach it. Same treatment for all
+  // three cases -- unknown module, invalid sub, or extra depth -- an
+  // unrecognized destination is an unrecognized destination.
+  const tampered = !load || extra || !isValidSub(module, sub);
+  if (tampered) {
+    if (currentPage && typeof currentPage.unmount === 'function') {
+      try { currentPage.unmount(); } catch (err) { console.error('unmount gagal:', err); }
+    }
+    currentPage = null;
+    currentModule = null;
+    container.innerHTML = '';
+    renderNotFound(container);
+    return;
+  }
 
   // Nav is mounted ONCE (idempotent — navMount() no-ops on repeat calls with
   // the same container, see nav.js), not per-route like page modules — it's
@@ -134,7 +188,8 @@ async function render() {
   // sidebar sub-item click, a real perceived-speed regression the whole
   // point of this change shouldn't introduce). Only pages that opted in by
   // exporting setSubroute() take this path; everything else falls through
-  // to the normal mount/unmount below exactly as before.
+  // to the normal mount/unmount below exactly as before. `sub` is
+  // guaranteed valid for this module by the `tampered` check above.
   if (currentModule === module && currentPage && typeof currentPage.setSubroute === 'function') {
     currentPage.setSubroute(sub);
     return;
@@ -146,11 +201,6 @@ async function render() {
   currentPage = null;
   currentModule = null;
   container.innerHTML = '';
-
-  if (!load) {
-    renderNotFound(container, module);
-    return;
-  }
 
   const mod = await load();
   // FIX: mount() dulu dipanggil telanjang (gak dibungkus try/catch). Kalau
@@ -188,16 +238,18 @@ async function render() {
 // an unrecognized module ("Halaman X belum dipindah ke SPA" + a link to a
 // legacy .html that in most cases no longer exists either) read as if the
 // app was still mid-migration and apologizing for it. It isn't anymore --
-// ROUTES above covers every real module. Anything that lands here now is
-// either a stale bookmark or someone hand-editing the URL bar to go
-// spelunking for hidden pages, so the message doesn't need to be gentle
-// about it. escalateMessage() keeps a per-browser counter (localStorage,
+// ROUTES/SUBROUTES above cover every real route. Anything that lands here
+// now is either a stale bookmark or someone hand-editing the URL bar to go
+// spelunking for hidden pages/IDs, so the message doesn't need to be gentle
+// about it -- AND (sesi lanjutan lagi, per report: known module + fake
+// sub-path just quietly re-showed the real page, "mbalik dengan aman ke
+// crud") it now ends the session instead of just scolding, same rule for
+// every module. escalateMessage() keeps a per-browser counter (localStorage,
 // survives reloads/new tabs, resets never -- that's the point) and gets
 // progressively less patient the more times the SAME browser hits a
-// nonexistent route, purely for the amusement of whoever's poking at it.
-// escapeHtml() exists because `module` is attacker/user-controlled (comes
-// straight from location.pathname, see currentRoute() above) and the old
-// code interpolated it into innerHTML raw.
+// nonexistent route. escapeHtml() exists because the attempted path is
+// attacker/user-controlled (comes straight from location.pathname) and the
+// old code interpolated it into innerHTML raw.
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
@@ -205,6 +257,7 @@ function escapeHtml(str) {
 }
 
 const NOT_FOUND_HITS_KEY = 'pnm_404_hits';
+const KICK_SECONDS = 3; // how long the countdown/message shows before logout() actually fires
 
 function escalateMessage(hits) {
   const lines = [
@@ -218,25 +271,38 @@ function escalateMessage(hits) {
   return lines[idx];
 }
 
-function renderNotFound(container, module) {
+// Single timer pair for the pending auto-logout, so a second bad URL (or a
+// real navigation away, via clearPendingKick() at the top of render())
+// cancels whatever a PREVIOUS bad URL had scheduled instead of stacking
+// multiple logout() calls / countdowns fighting over the same DOM node.
+let kickTimeout = null;
+let kickInterval = null;
+
+function clearPendingKick() {
+  if (kickTimeout) { clearTimeout(kickTimeout); kickTimeout = null; }
+  if (kickInterval) { clearInterval(kickInterval); kickInterval = null; }
+}
+
+function renderNotFound(container) {
   let hits = 1;
   try {
     hits = (parseInt(localStorage.getItem(NOT_FOUND_HITS_KEY) || '0', 10) || 0) + 1;
     localStorage.setItem(NOT_FOUND_HITS_KEY, String(hits));
   } catch (err) { /* localStorage unavailable (private mode/quota) -- just don't escalate */ }
 
-  const safeModule = escapeHtml(module);
+  const attemptedPath = escapeHtml(location.pathname);
   const attemptNote = hits > 1
-    ? `<p class="pnm-404-count">Percobaan ke-${hits} di URL ini. Sistem mencatat.</p>`
+    ? `<p class="pnm-404-count">Percobaan ke-${hits} di URL yang gak ada. Sistem mencatat.</p>`
     : '';
 
   container.innerHTML = `
     <div class="pnm-404">
       <div class="pnm-404-code">404</div>
-      <h1 class="pnm-404-title">Tidak ada apa-apa di "/${safeModule}"</h1>
+      <h1 class="pnm-404-title">Tidak ada apa-apa di "${attemptedPath}"</h1>
       <p class="pnm-404-msg">${escalateMessage(hits)}</p>
       ${attemptNote}
-      <button type="button" class="pnm-404-btn" id="pnm-404-back">Kembali ke Dashboard</button>
+      <p class="pnm-404-kick">Karena mengutak-atik URL, kamu bakal di-logout otomatis dalam <span id="pnm-404-countdown">${KICK_SECONDS}</span> detik.</p>
+      <button type="button" class="pnm-404-btn" id="pnm-404-back">Kembali ke Dashboard sekarang</button>
     </div>
     <style>
       .pnm-404 {
@@ -275,8 +341,14 @@ function renderNotFound(container, module) {
         color: var(--text-muted, #64748b);
         font-style: italic;
       }
+      .pnm-404-kick {
+        margin: 0 0 20px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--danger, #b91c1c);
+      }
       .pnm-404-btn {
-        margin-top: 12px;
+        margin-top: 4px;
         padding: 10px 20px;
         font-size: 14px;
         font-weight: 600;
@@ -290,9 +362,29 @@ function renderNotFound(container, module) {
     </style>
   `;
 
+  // Clicking through to Dashboard is a normal navigate() -- render() clears
+  // this same pending kick at its top, so choosing to leave cancels the
+  // logout. Anyone who just sits on the page (or keeps trying more URLs)
+  // still gets thrown out once the countdown below hits zero.
   container.querySelector('#pnm-404-back')?.addEventListener('click', () => {
     navigate('/' + DEFAULT_ROUTE);
   });
+
+  clearPendingKick();
+  let remaining = KICK_SECONDS;
+  const countdownEl = container.querySelector('#pnm-404-countdown');
+  kickInterval = setInterval(() => {
+    remaining -= 1;
+    if (countdownEl) countdownEl.textContent = String(Math.max(remaining, 0));
+  }, 1000);
+  kickTimeout = setTimeout(async () => {
+    clearPendingKick();
+    try {
+      await window.PNMAuth?.logout(); // triggers auth-gate's onAuthStateChange -> onLoggedOut -> stopRouting()
+    } catch (err) {
+      console.error('auto-logout (URL tampering) gagal:', err);
+    }
+  }, KICK_SECONDS * 1000);
 }
 
 let routingStarted = false; // whether the popstate/pnm:navigate listeners have EVER been attached
