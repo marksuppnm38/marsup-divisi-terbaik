@@ -148,10 +148,7 @@ async function render() {
   container.innerHTML = '';
 
   if (!load) {
-    container.innerHTML = `<div style="max-width:520px;margin:60px auto;font-family:sans-serif;">
-      <p>Halaman "${module}" belum dipindah ke SPA.</p>
-      <p><a href="/${module}.html">Buka versi lama</a></p>
-    </div>`;
+    renderNotFound(container, module);
     return;
   }
 
@@ -185,6 +182,117 @@ async function render() {
       <p>Coba muat ulang halaman. Kalau masih gagal, hubungi admin.</p>
     </div>`;
   }
+}
+
+// 404 (sesi lanjutan -- "stop being polite about it"): the old fallback for
+// an unrecognized module ("Halaman X belum dipindah ke SPA" + a link to a
+// legacy .html that in most cases no longer exists either) read as if the
+// app was still mid-migration and apologizing for it. It isn't anymore --
+// ROUTES above covers every real module. Anything that lands here now is
+// either a stale bookmark or someone hand-editing the URL bar to go
+// spelunking for hidden pages, so the message doesn't need to be gentle
+// about it. escalateMessage() keeps a per-browser counter (localStorage,
+// survives reloads/new tabs, resets never -- that's the point) and gets
+// progressively less patient the more times the SAME browser hits a
+// nonexistent route, purely for the amusement of whoever's poking at it.
+// escapeHtml() exists because `module` is attacker/user-controlled (comes
+// straight from location.pathname, see currentRoute() above) and the old
+// code interpolated it into innerHTML raw.
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+const NOT_FOUND_HITS_KEY = 'pnm_404_hits';
+
+function escalateMessage(hits) {
+  const lines = [
+    'Halaman ini tidak ada. Belum pernah ada. Tidak akan pernah ada.',
+    'Masih di sini? Sudah dicoba, sudah tidak ada, tetap tidak ada.',
+    'Ini percobaan ketiga. URL bar bukan menu rahasia.',
+    'Oke, ini mulai personal. Halaman ini benar-benar, sungguh-sungguh tidak ada.',
+    'Kita sudah sejauh ini bersama. Halamannya tetap tidak ada.',
+  ];
+  const idx = Math.min(hits - 1, lines.length - 1);
+  return lines[idx];
+}
+
+function renderNotFound(container, module) {
+  let hits = 1;
+  try {
+    hits = (parseInt(localStorage.getItem(NOT_FOUND_HITS_KEY) || '0', 10) || 0) + 1;
+    localStorage.setItem(NOT_FOUND_HITS_KEY, String(hits));
+  } catch (err) { /* localStorage unavailable (private mode/quota) -- just don't escalate */ }
+
+  const safeModule = escapeHtml(module);
+  const attemptNote = hits > 1
+    ? `<p class="pnm-404-count">Percobaan ke-${hits} di URL ini. Sistem mencatat.</p>`
+    : '';
+
+  container.innerHTML = `
+    <div class="pnm-404">
+      <div class="pnm-404-code">404</div>
+      <h1 class="pnm-404-title">Tidak ada apa-apa di "/${safeModule}"</h1>
+      <p class="pnm-404-msg">${escalateMessage(hits)}</p>
+      ${attemptNote}
+      <button type="button" class="pnm-404-btn" id="pnm-404-back">Kembali ke Dashboard</button>
+    </div>
+    <style>
+      .pnm-404 {
+        max-width: 480px;
+        margin: 90px auto;
+        padding: 40px 32px;
+        text-align: center;
+        font-family: 'Inter', system-ui, sans-serif;
+        background: var(--surface, #fff);
+        border: 1px solid var(--border, #e2e4e9);
+        border-radius: 16px;
+      }
+      .pnm-404-code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 64px;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--danger, #b91c1c);
+        letter-spacing: -2px;
+      }
+      .pnm-404-title {
+        margin: 16px 0 8px;
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text, #0b1220);
+        word-break: break-word;
+      }
+      .pnm-404-msg {
+        margin: 0 0 8px;
+        font-size: 14px;
+        color: var(--text-secondary, #334155);
+      }
+      .pnm-404-count {
+        margin: 0 0 20px;
+        font-size: 12px;
+        color: var(--text-muted, #64748b);
+        font-style: italic;
+      }
+      .pnm-404-btn {
+        margin-top: 12px;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+        background: var(--accent, #007AFF);
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .pnm-404-btn:hover { background: var(--accent-hover, #0060df); }
+    </style>
+  `;
+
+  container.querySelector('#pnm-404-back')?.addEventListener('click', () => {
+    navigate('/' + DEFAULT_ROUTE);
+  });
 }
 
 let routingStarted = false; // whether the popstate/pnm:navigate listeners have EVER been attached
