@@ -3123,6 +3123,13 @@ S.convManualSearch = convManualSearch;
   installDictionary(S);
   installSetMendekati(S);
   installSph(S);
+
+  // Restore the sub-tab the URL asked for (e.g. a refresh/direct-link on
+  // /konversian/dictionary) -- mount() used to accept `initialSub` but never
+  // actually applied it, so a fresh mount always landed on whatever
+  // switchSubTab defaults to (Cari Produk), same class of bug crud-produk's
+  // mount() already guards against via `switchView(initialSub || 'produk')`.
+  switchSubTab(initialSub || 'cari');
 }
 
 /** Dipanggil router.js tiap kali URL sub-route berubah TANPA modul-nya
