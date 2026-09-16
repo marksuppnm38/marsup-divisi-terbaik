@@ -1323,16 +1323,16 @@ async function popLoadAudit(){
     const rows = a.rincian || [];
     const rowsHtml = rows.map(r => `
       <tr style="${r.is_population ? '' : 'opacity:.55'}">
-        <td><code>${r.kode_suffix}</code></td>
-        <td>${r.entitas}</td>
-        <td>${r.channel_turunan}</td>
+        <td><span class="kode-text">${r.kode_suffix}</span></td>
+        <td><span class="badge badge-instrument">${r.entitas}</span></td>
+        <td><span class="badge badge-instrument">${r.channel_turunan}</span></td>
         <td style="text-align:center">${r.is_sample ? '<i class="ph ph-flask" title="Sample"></i>' : ''}</td>
         <td style="text-align:center">${r.is_population ? '<i class="ph ph-check-circle" style="color:var(--success)"></i>' : '<i class="ph ph-x-circle" style="color:var(--text-muted)"></i>'}</td>
         <td style="text-align:right;font-family:var(--mono)">${fmt(r.jumlah)}</td>
       </tr>`).join('');
     box.innerHTML = `
-      <div style="overflow-x:auto">
-        <table class="data-table" style="font-size:12px">
+      <div class="table-scroll">
+        <table style="font-size:12px">
           <thead><tr>
             <th>Kode PO (suffix)</th><th>Entitas</th><th>Channel (turunan)</th>
             <th>Sample?</th><th>Masuk Populasi?</th><th style="text-align:right">Jumlah baris</th>
