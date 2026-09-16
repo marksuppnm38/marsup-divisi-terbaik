@@ -15,30 +15,67 @@
 //   This version actually bundles the app/router.js import graph (real
 //   esbuild `build`, with `splitting: true`) into a handful of hashed
 //   chunk files (chunks/<page>-<hash>.js). Every page's index.js,
-//   markup.js, subnav.js, etc. -- and shared/*.js -- get inlined into one
-//   opaque per-page bundle. There is no folder structure left to see.
+//   markup.js, subnav.js, etc. get inlined into one opaque per-page
+//   bundle. There is no app/pages/** folder structure left to see.
 //
-//   This was verified safe for this specific codebase before adopting it:
-//   - Every internal cross-file reference in app/ and shared/ is a real
-//     ESM `import`/`import()` (bundler-visible), confirmed by grepping the
-//     whole tree for dynamic `<script>` tags and string-based loads.
-//   - The only `document.createElement('script'); s.src = ...` calls found
-//     load third-party CDN vendor scripts (e.g. jsDelivr's supabase-js),
-//     never local app files -- bundling doesn't touch those, so they're
-//     unaffected either way.
-//   - The one non-bundler-visible pattern in the source is each page doing
-//     `new URL('./style.css', import.meta.url).href` to lazy-load its own
-//     stylesheet. esbuild does NOT auto-follow that pattern (confirmed by
-//     a real test build, not assumed) -- left alone, it would break after
-//     bundling, because the relative path would resolve against the new
-//     bundled chunk's location instead of the original source folder.
-//     Fixed via the `cssUrlRewritePlugin` below: page CSS files are
-//     content-hashed and copied to dist/assets/<hash>.css ourselves, and
-//     an esbuild onLoad hook rewrites each `new URL(...).href` call (only
-//     in esbuild's in-memory copy of the source -- nothing on disk in the
-//     repo is touched) to a plain string literal pointing at that hashed
-//     path. Confirmed working end-to-end against a real build + a local
-//     static server serving the output.
+//   This was checked against this specific codebase before adopting it,
+//   including one real mistake caught only by an actual test deploy:
+//
+//   - Every cross-file reference *within* app/pages/** is a real ESM
+//     `import`/`import()` (bundler-visible) -- those pages' own index.js,
+//     markup.js, subnav.js etc. bundle safely, no special handling needed.
+//
+//   - shared/auth-gate.js is only ever reached via a real ESM `import` in
+//     app/router.js, so it inlines into the router chunk automatically
+//     and never needs to exist as a standalone file in the output.
+//
+//   - shared/supabase-client.js, shared/auth-session.js, and
+//     shared/toast.js are each loaded a SECOND, non-ESM way: every page's
+//     own VENDOR_CHAIN/INDEPENDENT_SCRIPTS array passes their exact
+//     absolute path (e.g. '/shared/supabase-client.js') as a plain string
+//     to a classic `document.createElement('script'); s.src = ...`
+//     loader. That string is invisible to esbuild's bundler -- it isn't
+//     an import specifier, so nothing tells esbuild to follow or rewrite
+//     it. An earlier version of this script excluded shared/ from the
+//     copy step entirely (wrongly assuming ESM import was the only path
+//     in) -- that 404s those three files in production, caught by an
+//     actual test deploy. A next version copied them back as plain
+//     minified files at their original /shared/<name>.js path -- that
+//     fixed the 404, but left the `shared` folder name and each script's
+//     filename fully visible in DevTools > Sources, which defeats half
+//     the point of bundling.
+//
+//     Fixed properly here, the same way page-local CSS is handled below:
+//     these three files are content-hashed and copied to
+//     dist/assets/<hash>.js, and `jsUrlRewritePlugin` rewrites each
+//     hardcoded string literal ('/shared/supabase-client.js', etc.) to
+//     the hashed path wherever it appears inside the bundled
+//     app/pages/**/app/router.js graph -- only in esbuild's in-memory
+//     read of the source, nothing on disk in the repo is ever touched.
+//     No `shared/` folder ends up in the output at all.
+//
+//   - The only `document.createElement('script'); s.src = ...` calls that
+//     do NOT hit local files load third-party CDN vendor scripts (e.g.
+//     jsDelivr's supabase-js) -- bundling doesn't touch those either way,
+//     they're left as absolute external URLs.
+//
+//   - The one non-bundler-visible pattern *inside* the bundled graph is
+//     each page doing `new URL('./style.css', import.meta.url).href` to
+//     lazy-load its own stylesheet. esbuild does NOT auto-follow that
+//     pattern (confirmed with a real isolated test build, not assumed) --
+//     left alone, it would break after bundling, because the relative
+//     path would resolve against the new bundled chunk's location instead
+//     of the original source folder. Fixed via `cssUrlRewritePlugin`:
+//     page CSS files are content-hashed and copied to
+//     dist/assets/<hash>.css, and an onLoad hook rewrites each
+//     `new URL(...).href` call to a plain string literal pointing at that
+//     hashed path.
+//
+//   Both rewrite plugins, and the bundled output as a whole, were
+//   confirmed working end-to-end against a real build of this exact
+//   repo -- served locally, checking that every referenced path (every
+//   chunk, every hashed asset, favicons, pnm-universal.css) returns 200 --
+//   not assumed from reading the source.
 //
 // Everything else keeps the previous behavior:
 //   - Dev-only folders/files (docs, tooling scripts, console snippets,
@@ -51,7 +88,7 @@
 //
 // Output goes to dist/ (vercel.json's outputDirectory). Nothing under the
 // repo root is modified -- all rewriting happens in esbuild's in-memory
-// load hook and this script's own copy step, never on the actual files.
+// load hooks and this script's own copy step, never on the actual files.
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -90,16 +127,16 @@ const EXCLUDE_FILES = new Set([
   '.gitignore',
 ]);
 
-// Paths (relative to ROOT, forward-slash) that are handled by the esbuild
-// bundle step instead of the generic copy walk below. Copying these too
-// would both be redundant and would leak the exact folder tree bundling
-// is meant to hide.
+// Paths (relative to ROOT, forward-slash) fully handled by the esbuild
+// bundle step or the hashed-asset pipeline below, instead of the generic
+// copy walk. Copying these too would both be redundant and would leak the
+// exact folder tree bundling is meant to hide.
 const BUNDLED_PATHS = new Set(['app/router.js']);
-function isBundledPath(rel) {
+function isBundledOrHandledPath(rel) {
   const norm = rel.split(path.sep).join('/');
   if (BUNDLED_PATHS.has(norm)) return true;
   if (norm.startsWith('app/pages/')) return true;
-  if (norm.startsWith('shared/')) return true;
+  if (norm.startsWith('shared/')) return true; // handled via hashed assets or ESM inlining, see comment above
   return false;
 }
 
@@ -122,21 +159,28 @@ function hashOf(content) {
   return crypto.createHash('sha1').update(content).digest('hex').slice(0, 10);
 }
 
-// ─── Step 1: find every page-local CSS file loaded via
-// new URL('./x.css', import.meta.url), content-hash it, and copy it to
-// dist/assets/<hash>.css. Returns a Map of absolute source path -> public
-// URL, used by the esbuild plugin below.
-async function buildCssMap() {
+// The three shared/*.js files loaded via a hardcoded classic <script>
+// path (see big comment at top of file) -- everything else in shared/ is
+// either pure ESM-import-only (auth-gate.js, inlined automatically) or
+// doesn't exist.
+const CLASSIC_SHARED_SCRIPTS = ['supabase-client.js', 'auth-session.js', 'toast.js'];
+
+// ─── Step 1: hash + copy page-local CSS (loaded via
+// `new URL('./x.css', import.meta.url)`) AND the classic-script-tag
+// shared/*.js files into dist/assets/. Returns two maps used by the
+// esbuild plugins below: absolute source path -> public hashed URL.
+async function buildHashedAssetMaps() {
   const cssMap = new Map();
+  const jsMap = new Map(); // absolute shared/<name>.js path -> '/assets/<hash>.js'
   const assetsDir = path.join(OUT, 'assets');
   await fs.mkdir(assetsDir, { recursive: true });
 
-  async function walk(dir) {
+  async function walkCss(dir) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        await walk(full);
+        await walkCss(full);
         continue;
       }
       if (!entry.name.endsWith('.css')) continue;
@@ -148,25 +192,51 @@ async function buildCssMap() {
       cssMap.set(full, `/assets/${outName}`);
     }
   }
+  await walkCss(path.join(ROOT, 'app'));
 
-  await walk(path.join(ROOT, 'app'));
-  return cssMap;
+  const { transform } = await import('esbuild');
+  for (const name of CLASSIC_SHARED_SCRIPTS) {
+    const full = path.join(ROOT, 'shared', name);
+    let raw;
+    try {
+      raw = await fs.readFile(full, 'utf8');
+    } catch {
+      console.warn('WARNING: expected shared script not found, skipping:', full);
+      continue;
+    }
+    const result = await transform(raw, {
+      loader: 'js',
+      minify: true,
+      legalComments: 'none',
+      target: 'es2020',
+      sourcemap: false,
+    });
+    const hash = hashOf(result.code);
+    const outName = `${hash}.js`;
+    await fs.writeFile(path.join(assetsDir, outName), result.code);
+    jsMap.set(full, `/assets/${outName}`);
+  }
+
+  return { cssMap, jsMap };
 }
 
-// ─── Step 2: esbuild plugin that rewrites
-// `new URL('./whatever.css', import.meta.url).href` to the hashed public
-// path from cssMap. Only touches esbuild's in-memory read of the file --
-// nothing on disk in the repo is ever modified.
-function cssUrlRewritePlugin(cssMap) {
+// ─── Step 2: esbuild plugin that rewrites, inside the bundled
+// app/pages/**/app/router.js graph only:
+//   - `new URL('./whatever.css', import.meta.url).href` -> hashed CSS path
+//   - '/shared/<name>.js' string literals -> hashed JS path
+// Only touches esbuild's in-memory read of each file -- nothing on disk
+// in the repo is ever modified.
+function assetUrlRewritePlugin(cssMap, jsMap) {
   return {
-    name: 'css-url-rewrite',
+    name: 'asset-url-rewrite',
     setup(b) {
       b.onLoad({ filter: /\.js$/ }, async (args) => {
         if (!args.path.startsWith(ROOT)) return null;
         const raw = await fs.readFile(args.path, 'utf8');
         const dir = path.dirname(args.path);
         let changed = false;
-        const rewritten = raw.replace(
+
+        let rewritten = raw.replace(
           /new URL\(\s*['"]\.\/([\w.-]+\.css)['"]\s*,\s*import\.meta\.url\s*\)\.href/g,
           (match, cssFileName) => {
             const cssAbsPath = path.join(dir, cssFileName);
@@ -185,7 +255,27 @@ function cssUrlRewritePlugin(cssMap) {
             return JSON.stringify(publicUrl);
           }
         );
-        if (!changed) return null;
+
+        rewritten = rewritten.replace(
+          /(['"])\/shared\/([\w.-]+\.js)\1/g,
+          (match, quote, jsFileName) => {
+            const jsAbsPath = path.join(ROOT, 'shared', jsFileName);
+            const publicUrl = jsMap.get(jsAbsPath);
+            if (!publicUrl) {
+              console.warn(
+                'WARNING: no hashed asset found for /shared/' + jsFileName,
+                'referenced in',
+                path.relative(ROOT, args.path),
+                '-- leaving as-is (will likely 404 in production, check this)'
+              );
+              return match;
+            }
+            changed = true;
+            return JSON.stringify(publicUrl);
+          }
+        );
+
+        if (!changed) return null; // let esbuild read the file normally
         return { contents: rewritten, loader: 'js' };
       });
     },
@@ -195,7 +285,7 @@ function cssUrlRewritePlugin(cssMap) {
 // ─── Step 3: bundle app/router.js (and everything it imports) into hashed
 // chunks under dist/chunks/. Returns the public URL of the router entry
 // chunk, so index.html's <script src="/app/router.js"> can be corrected.
-async function bundleApp(cssMap) {
+async function bundleApp(cssMap, jsMap) {
   const result = await build({
     entryPoints: [path.join(ROOT, 'app/router.js')],
     bundle: true,
@@ -209,7 +299,7 @@ async function bundleApp(cssMap) {
     entryNames: 'chunks/[name]-[hash]',
     chunkNames: 'chunks/[name]-[hash]',
     metafile: true,
-    plugins: [cssUrlRewritePlugin(cssMap)],
+    plugins: [assetUrlRewritePlugin(cssMap, jsMap)],
     logLevel: 'info',
   });
 
@@ -221,9 +311,9 @@ async function bundleApp(cssMap) {
   throw new Error('Could not find router.js entry chunk in esbuild output -- bundling misconfigured');
 }
 
-// ─── Step 4: generic copy walk for everything NOT handled by the bundler
-// above (html, images, favicon, the shared root pnm-universal.css, docs
-// exclusions, etc.), stripping comments from html/css as it goes.
+// ─── Step 4: generic copy walk for everything NOT handled above (html,
+// images, favicon, the shared root pnm-universal.css, docs exclusions,
+// etc.), stripping comments from html/css as it goes.
 async function copyStaticFiles(routerPublicUrl) {
   async function walk(dir) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -234,13 +324,13 @@ async function copyStaticFiles(routerPublicUrl) {
 
       if (entry.isDirectory()) {
         if (EXCLUDE_DIRS.has(entry.name)) continue;
-        if (isBundledPath(rel + '/')) continue; // e.g. app/pages, shared
+        if (isBundledOrHandledPath(rel + '/')) continue; // e.g. app/pages, shared
         await walk(fullPath);
         continue;
       }
 
       if (shouldSkipFile(entry.name)) continue;
-      if (isBundledPath(rel)) continue; // e.g. app/router.js
+      if (isBundledOrHandledPath(rel)) continue; // e.g. app/router.js, shared/*.js
 
       const outPath = path.join(OUT, rel);
       await fs.mkdir(path.dirname(outPath), { recursive: true });
@@ -269,8 +359,8 @@ async function main() {
   await fs.rm(OUT, { recursive: true, force: true });
   await fs.mkdir(OUT, { recursive: true });
 
-  const cssMap = await buildCssMap();
-  const routerPublicUrl = await bundleApp(cssMap);
+  const { cssMap, jsMap } = await buildHashedAssetMaps();
+  const routerPublicUrl = await bundleApp(cssMap, jsMap);
   await copyStaticFiles(routerPublicUrl);
 
   console.log('Build complete ->', OUT);
