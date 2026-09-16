@@ -195,6 +195,10 @@ export const DASHBOARD_MARKUP = `
     <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-warning-circle"></i> Kualitas Data Populasi</div>
     <div id="pop-dq-box"><div class="skeleton" style="height:60px"></div></div>
   </div>
+  <div class="insight-card" style="margin-bottom:14px">
+    <div class="insight-card-title" style="margin-bottom:0"><i class="ph ph-magnifying-glass"></i> Rincian Asal Angka (audit — tiap baris bisa dihitung manual)</div>
+    <div id="pop-audit-box"><div class="skeleton" style="height:120px"></div></div>
+  </div>
   <div class="table-section">
     <div class="table-header">
       <div class="table-title"><i class="ph ph-funnel"></i> Filter Populasi Produk</div>

@@ -1221,7 +1221,7 @@ async function popInit(){
     sel.innerHTML = '<option value="">Semua Channel</option>' +
       (list || []).map(c => `<option value="${c.channel}">${c.channel} (${fmt(c.jumlah)})</option>`).join('');
   } catch(e) { /* RPC belum ada — dropdown tetap default sampai SQL channel dijalankan */ }
-  await Promise.all([popLoadSummary(), popLoadTable(), popLoadTrend(), popLoadDataQuality()]);
+  await Promise.all([popLoadSummary(), popLoadTable(), popLoadTrend(), popLoadDataQuality(), popLoadAudit()]);
 }
 
 // Tren populasi kumulatif — qty terkirim per bulan + running total.
@@ -1308,6 +1308,47 @@ async function popLoadDataQuality(){
     </div>`;
   } catch(e) {
     box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat data quality: ${e.message}</div>`;
+  }
+}
+
+// Tabel audit — nunjukkin PERSIS dari kode apa (suffix RMP polos / -R /
+// -K / -RK) tiap angka channel itu berasal, plus entitas & channel
+// turunannya, biar gak keliatan kayak angka nongol dari udara. Total di
+// bawah tabel harus pas: total_baris_tersinkron = total_masuk_populasi
+// + total_dikecualikan_sample + total_dikecualikan_channel.
+async function popLoadAudit(){
+  const box = document.getElementById('pop-audit-box');
+  try {
+    const a = await rpc('get_dashboard_populasi_audit', {});
+    const rows = a.rincian || [];
+    const rowsHtml = rows.map(r => `
+      <tr style="${r.is_population ? '' : 'opacity:.55'}">
+        <td><code>${r.kode_suffix}</code></td>
+        <td>${r.entitas}</td>
+        <td>${r.channel_turunan}</td>
+        <td style="text-align:center">${r.is_sample ? '<i class="ph ph-flask" title="Sample"></i>' : ''}</td>
+        <td style="text-align:center">${r.is_population ? '<i class="ph ph-check-circle" style="color:var(--success)"></i>' : '<i class="ph ph-x-circle" style="color:var(--text-muted)"></i>'}</td>
+        <td style="text-align:right;font-family:var(--mono)">${fmt(r.jumlah)}</td>
+      </tr>`).join('');
+    box.innerHTML = `
+      <div style="overflow-x:auto">
+        <table class="data-table" style="font-size:12px">
+          <thead><tr>
+            <th>Kode PO (suffix)</th><th>Entitas</th><th>Channel (turunan)</th>
+            <th>Sample?</th><th>Masuk Populasi?</th><th style="text-align:right">Jumlah baris</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text-muted);display:flex;gap:16px;flex-wrap:wrap">
+        <span>Total baris tersinkron: <b>${fmt(a.total_baris_tersinkron)}</b></span>
+        <span>Masuk populasi: <b style="color:var(--success)">${fmt(a.total_masuk_populasi)}</b></span>
+        <span>Dikecualikan (sample): <b>${fmt(a.total_dikecualikan_sample)}</b></span>
+        <span>Dikecualikan (channel): <b>${fmt(a.total_dikecualikan_channel)}</b></span>
+        <span style="opacity:.7">(${fmt(a.total_masuk_populasi)} + ${fmt(a.total_dikecualikan_sample)} + ${fmt(a.total_dikecualikan_channel)} = ${fmt(a.total_masuk_populasi + a.total_dikecualikan_sample + a.total_dikecualikan_channel)}, harus = total tersinkron)</span>
+      </div>`;
+  } catch(e) {
+    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat audit: ${e.message}</div>`;
   }
 }
 
