@@ -1555,12 +1555,14 @@ S.btnExport.addEventListener('click', async () => {
     // set". Fix: cache imgId per kode_produk, panggil wb.addImage cuma sekali per kode.
     const imgIdCache = {};
     // Border tipis 4-sisi, dipakai di SEMUA sheet (header & data) biar hasilnya
-    // kelihatan sebagai tabel yang jelas grid-nya, bukan teks nempel doang.
+    // kelihatan sebagai tabel yang jelas grid-nya — warna item gelap standar
+    // (bukan abu-abu pucat) biar kelihatan kayak "All borders" manual di Google
+    // Sheets/Excel, bukan garis samar yang nyaris nyatu sama background putih.
     const GRID_BORDER = {
-      top: {style:'thin', color:{argb:'FFC7CBD1'}},
-      left: {style:'thin', color:{argb:'FFC7CBD1'}},
-      bottom: {style:'thin', color:{argb:'FFC7CBD1'}},
-      right: {style:'thin', color:{argb:'FFC7CBD1'}}
+      top: {style:'thin', color:{argb:'FF000000'}},
+      left: {style:'thin', color:{argb:'FF000000'}},
+      bottom: {style:'thin', color:{argb:'FF000000'}},
+      right: {style:'thin', color:{argb:'FF000000'}}
     };
     function addImg(ws, b64, row, col, w=80, h=80, cacheKey=null) {
       if (!b64) return;
