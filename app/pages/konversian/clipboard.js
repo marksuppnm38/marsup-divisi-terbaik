@@ -1700,44 +1700,76 @@ S.btnExport.addEventListener('click', async () => {
         let kbRow = 2;
         let kbGrandTotal = 0;
         items.forEach((item, idx) => {
-          // Satu kebutuhan bisa kesambung ke lebih dari 1 SKU (bundle) — gabungkan
-          // kode/nama dengan "; " dan jumlahkan totalnya, bukan cuma ambil satu.
-          // Link & Gambar cuma keisi kalau match-nya tunggal (1 kebutuhan → 1
-          // produk); kalau bundle, sama kayak kolom Harga, dikosongin — gak ada
-          // satu link/gambar yang representatif buat gabungan N produk.
+          // Satu kebutuhan bisa kesambung ke lebih dari 1 SKU (bundle). Dulu
+          // kode/nama-nya digabung "; " jadi satu baris/cell — sekarang tiap
+          // produk yang match dapet barisnya sendiri (kolom Kode/Deskripsi/
+          // Harga/Total/Link/Gambar per baris), sementara No/Item Diminta/Qty
+          // Diminta cuma ditulis SEKALI di baris pertama grup lalu di-merge
+          // vertikal ke bawah — kebutuhan tetap satu, item-nya yang berbaris.
           const matchedList = (item.matched_items || [])
             .map(l => S.clipboard.find(c => c.kode_produk === l.kode_produk))
             .filter(Boolean);
-          const hargaTotalRow = matchedList.reduce((sum, m) => {
-            const link = (item.matched_items || []).find(l => l.kode_produk === m.kode_produk);
-            const hargaSatuan = S.modeSwastaOutput ? (m.harga_swasta || 0) : (m.harga_ekat || 0);
-            const qty = (link && link.qty_alokasi != null) ? link.qty_alokasi : (item.qty_diminta || 1);
-            return sum + hargaSatuan * qty;
-          }, 0);
-          if (matchedList.length) kbGrandTotal += hargaTotalRow;
+          const rowCount = Math.max(matchedList.length, 1);
+          const startRow = kbRow;
+          let itemTotal = 0;
 
-          const row = wsKb.getRow(kbRow);
-          row.height = 56;
-          row.getCell(1).value = idx + 1;
-          row.getCell(2).value = item.raw_text;
-          row.getCell(3).value = item.qty_diminta || '';
-          row.getCell(4).value = matchedList.map(m => m.kode_produk).join('; ');
-          row.getCell(5).value = matchedList.map(m => m.nama_produk).join('; ');
-          row.getCell(6).value = matchedList.length === 1 ? (S.modeSwastaOutput ? (matchedList[0].harga_swasta||0) : (matchedList[0].harga_ekat||0)) : '';
-          row.getCell(7).value = matchedList.length ? hargaTotalRow : '';
-          if (matchedList.length === 1 && !S.modeSwastaOutput && matchedList[0].link_v6) {
-            row.getCell(8).value = {text:'Lihat di e-Katalog', hyperlink: matchedList[0].link_v6};
-            row.getCell(8).font = {color:{argb:'FF1D4ED8'}, underline:true};
-          }
-          if (matchedList.length === 1) addImg(wsKb, imgMap[matchedList[0].kode_produk], kbRow, 9, 80, 65, matchedList[0].kode_produk);
+          if (matchedList.length === 0) {
+            // Belum ada produk yang match — satu baris kosong kayak sebelumnya.
+            const row = wsKb.getRow(kbRow);
+            row.height = 56;
+            row.getCell(1).value = idx + 1;
+            row.getCell(2).value = item.raw_text;
+            row.getCell(3).value = item.qty_diminta || '';
+            [1,2,3,4,5,6,7,8].forEach(c => { row.getCell(c).alignment = {vertical:'middle', wrapText: c===2||c===5}; });
+            if (idx % 2 === 0) {
+              [1,2,3,4,5,6,7,8,9].forEach(c => {
+                row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
+              });
+            }
+            kbRow++;
+          } else {
+            matchedList.forEach((m, mIdx) => {
+              const row = wsKb.getRow(kbRow);
+              row.height = 56;
+              if (mIdx === 0) {
+                row.getCell(1).value = idx + 1;
+                row.getCell(2).value = item.raw_text;
+                row.getCell(3).value = item.qty_diminta || '';
+              }
+              const link = (item.matched_items || []).find(l => l.kode_produk === m.kode_produk);
+              const hargaSatuan = S.modeSwastaOutput ? (m.harga_swasta || 0) : (m.harga_ekat || 0);
+              const qty = (link && link.qty_alokasi != null) ? link.qty_alokasi : (item.qty_diminta || 1);
+              const totalBaris = hargaSatuan * qty;
+              itemTotal += totalBaris;
 
-          [1,2,3,4,5,6,7,8].forEach(c => { row.getCell(c).alignment = {vertical:'middle', wrapText: c===2||c===5}; });
-          if (idx % 2 === 0) {
-            [1,2,3,4,5,6,7,8,9].forEach(c => {
-              row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
+              row.getCell(4).value = m.kode_produk;
+              row.getCell(5).value = m.nama_produk;
+              row.getCell(6).value = hargaSatuan;
+              row.getCell(7).value = totalBaris;
+              if (!S.modeSwastaOutput && m.link_v6) {
+                row.getCell(8).value = {text:'Lihat di e-Katalog', hyperlink: m.link_v6};
+                row.getCell(8).font = {color:{argb:'FF1D4ED8'}, underline:true};
+              }
+              addImg(wsKb, imgMap[m.kode_produk], kbRow, 9, 80, 65, m.kode_produk);
+
+              [1,2,3,4,5,6,7,8].forEach(c => { row.getCell(c).alignment = {vertical:'middle', wrapText: c===2||c===5}; });
+              if (idx % 2 === 0) {
+                [1,2,3,4,5,6,7,8,9].forEach(c => {
+                  row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
+                });
+              }
+              kbRow++;
             });
+            kbGrandTotal += itemTotal;
+
+            if (rowCount > 1) {
+              const endRow = kbRow - 1;
+              [1,2,3].forEach(c => {
+                wsKb.mergeCells(startRow, c, endRow, c);
+                wsKb.getCell(startRow, c).alignment = {vertical:'middle', horizontal: c===1?'center':'left', wrapText: c===2};
+              });
+            }
           }
-          kbRow++;
         });
 
         const kbTotRow = wsKb.getRow(kbRow);
