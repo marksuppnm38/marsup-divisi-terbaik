@@ -1201,6 +1201,11 @@ let popWilayah = '';
 let popEntitas = '';
 let popChannel = '';
 let popSearchDebounce = null;
+// Baris tabel Populasi saat ini, disimpan biar klik baris (popShowDetail)
+// bisa ambil kode_produk/entitas/channel/wilayah dari sini by index --
+// bukan nge-embed nilai mentahnya ke dalam attribute onclick="", yang
+// rawan patah kalau ada tanda kutip di nama_produk/wilayah.
+let popTableRows = [];
 
 async function popInit(){
   try {
@@ -1433,8 +1438,9 @@ function popRenderTable(total, rows){
     document.getElementById('pop-tbl-body').innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">
       <i class="ph ph-magnifying-glass" style="font-size:26px;display:block;margin-bottom:6px"></i>Tidak ada data yang cocok.</td></tr>`;
   } else {
-    document.getElementById('pop-tbl-body').innerHTML = rows.map(r => `
-      <tr>
+    popTableRows = rows;
+    document.getElementById('pop-tbl-body').innerHTML = rows.map((r, idx) => `
+      <tr style="cursor:pointer" onclick="popShowDetail(${idx})" title="Klik untuk lihat rincian RMP">
         <td><span class="kode-text">${r.kode_produk || '—'}</span></td>
         <td style="max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtmlAttr(r.nama_produk||'')}">${escapeHtmlAttr(r.nama_produk || '—')}</td>
         <td><span class="badge badge-instrument">${r.entitas || '—'}</span></td>
@@ -1459,6 +1465,63 @@ function popRenderTable(total, rows){
     }
   }
   pg.innerHTML = btns.map(b => b==='…' ? `<span style="padding:0 4px;color:var(--text-muted);font-size:11.5px">…</span>` : b).join('');
+}
+
+// Drill-down: satu baris tabel Populasi = SUM/COUNT dari beberapa baris
+// mentah di orderan_lintas_entitas (lihat get_dashboard_populasi_produk's
+// GROUP BY: pnm_code + entitas_terhitung + channel_sumber + wilayah_deteksi).
+// Jadi ke-4 nilai itu SEMUA harus dikirim ke RPC detail, bukan cuma
+// kode_produk+wilayah -- kalau tidak, hasilnya bisa ke-mix sama kombinasi
+// entitas/channel lain untuk produk yang sama.
+async function popShowDetail(idx){
+  const r = popTableRows[idx];
+  if (!r || !detailOverlay) return;
+  document.getElementById('dm-title').textContent = r.nama_produk || '—';
+  document.getElementById('dm-kode').textContent = `${r.kode_produk} · ${r.wilayah || 'wilayah tidak terdeteksi'}`;
+  document.getElementById('dm-body').innerHTML = '<div class="detail-loading"><i class="ph ph-circle-notch spinner"></i> Memuat rincian RMP…</div>';
+  detailOverlay.classList.add('show');
+  try {
+    const rowsRaw = await rpc('get_dashboard_populasi_produk_detail', {
+      p_kode_produk: r.kode_produk,
+      p_entitas: r.entitas,
+      p_channel: r.channel,
+      p_wilayah: r.wilayah
+    });
+    if (!rowsRaw || !rowsRaw.length){
+      document.getElementById('dm-body').innerHTML = '<div class="detail-loading">Tidak ada baris mentah yang cocok (cek apakah RPC detail sudah dipasang).</div>';
+      return;
+    }
+    document.getElementById('dm-body').innerHTML = `
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
+        ${fmt(rowsRaw.length)} baris order mentah dari <span class="kode-text">orderan_lintas_entitas</span> yang dijumlahkan jadi baris ini — cocokkan Kode RMP/PO di bawah ke sheet.
+      </div>
+      <div class="table-scroll">
+        <table style="font-size:12px">
+          <thead><tr>
+            <th>Kode RMP/PO</th><th>No. PO</th><th>Tgl PO</th><th>Customer</th>
+            <th style="text-align:right">Qty</th><th>Status</th><th>Tgl Terkirim</th><th>Sumber Sheet</th>
+          </tr></thead>
+          <tbody>
+            ${rowsRaw.map(x => `
+              <tr>
+                <td><span class="kode-text">${escapeHtmlAttr(x.pnm_po_code || '—')}</span></td>
+                <td>${escapeHtmlAttr(x.po || '—')}</td>
+                <td style="font-family:var(--font-mono)">${x.customer_po_date || '—'}</td>
+                <td>${escapeHtmlAttr(x.customer || '—')}</td>
+                <td style="text-align:right;font-family:var(--mono)">${fmt(x.qty)}</td>
+                <td>${escapeHtmlAttr(x.status || '—')}</td>
+                <td style="font-family:var(--font-mono)">${x.tanggal_order || '—'}</td>
+                <td style="font-size:11px;color:var(--text-muted)">${escapeHtmlAttr(x.sumber_sheet || '—')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch(e){
+    if (e.message === 'unauthorized') return;
+    document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${e.message}</div>`;
+  }
 }
 
 function popGoPage(p){
@@ -1545,6 +1608,7 @@ async function popExportExcel(ev){
     popSetChannel,
     popSetEntitas,
     popSetWilayah,
+    popShowDetail,
     savePreset,
     setFilter,
     setForecastPeriod,
@@ -1586,6 +1650,7 @@ export function unmount() {
   delete window.popSetChannel;
   delete window.popSetEntitas;
   delete window.popSetWilayah;
+  delete window.popShowDetail;
   delete window.savePreset;
   delete window.setFilter;
   delete window.setForecastPeriod;
