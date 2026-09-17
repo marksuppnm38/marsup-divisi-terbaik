@@ -160,6 +160,29 @@ function loadScript(src) {
   });
 }
 
+// exceljs.min.js (lewat dependency regenerator-runtime yang ke-bundle di
+// dalamnya) punya pola `try { regeneratorRuntime = i } catch(t) {
+// Function("r","regeneratorRuntime = r")(i) }`. Karena bundle-nya jalan di
+// strict mode (hasil minifikasi), assignment ke `regeneratorRuntime` yang
+// belum pernah dideklarasikan di scope manapun bakal langsung throw
+// ReferenceError → jatuh ke catch → fallback-nya pakai `Function(...)`
+// (setara eval) buat maksa bikin global. Di CSP yang gak ngizinin
+// 'unsafe-eval' (cuma 'wasm-unsafe-eval'), itu diblokir browser dan
+// nge-crash separuh jalan lewat inisialisasi bundle-nya, jadi window.ExcelJS
+// gak pernah keisi ("ExcelJS is not defined" pas tombol export dipencet).
+// Lihat exceljs/exceljs#2345 — bug ini masih terbuka di upstream.
+// Fix: predeclare `regeneratorRuntime` sebagai OWN PROPERTY di window
+// SEBELUM script exceljs di-load. Begitu property-nya udah ada di objek
+// global, assignment bare-identifier `regeneratorRuntime = i` di dalam
+// exceljs bisa resolve ke property itu dan berhasil normal — jalur
+// try-nya gak pernah gagal, jadi catch/Function(...) gak pernah kepanggil
+// sama sekali. Ini BUKAN 'unsafe-eval' dan gak butuh ganti versi/library.
+function ensureExceljsEvalWorkaround() {
+  if (!('regeneratorRuntime' in window)) {
+    window.regeneratorRuntime = undefined;
+  }
+}
+
 let vendorReady = null;
 function ensureVendorScripts() {
   if (window.PNMAuth && window.pnmSupabase && window.PNMToast && window.ExcelJS &&
@@ -167,6 +190,7 @@ function ensureVendorScripts() {
     return Promise.resolve();
   }
   if (!vendorReady) {
+    ensureExceljsEvalWorkaround();
     const independent = Promise.all(VENDOR_SCRIPTS_INDEPENDENT.map(loadScript));
     const sequential = VENDOR_SCRIPTS_SEQUENTIAL.reduce(
       (chain, src) => chain.then(() => loadScript(src)),
