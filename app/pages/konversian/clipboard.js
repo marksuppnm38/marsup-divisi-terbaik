@@ -1554,6 +1554,14 @@ S.btnExport.addEventListener('click', async () => {
     // berulang lintas set/lampiran, ini yang bikin file bengkak drastis saat "banyak
     // set". Fix: cache imgId per kode_produk, panggil wb.addImage cuma sekali per kode.
     const imgIdCache = {};
+    // Border tipis 4-sisi, dipakai di SEMUA sheet (header & data) biar hasilnya
+    // kelihatan sebagai tabel yang jelas grid-nya, bukan teks nempel doang.
+    const GRID_BORDER = {
+      top: {style:'thin', color:{argb:'FFC7CBD1'}},
+      left: {style:'thin', color:{argb:'FFC7CBD1'}},
+      bottom: {style:'thin', color:{argb:'FFC7CBD1'}},
+      right: {style:'thin', color:{argb:'FFC7CBD1'}}
+    };
     function addImg(ws, b64, row, col, w=80, h=80, cacheKey=null) {
       if (!b64) return;
       try {
@@ -1594,7 +1602,7 @@ S.btnExport.addEventListener('click', async () => {
       cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
       cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF1D5BD4'}};
       cell.alignment = {vertical:'middle', horizontal:'center'};
-      cell.border = {bottom:{style:'thin',color:{argb:'FFE2E4E9'}}};
+      cell.border = GRID_BORDER;
     });
     sumHdrRow.height = 22;
     wsSummary.columns = S.modeSwastaOutput
@@ -1628,14 +1636,13 @@ S.btnExport.addEventListener('click', async () => {
       if (stokLabel === 'Ready') row.getCell(stokColIdx).font = {color:{argb:'FF15803D'}, bold:true};
       else if (stokLabel === 'Indent') row.getCell(stokColIdx).font = {color:{argb:'FFB91C1C'}, bold:true};
       else if (stokLabel === 'Data blm lengkap') row.getCell(stokColIdx).font = {color:{argb:'FFB45309'}, bold:true};
-      // zebra
+      // zebra + border + center alignment buat semua kolom di baris ini
       const zebraCount = S.modeSwastaOutput ? 7 : 8;
-      if (idx % 2 === 0) {
-        Array.from({length: zebraCount}, (_,c)=>c+1).forEach(c => {
-          row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
-        });
-      }
-      row.alignment = {vertical:'middle'};
+      Array.from({length: zebraCount}, (_,c)=>c+1).forEach(c => {
+        row.getCell(c).border = GRID_BORDER;
+        if (c !== stokColIdx) row.getCell(c).alignment = {vertical:'middle', horizontal:'center', wrapText: c===3};
+        if (idx % 2 === 0) row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
+      });
       sumRow++;
     });
 
@@ -1646,6 +1653,10 @@ S.btnExport.addEventListener('click', async () => {
     totRow.getCell(6).value = grandTotal;
     totRow.getCell(6).font = {bold:true};
     totRow.getCell(6).numFmt = '#,##0';
+    {
+      const totCols = S.modeSwastaOutput ? 7 : 8;
+      for (let c = 1; c <= totCols; c++) totRow.getCell(c).border = GRID_BORDER;
+    }
 
     // format harga cols
     for (let r = 8; r <= sumRow; r++) {
@@ -1684,18 +1695,31 @@ S.btnExport.addEventListener('click', async () => {
         // jadi satu-satunya sheet rollup lintas section. Status diganti Link
         // (klik langsung ke e-katalog), plus kolom Gambar (thumbnail nempel,
         // reuse imgMap yang udah di-fetch buat sheet komposisi SET di bawah).
+        //
+        // Kolom Link cuma relevan di mode e-Katalog (link_v6 emang gak ada
+        // sama sekali di mode Swasta — sama kayak SUMMARY yang udah lebih
+        // dulu nyembunyiin kolom ini). Dulu header "Link" tetap muncul di
+        // sheet ini walau modeSwastaOutput true, jadinya kolom kosong
+        // nganggur — sekarang headernya dibikin dinamis kayak sumHeaders,
+        // dan index kolom Gambar ikut geser (8 kalau gak ada Link, 9 kalau ada).
+        const colGambar = S.modeSwastaOutput ? 8 : 9;
+        const colLink = S.modeSwastaOutput ? null : 8;
+        const kbHeaders = S.modeSwastaOutput
+          ? ['No.','Item Diminta','Qty Diminta','Kode Produk','Deskripsi','Harga','Total','Gambar']
+          : ['No.','Item Diminta','Qty Diminta','Kode Produk','Deskripsi','Harga','Total','Link','Gambar'];
         const kbHdrRow = wsKb.getRow(1);
-        const kbHeaders = ['No.','Item Diminta','Qty Diminta','Kode Produk','Deskripsi','Harga','Total','Link','Gambar'];
         kbHeaders.forEach((h,i) => {
           const cell = kbHdrRow.getCell(i+1);
           cell.value = h;
           cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
           cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF1D5BD4'}};
           cell.alignment = {vertical:'middle', horizontal:'center'};
-          cell.border = {bottom:{style:'thin',color:{argb:'FFE2E4E9'}}};
+          cell.border = GRID_BORDER;
         });
         kbHdrRow.height = 22;
-        wsKb.columns = [{width:5},{width:36},{width:12},{width:22},{width:36},{width:16},{width:16},{width:16},{width:14}];
+        wsKb.columns = S.modeSwastaOutput
+          ? [{width:5},{width:36},{width:12},{width:22},{width:36},{width:16},{width:16},{width:14}]
+          : [{width:5},{width:36},{width:12},{width:22},{width:36},{width:16},{width:16},{width:16},{width:14}];
 
         let kbRow = 2;
         let kbGrandTotal = 0;
@@ -1720,11 +1744,10 @@ S.btnExport.addEventListener('click', async () => {
             row.getCell(1).value = idx + 1;
             row.getCell(2).value = item.raw_text;
             row.getCell(3).value = item.qty_diminta || '';
-            [1,2,3,4,5,6,7,8].forEach(c => { row.getCell(c).alignment = {vertical:'middle', wrapText: c===2||c===5}; });
-            if (idx % 2 === 0) {
-              [1,2,3,4,5,6,7,8,9].forEach(c => {
-                row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
-              });
+            for (let c = 1; c <= colGambar; c++) {
+              row.getCell(c).border = GRID_BORDER;
+              row.getCell(c).alignment = {vertical:'middle', horizontal:'center', wrapText: c===2||c===5};
+              if (idx % 2 === 0) row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
             }
             kbRow++;
           } else {
@@ -1746,17 +1769,16 @@ S.btnExport.addEventListener('click', async () => {
               row.getCell(5).value = m.nama_produk;
               row.getCell(6).value = hargaSatuan;
               row.getCell(7).value = totalBaris;
-              if (!S.modeSwastaOutput && m.link_v6) {
-                row.getCell(8).value = {text:'Lihat di e-Katalog', hyperlink: m.link_v6};
-                row.getCell(8).font = {color:{argb:'FF1D4ED8'}, underline:true};
+              if (colLink && m.link_v6) {
+                row.getCell(colLink).value = {text:'Lihat di e-Katalog', hyperlink: m.link_v6};
+                row.getCell(colLink).font = {color:{argb:'FF1D4ED8'}, underline:true};
               }
-              addImg(wsKb, imgMap[m.kode_produk], kbRow, 9, 80, 65, m.kode_produk);
+              addImg(wsKb, imgMap[m.kode_produk], kbRow, colGambar, 80, 65, m.kode_produk);
 
-              [1,2,3,4,5,6,7,8].forEach(c => { row.getCell(c).alignment = {vertical:'middle', wrapText: c===2||c===5}; });
-              if (idx % 2 === 0) {
-                [1,2,3,4,5,6,7,8,9].forEach(c => {
-                  row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
-                });
+              for (let c = 1; c <= colGambar; c++) {
+                row.getCell(c).border = GRID_BORDER;
+                row.getCell(c).alignment = {vertical:'middle', horizontal:'center', wrapText: c===2||c===5};
+                if (idx % 2 === 0) row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
               }
               kbRow++;
             });
@@ -1766,7 +1788,8 @@ S.btnExport.addEventListener('click', async () => {
               const endRow = kbRow - 1;
               [1,2,3].forEach(c => {
                 wsKb.mergeCells(startRow, c, endRow, c);
-                wsKb.getCell(startRow, c).alignment = {vertical:'middle', horizontal: c===1?'center':'left', wrapText: c===2};
+                wsKb.getCell(startRow, c).alignment = {vertical:'middle', horizontal:'center', wrapText: c===2};
+                wsKb.getCell(startRow, c).border = GRID_BORDER;
               });
             }
           }
@@ -1778,6 +1801,7 @@ S.btnExport.addEventListener('click', async () => {
         kbTotRow.getCell(7).value = kbGrandTotal;
         kbTotRow.getCell(7).font = {bold:true};
         kbTotRow.getCell(7).numFmt = '#,##0';
+        for (let c = 1; c <= colGambar; c++) kbTotRow.getCell(c).border = GRID_BORDER;
         kbRow++;
 
         const doneCount = items.filter(i => i.status === 'TERPENUHI').length;
@@ -1837,6 +1861,7 @@ S.btnExport.addEventListener('click', async () => {
         cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
         cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF1D5BD4'}};
         cell.alignment = {vertical:'middle', horizontal:'center'};
+        cell.border = GRID_BORDER;
       });
       hdrRow.height = 22;
 
@@ -1852,7 +1877,8 @@ S.btnExport.addEventListener('click', async () => {
         row.getCell(3).value = si.nama_produk;
         row.getCell(4).value = si.qty;
         [1,2,3,4,5].forEach(c => {
-          row.getCell(c).alignment = {vertical:'middle', horizontal: c===3?'left':'center', wrapText:true};
+          row.getCell(c).alignment = {vertical:'middle', horizontal:'center', wrapText:true};
+          row.getCell(c).border = GRID_BORDER;
           if (idx % 2 === 0) row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
         });
         addImg(ws, imgMap[si.kode_produk], dataRow, 5, 80, 65, si.kode_produk);
@@ -1882,6 +1908,7 @@ S.btnExport.addEventListener('click', async () => {
         cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
         cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF1D5BD4'}};
         cell.alignment = {vertical:'middle', horizontal:'center'};
+        cell.border = GRID_BORDER;
       });
       hdrRow.height = 22;
       wsGambar.columns = [{width:6},{width:24},{width:45},{width:8},{width:18}];
@@ -1896,7 +1923,8 @@ S.btnExport.addEventListener('click', async () => {
         row.getCell(3).value = item.nama_produk;
         row.getCell(4).value = 1;
         [1,2,3,4,5].forEach(c => {
-          row.getCell(c).alignment = {vertical:'middle', horizontal: c===3?'left':'center', wrapText:true};
+          row.getCell(c).alignment = {vertical:'middle', horizontal:'center', wrapText:true};
+          row.getCell(c).border = GRID_BORDER;
           if (idx % 2 === 0) row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
         });
         addImg(wsGambar, imgMap[item.kode_produk], dataRow, 5, 80, 65, item.kode_produk);
