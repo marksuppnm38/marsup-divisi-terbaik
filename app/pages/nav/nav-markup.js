@@ -79,7 +79,7 @@ export function navMarkup(activeId, activeSub) {
     </button>
     <div class="pw-nav-search-wrap">
       <i class="ti ti-search"></i>
-      <input class="pw-nav-search-input" id="pwNavSearchInput" type="text" placeholder="Search" autocomplete="off" spellcheck="false">
+      <input class="pw-nav-search-input" id="pwNavSearchInput" type="search" placeholder="Search" autocomplete="off" spellcheck="false">
       <kbd class="pw-nav-search-kbd">/</kbd>
       <div class="pw-nav-search-results" id="pwNavSearchResults" hidden></div>
     </div>

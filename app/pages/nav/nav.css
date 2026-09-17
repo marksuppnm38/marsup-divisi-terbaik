@@ -155,24 +155,6 @@
   text-overflow: ellipsis;
 }
 
-/* Logo mark (/assets/logo-mark-pnm.png) is flat/anti-aliased against an
-   assumed WHITE canvas -- fine on the light sidebar, but on the dark
-   sidebar its edge pixels blend toward white and read as a fringed/
-   pixelated halo around the letters (unprofessional-looking, reported by
-   users). Rather than touch the raster asset (would need re-exporting an
-   actual transparent/SVG version), give it a small white rounded "chip"
-   backing in dark mode only -- same trick used for full-color brand marks
-   inside dark chrome elsewhere. Height/padding tuned so the chip's total
-   box lands back at ~18px tall, matching the light-mode logo's footprint
-   in the same 52px brand row (row is align-items:center so exact height
-   isn't critical, but keeping it close avoids a visible jump on toggle). */
-[data-theme="dark"] .pw-nav-brand img {
-  height: 13px;
-  padding: 3px 5px;
-  background: #ffffff;
-  border-radius: 5px;
-}
-
 .pw-nav-search {
   margin: 12px 12px 4px;
   height: 32px;
@@ -237,6 +219,15 @@
 .pw-nav-search-input::placeholder { color: var(--text-muted); }
 .pw-nav-search-input:hover { border-color: var(--border-strong); }
 .pw-nav-search-input:focus { border-color: var(--accent); background: var(--surface); }
+/* type="search" (switched from type="text" to stop Chrome's password-manager
+   autofill dropdown popping up on this field) brings its own native "clear"
+   decorations in some browsers -- WebKit's round-x button, Edge/IE's clear+
+   reveal buttons. Strip all of them so the input's look doesn't change and
+   nothing overlaps the custom "/" kbd hint on the right. */
+.pw-nav-search-input::-webkit-search-cancel-button,
+.pw-nav-search-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+.pw-nav-search-input::-ms-clear,
+.pw-nav-search-input::-ms-reveal { display: none; width: 0; height: 0; }
 .pw-nav-search-kbd {
   position: absolute;
   right: 8px;
