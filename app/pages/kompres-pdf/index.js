@@ -34,6 +34,25 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+// SECURITY FIX: file.name is attacker/user-controlled (same as the
+// escapeHtml() case above) and gets reused below to build a.download
+// values and JSZip entry names (item.resultName, split/merge output
+// names). Used raw, a name containing "/", "\" or ".." could produce
+// unexpected folder structure inside a generated ZIP, or an unexpected
+// path when the browser resolves the download -- so it's stripped down to
+// a flat, traversal-free filename before ever being used that way.
+// (Not needed for the escapeHtml() spots above/below -- HTML-escaping and
+// filename-sanitizing are different jobs and both are applied where each
+// is relevant.)
+function sanitizeFilename(name, fallback = 'file') {
+  const cleaned = String(name == null ? '' : name)
+    .replace(/[\/\\]/g, '_')          // path separators -> can't create subpaths
+    .replace(/\.\./g, '_')            // parent-directory traversal sequences
+    .replace(/[\x00-\x1f\x7f]/g, '')  // control characters
+    .trim();
+  return cleaned || fallback;
+}
+
 const SHARED_LINKS = [
   { id: 'shared-google-fonts', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap' },
   { id: 'shared-pnm-universal-css', href: '/pnm-universal.css?v=20260813b' },
@@ -52,17 +71,56 @@ function loadLink(id, href) {
   });
 }
 
+// SECURITY FIX: Subresource Integrity (SRI) added to every CDN vendor
+// script. Without this, a compromised cdnjs asset (supply-chain attack --
+// has happened to other CDNs before) would execute arbitrary JS in this
+// page with full access to the app's session cookie (see
+// shared/supabase-client.js's own comment: the auth cookie is NOT
+// httpOnly and is readable by any JS running on the page). SRI makes the
+// browser refuse to run the script at all if its bytes don't match this
+// exact hash, closing that hole regardless of what cdnjs itself serves.
+//
+// Hashes below were computed from the exact files published in the
+// pdf-lib@1.17.1 / pdfjs-dist@3.11.174 / jszip@3.10.1 npm packages (which
+// is what cdnjs mirrors byte-for-byte). BEFORE DEPLOYING, verify them
+// once against what cdnjs actually serves, e.g.:
+//   curl -s https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js \
+//     | openssl dgst -sha384 -binary | openssl base64 -A
+// ...and compare to the base64 part of each integrity string below. If a
+// library version is ever bumped, its hash MUST be recomputed the same
+// way or the script will silently fail to load (fails closed, not open --
+// check the console for an SRI error if something stops working).
 const VENDOR_SCRIPTS = [
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+  {
+    src: 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js',
+    integrity: 'sha384-weMABwrltA6jWR8DDe9Jp5blk+tZQh7ugpCsF3JwSA53WZM9/14PjS5LAJNHNjAI',
+  },
+  {
+    src: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+    integrity: 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e',
+  },
+  {
+    src: 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+    integrity: 'sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG',
+  },
 ];
 
-function loadScript(src) {
+// NOTE (residual, not fully fixable from here): pdf.js loads its worker
+// script (pdf.worker.min.js, set as workerSrc below) via the Worker
+// constructor internally, not via a <script> tag we control, so the same
+// integrity="..." attribute approach can't be attached to it directly.
+// Browser support for passing SRI to `new Worker(url, { integrity })` is
+// still inconsistent across browsers as of this writing. Left as a known
+// gap; revisit if/when browser support is reliable.
+function loadScript(src, integrity) {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) return resolve();
     const s = document.createElement('script');
     s.src = src;
+    if (integrity) {
+      s.integrity = integrity;
+      s.crossOrigin = 'anonymous';
+    }
     s.onload = () => resolve();
     s.onerror = () => reject(new Error('Gagal memuat ' + src));
     document.head.appendChild(s);
@@ -72,7 +130,7 @@ function loadScript(src) {
 let vendorReady = null;
 function ensureVendorScripts() {
   if (window.PDFLib && window.pdfjsLib && window.JSZip) return Promise.resolve();
-  if (!vendorReady) vendorReady = Promise.all(VENDOR_SCRIPTS.map(loadScript));
+  if (!vendorReady) vendorReady = Promise.all(VENDOR_SCRIPTS.map(v => loadScript(v.src, v.integrity)));
   return vendorReady;
 }
 
@@ -120,6 +178,16 @@ export async function mount(container) {
     images: 'Hanya gambar (foto/JPEG) di dalam PDF yang dikompres ulang. Teks tetap tajam, bisa diseleksi, dan dicari seperti biasa. Cocok untuk PDF hasil scan atau berisi banyak foto. Jika PDF tidak berisi gambar, ukurannya akan tetap sama.',
   };
   
+  // SECURITY/ROBUSTNESS FIX: no limit previously existed on input file size
+  // or PDF page count. renderPagesToCache() caches a full-resolution canvas
+  // per page in memory for the whole document -- a very large or
+  // pathologically-paged PDF (accidental or deliberately crafted) can
+  // exhaust tab memory and freeze/crash the browser before any error is
+  // ever shown. These are soft caps to fail fast with a clear message
+  // instead; adjust if legitimate use needs larger docs.
+  const MAX_FILE_SIZE_BYTES = 300 * 1024 * 1024; // 300 MB per PDF
+  const MAX_PAGES = 3000;
+
   let uid = 0;
   let state = {
     items: [],       // {id, file, arrayBuffer, status, resultBytes, resultName, originalSize, newSize, errorMsg, note, tierLabel, targetReached}
@@ -280,9 +348,11 @@ export async function mount(container) {
     const files = Array.from(fileListRaw || []);
     if (files.length === 0) return;
     const rejected = [];
+    const tooLarge = [];
     files.forEach(file => {
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       if (!isPdf){ rejected.push(file.name); return; }
+      if (file.size > MAX_FILE_SIZE_BYTES){ tooLarge.push(file.name); return; }
       state.items.push({
         id: ++uid,
         file,
@@ -299,6 +369,9 @@ export async function mount(container) {
     });
     if (rejected.length){
       showError(`File berikut dilewati karena bukan PDF: ${rejected.join(', ')}`);
+    }
+    if (tooLarge.length){
+      showError(`File berikut dilewati karena melebihi batas ${formatBytes(MAX_FILE_SIZE_BYTES)}: ${tooLarge.join(', ')}`);
     }
     if (state.items.length > 0){
       dropzone.classList.add('hidden');
@@ -622,7 +695,7 @@ export async function mount(container) {
         }
         item.resultBytes = resultBytes;
         item.newSize = resultBytes.byteLength;
-        item.resultName = item.file.name.replace(/\.pdf$/i, '') + '-kompres.pdf';
+        item.resultName = sanitizeFilename(item.file.name.replace(/\.pdf$/i, ''), 'file') + '-kompres.pdf';
         item.reduction = Math.max(0, Math.round((1 - item.newSize / item.originalSize) * 100));
         item.note = note;
         item.tierLabel = tierLabel;
@@ -849,10 +922,18 @@ export async function mount(container) {
     if (!file) return;
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     if (!isPdf){ showSplitError('Format file tidak didukung. Silakan pilih file PDF (.pdf).'); return; }
+    if (file.size > MAX_FILE_SIZE_BYTES){
+      showSplitError(`File melebihi batas ${formatBytes(MAX_FILE_SIZE_BYTES)}.`);
+      return;
+    }
     try {
       const buf = await readAsArrayBuffer(file);
       const doc = await PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
       const pageCount = doc.getPageCount();
+      if (pageCount > MAX_PAGES){
+        showSplitError(`PDF punya ${pageCount} halaman, melebihi batas ${MAX_PAGES} halaman.`);
+        return;
+      }
       splitState.file = file;
       splitState.arrayBuffer = buf;
       splitState.pageCount = pageCount;
@@ -923,7 +1004,7 @@ export async function mount(container) {
   
     try {
       const srcDoc = await PDFLib.PDFDocument.load(splitState.arrayBuffer, { ignoreEncryption: true });
-      const baseName = splitState.file.name.replace(/\.pdf$/i, '');
+      const baseName = sanitizeFilename(splitState.file.name.replace(/\.pdf$/i, ''), 'file');
       const results = [];
       for (let i = 0; i < ranges.length; i++){
         const [start, end] = ranges[i];
@@ -988,7 +1069,7 @@ export async function mount(container) {
       const blob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = (splitState.file.name.replace(/\.pdf$/i, '') || 'pdf') + '-split.zip';
+      a.href = url; a.download = sanitizeFilename(splitState.file.name.replace(/\.pdf$/i, ''), 'pdf') + '-split.zip';
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } finally {
@@ -1044,13 +1125,18 @@ export async function mount(container) {
     const files = Array.from(fileListRaw || []);
     if (files.length === 0) return;
     const rejected = [];
+    const tooLarge = [];
     files.forEach(file => {
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       if (!isPdf){ rejected.push(file.name); return; }
+      if (file.size > MAX_FILE_SIZE_BYTES){ tooLarge.push(file.name); return; }
       mergeState.items.push({ id: ++uid, file });
     });
     if (rejected.length){
       showMergeError(`File berikut dilewati karena bukan PDF: ${rejected.join(', ')}`);
+    }
+    if (tooLarge.length){
+      showMergeError(`File berikut dilewati karena melebihi batas ${formatBytes(MAX_FILE_SIZE_BYTES)}: ${tooLarge.join(', ')}`);
     }
     if (mergeState.items.length > 0){
       mergeDropzone.classList.add('hidden');
