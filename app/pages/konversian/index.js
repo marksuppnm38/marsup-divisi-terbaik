@@ -1564,11 +1564,19 @@ async function renderSetRincianInLampiranModal(kode_produk) {
     </tr>`).join('');
 
   lampiranSetRincian.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
-      <div style="font-size:12px;color:var(--text-muted)">Rincian isi set — sama seperti sheet per-set di export Excel.</div>
-      <button id="lampiran-copy-sheet-btn" title="Copy kode, deskripsi, qty — siap paste ke Google Sheet (tanpa gambar)" style="border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-size:12px;font-weight:500;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">
-        <i class="ti ti-copy"></i><span>Copy buat Sheet</span>
-      </button>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <div style="font-size:12px;color:var(--text-muted);flex:1 1 200px">Rincian isi set — sama seperti sheet per-set di export Excel.</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <button id="lampiran-copy-sheet-btn" title="Copy kode, deskripsi, qty — teks doang, paling aman ke mana pun" style="border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-size:12px;font-weight:500;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">
+          <i class="ti ti-copy"></i><span>Copy Teks</span>
+        </button>
+        <button id="lampiran-copy-gambar-btn" title="Copy sebagai tabel HTML — gambarnya ikut kalau di-paste ke Excel / Word. Di Google Sheet, paste pakai Ctrl+Shift+V biar dapat rumus =IMAGE()" style="border:1px solid var(--accent-text);background:var(--accent-bg);color:var(--accent-text);font-size:12px;font-weight:600;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">
+          <i class="ti ti-photo"></i><span>Copy + Gambar</span>
+        </button>
+        <button id="lampiran-xlsx-btn" title="Download .xlsx — gambar beneran nempel di cell (paling pasti, tinggal copy range-nya ke file kamu)" style="border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-size:12px;font-weight:500;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">
+          <i class="ti ti-file-spreadsheet"></i><span>.xlsx</span>
+        </button>
+      </div>
     </div>
     <table style="width:100%;border-collapse:collapse">
       <thead>
@@ -1590,6 +1598,211 @@ async function renderSetRincianInLampiranModal(kode_produk) {
   const copyBtn = document.getElementById('lampiran-copy-sheet-btn');
   if (copyBtn) {
     copyBtn.addEventListener('click', () => copySetRincianToClipboard(items, copyBtn));
+  }
+  // Dua jalur tambahan buat bawa GAMBAR ikut kecopy — lihat komentar panjang
+  // di atas copySetRincianWithImages() soal kenapa harus dua-duanya, bukan
+  // cuma nambahin kolom gambar di TSV yang udah ada.
+  const copyImgBtn = document.getElementById('lampiran-copy-gambar-btn');
+  if (copyImgBtn) {
+    copyImgBtn.addEventListener('click', () => copySetRincianWithImages(items, imgs, copyImgBtn));
+  }
+  const xlsxBtn = document.getElementById('lampiran-xlsx-btn');
+  if (xlsxBtn) {
+    xlsxBtn.addEventListener('click', () => downloadSetRincianXlsx(kode_produk, items, imgs, xlsxBtn));
+  }
+}
+
+// URL thumbnail publik buat satu komponen set. Sama aturannya kayak
+// fetchImageBase64() di clipboard.js (pakai kode_asli kalau ada, fallback ke
+// kode_produk), cuma di sini URL-nya dipakai MENTAH (bukan di-fetch jadi
+// base64) karena Excel & Google Sheet yang bakal nge-download sendiri.
+// encodeURIComponent dipasang di sini — kode yang mengandung spasi/slash
+// bakal bikin =IMAGE() dan <img> gagal diam-diam kalau gak di-encode.
+function thumbUrlForSetItem(it) {
+  const kode = (it.kode_asli && String(it.kode_asli).trim()) ? String(it.kode_asli).trim() : it.kode_produk;
+  return S.THUMB_BASE + encodeURIComponent(kode) + '.png';
+}
+
+// Tulis beberapa "rasa" (flavor) sekaligus ke clipboard: text/html DAN
+// text/plain. Aplikasi tujuan yang milih mau pakai yang mana — Excel & Word
+// ambil text/html (jadi gambar ikut), Notepad/paste-as-plain ambil text/plain.
+// Fallback buat browser tanpa ClipboardItem (atau konteks non-HTTPS): bikin
+// div contenteditable tak terlihat, isi HTML-nya, select, execCommand('copy')
+// — cara lama ini juga kebawa sebagai rich text, bukan cuma teks polos.
+async function writeRichClipboard(html, plain) {
+  if (navigator.clipboard && window.ClipboardItem) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' })
+      })]);
+      return true;
+    } catch (e) { /* lanjut ke fallback di bawah */ }
+  }
+  const holder = document.createElement('div');
+  holder.contentEditable = 'true';
+  holder.innerHTML = html;
+  holder.style.position = 'fixed';
+  holder.style.left = '-9999px';
+  holder.style.top = '0';
+  holder.style.opacity = '0';
+  document.body.appendChild(holder);
+  const range = document.createRange();
+  range.selectNodeContents(holder);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  sel.removeAllRanges();
+  document.body.removeChild(holder);
+  return ok;
+}
+
+// COPY + GAMBAR.
+// Kenapa gak cukup nambahin kolom gambar ke TSV yang udah ada: clipboard teks
+// (text/plain) secara definisi cuma bisa bawa karakter — gambar gak punya
+// representasi di situ. Jadi dipakai dua jalur sekaligus dalam SATU kali copy:
+//
+//   text/html  → tabel HTML lengkap sama <img src="https://…thumbnails/KODE.png">.
+//                Excel (desktop) ngebaca flavor ini pas paste, nge-download
+//                gambarnya, dan naruh sebagai picture di atas cell-nya. URL-nya
+//                sengaja URL publik, BUKAN data:base64 hasil removeBackground(),
+//                karena Excel gak mau nge-render data-URI pas paste HTML —
+//                konsekuensinya gambar di sini masih ada background aslinya.
+//   text/plain → TSV yang kolom terakhirnya rumus =IMAGE("url"). Google Sheet
+//                (dan Excel 365, yang udah punya fungsi IMAGE) bakal nge-render
+//                rumus ini jadi gambar di DALAM cell. Di Google Sheet pastikan
+//                paste-nya Ctrl+Shift+V (paste teks polos), soalnya kalau paste
+//                biasa Sheet milih flavor HTML di atas dan <img>-nya dibuang.
+async function copySetRincianWithImages(items, imgs, btnEl) {
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const clean = (s) => String(s ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ').trim();
+
+  const rowsHtml = items.map((it, i) => {
+    const url = thumbUrlForSetItem(it);
+    return `<tr>` +
+      `<td style="border:1px solid #000;text-align:center">${it.urutan || i + 1}</td>` +
+      `<td style="border:1px solid #000">${esc(it.kode_produk)}</td>` +
+      `<td style="border:1px solid #000">${esc(it.nama_produk)}</td>` +
+      `<td style="border:1px solid #000;text-align:center">${it.qty ?? 1}</td>` +
+      `<td style="border:1px solid #000;text-align:center"><img src="${esc(url)}" width="80" height="65" alt="${esc(it.kode_produk)}"></td>` +
+      `</tr>`;
+  }).join('');
+
+  const html =
+    `<table border="1" style="border-collapse:collapse">` +
+    `<thead><tr>` +
+    ['NO', 'KODE PNM', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR']
+      .map(h => `<th style="border:1px solid #000;background:#1D5BD4;color:#fff">${h}</th>`).join('') +
+    `</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+
+  const plain = items.map((it) => [
+    clean(it.kode_produk),
+    clean(it.nama_produk),
+    it.qty ?? 1,
+    `=IMAGE("${thumbUrlForSetItem(it)}")`
+  ].join('\t')).join('\n');
+
+  const ok = await writeRichClipboard(html, plain);
+  if (!ok) {
+    S.showToast('Gagal copy ke clipboard — coba tombol .xlsx aja', 'error');
+    return;
+  }
+  S.showToast(`Tersalin ${items.length} baris + gambar ✓ — paste biasa ke Excel; di Google Sheet pakai Ctrl+Shift+V`);
+  if (btnEl) {
+    const original = btnEl.innerHTML;
+    btnEl.innerHTML = '<i class="ti ti-check"></i><span>Tersalin!</span>';
+    setTimeout(() => { btnEl.innerHTML = original; }, 1800);
+  }
+}
+
+// JALUR PALING PASTI: bikin file .xlsx kecil isi rincian set ini doang, dengan
+// gambar BENERAN ke-embed di dalam file (bukan link, bukan rumus) — persis
+// mekanisme yang dipakai sheet per-set di Export Excel (wb.addImage + ws.addImage).
+// Dipakai kalau Excel-nya rewel sama paste HTML, atau kalau butuh gambar yang
+// udah ke-removeBackground (base64 `imgs` di sini hasil proses itu, beda sama
+// jalur copy di atas yang cuma bisa nunjuk URL mentah).
+// Layout & border sengaja disamain sama sheet per-set biar user tinggal blok
+// range-nya dan copy ke file konversian mereka tanpa ngerapiin ulang.
+async function downloadSetRincianXlsx(kodeSet, items, imgs, btnEl) {
+  if (typeof ExcelJS === 'undefined') {
+    S.showToast('ExcelJS belum ke-load — refresh halaman dulu ya', 'error');
+    return;
+  }
+  const originalHtml = btnEl ? btnEl.innerHTML : null;
+  if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<i class="ti ti-loader-2"></i><span>Menyiapkan…</span>'; }
+  try {
+    const GRID_BORDER = {
+      top: { style: 'thin', color: { argb: 'FF000000' } },
+      left: { style: 'thin', color: { argb: 'FF000000' } },
+      bottom: { style: 'thin', color: { argb: 'FF000000' } },
+      right: { style: 'thin', color: { argb: 'FF000000' } }
+    };
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'PT Pionir Nusantara Manufacturing';
+    wb.created = new Date();
+    const ws = wb.addWorksheet(String(kodeSet).replace(/[\\/?*[\]:]/g, '').substring(0, 31) || 'RINCIAN SET');
+
+    ws.getRow(1).getCell(1).value = `RINCIAN SET — ${kodeSet}`;
+    ws.getRow(1).getCell(1).font = { bold: true, size: 13, color: { argb: 'FF1D5BD4' } };
+    ws.getRow(1).getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF4FF' } };
+    ws.mergeCells('A1:E1');
+    ws.getRow(1).height = 30;
+
+    const hdrRow = ws.getRow(2);
+    ['NO', 'KODE PNM', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR'].forEach((h, i) => {
+      const cell = hdrRow.getCell(i + 1);
+      cell.value = h;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D5BD4' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = GRID_BORDER;
+    });
+    hdrRow.height = 22;
+    ws.columns = [{ width: 6 }, { width: 24 }, { width: 45 }, { width: 8 }, { width: 18 }];
+
+    items.forEach((it, idx) => {
+      const dataRow = 3 + idx;
+      const row = ws.getRow(dataRow);
+      row.height = 70;
+      row.getCell(1).value = it.urutan || idx + 1;
+      row.getCell(2).value = it.kode_produk;
+      row.getCell(3).value = it.nama_produk;
+      row.getCell(4).value = it.qty ?? 1;
+      [1, 2, 3, 4, 5].forEach(c => {
+        row.getCell(c).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        row.getCell(c).border = GRID_BORDER;
+        if (idx % 2 === 0) row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F6F8' } };
+      });
+      if (imgs[idx]) {
+        try {
+          const imgId = wb.addImage({ base64: imgs[idx], extension: 'png' });
+          ws.addImage(imgId, { tl: { col: 4.1, row: dataRow - 0.9 }, ext: { width: 80, height: 65 } });
+        } catch (e) { /* satu gambar gagal jangan bikin seluruh file batal */ }
+      }
+    });
+
+    const totalRow = ws.getRow(3 + items.length);
+    totalRow.getCell(3).value = 'TOTAL';
+    totalRow.getCell(3).font = { bold: true };
+    totalRow.getCell(4).value = items.reduce((s, i) => s + (i.qty || 0), 0);
+    totalRow.getCell(4).font = { bold: true };
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `RINCIAN-SET-${String(kodeSet).replace(/[^a-zA-Z0-9-]/g, '')}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    S.showToast('File rincian set siap — gambar sudah nempel di dalamnya ✓');
+  } catch (e) {
+    S.showToast('Gagal bikin file: ' + (e.message || e), 'error');
+    console.error(e);
+  } finally {
+    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = originalHtml; }
   }
 }
 
