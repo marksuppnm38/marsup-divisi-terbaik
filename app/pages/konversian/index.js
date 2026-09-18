@@ -1020,6 +1020,31 @@ const LAMPIRAN_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/objec
 function isValidStorageKey(key) {
   return /^(\w|\/|!|-|\.|\*|'|\(|\)| |&|\$|@|=|;|:|\+|,|\?)*$/.test(key);
 }
+
+// SECURITY FIX: this page uploads product thumbnails using the product's
+// own kode_asli/kode_produk AS the storage key ('thumbnails' bucket, see
+// handleGambarFileDropped() below), unlike lampiran uploads which go
+// through sanitizeStorageFileName(). That key isn't free-typed here (it
+// comes from an existing product row, set back in crud-produk -- which
+// now validates this itself, see that page's thumbnailKeyError()) but
+// this is a second, independent check at the point of upload: older
+// product rows saved before that crud-produk fix could still carry an
+// unsafe kode_asli, and this page has no visibility into whether that
+// validation ran. Reserved key = TEMPLATE_THUMBNAIL_ROBUST, the shared
+// template export-gambar builds every merge on top of -- overwriting it
+// breaks that feature for every product, not just this one.
+const RESERVED_THUMBNAIL_KEYS = new Set(['TEMPLATE_THUMBNAIL_ROBUST']);
+function thumbnailKeyError(kode) {
+  if (!kode) return 'Kode produk kosong.';
+  if (!isValidStorageKey(kode) || /[\/\\]/.test(kode) || kode.includes('..')) {
+    return 'Kode produk mengandung karakter yang tidak aman untuk nama file.';
+  }
+  if (RESERVED_THUMBNAIL_KEYS.has(kode.toUpperCase())) {
+    return `"${kode}" adalah nama file reserved (dipakai fitur lain) -- tidak bisa dipakai sebagai kode gambar.`;
+  }
+  return null;
+}
+
 function sanitizeStorageFileName(name) {
   const dotIdx = name.lastIndexOf('.');
   const base = dotIdx > -1 ? name.slice(0, dotIdx) : name;
@@ -1291,6 +1316,11 @@ setupDropzone(gambarDropzone, gambarFileInput, handleGambarFileDropped);
 
 async function handleGambarFileDropped(file) {
   if (!gambarCurrentKodeForUrl) return;
+  const keyError = thumbnailKeyError(gambarCurrentKodeForUrl);
+  if (keyError) {
+    S.showToast(keyError, 'error');
+    return;
+  }
   if (!file.type.startsWith('image/')) {
     S.showToast('File harus berupa gambar (foto/screenshot).', 'error');
     return;

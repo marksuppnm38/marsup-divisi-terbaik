@@ -1321,6 +1321,48 @@ async function cekMaster(kodeAsli, silent){
 const GAMBAR_BUCKET = 'thumbnails';
 function gambarInstrumenFilename(kodeAsli){ return `${kodeAsli}.png`; }
 
+// SECURITY FIX: kode_asli is a free-text field the user types in the form
+// above and gets used AS-IS as the object key in the shared public
+// "thumbnails" bucket (with upsert:true -- silently overwrites whatever
+// already has that key). Two concrete risks that used to be completely
+// unguarded:
+//   1. Reserved filename collision -- "thumbnails" also stores
+//      TEMPLATE_THUMBNAIL_ROBUST.png, the shared template every
+//      export-gambar merge is built on top of (see that page's
+//      EXCLUDED_FILENAMES). Typing kode_asli = "TEMPLATE_THUMBNAIL_ROBUST"
+//      here (typo or otherwise) would silently replace it for every
+//      product, everyone, no warning.
+//   2. "/" or ".." in kode_asli -- the bucket is a flat namespace
+//      elsewhere in the app (export-gambar's file list, konversian's
+//      THUMB_BASE + kode + '.png' lookups all assume one flat file per
+//      kode_asli), so a key containing a path separator creates a nested
+//      object other code doesn't expect and can't find by kode_asli
+//      anymore, or silently shadows/splits what looks like one product
+//      into two different storage objects.
+// This does NOT rewrite/sanitize kode_asli itself (it's a real business
+// identifier used for lookups elsewhere -- silently transforming it would
+// desync the stored code from what's typed) -- it only refuses to build a
+// storage key from it when unsafe, with a clear error instead of a silent
+// overwrite.
+const RESERVED_THUMBNAIL_KEYS = new Set(['TEMPLATE_THUMBNAIL_ROBUST']);
+function thumbnailKeyError(kodeAsli){
+  if (!kodeAsli) return 'kode_asli kosong.';
+  if (/[\/\\]/.test(kodeAsli) || kodeAsli.includes('..')) {
+    return 'kode_asli tidak boleh mengandung "/", "\\", atau "..".';
+  }
+  const bare = kodeAsli.replace(/\.png$/i, '').toUpperCase();
+  if (RESERVED_THUMBNAIL_KEYS.has(bare)) {
+    return `"${kodeAsli}" adalah nama file reserved (dipakai fitur lain) -- pilih kode_asli lain.`;
+  }
+  return null; // aman
+}
+
+// SECURITY/ROBUSTNESS FIX: tidak ada batas ukuran sebelum ini -- file PNG
+// yang sangat besar (screenshot resolusi tinggi tanpa kompresi, dsb.) bisa
+// lolos tanpa peringatan dan memperlambat/boroskan storage & bandwidth
+// setiap kali thumbnail itu dimuat (export-gambar, konversian, dsb.).
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB, cukup longgar utk PNG thumbnail
+
 async function checkGambarInstrumen(){
   const tipe = document.getElementById('f_tipe').value;
   const kodeAsli = document.getElementById('f_kode_asli').value.trim();
@@ -1336,6 +1378,15 @@ async function checkGambarInstrumen(){
   badge.textContent = 'Mengecek...';
   hint.textContent = '';
   previewWrap.style.display = 'none';
+
+  const keyError = thumbnailKeyError(kodeAsli);
+  if (keyError) {
+    badge.className = 'status-pill bad';
+    badge.textContent = 'kode_asli tidak valid';
+    hint.textContent = keyError;
+    uploadBtn.innerHTML = '<i class="ti ti-upload"></i> Upload Gambar';
+    return;
+  }
 
   const filename = gambarInstrumenFilename(kodeAsli);
   const { data, error } = await sb.storage.from(GAMBAR_BUCKET).list('', { search: kodeAsli });
@@ -1365,6 +1416,8 @@ async function checkGambarInstrumen(){
 document.getElementById('gambarInstrumenUploadBtn').addEventListener('click', () => {
   const kodeAsli = document.getElementById('f_kode_asli').value.trim();
   if (!kodeAsli) { showToast('Isi & cek kode_asli dulu', true); return; }
+  const keyError = thumbnailKeyError(kodeAsli);
+  if (keyError) { showToast(keyError, true); return; }
   document.getElementById('gambarInstrumenFileInput').click();
 });
 
@@ -1373,8 +1426,14 @@ document.getElementById('gambarInstrumenFileInput').addEventListener('change', a
   e.target.value = '';
   if (!file) return;
   if (file.type !== 'image/png') { showToast('File harus format PNG', true); return; }
+  if (file.size > MAX_IMAGE_SIZE_BYTES) {
+    showToast(`File terlalu besar (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimal ${MAX_IMAGE_SIZE_BYTES / 1024 / 1024} MB.`, true);
+    return;
+  }
   const kodeAsli = document.getElementById('f_kode_asli').value.trim();
   if (!kodeAsli) { showToast('Isi & cek kode_asli dulu', true); return; }
+  const keyError = thumbnailKeyError(kodeAsli);
+  if (keyError) { showToast(keyError, true); return; }
   const filename = gambarInstrumenFilename(kodeAsli);
   const badge = document.getElementById('gambarInstrumenBadge');
   badge.className = 'status-pill neutral';

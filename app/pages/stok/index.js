@@ -480,8 +480,22 @@ export async function mount(container) {
     const file = stokFile.files[0];
     if (file) handleFile(file);
   });
+  // ROBUSTNESS FIX: no size limit previously existed -- a very large xlsx
+  // (accidental wrong file, or a pathological one) gets read fully into
+  // memory via file.arrayBuffer() + XLSX.read() with no guard, which can
+  // freeze the tab before any error is ever shown. Soft cap to fail fast
+  // with a clear message instead.
+  const MAX_XLSX_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
+
   async function handleFile(file) {
     resetUploadUI();
+    if (file.size > MAX_XLSX_SIZE_BYTES) {
+      fileChip.style.display = 'flex';
+      fileChipName.textContent = file.name;
+      fileChipMeta.textContent = fmtSize(file.size);
+      stokStatusMsg.innerHTML = `<div class="result-banner fail">File terlalu besar (${fmtSize(file.size)}). Maksimal ${fmtSize(MAX_XLSX_SIZE_BYTES)}.</div>`;
+      return;
+    }
     currentFileName = file.name;
     fileChip.style.display = 'flex';
     fileChipName.textContent = file.name;
