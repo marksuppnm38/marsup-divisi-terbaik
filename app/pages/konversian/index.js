@@ -290,6 +290,14 @@ export async function mount(container, initialSub) {
   S.escapeHtmlAttr = function escapeHtmlAttr(s) {
     return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   };
+  // Security: field `link`/`link_v6` datang dari database (diisi manual lewat
+  // form), bukan sesuatu yang bisa kita percaya begitu aja buat langsung
+  // ditaruh di href. Tanpa ini, value seperti "javascript:..." bisa kesimpen
+  // dan jalan pas link-nya diklik. Cuma izinkan http(s) -- skema lain (atau
+  // string kosong/invalid) dianggap gak aman buat dijadiin href.
+  S.isSafeHttpUrl = function isSafeHttpUrl(u) {
+    return /^https?:\/\//i.test(String(u == null ? '' : u).trim());
+  };
   mountedContainer = container;
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.innerHTML = KONVERSIAN_MARKUP;
@@ -2503,8 +2511,8 @@ function renderRiwayatCard(s) {
   // "Simpan ke Drive" → auto-filled ke rec-link → ikut kesimpen di sini).
   // stopPropagation biar klik link gak ikut ngebuka sesi (card-nya sendiri
   // punya click handler buat openSesi).
-  const linkChip = (latest && latest.link)
-    ? `<a class="mi" href="${latest.link.replace(/"/g, '&quot;')}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent-text)"><i class="ti ti-link"></i><span>Buka file</span></a>`
+  const linkChip = (latest && latest.link && S.isSafeHttpUrl(latest.link))
+    ? `<a class="mi" href="${S.escapeHtmlAttr(latest.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent-text)"><i class="ti ti-link"></i><span>Buka file</span></a>`
     : '';
   return `<div class="rcard riwayat-card" data-id="${s.id}" style="position:relative">
     <div class="rcard-top" style="padding-right:8px">

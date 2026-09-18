@@ -234,7 +234,7 @@ async function openDetail(kode){
         ${row('No. AKD', d.no_akd || '—')}
         ${row('Kode KFA', d.kode_kfa ? `<span style="font-family:var(--mono)">${d.kode_kfa}</span>` : '—')}
         ${row('Spesifikasi', d.spesifikasi || '—')}
-        ${row('Link v6', d.link_v6 ? `<a href="${d.link_v6}" target="_blank">Lihat di e-Katalog <i class="ph ph-arrow-square-out"></i></a>` : '—')}
+        ${row('Link v6', (d.link_v6 && isSafeHttpUrl(d.link_v6)) ? `<a href="${escapeHtmlAttr(d.link_v6)}" target="_blank">Lihat di e-Katalog <i class="ph ph-arrow-square-out"></i></a>` : '—')}
       </div>
     `;
 
@@ -247,7 +247,7 @@ async function openDetail(kode){
         ${row('No. AKD', d.no_akd || '—')}
         ${row('Kode KFA', d.kode_kfa ? `<span style="font-family:var(--mono)">${d.kode_kfa}</span>` : '—')}
         ${row('Spesifikasi', d.spesifikasi || '—')}
-        ${row('Link v6', d.link_v6 ? `<a href="${d.link_v6}" target="_blank">Lihat di e-Katalog <i class="ph ph-arrow-square-out"></i></a>` : '—')}
+        ${row('Link v6', (d.link_v6 && isSafeHttpUrl(d.link_v6)) ? `<a href="${escapeHtmlAttr(d.link_v6)}" target="_blank">Lihat di e-Katalog <i class="ph ph-arrow-square-out"></i></a>` : '—')}
       </div>
     `;
     if (thumbUrl) {
@@ -630,7 +630,7 @@ function renderTable(total, rows){
         <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtmlAttr(r.nama_produk || '—')}</td>
         <td><span class="badge ${tipeClass[r.tipe] || ''}">${r.tipe || '—'}</span></td>
         <td>${r.harga ? `<span style="font-family:var(--mono);font-size:11.5px;color:var(--success);font-weight:600">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="ph ph-x"></i> Belum ada</span>`}</td>
-        <td>${r.link_v6 ? `<a href="${r.link_v6}" target="_blank" class="chip chip-yes" style="text-decoration:none"><i class="ph ph-arrow-square-out"></i> Ada</a>` : `<span class="chip chip-no"><i class="ph ph-x"></i> Belum</span>`}</td>
+        <td>${(r.link_v6 && isSafeHttpUrl(r.link_v6)) ? `<a href="${escapeHtmlAttr(r.link_v6)}" target="_blank" class="chip chip-yes" style="text-decoration:none"><i class="ph ph-arrow-square-out"></i> Ada</a>` : `<span class="chip chip-no"><i class="ph ph-x"></i> Belum</span>`}</td>
         <td>${r.no_akd ? `<span class="chip chip-yes" style="font-family:var(--mono)">${r.no_akd}</span>` : `<span class="chip chip-no"><i class="ph ph-x"></i> Belum</span>`}</td>
       </tr>
     `).join('');
@@ -1005,6 +1005,11 @@ function escapeXml(s){
 }
 function escapeHtmlAttr(s){
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+// Security: link_v6 datang dari database (diisi manual), bukan sesuatu yang
+// aman buat langsung ditaruh di href tanpa cek -- cuma izinkan http(s).
+function isSafeHttpUrl(u){
+  return /^https?:\/\//i.test(String(u == null ? '' : u).trim());
 }
 
 // ══════════════════════════════════════════

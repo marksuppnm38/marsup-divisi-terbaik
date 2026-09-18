@@ -962,8 +962,8 @@ function renderResults(data) {
       </div>
       <div style="margin-top:6px;display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:8px">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          ${S.modeSwasta ? '' : (r.link_v6
-            ?`<a href="${r.link_v6}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</a>`
+          ${S.modeSwasta ? '' : (r.link_v6 && S.isSafeHttpUrl(r.link_v6)
+            ?`<a href="${S.escapeHtmlAttr(r.link_v6)}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</a>`
             : r.status_inaproc === 'Disetujui'
               ?`<span class="badge-katalog-no" style="color:var(--rust-text,#8F3620);border-color:var(--rust,#B8492F);background:var(--rust-bg,#FBE8E2)"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Disetujui INAPROC — siap dibuatkan Link V6!</span>`
               :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
