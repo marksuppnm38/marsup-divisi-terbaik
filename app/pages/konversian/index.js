@@ -1367,21 +1367,38 @@ async function handleGambarFileDropped(file) {
   // imageFileToPngBlob() di bawah — file didekode lewat <img>/<canvas> dan
   // di-re-encode jadi PNG asli, jadi file non-gambar yang cuma diganti nama
   // ekstensinya akan gagal di sini (img.onerror) dan ditolak.
+  const finalFilename = gambarCurrentKodeForUrl + '.png'; // nama final di Storage, dipakai di pesan sukses/gagal biar user yakin ini nyimpen ke barang yang bener
   gambarDropzone.style.display = 'none';
+  // Kalau lagi paste/drop nimpa gambar yang UDAH ketampil (bukan dari dropzone
+  // kosong), gambarImg gak ke-hide sampe gambar baru selesai di-load ulang di
+  // bawah — dari sisi user keliatannya gambar lama diam aja "gak ngapa-ngapain"
+  // selama proses upload. Redupin sementara biar ada sinyal visual "lagi
+  // proses", dikembaliin lagi pas selesai (baik sukses maupun gagal).
+  const wasShowingOldImg = gambarImg.style.display === 'block';
+  if (wasShowingOldImg) gambarImg.style.opacity = '0.4';
   gambarUploadStatus.style.display = 'block';
   gambarUploadStatus.textContent = `Mengunggah "${file.name}"…`;
   try {
     const pngBlob = await imageFileToPngBlob(file);
-    await uploadToSupabaseStorage('thumbnails', gambarCurrentKodeForUrl + '.png', pngBlob, 'image/png');
+    await uploadToSupabaseStorage('thumbnails', finalFilename, pngBlob, 'image/png');
     gambarUploadStatus.textContent = 'Berhasil diunggah ✓';
     gambarStatus.style.display = 'block';
     gambarStatus.style.color = 'var(--text-muted)';
     gambarStatus.textContent = 'Memuat gambar…';
-    gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarUploadStatus.style.display = 'none'; gambarImg.style.display = 'block'; gambarGantiBtn.style.display = 'inline-block'; };
-    gambarImg.onerror = () => { gambarUploadStatus.textContent = 'Gambar sudah diunggah, tapi gagal dimuat ulang — coba buka lagi.'; };
+    gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarUploadStatus.style.display = 'none'; gambarImg.style.opacity = '1'; gambarImg.style.display = 'block'; gambarGantiBtn.style.display = 'inline-block'; };
+    gambarImg.onerror = () => { gambarImg.style.opacity = '1'; gambarUploadStatus.textContent = 'Gambar sudah diunggah, tapi gagal dimuat ulang — coba buka lagi.'; };
     gambarImg.src = THUMB_BASE + gambarCurrentKodeForUrl + '.png?t=' + Date.now();
+    // Toast eksplisit di luar modal (gak cuma teks kecil di dalam modal) —
+    // supaya user yang matanya udah pindah dari modal (mis. abis paste
+    // langsung mau lanjut kerjaan lain) tetap kelihatan konfirmasi tegas
+    // "kesimpen, dan ini nama filenya" — bukan cuma nebak-nebak dari
+    // gambar yang (kalau lagi nimpa gambar lama) gak keliatan berubah.
+    S.showToast(`Gambar produk tersimpan sebagai "${finalFilename}" ✓`, 'success');
   } catch (e) {
-    gambarUploadStatus.textContent = 'Gagal mengunggah: ' + (e.message || e);
+    gambarImg.style.opacity = '1';
+    const errMsg = 'Gagal mengunggah "' + finalFilename + '": ' + (e.message || e);
+    gambarUploadStatus.textContent = errMsg;
+    S.showToast(errMsg, 'error');
     gambarDropzone.style.display = 'flex';
   }
 }
