@@ -713,6 +713,27 @@ function rupiah(n) {
 }
 S.rupiah = rupiah;
 
+// Badge status stok — SATU sumber dipakai renderResults (Cari Cepat) DAN
+// convRowHtml (Converter, lihat index.js), biar kalau logikanya berubah gak
+// perlu diubah di 2 tempat yang gampang ketinggalan sinkron. `r` butuh
+// stok_status/stok_qty (dan stok_komponen_terdata/total buat SET) — field ini
+// diisi enrichResultsWithStok(), dipanggil abis runSearch() DAN abis
+// finishConvBatch() di Converter.
+function stokBadgeHtml(r, isSet) {
+  return isSet
+    ? (r.stok_status === 'READY'
+        ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · bisa rakit ${r.stok_qty} set</span></span>`
+        : r.stok_status === 'INDENT'
+          ? `<span class="mi stok-indent"><i class="ti ti-clock"></i><span>Indent${r.stok_qty ? ' · bisa rakit '+r.stok_qty+' set' : ''}</span></span>`
+          : `<span class="mi stok-warn" title="${r.stok_komponen_terdata||0}/${r.stok_komponen_total||'?'} komponen sudah ada data stok"><i class="ti ti-alert-circle"></i><span>Data stok komponen blm lengkap</span></span>`)
+    : (r.stok_status === 'READY'
+        ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · ${r.stok_qty} pcs</span></span>`
+        : r.stok_status === 'INDENT'
+          ? `<span class="mi stok-indent"><i class="ti ti-clock"></i><span>Indent${r.stok_qty ? ' · '+r.stok_qty+' pcs' : ''}</span></span>`
+          : `<span class="mi stok-unknown"><i class="ti ti-help"></i><span>Stok: -</span></span>`);
+}
+S.stokBadgeHtml = stokBadgeHtml;
+
 // MAX_THUMB_PX: dimensi maksimum sisi terpanjang thumbnail sebelum di-embed ke Excel.
 // Gambar di sheet cuma ditampilkan ±80x65px, jadi resolusi sumber (kadang 800px+/gambar
 // dari server) jauh lebih besar dari kebutuhan tampilan. Downscale di sini adalah
@@ -924,17 +945,7 @@ function renderResults(data) {
     const hargaTampil = S.modeSwasta ? r.harga_swasta : r.harga_ekat;
     const tahunTampil = S.modeSwasta ? r.tahun_harga_swasta : r.tahun_harga;
     const labelHarga = S.modeSwasta ? 'Harga Swasta' : 'Harga belum ada';
-    const stokBadge = isSet
-      ? (r.stok_status === 'READY'
-          ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · bisa rakit ${r.stok_qty} set</span></span>`
-          : r.stok_status === 'INDENT'
-            ? `<span class="mi stok-indent"><i class="ti ti-clock"></i><span>Indent${r.stok_qty ? ' · bisa rakit '+r.stok_qty+' set' : ''}</span></span>`
-            : `<span class="mi stok-warn" title="${r.stok_komponen_terdata||0}/${r.stok_komponen_total||'?'} komponen sudah ada data stok"><i class="ti ti-alert-circle"></i><span>Data stok komponen blm lengkap</span></span>`)
-      : (r.stok_status === 'READY'
-          ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · ${r.stok_qty} pcs</span></span>`
-          : r.stok_status === 'INDENT'
-            ? `<span class="mi stok-indent"><i class="ti ti-clock"></i><span>Indent${r.stok_qty ? ' · '+r.stok_qty+' pcs' : ''}</span></span>`
-            : `<span class="mi stok-unknown"><i class="ti ti-help"></i><span>Stok: -</span></span>`);
+    const stokBadge = S.stokBadgeHtml(r, isSet);
     // SECURITY FIX 2026-08-14: konsisten dengan renderClipItemHtml — escape
     // nama_produk sebelum masuk innerHTML (defense in depth).
     return `<div class="rcard${inClip?' selected':''}" data-kode="${r.kode_produk}">
@@ -1012,7 +1023,11 @@ function renderResults(data) {
 }
 S.renderResults = renderResults;
 
-// COPY SATU PRODUK: kode, deskripsi, harga, link — siap paste ke WA
+// COPY SATU PRODUK: kode, deskripsi, harga, link — siap paste ke WA.
+// Link e-Katalog cuma relevan di mode e-Katalog — di mode Swasta link_v6
+// gak ikut kecopy, konsisten sama badge katalog (baris di atas), sheet
+// SUMMARY, dan sheet Kebutuhan RS di Export Excel yang juga nyembunyiin
+// kolom Link pas modeSwastaOutput true.
 function copyProdukToClipboard(kode) {
   const r = S.lastResults.find(x => x.kode_produk === kode);
   if (!r) return;
@@ -1021,7 +1036,7 @@ function copyProdukToClipboard(kode) {
     r.kode_produk || '-',
     r.nama_produk || '-',
     harga ? rupiah(harga) : 'Harga belum ada',
-    r.link_v6 || ''
+    S.modeSwasta ? '' : (r.link_v6 || '')
   ];
   const text = lines.join('\t');
 

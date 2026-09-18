@@ -201,7 +201,15 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       </div>
       <div id="conv-results" style="padding:0 12px 8px"></div>
       <div id="conv-actions" style="display:none;padding:0 12px 12px">
-        <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang Dicentang ke Clipboard</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang Dicentang ke Clipboard</button>
+          <!-- Jalur MURNI BACA buat tim yang konversinya masih di spreadsheet
+               (unit/instrumen): paste kode di atas, cocokkan, copy langsung
+               dari sini — TANPA lewat Clipboard, jadi TANPA bikin sesi
+               konversi di server. Beda sama tombol sebelah yang emang commit
+               ke sesi. Detail: copyConvWithImages() di search.js. -->
+          <button class="toggle-btn" id="btn-conv-copy-gambar" type="button" title="Salin yang dicentang sebagai tabel (kode, deskripsi, qty, gambar) — siap paste ke Excel, gak bikin sesi konversi. Di Google Sheet, paste pakai Ctrl+Shift+V."><i class="ti ti-photo"></i> Copy + Gambar (buat Sheet)</button>
+        </div>
       </div>
     </div>
 

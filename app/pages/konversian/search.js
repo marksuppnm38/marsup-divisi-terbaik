@@ -265,4 +265,75 @@ S.btnConvAddAll.addEventListener('click', async () => {
   }
 });
 
+// COPY + GAMBAR — jalur samping buat tim yang konversinya masih di
+// spreadsheet (biasanya tim unit/instrumen satuan): paste daftar kode di
+// Converter, cocokkan, copy langsung dari sini. SENGAJA gak lewat
+// Clipboard/addToClip: itu bakal manggil persistAddItem -> ensureSesi dan
+// bikin baris sesi_konversi beneran di server cuma buat ngambil gambar,
+// padahal orangnya bahkan gak pakai app ini buat konversi. Baris ini murni
+// baca hasil S.convRows, sama sekali gak nyentuh clipboard/database.
+//
+// Kolom sengaja cuma NO/KODE/DESKRIPSI/QTY/GAMBAR — gak ada harga atau link,
+// biar konsisten sama Copy + Gambar di modal Rincian Set (mekanisme dua-flavor
+// yang sama, lihat writeRichClipboard() & thumbUrlForItem() di index.js) dan
+// otomatis gak kena masalah "link ikut kecopy pas mode Swasta" kayak yang
+// sempat kejadian di copyProdukToClipboard(), karena kolom itu emang gak ada.
+if (S.btnConvCopyGambar) {
+  S.btnConvCopyGambar.addEventListener('click', async () => {
+    const checks = [...S.convResultsEl.querySelectorAll('.conv-check')];
+    const rows = checks
+      .filter(chk => chk.checked)
+      .map(chk => S.convRows[parseInt(chk.dataset.idx, 10)])
+      .filter(row => row && row.produk);
+
+    if (!rows.length) { S.showToast('Belum ada baris tercentang yang cocok ke katalog', 'error'); return; }
+
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const clean = (s) => String(s ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ').trim();
+    const SET_NOTE = 'SET — urai isi lewat Lihat Lampiran di Cari Cepat';
+
+    // SET dilewati gambarnya (bukan barisnya) dengan alasan sama persis kayak
+    // di modal Rincian Set: SET gak punya thumbnail sendiri (imgMap di export
+    // isinya komponen, bukan set-nya), jadi <img> buat kode SET bakal 404 /
+    // gambar rusak kalau dipaksa.
+    const rowsHtml = rows.map((row, i) => {
+      const r = row.produk;
+      const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
+      const gambarCell = isSet
+        ? `<td style="border:1px solid #000;text-align:center;font-size:10px;color:#6B7280">${esc(SET_NOTE)}</td>`
+        : `<td style="border:1px solid #000;text-align:center"><img src="${esc(S.thumbUrlForItem(r))}" width="80" height="65" alt="${esc(r.kode_produk)}"></td>`;
+      return `<tr>` +
+        `<td style="border:1px solid #000;text-align:center">${i + 1}</td>` +
+        `<td style="border:1px solid #000">${esc(r.kode_produk)}</td>` +
+        `<td style="border:1px solid #000">${esc(r.nama_produk)}</td>` +
+        `<td style="border:1px solid #000;text-align:center">1</td>` +
+        gambarCell +
+        `</tr>`;
+    }).join('');
+
+    const html =
+      `<table border="1" style="border-collapse:collapse">` +
+      `<thead><tr>` +
+      ['NO', 'KODE PNM', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR']
+        .map(h => `<th style="border:1px solid #000;background:#1D5BD4;color:#fff">${h}</th>`).join('') +
+      `</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+
+    const plain = rows.map((row, i) => {
+      const r = row.produk;
+      const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
+      return [i + 1, clean(r.kode_produk), clean(r.nama_produk), 1, isSet ? SET_NOTE : `=IMAGE("${S.thumbUrlForItem(r)}")`].join('\t');
+    }).join('\n');
+
+    const ok = await S.writeRichClipboard(html, plain);
+    if (!ok) { S.showToast('Gagal copy ke clipboard, coba lagi', 'error'); return; }
+
+    const jmlSet = rows.filter(row => row.produk.tipe && row.produk.tipe.toLowerCase() === 'set').length;
+    const catatanSet = jmlSet ? ` (${jmlSet} SET tanpa gambar)` : '';
+    S.showToast(`Tersalin ${rows.length} baris + gambar ✓${catatanSet} — paste biasa ke Excel; di Google Sheet pakai Ctrl+Shift+V`);
+    const original = S.btnConvCopyGambar.innerHTML;
+    S.btnConvCopyGambar.innerHTML = '<i class="ti ti-check"></i> Tersalin!';
+    setTimeout(() => { S.btnConvCopyGambar.innerHTML = original; }, 1800);
+  });
+}
+
 }

@@ -1622,6 +1622,10 @@ function thumbUrlForSetItem(it) {
   const kode = (it.kode_asli && String(it.kode_asli).trim()) ? String(it.kode_asli).trim() : it.kode_produk;
   return S.THUMB_BASE + encodeURIComponent(kode) + '.png';
 }
+// Bentuk item clipboard/convRows sama persis (punya kode_asli + kode_produk),
+// jadi fungsi ini dipakai ulang di dua tempat: modal Rincian Set (di bawah)
+// dan tombol Copy + Gambar di Converter (lihat search.js).
+S.thumbUrlForItem = thumbUrlForSetItem;
 
 // Tulis beberapa "rasa" (flavor) sekaligus ke clipboard: text/html DAN
 // text/plain. Aplikasi tujuan yang milih mau pakai yang mana — Excel & Word
@@ -1658,6 +1662,7 @@ async function writeRichClipboard(html, plain) {
   document.body.removeChild(holder);
   return ok;
 }
+S.writeRichClipboard = writeRichClipboard;
 
 // COPY + GAMBAR.
 // Kenapa gak cukup nambahin kolom gambar ke TSV yang udah ada: clipboard teks
@@ -2282,6 +2287,8 @@ const btnConvClear = document.getElementById('btn-conv-clear');
 S.btnConvClear = btnConvClear;
 const btnConvAddAll = document.getElementById('btn-conv-add-all');
 S.btnConvAddAll = btnConvAddAll;
+const btnConvCopyGambar = document.getElementById('btn-conv-copy-gambar');
+S.btnConvCopyGambar = btnConvCopyGambar;
 S.convRows = [];
 
   installClipboard(S);
@@ -3255,9 +3262,19 @@ function convManualResultsHtml(i) {
 function convRowHtml(r, i) {
   const meta = convStatusMeta(r);
   const nama = r.produk ? r.produk.nama_produk : (r.nama_input || '(tanpa nama)');
+  // Badge stok cuma relevan buat baris yang udah cocok ke katalog (r.produk
+  // keisi) — datanya sendiri udah ADA sejak finishConvBatch() manggil
+  // enrichResultsWithStok() abis batch selesai diproses (lihat search.js),
+  // cuma belum ditampilin di sini. stokBadgeHtml() sama persis yang dipakai
+  // Cari Cepat (lihat clipboard.js), biar Converter bisa dipakai serbaguna:
+  // sekalian compile-gambar (Copy + Gambar) MAUPUN cek stok bulk dari satu
+  // paste kode, tanpa perlu pindah ke tab Cari Cepat satu-satu.
+  const isSet = r.produk && r.produk.tipe && r.produk.tipe.toUpperCase() === 'SET';
+  const stokBadge = r.produk ? S.stokBadgeHtml(r.produk, isSet) : '';
   const metaLine = `<div class="clip-item-meta">
     <span class="clip-item-code">${S.escapeHtmlAttr(r.kode)}</span>
     <span style="color:${meta.color};font-size:11px">${meta.badge}</span>
+    ${stokBadge}
   </div>`;
 
   if (r.produk) {
@@ -3330,10 +3347,20 @@ function updateConvSummary() {
   const nManual = rows.filter(r => r.status === 'manual_matched').length;
   const nErr = rows.filter(r => r.status === 'error').length;
   const nNotFound = rows.filter(r => r.status === 'not_found').length;
+  // Ringkasan stok, biar "paste daftar kode → langsung kelihatan mana yang
+  // Ready/Indent" (cek stok bulk) gak perlu scroll baca badge satu-satu.
+  // Cuma ngitung baris yang udah cocok (foundProduk) — baris not_found/error
+  // gak punya data stok buat dihitung.
+  const nReady = foundProduk.filter(p => p.stok_status === 'READY').length;
+  const nIndent = foundProduk.filter(p => p.stok_status === 'INDENT').length;
+  const stokSummary = foundProduk.length
+    ? ` · Stok: ${nReady} ready, ${nIndent} indent${foundProduk.length - nReady - nIndent ? `, ${foundProduk.length - nReady - nIndent} belum ada data` : ''}`
+    : '';
   convStatus.textContent = `Selesai — ${nExact} cocok penuh, ${nDiff} kode ketemu (nama beda)`
     + (nManual ? `, ${nManual} dipilih manual` : '')
     + `, ${nNotFound} tidak ditemukan`
-    + (nErr ? `, ${nErr} error/timeout (klik "Proses Ulang yang Error").` : '.');
+    + (nErr ? `, ${nErr} error/timeout (klik "Proses Ulang yang Error").` : '.')
+    + stokSummary;
   convActions.style.display = foundProduk.length ? 'block' : 'none';
   btnConvRetryErr.style.display = nErr ? 'inline-flex' : 'none';
 }
