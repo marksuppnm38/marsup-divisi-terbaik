@@ -37,6 +37,12 @@ const VENDOR_CHAIN = [
   '/shared/auth-session.js',
 ];
 
+// Turnstile dimuat terpisah (bukan lewat VENDOR_CHAIN) karena scriptnya
+// self-render lewat data-attribute (lihat renderTurnstile() di bawah),
+// beda pola dari vendor chain yang cuma nunggu window.* keisi.
+const TURNSTILE_SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+const TURNSTILE_SITE_KEY = '0x4AAAAAAE7ZdN9sD0QXxxlE';
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) return resolve();
@@ -55,6 +61,13 @@ function ensureVendorScripts() {
     vendorReady = VENDOR_CHAIN.reduce((p, src) => p.then(() => loadScript(src)), Promise.resolve());
   }
   return vendorReady;
+}
+
+let turnstileReady = null;
+function ensureTurnstileScript() {
+  if (window.turnstile) return Promise.resolve();
+  if (!turnstileReady) turnstileReady = loadScript(TURNSTILE_SCRIPT_SRC);
+  return turnstileReady;
 }
 
 // BUG (dilaporkan user, 28 Agustus 2026): gate tampil TAPI SAMA SEKALI GAK
@@ -106,6 +119,7 @@ const GATE_MARKUP = `
       <label>Password</label>
       <input type="password" id="pw-gate-password" placeholder="••••••••" autocomplete="current-password"/>
     </div>
+    <div id="pw-gate-turnstile" style="margin:10px 0;display:flex;justify-content:center;"></div>
     <button id="pw-gate-login-btn" class="auth-gate-btn">Masuk</button>
     <div id="pw-gate-status" class="auth-gate-status"></div>
   </div>
@@ -158,21 +172,45 @@ export async function initAuthGate({ onReady, onLoggedOut }) {
     document.body.appendChild(gateEl);
   }
 
-  await Promise.all([ensureGateStyles(), ensureVendorScripts()]);
+  await Promise.all([ensureGateStyles(), ensureVendorScripts(), ensureTurnstileScript()]);
 
   const emailInput = document.getElementById('pw-gate-email');
   const passwordInput = document.getElementById('pw-gate-password');
   const loginBtn = document.getElementById('pw-gate-login-btn');
+  const turnstileEl = document.getElementById('pw-gate-turnstile');
+
+  // Token Turnstile sekali-pakai: begitu satu attemptLogin() konsumsi
+  // token ini (berhasil ATAU gagal), widget WAJIB di-reset biar dapat
+  // token baru buat percobaan berikutnya -- kalau enggak, login kedua
+  // akan selalu ditolak Supabase ("captcha check failed") walau
+  // password-nya sendiri sudah benar.
+  let turnstileToken = null;
+  let turnstileWidgetId = null;
+  function renderTurnstile() {
+    if (!turnstileEl || !window.turnstile) return;
+    turnstileWidgetId = window.turnstile.render(turnstileEl, {
+      sitekey: TURNSTILE_SITE_KEY,
+      callback: (token) => { turnstileToken = token; },
+      'expired-callback': () => { turnstileToken = null; },
+      'error-callback': () => { turnstileToken = null; },
+    });
+  }
+  function resetTurnstile() {
+    turnstileToken = null;
+    if (window.turnstile && turnstileWidgetId != null) window.turnstile.reset(turnstileWidgetId);
+  }
+  renderTurnstile();
 
   async function attemptLogin() {
     const email = (emailInput.value || '').trim().toLowerCase();
     const password = passwordInput.value || '';
     if (!email || !email.includes('@')) { setStatus('Masukkan email yang valid dulu ya.', true); return; }
     if (!password) { setStatus('Masukkan password.', true); return; }
+    if (!turnstileToken) { setStatus('Tunggu verifikasi keamanan selesai dulu ya (beberapa detik).', true); return; }
     loginBtn.disabled = true;
     loginBtn.textContent = 'Memproses...';
     try {
-      await window.PNMAuth.login(email, password);
+      await window.PNMAuth.login(email, password, turnstileToken);
       // onAuthStateChange (di bawah) yang nanganin sisanya (whitelist check + onReady).
     } catch (error) {
       setStatus(
@@ -182,6 +220,7 @@ export async function initAuthGate({ onReady, onLoggedOut }) {
         true
       );
     }
+    resetTurnstile(); // token sudah terpakai (berhasil/gagal) -- selalu minta token baru
     loginBtn.disabled = false;
     loginBtn.textContent = 'Masuk';
   }

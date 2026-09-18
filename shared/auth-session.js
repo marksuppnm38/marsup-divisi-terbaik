@@ -19,8 +19,12 @@ const PNMAuth = (() => {
   const sb = window.pnmSupabase;
   if (!sb) console.error('[shared/auth-session] pnmSupabase belum ada — pastikan shared/supabase-client.js dimuat lebih dulu.');
 
-  async function login(email, password) {
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  async function login(email, password, captchaToken) {
+    const { data, error } = await sb.auth.signInWithPassword({
+      email,
+      password,
+      options: captchaToken ? { captchaToken } : undefined,
+    });
     if (error) throw error;
     return data; // { user, session }
   }
