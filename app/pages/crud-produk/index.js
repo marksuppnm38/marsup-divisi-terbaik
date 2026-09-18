@@ -1001,6 +1001,39 @@ async function getRowsToExport(){
   return rowsToExport;
 }
 
+// ---- Deskripsi filter+search yang lagi aktif, dalam bentuk kalimat/tag pendek.
+// Dipakai buat ngasih bukti visual di file export (judul + nama file) bahwa
+// export-nya BENERAN ngikut filter yang lagi kepilih di layar (chip status +
+// SEMUA dimensi dari "Tambah Filter" -- Tipe/Golongan/dll -- + search box),
+// bukan cuma "katanya" ngikut. label chip status diambil langsung dari teks
+// tombolnya di DOM (bukan map hardcoded terpisah) biar otomatis sinkron kalau
+// nanti ada yang nambah/ubah teks chip di markup.js.
+function describeActiveFilters(){
+  const parts = [];
+  if (produkActiveFilter !== 'all') {
+    const chipBtn = document.querySelector(`.filter-chip[data-filter="${produkActiveFilter}"]`);
+    if (chipBtn) {
+      const clone = chipBtn.cloneNode(true);
+      const countEl = clone.querySelector('.fc-count');
+      if (countEl) countEl.remove();
+      const label = clone.textContent.trim();
+      if (label) parts.push(label);
+    }
+  }
+  produkActiveFilters.forEach(f => { if (f.label) parts.push(f.label); });
+  if (lastQuery.trim()) parts.push(`cari "${lastQuery.trim()}"`);
+  return parts;
+}
+// Versi slug buat nama file (dipakai exportProdukToExcel yang sudah ada DAN
+// exportPricelistSales) -- sengaja dari raw dim/filter key, bukan dari label
+// describeActiveFilters() di atas (label bisa berisi spasi/simbol yang jelek
+// buat nama file).
+function buildFilterFilenameTag(){
+  return (produkActiveFilter !== 'all' ? '_' + produkActiveFilter : '') +
+    (produkActiveFilters.length ? '_' + produkActiveFilters.map(f => f.dim).join('-') : '') +
+    (lastQuery.trim() ? '_search' : '');
+}
+
 // ---- Ambil harga EKATALOG & SWASTA (tahun terbaru per produk) buat sekumpulan
 // produk_id sekaligus. Dipecah per-chunk (bukan satu .in() raksasa) biar gak
 // kena limit panjang query PostgREST kalau id-nya ratusan/ribuan.
@@ -1056,9 +1089,7 @@ async function exportProdukToExcel(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Produk');
   const dateStr = new Date().toISOString().slice(0, 10);
-  const filterTag = (produkActiveFilter !== 'all' ? '_' + produkActiveFilter : '') +
-    (produkActiveFilters.length ? '_' + produkActiveFilters.map(f => f.dim).join('-') : '') +
-    (lastQuery.trim() ? '_search' : '');
+  const filterTag = buildFilterFilenameTag();
   XLSX.writeFile(wb, `produk_export_${dateStr}${filterTag || '_semua'}.xlsx`);
   showToast(`Excel terdownload — ${rowsToExport.length} baris`);
 }
@@ -1106,33 +1137,58 @@ async function exportPricelistSales(){
 
   const HEADER = ['No', 'Kode Produk', 'Nama Produk', 'Golongan', 'Harga EKATALOG', 'Harga SWASTA', 'Tahun Harga', 'Link Katalog'];
   const dateStr = new Date().toISOString().slice(0, 10);
-  const titleRow = [`PRICELIST PRODUK — per ${dateStr}`];
+  const filterParts = describeActiveFilters();
+  const subtitle = (filterParts.length ? filterParts.join(' · ') + ' — ' : 'Semua produk — ') + `per ${dateStr} — ${priced.length} produk`;
 
-  const aoa = [titleRow, HEADER];
+  const aoa = [['PRICELIST PRODUK'], [subtitle], HEADER];
   priced.forEach((r, idx) => {
     const h = hargaMap.get(r.id);
     aoa.push([idx + 1, r.kode_produk || '', r.nama_produk || '', r.golongan || '', h.ekatalog, h.swasta != null ? h.swasta : '', h.tahun, r.link_v6 || '']);
   });
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const lastCol = HEADER.length - 1; // 0-based, kolom H
+  const lastRow = aoa.length - 1;    // 0-based
 
-  // Judul: merge sepanjang kolom, font besar+bold.
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: HEADER.length - 1 } }];
-  ws['A1'].s = { font: { bold: true, sz: 14 } };
+  // Judul + subjudul: merge sepanjang kolom.
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } },
+  ];
+  ws['A1'].s = { font: { bold: true, sz: 15 } };
+  ws['A2'].s = { font: { italic: true, sz: 10.5, color: { rgb: '666666' } } };
 
-  // Header kolom: bold, teks putih, background biru.
-  const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '2F5496' } }, alignment: { vertical: 'center' } };
+  // Header kolom (baris index 2 / row Excel ke-3): bold, teks putih, background
+  // biru, border tipis, + autofilter (dropdown sort/filter bawaan Excel) biar
+  // sales sendiri bisa sortir/filter lanjut di Excel tanpa balik minta ke kita.
+  const thinBorder = { style: 'thin', color: { rgb: 'D9D9D9' } };
+  const headerStyle = {
+    font: { bold: true, color: { rgb: 'FFFFFF' } },
+    fill: { fgColor: { rgb: '2F5496' } },
+    alignment: { vertical: 'center', horizontal: 'center' },
+    border: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder },
+  };
   HEADER.forEach((_, c) => {
-    const addr = XLSX.utils.encode_cell({ r: 1, c });
+    const addr = XLSX.utils.encode_cell({ r: 2, c });
     if (ws[addr]) ws[addr].s = headerStyle;
   });
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: 2, c: lastCol } }) };
 
-  // Kolom harga: format Rp (baris ke-3 dst, kolom E=4 harga EKATALOG, F=5 harga SWASTA, index 0-based c:4/5).
-  for (let r = 2; r < aoa.length; r++) {
-    const ekatAddr = XLSX.utils.encode_cell({ r, c: 4 });
-    const swastaAddr = XLSX.utils.encode_cell({ r, c: 5 });
-    if (ws[ekatAddr] && typeof ws[ekatAddr].v === 'number') ws[ekatAddr].z = '"Rp" #,##0';
-    if (ws[swastaAddr] && typeof ws[swastaAddr].v === 'number') ws[swastaAddr].z = '"Rp" #,##0';
+  // Baris data: border tipis di semua sel + selang-seling warna (zebra) biar
+  // enak dibaca pas barisnya panjang, format Rp di kolom harga, rata tengah
+  // buat kolom No & Tahun.
+  for (let r = 3; r <= lastRow; r++) {
+    const isEven = (r - 3) % 2 === 1;
+    for (let c = 0; c <= lastCol; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[addr];
+      if (!cell) continue;
+      const style = { border: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder } };
+      if (isEven) style.fill = { fgColor: { rgb: 'F2F2F2' } };
+      if (c === 0 || c === 6) style.alignment = { horizontal: 'center' }; // No, Tahun Harga
+      if ((c === 4 || c === 5) && typeof cell.v === 'number') cell.z = '"Rp" #,##0'; // Harga EKATALOG/SWASTA
+      cell.s = style;
+    }
   }
 
   ws['!cols'] = [
@@ -1145,10 +1201,12 @@ async function exportPricelistSales(){
     { wch: 12 },  // Tahun Harga
     { wch: 45 },  // Link Katalog
   ];
+  ws['!rows'] = [{ hpt: 22 }, { hpt: 16 }, { hpt: 18 }]; // judul, subjudul, header dikasih tinggi lebih pas
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Pricelist');
-  XLSX.writeFile(wb, `pricelist_sales_${dateStr}.xlsx`);
+  const filterTag = buildFilterFilenameTag();
+  XLSX.writeFile(wb, `pricelist_sales_${dateStr}${filterTag || '_semua'}.xlsx`);
 
   let msg = `Pricelist terdownload — ${priced.length} produk`;
   const skippedNote = [];
