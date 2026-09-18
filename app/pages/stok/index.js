@@ -67,11 +67,20 @@ const VENDOR_CHAIN = [
   '/shared/supabase-client.js',
   '/shared/auth-session.js',
 ];
-// exceljs independen dari chain auth di atas (gak butuh urutan), dipakai
-// buat baca file .xlsx/.xls yang diupload -- satu-satunya vendor script
-// yang stok.html asli punya di luar auth.
+// UPDATE (CSP fix): exceljs DIGANTI ke SheetJS (xlsx). exceljs.min.js@4.3.0
+// nyeret dependency fast-csv -> extend -> declare.js yang manggil
+// `new Function(...)` di module-init-nya (dipakai buat fitur CSV yang
+// halaman ini gak pernah pakai sama sekali -- cuma baca .xlsx lewat
+// .xlsx.load()) -- ke-block sama CSP script-src situs ini yang gak punya
+// 'unsafe-eval' (lihat exceljs/exceljs#713 di GitHub, masih open, gak ada
+// fix resmi). Efeknya BUKAN error yang keliatan pas load: script-nya
+// "berhasil" di-load (makanya loadScript()'s onload tetep fire), tapi
+// window.ExcelJS ke-assign gak lengkap karena crash di tengah init --
+// baru ketauan pas dipakai (`Cannot read properties of undefined
+// (reading 'Workbook')`). SheetJS gak punya masalah ini buat baca .xlsx
+// polos kayak file stok ini (gak butuh CSV/eval-based codepath).
 const INDEPENDENT_SCRIPTS = [
-  'https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js',
+  'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
 ];
 
 function loadScript(src) {
@@ -87,7 +96,7 @@ function loadScript(src) {
 
 let vendorReady = null;
 function ensureVendorScripts() {
-  if (window.PNMAuth && window.pnmSupabase && window.ExcelJS) return Promise.resolve();
+  if (window.PNMAuth && window.pnmSupabase && window.XLSX) return Promise.resolve();
   if (!vendorReady) {
     const chain = VENDOR_CHAIN.reduce((p, src) => p.then(() => loadScript(src)), Promise.resolve());
     vendorReady = Promise.all([chain, ...INDEPENDENT_SCRIPTS.map(loadScript)]);
@@ -480,26 +489,31 @@ export async function mount(container) {
     checkingRow.style.display = 'flex';
     checkingText.textContent = 'Membaca file…';
     try {
+      // SheetJS: baca sheet pertama sebagai array-of-arrays (header: 1) --
+      // padanan paling dekat sama pola getRow()/getCell() ExcelJS yang lama,
+      // colKode/colQty di sini 0-based (array index), BEDA dari ExcelJS yang
+      // 1-based (colNumber) -- disesuaikan di pencarian header & lookup cell
+      // di bawah, sisanya (dedup/skip logic) sama persis kayak sebelumnya.
       const buffer = await file.arrayBuffer();
-      const wb = new window.ExcelJS.Workbook();
-      await wb.xlsx.load(buffer);
-      const ws = wb.worksheets[0];
-      const headerRow = ws.getRow(1);
+      const wb = window.XLSX.read(buffer, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rowsAoa = window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+      const headerRow = rowsAoa[0] || [];
       let colKode = null, colQty = null;
-      headerRow.eachCell((cell, colNumber) => {
-        const v = String(cell.value || '').trim().toUpperCase();
-        if (v === 'KODEASLI' || v === 'KODE ASLI') colKode = colNumber;
-        if (v === 'QTY') colQty = colNumber;
+      headerRow.forEach((cell, colIndex) => {
+        const v = String(cell || '').trim().toUpperCase();
+        if (v === 'KODEASLI' || v === 'KODE ASLI') colKode = colIndex;
+        if (v === 'QTY') colQty = colIndex;
       });
-      if (!colKode || !colQty) {
+      if (colKode === null || colQty === null) {
         throw new Error('Kolom KODEASLI dan/atau QTY tidak ditemukan di baris pertama file.');
       }
       const seen = new Map();
       let dupCount = 0;
-      for (let r = 2; r <= ws.rowCount; r++) {
-        const row = ws.getRow(r);
-        const kodeAsli = String(row.getCell(colKode).value || '').trim();
-        const qtyRaw = row.getCell(colQty).value;
+      for (let r = 1; r < rowsAoa.length; r++) {
+        const row = rowsAoa[r] || [];
+        const kodeAsli = String(row[colKode] ?? '').trim();
+        const qtyRaw = row[colQty];
         const qty = parseInt(qtyRaw, 10);
         if (!kodeAsli) continue;
         if (seen.has(kodeAsli)) dupCount++;
