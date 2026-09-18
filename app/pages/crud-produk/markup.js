@@ -59,6 +59,7 @@ export const CRUD_PRODUK_MARKUP = `
           <div class="content-sub" id="produkCount">Memuat...</div>
         </div>
         <button class="btn btn-ghost excel-export-btn" id="produkExportBtn"><i class="ti ti-file-spreadsheet"></i> Download Excel (hasil filter)</button>
+        <button class="btn btn-ghost excel-export-btn" id="produkExportPricelistBtn" title="Cuma produk yang udah ada Link V6 & harga EKATALOG — kolom harga beneran keisi angka, siap dikirim ke sales."><i class="ti ti-currency-dollar"></i> Export Pricelist (Sales)</button>
       </div>
 
       <div class="filter-bar" id="produkFilterBar">

@@ -52,8 +52,20 @@ const AUTH_CHAIN_SCRIPTS = [
   '/shared/supabase-client.js',
   '/shared/auth-session.js',
 ];
+//
+// xlsx-js-style (BUKAN 'xlsx' polos) -- fork MIT/gratis dari SheetJS yang
+// SAMA PERSIS API-nya (masih nempelin global window.XLSX yang sama, semua
+// pemanggilan XLSX.utils.*/XLSX.writeFile di bawah gak perlu diubah), tapi
+// beda dari 'xlsx' community biasa: fork ini BENERAN nulis cell style
+// (font.bold, fill warna) ke file .xlsx-nya. 'xlsx' versi polos diam-diam
+// BUANG properti `ws[cell].s` pas nulis -- dites langsung (bikin file .xlsx
+// pake keduanya, unzip, cek xl/styles.xml): versi polos cellXfs-nya cuma 1
+// entry default, gak ada font bold/fill custom sama sekali biarpun
+// di-set eksplisit di kode. Baru ketauan kalau file jadinya dibuka di Excel,
+// bukan dari error apapun -- exportPricelistSales() di bawah butuh header
+// bold+background biar "siap konsumsi sales" beneran, bukan cuma klaim.
 const INDEPENDENT_SCRIPTS = [
-  'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+  'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js',
   '/shared/toast.js',
 ];
 
@@ -961,12 +973,12 @@ function renderProdukFilterChips(){
   });
 }
 
-// ---- Download Excel (hasil filter yang lagi aktif — chip status + filter tambahan
-// + search, bukan cuma halaman yang lagi tampil) ----
-async function exportProdukToExcel(){
-  const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
-  if (needsHarga) await ensureProdukHargaSet();
-
+// ---- Ambil baris yang mau di-export, respect filter+search yang lagi aktif.
+// Dipakai bareng exportProdukToExcel (dump semua kolom, admin/QA) DAN
+// exportPricelistSales (kolom terbatas + harga beneran, buat sales) --
+// biar behavior "ikut filter chip + search yang lagi aktif" konsisten,
+// gak keduplikasi/berisiko divergen di 2 tempat.
+async function getRowsToExport(){
   let rowsToExport;
   if (lastQuery.trim()) {
     // Search aktif -> hasil match sudah lengkap di produkSearchAllRows (RPC search
@@ -983,9 +995,50 @@ async function exportProdukToExcel(){
       p_page: 1,
       p_page_size: null,
     });
-    if (error) { showToast('Gagal export: ' + error.message, true); return; }
+    if (error) { showToast('Gagal export: ' + error.message, true); return null; }
     rowsToExport = data?.rows || [];
   }
+  return rowsToExport;
+}
+
+// ---- Ambil harga EKATALOG & SWASTA (tahun terbaru per produk) buat sekumpulan
+// produk_id sekaligus. Dipecah per-chunk (bukan satu .in() raksasa) biar gak
+// kena limit panjang query PostgREST kalau id-nya ratusan/ribuan.
+async function fetchHargaLatestMap(produkIds){
+  const map = new Map(); // produk_id -> {tahun, ekatalog, swasta}
+  const CHUNK = 300;
+  for (let i = 0; i < produkIds.length; i += CHUNK) {
+    const chunk = produkIds.slice(i, i + CHUNK);
+    const { data, error } = await sb.from('produk_harga')
+      .select('produk_id,tahun,jenis,harga')
+      .in('produk_id', chunk);
+    if (error) { showToast('Gagal ambil data harga: ' + error.message, true); return null; }
+    (data || []).forEach(h => {
+      const existing = map.get(h.produk_id);
+      // EKATALOG adalah harga input manual (lihat upsertHargaDariEkat) -- SWASTA/UPLOAD
+      // cuma turunan rumus di tahun yang sama, jadi "tahun terbaru" ditentukan dari
+      // baris EKATALOG-nya. Kalau produk punya >1 tahun, ambil yang paling baru.
+      if (!existing || h.tahun > existing.tahun) {
+        map.set(h.produk_id, { tahun: h.tahun, ekatalog: null, swasta: null });
+      }
+      const entry = map.get(h.produk_id);
+      if (h.tahun === entry.tahun) {
+        if (h.jenis === 'EKATALOG') entry.ekatalog = h.harga;
+        if (h.jenis === 'SWASTA') entry.swasta = h.harga;
+      }
+    });
+  }
+  return map;
+}
+
+// ---- Download Excel (hasil filter yang lagi aktif — chip status + filter tambahan
+// + search, bukan cuma halaman yang lagi tampil) ----
+async function exportProdukToExcel(){
+  const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
+  if (needsHarga) await ensureProdukHargaSet();
+
+  const rowsToExport = await getRowsToExport();
+  if (rowsToExport === null) return; // error sudah di-toast di getRowsToExport
   if (!rowsToExport.length) { showToast('Tidak ada data untuk diexport', true); return; }
   await ensureProdukHargaSet();
   const sheetData = rowsToExport.map(r => ({
@@ -1010,6 +1063,101 @@ async function exportProdukToExcel(){
   showToast(`Excel terdownload — ${rowsToExport.length} baris`);
 }
 document.getElementById('produkExportBtn').addEventListener('click', exportProdukToExcel);
+
+// ---- Export Pricelist (Sales): beda tujuan dari exportProdukToExcel di atas --
+// itu dump audit/QA (semua kolom internal, flag Ya/Tidak doang buat harga, dipakai
+// admin ngecek data mana yang masih bolong). Ini KHUSUS buat dikirim ke sales:
+// - Cuma kolom yang relevan buat jualan (gak ada Status AKD/INAPROC yang internal).
+// - Harga beneran keluar angkanya (EKATALOG & SWASTA, tahun terbaru), bukan Ya/Tidak.
+// - Cuma produk yang BENERAN siap jual (ada Link V6 katalog DAN ada harga EKATALOG)
+//   yang masuk -- baris "Ya" di kolom lama tapi ternyata harganya kosong (kejadian
+//   sebelum fix ini, lihat produk_export_2026-09-18_harga-link_v6.xlsx yang dikirim
+//   user) otomatis gak akan pernah nongol lagi, difilter di sini, bukan cuma di UI.
+// - Header bold+warna & kolom harga format Rp (lihat komentar xlsx-js-style di atas
+//   file -- 'xlsx' community biasa DIAM-DIAM buang style ini pas nulis file).
+async function exportPricelistSales(){
+  const rowsToExport = await getRowsToExport();
+  if (rowsToExport === null) return;
+  if (!rowsToExport.length) { showToast('Tidak ada data untuk diexport', true); return; }
+
+  const hargaMap = await fetchHargaLatestMap(rowsToExport.map(r => r.id));
+  if (hargaMap === null) return;
+
+  const withLink = rowsToExport.filter(r => (r.link_v6 || '').trim());
+  const priced = withLink.filter(r => {
+    const h = hargaMap.get(r.id);
+    return h && h.ekatalog != null;
+  });
+  const skippedNoLink = rowsToExport.length - withLink.length;
+  const skippedNoHarga = withLink.length - priced.length;
+
+  if (!priced.length) {
+    showToast('Gak ada produk yang sekaligus punya Link V6 & harga EKATALOG di hasil filter ini — gak ada yang bisa di-pricelist-kan.', true);
+    return;
+  }
+
+  // Urut per Golongan lalu Nama Produk -- lebih enak dipakai sales nyari barang
+  // per kategori daripada urutan kode produk mentah.
+  priced.sort((a, b) => {
+    const g = (a.golongan || '').localeCompare(b.golongan || '', 'id');
+    if (g !== 0) return g;
+    return (a.nama_produk || '').localeCompare(b.nama_produk || '', 'id');
+  });
+
+  const HEADER = ['No', 'Kode Produk', 'Nama Produk', 'Golongan', 'Harga EKATALOG', 'Harga SWASTA', 'Tahun Harga', 'Link Katalog'];
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const titleRow = [`PRICELIST PRODUK — per ${dateStr}`];
+
+  const aoa = [titleRow, HEADER];
+  priced.forEach((r, idx) => {
+    const h = hargaMap.get(r.id);
+    aoa.push([idx + 1, r.kode_produk || '', r.nama_produk || '', r.golongan || '', h.ekatalog, h.swasta != null ? h.swasta : '', h.tahun, r.link_v6 || '']);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Judul: merge sepanjang kolom, font besar+bold.
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: HEADER.length - 1 } }];
+  ws['A1'].s = { font: { bold: true, sz: 14 } };
+
+  // Header kolom: bold, teks putih, background biru.
+  const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '2F5496' } }, alignment: { vertical: 'center' } };
+  HEADER.forEach((_, c) => {
+    const addr = XLSX.utils.encode_cell({ r: 1, c });
+    if (ws[addr]) ws[addr].s = headerStyle;
+  });
+
+  // Kolom harga: format Rp (baris ke-3 dst, kolom E=4 harga EKATALOG, F=5 harga SWASTA, index 0-based c:4/5).
+  for (let r = 2; r < aoa.length; r++) {
+    const ekatAddr = XLSX.utils.encode_cell({ r, c: 4 });
+    const swastaAddr = XLSX.utils.encode_cell({ r, c: 5 });
+    if (ws[ekatAddr] && typeof ws[ekatAddr].v === 'number') ws[ekatAddr].z = '"Rp" #,##0';
+    if (ws[swastaAddr] && typeof ws[swastaAddr].v === 'number') ws[swastaAddr].z = '"Rp" #,##0';
+  }
+
+  ws['!cols'] = [
+    { wch: 5 },   // No
+    { wch: 22 },  // Kode Produk
+    { wch: 45 },  // Nama Produk
+    { wch: 18 },  // Golongan
+    { wch: 16 },  // Harga EKATALOG
+    { wch: 16 },  // Harga SWASTA
+    { wch: 12 },  // Tahun Harga
+    { wch: 45 },  // Link Katalog
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Pricelist');
+  XLSX.writeFile(wb, `pricelist_sales_${dateStr}.xlsx`);
+
+  let msg = `Pricelist terdownload — ${priced.length} produk`;
+  const skippedNote = [];
+  if (skippedNoLink) skippedNote.push(`${skippedNoLink} dilewati (belum ada Link V6)`);
+  if (skippedNoHarga) skippedNote.push(`${skippedNoHarga} dilewati (belum ada harga EKATALOG)`);
+  if (skippedNote.length) msg += ` · ${skippedNote.join(', ')}`;
+  showToast(msg);
+}
+document.getElementById('produkExportPricelistBtn').addEventListener('click', exportPricelistSales);
 
 // ---- Angka di tiap chip (total per kategori, independen dari search/pagination) ----
 async function refreshProdukFilterCounts(){
