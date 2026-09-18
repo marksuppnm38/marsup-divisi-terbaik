@@ -962,8 +962,8 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       <div id="gambar-dropzone" class="dropzone" style="display:none;width:280px">
         <input type="file" id="gambar-file-input" accept="image/*" hidden/>
         <i class="ti ti-cloud-upload dropzone-icon"></i>
-        <div class="dropzone-text">Seret &amp; taruh gambar produk di sini,<br/>atau <span class="dropzone-browse">klik untuk pilih file</span></div>
-        <div class="dropzone-sub">Foto dari WA, HP, atau folder — langsung diunggah jadi gambar produk ini.</div>
+        <div class="dropzone-text">Seret &amp; taruh gambar produk di sini,<br/>tempel (Ctrl+V), atau <span class="dropzone-browse">klik untuk pilih file</span></div>
+        <div class="dropzone-sub">Foto dari WA, HP, atau folder — atau tinggal copy gambar terus paste (Ctrl+V) di sini, langsung diunggah jadi gambar produk ini.</div>
       </div>
     </div>
     <div id="gambar-upload-status" class="dropzone-status" style="display:none"></div>

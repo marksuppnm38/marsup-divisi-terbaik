@@ -1314,6 +1314,40 @@ gambarGantiBtn.addEventListener('click', showGambarDropzone);
 
 setupDropzone(gambarDropzone, gambarFileInput, handleGambarFileDropped);
 
+// PASTE GAMBAR (Ctrl+V) — alternatif ke drag&drop/klik-pilih-file di atas, gak
+// gantiin, cuma nambahin jalur ketiga. Aktif selama modal gambar produk lagi
+// kebuka, baik posisi masih nunjukin dropzone kosong MAUPUN udah ada gambar
+// lama ketampil (user gak perlu klik "Ganti Gambar" dulu — paste langsung
+// jalan, sama kayak reflex umum "copy gambar dari WA/browser lalu Ctrl+V").
+// Listener dipasang di document (bukan di gambarDropzone) karena elemen
+// dropzone-nya sendiri kadang disembunyikan (display:none) pas gambar lama
+// lagi ketampil, dan elemen yang disembunyikan gak bisa nerima focus/paste.
+document.addEventListener('paste', (e) => {
+  if (!gambarModal.classList.contains('show')) return;
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items || !items.length) return;
+  let imageItem = null;
+  for (const item of items) {
+    if (item.kind === 'file' && item.type && item.type.startsWith('image/')) { imageItem = item; break; }
+  }
+  // bukan gambar di clipboard (mis. user paste teks) — biarin lewat begitu
+  // aja, jangan preventDefault supaya paste teks normal (kalau ada input
+  // lain di modal) tetap jalan seperti biasa.
+  if (!imageItem) return;
+  e.preventDefault();
+  const pastedFile = imageItem.getAsFile();
+  if (!pastedFile) return;
+  if (!gambarCurrentKodeForUrl) return;
+  // Clipboard paste gak punya nama file asli (browser kasih nama generik
+  // kayak "image.png") — di-rename dulu jadi kode_barang.<ext> (sama kayak
+  // nama akhir file gambar produk ini di Storage) SEBELUM dilempar ke
+  // handleGambarFileDropped, biar teks status upload ("Mengunggah ...")
+  // nampilin kode barangnya, bukan "image.png" yang gak informatif.
+  const ext = (pastedFile.type && pastedFile.type.split('/')[1]) || 'png';
+  const namedFile = new File([pastedFile], `${gambarCurrentKodeForUrl}.${ext}`, { type: pastedFile.type });
+  handleGambarFileDropped(namedFile);
+});
+
 async function handleGambarFileDropped(file) {
   if (!gambarCurrentKodeForUrl) return;
   const keyError = thumbnailKeyError(gambarCurrentKodeForUrl);
