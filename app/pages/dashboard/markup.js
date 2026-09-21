@@ -32,7 +32,7 @@ export const DASHBOARD_MARKUP = `
 
 <main>
 
-  <div class="err-banner" id="err-banner"><i class="ti ti-alert-circle"></i> <span id="err-text"></span></div>
+  <div class="err-banner" id="err-banner" role="alert"><i class="ti ti-alert-circle"></i> <span id="err-text"></span></div>
 
   <div class="section-label"><i class="ti ti-refresh"></i> Konversi Hari Ini</div>
   <div class="stats-grid" id="stats-grid-konversi">
@@ -138,7 +138,7 @@ export const DASHBOARD_MARKUP = `
           <option value="UNIT">Unit</option>
         </select>
         <span class="search-wrap-mini" style="position:relative">
-  <input class="search-mini" id="tbl-search" type="search" placeholder="Cari kode / nama…" oninput="onSearch()" onfocus="showSearchHistory()" style="padding-right:24px"/>
+  <input class="search-mini" id="tbl-search" type="search" aria-label="Cari produk berdasarkan kode atau nama" placeholder="Cari kode / nama…" oninput="onSearch()" onfocus="showSearchHistory()" style="padding-right:24px"/>
   <i class="ti ti-loader-2 spinner search-spinner" id="search-spinner"></i>
   <div class="search-history" id="search-history"></div>
 </span>
@@ -159,7 +159,7 @@ export const DASHBOARD_MARKUP = `
     <table>
         <thead>
   <tr>
-    <th class="checkbox-col"><input type="checkbox" class="row-checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)"/></th>
+    <th class="checkbox-col"><input type="checkbox" class="row-checkbox" id="select-all-checkbox" aria-label="Pilih semua produk di halaman ini" onchange="toggleSelectAll(this)"/></th>
     <th>Kode Produk</th>
             <th>Nama Produk</th>
             <th>Tipe</th>
@@ -213,11 +213,11 @@ export const DASHBOARD_MARKUP = `
           <option value="">Semua Channel</option>
         </select>
         <span class="search-wrap-mini" style="position:relative">
-          <input class="search-mini" id="pop-search" type="search" placeholder="Cari kode / nama produk…" oninput="popOnSearch()" style="padding-right:24px;width:220px"/>
+          <input class="search-mini" id="pop-search" type="search" aria-label="Cari populasi produk berdasarkan kode atau nama" placeholder="Cari kode / nama produk…" oninput="popOnSearch()" style="padding-right:24px;width:220px"/>
           <i class="ti ti-loader-2 spinner search-spinner" id="pop-search-spinner"></i>
         </span>
         <button class="bulk-btn export" onclick="popExportExcel(event)" style="margin-left:auto">
-          <i class="ti ti-file-type-xls"></i> Export Excel
+          <i class="ti ti-file-type-csv"></i> Export CSV
         </button>
       </div>
     </div>
@@ -249,7 +249,7 @@ export const DASHBOARD_MARKUP = `
   </div>
 </main>
 </div>
-<div class="toast-container" id="toast-container"></div>
+<div class="toast-container" id="toast-container" aria-live="polite"></div>
 <!-- Pengganti prompt() bawaan browser buat nama preset filter (savePreset()
      di index.js) -- pakai .confirm-overlay/.confirm-card generic yang sama
      dipakai stok & crud-produk buat dialog kecil, ditambah satu .field-input
@@ -268,13 +268,13 @@ export const DASHBOARD_MARKUP = `
 </div>
 
 <div class="detail-modal-overlay" id="detail-modal-overlay">
-  <div class="detail-modal" id="detail-modal">
+  <div class="detail-modal" id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="dm-title">
     <div class="detail-modal-head">
       <div>
         <div class="detail-modal-title" id="dm-title">—</div>
         <div class="detail-modal-sub" id="dm-kode">—</div>
       </div>
-      <button class="detail-modal-close" id="dm-close">&times;</button>
+      <button type="button" class="detail-modal-close" id="dm-close" aria-label="Tutup">&times;</button>
     </div>
     <div class="detail-modal-body" id="dm-body">
       <div class="detail-loading"><i class="ti ti-loader-2 spinner"></i> Memuat detail…</div>

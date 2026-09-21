@@ -147,3 +147,9 @@
    Populasi table's "Order Terakhir" (date) column had no mono -- fixed in
    index.js directly (single inline-style addition, not worth a CSS hook
    for one column) rather than here. */
+
+/* Kartu statistik yang bisa diklik (Belum Ada Harga / Belum di e-Katalog -> filter tabel produk).
+   Sengaja cuma border+outline, gak nambah warna baru (lihat catatan design.md di atas). */
+#app-root .stat-card[data-goto]{cursor:pointer}
+#app-root .stat-card[data-goto]:hover{border-color:var(--accent)}
+#app-root .stat-card[data-goto]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

@@ -131,6 +131,7 @@ let dashKeydownHandler = null;
 let dashClickHandler = null;
 
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
+const RPC_TIMEOUT_MS = 25000;
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
 
 export async function mount(container) {
@@ -171,7 +172,9 @@ export async function mount(container) {
 // SEKARANG ikut ke-whitelist-check juga, bukan lagi pengecualian. Efek
 // samping yang gak terhindarkan dari "satu gate buat semua", bukan
 // keputusan diam-diam.
-loadEverything();
+// loadEverything() SENGAJA dipanggil di paling akhir mount() (setelah semua
+// let/const modul ini terinisialisasi) -- dulu dipanggil di sini dan langsung
+// kena TDZ ('Cannot access currentPage before initialization') di loadTable().
 
 // DETAIL MODAL
 // SPA migration BUGFIX: ini dulu dibungkus document.addEventListener(
@@ -185,40 +188,46 @@ loadEverything();
 // container.innerHTML udah di-set sebelum baris ini jalan, jadi DOM-nya
 // udah pasti ada, gak perlu nunggu apa-apa lagi.
 let detailOverlay = document.getElementById('detail-modal-overlay');
+let activeDetailKode = null;
+let detailReqId = 0;            // token: respons detail yang telat gak boleh nimpa yang lebih baru
+let lastFocusBeforeModal = null;
+
+// FIX: dulu function ini dideklarasikan DI DALAM blok `if(detailOverlay){...}`.
+// Di ES module (strict mode) function-in-block itu block-scoped, jadi handler
+// Esc di bawah kena "closeDetailModal is not defined". Sekarang di scope mount().
+function closeDetailModal(){
+  detailOverlay.classList.remove('show');
+  document.querySelectorAll('#tbl-body tr').forEach(tr => tr.classList.remove('row-active'));
+  activeDetailKode = null;
+  detailReqId++;
+  if (lastFocusBeforeModal && document.contains(lastFocusBeforeModal)) lastFocusBeforeModal.focus();
+  lastFocusBeforeModal = null;
+}
 if(detailOverlay){
-  function closeDetailModal(){
-    detailOverlay.classList.remove('show');
-    document.querySelectorAll('#tbl-body tr').forEach(tr => tr.classList.remove('row-active'));
-    activeDetailKode = null;
-  }
   document.getElementById('dm-close').addEventListener('click', closeDetailModal);
   detailOverlay.addEventListener('click', e => { if(e.target===detailOverlay) closeDetailModal(); });
 }
-
-let activeDetailKode = null;
 async function openDetail(kode){
+  const myReq = ++detailReqId;
   activeDetailKode = kode;
-  document.querySelectorAll('#tbl-body tr').forEach(tr => tr.classList.remove('row-active'));
-  const targetRow = document.querySelector(`#tbl-body tr[data-kode="${kode}"]`);
-  if (targetRow) targetRow.classList.add('row-active');
+  lastFocusBeforeModal = document.activeElement;
+  document.querySelectorAll('#tbl-body tr').forEach(tr => tr.classList.toggle('row-active', tr.dataset.kode === kode));
   document.getElementById('dm-title').textContent = '—';
   document.getElementById('dm-kode').textContent = kode;
   document.getElementById('dm-body').innerHTML = '<div class="detail-loading"><i class="ti ti-loader-2 spinner"></i> Memuat detail…</div>';
   detailOverlay.classList.add('show');
+  document.getElementById('dm-close').focus();
   try {
     const d = await rpc('get_produk_detail', {p_kode: kode});
-    console.log('DATA:', d);
+    if (myReq !== detailReqId) return; // user sudah buka produk lain / nutup modal
     if(!d){ document.getElementById('dm-body').innerHTML = '<div class="detail-loading">Produk tidak ditemukan.</div>'; return; }
     document.getElementById('dm-title').textContent = d.nama_produk || '—';
     document.getElementById('dm-kode').textContent = d.kode_produk;
 
     const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
     const mediaThumb = d.media ? d.media.find(m=>m.is_primary && m.url) || d.media.find(m=>m.url) : null;
-    const thumbUrl = mediaThumb?.url || (d.kode_asli ? THUMB_BASE + d.kode_asli + '.png' : null);
-    console.log('THUMB URL:', thumbUrl);
-    const thumbHtml = thumbUrl
-  ? `<canvas id="dm-thumb-canvas" class="detail-thumb"></canvas>`
-  : `<div class="detail-thumb-placeholder"><i class="ti ti-photo"></i> Tidak ada gambar</div>`;
+    let thumbUrl = mediaThumb?.url || (d.kode_asli ? THUMB_BASE + encodeURIComponent(d.kode_asli) + '.png' : null);
+    if (thumbUrl && !isSafeHttpUrl(thumbUrl)) thumbUrl = null;
 
     const hargaMap = {};
     (d.harga||[]).forEach(h=>{ if(!hargaMap[h.jenis]) hargaMap[h.jenis]=h; });
@@ -227,38 +236,28 @@ async function openDetail(kode){
         <div class="harga-box">
           <div class="harga-box-label">${j==='EKATALOG'?'e-Katalog':j==='UPLOAD'?'Upload':j}</div>
           <div class="harga-box-val">${hargaMap[j] ? rupiah(hargaMap[j].harga) : '—'}</div>
-          <div class="harga-box-tahun">${hargaMap[j] ? hargaMap[j].tahun : ''}</div>
+          <div class="harga-box-tahun">${hargaMap[j] ? esc(hargaMap[j].tahun) : ''}</div>
         </div>`).join('')}
     </div>`;
-
-    document.getElementById('dm-body').innerHTML = `
-      ${thumbHtml}
-      ${hargaHtml}
-      <div>
-        ${row('Tipe', `<span class="badge badge-${(d.tipe||'').toLowerCase()}">${d.tipe||'—'}</span>`)}
-        ${row('No. AKD', d.no_akd || '—')}
-        ${row('Kode KFA', d.kode_kfa ? `<span style="font-family:var(--mono)">${d.kode_kfa}</span>` : '—')}
-        ${row('Spesifikasi', d.spesifikasi || '—')}
-        ${row('Link v6', (d.link_v6 && isSafeHttpUrl(d.link_v6)) ? `<a href="${escapeHtmlAttr(d.link_v6)}" target="_blank">Lihat di e-Katalog <i class="ti ti-external-link"></i></a>` : '—')}
-      </div>
-    `;
+    const tipeCls = String(d.tipe||'').toLowerCase().replace(/[^a-z]/g,'');
 
     document.getElementById('dm-body').innerHTML = `
       <canvas id="dm-thumb-canvas" class="detail-thumb" style="${thumbUrl?'':'display:none'}"></canvas>
       ${!thumbUrl ? `<div class="detail-thumb-placeholder"><i class="ti ti-photo"></i> Tidak ada gambar</div>` : ''}
       ${hargaHtml}
       <div>
-        ${row('Tipe', `<span class="badge badge-${(d.tipe||'').toLowerCase()}">${d.tipe||'—'}</span>`)}
-        ${row('No. AKD', d.no_akd || '—')}
-        ${row('Kode KFA', d.kode_kfa ? `<span style="font-family:var(--mono)">${d.kode_kfa}</span>` : '—')}
-        ${row('Spesifikasi', d.spesifikasi || '—')}
-        ${row('Link v6', (d.link_v6 && isSafeHttpUrl(d.link_v6)) ? `<a href="${escapeHtmlAttr(d.link_v6)}" target="_blank">Lihat di e-Katalog <i class="ti ti-external-link"></i></a>` : '—')}
+        ${row('Tipe', `<span class="badge badge-${tipeCls}">${esc(d.tipe) || '—'}</span>`)}
+        ${row('No. AKD', esc(d.no_akd) || '—')}
+        ${row('Kode KFA', d.kode_kfa ? `<span style="font-family:var(--mono)">${esc(d.kode_kfa)}</span>` : '—')}
+        ${row('Spesifikasi', esc(d.spesifikasi) || '—')}
+        ${row('Link v6', (d.link_v6 && isSafeHttpUrl(d.link_v6)) ? `<a href="${escapeHtmlAttr(d.link_v6)}" target="_blank" rel="noopener noreferrer">Lihat di e-Katalog <i class="ti ti-external-link"></i></a>` : '—')}
       </div>
     `;
     if (thumbUrl) {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
+        if (myReq !== detailReqId) return;
         const canvas = document.getElementById('dm-thumb-canvas');
         if (!canvas) return;
 
@@ -273,30 +272,30 @@ async function openDetail(kode){
         ctx.drawImage(img, 0, 0, w, h);
 
         try {
-  const data = ctx.getImageData(0, 0, w, h);
-  const px = data.data;
+          const data = ctx.getImageData(0, 0, w, h);
+          const px = data.data;
 
-  function edgeSample(x,y){ const i=(y*w+x)*4; return [px[i],px[i+1],px[i+2]]; }
-  const samples = [];
-  for (let x=0; x<w; x+=Math.max(1,Math.floor(w/20))){ samples.push(edgeSample(x,0)); samples.push(edgeSample(x,h-1)); }
-  for (let y=0; y<h; y+=Math.max(1,Math.floor(h/20))){ samples.push(edgeSample(0,y)); samples.push(edgeSample(w-1,y)); }
-  const bgR = Math.round(samples.reduce((s,c)=>s+c[0],0)/samples.length);
-  const bgG = Math.round(samples.reduce((s,c)=>s+c[1],0)/samples.length);
-  const bgB = Math.round(samples.reduce((s,c)=>s+c[2],0)/samples.length);
+          function edgeSample(x,y){ const i=(y*w+x)*4; return [px[i],px[i+1],px[i+2]]; }
+          const samples = [];
+          for (let x=0; x<w; x+=Math.max(1,Math.floor(w/20))){ samples.push(edgeSample(x,0)); samples.push(edgeSample(x,h-1)); }
+          for (let y=0; y<h; y+=Math.max(1,Math.floor(h/20))){ samples.push(edgeSample(0,y)); samples.push(edgeSample(w-1,y)); }
+          const bgR = Math.round(samples.reduce((s,c)=>s+c[0],0)/samples.length);
+          const bgG = Math.round(samples.reduce((s,c)=>s+c[1],0)/samples.length);
+          const bgB = Math.round(samples.reduce((s,c)=>s+c[2],0)/samples.length);
 
-  const threshold = 60;
-  for (let i = 0; i < px.length; i += 4) {
-    const dr = px[i]-bgR, dg = px[i+1]-bgG, db = px[i+2]-bgB;
-    const dist = Math.sqrt(dr*dr+dg*dg+db*db);
-    if (dist < threshold) {
-      const alpha = dist / threshold;
-      px[i+3] = Math.round(alpha * px[i+3]);
-    }
-  }
-  ctx.putImageData(data, 0, 0);
-} catch(bgErr) {
-  console.warn('Background removal skipped (CORS):', bgErr.message);
-}
+          const threshold = 60;
+          for (let i = 0; i < px.length; i += 4) {
+            const dr = px[i]-bgR, dg = px[i+1]-bgG, db = px[i+2]-bgB;
+            const dist = Math.sqrt(dr*dr+dg*dg+db*db);
+            if (dist < threshold) {
+              const alpha = dist / threshold;
+              px[i+3] = Math.round(alpha * px[i+3]);
+            }
+          }
+          ctx.putImageData(data, 0, 0);
+        } catch(bgErr) {
+          console.warn('Background removal skipped (CORS):', bgErr.message);
+        }
       };
       img.onerror = () => {
         const canvas = document.getElementById('dm-thumb-canvas');
@@ -305,14 +304,19 @@ async function openDetail(kode){
       img.src = thumbUrl;
     }
   } catch(e){
-    document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${e.message}</div>`;
+    if (myReq !== detailReqId) return;
+    if (String(e.message).startsWith('unauthorized')) return;
+    document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${esc(e.message)}</div>`;
   }
 }
 function showToast(msg, type='success'){
   const c = document.getElementById('toast-container');
   const t = document.createElement('div');
   t.className = `toast ${type}`;
-  t.innerHTML = `<i class="ti ti-${type==='success'?'check-circle':'warning-circle'}"></i> ${msg}`;
+  const ic = document.createElement('i');
+  ic.className = `ti ti-${type==='success'?'check-circle':'warning-circle'}`;
+  t.appendChild(ic);
+  t.appendChild(document.createTextNode(' ' + msg));
   c.appendChild(t);
   setTimeout(() => {
     t.classList.add('fade-out');
@@ -337,12 +341,31 @@ function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}
 // berubah) plus SATU LAGI toggle dobel di inline <script> standalone HTML
 // yang gak diport sama sekali ke sini -- baik bug maupun duplikasinya jadi
 // moot sekarang karena keduanya dihapus, bukan diwariskan.
-document.getElementById('reload-btn').addEventListener('click', loadEverything);
+// FIX: "Muat ulang" dulu gak pernah refetch tabel produk (halaman yang sama diambil dari pageCache).
+document.getElementById('reload-btn').addEventListener('click', () => { clearPageCache(); loadEverything(); });
 
 function fmt(n){ return Number(n||0).toLocaleString('id-ID'); }
 function pct(a,b){ return b ? Math.round(a/b*100) : 0; }
 function pctClass(p){ return p>=80?'pct-good':p>=50?'pct-warn':'pct-bad'; }
-function rupiah(n){ return n ? 'Rp ' + Number(n).toLocaleString('id-ID') : '—'; }
+// 0 itu angka valid ("Rp 0"), bukan "tidak ada data" -- dulu keduanya tampil '—'.
+function rupiah(n){ return (n === null || n === undefined || n === '') ? '—' : 'Rp ' + Number(n).toLocaleString('id-ID'); }
+function fmt1(n){ return Number(n||0).toLocaleString('id-ID', { maximumFractionDigits: 1 }); }
+// Semua nilai dari DB yang masuk ke innerHTML WAJIB lewat esc() -- data orderan
+// datang dari sheet yang di-sync (bisa diedit banyak orang), bukan input tepercaya.
+function esc(s){ return escapeHtmlAttr(s); }
+// Tanggal LOKAL (WIB) -- toISOString() itu UTC, jadi jam 00:00-06:59 WIB masih
+// dianggap "kemarin" (bar trend "hari ini" salah highlight, nama file export beda hari).
+function localISODate(d = new Date()){
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+// CSV: quote sel yang butuh, dan netralkan formula injection (=,+,-,@) untuk Excel.
+function csvCell(v){
+  if (v === null || v === undefined) return '';
+  let t = String(v);
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(t)) t = "'" + t;
+  return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+}
 
 function showError(msg){
   const b = document.getElementById('err-banner');
@@ -373,21 +396,36 @@ async function rpc(fn, params){
     window.PNMAuth.logout();
     throw new Error('unauthorized: no access token');
   }
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': ANON_KEY,
-      'Authorization': 'Bearer ' + accessToken
-    },
-    body: JSON.stringify(params || {})
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), RPC_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': ANON_KEY,
+        'Authorization': 'Bearer ' + accessToken
+      },
+      body: JSON.stringify(params || {}),
+      signal: ctrl.signal
+    });
+  } catch (err) {
+    throw new Error(err.name === 'AbortError' ? `RPC ${fn} timeout (>${RPC_TIMEOUT_MS/1000}s)` : err.message);
+  } finally {
+    clearTimeout(timer);
+  }
   if (res.status === 401) {
     window.PNMAuth.logout();
     throw new Error('unauthorized');
   }
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || data.error_description || `RPC ${fn} gagal`);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = new Error((data && (data.message || data.error_description)) || `RPC ${fn} gagal (HTTP ${res.status})`);
+    err.status = res.status;
+    err.code = data && data.code;   // mis. PGRST202 = function tidak ada di schema cache
+    throw err;
+  }
   return data;
 }
 
@@ -435,8 +473,6 @@ async function loadStats(){
   document.querySelector('[data-f="nolink"]').innerHTML = `<i class="ti ti-unlink"></i> Tanpa Link <span class="filter-count">(${fmt(total - s.punya_link)})</span>`;
   document.querySelector('[data-f="noakd"]').innerHTML = `<i class="ti ti-shield-off"></i> Tanpa AKD <span class="filter-count">(${fmt(total - s.punya_akd)})</span>`;
 
-  document.getElementById('last-update-text').textContent = 'Live — ' + new Date().toLocaleTimeString('id-ID');
-
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card blue">
       <div class="stat-icon blue"><i class="ti ti-database"></i></div>
@@ -450,7 +486,7 @@ async function loadStats(){
       <div class="stat-label">Punya Harga e-Katalog</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_harga,total))}">${pct(s.punya_harga,total)}%</span> dari total produk</div>
     </div>
-    <div class="stat-card warning">
+    <div class="stat-card warning" data-goto="noharga" role="button" tabindex="0" title="Klik untuk memfilter tabel produk">
       <div class="stat-icon warning"><i class="ti ti-currency-dollar"></i></div>
       <div class="stat-val">${fmt(total - s.punya_harga)}</div>
       <div class="stat-label">Belum Ada Harga</div>
@@ -468,7 +504,7 @@ async function loadStats(){
       <div class="stat-label">Punya Nomor AKD</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_akd,total))}">${pct(s.punya_akd,total)}%</span> dari total produk</div>
     </div>
-    <div class="stat-card danger">
+    <div class="stat-card danger" data-goto="nolink" role="button" tabindex="0" title="Klik untuk memfilter tabel produk">
       <div class="stat-icon danger"><i class="ti ti-unlink"></i></div>
       <div class="stat-val">${fmt(total - s.punya_link)}</div>
       <div class="stat-label">Belum di e-Katalog</div>
@@ -508,7 +544,6 @@ function progItem(name, val, total, color){
 // satu halaman (25 baris), bukan seluruh tabel produk.
 // ══════════════════════════════════════════
 const PAGE_SIZE = 25;
-let currentFilter = 'all';
 let currentTipe = '';
 let currentSearch = '';
 let currentPage = 1;
@@ -520,42 +555,25 @@ function cacheKey(page){
 }
 function clearPageCache(){ pageCache = {}; }
 
-async function fetchPage(page){
-  const key = cacheKey(page);
-  if (pageCache[key]) return pageCache[key];
-  const result = await rpc('get_dashboard_produk', {
-  p_filters: Array.from(activeFilters),
-  p_tipe: currentTipe || null,
-  p_search: currentSearch || null,
-  p_page: page,
-  p_page_size: PAGE_SIZE
-  });
-  pageCache[key] = result;
-  return result;
-}
+let currentRows = [];   // baris halaman yang lagi tampil -- dirujuk lewat data-idx (bukan JSON di attribute)
+let tableReqId = 0;     // token: respons lama gak boleh nimpa respons yang lebih baru (search cepat, klik halaman)
 
+// FIX: prefetchNextPage dulu ngirim `p_filter: currentFilter` (parameter yang gak ada di RPC,
+// nama yang benar p_filters) -> gagal diam-diam / hasilnya bisa salah masuk cache. Sekarang
+// pakai fetchPage() yang sama persis dengan halaman utama.
 function prefetchNextPage(total){
   const pages = Math.ceil(total / PAGE_SIZE);
-  if (currentPage < pages) {
-    const nextKey = cacheKey(currentPage + 1);
-    if (!pageCache[nextKey]) {
-      rpc('get_dashboard_produk', {
-        p_filter: currentFilter,
-        p_tipe: currentTipe || null,
-        p_search: currentSearch || null,
-        p_page: currentPage + 1,
-        p_page_size: PAGE_SIZE
-      }).then(r => { pageCache[nextKey] = r; }).catch(() => {});
-    }
-  }
+  if (currentPage < pages) fetchPage(currentPage + 1).catch(() => {});
 }
 
 async function loadTable(){
+  const myReq = ++tableReqId;
   const key = cacheKey(currentPage);
   if (!pageCache[key]) {
     document.getElementById('tbl-body').innerHTML = '<tr class="loading-row"><td colspan="7"><i class="ti ti-loader-2 spinner"></i> Memuat data…</td></tr>';
   }
   const result = await fetchPage(currentPage);
+  if (myReq !== tableReqId) return; // sudah ada permintaan yang lebih baru
   renderTable(result.total || 0, result.rows || []);
   prefetchNextPage(result.total || 0);
 }
@@ -576,6 +594,55 @@ async function fetchPage(page){
 
 let activeFilters = new Set(['all']);
 
+function syncFilterButtons(){
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', activeFilters.has(b.dataset.f)));
+}
+// Dipakai kartu statistik "Belum Ada Harga"/"Belum di e-Katalog": angka di dashboard
+// jadi pintu masuk ke daftar produknya, bukan cuma pajangan.
+function applyOnlyFilter(f){
+  activeFilters = new Set([f]);
+  currentPage = 1;
+  clearPageCache();
+  syncFilterButtons();
+  loadTable().catch(handleLoadError);
+  document.querySelector('.table-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+const tblBodyEl = document.getElementById('tbl-body');
+tblBodyEl.addEventListener('click', (e) => {
+  const tr = e.target.closest('tr[data-idx]');
+  if (!tr) return;
+  const kode = tr.dataset.kode;
+  if (e.target.closest('.copy-kode-btn')) { copyKode(e, kode); return; }
+  if (e.target.closest('.checkbox-col')) return; // checkbox ditangani event 'change'
+  if (e.target.closest('a')) return;
+  openDetail(kode);
+});
+tblBodyEl.addEventListener('change', (e) => {
+  const cb = e.target.closest('.row-checkbox');
+  if (!cb) return;
+  const r = currentRows[+cb.dataset.idx];
+  if (r) toggleRowSelect(cb, r.kode_produk, r);
+});
+tblBodyEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  if (e.target.matches('input, button, a')) return;
+  const tr = e.target.closest('tr[data-idx]');
+  if (!tr) return;
+  e.preventDefault();
+  openDetail(tr.dataset.kode);
+});
+const statsGridEl = document.getElementById('stats-grid');
+statsGridEl.addEventListener('click', (e) => {
+  const c = e.target.closest('[data-goto]');
+  if (c) applyOnlyFilter(c.dataset.goto);
+});
+statsGridEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const c = e.target.closest('[data-goto]');
+  if (c) { e.preventDefault(); applyOnlyFilter(c.dataset.goto); }
+});
+
 function setFilter(f, el){
   if (f === 'all') {
     activeFilters = new Set(['all']);
@@ -587,9 +654,7 @@ function setFilter(f, el){
   }
   currentPage = 1;
   clearPageCache();
-  document.querySelectorAll('.filter-btn').forEach(b => {
-    b.classList.toggle('active', activeFilters.has(b.dataset.f));
-  });
+  syncFilterButtons();
   loadTable().catch(handleLoadError);
 }
 function setTipe(v){ currentTipe = v; currentPage = 1; clearPageCache(); loadTable().catch(handleLoadError); }
@@ -624,22 +689,27 @@ function renderTable(total, rows){
   const tipeClass = {INSTRUMENT:'badge-instrument', SET:'badge-set', UNIT:'badge-unit'};
 
   if (!rows.length){
-    document.getElementById('tbl-body').innerHTML = '<tr style="cursor:pointer" onclick="openDetail(${r.kode_produk})"><td colspan="6"><i class="ti ti-search" style="font-size:28px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
+    currentRows = [];
+    // FIX: dulu string ber-kutip tunggal berisi `${r.kode_produk}` mentah + onclick ke openDetail
+    // (klik = ReferenceError) dan colspan 6 padahal tabel punya 7 kolom.
+    document.getElementById('tbl-body').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)"><i class="ti ti-search" style="font-size:28px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
   } else {
-    document.getElementById('tbl-body').innerHTML = rows.map(r => `
-  <tr style="cursor:pointer" data-kode="${r.kode_produk}" onclick="openDetail('${r.kode_produk}')">
-    <td class="checkbox-col" onclick="event.stopPropagation()">
-      <input type="checkbox" class="row-checkbox" data-kode="${r.kode_produk}" data-row='${JSON.stringify(r).replace(/'/g,"&apos;")}' ${selectedRows.has(r.kode_produk)?'checked':''} onchange="toggleRowSelect(this,'${r.kode_produk}', ${JSON.stringify(r).replace(/"/g,'&quot;')})"/>
-    </td>
-    <td><span class="kode-text">${r.kode_produk || '—'}</span><button class="copy-kode-btn" onclick="copyKode(event,'${r.kode_produk}')" title="Salin kode"><i class="ti ti-copy"></i></button></td>
-        <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtmlAttr(r.nama_produk || '—')}</td>
-        <td><span class="badge ${tipeClass[r.tipe] || ''}">${r.tipe || '—'}</span></td>
+    currentRows = rows;
+    document.getElementById('tbl-body').innerHTML = rows.map((r, idx) => `
+  <tr style="cursor:pointer" tabindex="0" data-idx="${idx}" data-kode="${esc(r.kode_produk)}">
+    <td class="checkbox-col"><input type="checkbox" class="row-checkbox" data-idx="${idx}" aria-label="Pilih ${esc(r.kode_produk)}" ${selectedRows.has(r.kode_produk)?'checked':''}/></td>
+    <td><span class="kode-text">${esc(r.kode_produk) || '—'}</span><button type="button" class="copy-kode-btn" title="Salin kode" aria-label="Salin kode ${esc(r.kode_produk)}"><i class="ti ti-copy"></i></button></td>
+        <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.nama_produk || '—')}</td>
+        <td><span class="badge ${tipeClass[r.tipe] || ''}">${esc(r.tipe) || '—'}</span></td>
         <td>${r.harga ? `<span style="font-family:var(--mono);font-size:11.5px;color:var(--success);font-weight:600">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum ada</span>`}</td>
-        <td>${(r.link_v6 && isSafeHttpUrl(r.link_v6)) ? `<a href="${escapeHtmlAttr(r.link_v6)}" target="_blank" class="chip chip-yes" style="text-decoration:none"><i class="ti ti-external-link"></i> Ada</a>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum</span>`}</td>
-        <td>${r.no_akd ? `<span class="chip chip-yes" style="font-family:var(--mono)">${r.no_akd}</span>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum</span>`}</td>
+        <td>${(r.link_v6 && isSafeHttpUrl(r.link_v6)) ? `<a href="${escapeHtmlAttr(r.link_v6)}" target="_blank" rel="noopener noreferrer" class="chip chip-yes" style="text-decoration:none"><i class="ti ti-external-link"></i> Ada</a>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum</span>`}</td>
+        <td>${r.no_akd ? `<span class="chip chip-yes" style="font-family:var(--mono)">${esc(r.no_akd)}</span>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum</span>`}</td>
       </tr>
     `).join('');
   }
+  // checkbox "pilih semua" harus ikut kondisi halaman yang baru dirender
+  const selAll = document.getElementById('select-all-checkbox');
+  if (selAll) selAll.checked = rows.length > 0 && rows.every(r => selectedRows.has(r.kode_produk));
 
   const pg = document.getElementById('pagination');
   const btns = [];
@@ -661,17 +731,51 @@ function goPage(p){
 }
 
 function handleLoadError(err){
-  if (err.message === 'unauthorized') return;
-  showToast('Gagal memuat data: ' + err.message, 'error');
+  if (String(err && err.message).startsWith('unauthorized')) return;
+  showToast('Gagal memuat data: ' + (err && err.message), 'error');
 }
 
 async function loadEverything(){
   clearError();
-  try {
-    await Promise.all([loadStats(), loadTable(), loadKonversiToday(), loadTrend(), loadLeaderboard(), loadKategoriDonut(), loadValueLineChart(), loadWordtree(), loadForecastStok(), popInit()]);
-  } catch (err) {
-    handleLoadError(err);
-  }
+  const lu = document.getElementById('last-update-text');
+  if (lu) lu.textContent = 'Memuat…';
+  // get_dashboard_trend_7hari dulu dipanggil 2x (bar chart + line chart) -- sekarang 1x, dipakai berdua.
+  const trendP = rpc('get_dashboard_trend_7hari', {});
+  trendP.catch(() => {}); // rejection ditangani per-panel di bawah
+  const jobs = [
+    ['stats-grid-konversi', loadKonversiToday()],
+    ['stats-grid', loadStats()],
+    ['trend-chart-box', trendP.then(renderTrend)],
+    ['linechart-box', trendP.then(renderValueLineChart)],
+    ['leaderboard-box', loadLeaderboard()],
+    ['donut-chart-box', loadKategoriDonut()],
+    ['(tabel produk)', loadTable()],
+    ['(word tree)', loadWordtree()],
+    ['(forecast)', loadForecastStok()],
+    ['(populasi)', popInit()],
+  ];
+  // allSettled: dulu Promise.all -- satu RPC gagal = satu toast, sisanya skeleton selamanya.
+  const results = await Promise.allSettled(jobs.map(j => j[1]));
+  let failed = 0;
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') return;
+    const msg = String((r.reason && r.reason.message) || r.reason);
+    if (msg.startsWith('unauthorized')) return;
+    failed++;
+    const id = jobs[i][0];
+    const html = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat: ${esc(msg)}</div>`;
+    if (id === '(tabel produk)') handleLoadError(r.reason);
+    if (id === 'stats-grid') {
+      ['stats-grid', 'prog-harga', 'prog-link', 'prog-akd'].forEach(x => { const el = document.getElementById(x); if (el) el.innerHTML = html; });
+    } else if (id.startsWith('(')) {
+      console.error('bagian dashboard gagal:', id, msg);
+    } else {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    }
+  });
+  if (failed) showError(`${failed} bagian dashboard gagal dimuat. Klik "Muat ulang" untuk mencoba lagi.`);
+  if (lu) lu.textContent = (failed ? 'Sebagian gagal — ' : 'Diperbarui ') + new Date().toLocaleTimeString('id-ID');
 }
 // SPA migration: di-nama-in + ditangkep ke var module-scope biar unmount()
 // bisa removeEventListener -- listener document-level ini gak otomatis
@@ -718,7 +822,7 @@ function addSearchHistory(term){
   let hist = getSearchHistory().filter(t => t.toLowerCase() !== term.toLowerCase());
   hist.unshift(term);
   hist = hist.slice(0, 5);
-  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(hist));
+  try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(hist)); } catch { /* private mode/quota -- gak fatal */ }
 }
 function clearSearchHistory(){
   localStorage.removeItem(SEARCH_HISTORY_KEY);
@@ -728,7 +832,7 @@ function showSearchHistory(){
   const hist = getSearchHistory();
   const box = document.getElementById('search-history');
   if (!hist.length) { box.classList.remove('show'); return; }
-  box.innerHTML = hist.map(t => `<div class="search-history-item" onclick="applySearchHistory('${t.replace(/'/g,"\\'")}')"><i class="ti ti-history"></i> ${t}</div>`).join('')
+  box.innerHTML = hist.map(t => `<div class="search-history-item" data-term="${esc(t)}" onclick="applySearchHistory(this.dataset.term)"><i class="ti ti-history"></i> ${esc(t)}</div>`).join('')
     + `<div class="search-history-clear" onclick="clearSearchHistory()">Hapus riwayat</div>`;
   box.classList.add('show');
 }
@@ -802,7 +906,7 @@ async function savePreset(){
   const presets = getPresets();
   presets.push({
     label: label.trim(),
-    filter: currentFilter,
+    filters: Array.from(activeFilters),
     tipe: currentTipe,
     search: currentSearch
   });
@@ -814,13 +918,17 @@ function applyPreset(idx){
   const presets = getPresets();
   const p = presets[idx];
   if (!p) return;
-  currentFilter = p.filter;
-  currentTipe = p.tipe;
-  currentSearch = p.search;
+  // FIX: dulu preset nyimpen `currentFilter` (variabel yang gak pernah diubah -> selalu 'all') sementara
+  // filter yang beneran dipakai tabel itu `activeFilters` -- jadi "Simpan Filter Ini" gak pernah nyimpen filternya.
+  // Preset lama (format `filter` tunggal) tetap kebaca.
+  const f = Array.isArray(p.filters) ? p.filters : (p.filter ? [p.filter] : ['all']);
+  activeFilters = new Set(f.length ? f : ['all']);
+  currentTipe = p.tipe || '';
+  currentSearch = p.search || '';
   currentPage = 1;
   clearPageCache();
 
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.f === p.filter));
+  syncFilterButtons();
   document.getElementById('tipe-filter').value = p.tipe || '';
   document.getElementById('tbl-search').value = p.search || '';
 
@@ -839,7 +947,7 @@ function renderPresets(){
   if (!presets.length) { bar.innerHTML = `<span style="font-size:11px;color:var(--text-muted)">Belum ada preset tersimpan</span>`; return; }
   bar.innerHTML = presets.map((p, i) => `
     <button class="preset-chip" onclick="applyPreset(${i})">
-      <i class="ti ti-bookmark"></i> ${p.label}
+      <i class="ti ti-bookmark"></i> ${esc(p.label)}
       <span class="preset-x" onclick="deletePreset(event,${i})"><i class="ti ti-x"></i></span>
     </button>
   `).join('');
@@ -861,10 +969,10 @@ function toggleRowSelect(cb, kode, rowData){
 function toggleSelectAll(masterCb){
   document.querySelectorAll('#tbl-body .row-checkbox').forEach(cb => {
     cb.checked = masterCb.checked;
-    const kode = cb.dataset.kode;
-    const rowData = JSON.parse(cb.dataset.row);
-    if (masterCb.checked) selectedRows.set(kode, rowData);
-    else selectedRows.delete(kode);
+    const rowData = currentRows[+cb.dataset.idx];
+    if (!rowData) return;
+    if (masterCb.checked) selectedRows.set(rowData.kode_produk, rowData);
+    else selectedRows.delete(rowData.kode_produk);
   });
   updateBulkBar();
 }
@@ -885,22 +993,14 @@ function exportSelected(){
   const headers = ['Kode Produk','Nama Produk','Tipe','Harga e-Kat','Link v6','No. AKD'];
   const csvRows = [headers.join(',')];
   rows.forEach(r => {
-    const line = [
-      r.kode_produk || '',
-      `"${(r.nama_produk||'').replace(/"/g,'""')}"`,
-      r.tipe || '',
-      r.harga || '',
-      r.link_v6 || '',
-      r.no_akd || ''
-    ].join(',');
-    csvRows.push(line);
+    csvRows.push([r.kode_produk, r.nama_produk, r.tipe, r.harga, r.link_v6, r.no_akd].map(csvCell).join(','));
   });
   const csvContent = '\uFEFF' + csvRows.join('\n'); // BOM biar Excel baca UTF-8 dengan benar
   const blob = new Blob([csvContent], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `produk-export-${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `produk-export-${localISODate()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
   showToast(`${rows.length} produk berhasil di-export`);
@@ -908,16 +1008,15 @@ function exportSelected(){
 // ══════════════════════════════════════════
 // TREND 7 HARI + LEADERBOARD SALES
 // ══════════════════════════════════════════
-async function loadTrend(){
-  const data = await rpc('get_dashboard_trend_7hari', {});
+function renderTrend(data){
   const box = document.getElementById('trend-chart-box');
   if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data konversi.</div>`; return; }
 
   const maxVal = Math.max(...data.map(d=>d.jumlah), 1);
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = localISODate();
   const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
 
-  box.innerHTML = `<div class="trend-chart">
+  box.innerHTML = `<div class="trend-chart" role="img" aria-label="Jumlah konversi per hari, 7 hari terakhir: ${esc(data.map(d => (dayNames[new Date(d.tanggal + 'T00:00:00').getDay()]) + ' ' + d.jumlah).join(', '))}">
     ${data.map(d => {
       const h = Math.round((d.jumlah / maxVal) * 100);
       const isToday = d.tanggal === todayStr;
@@ -944,7 +1043,7 @@ async function loadLeaderboard(){
       <div class="lb-item">
         <div class="lb-rank ${rankClass(i)}">${i+1}</div>
         <div class="lb-info">
-          <div class="lb-name">${r.nama}</div>
+          <div class="lb-name">${esc(r.nama)}</div>
           <div class="lb-sub">${fmt(r.jumlah_order)} order</div>
         </div>
         <div class="lb-value">${rupiah(r.total_value)}</div>
@@ -1052,7 +1151,7 @@ function escapeXml(s){
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function escapeHtmlAttr(s){
-  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 // Security: link_v6 datang dari database (diisi manual), bukan sesuatu yang
 // aman buat langsung ditaruh di href tanpa cek -- cuma izinkan http(s).
@@ -1080,7 +1179,7 @@ async function loadKategoriDonut(){
     const dash = pct * circumference;
     const seg = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${DONUT_COLORS[i % DONUT_COLORS.length]}" stroke-width="${STROKE}"
       stroke-dasharray="${dash} ${circumference-dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${CX} ${CY})"
-      style="transition:stroke-dasharray .6s ease"><title>${d.kategori}: ${fmt(d.jumlah)} (${Math.round(pct*100)}%)</title></circle>`;
+      style="transition:stroke-dasharray .6s ease"><title>${esc(d.kategori)}: ${fmt(d.jumlah)} (${Math.round(pct*100)}%)</title></circle>`;
     offset += dash;
     return seg;
   }).join('');
@@ -1088,20 +1187,19 @@ async function loadKategoriDonut(){
   const legend = data.map((d,i) => `
     <div class="donut-legend-item">
       <span class="donut-legend-dot" style="background:${DONUT_COLORS[i % DONUT_COLORS.length]}"></span>
-      <span class="donut-legend-label">${d.kategori}</span>
+      <span class="donut-legend-label">${esc(d.kategori)}</span>
       <span class="donut-legend-val">${fmt(d.jumlah)}</span>
       <span class="donut-legend-pct">${Math.round(d.jumlah/total*100)}%</span>
     </div>
   `).join('');
 
   box.innerHTML = `<div class="donut-wrap-flex">
-    <svg class="donut-svg" width="110" height="110" viewBox="0 0 110 110">${segments}</svg>
+    <svg class="donut-svg" role="img" aria-label="Distribusi kategori konversi 30 hari" width="110" height="110" viewBox="0 0 110 110">${segments}</svg>
     <div class="donut-legend-list">${legend}</div>
   </div>`;
 }
 
-async function loadValueLineChart(){
-  const data = await rpc('get_dashboard_trend_7hari', {});
+function renderValueLineChart(data){
   const box = document.getElementById('linechart-box');
   if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data konversi.</div>`; return; }
 
@@ -1131,7 +1229,7 @@ async function loadValueLineChart(){
     </g>`;
   }).join('');
 
-  box.innerHTML = `<svg class="linechart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+  box.innerHTML = `<svg class="linechart-svg" role="img" aria-label="Tren nilai konversi harian, 7 hari terakhir" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
     <defs>
       <linearGradient id="lineFade" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="var(--success)" stop-opacity="0.25"/>
@@ -1154,11 +1252,14 @@ function setForecastPeriod(days, el){
   loadForecastStok();
 }
 
+let forecastReqId = 0;
 async function loadForecastStok(){
+  const myReq = ++forecastReqId;
   const box = document.getElementById('forecast-box');
   box.innerHTML = '<div class="skeleton" style="height:200px"></div>';
   try {
     const data = await rpc('get_dashboard_forecast_stok', {p_days: forecastDays, p_limit: 15});
+    if (myReq !== forecastReqId) return;
     if (!data || !data.length){
       box.innerHTML = `<div class="insight-empty"><i class="ti ti-circle-check" style="font-size:28px;display:block;margin-bottom:6px;color:var(--success)"></i>Tidak ada produk berisiko habis berdasarkan data ${forecastDays} hari terakhir.</div>`;
       return;
@@ -1197,11 +1298,11 @@ async function loadForecastStok(){
         <tbody>
           ${data.map(d => `
             <tr>
-              <td><span class="kode-text">${d.kode_produk}</span></td>
+              <td><span class="kode-text">${esc(d.kode_produk)}</span></td>
               <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtmlAttr(d.nama_produk)}</td>
               <td style="text-align:right;font-family:var(--mono);font-weight:600">${fmt(d.stok_sekarang)}</td>
               <td style="text-align:right;font-family:var(--mono)">${fmt(d.terpakai_periode)}</td>
-              <td style="text-align:right;font-family:var(--mono)">${d.rata_harian}</td>
+              <td style="text-align:right;font-family:var(--mono)">${fmt1(d.rata_harian)}</td>
               <td>${daysPill(d.perkiraan_habis_hari)}</td>
               <td>
                 <div class="forecast-bar-wrap">
@@ -1217,14 +1318,14 @@ async function loadForecastStok(){
       </table>
       </div>
       <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
-  <i class="ti ti-info-circle"></i> Berdasarkan laju pemakaian ${forecastDays} hari terakhir dari data konversi. Data stok terakhir diupdate: <b>${new Date().toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</b>
+  <i class="ti ti-info-circle"></i> Berdasarkan laju pemakaian ${forecastDays} hari terakhir dari data konversi. Dihitung saat halaman dimuat: <b>${new Date().toLocaleString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</b> (RPC belum mengirim tanggal sinkron data stok)
         <span style="margin-left:12px"><span class="days-pill days-kritis" style="font-size:10px">≤7 hari</span> kritis &nbsp;
         <span class="days-pill days-warn" style="font-size:10px">≤30 hari</span> waspada &nbsp;
         <span class="days-pill days-aman" style="font-size:10px">&gt;30 hari</span> aman</span>
       </div>
     `;
   } catch(e) {
-    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat: ${e.message}</div>`;
+    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat: ${esc(e.message)}</div>`;
   }
 }
 // ══════════════════════════════════════════
@@ -1261,25 +1362,23 @@ let popSearchDebounce = null;
 let popTableRows = [];
 
 async function popInit(){
-  try {
-    const list = await rpc('get_dashboard_populasi_wilayah_list', {});
-    const sel = document.getElementById('pop-wilayah-filter');
-    sel.innerHTML = '<option value="">Semua Wilayah</option>' +
-      (list || []).map(w => `<option value="${w.wilayah}">${w.wilayah} (${fmt(w.jumlah)})</option>`).join('');
-  } catch(e) { /* tabel/RPC belum ada — biarkan dropdown default, error ditangani di popLoadTable */ }
-  try {
-    const list = await rpc('get_dashboard_populasi_entitas_list', {});
-    const sel = document.getElementById('pop-entitas-filter');
-    sel.innerHTML = '<option value="">Semua Entitas</option>' +
-      (list || []).map(e => `<option value="${e.entitas}">${e.entitas} (${fmt(e.jumlah)})</option>`).join('');
-  } catch(e) { /* biarkan default */ }
-  try {
-    const list = await rpc('get_dashboard_populasi_channel_list', {});
-    const sel = document.getElementById('pop-channel-filter');
-    sel.innerHTML = '<option value="">Semua Channel</option>' +
-      (list || []).map(c => `<option value="${c.channel}">${c.channel} (${fmt(c.jumlah)})</option>`).join('');
-  } catch(e) { /* RPC belum ada — dropdown tetap default sampai SQL channel dijalankan */ }
-  await Promise.all([popLoadSummary(), popLoadTable(), popLoadTrend(), popLoadDataQuality(), popLoadAudit()]);
+  // Dulu: 3 RPC dropdown dijalankan BERURUTAN (await satu-satu), baru 5 panel di belakangnya.
+  // Sekarang semuanya paralel. Dropdown gagal = tetap default; error asli muncul di panel tabel.
+  const fillSelect = async (fn, selId, allLabel, key) => {
+    try {
+      const list = await rpc(fn, {});
+      const sel = document.getElementById(selId);
+      if (!sel) return;
+      sel.innerHTML = `<option value="">${allLabel}</option>` +
+        (list || []).map(x => `<option value="${esc(x[key])}">${esc(x[key])} (${fmt(x.jumlah)})</option>`).join('');
+    } catch (e) { /* biarkan dropdown default */ }
+  };
+  await Promise.all([
+    fillSelect('get_dashboard_populasi_wilayah_list', 'pop-wilayah-filter', 'Semua Wilayah', 'wilayah'),
+    fillSelect('get_dashboard_populasi_entitas_list', 'pop-entitas-filter', 'Semua Entitas', 'entitas'),
+    fillSelect('get_dashboard_populasi_channel_list', 'pop-channel-filter', 'Semua Channel', 'channel'),
+    popLoadSummary(), popLoadTable(), popLoadTrend(), popLoadDataQuality(), popLoadAudit(),
+  ]);
 }
 
 // Tren populasi kumulatif — qty terkirim per bulan + running total.
@@ -1331,7 +1430,7 @@ async function popLoadTrend(){
       <i class="ti ti-info-circle"></i> Garis = populasi kumulatif (qty TERKIRIM, tanggal terparse dari status). Hover titik untuk qty per bulan.
     </div>`;
   } catch(e) {
-    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat tren: ${e.message}</div>`;
+    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat tren: ${esc(e.message)}</div>`;
   }
 }
 
@@ -1365,7 +1464,7 @@ async function popLoadDataQuality(){
       `).join('')}
     </div>`;
   } catch(e) {
-    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat data quality: ${e.message}</div>`;
+    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat data quality: ${esc(e.message)}</div>`;
   }
 }
 
@@ -1381,9 +1480,9 @@ async function popLoadAudit(){
     const rows = a.rincian || [];
     const rowsHtml = rows.map(r => `
       <tr style="${r.is_population ? '' : 'opacity:.55'}">
-        <td><span class="kode-text">${r.kode_suffix}</span></td>
-        <td><span class="badge badge-instrument">${r.entitas}</span></td>
-        <td><span class="badge badge-instrument">${r.channel_turunan}</span></td>
+        <td><span class="kode-text">${esc(r.kode_suffix)}</span></td>
+        <td><span class="badge badge-instrument">${esc(r.entitas)}</span></td>
+        <td><span class="badge badge-instrument">${esc(r.channel_turunan)}</span></td>
         <td style="text-align:center">${r.is_sample ? '<i class="ti ti-flask" title="Sample"></i>' : ''}</td>
         <td style="text-align:center">${r.is_population ? '<i class="ti ti-circle-check" style="color:var(--success)"></i>' : '<i class="ti ti-circle-x" style="color:var(--text-muted)"></i>'}</td>
         <td style="text-align:right;font-family:var(--mono)">${fmt(r.jumlah)}</td>
@@ -1406,7 +1505,7 @@ async function popLoadAudit(){
         <span style="opacity:.7">(${fmt(a.total_masuk_populasi)} + ${fmt(a.total_dikecualikan_sample)} + ${fmt(a.total_dikecualikan_channel)} = ${fmt(a.total_masuk_populasi + a.total_dikecualikan_sample + a.total_dikecualikan_channel)}, harus = total tersinkron)</span>
       </div>`;
   } catch(e) {
-    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat audit: ${e.message}</div>`;
+    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat audit: ${esc(e.message)}</div>`;
   }
 }
 
@@ -1452,11 +1551,14 @@ async function popLoadSummary(){
       </div>
     `;
   } catch(e) {
-    box.innerHTML = '';
+    if (String(e.message).startsWith('unauthorized')) return;
+    box.innerHTML = `<div class="insight-empty" style="grid-column:1/-1;color:var(--danger)">Gagal memuat ringkasan populasi: ${esc(e.message)}</div>`;
   }
 }
 
+let popTableReqId = 0;
 async function popLoadTable(){
+  const myReq = ++popTableReqId;
   const tbody = document.getElementById('pop-tbl-body');
   tbody.innerHTML = '<tr class="loading-row"><td colspan="9"><i class="ti ti-loader-2 spinner"></i> Memuat data…</td></tr>';
   try {
@@ -1468,13 +1570,23 @@ async function popLoadTable(){
       p_page: popPage,
       p_page_size: POP_PAGE_SIZE
     });
+    if (myReq !== popTableReqId) return;
     popRenderTable(result.total || 0, result.rows || []);
   } catch(e) {
-    if (e.message === 'unauthorized') return;
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">
+    if (myReq !== popTableReqId || String(e.message).startsWith('unauthorized')) return;
+    // FIX: dulu SEMUA error (timeout, 500, jaringan putus) dijawab "RPC belum ada, jalankan SQL..." --
+    // menyesatkan dan bocorin instruksi dev ke user. Sekarang pesan "belum terpasang" cuma buat
+    // error "function tidak ditemukan" (PGRST202 / 404); selain itu tampilkan error aslinya.
+    const missing = e.code === 'PGRST202' || e.status === 404;
+    tbody.innerHTML = missing
+      ? `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">
       <i class="ti ti-database" style="font-size:26px;display:block;margin-bottom:8px"></i>
-      Tabel/RPC populasi produk belum tersedia di Supabase.<br>
-      <span style="font-size:11px">RPC populasi belum ada di Supabase. Jalankan <code>populasi_produk_schema.sql</code> di SQL Editor Supabase (view + function di atas <code>orderan_lintas_entitas</code>, yang sudah disync <code>syncOrderan</code> — tidak perlu script sync baru).</span>
+      RPC populasi produk belum terpasang di Supabase.<br>
+      <span style="font-size:11px">Jalankan <code>populasi_produk_schema.sql</code> di SQL Editor Supabase.</span>
+    </td></tr>`
+      : `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--danger)">
+      <i class="ti ti-alert-circle" style="font-size:26px;display:block;margin-bottom:8px"></i>
+      Gagal memuat data populasi: ${esc(e.message)}
     </td></tr>`;
     document.getElementById('pop-tbl-info').textContent = '—';
     document.getElementById('pop-pagination').innerHTML = '';
@@ -1494,15 +1606,15 @@ function popRenderTable(total, rows){
     popTableRows = rows;
     document.getElementById('pop-tbl-body').innerHTML = rows.map((r, idx) => `
       <tr style="cursor:pointer" onclick="popShowDetail(${idx})" title="Klik untuk lihat rincian RMP">
-        <td><span class="kode-text">${r.kode_produk || '—'}</span></td>
+        <td><span class="kode-text">${esc(r.kode_produk) || '—'}</span></td>
         <td style="max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtmlAttr(r.nama_produk||'')}">${escapeHtmlAttr(r.nama_produk || '—')}</td>
-        <td><span class="badge badge-instrument">${r.entitas || '—'}</span></td>
-        <td><span class="badge badge-instrument">${r.channel || '—'}</span></td>
-        <td>${r.wilayah || '—'}</td>
+        <td><span class="badge badge-instrument">${esc(r.entitas) || '—'}</span></td>
+        <td><span class="badge badge-instrument">${esc(r.channel) || '—'}</span></td>
+        <td>${esc(r.wilayah) || '—'}</td>
         <td style="text-align:right;font-family:var(--mono);font-weight:600">${fmt(r.total_qty)}</td>
         <td style="text-align:right;font-family:var(--mono)">${fmt(r.jumlah_customer)}</td>
         <td style="text-align:right;font-family:var(--mono)">${fmt(r.jumlah_dokumen)}</td>
-        <td style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">${r.order_terakhir || '—'}</td>
+        <td style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">${esc(r.order_terakhir) || '—'}</td>
       </tr>
     `).join('');
   }
@@ -1532,7 +1644,10 @@ async function popShowDetail(idx){
   document.getElementById('dm-title').textContent = r.nama_produk || '—';
   document.getElementById('dm-kode').textContent = `${r.kode_produk} · ${r.wilayah || 'wilayah tidak terdeteksi'}`;
   document.getElementById('dm-body').innerHTML = '<div class="detail-loading"><i class="ti ti-loader-2 spinner"></i> Memuat rincian RMP…</div>';
+  const myReq = ++detailReqId;
+  lastFocusBeforeModal = document.activeElement;
   detailOverlay.classList.add('show');
+  document.getElementById('dm-close').focus();
   try {
     const rowsRaw = await rpc('get_dashboard_populasi_produk_detail', {
       p_kode_produk: r.kode_produk,
@@ -1540,6 +1655,7 @@ async function popShowDetail(idx){
       p_channel: r.channel,
       p_wilayah: r.wilayah
     });
+    if (myReq !== detailReqId) return;
     if (!rowsRaw || !rowsRaw.length){
       document.getElementById('dm-body').innerHTML = '<div class="detail-loading">Tidak ada baris mentah yang cocok (cek apakah RPC detail sudah dipasang).</div>';
       return;
@@ -1559,11 +1675,11 @@ async function popShowDetail(idx){
               <tr>
                 <td><span class="kode-text">${escapeHtmlAttr(x.pnm_po_code || '—')}</span></td>
                 <td>${escapeHtmlAttr(x.po || '—')}</td>
-                <td style="font-family:var(--font-mono)">${x.customer_po_date || '—'}</td>
+                <td style="font-family:var(--font-mono)">${esc(x.customer_po_date) || '—'}</td>
                 <td>${escapeHtmlAttr(x.customer || '—')}</td>
                 <td style="text-align:right;font-family:var(--mono)">${fmt(x.qty)}</td>
                 <td>${escapeHtmlAttr(x.status || '—')}</td>
-                <td style="font-family:var(--font-mono)">${x.tanggal_order || '—'}</td>
+                <td style="font-family:var(--font-mono)">${esc(x.tanggal_order) || '—'}</td>
                 <td style="font-size:11px;color:var(--text-muted)">${escapeHtmlAttr(x.sumber_sheet || '—')}</td>
               </tr>
             `).join('')}
@@ -1572,8 +1688,8 @@ async function popShowDetail(idx){
       </div>
     `;
   } catch(e){
-    if (e.message === 'unauthorized') return;
-    document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${e.message}</div>`;
+    if (myReq !== detailReqId || String(e.message).startsWith('unauthorized')) return;
+    document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${esc(e.message)}</div>`;
   }
 }
 
@@ -1605,18 +1721,7 @@ async function popExportExcel(ev){
     const headers = ['Kode Produk','Nama Produk','Entitas','Channel','Wilayah','Total Qty','Jml Customer','Jml Dokumen','Order Terakhir'];
     const csvRows = [headers.join(',')];
     rows.forEach(r => {
-      const line = [
-        r.kode_produk || '',
-        `"${(r.nama_produk||'').replace(/"/g,'""')}"`,
-        r.entitas || '',
-        r.channel || '',
-        r.wilayah || '',
-        r.total_qty ?? '',
-        r.jumlah_customer ?? '',
-        r.jumlah_dokumen ?? '',
-        r.order_terakhir || ''
-      ].join(',');
-      csvRows.push(line);
+      csvRows.push([r.kode_produk, r.nama_produk, r.entitas, r.channel, r.wilayah, r.total_qty, r.jumlah_customer, r.jumlah_dokumen, r.order_terakhir].map(csvCell).join(','));
     });
     const csvContent = '\uFEFF' + csvRows.join('\n'); // BOM biar Excel baca UTF-8 dengan benar
     const blob = new Blob([csvContent], {type:'text/csv;charset=utf-8;'});
@@ -1624,14 +1729,14 @@ async function popExportExcel(ev){
     const a = document.createElement('a');
     a.href = url;
     const filterTag = [popWilayah, popEntitas, popChannel].filter(Boolean).join('-') || 'semua';
-    a.download = `populasi-produk-${filterTag}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `populasi-produk-${filterTag}-${localISODate()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     showToast(`${rows.length} baris berhasil di-export.`);
   } catch(e) {
-    showToast('Gagal export: ' + e.message);
+    showToast('Gagal export: ' + e.message, 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-type-xls"></i> Export Excel'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-type-csv"></i> Export CSV'; }
   }
 }
 
@@ -1644,6 +1749,7 @@ async function popExportExcel(ev){
   // total dari titik ini, user baru laporan lewat console error beneran.)
   // Expose ke window.* -- lihat catatan panjang di komentar atas file ini.
   Object.assign(window, {
+    applyOnlyFilter,
     applyPreset,
     applySearchHistory,
     clearSearchHistory,
@@ -1670,6 +1776,8 @@ async function popExportExcel(ev){
     toggleRowSelect,
     toggleSelectAll,
   });
+
+  loadEverything();
 }
 
 export function unmount() {
@@ -1686,6 +1794,7 @@ export function unmount() {
   // slight "zoom" jump) while the next module's mount() reloaded it.
   document.getElementById('page-dashboard-style')?.remove();
 
+  delete window.applyOnlyFilter;
   delete window.applyPreset;
   delete window.applySearchHistory;
   delete window.clearSearchHistory;
