@@ -168,6 +168,14 @@ function showGate(message) {
 // lagi kalau showGate() dipanggil ulang (misal habis logout).
 function hideGate() {
   setStatus(''); // clear status DULU, selagi #pw-gate-status masih ada di DOM
+  // SECURITY: password yang tadi diketik masih nempel di properti .value
+  // node <input> ini walau udah gak keliatan (display:none, lalu di-
+  // remove() dari DOM barisan bawah) -- dikosongin eksplisit di sini biar
+  // gak ada teks password asli nongkrong di memori/DOM lebih lama dari
+  // yang perlu begitu login sukses. Email sengaja DIBIARKAN (bukan
+  // rahasia, dan enak buat re-login cepat kalau logout lagi sebentar).
+  const passwordInput = document.getElementById('pw-gate-password');
+  if (passwordInput) passwordInput.value = '';
   if (gateEl) {
     gateEl.style.display = 'none';
     if (gateEl.isConnected) gateEl.remove();
