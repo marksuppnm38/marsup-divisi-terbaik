@@ -57,6 +57,12 @@
 
 import { navMount, navSetActive } from './pages/nav/nav.js';
 import { initAuthGate } from '../shared/auth-gate.js';
+// Jaring pengaman biar textbox biasa (search, form field, dst) gak
+// disodorin saran password/email tersimpan sama password manager
+// browser/extension -- lihat komentar panjang di shared/no-autofill.js
+// buat penjelasan root cause-nya. Dipanggil sekali di bawah, sebelum
+// initAuthGate() supaya sudah aktif dari gate pertama kali muncul.
+import { initNoAutofillGuard } from '../shared/no-autofill.js';
 // Same two registries nav-markup.js already imports to draw the sidebar
 // accordion (see app/pages/nav/nav-markup.js's SUBNAV) -- reused here as
 // the single source of truth for "is this sub-route real", so router.js
@@ -420,5 +426,6 @@ function stopRouting() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  initNoAutofillGuard();
   initAuthGate({ onReady: startRouting, onLoggedOut: stopRouting });
 });

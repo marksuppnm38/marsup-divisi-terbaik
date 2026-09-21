@@ -137,7 +137,14 @@ function setStatus(text, isError) {
 }
 
 function showGate(message) {
-  if (gateEl) gateEl.style.display = 'flex';
+  if (gateEl) {
+    // Gate dilepas total dari DOM (bukan cuma display:none) tiap kali
+    // hideGate() dipanggil -- lihat catatan di hideGate() kenapa. Begitu
+    // mau ditampilkan lagi, tempel balik ke <body> dulu kalau memang
+    // sudah lepas.
+    if (!gateEl.isConnected) document.body.appendChild(gateEl);
+    gateEl.style.display = 'flex';
+  }
   // Defensive re-load: kalau gate ini muncul lagi SETELAH sempat hilang
   // (logout, misalnya) dan halaman terakhir yang ke-mount() sudah
   // remove()-in 'shared-pnm-universal-css' di unmount()-nya sendiri (pola
@@ -149,9 +156,22 @@ function showGate(message) {
   if (message) setStatus(message, true);
 }
 
+// FIX (laporan user: textbox biasa kayak search box munculin saran
+// password/email tersimpan): selama <input type="password"> ini masih
+// ada di DOM -- walau cuma disembunyikan lewat display:none -- browser
+// (Chromium dkk) tetap mengelompokkannya bareng SEMUA input lain yang
+// gak dibungkus <form> di halaman ini jadi satu "unowned form" internal,
+// dan menyodorkan saran login itu ke textbox APAPUN yang lagi difokus,
+// gak peduli textbox itu sendiri sudah autocomplete="off". Solusinya:
+// begitu user berhasil login, gate ini (berikut input email+password-nya)
+// dicopot BENERAN dari DOM, bukan cuma disembunyikan -- baru ditempel
+// lagi kalau showGate() dipanggil ulang (misal habis logout).
 function hideGate() {
-  if (gateEl) gateEl.style.display = 'none';
-  setStatus('');
+  setStatus(''); // clear status DULU, selagi #pw-gate-status masih ada di DOM
+  if (gateEl) {
+    gateEl.style.display = 'none';
+    if (gateEl.isConnected) gateEl.remove();
+  }
 }
 
 /**
