@@ -45,8 +45,6 @@
   color: var(--text-muted);
 }
 
-.eg-card-title { font-size: 14.5px; font-weight: 700; margin: 0 0 14px; }
-
 .eg-meta {
   margin: 10px 2px 0;
   font-size: 12px;

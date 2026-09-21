@@ -449,6 +449,46 @@ export async function mount(container) {
   const stokCancelBtn = document.getElementById('stok-cancel-btn');
   const stokStatusMsg = document.getElementById('stok-status-msg');
 
+  // ══════════════════════════════════════════
+  // CONFIRM DIALOG (ganti window.confirm() bawaan browser)
+  // ══════════════════════════════════════════
+  // Promise-based, pakai overlay .confirm-overlay/.confirm-card yang sama
+  // kayak "Perubahan belum disimpan"-nya crud-produk -- CSS-nya generic
+  // (bukan crud-produk-only) jadi aman dipakai ulang di sini tanpa nambah
+  // style baru. Cuma satu dialog aktif dalam satu waktu (cukup buat
+  // kebutuhan halaman ini), jadi resolver lama ditimpa aja kalau ada
+  // panggilan baru sebelum yang sebelumnya kejawab -- overlay-nya sendiri
+  // cuma bisa nunjukin satu confirm dalam satu waktu juga.
+  const stokConfirmOverlay = document.getElementById('stokConfirmOverlay');
+  const stokConfirmTitle = document.getElementById('stokConfirmTitle');
+  const stokConfirmMsg = document.getElementById('stokConfirmMsg');
+  const stokConfirmCancelBtn = document.getElementById('stokConfirmCancelBtn');
+  const stokConfirmOkBtn = document.getElementById('stokConfirmOkBtn');
+  let stokConfirmResolve = null;
+
+  function stokConfirm(message, { title = 'Konfirmasi', okLabel = 'Lanjutkan' } = {}) {
+    stokConfirmTitle.textContent = title;
+    // pesan boleh multi-line (\n\n dari skipNote) -- konversi ke <br> karena
+    // <p> gak nge-render newline mentah; escapeHtml dulu biar aman dari XSS
+    // kalau suatu saat pesannya include teks dari file upload (kode produk dst).
+    stokConfirmMsg.innerHTML = escapeHtml(message).replace(/\n/g, '<br>');
+    stokConfirmOkBtn.textContent = okLabel;
+    stokConfirmOverlay.classList.add('open');
+    return new Promise((resolve) => {
+      stokConfirmResolve = resolve;
+    });
+  }
+  function closeStokConfirm(result) {
+    stokConfirmOverlay.classList.remove('open');
+    if (stokConfirmResolve) { stokConfirmResolve(result); stokConfirmResolve = null; }
+  }
+  stokConfirmCancelBtn.addEventListener('click', () => closeStokConfirm(false));
+  stokConfirmOkBtn.addEventListener('click', () => closeStokConfirm(true));
+  // klik di luar card / tutup kayak modal lain di app ini = batal, bukan lanjut
+  stokConfirmOverlay.addEventListener('click', (e) => {
+    if (e.target === stokConfirmOverlay) closeStokConfirm(false);
+  });
+
   function fmtSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -628,7 +668,11 @@ export async function mount(container) {
     const skipNote = stokSkippedRows && stokSkippedRows.length > 0
       ? `${stokSkippedRows.length} kode akan DILEWATI karena belum terdaftar sebagai produk.\n\n`
       : '';
-    if (!confirm(`${skipNote}Yakin timpa seluruh data stok dengan ${stokParsedRows.length} baris dari file ini?`)) return;
+    const ok = await stokConfirm(
+      `${skipNote}Yakin timpa seluruh data stok dengan ${stokParsedRows.length} baris dari file ini?`,
+      { title: 'Timpa data stok?', okLabel: 'Ya, Timpa' }
+    );
+    if (!ok) return;
     stokUploadBtn.disabled = true;
     actionsRow.style.display = 'flex';
     stokCancelBtn.style.display = 'none';

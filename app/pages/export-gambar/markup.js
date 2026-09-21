@@ -34,6 +34,17 @@
 // stretching full viewport width -- see the FULLBLEED comment on
 // `.eg-page main` in style.css for why that doesn't undo the earlier
 // edge-to-edge request.
+//
+// UPDATE (card-head consistency pass): this page's two cards were the only
+// ones in the app with no .card-head/.icon-box header (a bare field-label
+// straight at the top of card 1, a plain .eg-card-title text node in card
+// 2) -- every other module (dashboard/stok/crud-produk) uses icon-box +
+// h2 + short p for every card. Added that here too (blue icon-box for the
+// input card, green for the result card, matching the accent/success
+// color convention used elsewhere), removed the now-unused .eg-card-title
+// rule from style.css. Kept subtitles to one short line / omitted where
+// redundant with the .eg-meta line below, so this doesn't reverse the
+// earlier "too many words" trim pass above.
 export const EXPORT_GAMBAR_MARKUP = `
 <div class="eg-page">
   <div class="pw-topbar">
@@ -49,6 +60,13 @@ export const EXPORT_GAMBAR_MARKUP = `
 
       <!-- SELECTION -->
       <div class="card">
+        <div class="card-head">
+          <div class="icon-box blue"><i class="ti ti-stack-2"></i></div>
+          <div class="card-head-text">
+            <h2>Pilih Gambar</h2>
+            <p>Tempel kode produk atau cari manual.</p>
+          </div>
+        </div>
         <label class="field-label" for="bulkInput">Kode produk <span class="eg-field-hint">satu per baris, maks 4</span></label>
         <textarea id="bulkInput" class="field-input eg-textarea" placeholder="MY001&#10;MY002&#10;MY003&#10;MY004" aria-label="Input kode file, satu per baris"></textarea>
         <button type="button" class="eg-link-btn" onclick="applyBulkInput()">
@@ -68,7 +86,12 @@ export const EXPORT_GAMBAR_MARKUP = `
 
       <!-- PREVIEW -->
       <div id="previewContainer" class="card eg-mt-16" style="display:none;">
-        <h2 class="eg-card-title">Hasil</h2>
+        <div class="card-head">
+          <div class="icon-box green"><i class="ti ti-photo"></i></div>
+          <div class="card-head-text">
+            <h2>Hasil</h2>
+          </div>
+        </div>
         <canvas id="finalCanvas" class="eg-canvas" role="img" aria-label="Preview hasil gambar gabungan"></canvas>
         <p class="eg-meta" role="status" aria-live="polite">PNG &middot; latar transparan &middot; <span id="metaCount">0</span> gambar</p>
         <button id="exportBtn" class="btn btn-primary" onclick="exportCanvasAsPNG()" style="display:none;width:100%;justify-content:center;" aria-label="Export hasil sebagai file PNG">

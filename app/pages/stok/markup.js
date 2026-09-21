@@ -140,5 +140,22 @@ export const STOK_MARKUP = `
     <div class="local-note"><i class="ti ti-info-circle"></i><span id="local-note-text">Memuat riwayat…</span></div>
   </div>
 </main>
+<!-- Ganti window.confirm() bawaan browser (dialog abu-abu polos, gak ngikutin
+     tema app) dengan overlay yang sama persis dipakai crud-produk buat
+     "Perubahan belum disimpan" -- .confirm-overlay/.confirm-card/.confirm-actions
+     sudah ada di pnm-universal.css dan generic (bukan crud-produk-only), tinggal
+     dipakai ulang. Judul/pesan/tombol diisi dinamis lewat stokConfirm() di
+     index.js, bukan hardcode kayak punya crud-produk, karena teksnya berubah-
+     ubah (jumlah baris & kode yang dilewati beda tiap upload). -->
+<div class="confirm-overlay" id="stokConfirmOverlay">
+  <div class="confirm-card">
+    <h3><i class="ti ti-alert-triangle" id="stokConfirmIcon"></i> <span id="stokConfirmTitle">Konfirmasi</span></h3>
+    <p id="stokConfirmMsg"></p>
+    <div class="confirm-actions">
+      <button class="btn btn-ghost" id="stokConfirmCancelBtn" type="button">Batal</button>
+      <button class="btn btn-accent" id="stokConfirmOkBtn" type="button">Lanjutkan</button>
+    </div>
+  </div>
+</div>
 </div>
 `;
