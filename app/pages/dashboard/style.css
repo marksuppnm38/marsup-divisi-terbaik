@@ -129,8 +129,10 @@
 #app-root .chip-no::before,
 #app-root .days-kritis::before{ background: var(--danger-dot); }
 #app-root .days-warn::before{ background: var(--warning-dot); }
-/* the ph-x / ph-arrow-square-out icons inside .chip are now redundant with
-   the dot (design.md: status conveyed by the dot, not an icon) */
+/* the icons inside .chip (originally ph-x / ph-arrow-square-out, now
+   ti-x / ti-external-link after the icon-library convergence pass) are
+   redundant with the dot (design.md: status conveyed by the dot, not an
+   icon) */
 #app-root .chip i{ display: none; }
 
 /* ---- Step 5: spacing -- 18px paddings weren't on the 8pt scale ---- */

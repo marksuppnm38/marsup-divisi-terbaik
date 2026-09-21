@@ -80,16 +80,21 @@ function ensureVendorScripts() {
   return vendorReady;
 }
 
-// shared-google-fonts / shared-phosphor-icons: id+href SAMA PERSIS kayak
-// yang dipakai konversian/index.js -- dashboard.html asli kebetulan makai
-// resource IDENTIK (dicek dulu sebelum nulis ini, bukan asumsi), jadi
-// beneran share satu <link> kalau dua-duanya kebetulan aktif bareng.
+// shared-google-fonts: id+href SAMA PERSIS kayak yang dipakai konversian/
+// index.js -- dashboard.html asli kebetulan makai resource IDENTIK (dicek
+// dulu sebelum nulis ini, bukan asumsi), jadi beneran share satu <link>
+// kalau dua-duanya kebetulan aktif bareng.
 // pnm-universal.css: pola sama kayak konversian/crud-produk (load di
 // mount(), lepas di unmount(), bukan "shared selamanya" -- lihat map-
 // history.md sesi kesembilan buat kenapa).
+// shared-phosphor-icons DIHAPUS (icon-library convergence pass, sesi ini):
+// semua glyph dashboard (ph-*) di-remap ke Tabler yang ekuivalen, jadi
+// konsisten sama konversian/stok/crud-produk/nav yang sudah lama pindah --
+// dashboard adalah holdout terakhir. Satu webfont doang yang kepakai
+// sekarang di seluruh app.
 const SHARED_LINKS = [
   { id: 'shared-google-fonts', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap' },
-  { id: 'shared-phosphor-icons', href: 'https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css' },
+  { id: 'shared-tabler-icons', href: 'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css' },
   { id: 'shared-pnm-universal-css', href: '/pnm-universal.css?v=20260813b' },
 ];
 
@@ -198,7 +203,7 @@ async function openDetail(kode){
   if (targetRow) targetRow.classList.add('row-active');
   document.getElementById('dm-title').textContent = '—';
   document.getElementById('dm-kode').textContent = kode;
-  document.getElementById('dm-body').innerHTML = '<div class="detail-loading"><i class="ph ph-circle-notch spinner"></i> Memuat detail…</div>';
+  document.getElementById('dm-body').innerHTML = '<div class="detail-loading"><i class="ti ti-loader-2 spinner"></i> Memuat detail…</div>';
   detailOverlay.classList.add('show');
   try {
     const d = await rpc('get_produk_detail', {p_kode: kode});
@@ -213,7 +218,7 @@ async function openDetail(kode){
     console.log('THUMB URL:', thumbUrl);
     const thumbHtml = thumbUrl
   ? `<canvas id="dm-thumb-canvas" class="detail-thumb"></canvas>`
-  : `<div class="detail-thumb-placeholder"><i class="ph ph-image"></i> Tidak ada gambar</div>`;
+  : `<div class="detail-thumb-placeholder"><i class="ti ti-photo"></i> Tidak ada gambar</div>`;
 
     const hargaMap = {};
     (d.harga||[]).forEach(h=>{ if(!hargaMap[h.jenis]) hargaMap[h.jenis]=h; });
@@ -234,20 +239,20 @@ async function openDetail(kode){
         ${row('No. AKD', d.no_akd || '—')}
         ${row('Kode KFA', d.kode_kfa ? `<span style="font-family:var(--mono)">${d.kode_kfa}</span>` : '—')}
         ${row('Spesifikasi', d.spesifikasi || '—')}
-        ${row('Link v6', (d.link_v6 && isSafeHttpUrl(d.link_v6)) ? `<a href="${escapeHtmlAttr(d.link_v6)}" target="_blank">Lihat di e-Katalog <i class="ph ph-arrow-square-out"></i></a>` : '—')}
+        ${row('Link v6', (d.link_v6 && isSafeHttpUrl(d.link_v6)) ? `<a href="${escapeHtmlAttr(d.link_v6)}" target="_blank">Lihat di e-Katalog <i class="ti ti-external-link"></i></a>` : '—')}
       </div>
     `;
 
     document.getElementById('dm-body').innerHTML = `
       <canvas id="dm-thumb-canvas" class="detail-thumb" style="${thumbUrl?'':'display:none'}"></canvas>
-      ${!thumbUrl ? `<div class="detail-thumb-placeholder"><i class="ph ph-image"></i> Tidak ada gambar</div>` : ''}
+      ${!thumbUrl ? `<div class="detail-thumb-placeholder"><i class="ti ti-photo"></i> Tidak ada gambar</div>` : ''}
       ${hargaHtml}
       <div>
         ${row('Tipe', `<span class="badge badge-${(d.tipe||'').toLowerCase()}">${d.tipe||'—'}</span>`)}
         ${row('No. AKD', d.no_akd || '—')}
         ${row('Kode KFA', d.kode_kfa ? `<span style="font-family:var(--mono)">${d.kode_kfa}</span>` : '—')}
         ${row('Spesifikasi', d.spesifikasi || '—')}
-        ${row('Link v6', (d.link_v6 && isSafeHttpUrl(d.link_v6)) ? `<a href="${escapeHtmlAttr(d.link_v6)}" target="_blank">Lihat di e-Katalog <i class="ph ph-arrow-square-out"></i></a>` : '—')}
+        ${row('Link v6', (d.link_v6 && isSafeHttpUrl(d.link_v6)) ? `<a href="${escapeHtmlAttr(d.link_v6)}" target="_blank">Lihat di e-Katalog <i class="ti ti-external-link"></i></a>` : '—')}
       </div>
     `;
     if (thumbUrl) {
@@ -307,7 +312,7 @@ function showToast(msg, type='success'){
   const c = document.getElementById('toast-container');
   const t = document.createElement('div');
   t.className = `toast ${type}`;
-  t.innerHTML = `<i class="ph ph-${type==='success'?'check-circle':'warning-circle'}"></i> ${msg}`;
+  t.innerHTML = `<i class="ti ti-${type==='success'?'check-circle':'warning-circle'}"></i> ${msg}`;
   c.appendChild(t);
   setTimeout(() => {
     t.classList.add('fade-out');
@@ -397,22 +402,22 @@ async function loadKonversiToday(){
   const k = await rpc('get_dashboard_konversi_today', {});
   document.getElementById('stats-grid-konversi').innerHTML = `
     <div class="stat-card blue">
-      <div class="stat-icon blue"><i class="ph ph-hourglass-medium"></i></div>
+      <div class="stat-icon blue"><i class="ti ti-hourglass"></i></div>
       <div class="stat-val">${fmt(k.berjalan_count)}</div>
       <div class="stat-label">Konversi Sedang Berjalan</div>
-      <div class="stat-sub"><i class="ph ph-plus-circle"></i> ${fmt(k.berjalan_baru_count)} sesi baru dibuka hari ini</div>
+      <div class="stat-sub"><i class="ti ti-circle-plus"></i> ${fmt(k.berjalan_baru_count)} sesi baru dibuka hari ini</div>
     </div>
     <div class="stat-card green">
-      <div class="stat-icon green"><i class="ph ph-check-circle"></i></div>
+      <div class="stat-icon green"><i class="ti ti-circle-check"></i></div>
       <div class="stat-val">${fmt(k.selesai_count)}</div>
       <div class="stat-label">Konversi Selesai Hari Ini</div>
-      <div class="stat-sub"><i class="ph ph-money"></i> Total ${rupiah(k.selesai_value)}</div>
+      <div class="stat-sub"><i class="ti ti-cash"></i> Total ${rupiah(k.selesai_value)}</div>
     </div>
     <div class="stat-card purple">
-      <div class="stat-icon purple"><i class="ph ph-chart-line-up"></i></div>
+      <div class="stat-icon purple"><i class="ti ti-trending-up"></i></div>
       <div class="stat-val">${rupiah(k.selesai_avg)}</div>
       <div class="stat-label">Rata-rata Value / Order</div>
-      <div class="stat-sub"><i class="ph ph-info"></i> Dari ${fmt(k.selesai_count)} order hari ini</div>
+      <div class="stat-sub"><i class="ti ti-info-circle"></i> Dari ${fmt(k.selesai_count)} order hari ini</div>
     </div>
   `;
 }
@@ -425,46 +430,46 @@ async function loadKonversiToday(){
 async function loadStats(){
   const s = await rpc('get_dashboard_summary', {});
   const total = s.total || 0;
-  document.querySelector('[data-f="all"]').innerHTML = `<i class="ph ph-squares-four"></i> Semua <span class="filter-count">(${fmt(total)})</span>`;
-  document.querySelector('[data-f="noharga"]').innerHTML = `<i class="ph ph-currency-circle-dollar"></i> Tanpa Harga <span class="filter-count">(${fmt(total - s.punya_harga)})</span>`;
-  document.querySelector('[data-f="nolink"]').innerHTML = `<i class="ph ph-link-break"></i> Tanpa Link <span class="filter-count">(${fmt(total - s.punya_link)})</span>`;
-  document.querySelector('[data-f="noakd"]').innerHTML = `<i class="ph ph-shield-slash"></i> Tanpa AKD <span class="filter-count">(${fmt(total - s.punya_akd)})</span>`;
+  document.querySelector('[data-f="all"]').innerHTML = `<i class="ti ti-layout-grid"></i> Semua <span class="filter-count">(${fmt(total)})</span>`;
+  document.querySelector('[data-f="noharga"]').innerHTML = `<i class="ti ti-currency-dollar"></i> Tanpa Harga <span class="filter-count">(${fmt(total - s.punya_harga)})</span>`;
+  document.querySelector('[data-f="nolink"]').innerHTML = `<i class="ti ti-unlink"></i> Tanpa Link <span class="filter-count">(${fmt(total - s.punya_link)})</span>`;
+  document.querySelector('[data-f="noakd"]').innerHTML = `<i class="ti ti-shield-off"></i> Tanpa AKD <span class="filter-count">(${fmt(total - s.punya_akd)})</span>`;
 
   document.getElementById('last-update-text').textContent = 'Live — ' + new Date().toLocaleTimeString('id-ID');
 
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card blue">
-      <div class="stat-icon blue"><i class="ph ph-database"></i></div>
+      <div class="stat-icon blue"><i class="ti ti-database"></i></div>
       <div class="stat-val">${fmt(total)}</div>
       <div class="stat-label">Total Produk</div>
-      <div class="stat-sub"><i class="ph ph-check-circle" style="color:var(--success)"></i> Semua aktif di database</div>
+      <div class="stat-sub"><i class="ti ti-circle-check" style="color:var(--success)"></i> Semua aktif di database</div>
     </div>
     <div class="stat-card green">
-      <div class="stat-icon green"><i class="ph ph-money"></i></div>
+      <div class="stat-icon green"><i class="ti ti-cash"></i></div>
       <div class="stat-val">${fmt(s.punya_harga)}</div>
       <div class="stat-label">Punya Harga e-Katalog</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_harga,total))}">${pct(s.punya_harga,total)}%</span> dari total produk</div>
     </div>
     <div class="stat-card warning">
-      <div class="stat-icon warning"><i class="ph ph-currency-circle-dollar"></i></div>
+      <div class="stat-icon warning"><i class="ti ti-currency-dollar"></i></div>
       <div class="stat-val">${fmt(total - s.punya_harga)}</div>
       <div class="stat-label">Belum Ada Harga</div>
       <div class="stat-sub"><span class="stat-pct pct-bad">${pct(total - s.punya_harga, total)}%</span> perlu dilengkapi</div>
     </div>
     <div class="stat-card blue">
-      <div class="stat-icon blue"><i class="ph ph-link"></i></div>
+      <div class="stat-icon blue"><i class="ti ti-link"></i></div>
       <div class="stat-val">${fmt(s.punya_link)}</div>
       <div class="stat-label">Ada di e-Katalog v6</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_link,total))}">${pct(s.punya_link,total)}%</span> dari total produk</div>
     </div>
     <div class="stat-card purple">
-      <div class="stat-icon purple"><i class="ph ph-seal-check"></i></div>
+      <div class="stat-icon purple"><i class="ti ti-rosette-discount-check"></i></div>
       <div class="stat-val">${fmt(s.punya_akd)}</div>
       <div class="stat-label">Punya Nomor AKD</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_akd,total))}">${pct(s.punya_akd,total)}%</span> dari total produk</div>
     </div>
     <div class="stat-card danger">
-      <div class="stat-icon danger"><i class="ph ph-link-break"></i></div>
+      <div class="stat-icon danger"><i class="ti ti-unlink"></i></div>
       <div class="stat-val">${fmt(total - s.punya_link)}</div>
       <div class="stat-label">Belum di e-Katalog</div>
       <div class="stat-sub"><span class="stat-pct pct-bad">${pct(total - s.punya_link, total)}%</span> belum terdaftar</div>
@@ -548,7 +553,7 @@ function prefetchNextPage(total){
 async function loadTable(){
   const key = cacheKey(currentPage);
   if (!pageCache[key]) {
-    document.getElementById('tbl-body').innerHTML = '<tr class="loading-row"><td colspan="7"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>';
+    document.getElementById('tbl-body').innerHTML = '<tr class="loading-row"><td colspan="7"><i class="ti ti-loader-2 spinner"></i> Memuat data…</td></tr>';
   }
   const result = await fetchPage(currentPage);
   renderTable(result.total || 0, result.rows || []);
@@ -619,19 +624,19 @@ function renderTable(total, rows){
   const tipeClass = {INSTRUMENT:'badge-instrument', SET:'badge-set', UNIT:'badge-unit'};
 
   if (!rows.length){
-    document.getElementById('tbl-body').innerHTML = '<tr style="cursor:pointer" onclick="openDetail(${r.kode_produk})"><td colspan="6"><i class="ph ph-magnifying-glass" style="font-size:28px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
+    document.getElementById('tbl-body').innerHTML = '<tr style="cursor:pointer" onclick="openDetail(${r.kode_produk})"><td colspan="6"><i class="ti ti-search" style="font-size:28px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
   } else {
     document.getElementById('tbl-body').innerHTML = rows.map(r => `
   <tr style="cursor:pointer" data-kode="${r.kode_produk}" onclick="openDetail('${r.kode_produk}')">
     <td class="checkbox-col" onclick="event.stopPropagation()">
       <input type="checkbox" class="row-checkbox" data-kode="${r.kode_produk}" data-row='${JSON.stringify(r).replace(/'/g,"&apos;")}' ${selectedRows.has(r.kode_produk)?'checked':''} onchange="toggleRowSelect(this,'${r.kode_produk}', ${JSON.stringify(r).replace(/"/g,'&quot;')})"/>
     </td>
-    <td><span class="kode-text">${r.kode_produk || '—'}</span><button class="copy-kode-btn" onclick="copyKode(event,'${r.kode_produk}')" title="Salin kode"><i class="ph ph-copy"></i></button></td>
+    <td><span class="kode-text">${r.kode_produk || '—'}</span><button class="copy-kode-btn" onclick="copyKode(event,'${r.kode_produk}')" title="Salin kode"><i class="ti ti-copy"></i></button></td>
         <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtmlAttr(r.nama_produk || '—')}</td>
         <td><span class="badge ${tipeClass[r.tipe] || ''}">${r.tipe || '—'}</span></td>
-        <td>${r.harga ? `<span style="font-family:var(--mono);font-size:11.5px;color:var(--success);font-weight:600">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="ph ph-x"></i> Belum ada</span>`}</td>
-        <td>${(r.link_v6 && isSafeHttpUrl(r.link_v6)) ? `<a href="${escapeHtmlAttr(r.link_v6)}" target="_blank" class="chip chip-yes" style="text-decoration:none"><i class="ph ph-arrow-square-out"></i> Ada</a>` : `<span class="chip chip-no"><i class="ph ph-x"></i> Belum</span>`}</td>
-        <td>${r.no_akd ? `<span class="chip chip-yes" style="font-family:var(--mono)">${r.no_akd}</span>` : `<span class="chip chip-no"><i class="ph ph-x"></i> Belum</span>`}</td>
+        <td>${r.harga ? `<span style="font-family:var(--mono);font-size:11.5px;color:var(--success);font-weight:600">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum ada</span>`}</td>
+        <td>${(r.link_v6 && isSafeHttpUrl(r.link_v6)) ? `<a href="${escapeHtmlAttr(r.link_v6)}" target="_blank" class="chip chip-yes" style="text-decoration:none"><i class="ti ti-external-link"></i> Ada</a>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum</span>`}</td>
+        <td>${r.no_akd ? `<span class="chip chip-yes" style="font-family:var(--mono)">${r.no_akd}</span>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum</span>`}</td>
       </tr>
     `).join('');
   }
@@ -723,7 +728,7 @@ function showSearchHistory(){
   const hist = getSearchHistory();
   const box = document.getElementById('search-history');
   if (!hist.length) { box.classList.remove('show'); return; }
-  box.innerHTML = hist.map(t => `<div class="search-history-item" onclick="applySearchHistory('${t.replace(/'/g,"\\'")}')"><i class="ph ph-clock-counter-clockwise"></i> ${t}</div>`).join('')
+  box.innerHTML = hist.map(t => `<div class="search-history-item" onclick="applySearchHistory('${t.replace(/'/g,"\\'")}')"><i class="ti ti-history"></i> ${t}</div>`).join('')
     + `<div class="search-history-clear" onclick="clearSearchHistory()">Hapus riwayat</div>`;
   box.classList.add('show');
 }
@@ -791,8 +796,8 @@ function renderPresets(){
   if (!presets.length) { bar.innerHTML = `<span style="font-size:11px;color:var(--text-muted)">Belum ada preset tersimpan</span>`; return; }
   bar.innerHTML = presets.map((p, i) => `
     <button class="preset-chip" onclick="applyPreset(${i})">
-      <i class="ph ph-bookmark-simple"></i> ${p.label}
-      <span class="preset-x" onclick="deletePreset(event,${i})"><i class="ph ph-x"></i></span>
+      <i class="ti ti-bookmark"></i> ${p.label}
+      <span class="preset-x" onclick="deletePreset(event,${i})"><i class="ti ti-x"></i></span>
     </button>
   `).join('');
 }
@@ -1112,7 +1117,7 @@ async function loadForecastStok(){
   try {
     const data = await rpc('get_dashboard_forecast_stok', {p_days: forecastDays, p_limit: 15});
     if (!data || !data.length){
-      box.innerHTML = `<div class="insight-empty"><i class="ph ph-check-circle" style="font-size:28px;display:block;margin-bottom:6px;color:var(--success)"></i>Tidak ada produk berisiko habis berdasarkan data ${forecastDays} hari terakhir.</div>`;
+      box.innerHTML = `<div class="insight-empty"><i class="ti ti-circle-check" style="font-size:28px;display:block;margin-bottom:6px;color:var(--success)"></i>Tidak ada produk berisiko habis berdasarkan data ${forecastDays} hari terakhir.</div>`;
       return;
     }
 
@@ -1169,7 +1174,7 @@ async function loadForecastStok(){
       </table>
       </div>
       <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
-  <i class="ph ph-info"></i> Berdasarkan laju pemakaian ${forecastDays} hari terakhir dari data konversi. Data stok terakhir diupdate: <b>${new Date().toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</b>
+  <i class="ti ti-info-circle"></i> Berdasarkan laju pemakaian ${forecastDays} hari terakhir dari data konversi. Data stok terakhir diupdate: <b>${new Date().toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</b>
         <span style="margin-left:12px"><span class="days-pill days-kritis" style="font-size:10px">≤7 hari</span> kritis &nbsp;
         <span class="days-pill days-warn" style="font-size:10px">≤30 hari</span> waspada &nbsp;
         <span class="days-pill days-aman" style="font-size:10px">&gt;30 hari</span> aman</span>
@@ -1280,7 +1285,7 @@ async function popLoadTrend(){
       ${dots}
     </svg>
     <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
-      <i class="ph ph-info"></i> Garis = populasi kumulatif (qty TERKIRIM, tanggal terparse dari status). Hover titik untuk qty per bulan.
+      <i class="ti ti-info-circle"></i> Garis = populasi kumulatif (qty TERKIRIM, tanggal terparse dari status). Hover titik untuk qty per bulan.
     </div>`;
   } catch(e) {
     box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat tren: ${e.message}</div>`;
@@ -1297,18 +1302,18 @@ async function popLoadDataQuality(){
   try {
     const dq = await rpc('get_dashboard_populasi_data_quality', {});
     const items = [
-      { label: 'Channel tidak terklasifikasi', val: dq.channel_unclassified, icon: 'ph-question' },
-      { label: 'Channel INAPROC (bukan PNM/SAMAYA)', val: dq.channel_inaproc_lain, icon: 'ph-flag' },
-      { label: 'Status TERKIRIM tanpa tanggal terparse', val: dq.delivered_missing_date, icon: 'ph-calendar-x' },
-      { label: 'Tanggal produksi tidak terparse', val: dq.production_date_unparsed, icon: 'ph-calendar-x' },
-      { label: 'Tanggal pengiriman tidak terparse', val: dq.delivery_date_unparsed, icon: 'ph-calendar-x' },
-      { label: 'Wilayah tidak terdeteksi dari alamat', val: dq.wilayah_undetected, icon: 'ph-map-pin-line' },
-      { label: 'Nama distributor belum di-alias-kan', val: dq.distributor_unmapped, icon: 'ph-buildings' },
+      { label: 'Channel tidak terklasifikasi', val: dq.channel_unclassified, icon: 'ti-help' },
+      { label: 'Channel INAPROC (bukan PNM/SAMAYA)', val: dq.channel_inaproc_lain, icon: 'ti-flag' },
+      { label: 'Status TERKIRIM tanpa tanggal terparse', val: dq.delivered_missing_date, icon: 'ti-calendar-x' },
+      { label: 'Tanggal produksi tidak terparse', val: dq.production_date_unparsed, icon: 'ti-calendar-x' },
+      { label: 'Tanggal pengiriman tidak terparse', val: dq.delivery_date_unparsed, icon: 'ti-calendar-x' },
+      { label: 'Wilayah tidak terdeteksi dari alamat', val: dq.wilayah_undetected, icon: 'ti-map-pin' },
+      { label: 'Nama distributor belum di-alias-kan', val: dq.distributor_unmapped, icon: 'ti-buildings' },
     ];
     box.innerHTML = `<div class="dq-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
       ${items.map(it => `
         <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px">
-          <i class="ph ${it.icon}" style="font-size:16px;color:${it.val ? 'var(--warning)' : 'var(--text-muted)'}"></i>
+          <i class="ti ${it.icon}" style="font-size:16px;color:${it.val ? 'var(--warning)' : 'var(--text-muted)'}"></i>
           <div style="flex:1">
             <div style="font-size:11px;color:var(--text-muted)">${it.label}</div>
             <div style="font-family:var(--mono);font-weight:600">${fmt(it.val || 0)}</div>
@@ -1336,8 +1341,8 @@ async function popLoadAudit(){
         <td><span class="kode-text">${r.kode_suffix}</span></td>
         <td><span class="badge badge-instrument">${r.entitas}</span></td>
         <td><span class="badge badge-instrument">${r.channel_turunan}</span></td>
-        <td style="text-align:center">${r.is_sample ? '<i class="ph ph-flask" title="Sample"></i>' : ''}</td>
-        <td style="text-align:center">${r.is_population ? '<i class="ph ph-check-circle" style="color:var(--success)"></i>' : '<i class="ph ph-x-circle" style="color:var(--text-muted)"></i>'}</td>
+        <td style="text-align:center">${r.is_sample ? '<i class="ti ti-flask" title="Sample"></i>' : ''}</td>
+        <td style="text-align:center">${r.is_population ? '<i class="ti ti-circle-check" style="color:var(--success)"></i>' : '<i class="ti ti-circle-x" style="color:var(--text-muted)"></i>'}</td>
         <td style="text-align:right;font-family:var(--mono)">${fmt(r.jumlah)}</td>
       </tr>`).join('');
     box.innerHTML = `
@@ -1383,22 +1388,22 @@ async function popLoadSummary(){
     const s = await rpc('get_dashboard_populasi_summary', { p_wilayah: popWilayah || null, p_entitas: popEntitas || null, p_channel: popChannel || null });
     box.innerHTML = `
       <div class="stat-card blue">
-        <div class="stat-icon blue"><i class="ph ph-map-pin"></i></div>
+        <div class="stat-icon blue"><i class="ti ti-map-pin"></i></div>
         <div class="stat-val">${fmt(s.total_wilayah)}</div>
         <div class="stat-label">Wilayah Tercover</div>
       </div>
       <div class="stat-card green">
-        <div class="stat-icon green"><i class="ph ph-package"></i></div>
+        <div class="stat-icon green"><i class="ti ti-package"></i></div>
         <div class="stat-val">${fmt(s.total_produk_unik)}</div>
         <div class="stat-label">Produk Unik Terorder</div>
       </div>
       <div class="stat-card purple">
-        <div class="stat-icon purple"><i class="ph ph-stack"></i></div>
+        <div class="stat-icon purple"><i class="ti ti-stack-2"></i></div>
         <div class="stat-val">${fmt(s.total_qty)}</div>
         <div class="stat-label">Total Qty</div>
       </div>
       <div class="stat-card warning">
-        <div class="stat-icon warning"><i class="ph ph-file-text"></i></div>
+        <div class="stat-icon warning"><i class="ti ti-file-text"></i></div>
         <div class="stat-val">${fmt(s.total_dokumen)}</div>
         <div class="stat-label">Total Dokumen</div>
       </div>
@@ -1410,7 +1415,7 @@ async function popLoadSummary(){
 
 async function popLoadTable(){
   const tbody = document.getElementById('pop-tbl-body');
-  tbody.innerHTML = '<tr class="loading-row"><td colspan="9"><i class="ph ph-circle-notch spinner"></i> Memuat data…</td></tr>';
+  tbody.innerHTML = '<tr class="loading-row"><td colspan="9"><i class="ti ti-loader-2 spinner"></i> Memuat data…</td></tr>';
   try {
     const result = await rpc('get_dashboard_populasi_produk', {
       p_search: popSearch || null,
@@ -1424,7 +1429,7 @@ async function popLoadTable(){
   } catch(e) {
     if (e.message === 'unauthorized') return;
     tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">
-      <i class="ph ph-database" style="font-size:26px;display:block;margin-bottom:8px"></i>
+      <i class="ti ti-database" style="font-size:26px;display:block;margin-bottom:8px"></i>
       Tabel/RPC populasi produk belum tersedia di Supabase.<br>
       <span style="font-size:11px">RPC populasi belum ada di Supabase. Jalankan <code>populasi_produk_schema.sql</code> di SQL Editor Supabase (view + function di atas <code>orderan_lintas_entitas</code>, yang sudah disync <code>syncOrderan</code> — tidak perlu script sync baru).</span>
     </td></tr>`;
@@ -1441,7 +1446,7 @@ function popRenderTable(total, rows){
 
   if (!rows.length){
     document.getElementById('pop-tbl-body').innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">
-      <i class="ph ph-magnifying-glass" style="font-size:26px;display:block;margin-bottom:6px"></i>Tidak ada data yang cocok.</td></tr>`;
+      <i class="ti ti-search" style="font-size:26px;display:block;margin-bottom:6px"></i>Tidak ada data yang cocok.</td></tr>`;
   } else {
     popTableRows = rows;
     document.getElementById('pop-tbl-body').innerHTML = rows.map((r, idx) => `
@@ -1483,7 +1488,7 @@ async function popShowDetail(idx){
   if (!r || !detailOverlay) return;
   document.getElementById('dm-title').textContent = r.nama_produk || '—';
   document.getElementById('dm-kode').textContent = `${r.kode_produk} · ${r.wilayah || 'wilayah tidak terdeteksi'}`;
-  document.getElementById('dm-body').innerHTML = '<div class="detail-loading"><i class="ph ph-circle-notch spinner"></i> Memuat rincian RMP…</div>';
+  document.getElementById('dm-body').innerHTML = '<div class="detail-loading"><i class="ti ti-loader-2 spinner"></i> Memuat rincian RMP…</div>';
   detailOverlay.classList.add('show');
   try {
     const rowsRaw = await rpc('get_dashboard_populasi_produk_detail', {
@@ -1541,7 +1546,7 @@ function popGoPage(p){
 // baris sekaligus, tanpa perlu bikin RPC terpisah.
 async function popExportExcel(ev){
   const btn = ev?.target?.closest('button');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph ph-circle-notch spinner"></i> Menyiapkan…'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 spinner"></i> Menyiapkan…'; }
   try {
     const result = await rpc('get_dashboard_populasi_produk', {
       p_search: popSearch || null,
@@ -1583,7 +1588,7 @@ async function popExportExcel(ev){
   } catch(e) {
     showToast('Gagal export: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-file-xls"></i> Export Excel'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-type-xls"></i> Export Excel'; }
   }
 }
 
