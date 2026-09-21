@@ -1525,6 +1525,7 @@ S.btnExport.addEventListener('click', async () => {
   setProgress(0, 1, 'Menyiapkan data…');
 
   try {
+    await S.ensureExceljs(); // lazy: ExcelJS baru didownload di sini, pas export beneran dipencet
     const wb = new ExcelJS.Workbook();
     wb.creator = 'PT Pionir Nusantara Manufacturing';
     wb.created = new Date();

@@ -132,11 +132,6 @@ import { installSph } from './sph.js';
 // sini (bukan ditambahin ke 4 modul lain) karena bare URL itu konvensi
 // MAYORITAS di codebase ini -- fix yang lebih kecil/lebih aman.
 const VENDOR_SCRIPTS_INDEPENDENT = [
-  'https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js',
-  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
-  'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js',
-  'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
-  'https://cdn.jsdelivr.net/npm/docx@8/build/index.umd.js',
   '/shared/toast.js',
 ];
 // Sequential — sama alasan kayak export-gambar: tiap file bergantung ke
@@ -185,12 +180,27 @@ function ensureExceljsEvalWorkaround() {
 
 let vendorReady = null;
 function ensureVendorScripts() {
-  if (window.PNMAuth && window.pnmSupabase && window.PNMToast && window.ExcelJS &&
-      window.jspdf && window.docx && window.Tesseract && window.pdfjsLib) {
+  // PERFORMANCE FIX (polishing job -- "web app kerasa lemot", terutama di
+  // HP): ini DULU nge-load 5 library berat SEKALIGUS -- exceljs, pdfjs-dist,
+  // tesseract.js (OCR, paling berat, ada wasm-nya), jspdf, docx -- setiap
+  // kali modul Konversian di-mount, WALAU 90% kunjungan cuma buat search &
+  // tambah ke clipboard, gak pernah nyentuh scan gambar/import PDF/export
+  // Excel-Word sama sekali. Halaman jadi gak interaktif sampai SEMUA itu
+  // kelar didownload+dieksekusi, padahal cuma butuh Supabase (buat search)
+  // + toast (buat notifikasi error/sukses) buat mulai jalan.
+  // Sekarang ensureVendorScripts() cuma nanggung dua itu -- yang beneran
+  // dibutuhin SEMUA orang, tiap kunjungan. Lima library berat lainnya
+  // dipindah ke fungsi ensureXxx() masing-masing di bawah (ensureExceljs,
+  // ensurePdfJs, ensureTesseract, ensureSphExportLibs), dipanggil (dan
+  // baru DI SITU didownload) persis di titik fitur yang butuh -- lihat
+  // titik pemanggilannya masing-masing (S.ensureExceljs dkk) di
+  // clipboard.js/permintaan-rs.js/sph.js/index.js. Kalau fiturnya emang
+  // dipakai, user tetap nunggu download itu -- cuma sekarang NUNGGUNYA pas
+  // beneran mau pakai fiturnya, bukan di depan buat semua orang.
+  if (window.PNMAuth && window.pnmSupabase && window.PNMToast) {
     return Promise.resolve();
   }
   if (!vendorReady) {
-    ensureExceljsEvalWorkaround();
     const independent = Promise.all(VENDOR_SCRIPTS_INDEPENDENT.map(loadScript));
     const sequential = VENDOR_SCRIPTS_SEQUENTIAL.reduce(
       (chain, src) => chain.then(() => loadScript(src)),
@@ -200,6 +210,68 @@ function ensureVendorScripts() {
   }
   return vendorReady;
 }
+
+// ══════════════════════════════════════════
+// LAZY VENDOR LIBS -- lihat komentar panjang di ensureVendorScripts() di
+// atas buat alasannya. Empat fungsi di bawah masing-masing nanggung SATU
+// (atau sepasang, kalau memang selalu dipakai bareng) library berat, dan
+// masing-masing baru nembak network request PERTAMA KALI dipanggil --
+// bukan pas mount(). Semua idempotent (aman dipanggil berkali-kali --
+// panggilan kedua dst tinggal balikin promise/cache yang sama, gak
+// double-download) dan cache-nya di level MODULE (bukan di S), jadi
+// sekali kepanggil di satu sesi buka halaman, gak perlu download ulang
+// lagi walau modul ini di-unmount lalu di-mount balik.
+// ══════════════════════════════════════════
+
+let exceljsReady = null;
+function ensureExceljs() {
+  if (window.ExcelJS) return Promise.resolve();
+  if (!exceljsReady) {
+    ensureExceljsEvalWorkaround(); // HARUS sebelum script-nya keload, lihat komentar di atas fungsi ini
+    exceljsReady = loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js');
+  }
+  return exceljsReady;
+}
+
+let pdfJsReady = null;
+function ensurePdfJs() {
+  if (window.pdfjsLib) return Promise.resolve();
+  if (!pdfJsReady) {
+    // workerSrc dulu di-set TELANJANG di top-level module (jalan pas mount(),
+    // nunjuk ke pdfjsLib yang cuma ada kalau ensureVendorScripts() udah
+    // nge-load-in duluan). Sekarang jadi bagian dari .then() ini -- baru
+    // di-set begitu pdf.min.js beneran kelar keload, di titik yang sama
+    // dengan pemanggilnya (getPdfPagesBase64/renderPdfFromUrl), bukan lagi
+    // diam-diam bergantung ke urutan load vendor scripts yang lain.
+    pdfJsReady = loadScript('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js').then(() => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    });
+  }
+  return pdfJsReady;
+}
+
+let tesseractReady = null;
+function ensureTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+  if (!tesseractReady) tesseractReady = loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js');
+  return tesseractReady;
+}
+
+// jspdf + docx SENGAJA satu paket: keduanya cuma dipakai bareng, di dalam
+// satu alur yang sama (sphGenerate() di sph.js -- generate PDF penawaran
+// SEKALIGUS versi .docx tabel itemnya, satu tombol "Generate").
+let sphExportLibsReady = null;
+function ensureSphExportLibs() {
+  if (window.jspdf && window.docx) return Promise.resolve();
+  if (!sphExportLibsReady) {
+    sphExportLibsReady = Promise.all([
+      loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'),
+      loadScript('https://cdn.jsdelivr.net/npm/docx@8/build/index.umd.js'),
+    ]);
+  }
+  return sphExportLibsReady;
+}
+
 
 // pnm-universal.css dulu dianggap "SHARED, tetap nempel selamanya" (biar
 // halaman lain yang migrasi belakangan nge-skip re-load) — tapi itu yang
@@ -298,6 +370,16 @@ export async function mount(container, initialSub) {
   S.isSafeHttpUrl = function isSafeHttpUrl(u) {
     return /^https?:\/\//i.test(String(u == null ? '' : u).trim());
   };
+  // Lazy vendor-lib loaders (lihat komentar panjang di ensureVendorScripts()/
+  // ensureExceljs() dkk di atas file ini) -- ditempel ke S di sini, sepagi
+  // mungkin, biar semua install*(S) di bawah (clipboard.js, permintaan-rs.js,
+  // sph.js) bisa manggil S.ensureExceljs()/S.ensurePdfJs()/S.ensureTesseract()/
+  // S.ensureSphExportLibs() persis di titik fitur beratnya masing-masing
+  // dipakai, bukan nunggu semuanya keload di depan buat semua orang.
+  S.ensureExceljs = ensureExceljs;
+  S.ensurePdfJs = ensurePdfJs;
+  S.ensureTesseract = ensureTesseract;
+  S.ensureSphExportLibs = ensureSphExportLibs;
   mountedContainer = container;
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.innerHTML = KONVERSIAN_MARKUP;
@@ -1163,7 +1245,13 @@ function imageFileToPngBlob(file) {
   });
 }
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+// pdfjsLib.GlobalWorkerOptions.workerSrc dipindah ke dalam ensurePdfJs()
+// (lihat di atas, dekat ensureVendorScripts) -- baris ini dulu jalan
+// TELANJANG di sini, diam-diam bergantung ke pdfjsLib yang cuma ada kalau
+// ensureVendorScripts() kebetulan udah nge-load-in duluan. Sekarang pdf.js
+// baru didownload lazy pas fitur Lampiran PDF beneran dipakai (lihat
+// getPdfPagesBase64/renderPdfFromUrl di bawah), jadi baris ini gak lagi
+// boleh diam-diam ngarep pdfjsLib udah ada di titik ini.
 
 const lampiranModal = document.getElementById('lampiran-modal');
 const lampiranTitle = document.getElementById('lampiran-title');
@@ -1492,6 +1580,7 @@ async function renderPdfFromUrl(pdfUrl) {
   lampiranPages.innerHTML = '';
   lampiranStatus.style.display = 'block';
   lampiranStatus.textContent = 'Memuat PDF…';
+  await ensurePdfJs(); // lazy: pdf.js baru didownload di sini, pas fitur ini beneran dipakai
   const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
   lampiranStatus.textContent = `Merender ${pdf.numPages} halaman…`;
   for (let p = 1; p <= pdf.numPages; p++) {
@@ -1513,6 +1602,7 @@ async function renderPdfFromUrl(pdfUrl) {
 
 // versi headless (tanpa render ke DOM) buat dipakai di export Excel
 async function getPdfPagesBase64(pdfUrl, scale = 1.5) {
+  await ensurePdfJs(); // lazy: sama seperti renderPdfFromUrl() di atas
   const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
   const pages = [];
   for (let p = 1; p <= pdf.numPages; p++) {
@@ -1820,13 +1910,14 @@ async function copySetRincianWithImages(items, imgs, btnEl) {
 // Layout & border sengaja disamain sama sheet per-set biar user tinggal blok
 // range-nya dan copy ke file konversian mereka tanpa ngerapiin ulang.
 async function downloadSetRincianXlsx(kodeSet, items, imgs, btnEl) {
-  if (typeof ExcelJS === 'undefined') {
-    S.showToast('ExcelJS belum ke-load — refresh halaman dulu ya', 'error');
-    return;
-  }
   const originalHtml = btnEl ? btnEl.innerHTML : null;
   if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<i class="ti ti-loader-2"></i><span>Menyiapkan…</span>'; }
   try {
+    // lazy: ExcelJS baru didownload di sini, pas tombol export ini beneran
+    // dipencet -- dulu ada guard "kalau belum ke-load, suruh user refresh
+    // halaman", padahal ExcelJS dulu emang udah pasti keload duluan pas
+    // mount() (makanya lemot). Sekarang tinggal await di sini.
+    await ensureExceljs();
     const GRID_BORDER = {
       top: { style: 'thin', color: { argb: 'FF000000' } },
       left: { style: 'thin', color: { argb: 'FF000000' } },

@@ -1063,6 +1063,7 @@ async function sphGenerate() {
   if (sphRecordBtn) sphRecordBtn.style.display = 'none';
 
   try {
+    await S.ensureSphExportLibs(); // lazy: jsPDF + docx baru didownload di sini, pas tombol Generate beneran dipencet
     const company = SPH_COMPANIES[sphCurrentCompany];
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });

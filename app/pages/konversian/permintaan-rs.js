@@ -81,6 +81,8 @@ prSsRunBtn.addEventListener('click', async () => {
   prSsRunBtn.disabled = true;
   prSsStatus.style.color = 'var(--text-muted)';
   try {
+    prSsStatus.textContent = 'Menyiapkan OCR…';
+    await S.ensureTesseract(); // lazy: Tesseract.js (paling berat, ada wasm-nya) baru didownload di sini, pas OCR beneran dijalankan
     const result = await Tesseract.recognize(file, 'ind+eng', {
       logger: (m) => {
         if (m.status === 'recognizing text') {
@@ -202,6 +204,7 @@ function parseTeksPermintaan(teks) {
 
 // ---- Parsing Excel: cari kolom nama barang & qty secara fleksibel ----
 async function parseExcelPermintaan(file) {
+  await S.ensureExceljs(); // lazy: ExcelJS baru didownload di sini, pas user beneran upload file Excel
   const buffer = await file.arrayBuffer();
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);
