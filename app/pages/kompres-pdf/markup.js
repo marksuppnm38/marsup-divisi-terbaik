@@ -22,6 +22,15 @@
 // larang (gradient/shadow/warna beku palet lama) itu udah dibenerin;
 // "satu icon library" itu poin gaya yang lebih rendah prioritas, bukan
 // hal yang bikin halaman ini "gak compliant" secara substantif.
+//
+// UPDATE (card-head consistency pass): ke-3 card di halaman ini (upload,
+// split, merge) sebelumnya nggak punya .card-head/.icon-box sama sekali --
+// gap yang sama kayak yang baru dibenerin di export-gambar. Ditambahin di
+// sini juga, TAPI ikon di dalam icon-box-nya masih inline SVG (dipetik dari
+// SVG tab compress/split/merge yang udah ada di file ini, bukan `ti ti-*`)
+// -- ngikutin keputusan icon-library di atas apa adanya: nambah card-head
+// nggak berarti buka pintu buat nyampur Tabler ke file yang udah sengaja
+// dipertahanin satu bahasa ikon (inline SVG + currentColor).
 export const KOMPRES_PDF_MARKUP = `
 <div class="pw-topbar">
   <div class="pw-topbar-crumb"><strong>Perkakas PDF</strong></div>
@@ -55,6 +64,13 @@ export const KOMPRES_PDF_MARKUP = `
 
   <!-- UPLOAD CARD -->
   <div class="card" id="uploadCard">
+    <div class="card-head">
+      <div class="icon-box blue"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3l4 4-4 4M16 21l-4-4 4-4M4 7h9M20 17h-9" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="card-head-text">
+        <h2>Kompres PDF</h2>
+        <p>Perkecil ukuran file tanpa upload ke server.</p>
+      </div>
+    </div>
 
     <div class="dropzone" id="dropzone">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -197,6 +213,13 @@ export const KOMPRES_PDF_MARKUP = `
   <div class="panel" id="panel-split">
 
     <div class="card" id="splitUploadCard">
+      <div class="card-head">
+        <div class="icon-box amber"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H6a2 2 0 00-2 2v14a2 2 0 002 2h2M16 3h2a2 2 0 012 2v14a2 2 0 01-2 2h-2M12 3v18" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 2"/></svg></div>
+        <div class="card-head-text">
+          <h2>Pisah PDF</h2>
+          <p>Belah satu file jadi beberapa bagian.</p>
+        </div>
+      </div>
       <div class="dropzone" id="splitDropzone">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -281,6 +304,13 @@ export const KOMPRES_PDF_MARKUP = `
   <div class="panel" id="panel-merge">
 
     <div class="card" id="mergeUploadCard">
+      <div class="card-head">
+        <div class="icon-box green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="card-head-text">
+          <h2>Gabung PDF</h2>
+          <p>Satukan beberapa file jadi satu PDF.</p>
+        </div>
+      </div>
       <div class="dropzone" id="mergeDropzone">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke-linecap="round" stroke-linejoin="round"/>

@@ -753,9 +753,52 @@ const PRESET_KEY = 'pnm_dashboard_presets';
 function getPresets(){
   try { return JSON.parse(localStorage.getItem(PRESET_KEY) || '[]'); } catch { return []; }
 }
-function savePreset(){
-  const label = prompt('Nama preset ini (contoh: "Instrumen tanpa harga"):');
-  if (!label || !label.trim()) return;
+// Modal nama preset -- pengganti prompt() bawaan browser, pola sama kayak
+// showSectionNameModal-nya konversian (Escape=batal, Enter=submit, validasi
+// inline "gak boleh kosong" sebelum resolve, listener dilepas tiap panggilan).
+function promptPresetName() {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('presetNameOverlay');
+    const input = document.getElementById('presetNameInput');
+    const errorEl = document.getElementById('presetNameError');
+    const okBtn = document.getElementById('presetNameOkBtn');
+    const cancelBtn = document.getElementById('presetNameCancelBtn');
+
+    input.value = '';
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+
+    function cleanup(result) {
+      overlay.classList.remove('open');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onOverlay);
+      input.removeEventListener('keydown', onKey);
+      resolve(result);
+    }
+    function onOk() {
+      const label = input.value.trim();
+      if (!label) { errorEl.textContent = 'Nama preset gak boleh kosong.'; errorEl.style.display = 'block'; input.focus(); return; }
+      cleanup(label);
+    }
+    function onCancel() { cleanup(null); }
+    function onOverlay(e) { if (e.target === overlay) cleanup(null); }
+    function onKey(e) {
+      if (e.key === 'Escape') { cleanup(null); return; }
+      if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+    }
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onOverlay);
+    input.addEventListener('keydown', onKey);
+    overlay.classList.add('open');
+    setTimeout(() => input.focus(), 30); // biar transisi .open kelar dulu sebelum fokus
+  });
+}
+async function savePreset(){
+  const label = await promptPresetName();
+  if (!label) return;
   const presets = getPresets();
   presets.push({
     label: label.trim(),

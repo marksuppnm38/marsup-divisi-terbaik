@@ -250,6 +250,23 @@ export const DASHBOARD_MARKUP = `
 </main>
 </div>
 <div class="toast-container" id="toast-container"></div>
+<!-- Pengganti prompt() bawaan browser buat nama preset filter (savePreset()
+     di index.js) -- pakai .confirm-overlay/.confirm-card generic yang sama
+     dipakai stok & crud-produk buat dialog kecil, ditambah satu .field-input
+     buat teks. Bukan prompt() yang nge-freeze tab & gak ngikutin tema. -->
+<div class="confirm-overlay" id="presetNameOverlay">
+  <div class="confirm-card">
+    <h3><i class="ti ti-bookmark"></i> Simpan Preset</h3>
+    <p>Kasih nama biar gampang dikenali nanti.</p>
+    <input type="text" id="presetNameInput" class="field-input" maxlength="60" placeholder='mis. &quot;Instrumen tanpa harga&quot;'>
+    <div id="presetNameError" style="display:none;color:var(--danger);font-size:11.5px;margin-top:6px"></div>
+    <div class="confirm-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" id="presetNameCancelBtn" type="button">Batal</button>
+      <button class="btn btn-accent" id="presetNameOkBtn" type="button">Simpan</button>
+    </div>
+  </div>
+</div>
+
 <div class="detail-modal-overlay" id="detail-modal-overlay">
   <div class="detail-modal" id="detail-modal">
     <div class="detail-modal-head">

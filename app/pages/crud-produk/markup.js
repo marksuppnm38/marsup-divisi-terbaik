@@ -564,6 +564,23 @@ export const CRUD_PRODUK_MARKUP = `
   </div>
 </div>
 
+<!-- KONFIRMASI GENERIC: pengganti window.confirm()/alert() bawaan browser buat
+     10 aksi (lepas relasi AKD, hapus harga/media/item set/AKD/KFA/produk).
+     Beda dari unsavedConfirmOverlay di atas (3 tombol, konteks fixed) --
+     ini generic 2 tombol (Batal/OK), title/pesan/label diisi dinamis lewat
+     crudConfirm() di index.js. Varian .danger nge-ganti ikon jadi merah +
+     tombol OK jadi btn-danger-ghost, dipakai buat semua aksi hapus permanen. -->
+<div class="confirm-overlay" id="genericConfirmOverlay">
+  <div class="confirm-card" id="genericConfirmCard">
+    <h3><i class="ti ti-alert-triangle" id="genericConfirmIcon"></i> <span id="genericConfirmTitle">Konfirmasi</span></h3>
+    <p id="genericConfirmMsg"></p>
+    <div class="confirm-actions">
+      <button class="btn btn-ghost" id="genericConfirmCancelBtn" type="button">Batal</button>
+      <button class="btn btn-accent" id="genericConfirmOkBtn" type="button">Ya, Lanjutkan</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOG AKTIVITAS MODAL -->
 <div class="modal-overlay" id="logModalOverlay">
   <div class="modal-card log-modal">

@@ -457,6 +457,65 @@ function showToast(msg, isError){
   PNMToast.show(msg, isError ? 'error' : 'success', { duration: isError ? 4500 : 3000 });
 }
 
+// Pengganti window.confirm()/alert() bawaan browser -- 10 titik pakai
+// confirm()/alert() polos sebelum ini (lepas relasi AKD, hapus harga/media/
+// item set/AKD/KFA/produk), semua bikin dialog abu-abu gak ngikutin tema +
+// nge-freeze tab. Polanya sama kayak showConfirmModal-nya konversian
+// (Escape=batal, Enter=OK, listener di-attach/lepas per panggilan biar gak
+// numpuk), cuma di sini dibangun di atas .confirm-overlay/.confirm-card/
+// .confirm-actions yang UDAH ADA di pnm-universal.css (dipakai unsavedConfirm-
+// Overlay di atas) -- gak nambah CSS pola baru, cuma varian .danger (ikon
+// merah, tombol OK jadi btn-danger-ghost) buat aksi hapus permanen.
+// alert() diganti pakai crudAlert() di bawah (mode message-only, tombol Batal
+// disembunyikan) biar satu mekanisme dipakai buat confirm & alert sekaligus.
+function crudConfirm(message, { title = 'Konfirmasi', okLabel = 'Ya, Lanjutkan', danger = false, alertOnly = false } = {}) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('genericConfirmOverlay');
+    const card = document.getElementById('genericConfirmCard');
+    const iconEl = document.getElementById('genericConfirmIcon');
+    const titleEl = document.getElementById('genericConfirmTitle');
+    const msgEl = document.getElementById('genericConfirmMsg');
+    const cancelBtn = document.getElementById('genericConfirmCancelBtn');
+    const okBtn = document.getElementById('genericConfirmOkBtn');
+
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    okBtn.textContent = alertOnly ? 'Oke' : okLabel;
+    card.classList.toggle('danger', danger);
+    iconEl.className = danger ? 'ti ti-alert-triangle' : 'ti ti-info-circle';
+    okBtn.classList.toggle('btn-accent', !danger);
+    okBtn.classList.toggle('btn-danger-ghost', danger);
+    cancelBtn.style.display = alertOnly ? 'none' : '';
+
+    function cleanup(result) {
+      overlay.classList.remove('open');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onOverlay);
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    }
+    function onOk() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+    function onOverlay(e) { if (e.target === overlay) cleanup(false); }
+    function onKey(e) {
+      if (e.key === 'Escape') { cleanup(false); return; }
+      if (e.key === 'Enter') { cleanup(true); }
+    }
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onOverlay);
+    document.addEventListener('keydown', onKey);
+    overlay.classList.add('open');
+  });
+}
+// alert() polos punya 2 titik pakai (pesan-only, gak ada pilihan) -- lewat
+// fungsi yang sama, cuma alertOnly:true nyembunyiin tombol Batal.
+function crudAlert(message, opts = {}) {
+  return crudConfirm(message, { title: 'Perhatian', ...opts, alertOnly: true });
+}
+
 // ---- Pagination reusable — dipakai di Produk, Set Management, Log Aktivitas ----
 // el: elemen container. page: halaman aktif (mulai dari 1). pageSize: item per
 // halaman. total: total item keseluruhan (dari count exact / panjang array).
@@ -1692,7 +1751,7 @@ function renderAkdCurrent(){
 
 async function unlinkAkd(akdId){
   if (!currentProdukId) return;
-  if (!confirm('Lepas relasi AKD ini dari produk?')) return;
+  if (!await crudConfirm('Lepas relasi AKD ini dari produk?', { danger: true, okLabel: 'Ya, Lepas' })) return;
   const { error } = await sb.from('produk_akd').delete().eq('produk_id', currentProdukId).eq('akd_id', akdId);
   if (error) { showToast('Gagal melepas relasi: ' + error.message, true); return; }
   showToast('Relasi AKD dilepas');
@@ -1791,7 +1850,7 @@ function renderHargaGroupInto(tbody, rows, onAfterDelete){
     `;
     const delBtn = tr.querySelector('button');
     if (delBtn) delBtn.addEventListener('click', async () => {
-      if (!confirm(`Hapus harga tahun ${tahun} (EKATALOG, SWASTA & UPLOAD sekaligus)?`)) return;
+      if (!await crudConfirm(`Hapus harga tahun ${tahun} (EKATALOG, SWASTA & UPLOAD sekaligus)?`, { danger: true, okLabel: 'Ya, Hapus' })) return;
       const produkId = ekat.produk_id;
       const { error } = await sb.from('produk_harga').delete().eq('produk_id', produkId).eq('tahun', tahun);
       if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
@@ -1890,7 +1949,7 @@ document.getElementById('addMediaBtn').addEventListener('click', async () => {
   loadMedia(currentProdukId);
 });
 async function deleteMedia(id){
-  if (!confirm('Hapus media ini?')) return;
+  if (!await crudConfirm('Hapus media ini?', { danger: true, okLabel: 'Ya, Hapus' })) return;
   const { error } = await sb.from('produk_media').delete().eq('id', id);
   if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
   showToast('Media dihapus');
@@ -2150,7 +2209,7 @@ function renderComposition(){
       const val = parseInt(qtyInput.value, 10);
       if (!val || val < 1) {
         if (!fromDebounce) {
-          if (confirm('Qty kosong/0 — hapus item ini dari set?')) { deleteCompItem(r.id); }
+          if (await crudConfirm('Qty kosong/0 — hapus item ini dari set?', { danger: true, okLabel: 'Ya, Hapus' })) { deleteCompItem(r.id); }
           else { qtyInput.value = lastValue; }
         }
         return;
@@ -2177,8 +2236,8 @@ function renderComposition(){
       if (e.key === 'Enter') { clearTimeout(qtyDebounceTimer); qtyInput.blur(); }
       if (e.key === 'Escape') { clearTimeout(qtyDebounceTimer); qtyInput.value = lastValue; qtyInput.blur(); }
     });
-    row.querySelector('.cr-del').addEventListener('click', () => {
-      if (confirm('Hapus item ini dari set?')) deleteCompItem(r.id);
+    row.querySelector('.cr-del').addEventListener('click', async () => {
+      if (await crudConfirm('Hapus item ini dari set?', { danger: true, okLabel: 'Ya, Hapus' })) deleteCompItem(r.id);
     });
     wrap.appendChild(row);
   });
@@ -2369,7 +2428,7 @@ function renderSetAkd(){
     chip.className = 'akd-chip';
     chip.innerHTML = `<span class="ac-no">${escapeHtml(a.no_akd)}</span><span class="ac-nama">${escapeHtml(a.nama_akd || '')}</span><button title="Lepas relasi"><i class="ti ti-x"></i></button>`;
     chip.querySelector('button').addEventListener('click', async () => {
-      if (!confirm('Lepas relasi AKD ini dari set?')) return;
+      if (!await crudConfirm('Lepas relasi AKD ini dari set?', { danger: true, okLabel: 'Ya, Lepas' })) return;
       const { error } = await sb.from('produk_akd').delete().eq('produk_id', currentSetId).eq('akd_id', a.id);
       if (error) { showToast('Gagal melepas: ' + error.message, true); return; }
       showToast('Relasi AKD dilepas'); loadSetAkd(); refreshSetHeader();
@@ -2934,7 +2993,7 @@ deleteBtn.addEventListener('click', async () => {
   if (permintaanCount) blokir.push(`${permintaanCount} riwayat Permintaan RS`);
   if (konversiCount) blokir.push(`${konversiCount} riwayat konversi`);
   if (blokir.length) {
-    alert(`Produk ini belum bisa dihapus — masih ada ${blokir.join(', ')} yang menunjuk ke sini. Data riwayat lintas modul ini sengaja tidak dihapus otomatis dari halaman Produk; bersihkan dulu dari sumbernya kalau memang perlu.`);
+    await crudAlert(`Produk ini belum bisa dihapus — masih ada ${blokir.join(', ')} yang menunjuk ke sini. Data riwayat lintas modul ini sengaja tidak dihapus otomatis dari halaman Produk; bersihkan dulu dari sumbernya kalau memang perlu.`);
     return;
   }
 
@@ -2946,7 +3005,7 @@ deleteBtn.addEventListener('click', async () => {
   let pesan = 'Hapus produk ini?';
   if (parts.length) pesan += ' Ikut terhapus otomatis: ' + parts.join(', ') + '.';
   if (dipakaiDiSetLain) pesan += ` ⚠️ Produk ini masih jadi item komposisi di ${dipakaiDiSetLain} SET lain — relasinya di sana akan dilepas dulu (komposisi set-set itu berkurang satu item), baru produknya dihapus.`;
-  if (!confirm(pesan)) return;
+  if (!await crudConfirm(pesan, { danger: true, okLabel: 'Ya, Hapus' })) return;
 
   if (dipakaiDiSetLain) {
     const { error: detachErr } = await sb.from('produk_set_item').delete().eq('produk_id', id);
@@ -3179,10 +3238,10 @@ document.getElementById('deleteAkdBtn').addEventListener('click', async () => {
   const id = currentAkdId;
   const { count } = await sb.from('produk_akd').select('id', { count: 'exact', head: true }).eq('akd_id', id);
   if (count) {
-    alert(`AKD ini masih terhubung ke ${count} produk. Lepas dulu relasinya lewat halaman Produk (tombol "Kelola AKD") sebelum menghapus AKD ini.`);
+    await crudAlert(`AKD ini masih terhubung ke ${count} produk. Lepas dulu relasinya lewat halaman Produk (tombol "Kelola AKD") sebelum menghapus AKD ini.`);
     return;
   }
-  if (!confirm('Hapus AKD ini? Tindakan ini tidak bisa dibatalkan.')) return;
+  if (!await crudConfirm('Hapus AKD ini? Tindakan ini tidak bisa dibatalkan.', { danger: true, okLabel: 'Ya, Hapus' })) return;
   const { error } = await sb.from('akd').delete().eq('id', id);
   if (error) { showToast('Gagal hapus AKD: ' + error.message, true); return; }
   showToast('AKD dihapus');
@@ -3324,7 +3383,7 @@ document.getElementById('kfaSaveBtn').addEventListener('click', async () => {
 
 document.getElementById('deleteKfaBtn').addEventListener('click', async () => {
   if (!currentKfaId) return;
-  if (!confirm('Hapus record KFA ini? Kode KFA di produk (kalau ada) ikut kekosongin.')) return;
+  if (!await crudConfirm('Hapus record KFA ini? Kode KFA di produk (kalau ada) ikut kekosongin.', { danger: true, okLabel: 'Ya, Hapus' })) return;
   const { error } = await sb.from('produk_kfa').delete().eq('id', currentKfaId);
   if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
   showToast('Record KFA dihapus');

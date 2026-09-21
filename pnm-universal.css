@@ -1561,6 +1561,7 @@ tbody tr.row-attention:hover{background:var(--amber-bg)}
 .confirm-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);padding:22px;max-width:380px;width:100%}
 .confirm-card h3{font-family:var(--font-display);font-size:15px;margin-bottom:6px;color:var(--text);display:flex;align-items:center;gap:8px}
 .confirm-card h3 i{color:var(--amber)}
+.confirm-card.danger h3 i{color:var(--danger)}
 .confirm-card p{font-size:13px;color:var(--text-secondary);margin-bottom:18px;line-height:1.5}
 .confirm-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);width:100%;max-width:700px;padding:26px 26px 22px}
