@@ -80,20 +80,20 @@ export const DASHBOARD_MARKUP = `
 <div class="insight-grid">
     <div class="insight-col-left">
       <div class="insight-card">
-        <div class="insight-card-title"><i class="ti ti-chart-bar"></i> Trend 7 Hari Terakhir</div>
+        <div class="insight-card-title"><i class="ti ti-chart-bar"></i> Trend 7 Hari Terakhir <a class="insight-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Riwayat <i class="ti ti-arrow-right"></i></a></div>
         <div id="trend-chart-box"><div class="skeleton" style="height:120px"></div></div>
       </div>
       <div class="insight-card">
-        <div class="insight-card-title"><i class="ti ti-chart-line"></i> Trend Value Harian (7 hari)</div>
+        <div class="insight-card-title"><i class="ti ti-chart-line"></i> Trend Value Harian (7 hari) <a class="insight-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Riwayat <i class="ti ti-arrow-right"></i></a></div>
         <div id="linechart-box"><div class="skeleton" style="height:150px"></div></div>
       </div>
       <div class="insight-card">
-        <div class="insight-card-title"><i class="ti ti-chart-donut"></i> Distribusi Kategori (30 hari)</div>
+        <div class="insight-card-title"><i class="ti ti-chart-donut"></i> Distribusi Kategori (30 hari) <a class="insight-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Riwayat <i class="ti ti-arrow-right"></i></a></div>
         <div id="donut-chart-box"><div class="skeleton" style="height:140px"></div></div>
       </div>
     </div>
     <div class="insight-card insight-card-tall">
-      <div class="insight-card-title"><i class="ti ti-trophy"></i> Leaderboard Sales (30 hari)</div>
+      <div class="insight-card-title"><i class="ti ti-trophy"></i> Leaderboard Sales (30 hari) <a class="insight-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Riwayat <i class="ti ti-arrow-right"></i></a></div>
       <div id="leaderboard-box">
         <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
         <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
@@ -104,20 +104,20 @@ export const DASHBOARD_MARKUP = `
   <div class="section-label"><i class="ti ti-hierarchy-2"></i> Peta Kebutuhan ↔ SKU</div>
   <div class="insight-card" style="margin-bottom:26px">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-      <div class="insight-card-title" style="margin-bottom:0"><i class="ti ti-share"></i> Word Tree — Kebutuhan Customer ke SKU</div>
-      <select class="filter-select" id="wordtree-root-select" onchange="onWordtreeRootChange(this.value)" style="min-width:220px"></select>
+      <div class="insight-card-title" style="margin-bottom:0"><i class="ti ti-share"></i> Word Tree — Kebutuhan Customer ke SKU <a class="insight-link" href="/konversian/dictionary" data-nav="/konversian/dictionary">Dictionary <i class="ti ti-arrow-right"></i></a></div>
+      <select class="filter-select" id="wordtree-root-select" style="min-width:220px"></select>
     </div>
     <div id="wordtree-box"><div class="skeleton" style="height:260px"></div></div>
   </div>
   <div class="section-label"><i class="ti ti-trending-down"></i> Forecasting Stok</div>
   <div class="insight-card" style="margin-bottom:26px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <div class="insight-card-title" style="margin-bottom:0"><i class="ti ti-alert-triangle"></i> Produk Berisiko Habis (berdasarkan laju konversi)</div>
+      <div class="insight-card-title" style="margin-bottom:0"><i class="ti ti-alert-triangle"></i> Produk Berisiko Habis (berdasarkan laju konversi) <a class="insight-link" href="/stok" data-nav="/stok">Stok <i class="ti ti-arrow-right"></i></a></div>
       <div style="display:flex;gap:6px;align-items:center">
         <span style="font-size:11px;color:var(--text-muted)">Periode analisis:</span>
-        <button class="forecast-period-btn" data-days="7" onclick="setForecastPeriod(7,this)">7 hari</button>
-        <button class="forecast-period-btn active" data-days="30" onclick="setForecastPeriod(30,this)">30 hari</button>
-        <button class="forecast-period-btn" data-days="90" onclick="setForecastPeriod(90,this)">90 hari</button>
+        <button class="forecast-period-btn" data-days="7" data-action="forecast-period">7 hari</button>
+        <button class="forecast-period-btn active" data-days="30" data-action="forecast-period">30 hari</button>
+        <button class="forecast-period-btn" data-days="90" data-action="forecast-period">90 hari</button>
       </div>
     </div>
     <div id="forecast-box"><div class="skeleton" style="height:200px"></div></div>
@@ -127,18 +127,18 @@ export const DASHBOARD_MARKUP = `
     <div class="table-header">
       <div class="table-title"><i class="ti ti-filter"></i> Filter &amp; Telusuri Produk</div>
       <div class="filter-bar">
-        <button class="filter-btn active" data-f="all" onclick="setFilter('all',this)"><i class="ti ti-layout-grid"></i> Semua</button>
-        <button class="filter-btn f-noharga" data-f="noharga" onclick="setFilter('noharga',this)"><i class="ti ti-currency-dollar"></i> Tanpa Harga</button>
-        <button class="filter-btn f-nolink" data-f="nolink" onclick="setFilter('nolink',this)"><i class="ti ti-unlink"></i> Tanpa Link</button>
-        <button class="filter-btn f-noakd" data-f="noakd" onclick="setFilter('noakd',this)"><i class="ti ti-shield-off"></i> Tanpa AKD</button>
-        <select class="filter-select" id="tipe-filter" onchange="setTipe(this.value)">
+        <button class="filter-btn active" data-f="all" data-action="set-filter"><i class="ti ti-layout-grid"></i> Semua</button>
+        <button class="filter-btn f-noharga" data-f="noharga" data-action="set-filter"><i class="ti ti-currency-dollar"></i> Tanpa Harga</button>
+        <button class="filter-btn f-nolink" data-f="nolink" data-action="set-filter"><i class="ti ti-unlink"></i> Tanpa Link</button>
+        <button class="filter-btn f-noakd" data-f="noakd" data-action="set-filter"><i class="ti ti-shield-off"></i> Tanpa AKD</button>
+        <select class="filter-select" id="tipe-filter">
           <option value="">Semua Tipe</option>
           <option value="INSTRUMENT">Instrumen</option>
           <option value="SET">Set</option>
           <option value="UNIT">Unit</option>
         </select>
         <span class="search-wrap-mini" style="position:relative">
-  <input class="search-mini" id="tbl-search" type="search" aria-label="Cari produk berdasarkan kode atau nama" placeholder="Cari kode / nama…" oninput="onSearch()" onfocus="showSearchHistory()" style="padding-right:24px"/>
+  <input class="search-mini" id="tbl-search" type="search" aria-label="Cari produk berdasarkan kode atau nama" placeholder="Cari kode / nama…" style="padding-right:24px"/>
   <i class="ti ti-loader-2 spinner search-spinner" id="search-spinner"></i>
   <div class="search-history" id="search-history"></div>
 </span>
@@ -146,20 +146,20 @@ export const DASHBOARD_MARKUP = `
     </div>
     <div class="table-header" style="border-top:none;padding-top:0">
       <div class="preset-bar" id="preset-bar"></div>
-      <button class="preset-save-btn" onclick="savePreset()"><i class="ti ti-bookmark"></i> Simpan Filter Ini</button>
+      <button type="button" class="preset-save-btn" data-action="save-preset"><i class="ti ti-bookmark"></i> Simpan Filter Ini</button>
       </div>
       <div class="bulk-bar" id="bulk-bar">
       <span class="bulk-bar-text"><span id="bulk-count">0</span> produk dipilih</span>
       <div class="bulk-bar-actions">
-        <button class="bulk-btn export" onclick="exportSelected()"><i class="ti ti-file-type-csv"></i> Export CSV</button>
-        <button class="bulk-btn clear" onclick="clearSelection()"><i class="ti ti-x"></i> Batal</button>
+        <button type="button" class="bulk-btn export" data-action="export-selected"><i class="ti ti-file-type-csv"></i> Export CSV</button>
+        <button type="button" class="bulk-btn clear" data-action="clear-selection"><i class="ti ti-x"></i> Batal</button>
       </div>
     </div>
     <div class="table-scroll">
     <table>
         <thead>
   <tr>
-    <th class="checkbox-col"><input type="checkbox" class="row-checkbox" id="select-all-checkbox" aria-label="Pilih semua produk di halaman ini" onchange="toggleSelectAll(this)"/></th>
+    <th class="checkbox-col"><input type="checkbox" class="row-checkbox" id="select-all-checkbox" aria-label="Pilih semua produk di halaman ini"/></th>
     <th>Kode Produk</th>
             <th>Nama Produk</th>
             <th>Tipe</th>
@@ -203,20 +203,20 @@ export const DASHBOARD_MARKUP = `
     <div class="table-header">
       <div class="table-title"><i class="ti ti-filter"></i> Filter Populasi Produk</div>
       <div class="filter-bar">
-        <select class="filter-select" id="pop-wilayah-filter" onchange="popSetWilayah(this.value)">
+        <select class="filter-select" id="pop-wilayah-filter">
           <option value="">Semua Wilayah</option>
         </select>
-        <select class="filter-select" id="pop-entitas-filter" onchange="popSetEntitas(this.value)">
+        <select class="filter-select" id="pop-entitas-filter">
           <option value="">Semua Entitas</option>
         </select>
-        <select class="filter-select" id="pop-channel-filter" onchange="popSetChannel(this.value)">
+        <select class="filter-select" id="pop-channel-filter">
           <option value="">Semua Channel</option>
         </select>
         <span class="search-wrap-mini" style="position:relative">
-          <input class="search-mini" id="pop-search" type="search" aria-label="Cari populasi produk berdasarkan kode atau nama" placeholder="Cari kode / nama produk…" oninput="popOnSearch()" style="padding-right:24px;width:220px"/>
+          <input class="search-mini" id="pop-search" type="search" aria-label="Cari populasi produk berdasarkan kode atau nama" placeholder="Cari kode / nama produk…" style="padding-right:24px;width:220px"/>
           <i class="ti ti-loader-2 spinner search-spinner" id="pop-search-spinner"></i>
         </span>
-        <button class="bulk-btn export" onclick="popExportExcel(event)" style="margin-left:auto">
+        <button type="button" class="bulk-btn export" data-action="pop-export" style="margin-left:auto">
           <i class="ti ti-file-type-csv"></i> Export CSV
         </button>
       </div>

@@ -53,6 +53,8 @@
 // di crud-produk, cuma jauh lebih banyak titiknya di sini.
 
 import { DASHBOARD_MARKUP } from './markup.js';
+import { KONVERSIAN_SUBNAV } from '../konversian/subnav.js';
+import { CRUD_PRODUK_SUBNAV } from '../crud-produk/subnav.js';
 
 const VENDOR_CHAIN = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
@@ -129,6 +131,7 @@ function ensureStyle() {
 let mountedContainer = null;
 let dashKeydownHandler = null;
 let dashClickHandler = null;
+let dashContainerHandlers = null;   // listener delegasi di container -- dilepas di unmount()
 
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const RPC_TIMEOUT_MS = 25000;
@@ -210,7 +213,7 @@ if(detailOverlay){
 async function openDetail(kode){
   const myReq = ++detailReqId;
   activeDetailKode = kode;
-  lastFocusBeforeModal = document.activeElement;
+  if (!detailOverlay.classList.contains('show')) lastFocusBeforeModal = document.activeElement;
   document.querySelectorAll('#tbl-body tr').forEach(tr => tr.classList.toggle('row-active', tr.dataset.kode === kode));
   document.getElementById('dm-title').textContent = '—';
   document.getElementById('dm-kode').textContent = kode;
@@ -240,6 +243,13 @@ async function openDetail(kode){
         </div>`).join('')}
     </div>`;
     const tipeCls = String(d.tipe||'').toLowerCase().replace(/[^a-z]/g,'');
+    const kodeSafe = d.kode_produk || kode;
+    // Aksi lanjutan: modal ini bukan jalan buntu. <a> asli (bukan onclick) -> bisa dibuka di tab baru.
+    const actionsHtml = `<div class="detail-actions">
+      <a class="btn btn-accent" href="/crud-produk?edit=${encodeURIComponent(kodeSafe)}"><i class="ti ti-pencil"></i> Edit di CRUD Produk</a>
+      ${String(d.tipe||'').toUpperCase()==='SET' ? `<a class="btn btn-ghost" href="/crud-produk/set" data-nav="/crud-produk/set"><i class="ti ti-stack-2"></i> Set Management</a>` : ''}
+      <button type="button" class="btn btn-ghost" data-action="copy-kode" data-kode="${esc(kodeSafe)}"><i class="ti ti-copy"></i> Salin kode</button>
+    </div>`;
 
     document.getElementById('dm-body').innerHTML = `
       <canvas id="dm-thumb-canvas" class="detail-thumb" style="${thumbUrl?'':'display:none'}"></canvas>
@@ -252,6 +262,7 @@ async function openDetail(kode){
         ${row('Spesifikasi', esc(d.spesifikasi) || '—')}
         ${row('Link v6', (d.link_v6 && isSafeHttpUrl(d.link_v6)) ? `<a href="${escapeHtmlAttr(d.link_v6)}" target="_blank" rel="noopener noreferrer">Lihat di e-Katalog <i class="ti ti-external-link"></i></a>` : '—')}
       </div>
+      ${actionsHtml}
     `;
     if (thumbUrl) {
       const img = new Image();
@@ -439,19 +450,19 @@ async function rpc(fn, params){
 async function loadKonversiToday(){
   const k = await rpc('get_dashboard_konversi_today', {});
   document.getElementById('stats-grid-konversi').innerHTML = `
-    <div class="stat-card blue">
+    <div class="stat-card blue" data-nav="/konversian/sesi" role="button" tabindex="0" title="Buka Konversi Berjalan">
       <div class="stat-icon blue"><i class="ti ti-hourglass"></i></div>
       <div class="stat-val">${fmt(k.berjalan_count)}</div>
       <div class="stat-label">Konversi Sedang Berjalan</div>
       <div class="stat-sub"><i class="ti ti-circle-plus"></i> ${fmt(k.berjalan_baru_count)} sesi baru dibuka hari ini</div>
     </div>
-    <div class="stat-card green">
+    <div class="stat-card green" data-nav="/konversian/riwayat" role="button" tabindex="0" title="Buka Riwayat konversi">
       <div class="stat-icon green"><i class="ti ti-circle-check"></i></div>
       <div class="stat-val">${fmt(k.selesai_count)}</div>
       <div class="stat-label">Konversi Selesai Hari Ini</div>
       <div class="stat-sub"><i class="ti ti-cash"></i> Total ${rupiah(k.selesai_value)}</div>
     </div>
-    <div class="stat-card purple">
+    <div class="stat-card purple" data-nav="/konversian/riwayat" role="button" tabindex="0" title="Buka Riwayat konversi">
       <div class="stat-icon purple"><i class="ti ti-trending-up"></i></div>
       <div class="stat-val">${rupiah(k.selesai_avg)}</div>
       <div class="stat-label">Rata-rata Value / Order</div>
@@ -474,37 +485,37 @@ async function loadStats(){
   document.querySelector('[data-f="noakd"]').innerHTML = `<i class="ti ti-shield-off"></i> Tanpa AKD <span class="filter-count">(${fmt(total - s.punya_akd)})</span>`;
 
   document.getElementById('stats-grid').innerHTML = `
-    <div class="stat-card blue">
+    <div class="stat-card blue" data-action="filter-goto" data-f="all" role="button" tabindex="0" title="Lihat semua produk di tabel">
       <div class="stat-icon blue"><i class="ti ti-database"></i></div>
       <div class="stat-val">${fmt(total)}</div>
       <div class="stat-label">Total Produk</div>
       <div class="stat-sub"><i class="ti ti-circle-check" style="color:var(--success)"></i> Semua aktif di database</div>
     </div>
-    <div class="stat-card green">
+    <div class="stat-card green" data-nav="/crud-produk/produk" role="button" tabindex="0" title="Kelola harga di CRUD Produk">
       <div class="stat-icon green"><i class="ti ti-cash"></i></div>
       <div class="stat-val">${fmt(s.punya_harga)}</div>
       <div class="stat-label">Punya Harga e-Katalog</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_harga,total))}">${pct(s.punya_harga,total)}%</span> dari total produk</div>
     </div>
-    <div class="stat-card warning" data-goto="noharga" role="button" tabindex="0" title="Klik untuk memfilter tabel produk">
+    <div class="stat-card warning" data-action="filter-goto" data-f="noharga" role="button" tabindex="0" title="Lihat produk yang belum punya harga">
       <div class="stat-icon warning"><i class="ti ti-currency-dollar"></i></div>
       <div class="stat-val">${fmt(total - s.punya_harga)}</div>
       <div class="stat-label">Belum Ada Harga</div>
       <div class="stat-sub"><span class="stat-pct pct-bad">${pct(total - s.punya_harga, total)}%</span> perlu dilengkapi</div>
     </div>
-    <div class="stat-card blue">
+    <div class="stat-card blue" data-nav="/crud-produk/produk" role="button" tabindex="0" title="Kelola link e-Katalog di CRUD Produk">
       <div class="stat-icon blue"><i class="ti ti-link"></i></div>
       <div class="stat-val">${fmt(s.punya_link)}</div>
       <div class="stat-label">Ada di e-Katalog v6</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_link,total))}">${pct(s.punya_link,total)}%</span> dari total produk</div>
     </div>
-    <div class="stat-card purple">
+    <div class="stat-card purple" data-nav="/crud-produk/akd" role="button" tabindex="0" title="Buka AKD di CRUD Produk">
       <div class="stat-icon purple"><i class="ti ti-rosette-discount-check"></i></div>
       <div class="stat-val">${fmt(s.punya_akd)}</div>
       <div class="stat-label">Punya Nomor AKD</div>
       <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_akd,total))}">${pct(s.punya_akd,total)}%</span> dari total produk</div>
     </div>
-    <div class="stat-card danger" data-goto="nolink" role="button" tabindex="0" title="Klik untuk memfilter tabel produk">
+    <div class="stat-card danger" data-action="filter-goto" data-f="nolink" role="button" tabindex="0" title="Lihat produk yang belum ada di e-Katalog">
       <div class="stat-icon danger"><i class="ti ti-unlink"></i></div>
       <div class="stat-val">${fmt(total - s.punya_link)}</div>
       <div class="stat-label">Belum di e-Katalog</div>
@@ -513,22 +524,26 @@ async function loadStats(){
   `;
 
   document.getElementById('prog-harga').innerHTML =
-    progItem('Instrumen', s.instrument_punya_harga, s.instrument, 'var(--accent)') +
-    progItem('Set', s.set_punya_harga, s.set, 'var(--success)') +
-    progItem('Unit', s.unit_punya_harga, s.unit, 'var(--purple)');
+    progItem('Instrumen', s.instrument_punya_harga, s.instrument, 'var(--accent)', { f: 'noharga', tipe: 'INSTRUMENT', title: 'Lihat Instrumen yang belum punya harga' }) +
+    progItem('Set', s.set_punya_harga, s.set, 'var(--success)', { f: 'noharga', tipe: 'SET', title: 'Lihat Set yang belum punya harga' }) +
+    progItem('Unit', s.unit_punya_harga, s.unit, 'var(--purple)', { f: 'noharga', tipe: 'UNIT', title: 'Lihat Unit yang belum punya harga' });
 
   document.getElementById('prog-link').innerHTML =
-    progItem('Punya Link v6', s.punya_link, total, 'var(--accent)') +
-    progItem('Belum Ada Link', total - s.punya_link, total, 'var(--danger)');
+    progItem('Punya Link v6', s.punya_link, total, 'var(--accent)', { nav: '/crud-produk/produk', title: 'Kelola link e-Katalog di CRUD Produk' }) +
+    progItem('Belum Ada Link', total - s.punya_link, total, 'var(--danger)', { f: 'nolink', title: 'Lihat produk yang belum punya link v6' });
 
   document.getElementById('prog-akd').innerHTML =
-    progItem('Punya AKD', s.punya_akd, total, 'var(--warning)') +
-    progItem('Tanpa AKD', total - s.punya_akd, total, 'var(--danger)');
+    progItem('Punya AKD', s.punya_akd, total, 'var(--warning)', { nav: '/crud-produk/akd', title: 'Buka AKD di CRUD Produk' }) +
+    progItem('Tanpa AKD', total - s.punya_akd, total, 'var(--danger)', { f: 'noakd', title: 'Lihat produk yang belum punya AKD' });
 }
 
-function progItem(name, val, total, color){
+// `go` (opsional): {f, tipe} = lompat ke tabel produk dengan filter itu, {nav} = buka halaman lain.
+function progItem(name, val, total, color, go){
   const p = pct(val, total);
-  return `<div class="prog-item">
+  const attrs = !go ? '' : (go.nav
+    ? ` data-nav="${esc(go.nav)}" role="button" tabindex="0" title="${esc(go.title)}"`
+    : ` data-action="filter-goto" data-f="${esc(go.f)}"${go.tipe ? ` data-tipe="${esc(go.tipe)}"` : ''} role="button" tabindex="0" title="${esc(go.title)}"`);
+  return `<div class="prog-item"${attrs}>
     <div class="prog-meta">
       <span class="prog-name">${name}</span>
       <span class="prog-num">${fmt(val)} / ${fmt(total)}</span>
@@ -597,51 +612,22 @@ let activeFilters = new Set(['all']);
 function syncFilterButtons(){
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', activeFilters.has(b.dataset.f)));
 }
-// Dipakai kartu statistik "Belum Ada Harga"/"Belum di e-Katalog": angka di dashboard
-// jadi pintu masuk ke daftar produknya, bukan cuma pajangan.
-function applyOnlyFilter(f){
-  activeFilters = new Set([f]);
+// Lompat ke tabel produk dengan filter (+ tipe) tertentu -- dipakai kartu statistik &
+// baris "Kelengkapan Data": angka di dashboard jadi pintu masuk ke daftar produknya.
+function applyFilterGoto(f, tipe){
+  activeFilters = new Set([f || 'all']);
+  currentTipe = tipe || '';
+  currentSearch = '';
+  const tipeSel = document.getElementById('tipe-filter');
+  if (tipeSel) tipeSel.value = currentTipe;
+  const searchEl = document.getElementById('tbl-search');
+  if (searchEl) searchEl.value = '';
   currentPage = 1;
   clearPageCache();
   syncFilterButtons();
   loadTable().catch(handleLoadError);
   document.querySelector('.table-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-
-const tblBodyEl = document.getElementById('tbl-body');
-tblBodyEl.addEventListener('click', (e) => {
-  const tr = e.target.closest('tr[data-idx]');
-  if (!tr) return;
-  const kode = tr.dataset.kode;
-  if (e.target.closest('.copy-kode-btn')) { copyKode(e, kode); return; }
-  if (e.target.closest('.checkbox-col')) return; // checkbox ditangani event 'change'
-  if (e.target.closest('a')) return;
-  openDetail(kode);
-});
-tblBodyEl.addEventListener('change', (e) => {
-  const cb = e.target.closest('.row-checkbox');
-  if (!cb) return;
-  const r = currentRows[+cb.dataset.idx];
-  if (r) toggleRowSelect(cb, r.kode_produk, r);
-});
-tblBodyEl.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' && e.key !== ' ') return;
-  if (e.target.matches('input, button, a')) return;
-  const tr = e.target.closest('tr[data-idx]');
-  if (!tr) return;
-  e.preventDefault();
-  openDetail(tr.dataset.kode);
-});
-const statsGridEl = document.getElementById('stats-grid');
-statsGridEl.addEventListener('click', (e) => {
-  const c = e.target.closest('[data-goto]');
-  if (c) applyOnlyFilter(c.dataset.goto);
-});
-statsGridEl.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' && e.key !== ' ') return;
-  const c = e.target.closest('[data-goto]');
-  if (c) { e.preventDefault(); applyOnlyFilter(c.dataset.goto); }
-});
 
 function setFilter(f, el){
   if (f === 'all') {
@@ -696,9 +682,9 @@ function renderTable(total, rows){
   } else {
     currentRows = rows;
     document.getElementById('tbl-body').innerHTML = rows.map((r, idx) => `
-  <tr style="cursor:pointer" tabindex="0" data-idx="${idx}" data-kode="${esc(r.kode_produk)}">
+  <tr style="cursor:pointer" tabindex="0" data-idx="${idx}" data-kode="${esc(r.kode_produk)}" data-open-kode="${esc(r.kode_produk)}">
     <td class="checkbox-col"><input type="checkbox" class="row-checkbox" data-idx="${idx}" aria-label="Pilih ${esc(r.kode_produk)}" ${selectedRows.has(r.kode_produk)?'checked':''}/></td>
-    <td><span class="kode-text">${esc(r.kode_produk) || '—'}</span><button type="button" class="copy-kode-btn" title="Salin kode" aria-label="Salin kode ${esc(r.kode_produk)}"><i class="ti ti-copy"></i></button></td>
+    <td><span class="kode-text">${esc(r.kode_produk) || '—'}</span><button type="button" class="copy-kode-btn" data-action="copy-kode" data-kode="${esc(r.kode_produk)}" title="Salin kode" aria-label="Salin kode ${esc(r.kode_produk)}"><i class="ti ti-copy"></i></button><a class="copy-kode-btn" href="/crud-produk?edit=${encodeURIComponent(r.kode_produk || '')}" title="Edit di CRUD Produk" aria-label="Edit ${esc(r.kode_produk)} di CRUD Produk"><i class="ti ti-pencil"></i></a></td>
         <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.nama_produk || '—')}</td>
         <td><span class="badge ${tipeClass[r.tipe] || ''}">${esc(r.tipe) || '—'}</span></td>
         <td>${r.harga ? `<span style="font-family:var(--mono);font-size:11.5px;color:var(--success);font-weight:600">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum ada</span>`}</td>
@@ -716,7 +702,7 @@ function renderTable(total, rows){
   const range = 2;
   for (let i=1; i<=pages; i++){
     if (i===1 || i===pages || Math.abs(i-currentPage)<=range){
-      btns.push(`<button class="page-btn${i===currentPage?' active':''}" onclick="goPage(${i})">${i}</button>`);
+      btns.push(`<button class="page-btn${i===currentPage?' active':''}" data-action="go-page" data-page="${i}">${i}</button>`);
     } else if (btns[btns.length-1] !== '…'){
       btns.push('…');
     }
@@ -832,8 +818,8 @@ function showSearchHistory(){
   const hist = getSearchHistory();
   const box = document.getElementById('search-history');
   if (!hist.length) { box.classList.remove('show'); return; }
-  box.innerHTML = hist.map(t => `<div class="search-history-item" data-term="${esc(t)}" onclick="applySearchHistory(this.dataset.term)"><i class="ti ti-history"></i> ${esc(t)}</div>`).join('')
-    + `<div class="search-history-clear" onclick="clearSearchHistory()">Hapus riwayat</div>`;
+  box.innerHTML = hist.map(t => `<div class="search-history-item" data-term="${esc(t)}" data-action="apply-history"><i class="ti ti-history"></i> ${esc(t)}</div>`).join('')
+    + `<div class="search-history-clear" data-action="clear-history">Hapus riwayat</div>`;
   box.classList.add('show');
 }
 function applySearchHistory(term){
@@ -946,9 +932,9 @@ function renderPresets(){
   const bar = document.getElementById('preset-bar');
   if (!presets.length) { bar.innerHTML = `<span style="font-size:11px;color:var(--text-muted)">Belum ada preset tersimpan</span>`; return; }
   bar.innerHTML = presets.map((p, i) => `
-    <button class="preset-chip" onclick="applyPreset(${i})">
+    <button type="button" class="preset-chip" data-action="apply-preset" data-idx="${i}">
       <i class="ti ti-bookmark"></i> ${esc(p.label)}
-      <span class="preset-x" onclick="deletePreset(event,${i})"><i class="ti ti-x"></i></span>
+      <span class="preset-x" data-action="delete-preset" data-idx="${i}" role="button" aria-label="Hapus preset ${esc(p.label)}"><i class="ti ti-x"></i></span>
     </button>
   `).join('');
 }
@@ -1022,7 +1008,7 @@ function renderTrend(data){
       const isToday = d.tanggal === todayStr;
       const dt = new Date(d.tanggal + 'T00:00:00');
       const label = dayNames[dt.getDay()];
-      return `<div class="trend-bar-wrap">
+      return `<div class="trend-bar-wrap" data-nav="/konversian/riwayat" title="Buka riwayat konversi">
         <div class="trend-bar" style="height:${Math.max(h,3)}%">
           <div class="trend-bar-tooltip">${fmt(d.jumlah)} order<br>${rupiah(d.total_value)}</div>
         </div>
@@ -1040,7 +1026,7 @@ async function loadLeaderboard(){
   const rankClass = (i) => i===0?'r1':i===1?'r2':i===2?'r3':'rn';
   box.innerHTML = `<div class="leaderboard-list">
     ${data.map((r,i) => `
-      <div class="lb-item">
+      <div class="lb-item" data-nav="/konversian/riwayat" title="Buka riwayat konversi">
         <div class="lb-rank ${rankClass(i)}">${i+1}</div>
         <div class="lb-info">
           <div class="lb-name">${esc(r.nama)}</div>
@@ -1081,7 +1067,7 @@ async function loadWordtree(){
   select.innerHTML = wordtreeRoots.map(r => {
     const val = escapeHtmlAttr(r.istilah_customer);
     const sel = r.istilah_customer === initial ? ' selected' : '';
-    return `<option value="${val}"${sel}>${escapeHtmlAttr(r.istilah_customer)} (${r.frekuensi}×, ${r.jumlah_sku_unik} SKU)</option>`;
+    return `<option value="${val}"${sel}>${escapeHtmlAttr(r.istilah_customer)} (${fmt(r.frekuensi)}×, ${fmt(r.jumlah_sku_unik)} SKU)</option>`;
   }).join('');
   await loadWordtreeBranches(initial);
 }
@@ -1131,9 +1117,12 @@ function renderWordtreeSvg(istilah, branches){
     const by = PAD_TOP + i * rowH + rowH / 2;
     const color = WORDTREE_COLORS[i % WORDTREE_COLORS.length];
     return `
-      <circle cx="${branchX}" cy="${by}" r="5" fill="${color}"/>
-      <text x="${branchX + 12}" y="${by + 4}" font-size="12" fill="var(--text)">${escapeXml(b.kode_produk)}${b.nama_produk ? ' — ' + escapeXml(b.nama_produk) : ''}</text>
-      <text x="${W - 6}" y="${by + 4}" font-size="11" text-anchor="end" fill="var(--text-muted)">${b.frekuensi}×${b.persentase != null ? ' · ' + b.persentase + '%' : ''}</text>
+      <g class="wt-node" data-open-kode="${escapeXml(b.kode_produk)}" role="button" tabindex="0" aria-label="Buka detail ${escapeXml(b.kode_produk)}">
+        <rect x="${branchX - 10}" y="${by - rowH / 2 + 2}" width="${W - branchX + 10}" height="${rowH - 4}" fill="transparent"/>
+        <circle cx="${branchX}" cy="${by}" r="5" fill="${color}"/>
+        <text x="${branchX + 12}" y="${by + 4}" font-size="12" fill="var(--text)">${escapeXml(b.kode_produk)}${b.nama_produk ? ' — ' + escapeXml(b.nama_produk) : ''}</text>
+        <text x="${W - 6}" y="${by + 4}" font-size="11" text-anchor="end" fill="var(--text-muted)">${escapeXml(b.frekuensi)}×${b.persentase != null ? ' · ' + escapeXml(b.persentase) + '%' : ''}</text>
+      </g>
     `;
   }).join('');
 
@@ -1185,7 +1174,7 @@ async function loadKategoriDonut(){
   }).join('');
 
   const legend = data.map((d,i) => `
-    <div class="donut-legend-item">
+    <div class="donut-legend-item" data-nav="/konversian/riwayat" title="Buka riwayat konversi">
       <span class="donut-legend-dot" style="background:${DONUT_COLORS[i % DONUT_COLORS.length]}"></span>
       <span class="donut-legend-label">${esc(d.kategori)}</span>
       <span class="donut-legend-val">${fmt(d.jumlah)}</span>
@@ -1223,7 +1212,7 @@ function renderValueLineChart(data){
     const label = dayNames[dt.getDay()];
     return `<g>
       <circle class="linechart-tooltip-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="var(--success)">
-        <title>${label}, ${p.tanggal}: ${rupiah(p.total_value)}</title>
+        <title>${esc(label)}, ${esc(p.tanggal)}: ${rupiah(p.total_value)}</title>
       </circle>
       <text x="${p.x.toFixed(1)}" y="${H-4}" font-size="9.5" fill="var(--text-muted)" text-anchor="middle">${label}</text>
     </g>`;
@@ -1268,7 +1257,8 @@ async function loadForecastStok(){
     const maxDays = Math.max(...data.map(d => d.perkiraan_habis_hari || 0), 1);
 
     function daysPill(d){
-      if (d === null || d === undefined) return '<span class="days-pill days-aman">—</span>';
+      d = (d === null || d === undefined || !Number.isFinite(Number(d))) ? null : Number(d); // nilai non-numerik jangan pernah sampai ke innerHTML
+      if (d === null) return '<span class="days-pill days-aman">—</span>';
       if (d <= 7)  return `<span class="days-pill days-kritis">⚠ ${d} hari</span>`;
       if (d <= 30) return `<span class="days-pill days-warn">${d} hari</span>`;
       return `<span class="days-pill days-aman">${d} hari</span>`;
@@ -1297,7 +1287,7 @@ async function loadForecastStok(){
         </thead>
         <tbody>
           ${data.map(d => `
-            <tr>
+            <tr data-open-kode="${esc(d.kode_produk)}" tabindex="0" style="cursor:pointer" title="Klik untuk lihat detail produk">
               <td><span class="kode-text">${esc(d.kode_produk)}</span></td>
               <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtmlAttr(d.nama_produk)}</td>
               <td style="text-align:right;font-family:var(--mono);font-weight:600">${fmt(d.stok_sekarang)}</td>
@@ -1309,7 +1299,7 @@ async function loadForecastStok(){
                   <div class="forecast-bar-track">
                     <div class="forecast-bar-fill" style="width:${Math.min(100, Math.round((d.perkiraan_habis_hari||0)/maxDays*100))}%;background:${barColor(d.perkiraan_habis_hari)}"></div>
                   </div>
-                  <span style="font-size:10px;color:var(--text-muted);white-space:nowrap">${d.perkiraan_habis_hari||'—'}h</span>
+                  <span style="font-size:10px;color:var(--text-muted);white-space:nowrap">${esc(d.perkiraan_habis_hari||'—')}h</span>
                 </div>
               </td>
             </tr>
@@ -1454,8 +1444,8 @@ async function popLoadDataQuality(){
     ];
     box.innerHTML = `<div class="dq-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
       ${items.map(it => `
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px">
-          <i class="ti ${it.icon}" style="font-size:16px;color:${it.val ? 'var(--warning)' : 'var(--text-muted)'}"></i>
+        <div data-action="scroll-to" data-target="pop-audit-box" role="button" tabindex="0" title="Lihat rincian audit" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px">
+          <i class="ti ${esc(it.icon)}" style="font-size:16px;color:${it.val ? 'var(--warning)' : 'var(--text-muted)'}"></i>
           <div style="flex:1">
             <div style="font-size:11px;color:var(--text-muted)">${it.label}</div>
             <div style="font-family:var(--mono);font-weight:600">${fmt(it.val || 0)}</div>
@@ -1529,22 +1519,22 @@ async function popLoadSummary(){
   try {
     const s = await rpc('get_dashboard_populasi_summary', { p_wilayah: popWilayah || null, p_entitas: popEntitas || null, p_channel: popChannel || null });
     box.innerHTML = `
-      <div class="stat-card blue">
+      <div class="stat-card blue" data-action="scroll-to" data-target="pop-tbl-body" role="button" tabindex="0" title="Lihat tabel populasi">
         <div class="stat-icon blue"><i class="ti ti-map-pin"></i></div>
         <div class="stat-val">${fmt(s.total_wilayah)}</div>
         <div class="stat-label">Wilayah Tercover</div>
       </div>
-      <div class="stat-card green">
+      <div class="stat-card green" data-action="scroll-to" data-target="pop-tbl-body" role="button" tabindex="0" title="Lihat tabel populasi">
         <div class="stat-icon green"><i class="ti ti-package"></i></div>
         <div class="stat-val">${fmt(s.total_produk_unik)}</div>
         <div class="stat-label">Produk Unik Terorder</div>
       </div>
-      <div class="stat-card purple">
+      <div class="stat-card purple" data-action="scroll-to" data-target="pop-tbl-body" role="button" tabindex="0" title="Lihat tabel populasi">
         <div class="stat-icon purple"><i class="ti ti-stack-2"></i></div>
         <div class="stat-val">${fmt(s.total_qty)}</div>
         <div class="stat-label">Total Qty</div>
       </div>
-      <div class="stat-card warning">
+      <div class="stat-card warning" data-action="scroll-to" data-target="pop-tbl-body" role="button" tabindex="0" title="Lihat tabel populasi">
         <div class="stat-icon warning"><i class="ti ti-file-text"></i></div>
         <div class="stat-val">${fmt(s.total_dokumen)}</div>
         <div class="stat-label">Total Dokumen</div>
@@ -1605,7 +1595,7 @@ function popRenderTable(total, rows){
   } else {
     popTableRows = rows;
     document.getElementById('pop-tbl-body').innerHTML = rows.map((r, idx) => `
-      <tr style="cursor:pointer" onclick="popShowDetail(${idx})" title="Klik untuk lihat rincian RMP">
+      <tr style="cursor:pointer" tabindex="0" data-action="pop-detail" data-idx="${idx}" title="Klik untuk lihat rincian RMP">
         <td><span class="kode-text">${esc(r.kode_produk) || '—'}</span></td>
         <td style="max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtmlAttr(r.nama_produk||'')}">${escapeHtmlAttr(r.nama_produk || '—')}</td>
         <td><span class="badge badge-instrument">${esc(r.entitas) || '—'}</span></td>
@@ -1624,7 +1614,7 @@ function popRenderTable(total, rows){
   const range = 2;
   for (let i=1;i<=pages;i++){
     if (i===1 || i===pages || Math.abs(i-popPage)<=range){
-      btns.push(`<button class="page-btn${i===popPage?' active':''}" onclick="popGoPage(${i})">${i}</button>`);
+      btns.push(`<button class="page-btn${i===popPage?' active':''}" data-action="pop-go-page" data-page="${i}">${i}</button>`);
     } else if (btns[btns.length-1] !== '…'){
       btns.push('…');
     }
@@ -1645,7 +1635,7 @@ async function popShowDetail(idx){
   document.getElementById('dm-kode').textContent = `${r.kode_produk} · ${r.wilayah || 'wilayah tidak terdeteksi'}`;
   document.getElementById('dm-body').innerHTML = '<div class="detail-loading"><i class="ti ti-loader-2 spinner"></i> Memuat rincian RMP…</div>';
   const myReq = ++detailReqId;
-  lastFocusBeforeModal = document.activeElement;
+  if (!detailOverlay.classList.contains('show')) lastFocusBeforeModal = document.activeElement;
   detailOverlay.classList.add('show');
   document.getElementById('dm-close').focus();
   try {
@@ -1663,6 +1653,10 @@ async function popShowDetail(idx){
     document.getElementById('dm-body').innerHTML = `
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
         ${fmt(rowsRaw.length)} baris order mentah dari <span class="kode-text">orderan_lintas_entitas</span> yang dijumlahkan jadi baris ini — cocokkan Kode RMP/PO di bawah ke sheet.
+      </div>
+      <div class="detail-actions" style="margin:0 0 12px">
+        <button type="button" class="btn btn-ghost" data-open-kode="${esc(r.kode_produk)}"><i class="ti ti-package"></i> Detail produk</button>
+        <a class="btn btn-ghost" href="/crud-produk?edit=${encodeURIComponent(r.kode_produk || '')}"><i class="ti ti-pencil"></i> Edit produk</a>
       </div>
       <div class="table-scroll">
         <table style="font-size:12px">
@@ -1747,35 +1741,102 @@ async function popExportExcel(ev){
   // gak pernah didefinisikan langsung throw ReferenceError SEBELUM baris
   // apa pun sesudahnya sempet jalan -- jadi mount() dashboard selalu gagal
   // total dari titik ini, user baru laporan lewat console error beneran.)
-  // Expose ke window.* -- lihat catatan panjang di komentar atas file ini.
-  Object.assign(window, {
-    applyOnlyFilter,
-    applyPreset,
-    applySearchHistory,
-    clearSearchHistory,
-    clearSelection,
-    copyKode,
-    deletePreset,
-    exportSelected,
-    goPage,
-    onSearch,
-    onWordtreeRootChange,
-    openDetail,
-    popExportExcel,
-    popGoPage,
-    popOnSearch,
-    popSetChannel,
-    popSetEntitas,
-    popSetWilayah,
-    popShowDetail,
-    savePreset,
-    setFilter,
-    setForecastPeriod,
-    setTipe,
-    showSearchHistory,
-    toggleRowSelect,
-    toggleSelectAll,
-  });
+  // ── DELEGASI EVENT (pengganti inline onclick/onchange + Object.assign(window, ...)) ──
+  // Tidak ada lagi handler inline di markup maupun template, dan tidak ada lagi 26 fungsi
+  // yang nongol di window.*. Konsekuensinya: dashboard ini tidak butuh CSP 'unsafe-inline'
+  // untuk script, dan XSS tidak bisa lagi "memanggil" fungsi dashboard lewat window.
+  const NAV_SUBS = {
+    'stok': [],
+    'crud-produk': CRUD_PRODUK_SUBNAV.map(s => s.id),
+    'konversian': KONVERSIAN_SUBNAV.map(s => s.id),
+  };
+  const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  // Tujuan yang tidak dikenal router = 404 + auto-logout (lihat router.js), jadi divalidasi
+  // dulu terhadap registry sub-route yang sama dengan yang dipakai nav/router.
+  function isValidNavPath(p){
+    const m = /^\/([a-z-]+)(?:\/([a-z-]+))?$/.exec(String(p || ''));
+    if (!m || !hasOwn(NAV_SUBS, m[1])) return false;
+    return !m[2] || NAV_SUBS[m[1]].includes(m[2]);
+  }
+  function goTo(path){
+    if (!isValidNavPath(path)) { console.warn('Tujuan navigasi tidak valid:', path); showToast('Tujuan navigasi tidak valid', 'error'); return; }
+    window.dispatchEvent(new CustomEvent('pnm:navigate', { detail: { path } }));
+  }
+  const ACTIONS = {
+    'set-filter':      (el) => setFilter(el.dataset.f, el),
+    'filter-goto':     (el) => applyFilterGoto(el.dataset.f, el.dataset.tipe),
+    'go-page':         (el) => goPage(+el.dataset.page),
+    'pop-go-page':     (el) => popGoPage(+el.dataset.page),
+    'apply-history':   (el) => applySearchHistory(el.dataset.term),
+    'clear-history':   () => clearSearchHistory(),
+    'save-preset':     () => savePreset(),
+    'apply-preset':    (el) => applyPreset(+el.dataset.idx),
+    'delete-preset':   (el, e) => deletePreset(e, +el.dataset.idx),
+    'export-selected': () => exportSelected(),
+    'clear-selection': () => clearSelection(),
+    'forecast-period': (el) => setForecastPeriod(+el.dataset.days, el),
+    'pop-export':      (el, e) => popExportExcel(e),
+    'pop-detail':      (el) => popShowDetail(+el.dataset.idx),
+    'copy-kode':       (el, e) => copyKode(e, el.dataset.kode),
+    'scroll-to':       (el) => document.getElementById(el.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+  };
+  const CHANGE_BY_ID = {
+    'tipe-filter':          (t) => setTipe(t.value),
+    'wordtree-root-select': (t) => onWordtreeRootChange(t.value),
+    'pop-wilayah-filter':   (t) => popSetWilayah(t.value),
+    'pop-entitas-filter':   (t) => popSetEntitas(t.value),
+    'pop-channel-filter':   (t) => popSetChannel(t.value),
+    'select-all-checkbox':  (t) => toggleSelectAll(t),
+  };
+  function onContainerClick(e){
+    if (e.target.closest('.checkbox-col')) return; // checkbox ditangani event 'change'
+    const el = e.target.closest('[data-action],[data-nav],[data-open-kode]');
+    if (!el || !container.contains(el)) return;
+    if (el.dataset.nav) {
+      // <a href> asli: biarkan browser kalau ctrl/cmd/shift-klik (buka tab baru)
+      if (el.tagName === 'A' && (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) return;
+      e.preventDefault();
+      goTo(el.dataset.nav);
+      return;
+    }
+    if (el.dataset.action) {
+      if (hasOwn(ACTIONS, el.dataset.action)) ACTIONS[el.dataset.action](el, e);
+      return;
+    }
+    if (el.dataset.openKode) {
+      const inner = e.target.closest('a,button');
+      if (inner && inner !== el && el.contains(inner)) return; // link/tombol di dalam baris punya aksinya sendiri
+      openDetail(el.dataset.openKode);
+    }
+  }
+  function onContainerChange(e){
+    const t = e.target;
+    if (t.matches('#tbl-body .row-checkbox')) {
+      const r = currentRows[+t.dataset.idx];
+      if (r) toggleRowSelect(t, r.kode_produk, r);
+      return;
+    }
+    if (hasOwn(CHANGE_BY_ID, t.id)) CHANGE_BY_ID[t.id](t);
+  }
+  function onContainerInput(e){
+    if (e.target.id === 'tbl-search') onSearch();
+    else if (e.target.id === 'pop-search') popOnSearch();
+  }
+  function onContainerFocusIn(e){
+    if (e.target.id === 'tbl-search') showSearchHistory();
+  }
+  function onContainerKeydown(e){
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const t = e.target;
+    if (t.matches('input, select, textarea, button, a')) return; // kontrol native menangani sendiri
+    if (t.matches('[role="button"], tr[data-idx], tr[data-open-kode], tr[data-action]')) {
+      e.preventDefault();
+      // dispatchEvent, bukan t.click(): <g>/<svg> (node word tree) gak punya .click() di browser
+      t.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }
+  }
+  dashContainerHandlers = { click: onContainerClick, change: onContainerChange, input: onContainerInput, focusin: onContainerFocusIn, keydown: onContainerKeydown };
+  Object.entries(dashContainerHandlers).forEach(([type, fn]) => container.addEventListener(type, fn));
 
   loadEverything();
 }
@@ -1794,32 +1855,10 @@ export function unmount() {
   // slight "zoom" jump) while the next module's mount() reloaded it.
   document.getElementById('page-dashboard-style')?.remove();
 
-  delete window.applyOnlyFilter;
-  delete window.applyPreset;
-  delete window.applySearchHistory;
-  delete window.clearSearchHistory;
-  delete window.clearSelection;
-  delete window.copyKode;
-  delete window.deletePreset;
-  delete window.exportSelected;
-  delete window.goPage;
-  delete window.onSearch;
-  delete window.onWordtreeRootChange;
-  delete window.openDetail;
-  delete window.popExportExcel;
-  delete window.popGoPage;
-  delete window.popOnSearch;
-  delete window.popSetChannel;
-  delete window.popSetEntitas;
-  delete window.popSetWilayah;
-  delete window.popShowDetail;
-  delete window.savePreset;
-  delete window.setFilter;
-  delete window.setForecastPeriod;
-  delete window.setTipe;
-  delete window.showSearchHistory;
-  delete window.toggleRowSelect;
-  delete window.toggleSelectAll;
+  if (dashContainerHandlers && mountedContainer) {
+    Object.entries(dashContainerHandlers).forEach(([type, fn]) => mountedContainer.removeEventListener(type, fn));
+  }
+  dashContainerHandlers = null;
 
   mountedContainer = null;
 }
