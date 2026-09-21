@@ -111,14 +111,63 @@ const RETIRED_REDIRECTS = { 'home': 'dashboard' };
 
 const DEFAULT_ROUTE = 'dashboard';
 
+// "REMEMBER LAST MODULE" (polishing job -- user report: buka app dari tab
+// baru/bookmark ke root selalu jatuh ke Dashboard, jadi harus navigasi ulang
+// ke modul yang lagi dikerjain tiap kali). Cuma dipakai buat SATU celah: path
+// kosong ("/") pas render() pertama kali jalan di load ini (lihat flag
+// `hasResolvedInitialRoute` di currentRoute()). Sengaja TIDAK dipakai untuk:
+//   - Deep link eksplisit (/konversian/cari, dst) -- itu HARUS selalu apa
+//     adanya, gak boleh dioverride riwayat, sama seperti bookmark/share link
+//     manapun.
+//   - render() sesudahnya dalam sesi yang sama (popstate/klik nav) -- kalau
+//     enggak, nge-back ke "/" via tombol back browser bakal nyangkut balik ke
+//     modul yang sama, gak pernah beneran nyampe root.
+//   - Re-login setelah logout (stopRouting -> startRouting) -- pathname saat
+//     itu sudah apa adanya milik sesi user, bukan sesuatu yang perlu ditimpa.
+// Sama seperti NOT_FOUND_HITS_KEY di bawah, dibungkus try/catch: localStorage
+// bisa gak kebaca (private mode/quota) -- kalau gitu ya cuma gak keinget,
+// bukan error yang gagalin routing.
+const LAST_ROUTE_KEY = 'pnm_last_route';
+
+function readLastRoute() {
+  try { return localStorage.getItem(LAST_ROUTE_KEY) || null; } catch (err) { return null; }
+}
+
+function saveLastRoute(module, sub) {
+  try { localStorage.setItem(LAST_ROUTE_KEY, module + (sub ? '/' + sub : '')); } catch (err) { /* localStorage unavailable -- gak fatal, ya cuma gak keinget kali ini */ }
+}
+
 const container = document.getElementById('app');
 const navContainer = document.getElementById('app-nav');
 let currentPage = null; // the mounted module, so we can call .unmount()
 let currentModule = null; // which top-level module id currentPage is (separate from route's module -- see render())
 let routingEnabled = false; // false while the gate is showing (logged out / not yet authed)
+let hasResolvedInitialRoute = false; // lihat LAST_ROUTE_KEY di atas -- cuma render() PERTAMA yang boleh substitusi path kosong
 
 function currentRoute() {
-  const path = location.pathname.replace(/^\/+/, '').replace(/\/+$/, '').trim();
+  let path = location.pathname.replace(/^\/+/, '').replace(/\/+$/, '').trim();
+  if (!path && !hasResolvedInitialRoute) {
+    const last = readLastRoute();
+    if (last) {
+      // Validasi dulu sebelum dipakai -- kalau route yang keinget udah gak
+      // valid lagi (misal modulnya sempat dibongkar dari ROUTES di rilis
+      // berikutnya), mending diam-diam jatuh ke DEFAULT_ROUTE kayak biasa
+      // daripada nyeret user ke halaman 404 gara-gara riwayat lama, apalagi
+      // itu juga bakal naikin escalateMessage()'s NOT_FOUND_HITS_KEY counter
+      // buat sesuatu yang bukan salah ketik user.
+      const [lastModule, lastSub] = last.split('/');
+      if (ROUTES[lastModule] && isValidSub(lastModule, lastSub || null)) {
+        path = last;
+        // Refleksikan balik ke address bar juga (replaceState, bukan
+        // pushState -- ini bukan navigasi baru, cuma nunjukin di mana
+        // sebenarnya kita "ada") supaya refresh/share URL selanjutnya
+        // konsisten sama apa yang kelihatan di layar, bukan diam-diam
+        // nunjuk root sementara isinya modul lain.
+        history.replaceState({}, '', '/' + path);
+      }
+    }
+  }
+  hasResolvedInitialRoute = true;
   const [module, sub, ...rest] = (path || DEFAULT_ROUTE).split('/');
   // `rest` is anything past the module/sub pair -- e.g. the
   // "RB999-KE878-B089-U09" in /crud-produk/produk/RB999-KE878-B089-U09.
@@ -177,6 +226,12 @@ async function render() {
     renderNotFound(container);
     return;
   }
+
+  // module/sub sudah lolos validasi di atas -- titik ini satu-satunya yang
+  // kena dua jalur di bawah (setSubroute fast-path MAUPUN mount penuh), jadi
+  // paling pas buat "diinget" LAST_ROUTE_KEY. Route 404/tampered di atas
+  // sengaja gak pernah nyampe sini -- gak mau nyimpen route yang salah.
+  saveLastRoute(module, sub);
 
   // Nav is mounted ONCE (idempotent — navMount() no-ops on repeat calls with
   // the same container, see nav.js), not per-route like page modules — it's
