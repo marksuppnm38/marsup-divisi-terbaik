@@ -144,11 +144,28 @@ const VENDOR_SCRIPTS_SEQUENTIAL = [
 ];
 
 
-function loadScript(src) {
+// SECURITY (polishing job, hari ini): parameter kedua opsional `integrity`
+// -- SRI hash (Subresource Integrity). Kalau diisi, browser sendiri yang
+// nolak nge-eksekusi file itu kalau byte-nya beda dari hash yang
+// diharapkan (proteksi kalau CDN-nya suatu saat "salah kirim" versi lain
+// dari yang seharusnya, sengaja atau kena kompromi). Sengaja OPSIONAL
+// (bukan wajib di semua panggilan `loadScript()`) karena SRI cuma valid
+// buat URL yang di-pin ke versi PERSIS (mis. exceljs@4.3.0) -- kalau
+// URL-nya masih pakai tag longgar (mis. @supabase/supabase-js@2, yang
+// bisa diam-diam resolve ke rilis 2.x manapun kapan saja), nambahin hash
+// tetap di sini bakal bikin app ini rusak total begitu paket itu rilis
+// versi baru (hash lama gak lagi cocok, browser nolak load, login/semua
+// fitur mati) -- itu kenapa 2 vendor lain (`@supabase/supabase-js@2`,
+// `docx@8`) masih TANPA integrity di bawah, bukan kelupaan.
+function loadScript(src, integrity) {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) return resolve();
     const s = document.createElement('script');
     s.src = src;
+    if (integrity) {
+      s.integrity = integrity;
+      s.crossOrigin = 'anonymous'; // wajib ada bareng integrity, atau browser blokir scriptnya
+    }
     s.onload = () => resolve();
     s.onerror = () => reject(new Error('Gagal memuat ' + src));
     document.head.appendChild(s);
@@ -228,7 +245,10 @@ function ensureExceljs() {
   if (window.ExcelJS) return Promise.resolve();
   if (!exceljsReady) {
     ensureExceljsEvalWorkaround(); // HARUS sebelum script-nya keload, lihat komentar di atas fungsi ini
-    exceljsReady = loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js');
+    exceljsReady = loadScript(
+      'https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js',
+      'sha384-P7KKlGD3Ng66Ds7oTliLzTnol6DbK+k7PafNYXIBDQ4b5eFWtmqctplDVOxslglR'
+    );
   }
   return exceljsReady;
 }
@@ -243,7 +263,16 @@ function ensurePdfJs() {
     // di-set begitu pdf.min.js beneran kelar keload, di titik yang sama
     // dengan pemanggilnya (getPdfPagesBase64/renderPdfFromUrl), bukan lagi
     // diam-diam bergantung ke urutan load vendor scripts yang lain.
-    pdfJsReady = loadScript('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js').then(() => {
+    // NOTE: pdf.worker.min.js (di bawah, workerSrc) TIDAK bisa dikasih SRI
+    // lewat cara yang sama -- itu bukan <script> tag, tapi di-fetch sendiri
+    // sama pdf.js lewat `new Worker(url)` pas dokumen PDF pertama dibuka,
+    // dan Web Worker API gak punya atribut `integrity` sama sekali (beda
+    // dari <script>/<link>). Ini keterbatasan platform browser, bukan
+    // sesuatu yang bisa ditutup dari sisi app ini.
+    pdfJsReady = loadScript(
+      'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+      'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e'
+    ).then(() => {
       pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
     });
   }
@@ -253,7 +282,10 @@ function ensurePdfJs() {
 let tesseractReady = null;
 function ensureTesseract() {
   if (window.Tesseract) return Promise.resolve();
-  if (!tesseractReady) tesseractReady = loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js');
+  if (!tesseractReady) tesseractReady = loadScript(
+    'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js',
+    'sha384-1zP4ZOtlk2FXAOiUArpMuWf7INJJKe/ROfYFAVSeUa11DEfXdKWGiPI3dVma2Gt0'
+  );
   return tesseractReady;
 }
 
@@ -265,7 +297,12 @@ function ensureSphExportLibs() {
   if (window.jspdf && window.docx) return Promise.resolve();
   if (!sphExportLibsReady) {
     sphExportLibsReady = Promise.all([
-      loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'),
+      loadScript(
+        'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+        'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk'
+      ),
+      // docx@8 (bukan versi persis, mis. @8.6.0) SENGAJA belum dikasih SRI
+      // -- lihat komentar panjang di loadScript() di atas file ini kenapa.
       loadScript('https://cdn.jsdelivr.net/npm/docx@8/build/index.umd.js'),
     ]);
   }

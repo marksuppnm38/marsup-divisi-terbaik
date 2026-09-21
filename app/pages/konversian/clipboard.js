@@ -946,17 +946,29 @@ function renderResults(data) {
     const tahunTampil = S.modeSwasta ? r.tahun_harga_swasta : r.tahun_harga;
     const labelHarga = S.modeSwasta ? 'Harga Swasta' : 'Harga belum ada';
     const stokBadge = S.stokBadgeHtml(r, isSet);
-    // SECURITY FIX 2026-08-14: konsisten dengan renderClipItemHtml — escape
-    // nama_produk sebelum masuk innerHTML (defense in depth).
-    return `<div class="rcard${inClip?' selected':''}" data-kode="${r.kode_produk}">
+    // SECURITY FIX 2026-08-14 (+ diperluas hari ini): konsisten dengan
+    // renderClipItemHtml — escape SEMUA field yang datang dari DB (bisa
+    // diisi manual lewat CRUD Produk oleh staf manapun) sebelum masuk
+    // innerHTML/atribut, bukan cuma nama_produk. kode_produk/kode_asli/
+    // no_akd/kode_kfa/tipe semuanya kolom teks bebas di database — kalau
+    // salah satunya kebetulan diisi karakter HTML (sengaja atau gak),
+    // tanpa escape ini bakal jadi stored XSS yang nyerang SEMUA user lain
+    // yang buka hasil pencarian yang sama, bukan cuma yang ngisi datanya.
+    const kode = S.escapeHtmlAttr(r.kode_produk||'');
+    const kodeAsli = S.escapeHtmlAttr(r.kode_asli||'');
+    const namaEsc = S.escapeHtmlAttr(r.nama_produk||'');
+    const noAkdEsc = S.escapeHtmlAttr(r.no_akd||'');
+    const kodeKfaEsc = S.escapeHtmlAttr(r.kode_kfa||'');
+    const tipeEsc = S.escapeHtmlAttr(r.tipe||'');
+    return `<div class="rcard${inClip?' selected':''}" data-kode="${kode}">
       <div class="rcard-top">
-        <span class="rcard-name">${S.escapeHtmlAttr(r.nama_produk||'—')}</span>
-        ${r.tipe?`<span class="tipe-badge ${tipeClass}">${r.tipe}</span>`:''}
+        <span class="rcard-name">${namaEsc||'—'}</span>
+        ${r.tipe?`<span class="tipe-badge ${tipeClass}">${tipeEsc}</span>`:''}
       </div>
       <div class="rcard-meta">
-        <span class="mi"><i class="ti ti-barcode"></i><span>${r.kode_produk||'—'}</span></span>
-        ${r.no_akd?`<span class="mi"><i class="ti ti-certificate"></i><span>${r.no_akd}</span></span>`:''}
-        ${r.kode_kfa?`<span class="mi"><i class="ti ti-tag"></i><span>${r.kode_kfa}</span></span>`:''}
+        <span class="mi"><i class="ti ti-barcode"></i><span>${kode||'—'}</span></span>
+        ${r.no_akd?`<span class="mi"><i class="ti ti-certificate"></i><span>${noAkdEsc}</span></span>`:''}
+        ${r.kode_kfa?`<span class="mi"><i class="ti ti-tag"></i><span>${kodeKfaEsc}</span></span>`:''}
         ${hargaTampil?`<span class="mi harga"><i class="ti ti-coin-rupee"></i><span>${rupiah(hargaTampil)}${tahunTampil?' · '+tahunTampil:''}</span></span>`:`<span class="mi"><i class="ti ti-coin-rupee"></i><span style="color:var(--text-muted)">${S.modeSwasta?'Harga swasta belum ada':'Harga belum ada'}</span></span>`}
         ${stokBadge}
       </div>
@@ -968,16 +980,16 @@ function renderResults(data) {
               ?`<span class="badge-katalog-no" style="color:var(--rust-text,#8F3620);border-color:var(--rust,#B8492F);background:var(--rust-bg,#FBE8E2)"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Disetujui INAPROC — siap dibuatkan Link V6!</span>`
               :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
           )}
-          <button class="btn-preview-gambar btn-lihat-gambar" data-kode="${r.kode_produk}" data-kode-asli="${r.kode_asli||''}" data-nama="${(r.nama_produk||'').replace(/"/g,'&quot;')}"><i class="ti ti-eye" style="font-size:12px"></i> Lihat Gambar</button>
-          <button class="btn-preview-gambar btn-copy-produk" data-kode="${r.kode_produk}"><i class="ti ti-copy" style="font-size:12px"></i> Copy</button>
+          <button class="btn-preview-gambar btn-lihat-gambar" data-kode="${kode}" data-kode-asli="${kodeAsli}" data-nama="${namaEsc}"><i class="ti ti-eye" style="font-size:12px"></i> Lihat Gambar</button>
+          <button class="btn-preview-gambar btn-copy-produk" data-kode="${kode}"><i class="ti ti-copy" style="font-size:12px"></i> Copy</button>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
-          <button class="btn-lampiran" data-kode="${r.kode_produk}" data-is-set="${isSet}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>
-          <button class="btn-edit-produk" data-kode="${r.kode_produk}" title="Edit produk ini" style="font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-settings" style="font-size:12px"></i></button>
+          <button class="btn-lampiran" data-kode="${kode}" data-is-set="${isSet}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>
+          <button class="btn-edit-produk" data-kode="${kode}" title="Edit produk ini" style="font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-settings" style="font-size:12px"></i></button>
           ${inClip
-            ? `<button class="btn-clip-toggle in-clip" data-kode="${r.kode_produk}" data-action="remove"><i class="ti ti-circle-check" style="font-size:12px"></i> Di Konversi</button>`
-            : `<button class="btn-clip-toggle" data-kode="${r.kode_produk}" data-action="add"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambahkan ke Konversi</button>`}
+            ? `<button class="btn-clip-toggle in-clip" data-kode="${kode}" data-action="remove"><i class="ti ti-circle-check" style="font-size:12px"></i> Di Konversi</button>`
+            : `<button class="btn-clip-toggle" data-kode="${kode}" data-action="add"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambahkan ke Konversi</button>`}
         </div>
       </div>
     </div>`;
