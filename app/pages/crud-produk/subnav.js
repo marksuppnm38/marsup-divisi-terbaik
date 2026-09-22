@@ -13,12 +13,15 @@
 //
 // id here is the URL sub-segment (`#crud-produk/<id>`) AND is passed
 // straight into crud-produk's existing switchView(id) — the two need to
-// stay in sync (same 5 values: produk/set/akd/kfa/bulk). If index.js's
-// switchView() ever gets a 6th view, add it here too, and vice versa.
+// stay in sync (same 6 values: produk/set/akd/kfa/bulk/sync -- 'sync'
+// added for the "produk kepantau di sheet tapi belum ada di DB" catcher).
+// If index.js's switchView() ever gets another view, add it here too,
+// and vice versa.
 export const CRUD_PRODUK_SUBNAV = [
   { id: 'produk', title: 'Produk', icon: 'ti-package' },
   { id: 'set', title: 'Set Management', icon: 'ti-stack-2' },
   { id: 'akd', title: 'AKD', icon: 'ti-shield-check' },
   { id: 'kfa', title: 'KFA Management', icon: 'ti-barcode' },
   { id: 'bulk', title: 'Bulk Edit', icon: 'ti-table' },
+  { id: 'sync', title: 'Sync dari Sheet', icon: 'ti-refresh' },
 ];

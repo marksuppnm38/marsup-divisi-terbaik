@@ -261,13 +261,17 @@ export async function mount(container, initialSub) {
 // is how this got caught -- does. This comment + the top-level
 // `_switchView`/`setSubroute` pair below is the fix.)
 function switchView(view){
-  ['produk','set','akd','kfa','bulk'].forEach(v => {
+  ['produk','set','akd','kfa','bulk','sync'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
   document.getElementById('addBtn').style.display = (view === 'produk') ? '' : 'none';
   document.querySelector('.view-toggle').style.display = (view === 'produk') ? '' : 'none';
   if (view === 'akd' && !akdLoadedOnce) { akdLoadedOnce = true; loadAkdDistinctValues(); loadAkd(); }
   if (view === 'kfa' && !kfaLoadedOnce) { kfaLoadedOnce = true; loadKfa(); refreshKfaFilterCounts(); }
+  // 'sync' RELOAD tiap kali masuk (bukan sekali doang kayak akd/kfa) --
+  // daftar ini berubah tiap pollAndSync jalan di background (tiap 5
+  // menit), jadi data basi kalau cuma dimuat sekali per mount().
+  if (view === 'sync') loadSyncUnmatched();
   // 'set' punya semantik beda dari akd/kfa's "sekali doang" -- dipindah
   // dari listener terpisah yang tadinya nempel di tombol sidebar sendiri
   // (`.sb-item[data-view="set"]`, gak ada lagi): reload SETIAP kali masuk
@@ -1479,7 +1483,17 @@ function resetForm(){
   document.getElementById('gambarInstrumenPreviewWrap').style.display = 'none';
 }
 
-function openAdd(){
+// `prefill` (opsional): { kode_produk, link_v6 } -- dipakai tab "Sync dari
+// Sheet" buat langsung ngisi kode & link pas buka form dari baris
+// unmatched, biar gak perlu copy-paste manual. Aman dipanggil tanpa
+// argumen kayak sebelumnya (addBtn/addSetBtn's listener manggil
+// `openAdd(event)` / `openAdd()` -- `event?.kode_produk` selalu undefined
+// jadi gak ke-trigger). link_v6 sengaja tetep di-set walau field-nya ada
+// di tab "Lanjutan" yang masih locked di titik ini (setProdTabsLocked
+// (true) di bawah) -- .value nempel ke elemen DOM-nya terlepas dari tab
+// panel-nya lagi display:none atau enggak, jadi udah otomatis keisi pas
+// user nyampe ke tab itu setelah Info Dasar pertama disimpan.
+function openAdd(prefill){
   resetForm();
   currentProdukId = null;
   modalTitle.textContent = 'Tambah Produk';
@@ -1490,6 +1504,8 @@ function openAdd(){
   deleteBtn.style.display = 'none';
   document.getElementById('toggleAkdBoxBtn').style.display = 'none';
   document.getElementById('akdHint').textContent = 'Simpan produk dulu sebelum mengelola relasi AKD.';
+  if (prefill?.kode_produk) document.getElementById('f_kode_produk').value = prefill.kode_produk;
+  if (prefill?.link_v6) document.getElementById('f_link_v6').value = prefill.link_v6;
   modalOverlay.classList.add('open');
 }
 
@@ -3435,6 +3451,41 @@ document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
     });
   }, 300);
 });
+
+// ---- Sync dari Sheet (kode_produk kepantau di Google Sheets lewat
+// Apps Script pollAndSync, tapi belum punya row di tabel produk -- edge
+// function sync-sheet nyatet ke tabel sync_unmatched_produk, hilang
+// sendiri dari daftar ini begitu produknya dibuat) ----
+async function loadSyncUnmatched(){
+  const tbody = document.getElementById('syncTableBody');
+  const { data, error } = await sb.from('sync_unmatched_produk').select('*').order('last_seen_at', { ascending: false });
+  if (error) {
+    tbody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`;
+    document.getElementById('syncCount').textContent = 'Gagal memuat';
+    return;
+  }
+  document.getElementById('syncCount').textContent = `${data.length} kode produk belum terdaftar`;
+  if (!data.length) {
+    tbody.innerHTML = `<tr class="state-row"><td colspan="6">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = '';
+  data.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="kode-cell">${escapeHtml(row.kode_produk)}</td>
+      <td>${row.link ? `<a href="${escapeHtml(row.link)}" target="_blank" rel="noopener">${escapeHtml(row.link)}</a>` : '—'}</td>
+      <td>${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '—'}</td>
+      <td>${escapeHtml(row.source_sheet || '—')}</td>
+      <td>${row.last_seen_at ? new Date(row.last_seen_at).toLocaleString('id-ID') : '—'}</td>
+      <td><button class="btn btn-sm btn-accent sync-add-btn"><i class="ti ti-plus"></i> Tambah Produk</button></td>
+    `;
+    tr.querySelector('.sync-add-btn').addEventListener('click', () => {
+      openAdd({ kode_produk: row.kode_produk, link_v6: row.link });
+    });
+    tbody.appendChild(tr);
+  });
+}
 
   // Kick off the initial data load now -- moved here from near the top of
   // mount() (see the long comment by the old spot, near the auth section)

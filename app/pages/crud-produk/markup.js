@@ -348,6 +348,34 @@ export const CRUD_PRODUK_MARKUP = `
         </div>
       </div>
     </div>
+
+    <!-- SYNC DARI SHEET VIEW: kode_produk yang kepantau di Google Sheets
+         (lewat Apps Script pollAndSync -> Edge Function sync-sheet) tapi
+         belum ada di tabel produk -- edge function nyatet ini ke tabel
+         sync_unmatched_produk tiap poll, baris hilang sendiri dari sini
+         begitu produknya dibuat. -->
+    <div class="content" id="viewSync" style="display:none;">
+      <div class="content-head">
+        <div>
+          <div class="content-title">Sync dari Sheet</div>
+          <div class="content-sub" id="syncCount">Memuat...</div>
+        </div>
+      </div>
+      <div class="paste-hint">
+        Kode produk ini muncul di Google Sheets (lewat sync otomatis) tapi belum ada di database.
+        Klik <b>Tambah Produk</b> buat bikin produknya — kode &amp; link V6-nya udah otomatis keisi di form.
+      </div>
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr><th>Kode Produk</th><th>Link V6</th><th>Harga E-KAT</th><th>Sumber Sheet</th><th>Terakhir Terlihat</th><th></th></tr>
+          </thead>
+          <tbody id="syncTableBody">
+            <tr class="state-row"><td colspan="6">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </main>
 </div>
 
