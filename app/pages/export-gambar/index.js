@@ -113,6 +113,7 @@ function ensureStyle() {
 
 let mountedContainer = null;
 let activeObserver = null;
+let containerHandlers = null;   // listener delegasi di container -- dilepas di unmount()
 // FIX (sesi lanjutan, bug ditemukan lewat testing browser beneran): guard
 // buat async operation yang nyambung setelah user udah pindah halaman.
 // loadFileList() (dipanggil di bawah, fire-and-forget) nge-fetch dari
@@ -293,7 +294,7 @@ export async function mount(container) {
               return `
                   <div class="eg-file-item ${isSelected ? "selected" : ""} ${isDisabled ? "disabled" : ""}"
                        role="option" aria-selected="${isSelected}"
-                       onclick="${isDisabled ? "" : `toggleFile('${f.id}')`}">
+                       ${isDisabled ? "" : `data-action="toggle-file" data-id="${escapeHtml(f.id)}"`}>
                       <span class="eg-check" aria-hidden="true">${isSelected ? "✓" : ""}</span>
                       <span class="eg-name">${escapeHtml(f.name)}</span>
                   </div>`;
@@ -321,7 +322,7 @@ export async function mount(container) {
               const file = allFiles.find(f => f.id === id);
               const rawName = file ? file.name : id;
               const name = escapeHtml(rawName);
-              return `<span class="chip">${name}<button type="button" aria-label="Hapus ${name}" onclick="toggleFile('${id}')">✕</button></span>`;
+              return `<span class="chip">${name}<button type="button" aria-label="Hapus ${name}" data-action="toggle-file" data-id="${escapeHtml(id)}">✕</button></span>`;
           }).join("");
       }
       // Cache supaya gambar yang sama tidak difetch ulang ke Google
@@ -547,26 +548,38 @@ export async function mount(container) {
       // walau sekarang gak pernah diisi -- unmount()'s activeObserver?.disconnect()
       // jadi no-op yang aman.
 
-  // Inline onclick/oninput attributes in the markup (applyBulkInput(),
-  // renderFileList(), mergeAndPreview(), exportCanvasAsPNG(), toggleFile(id))
-  // look these up on `window` regardless of this module's own scope, so they
-  // have to be exposed explicitly here and cleaned up in unmount().
-  window.applyBulkInput = applyBulkInput;
-  window.renderFileList = renderFileList;
-  window.mergeAndPreview = mergeAndPreview;
-  window.exportCanvasAsPNG = exportCanvasAsPNG;
-  window.toggleFile = toggleFile;
+  // ── DELEGASI EVENT (pengganti inline onclick/oninput + window.* exposure) ──
+  // Sama pola kayak dashboard (lihat komentar di sana): satu listener 'click'
+  // dan satu 'input' di container, di-lepas di unmount() lewat
+  // containerHandlers. Gak ada lagi handler inline di markup, gak ada lagi
+  // fungsi nongol di window.* — CSP script-src gak butuh 'unsafe-inline'.
+  const ACTIONS = {
+    'apply-bulk-input':   () => applyBulkInput(),
+    'merge-and-preview':  () => mergeAndPreview(),
+    'export-canvas-png':  () => exportCanvasAsPNG(),
+    'toggle-file':        (el) => toggleFile(el.dataset.id),
+  };
+  function onContainerClick(e) {
+    const el = e.target.closest('[data-action]');
+    if (!el || !container.contains(el)) return;
+    const action = ACTIONS[el.dataset.action];
+    if (action) action(el);
+  }
+  function onContainerInput(e) {
+    if (e.target.id === 'searchInput') renderFileList();
+  }
+  containerHandlers = { click: onContainerClick, input: onContainerInput };
+  Object.entries(containerHandlers).forEach(([type, fn]) => container.addEventListener(type, fn));
 }
 
 export function unmount() {
   isMounted = false;
   activeObserver?.disconnect();
   activeObserver = null;
-  delete window.applyBulkInput;
-  delete window.renderFileList;
-  delete window.mergeAndPreview;
-  delete window.exportCanvasAsPNG;
-  delete window.toggleFile;
+  if (containerHandlers && mountedContainer) {
+    Object.entries(containerHandlers).forEach(([type, fn]) => mountedContainer.removeEventListener(type, fn));
+  }
+  containerHandlers = null;
 
   // Sesi kesembilan belas: sebelum rewrite ini, style.css halaman ini TIDAK
   // PERNAH dilepas di sini -- itu bug-nya (lihat map-history.md untuk root

@@ -1418,7 +1418,7 @@ function openGambarModal(kode_asli, kode_produk, nama_produk) {
   gambarStatus.textContent = 'Memuat gambar…';
   gambarModal.classList.add('show');
 
-  const url = THUMB_BASE + kodeForUrl + '.png';
+  const url = THUMB_BASE + encodeURIComponent(kodeForUrl) + '.png';
   gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarImg.style.display = 'block'; gambarDropzone.style.display = 'none'; gambarGantiBtn.style.display = 'inline-block'; };
   gambarImg.onerror = () => {
     gambarStatus.style.display = 'none';
@@ -1512,7 +1512,7 @@ async function handleGambarFileDropped(file) {
     gambarStatus.textContent = 'Memuat gambar…';
     gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarUploadStatus.style.display = 'none'; gambarImg.style.opacity = '1'; gambarImg.style.display = 'block'; gambarGantiBtn.style.display = 'inline-block'; };
     gambarImg.onerror = () => { gambarImg.style.opacity = '1'; gambarUploadStatus.textContent = 'Gambar sudah diunggah, tapi gagal dimuat ulang — coba buka lagi.'; };
-    gambarImg.src = THUMB_BASE + gambarCurrentKodeForUrl + '.png?t=' + Date.now();
+    gambarImg.src = THUMB_BASE + encodeURIComponent(gambarCurrentKodeForUrl) + '.png?t=' + Date.now();
     // Toast eksplisit di luar modal (gak cuma teks kecil di dalam modal) —
     // supaya user yang matanya udah pindah dari modal (mis. abis paste
     // langsung mau lanjut kerjaan lain) tetap kelihatan konfirmasi tegas
@@ -2624,6 +2624,15 @@ S.subtabSetcari.addEventListener('click', () => switchSubTab('setcari'));
 S.subtabDictionary.addEventListener('click', () => switchSubTab('dictionary'));
 _switchSubTab = switchSubTab; // expose to the real top-level setSubroute() near the bottom of this file
 
+// MOBILE TABS (#tab-search/#tab-clip di markup.js) — dulu onclick="switchTab(...)"
+// inline, sekarang listener biasa kayak subtab di atas (CSP: no unsafe-inline
+// untuk script-src-attr). S.switchTab sendiri (didefinisikan di clipboard.js,
+// dipasang installClipboard(S) di atas) TETAP dipanggil lewat window.switchTab
+// dari modul lain (clipboard.js/search.js) — itu referensi global antar-modul
+// biasa, bukan inline handler, jadi gak kena cleanup ini.
+document.getElementById('tab-search').addEventListener('click', () => S.switchTab('search'));
+document.getElementById('tab-clip').addEventListener('click', () => S.switchTab('clip'));
+
 function sesiTimeAgo(iso) {
   if (!iso) return '-';
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -2694,7 +2703,7 @@ function renderRiwayatCard(s) {
   const latest = records.length ? records.reduce((a, b) => (b.revisi > a.revisi ? b : a)) : null;
   const hasilOrder = s.hasil_order || null; // null | 'jadi_order' | 'tanpa_order'
   const hasilOrderCls = hasilOrder === 'jadi_order' ? 'hasil-order-jadi' : hasilOrder === 'tanpa_order' ? 'hasil-order-tanpa' : 'hasil-order-nunggu';
-  const orderBadge = `<select class="hasil-order-select ${hasilOrderCls}" data-id="${s.id}" onclick="event.stopPropagation()" title="Hasil order ditentukan manusia, bukan otomatis — nunggu feedback sales">
+  const orderBadge = `<select class="hasil-order-select ${hasilOrderCls}" data-id="${s.id}" title="Hasil order ditentukan manusia, bukan otomatis — nunggu feedback sales">
       <option value="" ${!hasilOrder ? 'selected' : ''}>⏳ Menunggu Feedback Sales</option>
       <option value="jadi_order" ${hasilOrder === 'jadi_order' ? 'selected' : ''}>✅ Jadi Order</option>
       <option value="tanpa_order" ${hasilOrder === 'tanpa_order' ? 'selected' : ''}>◻️ Tidak Jadi Order</option>
@@ -2718,10 +2727,12 @@ function renderRiwayatCard(s) {
     : '';
   // Link file/dokumen yang nempel di record terbaru (biasanya link Drive dari
   // "Simpan ke Drive" → auto-filled ke rec-link → ikut kesimpen di sini).
-  // stopPropagation biar klik link gak ikut ngebuka sesi (card-nya sendiri
-  // punya click handler buat openSesi).
+  // Klik link gak ikut ngebuka sesi karena card's click handler (lihat
+  // querySelectorAll('.riwayat-card') di bawah) udah nge-skip elemen
+  // interaktif lewat closest('a,select,button') — bukan lagi stopPropagation
+  // inline di sini (CSP: no unsafe-inline untuk script-src-attr).
   const linkChip = (latest && latest.link && S.isSafeHttpUrl(latest.link))
-    ? `<a class="mi" href="${S.escapeHtmlAttr(latest.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent-text)"><i class="ti ti-link"></i><span>Buka file</span></a>`
+    ? `<a class="mi" href="${S.escapeHtmlAttr(latest.link)}" target="_blank" rel="noopener" style="color:var(--accent-text)"><i class="ti ti-link"></i><span>Buka file</span></a>`
     : '';
   return `<div class="rcard riwayat-card" data-id="${s.id}" style="position:relative">
     <div class="rcard-top" style="padding-right:8px">
@@ -2793,7 +2804,10 @@ async function loadRiwayatList() {
     }
     S.riwayatList.innerHTML = data.map(renderRiwayatCard).join('');
     S.riwayatList.querySelectorAll('.riwayat-card').forEach(card => {
-      card.addEventListener('click', () => openSesi(card.dataset.id));
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('a,select,button')) return; // link/select/tombol di dalam kartu punya aksinya sendiri
+        openSesi(card.dataset.id);
+      });
     });
     S.riwayatList.querySelectorAll('.hasil-order-select').forEach(sel => {
       sel.addEventListener('click', (e) => e.stopPropagation());

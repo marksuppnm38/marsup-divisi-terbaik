@@ -1860,7 +1860,7 @@ function konversiRiwayatRowHtml(r, idx) {
     ? `<div style="margin-top:8px;font-size:11.5px;color:var(--text-muted)"><i class="ti ti-note"></i> ${S.escapeHtmlAttr(r.notes)}</div>`
     : '';
   const linkLine = (r.link && S.isSafeHttpUrl(r.link))
-    ? `<div style="margin-top:6px"><a href="${S.escapeHtmlAttr(r.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent-text);font-size:11.5px"><i class="ti ti-link"></i> Buka file</a></div>`
+    ? `<div style="margin-top:6px"><a href="${S.escapeHtmlAttr(r.link)}" target="_blank" rel="noopener" style="color:var(--accent-text);font-size:11.5px"><i class="ti ti-link"></i> Buka file</a></div>`
     : '';
   const expandBody = `<div id="${rowId}" style="display:none">${itemsTable}${notesLine}${linkLine}</div>`;
   // Tombol "Muat ke Clipboard" — restore produk+qty revisi ini ke clipboard

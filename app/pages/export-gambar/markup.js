@@ -69,17 +69,17 @@ export const EXPORT_GAMBAR_MARKUP = `
         </div>
         <label class="field-label" for="bulkInput">Kode produk <span class="eg-field-hint">satu per baris, maks 4</span></label>
         <textarea id="bulkInput" class="field-input eg-textarea" placeholder="MY001&#10;MY002&#10;MY003&#10;MY004" aria-label="Input kode file, satu per baris"></textarea>
-        <button type="button" class="eg-link-btn" onclick="applyBulkInput()">
+        <button type="button" class="eg-link-btn" data-action="apply-bulk-input">
           <i class="ti ti-corner-down-left" aria-hidden="true"></i> Terapkan
         </button>
 
         <label class="field-label eg-mt-16" for="searchInput">Atau cari nama file</label>
-        <input type="text" id="searchInput" class="field-input" placeholder="Ketik untuk mencari..." oninput="renderFileList()" aria-label="Cari nama file">
+        <input type="text" id="searchInput" class="field-input" placeholder="Ketik untuk mencari..." aria-label="Cari nama file">
 
         <div id="fileList" class="eg-file-list eg-mt-16" role="listbox" aria-multiselectable="true" aria-label="Daftar file"></div>
         <div id="selectedChips" class="eg-chips"></div>
 
-        <button id="previewBtn" class="btn btn-accent eg-mt-16" onclick="mergeAndPreview()" aria-label="Tampilkan preview hasil merge">
+        <button id="previewBtn" class="btn btn-accent eg-mt-16" data-action="merge-and-preview" aria-label="Tampilkan preview hasil merge">
           <i class="ti ti-layout-grid" aria-hidden="true"></i> Preview
         </button>
       </div>
@@ -94,7 +94,7 @@ export const EXPORT_GAMBAR_MARKUP = `
         </div>
         <canvas id="finalCanvas" class="eg-canvas" role="img" aria-label="Preview hasil gambar gabungan"></canvas>
         <p class="eg-meta" role="status" aria-live="polite">PNG &middot; latar transparan &middot; <span id="metaCount">0</span> gambar</p>
-        <button id="exportBtn" class="btn btn-primary" onclick="exportCanvasAsPNG()" style="display:none;width:100%;justify-content:center;" aria-label="Export hasil sebagai file PNG">
+        <button id="exportBtn" class="btn btn-primary" data-action="export-canvas-png" style="display:none;width:100%;justify-content:center;" aria-label="Export hasil sebagai file PNG">
           <i class="ti ti-download" aria-hidden="true"></i> Unduh PNG
         </button>
       </div>

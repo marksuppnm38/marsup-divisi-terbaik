@@ -586,11 +586,11 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 
 <!-- MOBILE TABS -->
 <div class="mobile-tabs">
-  <button class="mobile-tab active" id="tab-search" onclick="switchTab('search')">
+  <button class="mobile-tab active" id="tab-search">
     <i class="ti ti-search"></i>
     <span>Cari Produk</span>
   </button>
-  <button class="mobile-tab" id="tab-clip" onclick="switchTab('clip')">
+  <button class="mobile-tab" id="tab-clip">
     <i class="ti ti-clipboard"></i>
     <span>Clipboard <span class="tab-badge" id="tab-badge" style="display:none">0</span></span>
   </button>
