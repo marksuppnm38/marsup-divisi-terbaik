@@ -2611,8 +2611,62 @@ document.querySelectorAll('.bulk-tab').forEach(btn => {
   });
 });
 
+// FIX (bulk paste kadang "gak kebaca" 1-2 item + hasilnya berantakan): dulu
+// baris dipisah pakai raw.split('\n') doang duluan, baru tiap baris di-split
+// tab -- gak ngerti quoting sama sekali. Masalahnya kalau salah satu cell
+// (biasanya nama item yang panjang) di Excel/Google Sheets ke-wrap manual
+// jadi beberapa baris FISIK, pas di-copy sebagai TSV, Excel/Sheets otomatis
+// bungkus cell itu pakai tanda kutip ganda (") dan newline di dalemnya ikut
+// kebawa apa adanya. Contoh nyata dari user:
+//   ...\t"MAYO SAFETY PIN, F/ HOLDING RING HANDLE INSTRUMENTS, 140
+//   MM"\t2
+// itu SATU baris data (satu item, qty 2), tapi split-by-newline lama
+// motongnya jadi DUA baris rusak -- satu kehilangan kolom qty (jadi ke-skip
+// atau salah kebaca sebagai kode_set), satu lagi kodeItem-nya jadi pecahan
+// teks 'MM"' yang gak match produk manapun. Makanya item itu ilang / nongol
+// jadi 2 baris error yang bikin preview berantakan.
+//
+// Parser di bawah ini TSV-aware ala CSV (RFC4180-style, delimiter tab):
+// - field yang dibungkus tanda kutip ganda boleh berisi tab/newline literal
+//   di dalemnya, dan itu tetap dianggap SATU field/baris yang sama
+// - tanda kutip ganda dobel ("") di dalam field = satu tanda kutip literal
+//   (aturan escaping standar yang dipakai Excel & Google Sheets)
+// - newline literal di dalam field diganti jadi spasi (itu tetap satu nilai
+//   teks, bukan beneran dua baris terpisah) biar hasilnya rapi buat ditampilin
 function parsePasteLines(raw){
-  return raw.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim() !== '').map(l => l.split('\t').map(c => c.trim()));
+  const text = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } // "" di dalam field = 1 kutip literal
+        else { inQuotes = false; } // kutip penutup
+      } else if (ch === '\n') {
+        field += ' '; // newline literal di dalam field kutip -> spasi
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+    if (ch === '"' && field === '') { inQuotes = true; continue; } // kutip pembuka (harus di awal field)
+    if (ch === '\t') { row.push(field); field = ''; continue; }
+    if (ch === '\n') {
+      row.push(field); field = '';
+      if (row.some(c => c.trim() !== '')) rows.push(row); // baris kosong (mis. baris paling akhir) diabaikan
+      row = [];
+      continue;
+    }
+    field += ch;
+  }
+  if (field !== '' || row.length) { // baris terakhir kalau paste-annya gak diakhiri newline
+    row.push(field);
+    if (row.some(c => c.trim() !== '')) rows.push(row);
+  }
+  return rows.map(r => r.map(c => c.trim()));
 }
 // Pecah array jadi potongan-potongan kecil sebelum dikirim ke RPC — satu potongan
 // = satu panggilan jaringan (bukan satu panggilan per baris kayak sebelumnya), dan
