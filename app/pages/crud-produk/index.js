@@ -2034,6 +2034,20 @@ async function saveProdukInner(){
   modalDirty = false; // data form sekarang sudah sama persis dengan yang di database
   currentProdukId = result.data.id;
 
+  // FIX: produk baru yang kode_produk-nya match ke tabel sync_unmatched_produk
+  // (kode_produk yg kepantau di Sheet tapi belum ada di DB) sekarang langsung
+  // dihapus dari sana pas produknya disimpan -- gak perlu nunggu poll/edge
+  // function sync-sheet jalan lagi buat ngilangin dari daftar "Sync dari
+  // Sheet". Sengaja fire-and-forget (gak di-await) biar gak nunda alur save
+  // form; kalau gagal (mis. RLS) ya biarin aja, edge function tetap jadi
+  // jaring pengaman di siklus poll berikutnya. loadSyncUnmatched() sendiri
+  // juga udah defensif filter row yang kode_produk-nya udah ada di produk,
+  // jadi walau delete ini gak sempet jalan, tab Sync tetap gak nampilin lagi.
+  if (wasNew) {
+    sb.from('sync_unmatched_produk').delete().eq('kode_produk', kodeProduk)
+      .then(({ error: delErr }) => { if (delErr) console.warn('Gagal bersihin sync_unmatched_produk:', delErr.message); });
+  }
+
   // SET baru: Info Dasar-nya cukup disimpan di sini, sisanya (komposisi/harga/AKD)
   // dikelola penuh di Set Management -- langsung lempar ke sana, gak usah nampilin
   // tab Harga/AKD generic di modal ini (bakal langsung dikunci ulang lain kali dibuka
@@ -3458,12 +3472,33 @@ document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
 // sendiri dari daftar ini begitu produknya dibuat) ----
 async function loadSyncUnmatched(){
   const tbody = document.getElementById('syncTableBody');
-  const { data, error } = await sb.from('sync_unmatched_produk').select('*').order('last_seen_at', { ascending: false });
+  const { data: rawData, error } = await sb.from('sync_unmatched_produk').select('*').order('last_seen_at', { ascending: false });
   if (error) {
     tbody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`;
     document.getElementById('syncCount').textContent = 'Gagal memuat';
     return;
   }
+
+  // FIX: sebelumnya row di sini cuma ilang kalau edge function sync-sheet
+  // sempet jalan ulang (lewat poll Apps Script) dan nemuin kode_produk-nya
+  // udah ada -- jadi kalau produknya ditambah manual dari sini (atau dari
+  // mana pun), row-nya nyangkut terus sampe poll berikutnya. Sekarang
+  // di-double-check langsung ke tabel produk tiap kali tab ini dimuat: kode
+  // yang udah punya baris di produk dianggap SUDAH sync, di-filter dari
+  // tampilan, dan row-nya dihapus dari sync_unmatched_produk (fire-and-forget,
+  // gak nunda render) biar gak keperiksa lagi ke depannya.
+  let data = rawData || [];
+  if (data.length) {
+    const kodeList = data.map(r => r.kode_produk);
+    const { data: sudahAda } = await sb.from('produk').select('kode_produk').in('kode_produk', kodeList);
+    const sudahAdaSet = new Set((sudahAda || []).map(p => p.kode_produk));
+    if (sudahAdaSet.size) {
+      data = data.filter(r => !sudahAdaSet.has(r.kode_produk));
+      sb.from('sync_unmatched_produk').delete().in('kode_produk', Array.from(sudahAdaSet))
+        .then(({ error: delErr }) => { if (delErr) console.warn('Gagal bersihin sync_unmatched_produk:', delErr.message); });
+    }
+  }
+
   document.getElementById('syncCount').textContent = `${data.length} kode produk belum terdaftar`;
   if (!data.length) {
     tbody.innerHTML = `<tr class="state-row"><td colspan="6">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
