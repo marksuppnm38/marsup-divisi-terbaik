@@ -2416,19 +2416,47 @@ async function loadSetHarga(){
 }
 document.getElementById('hitungKomposisiBtn').addEventListener('click', async () => {
   if (compRows.length === 0) { showToast('Belum ada item di komposisi set ini', true); return; }
-  let total = 0;
-  let itemTanpaHarga = [];
-  for (const r of compRows) {
-    const { data: hargaItem } = await sb.from('produk_harga').select('harga').eq('produk_id', r.produk_id).eq('jenis', 'EKATALOG')
-      .order('tahun', { ascending: false }).limit(1).maybeSingle();
-    if (hargaItem) { total += hargaItem.harga * r.qty; }
-    else { itemTanpaHarga.push(r.item?.nama_produk || r.item?.kode_produk || 'item'); }
-  }
-  document.getElementById('sh_harga').value = Math.round(total);
-  if (itemTanpaHarga.length > 0) {
-    showToast(`Dihitung, tapi ${itemTanpaHarga.length} item belum punya harga EKATALOG (tidak ikut terhitung): ${itemTanpaHarga.slice(0,3).join(', ')}${itemTanpaHarga.length>3?', ...':''}`, true);
-  } else {
-    showToast('Harga terisi dari total komposisi — masih bisa diedit manual sebelum disimpan');
+  const btn = document.getElementById('hitungKomposisiBtn');
+  const btnHtmlAsal = btn.innerHTML;
+  // FIX (perf + UX): dulu query harga per item dijalanin SATU-SATU di dalam
+  // loop (N round-trip berurutan ke Supabase — set isi 20 item = 20 request
+  // nunggu gantian), dan tombolnya diem aja selama itu tanpa disable/spinner
+  // sama sekali. Jadi kalau set-nya gede, user ngeklik terus ngira macet
+  // (dan bisa aja re-klik berkali-kali numpuk request). Sekarang: (1) satu
+  // query batched buat semua produk_id sekaligus, dan (2) tombolnya
+  // didisable + kasih spinner + itung jumlah item selama proses jalan.
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span> Menghitung ${compRows.length} item...`;
+  try {
+    const produkIds = compRows.map(r => r.produk_id);
+    const { data: hargaRows, error } = await sb.from('produk_harga').select('produk_id, harga, tahun')
+      .in('produk_id', produkIds).eq('jenis', 'EKATALOG').order('tahun', { ascending: false });
+    if (error) { showToast('Gagal ambil harga item: ' + error.message, true); return; }
+
+    // Beberapa produk bisa punya harga EKATALOG di lebih dari satu tahun --
+    // karena hargaRows udah di-order tahun descending dari query di atas,
+    // baris PERTAMA yang ketemu per produk_id otomatis harga tahun terbaru.
+    const hargaTerbaruPerProduk = new Map();
+    (hargaRows || []).forEach(h => {
+      if (!hargaTerbaruPerProduk.has(h.produk_id)) hargaTerbaruPerProduk.set(h.produk_id, h.harga);
+    });
+
+    let total = 0;
+    const itemTanpaHarga = [];
+    for (const r of compRows) {
+      const harga = hargaTerbaruPerProduk.get(r.produk_id);
+      if (harga != null) { total += harga * r.qty; }
+      else { itemTanpaHarga.push(r.item?.nama_produk || r.item?.kode_produk || 'item'); }
+    }
+    document.getElementById('sh_harga').value = Math.round(total);
+    if (itemTanpaHarga.length > 0) {
+      showToast(`Dihitung, tapi ${itemTanpaHarga.length} item belum punya harga EKATALOG (tidak ikut terhitung): ${itemTanpaHarga.slice(0,3).join(', ')}${itemTanpaHarga.length>3?', ...':''}`, true);
+    } else {
+      showToast('Harga terisi dari total komposisi — masih bisa diedit manual sebelum disimpan');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = btnHtmlAsal;
   }
 });
 document.getElementById('addSetHargaBtn').addEventListener('click', async () => {
