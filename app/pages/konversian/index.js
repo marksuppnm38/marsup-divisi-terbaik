@@ -2611,7 +2611,17 @@ function switchSubTab(tab) {
   const crumbEl = document.getElementById('pw-topbar-crumb-text');
   if (crumbEl && SUBTAB_LABELS[tab]) crumbEl.textContent = SUBTAB_LABELS[tab];
   if (tab === 'sesi') loadSesiList();
-  if (tab === 'riwayat') loadRiwayatList();
+  if (tab === 'riwayat') {
+    // Sales options di-load sekali (guarded internal), lalu titipan filter
+    // dari dashboard (kalau ada) diterapkan ke kedua select SEBELUM query
+    // list-nya jalan, biar hasil pertama yang muncul sudah kefilter, gak
+    // "kedip" nampilin data belum-difilter dulu.
+    loadRiwayatSalesOptions().finally(() => {
+      applyPendingRiwayatFilter();
+      loadRiwayatList();
+    });
+    return;
+  }
   if (tab === 'dictionary') S.loadDictionary();
   if (tab === 'setcari' && typeof S.updateSetcariSourceCount === 'function') S.updateSetcariSourceCount();
 }
@@ -2764,6 +2774,79 @@ async function persistHasilOrder(sesiId, value, selectEl) {
   }
 }
 
+// Filter periode "Riwayat" — dihitung di client (bukan RPC baru), karena
+// sesi_konversi.updated_at sudah cukup buat semua opsi di bawah dan gak ada
+// query berat yang perlu didorong ke server. 'bulanini'/'bulanlalu' beneran
+// kalender (bukan rolling N hari), beda dari leaderboard dashboard yang
+// masih pakai p_days rolling (lihat daysToRiwayatPeriodKey di dashboard/index.js
+// buat pemetaan pas datang dari sana).
+function riwayatPeriodRange(key) {
+  const now = new Date();
+  const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+  const endOfDay = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
+  if (key === '7hari') {
+    const start = new Date(now); start.setDate(start.getDate() - 6);
+    return { start: startOfDay(start), end: endOfDay(now) };
+  }
+  if (key === '30hari') {
+    const start = new Date(now); start.setDate(start.getDate() - 29);
+    return { start: startOfDay(start), end: endOfDay(now) };
+  }
+  if (key === '90hari') {
+    const start = new Date(now); start.setDate(start.getDate() - 89);
+    return { start: startOfDay(start), end: endOfDay(now) };
+  }
+  if (key === 'bulanini') {
+    return { start: startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)), end: endOfDay(now) };
+  }
+  if (key === 'bulanlalu') {
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0);
+    return { start: startOfDay(start), end: endOfDay(end) };
+  }
+  return null; // 'semua' atau value gak dikenal
+}
+
+// Populate dropdown Sales dari nilai nama_sales yang beneran ada di
+// sesi_konversi selesai — nama_sales itu free-text (ketikan manual di form,
+// bukan FK ke tabel `sales`), jadi dropdown-nya diisi dari distinct value
+// yang sudah kepakai, bukan dari daftar master. Dipanggil sekali (guard via
+// dataset.loaded) tiap kali tab Riwayat pertama kali dibuka.
+async function loadRiwayatSalesOptions() {
+  if (!S.riwayatSalesFilter || S.riwayatSalesFilter.dataset.loaded === '1') return;
+  try {
+    const res = await S.sesiFetch(`${S.SESI_TABLE}?select=nama_sales&status=eq.selesai&nama_sales=not.is.null`);
+    if (!res.ok) return;
+    const rows = await res.json();
+    const names = [...new Set(rows.map(r => (r.nama_sales || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'id'));
+    const prevVal = S.riwayatSalesFilter.value;
+    S.riwayatSalesFilter.innerHTML = '<option value="">Semua Sales</option>'
+      + names.map(n => `<option value="${S.escapeHtmlAttr(n)}">${S.escapeHtmlAttr(n)}</option>`).join('');
+    if (prevVal) S.riwayatSalesFilter.value = prevVal;
+    S.riwayatSalesFilter.dataset.loaded = '1';
+  } catch (e) { console.warn('Gagal memuat daftar sales buat filter Riwayat:', e); }
+}
+
+// Titipan filter dari Dashboard (leaderboard sales, lihat
+// RIWAYAT_PENDING_FILTER_KEY di app/pages/dashboard/index.js) — key sengaja
+// disamain string-nya persis di kedua file. Dibaca sekali tiap tab Riwayat
+// dibuka lalu langsung dihapus, biar buka tab Riwayat manual berikutnya gak
+// ketiban filter basi dari kunjungan dashboard yang lama.
+const RIWAYAT_PENDING_FILTER_KEY = 'pnm_riwayat_pending_filter';
+function applyPendingRiwayatFilter() {
+  let pending = null;
+  try {
+    const raw = sessionStorage.getItem(RIWAYAT_PENDING_FILTER_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(RIWAYAT_PENDING_FILTER_KEY);
+    pending = JSON.parse(raw);
+  } catch (e) { return; }
+  if (!pending) return;
+  if (typeof pending.sales === 'string' && S.riwayatSalesFilter) S.riwayatSalesFilter.value = pending.sales;
+  if (typeof pending.period === 'string' && S.riwayatPeriodFilter) S.riwayatPeriodFilter.value = pending.period;
+}
+
 async function loadRiwayatList() {
   S.riwayatListLoading.style.display = 'block';
   S.riwayatListError.style.display = 'none';
@@ -2778,15 +2861,21 @@ async function loadRiwayatList() {
       const esc = term.replace(/[,()]/g, ' ').trim();
       searchFilter = `&or=(nama_rs.ilike.*${encodeURIComponent(esc)}*,pic_marsup.ilike.*${encodeURIComponent(esc)}*,nama_sales.ilike.*${encodeURIComponent(esc)}*)`;
     }
-    const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.selesai${searchFilter}&select=*,${S.SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link),sph_records(count)&order=updated_at.desc&limit=100`);
+    const salesVal = S.riwayatSalesFilter ? S.riwayatSalesFilter.value : '';
+    const salesFilter = salesVal ? `&nama_sales=eq.${encodeURIComponent(salesVal)}` : '';
+    const periodVal = S.riwayatPeriodFilter ? S.riwayatPeriodFilter.value : '';
+    const range = riwayatPeriodRange(periodVal);
+    const dateFilter = range ? `&updated_at=gte.${range.start.toISOString()}&updated_at=lte.${range.end.toISOString()}` : '';
+    const anyFilterActive = !!(term || salesVal || range);
+    const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.selesai${searchFilter}${salesFilter}${dateFilter}&select=*,${S.SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link),sph_records(count)&order=updated_at.desc&limit=100`);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
     }
     const data = await res.json();
     if (data.length === 0) {
-      S.riwayatListEmpty.querySelector('p').innerHTML = term
-        ? `Gak ada riwayat yang cocok dengan "${term.replace(/</g, '&lt;')}".`
+      S.riwayatListEmpty.querySelector('p').innerHTML = anyFilterActive
+        ? `Gak ada riwayat yang cocok dengan filter ini${term ? ` ("${term.replace(/</g, '&lt;')}")` : ''}.`
         : 'Belum ada sesi yang selesai.<br>Sesi yang di-Record atau di-Selesaikan bakal muncul di sini.';
       S.riwayatListEmpty.style.display = 'block';
       return;
@@ -2837,6 +2926,8 @@ S.riwayatClearBtn.addEventListener('click', () => {
   S.riwayatClearBtn.style.display = 'none';
   loadRiwayatList();
 });
+S.riwayatSalesFilter.addEventListener('change', () => loadRiwayatList());
+S.riwayatPeriodFilter.addEventListener('change', () => loadRiwayatList());
 
 
 // buat seluruh daftar), lalu tempel ke masing-masing baris sesi sebagai _permintaan.

@@ -176,6 +176,19 @@ export const KONVERSIAN_MARKUP = `
           <input id="riwayat-search-input" type="text" placeholder="Cari nama RS, PIC, atau sales…" autocomplete="off" style="width:100%;height:36px;padding:0 34px;font-size:13px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none"/>
           <button class="clear-btn" id="riwayat-clear-btn"><i class="ti ti-x"></i></button>
         </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <select id="riwayat-sales-filter" style="flex:1;height:32px;padding:0 8px;font-size:12px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none">
+            <option value="">Semua Sales</option>
+          </select>
+          <select id="riwayat-period-filter" style="flex:1;height:32px;padding:0 8px;font-size:12px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none">
+            <option value="semua">Semua Waktu</option>
+            <option value="7hari">7 Hari Terakhir</option>
+            <option value="30hari">30 Hari Terakhir</option>
+            <option value="90hari">90 Hari Terakhir</option>
+            <option value="bulanini">Bulan Ini</option>
+            <option value="bulanlalu">Bulan Lalu</option>
+          </select>
+        </div>
       </div>
       <div id="riwayat-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat riwayat…</div>
       <div id="riwayat-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>

@@ -1018,15 +1018,41 @@ function renderTrend(data){
   </div>`;
 }
 
+// Sesi Claude (2026-09-23): filter periode leaderboard + drill-down "apa
+// aja yang dikonversi sales ini". leaderboardDays disimpan di module scope
+// (bukan cuma di select-nya) karena dipakai juga pas klik lb-item, buat
+// nentuin periode apa yang dibawa ke tab Riwayat (lihat RIWAYAT_PENDING_FILTER_KEY
+// & daysToRiwayatPeriodKey di bawah — sengaja gak nambah RPC baru, cuma
+// numpang p_days yang sudah ada di get_dashboard_leaderboard_sales).
+let leaderboardDays = 30;
+function setLeaderboardPeriod(days) {
+  leaderboardDays = +days || 30;
+  loadLeaderboard();
+}
+
+// Key sessionStorage buat "titip" filter sales+periode dari sini ke tab
+// Riwayat konversian (dibaca oleh applyPendingRiwayatFilter() di
+// app/pages/konversian/index.js — string key ini sengaja disamain persis
+// di kedua file, pola yang sama kayak ?edit=/?return_to= antara konversian
+// <-> crud-produk, cuma medianya sessionStorage bukan query param karena
+// nav antar-module di sini SPA push-state, bukan full reload).
+const RIWAYAT_PENDING_FILTER_KEY = 'pnm_riwayat_pending_filter';
+function daysToRiwayatPeriodKey(days) {
+  if (days === 7) return '7hari';
+  if (days === 30) return '30hari';
+  if (days === 90) return '90hari';
+  return 'semua';
+}
+
 async function loadLeaderboard(){
-  const data = await rpc('get_dashboard_leaderboard_sales', {p_days: 30});
+  const data = await rpc('get_dashboard_leaderboard_sales', {p_days: leaderboardDays});
   const box = document.getElementById('leaderboard-box');
   if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data sales.</div>`; return; }
 
   const rankClass = (i) => i===0?'r1':i===1?'r2':i===2?'r3':'rn';
   box.innerHTML = `<div class="leaderboard-list">
     ${data.map((r,i) => `
-      <div class="lb-item" data-nav="/konversian/riwayat" title="Buka riwayat konversi">
+      <div class="lb-item" data-action="goto-riwayat-sales" data-sales="${esc(r.nama)}" role="button" tabindex="0" title="Lihat apa aja yang dikonversi ${esc(r.nama)}">
         <div class="lb-rank ${rankClass(i)}">${i+1}</div>
         <div class="lb-info">
           <div class="lb-name">${esc(r.nama)}</div>
@@ -1763,6 +1789,13 @@ async function popExportExcel(ev){
     window.dispatchEvent(new CustomEvent('pnm:navigate', { detail: { path } }));
   }
   const ACTIONS = {
+    'goto-riwayat-sales': (el) => {
+      sessionStorage.setItem(RIWAYAT_PENDING_FILTER_KEY, JSON.stringify({
+        sales: el.dataset.sales || '',
+        period: daysToRiwayatPeriodKey(leaderboardDays),
+      }));
+      goTo('/konversian/riwayat');
+    },
     'set-filter':      (el) => setFilter(el.dataset.f, el),
     'filter-goto':     (el) => applyFilterGoto(el.dataset.f, el.dataset.tipe),
     'go-page':         (el) => goPage(+el.dataset.page),
@@ -1783,6 +1816,7 @@ async function popExportExcel(ev){
   const CHANGE_BY_ID = {
     'tipe-filter':          (t) => setTipe(t.value),
     'wordtree-root-select': (t) => onWordtreeRootChange(t.value),
+    'leaderboard-period-filter': (t) => setLeaderboardPeriod(t.value),
     'pop-wilayah-filter':   (t) => popSetWilayah(t.value),
     'pop-entitas-filter':   (t) => popSetEntitas(t.value),
     'pop-channel-filter':   (t) => popSetChannel(t.value),

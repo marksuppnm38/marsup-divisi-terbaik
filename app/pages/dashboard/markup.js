@@ -93,7 +93,14 @@ export const DASHBOARD_MARKUP = `
       </div>
     </div>
     <div class="insight-card insight-card-tall">
-      <div class="insight-card-title"><i class="ti ti-trophy"></i> Leaderboard Sales (30 hari) <a class="insight-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Riwayat <i class="ti ti-arrow-right"></i></a></div>
+      <div class="insight-card-title"><i class="ti ti-trophy"></i> Leaderboard Sales
+        <select class="filter-select" id="leaderboard-period-filter" style="margin-left:6px;min-width:0;font-size:11.5px;padding:2px 20px 2px 8px" title="Periode leaderboard">
+          <option value="7">7 Hari</option>
+          <option value="30" selected>30 Hari</option>
+          <option value="90">90 Hari</option>
+          <option value="365">Semua (1 Thn)</option>
+        </select>
+        <a class="insight-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Riwayat <i class="ti ti-arrow-right"></i></a></div>
       <div id="leaderboard-box">
         <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
         <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
