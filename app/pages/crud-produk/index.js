@@ -41,6 +41,7 @@
 //      function scope yang sama.
 
 import { CRUD_PRODUK_MARKUP } from './markup.js';
+import { showToast, crudConfirm, crudAlert, renderPgBar } from './ui-utils.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -451,126 +452,11 @@ let mediaRows = [];
 let currentAkdLinks = [];
 let currentView = localStorage.getItem('produkView') || 'table';
 
-function showToast(msg, isError){
-  // Body delegate ke shared/toast.js — signature & 96 titik panggil di file
-  // ini sama sekali gak berubah, cuma implementasinya yang sekarang satu
-  // sumber sama konversian.js (lihat shared/toast.js buat detail/alasan).
-  // escapeHtml() manual gak dibutuhin lagi di sini (PNMToast pakai
-  // textContent, aman by construction) tapi dibiarin ada kalau kepakai
-  // di tempat lain di file ini.
-  PNMToast.show(msg, isError ? 'error' : 'success', { duration: isError ? 4500 : 3000 });
-}
-
-// Pengganti window.confirm()/alert() bawaan browser -- 10 titik pakai
-// confirm()/alert() polos sebelum ini (lepas relasi AKD, hapus harga/media/
-// item set/AKD/KFA/produk), semua bikin dialog abu-abu gak ngikutin tema +
-// nge-freeze tab. Polanya sama kayak showConfirmModal-nya konversian
-// (Escape=batal, Enter=OK, listener di-attach/lepas per panggilan biar gak
-// numpuk), cuma di sini dibangun di atas .confirm-overlay/.confirm-card/
-// .confirm-actions yang UDAH ADA di pnm-universal.css (dipakai unsavedConfirm-
-// Overlay di atas) -- gak nambah CSS pola baru, cuma varian .danger (ikon
-// merah, tombol OK jadi btn-danger-ghost) buat aksi hapus permanen.
-// alert() diganti pakai crudAlert() di bawah (mode message-only, tombol Batal
-// disembunyikan) biar satu mekanisme dipakai buat confirm & alert sekaligus.
-function crudConfirm(message, { title = 'Konfirmasi', okLabel = 'Ya, Lanjutkan', danger = false, alertOnly = false } = {}) {
-  return new Promise((resolve) => {
-    const overlay = document.getElementById('genericConfirmOverlay');
-    const card = document.getElementById('genericConfirmCard');
-    const iconEl = document.getElementById('genericConfirmIcon');
-    const titleEl = document.getElementById('genericConfirmTitle');
-    const msgEl = document.getElementById('genericConfirmMsg');
-    const cancelBtn = document.getElementById('genericConfirmCancelBtn');
-    const okBtn = document.getElementById('genericConfirmOkBtn');
-
-    titleEl.textContent = title;
-    msgEl.textContent = message;
-    okBtn.textContent = alertOnly ? 'Oke' : okLabel;
-    card.classList.toggle('danger', danger);
-    iconEl.className = danger ? 'ti ti-alert-triangle' : 'ti ti-info-circle';
-    okBtn.classList.toggle('btn-accent', !danger);
-    okBtn.classList.toggle('btn-danger-ghost', danger);
-    cancelBtn.style.display = alertOnly ? 'none' : '';
-
-    function cleanup(result) {
-      overlay.classList.remove('open');
-      okBtn.removeEventListener('click', onOk);
-      cancelBtn.removeEventListener('click', onCancel);
-      overlay.removeEventListener('click', onOverlay);
-      document.removeEventListener('keydown', onKey);
-      resolve(result);
-    }
-    function onOk() { cleanup(true); }
-    function onCancel() { cleanup(false); }
-    function onOverlay(e) { if (e.target === overlay) cleanup(false); }
-    function onKey(e) {
-      if (e.key === 'Escape') { cleanup(false); return; }
-      if (e.key === 'Enter') { cleanup(true); }
-    }
-
-    okBtn.addEventListener('click', onOk);
-    cancelBtn.addEventListener('click', onCancel);
-    overlay.addEventListener('click', onOverlay);
-    document.addEventListener('keydown', onKey);
-    overlay.classList.add('open');
-  });
-}
-// alert() polos punya 2 titik pakai (pesan-only, gak ada pilihan) -- lewat
-// fungsi yang sama, cuma alertOnly:true nyembunyiin tombol Batal.
-function crudAlert(message, opts = {}) {
-  return crudConfirm(message, { title: 'Perhatian', ...opts, alertOnly: true });
-}
-
-// ---- Pagination reusable — dipakai di Produk, Set Management, Log Aktivitas ----
-// el: elemen container. page: halaman aktif (mulai dari 1). pageSize: item per
-// halaman. total: total item keseluruhan (dari count exact / panjang array).
-// onPageChange(newPage): dipanggil pas user klik halaman lain.
-function renderPgBar(el, { page, pageSize, total, onPageChange }){
-  // FIX: el bisa null kalau pemanggil (loadProduk() dkk, semua async & await
-  // network) resolve SETELAH user udah pindah halaman -- router.js ngosongin
-  // container.innerHTML SEBELUM mount() halaman baru jalan, jadi
-  // document.getElementById('produkPagination') yang dipanggil fresh di
-  // loadProduk() balik null, bukan elemen basi. Dulu ini gak dicek -> throw
-  // "Cannot read properties of null (reading 'style')" tiap kali fetch produk
-  // lambat pas user buru-buru pindah tab/menu. Guard di sini + guard tambahan
-  // di loadProduk() sendiri (lihat `if (!mountedContainer) return;` sebelum
-  // baris ini dipanggil) -- dua-duanya dijaga karena renderPgBar dipanggil
-  // dari banyak tempat lain (Set/AKD/KFA) yang punya race serupa.
-  if (!el) return;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  if (total === 0 || totalPages <= 1) { el.innerHTML = ''; el.style.display = 'none'; return; }
-  el.style.display = 'flex';
-
-  const startItem = (page - 1) * pageSize + 1;
-  const endItem = Math.min(page * pageSize, total);
-
-  const pagesToShow = [...new Set([1, totalPages, page - 1, page, page + 1])]
-    .filter(p => p >= 1 && p <= totalPages)
-    .sort((a, b) => a - b);
-
-  let numberBtns = '';
-  let prevP = null;
-  pagesToShow.forEach(p => {
-    if (prevP !== null && p - prevP > 1) numberBtns += `<span class="pg-ellipsis">…</span>`;
-    numberBtns += `<button class="pg-btn${p === page ? ' active' : ''}" data-page="${p}">${p}</button>`;
-    prevP = p;
-  });
-
-  el.innerHTML = `
-    <span class="pg-info">${startItem}–${endItem} dari ${total}</span>
-    <div class="pg-btns">
-      <button class="pg-btn" data-page="${page - 1}" ${page === 1 ? 'disabled' : ''}><i class="ti ti-chevron-left"></i></button>
-      ${numberBtns}
-      <button class="pg-btn" data-page="${page + 1}" ${page === totalPages ? 'disabled' : ''}><i class="ti ti-chevron-right"></i></button>
-    </div>
-  `;
-  el.querySelectorAll('.pg-btn[data-page]:not(:disabled)').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const p = parseInt(btn.dataset.page, 10);
-      if (!p || p < 1 || p > totalPages || p === page) return;
-      onPageChange(p);
-    });
-  });
-}
+// showToast/crudConfirm/crudAlert/renderPgBar DIPINDAH ke ./ui-utils.js
+// (breakup sesi ini — 4 fungsi ini gak nyimpen/baca state apa pun selain
+// parameter + document.getElementById + window.PNMToast, jadi aman
+// diekspor langsung tanpa pola installXxx(S) kayak modul konversian).
+// Logic-nya TIDAK diubah, cuma dipindah lokasi + jadi named export.
 
 const tableBody = document.getElementById('tableBody');
 const cardWrap = document.getElementById('cardWrap');
