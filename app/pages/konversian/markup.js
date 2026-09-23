@@ -190,6 +190,7 @@ export const KONVERSIAN_MARKUP = `
           </select>
         </div>
       </div>
+      <div id="riwayat-summary" style="display:none;gap:14px;flex-wrap:wrap;align-items:center;padding:9px 14px;margin:0 12px 10px;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;font-size:11.5px;color:var(--text-muted)"></div>
       <div id="riwayat-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat riwayat…</div>
       <div id="riwayat-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
       <div class="clip-empty" id="riwayat-list-empty" style="display:none">

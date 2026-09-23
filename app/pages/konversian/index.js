@@ -2847,11 +2847,52 @@ function applyPendingRiwayatFilter() {
   if (typeof pending.period === 'string' && S.riwayatPeriodFilter) S.riwayatPeriodFilter.value = pending.period;
 }
 
+// Rekap ringkas buat baris hasil Riwayat yang lagi ditampilin (bukan query
+// agregat terpisah ke server — dihitung dari `data` yang sama yang sudah
+// kefetch buat render kartu, jadi zero cost tambahan). Sengaja pisah
+// "jadi order" dari "total nilai tercatat": grand_total record ada di
+// SEMUA sesi yang pernah di-Record, gak peduli hasil_order-nya apa (masih
+// nunggu feedback sales, jadi order, atau enggak) — nyampur semuanya jadi
+// satu angka "total" bakal kebaca kayak omzet padahal sebagian besar masih
+// potensi/belum pasti. Ditampilin kepisah biar gak nyesatin.
+function riwayatLatestRecord(s) {
+  const records = s.konversi_record || [];
+  return records.length ? records.reduce((a, b) => (b.revisi > a.revisi ? b : a)) : null;
+}
+function renderRiwayatSummary(data) {
+  if (!S.riwayatSummary) return;
+  if (!data.length) { S.riwayatSummary.style.display = 'none'; S.riwayatSummary.innerHTML = ''; return; }
+  let jadiCount = 0, jadiValue = 0, tanpaCount = 0, nungguCount = 0, totalRecorded = 0, recordedCount = 0;
+  data.forEach(s => {
+    const latest = riwayatLatestRecord(s);
+    const val = (latest && latest.grand_total != null) ? Number(latest.grand_total) : null;
+    if (val != null) { totalRecorded += val; recordedCount++; }
+    if (s.hasil_order === 'jadi_order') { jadiCount++; if (val != null) jadiValue += val; }
+    else if (s.hasil_order === 'tanpa_order') tanpaCount++;
+    else nungguCount++;
+  });
+  // limit=100 di query -- kalau pas kena 100 pas, kemungkinan masih ada baris
+  // lain yang cocok filter tapi gak ketarik; angka di bawah cuma dari yang
+  // tertampil, bukan klaim "semua data yang cocok filter ini".
+  const cappedNote = data.length === 100
+    ? ` <span title="Query dibatasi 100 baris terbaru — rekap ini cuma dari yang tertampil">(100 teratas)</span>`
+    : '';
+  S.riwayatSummary.innerHTML = `
+    <span><b style="color:var(--text)">${data.length}</b> sesi${cappedNote}</span>
+    <span style="color:var(--success)"><b>${jadiCount}</b> jadi order${jadiValue ? ' · ' + S.rupiah(jadiValue) : ''}</span>
+    <span>${nungguCount} menunggu feedback</span>
+    <span style="color:var(--danger)">${tanpaCount} tidak jadi order</span>
+    <span style="margin-left:auto;color:var(--text)">Total nilai tercatat (${recordedCount} sesi ada record): <b>${S.rupiah(totalRecorded)}</b></span>
+  `;
+  S.riwayatSummary.style.display = 'flex';
+}
+
 async function loadRiwayatList() {
   S.riwayatListLoading.style.display = 'block';
   S.riwayatListError.style.display = 'none';
   S.riwayatListEmpty.style.display = 'none';
   S.riwayatList.innerHTML = '';
+  if (S.riwayatSummary) S.riwayatSummary.style.display = 'none';
   try {
     // Search realtime di nama RS / PIC / Sales — pake `or=` PostgREST biar
     // kepencet satu kotak aja, gak perlu tiga filter field terpisah.
@@ -2881,6 +2922,7 @@ async function loadRiwayatList() {
       return;
     }
     S.riwayatList.innerHTML = data.map(renderRiwayatCard).join('');
+    renderRiwayatSummary(data);
     S.riwayatList.querySelectorAll('.riwayat-card').forEach(card => {
       card.addEventListener('click', () => openSesi(card.dataset.id));
     });
