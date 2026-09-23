@@ -25,7 +25,30 @@
    fields; a comfortable reading column inside the full-bleed canvas is
    the Vercel pattern (full-width chrome, centered content), not a
    contradiction of the earlier fullbleed request. */
+/* Root cause of the empty-gap-at-bottom bug: .pw-nav (nav.css) always sets
+   its own height:100vh, and as a flex sibling of .pw-content inside
+   .pw-shell{display:flex} (pnm-universal.css), that stretches .pw-content
+   itself to at least a full viewport tall -- regardless of how short this
+   page's own content is. .eg-page (plain block div, no sizing of its own)
+   and main below it were only ever as tall as their actual content, so on
+   a short page (one card, no long list) there was a real leftover strip
+   of .pw-content's enforced height below them with no background of its
+   own -- falling through to <body>'s var(--bg), which reads as a stray
+   block of the wrong color sitting under the card, not simply "empty
+   space". Filling that same box with .eg-page/main themselves (flex
+   column, min-height:100% so it matches whatever .pw-content was already
+   stretched to -- never a hardcoded px/vh value, and never taller than
+   that on a short page) makes the page's own background cover it
+   instead. Content still ends right after the card on any viewport at or
+   above one screen tall; this only fills color, it doesn't add scroll
+   height beyond what .pw-nav's own height already required. */
+.eg-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
 .eg-page main {
+  flex: 1;
   max-width: none;
   margin: 0;
   padding: 40px 20px 64px;

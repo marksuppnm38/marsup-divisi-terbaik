@@ -31,7 +31,7 @@ export const CRUD_PRODUK_MARKUP = `
 <div class="shell" id="appWrap">
   <main class="main">
     <div class="pw-topbar">
-      <div class="pw-topbar-crumb"><strong>CRUD Produk</strong></div>
+      <div class="pw-topbar-crumb">CRUD Produk <span class="pw-topbar-crumb-sep">/</span> <strong id="pw-topbar-crumb-text">Produk</strong></div>
     </div>
     <div class="topbar">
       <div class="top-search">

@@ -268,10 +268,24 @@ export async function mount(container, initialSub) {
 // any real module-aware parser -- including the TS language server, which
 // is how this got caught -- does. This comment + the top-level
 // `_switchView`/`setSubroute` pair below is the fix.)
+// Same "Module / Page" breadcrumb pattern as konversian's switchSubTab()
+// -- see that function's comment for the reasoning. Keys match
+// CRUD_PRODUK_SUBNAV's ids (subnav.js) since both drive off the same
+// switchView(view) values.
+const CRUD_VIEW_LABELS = {
+  produk: 'Produk',
+  set: 'Set Management',
+  akd: 'AKD',
+  kfa: 'KFA Management',
+  bulk: 'Bulk Edit',
+  sync: 'Sync dari Sheet',
+};
 function switchView(view){
   ['produk','set','akd','kfa','bulk','sync'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
+  const crumbEl = document.getElementById('pw-topbar-crumb-text');
+  if (crumbEl && CRUD_VIEW_LABELS[view]) crumbEl.textContent = CRUD_VIEW_LABELS[view];
   document.getElementById('addBtn').style.display = (view === 'produk') ? '' : 'none';
   document.querySelector('.view-toggle').style.display = (view === 'produk') ? '' : 'none';
   if (view === 'akd' && !akdLoadedOnce) { akdLoadedOnce = true; S.loadAkdDistinctValues(); S.loadAkd(); }

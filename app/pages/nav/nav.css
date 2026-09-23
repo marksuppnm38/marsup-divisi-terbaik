@@ -540,10 +540,21 @@
 .pw-topbar-crumb {
   font-size: 13px;
   color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .pw-topbar-crumb strong {
   color: var(--text);
   font-weight: 600;
+}
+/* Two-level "Module / Page" hierarchy (konversian, crud-produk) -- the
+   separator sits between the static module name and the dynamic active
+   sub-page, both already inside .pw-topbar-crumb's muted base color. Kept
+   to opacity only (no extra color token) so it stays a quiet divider, not
+   a third visual weight competing with the muted/bold pair above it. */
+.pw-topbar-crumb-sep {
+  opacity: .45;
 }
 .pw-topbar-actions {
   display: flex;

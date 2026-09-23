@@ -51,6 +51,42 @@
   background:var(--surface);
 }
 
+/* ============================================================
+   SCROLL-CONTAINER FIX -- root cause of the "border/garis tidak align
+   saat scroll" bug.
+   .content's overflow-y:auto (pnm-universal.css) was always meant to make
+   IT the scrolling region, with .pw-topbar/.topbar staying permanently
+   visible above it. But .shell only sets min-height:100vh (pnm-universal.
+   css) -- with no upper bound, #appWrap just grows to fit however tall
+   .content's rows make it, so .content's own box is never actually
+   height-constrained and its overflow-y:auto never engages. The WHOLE
+   PAGE scrolls instead (document/body). .topbar's position:sticky;top:0
+   (pnm-universal.css) then sticks relative to the viewport instead of
+   relative to .content, while .pw-nav has its own separate height:100vh +
+   position:sticky (app/pages/nav/nav.css) also reasoning about a
+   viewport-level scroll -- two sticky elements each quietly assuming a
+   different scroll root is exactly the class of bug where a border/edge
+   that's visually attached to one element drifts relative to another as
+   you scroll, because they were never both pinned to the same scrolling
+   box to begin with.
+   Fix, scoped to #appWrap only (NOT the shared .pw-shell/.shell every
+   other module also uses): give this page's own shell a real bounded
+   height instead of a growable min-height -- the same height:100vh +
+   overflow:hidden pattern konversian's #app-root already uses
+   successfully for the same reason (see konversian/markup.js's #app-root
+   inline style). With #appWrap capped at the viewport height, .main's
+   flex column stretches to fill it, and .content{flex:1;overflow-y:auto}
+   (pnm-universal.css) can finally become the actual scrolling region it
+   was styled to be. .pw-topbar and .topbar end up permanently visible
+   above it without needing their position:sticky to fake that against a
+   scroll root they were never really inside, and every border inside
+   .table-card now scrolls as one rigid unit with its own rows instead of
+   drifting against a topbar stuck to a different box. */
+#appWrap.shell{
+  height:100vh;
+  overflow:hidden;
+}
+
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;padding:10px 14px;background:var(--surface-2);color:var(--text-muted);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)}
 td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}

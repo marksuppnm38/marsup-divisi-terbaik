@@ -110,7 +110,7 @@
   background:var(--surface);
 }
 #app-root .panel-header{
-  padding:0 20px 12px;
+  padding:0 20px 6px;
   border-bottom:none;
 }
 
@@ -119,16 +119,21 @@
    nav moved into the sidebar — .subtab-row itself was never hidden along
    with them (it can't be, .panel-collapse-btn/"Ciutkan panel pencarian"
    lives in the same row and still needs to render outside door-cari mode).
-   Net effect before this fix: an empty flex row still carrying the old
-   full-tab-bar's border-bottom + 14px bottom margin + 14px of header
-   padding above it — ~50px of dead space with just one lone chevron
-   floating in the far corner. Stripped down to only what the collapse
-   button itself needs. */
+   An earlier pass already cut this from the old full-tab-bar's ~50px (see
+   map-history.md) down to a single 10px-padded row -- but on any tab
+   OTHER than Cari Produk, that row is STILL a full-width flex line with
+   nothing in it but the collapse chevron pushed to the far right
+   (margin-left:auto, pnm-universal.css) -- directly under .konv-toolbar,
+   which already has its own real content. Two stacked rows of chrome
+   where the second one is visually empty reads as dead space regardless
+   of its exact pixel height. Tightened further (10px top padding -> 6px,
+   .panel-header's own bottom padding 12px -> 6px) so what's left is just
+   enough click target for the chevron, not a second toolbar-height row. */
 #app-root .subtab-row{
   border-bottom:none;
   gap:18px;
   margin-bottom:0;
-  padding:10px 0 0;
+  padding:6px 0 0;
   min-height:0;
 }
 #app-root .subtab-btn{
@@ -604,3 +609,70 @@
    keduanya pas lagi .show biar selalu di atas modal lain.
    ============================================================ */
 #lampiran-modal.show, #gambar-modal.show { z-index: 70; }
+
+/* ============================================================
+   RIWAYAT — compact filter toolbar (see markup.js's comment on the
+   panel-body-riwayat block for what this replaces: a 3-row stack of
+   one-off inline-styled controls). Search grows to fill the row,
+   the two selects + refresh button stay their natural width, everything
+   sits on one 32px-control-height row like the rest of the app's
+   toolbars (.sesi-toolbar, .dict-toolbar).
+   ============================================================ */
+#app-root .riwayat-toolbar{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 12px;
+  margin-bottom:2px;
+}
+#app-root .riwayat-toolbar-search{
+  flex:1;
+  min-width:0;
+  margin-bottom:0;
+}
+#app-root .riwayat-toolbar-search input{
+  width:100%;
+  height:32px;
+  padding:0 32px;
+  font-size:12.5px;
+  font-family:inherit;
+  border:1px solid var(--border-strong);
+  border-radius:6px;
+  background:var(--surface);
+  color:var(--text);
+  outline:none;
+}
+#app-root .riwayat-toolbar #riwayat-sales-filter,
+#app-root .riwayat-toolbar #riwayat-period-filter{
+  flex:0 0 auto;
+  width:132px;
+}
+/* Scope note demoted to a plain caption line under the toolbar instead of
+   sharing a row with the refresh button -- it's context, not a control,
+   so it no longer competes for the same visual weight as the actions
+   above it. */
+#app-root .riwayat-scope-note{
+  padding:0 12px 8px;
+  font-size:11px;
+  color:var(--text-muted);
+}
+/* Summary strip: a quiet inline caption row, not a bordered card -- a
+   second boxed block stacked directly under the toolbar's own implicit
+   grouping read as one more competing surface rather than a natural
+   continuation of the same filter area. */
+#app-root .riwayat-summary{
+  gap:14px;
+  flex-wrap:wrap;
+  align-items:center;
+  padding:0 12px 10px;
+  font-size:11.5px;
+  color:var(--text-muted);
+}
+@media (max-width:768px){
+  #app-root .riwayat-toolbar{flex-wrap:wrap}
+  #app-root .riwayat-toolbar #riwayat-sales-filter,
+  #app-root .riwayat-toolbar #riwayat-period-filter{
+    flex:1;
+    width:auto;
+  }
+}

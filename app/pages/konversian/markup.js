@@ -33,16 +33,18 @@ export const KONVERSIAN_MARKUP = `
      is a normal pattern (Vercel/Linear both do a thin identity bar + a
      tab/status row below it for a specific view), not a compromise. -->
 <div class="pw-topbar">
-  <!-- Was a static "Conversion Workspace" -- word-for-word the same
-     string the sidebar already shows as this module's own section
-     header (see MODULES in app/pages/home/markup.js), so it was pure
-     duplication sitting right next to the thing it duplicated. This now
-     tracks whichever tab is actually active (switchSubTab() in index.js
-     keeps #pw-topbar-crumb-text in sync) -- "Cari Produk" on load,
-     "Konversi Berjalan" once you're looking at a session, etc. -- so the
-     topbar tells you where you ARE instead of repeating what module
-     you're in. -->
-  <div class="pw-topbar-crumb"><strong id="pw-topbar-crumb-text">Cari Produk</strong></div>
+  <!-- Two-level breadcrumb: "Conversion Workspace" (static module name,
+     matches the sidebar's own section header for this module -- see
+     MODULES in app/pages/home/markup.js) followed by whichever sub-page
+     is actually active (switchSubTab() in index.js keeps
+     #pw-topbar-crumb-text in sync -- "Cari Produk" on load, "Konversi
+     Berjalan" once you're looking at a session, etc.). A prior pass
+     dropped the static module name entirely to avoid duplicating the
+     sidebar, but across the app this reads as "which module am I in"
+     info that the dynamic tab name alone doesn't give you -- so it's
+     back, now as the first breadcrumb segment rather than the whole
+     string, same pattern CRUD Produk's crumb uses. -->
+  <div class="pw-topbar-crumb">Conversion Workspace <span class="pw-topbar-crumb-sep">/</span> <strong id="pw-topbar-crumb-text">Cari Produk</strong></div>
   <div class="pw-topbar-actions">
     <button class="toggle-btn" id="settings-toggle" title="Preferensi" aria-label="Preferensi"><i class="ti ti-settings"></i></button>
   </div>
@@ -166,31 +168,37 @@ export const KONVERSIAN_MARKUP = `
       <div id="sesi-list"></div>
     </div>
     <div class="panel-body" id="panel-body-riwayat" style="display:none">
-      <div class="sesi-toolbar">
-        <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center">Sesi yang sudah selesai — jadi order maupun enggak</span>
-        <button class="toggle-btn" id="btn-riwayat-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
-      </div>
-      <div style="padding:0 12px 10px">
-        <div class="search-wrap" style="margin-bottom:0">
+      <!-- Compact single-purpose filter toolbar (search + 2 selects share one
+           row, refresh sits at the end) -- previously a 3-row stack (a
+           .sesi-toolbar label+refresh row, a full-width 36px search input in
+           its own padded block, then a 2nd row for the selects) that read as
+           an old full-page filter bar dropped into a narrow side panel. All
+           three controls now use the shared global .search-wrap/.filter-select/
+           .toggle-btn classes (same as everywhere else in the app) instead of
+           one-off inline styles, so it also picks up whatever those look like
+           app-wide instead of drifting from them. Same ids, same filter/summary
+           behavior -- purely a markup/CSS restructure. -->
+      <div class="riwayat-toolbar">
+        <div class="search-wrap riwayat-toolbar-search">
           <i class="ti ti-search"></i>
-          <input id="riwayat-search-input" type="text" placeholder="Cari nama RS, PIC, atau sales…" autocomplete="off" style="width:100%;height:36px;padding:0 34px;font-size:13px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none"/>
+          <input id="riwayat-search-input" type="text" placeholder="Cari nama RS, PIC, atau sales…" autocomplete="off"/>
           <button class="clear-btn" id="riwayat-clear-btn"><i class="ti ti-x"></i></button>
         </div>
-        <div style="display:flex;gap:6px;margin-top:8px">
-          <select id="riwayat-sales-filter" style="flex:1;height:32px;padding:0 8px;font-size:12px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none">
-            <option value="">Semua Sales</option>
-          </select>
-          <select id="riwayat-period-filter" style="flex:1;height:32px;padding:0 8px;font-size:12px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none">
-            <option value="semua">Semua Waktu</option>
-            <option value="7hari">7 Hari Terakhir</option>
-            <option value="30hari">30 Hari Terakhir</option>
-            <option value="90hari">90 Hari Terakhir</option>
-            <option value="bulanini">Bulan Ini</option>
-            <option value="bulanlalu">Bulan Lalu</option>
-          </select>
-        </div>
+        <select class="filter-select" id="riwayat-sales-filter">
+          <option value="">Semua Sales</option>
+        </select>
+        <select class="filter-select" id="riwayat-period-filter">
+          <option value="semua">Semua Waktu</option>
+          <option value="7hari">7 Hari Terakhir</option>
+          <option value="30hari">30 Hari Terakhir</option>
+          <option value="90hari">90 Hari Terakhir</option>
+          <option value="bulanini">Bulan Ini</option>
+          <option value="bulanlalu">Bulan Lalu</option>
+        </select>
+        <button class="toggle-btn" id="btn-riwayat-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
       </div>
-      <div id="riwayat-summary" style="display:none;gap:14px;flex-wrap:wrap;align-items:center;padding:9px 14px;margin:0 12px 10px;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;font-size:11.5px;color:var(--text-muted)"></div>
+      <div class="riwayat-scope-note">Sesi yang sudah selesai — jadi order maupun enggak</div>
+      <div id="riwayat-summary" class="riwayat-summary" style="display:none"></div>
       <div id="riwayat-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat riwayat…</div>
       <div id="riwayat-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
       <div class="clip-empty" id="riwayat-list-empty" style="display:none">
