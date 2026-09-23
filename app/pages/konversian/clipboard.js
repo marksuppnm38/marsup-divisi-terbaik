@@ -2187,6 +2187,12 @@ function switchTab(tab) {
 }
 S.switchTab = switchTab;
 
+// Dulu inline onclick="switchTab(...)" di markup.js -- dipindah ke sini (installClipboard
+// jalan sekali per mount, sama seperti listener2 lain di file ini) biar CSP script-src
+// gak butuh 'unsafe-inline'.
+document.getElementById('tab-search')?.addEventListener('click', () => switchTab('search'));
+document.getElementById('tab-clip')?.addEventListener('click', () => switchTab('clip'));
+
 if (window.innerWidth <= 768) document.getElementById('panel-search').classList.add('active');
 
 updateClipboard();

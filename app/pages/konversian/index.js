@@ -1418,7 +1418,7 @@ function openGambarModal(kode_asli, kode_produk, nama_produk) {
   gambarStatus.textContent = 'Memuat gambar…';
   gambarModal.classList.add('show');
 
-  const url = THUMB_BASE + encodeURIComponent(kodeForUrl) + '.png';
+  const url = THUMB_BASE + kodeForUrl + '.png';
   gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarImg.style.display = 'block'; gambarDropzone.style.display = 'none'; gambarGantiBtn.style.display = 'inline-block'; };
   gambarImg.onerror = () => {
     gambarStatus.style.display = 'none';
@@ -1512,7 +1512,7 @@ async function handleGambarFileDropped(file) {
     gambarStatus.textContent = 'Memuat gambar…';
     gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarUploadStatus.style.display = 'none'; gambarImg.style.opacity = '1'; gambarImg.style.display = 'block'; gambarGantiBtn.style.display = 'inline-block'; };
     gambarImg.onerror = () => { gambarImg.style.opacity = '1'; gambarUploadStatus.textContent = 'Gambar sudah diunggah, tapi gagal dimuat ulang — coba buka lagi.'; };
-    gambarImg.src = THUMB_BASE + encodeURIComponent(gambarCurrentKodeForUrl) + '.png?t=' + Date.now();
+    gambarImg.src = THUMB_BASE + gambarCurrentKodeForUrl + '.png?t=' + Date.now();
     // Toast eksplisit di luar modal (gak cuma teks kecil di dalam modal) —
     // supaya user yang matanya udah pindah dari modal (mis. abis paste
     // langsung mau lanjut kerjaan lain) tetap kelihatan konfirmasi tegas
@@ -2624,15 +2624,6 @@ S.subtabSetcari.addEventListener('click', () => switchSubTab('setcari'));
 S.subtabDictionary.addEventListener('click', () => switchSubTab('dictionary'));
 _switchSubTab = switchSubTab; // expose to the real top-level setSubroute() near the bottom of this file
 
-// MOBILE TABS (#tab-search/#tab-clip di markup.js) — dulu onclick="switchTab(...)"
-// inline, sekarang listener biasa kayak subtab di atas (CSP: no unsafe-inline
-// untuk script-src-attr). S.switchTab sendiri (didefinisikan di clipboard.js,
-// dipasang installClipboard(S) di atas) TETAP dipanggil lewat window.switchTab
-// dari modul lain (clipboard.js/search.js) — itu referensi global antar-modul
-// biasa, bukan inline handler, jadi gak kena cleanup ini.
-document.getElementById('tab-search').addEventListener('click', () => S.switchTab('search'));
-document.getElementById('tab-clip').addEventListener('click', () => S.switchTab('clip'));
-
 function sesiTimeAgo(iso) {
   if (!iso) return '-';
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -2727,12 +2718,10 @@ function renderRiwayatCard(s) {
     : '';
   // Link file/dokumen yang nempel di record terbaru (biasanya link Drive dari
   // "Simpan ke Drive" → auto-filled ke rec-link → ikut kesimpen di sini).
-  // Klik link gak ikut ngebuka sesi karena card's click handler (lihat
-  // querySelectorAll('.riwayat-card') di bawah) udah nge-skip elemen
-  // interaktif lewat closest('a,select,button') — bukan lagi stopPropagation
-  // inline di sini (CSP: no unsafe-inline untuk script-src-attr).
+  // stopPropagation biar klik link gak ikut ngebuka sesi (card-nya sendiri
+  // punya click handler buat openSesi).
   const linkChip = (latest && latest.link && S.isSafeHttpUrl(latest.link))
-    ? `<a class="mi" href="${S.escapeHtmlAttr(latest.link)}" target="_blank" rel="noopener" style="color:var(--accent-text)"><i class="ti ti-link"></i><span>Buka file</span></a>`
+    ? `<a class="mi record-link-chip" href="${S.escapeHtmlAttr(latest.link)}" target="_blank" rel="noopener" style="color:var(--accent-text)"><i class="ti ti-link"></i><span>Buka file</span></a>`
     : '';
   return `<div class="rcard riwayat-card" data-id="${s.id}" style="position:relative">
     <div class="rcard-top" style="padding-right:8px">
@@ -2804,15 +2793,17 @@ async function loadRiwayatList() {
     }
     S.riwayatList.innerHTML = data.map(renderRiwayatCard).join('');
     S.riwayatList.querySelectorAll('.riwayat-card').forEach(card => {
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('a,select,button')) return; // link/select/tombol di dalam kartu punya aksinya sendiri
-        openSesi(card.dataset.id);
-      });
+      card.addEventListener('click', () => openSesi(card.dataset.id));
     });
     S.riwayatList.querySelectorAll('.hasil-order-select').forEach(sel => {
       sel.addEventListener('click', (e) => e.stopPropagation());
       sel.addEventListener('mousedown', (e) => e.stopPropagation());
       sel.addEventListener('change', (e) => persistHasilOrder(sel.dataset.id, sel.value, sel));
+    });
+    // Dulu inline onclick="event.stopPropagation()" di linkChip -- tanpa ini klik "Buka file"
+    // bakal ikut buka kartu sesi (bubbling ke card.addEventListener('click', openSesi) di atas).
+    S.riwayatList.querySelectorAll('.record-link-chip').forEach(a => {
+      a.addEventListener('click', (e) => e.stopPropagation());
     });
     S.riwayatList.querySelectorAll('.sph-riwayat-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -2918,8 +2909,11 @@ async function deleteSesi(id, nama, btn) {
   if (!(await S.showConfirmModal({ title: 'Hapus Sesi', text: `Hapus sesi "${nama}"? Semua produk di dalamnya ikut terhapus dan tidak bisa dikembalikan.`, okText: 'Ya, Hapus', danger: true }))) return;
   if (btn) btn.disabled = true;
   try {
-    await S.sesiFetch(`${S.SESI_ITEM_TABLE}?sesi_id=eq.${id}`, { method: 'DELETE' });
-    const res = await S.sesiFetch(`${S.SESI_TABLE}?id=eq.${id}`, { method: 'DELETE' });
+    // Defense-in-depth: id di sini normalnya dataset.id dari baris DB (bukan input bebas),
+    // tapi di-encode juga supaya konsisten dengan openSesi() dan gak bergantung ke asumsi itu.
+    const idSafe = encodeURIComponent(id);
+    await S.sesiFetch(`${S.SESI_ITEM_TABLE}?sesi_id=eq.${idSafe}`, { method: 'DELETE' });
+    const res = await S.sesiFetch(`${S.SESI_TABLE}?id=eq.${idSafe}`, { method: 'DELETE' });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Gagal menghapus sesi');
@@ -2949,9 +2943,14 @@ async function openSesi(id) {
   try {
     resetChecklistUI(); // buang checklist Permintaan RS dari sesi sebelumnya (kalau ada) dulu
     if (typeof S.switchDoor === 'function') S.switchDoor('konversi'); // buka sesi = jelas-jelas mau lanjut kerjaan konversi
+    // encodeURIComponent(id): `id` di sini bisa datang dari ?sesi=... di URL (link share
+    // WhatsApp, lihat openSesiFromUrlIfAny()) -- link yang dibikin orang lain, bukan dari
+    // DB. Tanpa di-encode, string berisi karakter PostgREST filter (mis. `&or=(...)`) bisa
+    // menyisipkan kondisi tambahan ke query yang jalan pakai token si korban.
+    const idSafe = encodeURIComponent(id);
     const [sesiRes, itemsRes] = await Promise.all([
-      S.sesiFetch(`${S.SESI_TABLE}?id=eq.${id}&select=*`),
-      S.sesiFetch(`${S.SESI_ITEM_TABLE}?sesi_id=eq.${id}&select=*`)
+      S.sesiFetch(`${S.SESI_TABLE}?id=eq.${idSafe}&select=*`),
+      S.sesiFetch(`${S.SESI_ITEM_TABLE}?sesi_id=eq.${idSafe}&select=*`)
     ]);
     if (!sesiRes.ok || !itemsRes.ok) throw new Error('Gagal memuat sesi dari server');
     const [sesiRows, items] = await Promise.all([sesiRes.json(), itemsRes.json()]);

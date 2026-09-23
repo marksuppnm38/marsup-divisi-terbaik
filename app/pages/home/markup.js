@@ -95,7 +95,7 @@ export const HOME_MARKUP = `
   <header class="home-header">
     <div class="brand-group">
       <div class="brand-logo-wrap">
-        <img src="/favicon/favicon-96x96.png" alt="Pionir Logo" onerror="this.onerror=null; this.parentNode.innerHTML='&lt;svg width=&quot;22&quot; height=&quot;22&quot; viewBox=&quot;0 0 24 24&quot; fill=&quot;none&quot; stroke=&quot;currentColor&quot; stroke-width=&quot;2.5&quot;&gt;&lt;path d=&quot;M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5&quot;/&gt;&lt;/svg&gt;';">
+        <img id="brand-logo-img" src="/favicon/favicon-96x96.png" alt="Pionir Logo">
       </div>
       <div class="brand-titles">
         <h1>Pionir Workspaces</h1>

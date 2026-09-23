@@ -1185,8 +1185,7 @@ function dictDetailRowHtml(d, isManual) {
       <div style="display:flex;align-items:flex-start;gap:10px">
         <img src="${thumbUrl}" class="dict-detail-thumb" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}"
           data-kode-asli="${S.escapeHtmlAttr(d.kode_asli || '')}" data-nama="${S.escapeHtmlAttr(d.nama_produk || '')}"
-          style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);flex-shrink:0;cursor:pointer"
-          onerror="this.style.visibility='hidden'"/>
+          style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);flex-shrink:0;cursor:pointer"/>
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
             <div style="min-width:0">
@@ -1279,6 +1278,15 @@ async function openDictionaryDetail(istilah) {
 S.openDictionaryDetail = openDictionaryDetail;
 dictModalClose.addEventListener('click', () => dictModal.classList.remove('show'));
 dictModal.addEventListener('click', (e) => { if (e.target === dictModal) dictModal.classList.remove('show'); });
+
+// Thumbnail gagal load (kode_asli belum ada gambar) -> sembunyikan, bukan
+// nampilin ikon broken-image bawaan browser. Dulu inline onerror= di
+// dictDetailRowHtml(); dipindah ke satu listener capture-phase di sini
+// (error event gak bubbling, tapi tetap kelewatan capture phase) karena
+// baris detail di-render ulang tiap buka istilah -- gak perlu dipasang ulang.
+dictModalList.addEventListener('error', (e) => {
+  if (e.target.matches && e.target.matches('.dict-detail-thumb')) e.target.style.visibility = 'hidden';
+}, true);
 
 // Klik thumbnail atau tombol "Lihat Gambar" -> pakai modal gambar yang
 // sama persis kayak di tab Cari Produk (S.openGambarModal sudah nanganin

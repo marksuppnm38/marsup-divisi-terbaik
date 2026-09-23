@@ -75,6 +75,14 @@ export async function mount(container) {
   container.querySelector('#home-theme-toggle')?.addEventListener('click', () => {
     applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
   });
+
+  // Fallback kalau /favicon/favicon-96x96.png 404 -- dulu ini inline onerror= di markup.js,
+  // dipindah ke sini biar CSP script-src gak butuh 'unsafe-inline'.
+  const logoImg = container.querySelector('#brand-logo-img');
+  logoImg?.addEventListener('error', () => {
+    logoImg.onerror = null;
+    logoImg.parentNode.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>';
+  }, { once: true });
 }
 
 export function unmount() {
