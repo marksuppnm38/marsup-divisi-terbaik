@@ -1098,7 +1098,7 @@ async function sphGenerate() {
         qty,
         harga,
         total: harga * qty,
-        link: S.modeSwastaOutput ? null : (item.link_v6 || null)
+        link: S.modeSwastaOutput ? null : (S.cleanLinkV6(item.link_v6) || null)
       };
     });
     const grandTotal = items.reduce((s, it) => s + it.total, 0);

@@ -5,7 +5,7 @@
 // yang belum dipecah) dioper lewat S juga. parsePasteLines diekspor ke S karena
 // dipakai balik dari luar (fitur Paste Rincian Set di tab Set Detail, index.js
 // baris compPastePreviewBtn). Logic TIDAK diubah.
-import { showToast, crudConfirm, crudAlert, renderPgBar } from './ui-utils.js';
+import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6 } from './ui-utils.js';
 
 export function installBulk(S) {
 // ================================================================
@@ -203,6 +203,14 @@ document.getElementById('bulkLinkPreviewBtn').addEventListener('click', async ()
       if (!kode) { status = 'err'; msg = 'Kode produk kosong'; }
       else if (!produk) { status = 'err'; msg = 'Kode produk tidak ditemukan'; }
       else if (!link) { status = 'err'; msg = 'Link kosong'; }
+      else {
+        // Link harus URL bersih. Yang ada catatan tambahan (mis. "UPDATE HARGA
+        // TAPI MASIH NYANTOL ORDERAN") ditolak biar gak ke-label "Ada di
+        // e-Katalog" di Konversian — pisahin dulu catatannya dari URL-nya.
+        const L = parseLinkV6(link);
+        if (L.state === 'catatan') { status = 'err'; msg = 'Link ada catatan: "' + L.catatan.slice(0, 40) + '" — pisahkan dari URL'; }
+        else if (L.state === 'invalid') { status = 'err'; msg = 'Bukan URL'; }
+      }
       return { kode, link, produk, status, msg };
     });
     renderBulkLinkPreview();

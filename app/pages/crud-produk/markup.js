@@ -463,6 +463,7 @@ export const CRUD_PRODUK_MARKUP = `
         <div class="f full akd-hint" style="margin-top:-4px;"><i class="ti ti-info-circle"></i> Kode KFA &amp; Cangkang dikelola di menu <a href="javascript:void(0)" id="jumpToKfaLink">KFA Management</a>, bukan di sini.</div>
         <div class="f"><label>Berat (gram)</label><input type="number" step="any" id="f_berat_gram"/></div>
         <div class="f"><label>Link V6</label><input type="text" id="f_link_v6"/></div>
+        <div class="f full akd-hint" id="linkV6Hint" style="display:none;margin-top:-4px;color:var(--amber-text);"></div>
         <div class="f full" id="inaprocIndikator" style="display:none;"></div>
         <div class="f full"><label>Spesifikasi</label><textarea id="f_spesifikasi"></textarea></div>
         <div class="f full check-row">

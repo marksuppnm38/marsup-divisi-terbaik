@@ -407,6 +407,41 @@ export async function mount(container, initialSub) {
   S.isSafeHttpUrl = function isSafeHttpUrl(u) {
     return /^https?:\/\//i.test(String(u == null ? '' : u).trim());
   };
+  // Klasifikasi isi kolom link_v6. isSafeHttpUrl di atas cuma ngecek PREFIX
+  // http(s)://, jadi value kayak "https://katalog.inaproc.id/.../robust-mayor-s-5
+  // UPDATE HARGA TAPI MASIH NYANTOL ORDERAN" (URL + catatan tim yang kebawa
+  // dari Google Sheet lewat sync) ikut lolos dan ke-label "Ada di e-Katalog v6".
+  // Label/hyperlink/copy/export/SPH cuma boleh nyala buat state 'bersih':
+  //   kosong  -> gak ada isi
+  //   invalid -> ada teks tapi bukan URL (mis. "-", "N/A")
+  //   bersih  -> URL doang, tanpa teks tambahan apa pun
+  //   catatan -> ada URL TAPI ada teks lain di sekitarnya (perlu dicek manual)
+  S.parseLinkV6 = function parseLinkV6(raw) {
+    const t = String(raw == null ? '' : raw).replace(/[\u00a0\u200b-\u200d\ufeff]/g, ' ').trim();
+    if (!t) return { state: 'kosong', url: null, catatan: '' };
+    if (/^https?:\/\/\S+$/i.test(t)) return { state: 'bersih', url: t, catatan: '' };
+    const m = t.match(/https?:\/\/\S+/i);
+    if (!m) return { state: 'invalid', url: null, catatan: t };
+    const catatan = t.replace(m[0], ' ').replace(/\s+/g, ' ').trim();
+    return { state: 'catatan', url: m[0], catatan };
+  };
+  // Shortcut: balikin URL-nya HANYA kalau bersih, selain itu null.
+  // "Belum firm": link_v6 ada catatan tambahan (mis. "UPDATE HARGA ...", "SINGLE
+  // USE") = produk belum final di e-Katalog -> JANGAN dipakai buat konversian.
+  // Cuma berlaku di mode e-Katalog (di mode Swasta link_v6 memang gak relevan).
+  // `swasta`: true = mode Swasta (gak difilter). Default ikut S.modeSwasta;
+  // jalur Converter/Cari SET pakai S.modeSwastaOutput.
+  S.isProdukFirm = function isProdukFirm(r) {
+    return S.parseLinkV6(r && r.link_v6).state !== 'catatan';
+  };
+  S.filterFirm = function filterFirm(rows, swasta) {
+    const modeSwasta = (swasta === undefined) ? S.modeSwasta : swasta;
+    return (modeSwasta || !Array.isArray(rows)) ? rows : rows.filter(S.isProdukFirm);
+  };
+  S.cleanLinkV6 = function cleanLinkV6(raw) {
+    const r = S.parseLinkV6(raw);
+    return r.state === 'bersih' ? r.url : null;
+  };
   // Lazy vendor-lib loaders (lihat komentar panjang di ensureVendorScripts()/
   // ensureExceljs() dkk di atas file ini) -- ditempel ke S di sini, sepagi
   // mungkin, biar semua install*(S) di bawah (clipboard.js, permintaan-rs.js,
@@ -3600,6 +3635,7 @@ function convStatusMeta(r) {
   if (r.status === 'manual_matched') return { badge: '✅ Dipilih manual', color: 'var(--success)' };
   if (r.status === 'code_found_name_diff') return { badge: '⚠️ Kode ketemu, nama beda', color: 'var(--warning)' };
   if (r.status === 'error') return { badge: '🔄 Error / timeout — belum sempat dicek', color: 'var(--warning)' };
+  if (r.notFirm) return { badge: '⛔ Belum firm (link V6 ada catatan) — tidak dipakai', color: 'var(--danger)' };
   return { badge: '❌ Tidak ditemukan', color: 'var(--danger)' };
 }
 
@@ -3741,7 +3777,7 @@ async function convManualSearch(i, qRaw) {
   if (mySeq !== S.convManualSeq[i]) return; // udah ada ketikan baru nyusul, buang hasil basi ini
   S.convManualResults[i] = error
     ? { error: error.message || JSON.stringify(error) }
-    : { items: (data || []).slice(0, 6) }; // sinyal kontekstual, bukan halaman browse penuh
+    : { items: S.filterFirm(data || [], S.modeSwastaOutput).slice(0, 6) }; // sinyal kontekstual, bukan halaman browse penuh
   patchConvRow(i, { keepFocus: true });
 }
 S.convManualSearch = convManualSearch;

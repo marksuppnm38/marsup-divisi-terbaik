@@ -102,6 +102,11 @@ async function matchOneKode(kode, nama_input) {
     row.errMsg = errMsg;
     return row;
   }
+  // Belum firm (link_v6 ada catatan) -> diperlakukan gak ketemu, gak dipakai konversian.
+  if (produk && !S.isProdukFirm(produk) && !S.modeSwastaOutput) {
+    row.notFirm = true;
+    return row; // status tetap 'not_found', produk null
+  }
   if (produk) {
     row.produk = produk;
     const namaKatalog = (produk.nama_produk || '').trim().toLowerCase();

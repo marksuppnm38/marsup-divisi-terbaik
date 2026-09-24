@@ -41,7 +41,7 @@
 //      function scope yang sama.
 
 import { CRUD_PRODUK_MARKUP } from './markup.js';
-import { showToast, crudConfirm, crudAlert, renderPgBar } from './ui-utils.js';
+import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6 } from './ui-utils.js';
 import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
@@ -186,6 +186,25 @@ const TIPE_TO_AKD = { INSTRUMENT: 'satuan', SET: 'set', UNIT: 'unit' };
 // ke luar, bukan sebaliknya).
 function escapeHtml(s){
   return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+// Hint live di bawah field Link V6: kuning kalau isinya bukan URL bersih.
+// Cuma peringatan (gak ngeblok simpan) — data lama/sync dari Sheet bisa aja
+// udah kebawa catatan, dan tim mungkin memang sengaja nandain begitu.
+function renderLinkV6Hint(){
+  const el = document.getElementById('linkV6Hint');
+  const inp = document.getElementById('f_link_v6');
+  if (!el || !inp) return;
+  const L = parseLinkV6(inp.value);
+  if (L.state === 'catatan') {
+    el.innerHTML = '<i class="ti ti-alert-circle"></i> Link ini ada catatan tambahan (<b>' + escapeHtml(L.catatan.slice(0, 80)) + '</b>) — di Konversian TIDAK akan dilabeli "Ada di e-Katalog". Isi URL-nya doang kalau memang sudah bersih.';
+    el.style.display = '';
+  } else if (L.state === 'invalid') {
+    el.innerHTML = '<i class="ti ti-alert-circle"></i> Isi bukan URL — dianggap belum ada link.';
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 function renderInaprocIndikator(statusInaproc, linkV6){
@@ -1084,7 +1103,7 @@ async function exportPricelistSales(){
   const hargaMap = await fetchHargaLatestMap(rowsToExport.map(r => r.id));
   if (hargaMap === null) return;
 
-  const withLink = rowsToExport.filter(r => (r.link_v6 || '').trim());
+  const withLink = rowsToExport.filter(r => parseLinkV6(r.link_v6).state === 'bersih');
   const priced = withLink.filter(r => {
     const h = hargaMap.get(r.id);
     return h && h.ekatalog != null;
@@ -1180,7 +1199,7 @@ async function exportPricelistSales(){
 
   let msg = `Pricelist terdownload — ${priced.length} produk`;
   const skippedNote = [];
-  if (skippedNoLink) skippedNote.push(`${skippedNoLink} dilewati (belum ada Link V6)`);
+  if (skippedNoLink) skippedNote.push(`${skippedNoLink} dilewati (belum ada Link V6 / link belum bersih)`);
   if (skippedNoHarga) skippedNote.push(`${skippedNoHarga} dilewati (belum ada harga EKATALOG)`);
   if (skippedNote.length) msg += ` · ${skippedNote.join(', ')}`;
   showToast(msg);
@@ -1303,6 +1322,7 @@ function closeModal(){ modalOverlay.classList.remove('open'); }
 let modalDirty = false;
 const unsavedConfirmOverlay = document.getElementById('unsavedConfirmOverlay');
 document.querySelector('#modalOverlay .modal-card').addEventListener('input', () => { modalDirty = true; });
+document.getElementById('f_link_v6').addEventListener('input', renderLinkV6Hint);
 document.querySelector('#modalOverlay .modal-card').addEventListener('change', () => { modalDirty = true; });
 
 function attemptCloseModal(){
@@ -1413,6 +1433,7 @@ function openAdd(prefill){
   document.getElementById('akdHint').textContent = 'Simpan produk dulu sebelum mengelola relasi AKD.';
   if (prefill?.kode_produk) document.getElementById('f_kode_produk').value = prefill.kode_produk;
   if (prefill?.link_v6) document.getElementById('f_link_v6').value = prefill.link_v6;
+  renderLinkV6Hint();
   modalOverlay.classList.add('open');
 }
 
@@ -1442,6 +1463,7 @@ async function openEdit(produkId){
   document.getElementById('f_berat_gram').value = p.berat_gram ?? '';
   document.getElementById('f_status_v6').value = p.status_v6 || '';
   document.getElementById('f_link_v6').value = p.link_v6 || '';
+  renderLinkV6Hint();
   renderInaprocIndikator(p.status_inaproc, p.link_v6);
   document.getElementById('f_spesifikasi').value = p.spesifikasi || '';
   document.getElementById('f_is_active').checked = !!p.is_active;

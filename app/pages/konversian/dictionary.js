@@ -1379,7 +1379,8 @@ dictModalAddInput.addEventListener('input', () => {
     try {
       // RPC yang sama dipakai search utama Konversian — biar konsisten hasilnya
       // (harga/status/dsb sekalian ada kalau nanti mau ditampilin juga).
-      const { data, error } = await S.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
+      const { data: dataRaw, error } = await S.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
+      const data = dataRaw ? S.filterFirm(dataRaw, S.modeSwastaOutput) : dataRaw;
       if (error || !data || !data.length) {
         dictModalAddResults.style.display = 'block';
         dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--text-muted)">Gak ketemu.</div>`;

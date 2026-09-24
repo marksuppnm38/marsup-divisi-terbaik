@@ -169,6 +169,7 @@ async function addSetKodeToClip(kode, btn) {
     const { produk: match, errMsg } = await S.findProdukByKodeExact(kode);
     if (errMsg) throw new Error(errMsg);
     if (!match) throw new Error('Produk SET tidak ditemukan di database.');
+    if (!S.isProdukFirm(match) && !S.modeSwastaOutput) throw new Error('SET ini belum firm (link V6 masih ada catatan) — tidak dipakai buat konversi.');
     S.lastResults = S.lastResults && S.lastResults.length ? S.lastResults.concat([match]) : [match];
     S.addToClip(kode);
     S.showToast(`${kode} ditambahkan ke clipboard ✓`);

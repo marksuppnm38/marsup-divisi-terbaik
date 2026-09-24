@@ -110,3 +110,14 @@ export function renderPgBar(el, { page, pageSize, total, onPageChange }){
     });
   });
 }
+// Klasifikasi isi kolom link_v6 (versi sama persis dengan S.parseLinkV6 di
+// konversian/index.js — jaga tetap sinkron). state:
+//   kosong | invalid (teks tapi bukan URL) | bersih (URL doang) | catatan (URL + teks lain)
+export function parseLinkV6(raw) {
+  const t = String(raw == null ? '' : raw).replace(/[\u00a0\u200b-\u200d\ufeff]/g, ' ').trim();
+  if (!t) return { state: 'kosong', url: null, catatan: '' };
+  if (/^https?:\/\/\S+$/i.test(t)) return { state: 'bersih', url: t, catatan: '' };
+  const m = t.match(/https?:\/\/\S+/i);
+  if (!m) return { state: 'invalid', url: null, catatan: t };
+  return { state: 'catatan', url: m[0], catatan: t.replace(m[0], ' ').replace(/\s+/g, ' ').trim() };
+}

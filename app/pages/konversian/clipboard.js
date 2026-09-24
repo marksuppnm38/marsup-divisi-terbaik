@@ -849,9 +849,13 @@ async function runSearch() {
   S.resultsEl.innerHTML = '';
   S.emptyEl.style.display = 'none';
   S.metaEl.textContent = '';
-  const {data, error} = await rpc('search_produk_dengan_harga', {
+  const {data: dataRaw, error} = await rpc('search_produk_dengan_harga', {
     q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false
   });
+  // Produk belum firm (link_v6 ada catatan) disembunyikan dari hasil — lihat S.filterFirm.
+  const data = dataRaw ? S.filterFirm(dataRaw, S.modeSwasta) : dataRaw;
+  const hiddenNotFirm = (dataRaw && data) ? dataRaw.length - data.length : 0;
+  const hiddenNote = hiddenNotFirm ? ` (${hiddenNotFirm} produk belum firm disembunyikan)` : '';
   if (mySeq !== searchSeq) return; // sudah ada pencarian lebih baru — buang hasil basi ini
 
   S.loadingEl.style.display = 'none'; // FIX: matikan loading begitu response datang (sebelum branching)
@@ -871,13 +875,13 @@ async function runSearch() {
     }
     return;
   }
-  if (!data || !data.length) { S.emptyEl.style.display='block'; S.metaEl.textContent='Tidak ada hasil untuk "'+q+'"'; S.acBox.style.display='none'; return; }
+  if (!data || !data.length) { S.emptyEl.style.display='block'; S.metaEl.textContent='Tidak ada hasil untuk "'+q+'"'+hiddenNote; S.acBox.style.display='none'; return; }
   S.lastResults = data;
   await S.enrichResultsWithStok(S.lastResults);
   S.sortSelect.style.display = 'inline-block';
   applySort();
   S.currentPage = 1;
-  S.metaEl.textContent = data.length + ' produk ditemukan — klik untuk tambah ke clipboard';
+  S.metaEl.textContent = data.length + ' produk ditemukan — klik untuk tambah ke clipboard' + hiddenNote;
   renderResults(S.lastResults);
   if (S.pnmSettings.autoComplete) {
     renderAutocomplete(S.lastResults);
@@ -895,8 +899,8 @@ function applySort() {
   if (S.sortMode === 'relevance') {
     if (useLinkPriority) {
       S.lastResults = [...S.lastResults].sort((a, b) => {
-        const aHas = a.link_v6 ? 0 : 1;
-        const bHas = b.link_v6 ? 0 : 1;
+        const aHas = S.cleanLinkV6(a.link_v6) ? 0 : 1;
+        const bHas = S.cleanLinkV6(b.link_v6) ? 0 : 1;
         return aHas - bHas; // stable sort: urutan relevansi asli tetap terjaga di tiap grup
       });
     }
@@ -924,8 +928,8 @@ function applySort() {
   const dir = S.sortMode === 'harga_asc' ? 1 : -1;
   S.lastResults.sort((a, b) => {
     if (useLinkPriority) {
-      const aHas = a.link_v6 ? 0 : 1;
-      const bHas = b.link_v6 ? 0 : 1;
+      const aHas = S.cleanLinkV6(a.link_v6) ? 0 : 1;
+      const bHas = S.cleanLinkV6(b.link_v6) ? 0 : 1;
       if (aHas !== bHas) return aHas - bHas;
     }
     const av = a[field], bv = b[field];
@@ -934,6 +938,26 @@ function applySort() {
     if (bv == null) return -1;
     return (av - bv) * dir;
   });
+}
+
+// Badge status e-Katalog per kartu hasil. Hijau "Ada di e-Katalog v6" HANYA
+// buat link bersih (URL doang). Link yang ada catatan tambahan (mis. "UPDATE
+// HARGA TAPI MASIH NYANTOL ORDERAN") sengaja TIDAK dianggap ada di e-Katalog —
+// harganya belum tentu valid — jadi dikasih badge kuning + isi catatannya.
+function katalogBadgeHtml(r) {
+  const L = S.parseLinkV6(r.link_v6);
+  if (L.state === 'bersih') {
+    return `<a href="${S.escapeHtmlAttr(L.url)}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</a>`;
+  }
+  if (L.state === 'catatan') {
+    const ringkas = L.catatan.length > 48 ? L.catatan.slice(0, 48) + '…' : L.catatan;
+    const tip = 'Link V6 belum bersih — ada catatan: ' + L.catatan;
+    return `<span class="badge-katalog-no" data-role="link-katalog-catatan" title="${S.escapeHtmlAttr(tip)}" style="color:var(--amber-text,#8a5314);border-color:var(--amber,#c97c2a);background:var(--amber-bg,#fbf0de)"><i class="ti ti-alert-circle" style="font-size:12px"></i> Link V6 ada catatan${ringkas ? ': ' + S.escapeHtmlAttr(ringkas) : ''}</span>`;
+  }
+  if (r.status_inaproc === 'Disetujui') {
+    return `<span class="badge-katalog-no" style="color:var(--rust-text,#8F3620);border-color:var(--rust,#B8492F);background:var(--rust-bg,#FBE8E2)"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Disetujui INAPROC — siap dibuatkan Link V6!</span>`;
+  }
+  return `<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`;
 }
 
 function renderResults(data) {
@@ -980,12 +1004,7 @@ function renderResults(data) {
       </div>
       <div style="margin-top:6px;display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:8px">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          ${S.modeSwasta ? '' : (r.link_v6 && S.isSafeHttpUrl(r.link_v6)
-            ?`<a href="${S.escapeHtmlAttr(r.link_v6)}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</a>`
-            : r.status_inaproc === 'Disetujui'
-              ?`<span class="badge-katalog-no" style="color:var(--rust-text,#8F3620);border-color:var(--rust,#B8492F);background:var(--rust-bg,#FBE8E2)"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Disetujui INAPROC — siap dibuatkan Link V6!</span>`
-              :`<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`
-          )}
+          ${S.modeSwasta ? '' : katalogBadgeHtml(r)}
           <button class="btn-preview-gambar btn-lihat-gambar" data-kode="${kode}" data-kode-asli="${kodeAsli}" data-nama="${namaEsc}"><i class="ti ti-eye" style="font-size:12px"></i> Lihat Gambar</button>
           <button class="btn-preview-gambar btn-copy-produk" data-kode="${kode}"><i class="ti ti-copy" style="font-size:12px"></i> Copy</button>
         </div>
@@ -1054,7 +1073,7 @@ function copyProdukToClipboard(kode) {
     r.kode_produk || '-',
     r.nama_produk || '-',
     harga ? rupiah(harga) : 'Harga belum ada',
-    S.modeSwasta ? '' : (r.link_v6 || '')
+    S.modeSwasta ? '' : (S.cleanLinkV6(r.link_v6) || '')
   ];
   const text = lines.join('\t');
 
@@ -1659,8 +1678,9 @@ S.btnExport.addEventListener('click', async () => {
       row.getCell(4).value = item.qty || 1;
       row.getCell(5).value = hargaPakai || '';
       row.getCell(6).value = total || '';
-      if (!S.modeSwastaOutput && item.link_v6) {
-        row.getCell(7).value = {text:'Lihat di e-Katalog', hyperlink: item.link_v6};
+      const linkBersih = S.modeSwastaOutput ? null : S.cleanLinkV6(item.link_v6);
+      if (linkBersih) {
+        row.getCell(7).value = {text:'Lihat di e-Katalog', hyperlink: linkBersih};
         row.getCell(7).font = {color:{argb:'FF1D4ED8'}, underline:true};
       }
       const stokLabel = item.stok_status === 'READY' ? 'Ready'
@@ -1805,8 +1825,9 @@ S.btnExport.addEventListener('click', async () => {
               row.getCell(5).value = m.nama_produk;
               row.getCell(6).value = hargaSatuan;
               row.getCell(7).value = totalBaris;
-              if (colLink && m.link_v6) {
-                row.getCell(colLink).value = {text:'Lihat di e-Katalog', hyperlink: m.link_v6};
+              const mLinkBersih = S.cleanLinkV6(m.link_v6);
+              if (colLink && mLinkBersih) {
+                row.getCell(colLink).value = {text:'Lihat di e-Katalog', hyperlink: mLinkBersih};
                 row.getCell(colLink).font = {color:{argb:'FF1D4ED8'}, underline:true};
               }
               addImg(wsKb, imgMap[m.kode_produk], kbRow, colGambar, 80, 65, m.kode_produk);
