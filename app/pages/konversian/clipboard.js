@@ -628,6 +628,22 @@ function switchClipTab(tab) {
   }
   updateClipSummaryStrip();
 
+  // Label tahap: satu baris yang bilang user lagi di tahap apa. "Mode harga output" cuma
+  // relevan buat tahap output (Clipboard/SPH) — di tahap pencocokan disembunyiin biar gak
+  // nyelip di antara tab dan daftar kebutuhan.
+  const stage = document.getElementById('clip-stage-label');
+  if (stage) {
+    const STAGES = {
+      kb:   ['Pencocokan', 'cocokkan tiap permintaan RS ke produk'],
+      list: ['Hasil konversi', 'produk & qty yang akan di-export / di-record'],
+      sph:  ['Output SPH', 'surat penawaran dari isi clipboard']
+    };
+    const [t, d] = STAGES[tab] || STAGES.list;
+    stage.innerHTML = `<b>${t}</b><span>${d}</span>`;
+  }
+  const outRow = document.getElementById('clip-output-mode-row');
+  if (outRow) outRow.style.display = tab === 'kb' ? 'none' : '';
+
   // 2026-09-14: 'kb' DICABUT dari daftar wide-canvas — auto-collapse search
   // panel di tab Kebutuhan RS itu keputusan salah (lihat percakapan), bikin
   // search bar ilang total pas lagi butuh nyari produk buat di-attach. SPH
@@ -655,6 +671,7 @@ S.kbEmptyCta.addEventListener('click', () => S.openPrModal());
 // beneran di dalam tab Kebutuhan RS, plus update badge jumlah item pending
 // di tab-nya sendiri biar kelihatan dari tab Clipboard tanpa perlu pindah.
 function updateKbTabState() {
+  if (typeof S.updateRsStrip === 'function') S.updateRsStrip();
   const hasChecklist = !!S.checklistPermintaanId && S.checklistItems.length > 0;
   S.kbEmptyState.style.display = hasChecklist ? 'none' : 'flex';
   S.kbRealContent.style.display = hasChecklist ? 'flex' : 'none';
@@ -1010,7 +1027,7 @@ function renderResults(data) {
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
-          <button class="btn-lampiran" data-kode="${kode}" data-is-set="${isSet}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran</button>
+          <button class="btn-lampiran" data-kode="${kode}" data-is-set="${isSet}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> <span data-lampiran-label="${kode}">${isSet ? setLampiranLabelText(cachedSetItemCount(r)) : 'Lihat Lampiran'}</span></button>
           <button class="btn-edit-produk" data-kode="${kode}" title="Edit produk ini" style="font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-settings" style="font-size:12px"></i></button>
           ${inClip
             ? `<button class="btn-clip-toggle in-clip" data-kode="${kode}" data-action="remove"><i class="ti ti-circle-check" style="font-size:12px"></i> Di Konversi</button>`
@@ -1041,6 +1058,10 @@ function renderResults(data) {
       S.openLampiranModal(btn.dataset.kode, btn.dataset.isSet === 'true');
     });
   });
+  // SET yang belum ada angka item-nya → ambil lazy, label tombol nyusul.
+  hydrateSetCounts(S.resultsEl, pageData
+    .filter(r => r.tipe && r.tipe.toUpperCase() === 'SET' && cachedSetItemCount(r) == null)
+    .map(r => r.kode_produk));
   S.resultsEl.querySelectorAll('[data-role="link-katalog"]').forEach(a => {
     a.addEventListener('click', (e) => { e.stopPropagation(); });
   });
@@ -1262,11 +1283,22 @@ function renderClipItemHtml(item) {
   // SECURITY FIX 2026-08-14: nama_produk ditampilin mentah — escape jaga-jaga
   // (produk-produk ini biasa dari katalog terkontrol, tapi tetap defense in
   // depth kalau ada nama produk yang mengandung karakter HTML).
+  // Qty sumber = Permintaan RS. Kalau qty clipboard sama dengan alokasi RS → badge "RS n".
+  // Kalau beda → itu override manual (bukan ketimpa diam-diam): badge "manual · RS n" +
+  // tombol ↺ buat balik ke qty RS, aksi sadar user.
+  const rsQty = typeof S.rsQtyForClipItem === 'function' ? S.rsQtyForClipItem(item) : null;
+  let rsBadge = '';
+  if (rsQty != null) {
+    rsBadge = item.qty === rsQty
+      ? `<span class="clip-rs-qty" title="Qty sesuai Permintaan RS">RS ${rsQty}</span>`
+      : `<span class="clip-rs-qty override" title="Qty diubah manual. Permintaan RS: ${rsQty}">manual · RS ${rsQty}<button type="button" class="clip-rs-reset" data-kode="${item.kode_produk}" data-qty="${rsQty}" title="Kembalikan ke qty Permintaan RS (${rsQty})" aria-label="Kembalikan ke qty Permintaan RS">↺</button></span>`;
+  }
   return `<div class="clip-item" data-kode="${item.kode_produk}">
       <div class="clip-item-info">
         <div class="clip-item-name">${S.escapeHtmlAttr(item.nama_produk)}</div>
         <div class="clip-item-meta">
           <span class="clip-item-code">${item.kode_produk}</span>
+          ${rsBadge}
           <span class="clip-item-tipe" style="${tipeColor}">${item.tipe||'—'}</span>
           ${hargaTampil?`<span class="clip-item-harga">${rupiah(totalHarga)}</span>`:'<span class="clip-item-code" style="color:var(--text-muted)">Harga N/A</span>'}
         </div>
@@ -1295,6 +1327,17 @@ function renderClipItemHtml(item) {
 // clipList) — dipisah dari render biar bisa dipanggil ulang cuma buat node yang
 // baru di-insert/di-patch, bukan query-ulang seluruh daftar tiap kali.
 function bindClipItemEvents(scopeEl) {
+  scopeEl.querySelectorAll('.clip-rs-reset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = S.clipboard.find(c => c.kode_produk === btn.dataset.kode);
+      const q = parseInt(btn.dataset.qty, 10);
+      if (!item || isNaN(q) || q < 1) return;
+      item.qty = q;
+      if (item._sesiItemId) S.markLocalWrite(SESI_ITEM_TABLE, item._sesiItemId, 'qty', item.qty);
+      patchClipItem(item.kode_produk, { qty: item.qty });
+      persistUpdateQty(item);
+    });
+  });
   scopeEl.querySelectorAll('.clip-remove').forEach(btn => {
     btn.addEventListener('click', () => removeFromClip(btn.dataset.kode));
   });
@@ -1421,6 +1464,42 @@ async function getSetItems(kode_produk) {
   return data || [];
 }
 S.getSetItems = getSetItems;
+
+// ── JUMLAH ITEM DI DALAM SET (buat label "Lihat Lampiran · N item") ──
+// Sumber kebenaran = get_set_items (sama persis yang dirender modal Lampiran), jadi angka di
+// tombol gak bisa beda dari isi lampiran. Kalau hasil search udah bawa jumlah_komponen
+// (v_stok_status_set), dipakai langsung tanpa fetch. Sisanya di-fetch lazy + di-cache per
+// kode selama modul ini hidup — tombol tampil dulu tanpa angka, angkanya nyusul.
+S.setItemCountCache = new Map(); // kode_produk -> jumlah baris item set
+function cachedSetItemCount(r) {
+  if (S.setItemCountCache.has(r.kode_produk)) return S.setItemCountCache.get(r.kode_produk);
+  if (r.stok_komponen_total != null && r.stok_komponen_total > 0) return Number(r.stok_komponen_total);
+  return null;
+}
+S.cachedSetItemCount = cachedSetItemCount;
+function setLampiranLabelText(count) {
+  return count != null ? `Lihat Lampiran · ${count} item` : 'Lihat Lampiran';
+}
+S.setLampiranLabelText = setLampiranLabelText;
+async function fetchSetItemCount(kode) {
+  if (S.setItemCountCache.has(kode)) return S.setItemCountCache.get(kode);
+  try {
+    const items = await getSetItems(kode);
+    const n = Array.isArray(items) ? items.length : 0;
+    if (n > 0) S.setItemCountCache.set(kode, n);
+    return n > 0 ? n : null;
+  } catch { return null; }
+}
+S.fetchSetItemCount = fetchSetItemCount;
+// Lengkapi label tombol yang belum punya angka (dipanggil abis render).
+function hydrateSetCounts(root, kodes) {
+  kodes.forEach(async (kode) => {
+    const n = await fetchSetItemCount(kode);
+    if (n == null) return;
+    root.querySelectorAll(`[data-lampiran-label="${CSS.escape(kode)}"]`).forEach(el => { el.textContent = setLampiranLabelText(n); });
+  });
+}
+S.hydrateSetCounts = hydrateSetCounts;
 
 // ── SIMPAN KE DRIVE (manual, lewat tombol — bukan otomatis pas Export) ──
 // Export ke Excel cuma nyiapin file + download lokal seperti biasa. Blob hasil

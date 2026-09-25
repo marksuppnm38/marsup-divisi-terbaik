@@ -104,11 +104,44 @@ S.startChecklistSession = startChecklistSession;
 // "All Set Mata" -> Set Pacho + Cataract Minor Set), makanya checkbox bukan
 // dropdown single-select lagi. Qty per-SKU opsional, dipakai kalau kebutuhan
 // dipenuhi campuran beberapa varian dengan porsi qty berbeda.
+// Qty default mengikuti Permintaan RS (qty_diminta) — SUMBER qty konversi.
+// Aturan (sengaja sederhana & bisa ditebak):
+//  - 1 produk dipilih  → qty produk = qty_diminta (bisa diubah, itu dianggap override manual)
+//  - 2+ produk dipilih → TIDAK ada auto-split & TIDAK ada copy qty ke tiap produk
+//    (bakal ngelipatin qty diam-diam). Isi manual per produk; hint nunjukin
+//    "teralokasi X dari Y". Qty dikosongin = qty clipboard produk itu TIDAK diubah.
+function rsQtyDiminta(item) {
+  const q = item ? Number(item.qty_diminta) : NaN;
+  return (!isNaN(q) && q >= 1) ? q : null;
+}
+function allocHintText(diminta, qtys) {
+  // qtys: array qty (number|null) untuk tiap produk yang dicentang
+  if (diminta == null) return { text: '', cls: '' };
+  if (qtys.length === 0) return { text: `Diminta RS: ${diminta}`, cls: '' };
+  if (qtys.length === 1) return { text: `Diminta RS: ${diminta} · qty produk mengikuti permintaan (boleh diubah)`, cls: '' };
+  const filled = qtys.filter(q => q != null && !isNaN(q));
+  const sum = filled.reduce((a, b) => a + b, 0);
+  const blank = qtys.length - filled.length;
+  let text = `Diminta RS: ${diminta} · teralokasi ${sum}`;
+  let cls = '';
+  if (sum > diminta) { text += ' — melebihi permintaan'; cls = ' over'; }
+  else if (sum < diminta && blank === 0) { text += ` — kurang ${diminta - sum}`; cls = ' warn'; }
+  if (blank > 0) text += ` · ${blank} produk tanpa qty (qty clipboard-nya tidak diubah)`;
+  return { text, cls };
+}
+S.allocHintText = allocHintText;
+
 function clipboardPickerHtml(itemId, matchedItems) {
+  const pickItem = S.checklistItems.find(i => i.id === itemId);
+  const diminta = rsQtyDiminta(pickItem);
+  const singleLink = (matchedItems || []).length === 1;
   const rows = S.clipboard.map(c => {
     const link = (matchedItems || []).find(l => l.kode_produk === c.kode_produk);
     const checked = link ? ' checked' : '';
-    const qtyVal = (link && link.qty_alokasi != null) ? link.qty_alokasi : '';
+    // Link lama yang qty_alokasi-nya belum pernah diisi (data sebelum fitur ini) dan
+    // cuma 1 produk → tampilkan qty_diminta sebagai default, bukan kolom kosong.
+    const qtyVal = (link && link.qty_alokasi != null) ? link.qty_alokasi
+      : (link && singleLink && diminta != null ? diminta : '');
     // data-search dipake filter client-side di bawah — cocokin ke kode ATAU nama,
     // biar ketik "scalpel" nemu meski yang diinget cuma sebagian nama produknya.
     const haystack = `${c.kode_produk} ${c.nama_produk}`.toLowerCase();
@@ -128,7 +161,13 @@ function clipboardPickerHtml(itemId, matchedItems) {
   // katalog" jadi jalan pintas ke search utama (bukan search kedua yang
   // duplikat) — biar gak ada 2 search engine keliatan beda tapi
   // sebenernya nyari hal yang sama.
-  return `<div class="kb-picker-wrap">
+  const initQtys = (matchedItems || []).map(l => {
+    if (l.qty_alokasi != null) return Number(l.qty_alokasi);
+    return (singleLink && diminta != null) ? diminta : null;
+  });
+  const hint = allocHintText(diminta, initQtys);
+  return `<div class="kb-picker-wrap" data-diminta="${diminta != null ? diminta : ''}">
+    <div class="kb-alloc-hint${hint.cls}" data-alloc-hint="${itemId}" style="${hint.text ? '' : 'display:none'}">${S.escapeHtmlAttr(hint.text)}</div>
     <input type="text" class="kb-picker-filter" data-filter-for="${itemId}"
       placeholder="Saring dari ${S.clipboard.length} produk yang udah kepake di sesi ini…" ${S.clipboard.length ? '' : 'disabled'}>
     <div class="kb-picker-list" data-picker-list="${itemId}">${rows}</div>
@@ -708,8 +747,9 @@ S.refreshRollupHeadersOnly = refreshRollupHeadersOnly;
 // (by produk_id kalau ada, fallback ke kode_produk) — dipake buat sinkronin qty
 // clipboard biar akurat kalau >1 item Permintaan RS dipenuhi dari produk yang
 // sama persis (harus DIJUMLAH, bukan ketimpa sama yang terakhir dikonfirm).
-// `override` opsional: {itemId, links} — dipake pas lagi proses konfirmasi
-// picker, sebelum item.matched_items-nya sendiri kesimpen.
+// `override` opsional: {itemId, links} — ganti daftar link item itu (dipakai buat
+// ngitung "total sebelum" vs "total sesudah" sebuah perubahan tanpa peduli
+// item.matched_items-nya udah/belum dimutasi).
 function sumQtyAlokasiForProduk(produkId, kode, override) {
   let total = 0;
   let hasAny = false;
@@ -725,20 +765,55 @@ function sumQtyAlokasiForProduk(produkId, kode, override) {
   });
   return hasAny ? total : null;
 }
+S.sumQtyAlokasiForProduk = sumQtyAlokasiForProduk;
 
-// Sinkronin qty item clipboard ke total qty_alokasi teragregasi (lihat fungsi
-// di atas). Balikin true kalau qty-nya berubah (biar caller tau perlu re-render).
-function syncClipboardQtyForProduk(produkId, kode, override) {
-  const clipItem = S.clipboard.find(c => c.kode_produk === kode);
-  if (!clipItem) return false;
-  const total = sumQtyAlokasiForProduk(produkId, kode, override);
-  if (total != null && clipItem.qty !== total) {
-    clipItem.qty = total;
-    S.persistUpdateQty(clipItem);
-    return true;
-  }
-  return false;
+// Qty "sesuai Permintaan RS" untuk satu item clipboard (null = gak ada alokasi RS).
+function rsQtyForClipItem(clipItem) {
+  if (!clipItem || !S.checklistPermintaanId) return null;
+  return sumQtyAlokasiForProduk(clipItem.produk_id != null ? clipItem.produk_id : null, clipItem.kode_produk);
 }
+S.rsQtyForClipItem = rsQtyForClipItem;
+
+// SATU titik yang nyambungin perubahan alokasi RS → qty clipboard. Dipakai semua
+// jalur (konfirmasi picker, Pakai/Tambah&Pakai, Tidak Bisa, Batal, edit qty RS).
+// Dipanggil SETELAH server sukses, dengan link SEBELUM & SESUDAH untuk item itu.
+//
+// Aturan qty clipboard (source of truth = Permintaan RS, override manual dihormati):
+//  - total RS baru ada, dan qty clipboard MASIH mengikuti RS (== total lama, atau
+//    belum pernah ada alokasi) → qty clipboard diset ke total RS baru.
+//  - qty clipboard BEDA dari total RS lama → itu override manual user: JANGAN
+//    ditimpa. Badge "manual · RS n" di baris clipboard yang nunjukin selisihnya.
+//  - total RS baru gak ada (alokasi dicabut) → qty clipboard dibiarkan, gak di-reset.
+function reconcileClipboardQty(itemId, oldLinks, newLinks) {
+  const seen = new Set();
+  const notes = [];
+  let changed = false;
+  [...(oldLinks || []), ...(newLinks || [])].forEach(l => {
+    const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const clipItem = S.clipboard.find(c => c.kode_produk === l.kode_produk);
+    if (!clipItem) return;
+    const prev = sumQtyAlokasiForProduk(l.produk_id, l.kode_produk, { itemId, links: oldLinks || [] });
+    const next = sumQtyAlokasiForProduk(l.produk_id, l.kode_produk, { itemId, links: newLinks || [] });
+    if (next == null || clipItem.qty === next) return;
+    const followsRs = prev == null || clipItem.qty === prev;
+    if (!followsRs) {
+      notes.push(`Qty ${l.kode_produk} tetap ${clipItem.qty} (diubah manual) — Permintaan RS: ${next}`);
+      return;
+    }
+    const before = clipItem.qty;
+    clipItem.qty = next;
+    if (clipItem._sesiItemId) S.markLocalWrite(S.SESI_ITEM_TABLE, clipItem._sesiItemId, 'qty', clipItem.qty);
+    S.persistUpdateQty(clipItem);
+    changed = true;
+    if (before !== 1 && prev == null) notes.push(`Qty ${l.kode_produk}: ${before} → ${next} (mengikuti Permintaan RS)`);
+  });
+  S.updateClipboard(); // selalu: badge "RS n" di baris clipboard harus ikut segar
+  if (notes.length) PNMToast.show(notes.join(' · '), 'presence', { duration: 6000 });
+  return changed;
+}
+S.reconcileClipboardQty = reconcileClipboardQty;
 
 S.kbList.addEventListener('click', async (e) => {
   const link = e.target.closest('a[data-action]');
@@ -816,22 +891,10 @@ S.kbList.addEventListener('click', async (e) => {
       return { produk_id: produkId, kode_produk: kode, qty_alokasi: qtyVal };
     });
 
-    // Kalau qty_alokasi diisi di picker Kebutuhan RS, ikutin ke qty item clipboard
-    // yang sama — biar user gak perlu isi qty dua kali (di clipboard & di sini).
-    // Kalau ada >1 item Permintaan RS yang dipenuhi dari produk yang sama, qty-nya
-    // DIJUMLAH (bukan ketimpa sama yang terakhir dikonfirm) — agregasi per produk
-    // (produk_id kalau ada, fallback kode_produk), lewat sumQtyAlokasiForProduk().
-    // Kalau qty_alokasi dikosongin, qty clipboard dibiarin apa adanya (gak di-reset).
-    let clipQtyChanged = false;
-    const touchedProduk = new Set();
-    links.forEach(l => {
-      if (l.qty_alokasi == null || isNaN(l.qty_alokasi) || l.qty_alokasi < 1) return;
-      const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
-      if (touchedProduk.has(key)) return; // 2 checkbox beda tapi produk sama (jarang) — cukup dihitung sekali
-      touchedProduk.add(key);
-      if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk, { itemId, links })) clipQtyChanged = true;
-    });
-    if (clipQtyChanged) S.updateClipboard();
+    // Qty clipboard TIDAK lagi diubah di sini sebelum server konfirmasi (dulu: kalau
+    // update gagal, qty clipboard udah keburu berubah tanpa link-nya). Sekarang
+    // reconcileClipboardQty() dipanggil SETELAH sukses — lihat di bawah.
+    const oldLinks = item.matched_items || [];
 
     btn.disabled = true;
     try {
@@ -839,6 +902,7 @@ S.kbList.addEventListener('click', async (e) => {
       await callUpdatePermintaanItemMulti(itemId, 'TERPENUHI', links);
       item.status = 'TERPENUHI';
       item.matched_items = links;
+      reconcileClipboardQty(itemId, oldLinks, links);
       S.checklistPickingId = null;
       S.checklistExpandedId = S.advanceToNextPending(itemId); // langsung buka yang PENDING berikutnya
       renderChecklist();
@@ -861,16 +925,9 @@ S.kbList.addEventListener('click', async (e) => {
       item.status = 'TIDAK_TERPENUHI';
       item.matched_items = [];
       // Produk yang tadinya kepakai item ini kehilangan kontribusinya ke total —
-      // kalkulasi ulang qty clipboard biar gak nyangkut kelebihan dari sebelumnya.
-      let clipQtyChanged = false;
-      const touchedProduk = new Set();
-      prevMatched.forEach(l => {
-        const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
-        if (touchedProduk.has(key)) return;
-        touchedProduk.add(key);
-        if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk)) clipQtyChanged = true;
-      });
-      if (clipQtyChanged) S.updateClipboard();
+      // reconcile: kalau masih ada alokasi lain, total dikalkulasi ulang; kalau
+      // udah gak ada sama sekali, qty clipboard dibiarkan (gak di-reset).
+      reconcileClipboardQty(itemId, prevMatched, []);
       S.checklistExpandedId = S.advanceToNextPending(itemId);
       renderChecklist();
       maybeFetchSuggestionForExpanded();
@@ -890,17 +947,7 @@ S.kbList.addEventListener('click', async (e) => {
       await callUpdatePermintaanItemMulti(itemId, 'PENDING', []);
       item.status = 'PENDING';
       item.matched_items = [];
-      // Sama kayak 'tidak': produk yang kepakai item ini kehilangan kontribusinya,
-      // jadi total qty clipboard dihitung ulang biar tetap akurat.
-      let clipQtyChanged = false;
-      const touchedProduk = new Set();
-      prevMatched.forEach(l => {
-        const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
-        if (touchedProduk.has(key)) return;
-        touchedProduk.add(key);
-        if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk)) clipQtyChanged = true;
-      });
-      if (clipQtyChanged) S.updateClipboard();
+      reconcileClipboardQty(itemId, prevMatched, []);
       S.checklistPickingId = null;
       renderChecklist();
       S.broadcastChecklistItemUpdated(item);
@@ -915,6 +962,29 @@ S.kbList.addEventListener('click', async (e) => {
 
 // Centang/uncentang checkbox produk di picker -> qty input muncul/hilang
 // ngikutin, dan pesan error "pilih minimal 1" ilang begitu ada yang dicentang.
+// Default qty picker: kalau CUMA 1 produk yang dicentang dan qty-nya masih kosong,
+// isi dengan qty_diminta (qty Permintaan RS) — user gak perlu ngetik qty dua kali.
+// 2+ produk dicentang: gak ada auto-isi (lihat komentar di rsQtyDiminta).
+function refreshPickerAlloc(itemId) {
+  const wrap = S.kbList.querySelector(`.kb-picker-wrap [data-alloc-hint="${CSS.escape(String(itemId))}"]`)?.closest('.kb-picker-wrap');
+  if (!wrap) return;
+  const diminta = wrap.dataset.diminta ? Number(wrap.dataset.diminta) : null;
+  const checks = Array.from(S.kbList.querySelectorAll(`input[data-picker-check="${CSS.escape(String(itemId))}"]:checked`));
+  const qtyInputOf = (chk) => S.kbList.querySelector(`input[data-picker-qty="${CSS.escape(String(itemId))}"][data-kode="${CSS.escape(chk.dataset.kode)}"]`);
+  if (checks.length === 1 && diminta != null) {
+    const qi = qtyInputOf(checks[0]);
+    if (qi && qi.value.trim() === '') qi.value = diminta;
+  }
+  const qtys = checks.map(chk => {
+    const qi = qtyInputOf(chk);
+    return qi && qi.value.trim() !== '' ? Number(qi.value) : null;
+  });
+  const hint = allocHintText(diminta, qtys);
+  const hintEl = wrap.querySelector('.kb-alloc-hint');
+  hintEl.textContent = hint.text;
+  hintEl.className = 'kb-alloc-hint' + hint.cls;
+  hintEl.style.display = hint.text ? '' : 'none';
+}
 S.kbList.addEventListener('change', (e) => {
   const chk = e.target.closest('input[data-picker-check]');
   if (!chk) return;
@@ -923,6 +993,11 @@ S.kbList.addEventListener('change', (e) => {
   if (qtyInput) qtyInput.style.display = chk.checked ? '' : 'none';
   const errEl = S.kbList.querySelector(`[data-picker-error="${chk.dataset.pickerCheck}"]`);
   if (errEl && chk.checked) errEl.style.display = 'none';
+  refreshPickerAlloc(chk.dataset.pickerCheck);
+});
+S.kbList.addEventListener('input', (e) => {
+  const qi = e.target.closest('input[data-picker-qty]');
+  if (qi) refreshPickerAlloc(qi.dataset.pickerQty);
 });
 
 const KB_COLLAPSE_KEY = 'pnm_kb_collapsed';
@@ -1214,7 +1289,7 @@ function dictDetailRowHtml(d, isManual) {
             </button>
             <button type="button" class="dict-detail-lampiran-btn" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}" data-is-set="${!!d.is_set}"
               style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-family:inherit">
-              <i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran
+              <i class="ti ti-file-text" style="font-size:12px"></i> <span data-lampiran-label="${S.escapeHtmlAttr(d.kode_produk || '')}">${d.is_set ? S.setLampiranLabelText(S.cachedSetItemCount(d)) : 'Lihat Lampiran'}</span>
             </button>
           </div>
         </div>
@@ -1256,6 +1331,8 @@ async function openDictionaryDetail(istilah) {
       // Sudah terurut dari server berdasarkan frekuensi terbesar (JANGAN diurutkan ulang —
       // satu istilah customer memang wajar punya beberapa produk Robust, ini bukan error).
       dictModalList.innerHTML = data.map(d => dictDetailRowHtml(d, manualAddedKodes.has(d.kode_produk))).join('');
+      // SET yang belum ada angka item-nya di cache -> ambil lazy, label nyusul (sama pola dengan hasil pencarian).
+      S.hydrateSetCounts(dictModalList, data.filter(d => d.is_set && S.cachedSetItemCount(d) == null).map(d => d.kode_produk));
     }
 
     if (hiddenRows.length) {

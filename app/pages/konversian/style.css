@@ -582,6 +582,130 @@
   #app-root #autocomplete{top:48px}
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   SECTIONING CONVERSION WORKSPACE — perbaikan hierarchy, bukan cuma
+   spacing. Tetap dense/practical: font kecil, padding tipis, gak ada
+   card besar ala dashboard marketing.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Strip Permintaan RS — state sesi selalu kelihatan, terpisah jelas dari
+   identitas sesi (di atas) dan tab pencocokan/hasil (di bawah). */
+.rs-strip{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin:0 14px 8px;padding:6px 10px;
+  background:var(--accent-bg);border:1px solid var(--border);border-radius:var(--radius-sm);
+  flex-shrink:0;
+}
+.rs-strip-state{
+  display:flex;align-items:center;gap:6px;min-width:0;flex:1;
+  background:none;border:none;padding:0;cursor:pointer;font-family:inherit;text-align:left;
+}
+.rs-strip-state i{font-size:13px;color:var(--accent-text);flex-shrink:0}
+.rs-strip-title{font-size:11.5px;font-weight:600;color:var(--text);flex-shrink:0}
+.rs-strip-info{font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rs-strip-state.has-data .rs-strip-info{color:var(--text-secondary);font-weight:500}
+.rs-strip-actions{display:flex;gap:4px;flex-shrink:0}
+.rs-strip-btn{
+  height:24px;padding:0 8px;font-size:11px;font-weight:600;font-family:inherit;
+  border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);
+  color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;gap:4px;
+}
+.rs-strip-btn:hover{border-color:var(--accent);color:var(--accent-text);background:var(--surface-2)}
+.rs-strip-btn i{font-size:11px}
+
+/* Label tahap — satu baris kecil, bukan header baru; bilang user lagi
+   ngapain tanpa makan ruang. */
+.clip-stage-label{
+  flex-shrink:0;padding:5px 14px;font-size:10.5px;color:var(--text-muted);
+  border-bottom:1px solid var(--border);background:var(--surface-2);
+  display:flex;align-items:baseline;gap:6px;
+}
+.clip-stage-label b{font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.03em}
+.clip-stage-label:empty{display:none}
+
+/* Footer: dikelompokkan per tahap (Output / Finalisasi) supaya bukan
+   tumpukan tombol datar. Tetap dense — border tipis sebagai pemisah,
+   bukan card berjarak lebar. */
+.clip-foot-group{
+  display:flex;flex-direction:column;gap:5px;
+  padding-top:8px;border-top:1px solid var(--border);
+}
+.clip-foot-group:first-of-type{padding-top:0;border-top:none}
+.clip-foot-label{
+  font-size:9.5px;font-weight:700;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.06em;
+}
+.clip-foot-final{gap:6px}
+.clip-foot-exit-row{display:flex;gap:6px}
+.clip-foot-exit-row .btn-leave-sesi,.clip-foot-exit-row .btn-end-sesi{width:auto;flex:1}
+
+/* ══════════════════════════════════════════════════════════════════
+   PERMINTAAN RS — state aktif / tambah / edit di dalam modal
+   ══════════════════════════════════════════════════════════════════ */
+
+.pr-active-meta{
+  display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--text-secondary);
+  background:var(--surface-2);border:1px solid var(--border);border-radius:8px;
+  padding:8px 10px;margin-bottom:10px;
+}
+.pr-active-meta b{color:var(--text);font-weight:600}
+.pr-active-list{max-height:300px;overflow-y:auto;margin:0 -2px}
+.pr-active-row{
+  display:flex;align-items:center;gap:8px;padding:6px 4px;
+  border-top:0.5px solid var(--border);font-size:12.5px;
+}
+.pr-active-row:first-child{border-top:none}
+.pr-active-name{flex:1;min-width:0;color:var(--text)}
+.pr-active-no{color:var(--text-muted);font-weight:600;margin-right:2px}
+.pr-active-qty{flex-shrink:0;font-size:11.5px;color:var(--text-secondary);font-weight:600;font-variant-numeric:tabular-nums}
+.pr-active-status{
+  flex-shrink:0;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;
+  background:var(--surface-3);color:var(--text-muted);white-space:nowrap;
+}
+.pr-active-status.ok{background:var(--success-bg);color:var(--success-text)}
+.pr-active-status.no{background:var(--danger-bg);color:var(--danger-text)}
+.pr-active-note{font-size:11px;color:var(--text-muted);line-height:1.5;margin-top:10px}
+
+.pr-edit-head{
+  display:grid;grid-template-columns:1fr 70px;gap:8px;
+  font-size:11px;color:var(--text-muted);padding:0 4px 6px;
+}
+.pr-edit-list{max-height:320px;overflow-y:auto;margin:0 -2px}
+.pr-edit-row{
+  display:grid;grid-template-columns:1fr 70px;gap:8px;align-items:center;
+  padding:6px 2px;border-top:0.5px solid var(--border);
+}
+.pr-edit-row:first-child{border-top:none}
+.pr-edit-row input{
+  width:100%;height:30px;padding:0 8px;font-size:12.5px;font-family:inherit;
+  border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);
+}
+.pr-edit-row input:focus{border-color:var(--accent)}
+.pr-ed-qty{text-align:center;font-variant-numeric:tabular-nums}
+
+/* ══════════════════════════════════════════════════════════════════
+   QTY MENGIKUTI PERMINTAAN RS — hint alokasi & badge di clipboard
+   ══════════════════════════════════════════════════════════════════ */
+
+.kb-alloc-hint{
+  font-size:10.5px;color:var(--text-muted);padding:4px 8px;margin-bottom:6px;
+  background:var(--surface-2);border-radius:6px;border:1px solid var(--border);
+}
+.kb-alloc-hint.warn{color:var(--warn-text);background:var(--warning-bg);border-color:var(--warning-border)}
+.kb-alloc-hint.over{color:var(--danger-text);background:var(--danger-bg);border-color:var(--danger-border)}
+
+.clip-rs-qty{
+  display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:600;
+  padding:1px 6px;border-radius:10px;background:var(--accent-bg);color:var(--accent-text);
+  white-space:nowrap;
+}
+.clip-rs-qty.override{background:var(--warning-bg);color:var(--warn-text)}
+.clip-rs-reset{
+  background:none;border:none;padding:0 0 0 2px;margin:0;cursor:pointer;
+  font-size:10.5px;line-height:1;color:inherit;font-family:inherit;
+}
+.clip-rs-reset:hover{opacity:.7}
+
 /* ============================================================
    RESPONSIVE — keep existing collapse/drawer mechanics, just make
    sure the extra padding above doesn't eat too much space on
@@ -675,4 +799,10 @@
     flex:1;
     width:auto;
   }
+}
+@media (max-width:768px){
+  #app-root .rs-strip{margin:0 10px 6px;flex-wrap:wrap}
+  #app-root .rs-strip-info{white-space:normal}
+  #app-root .clip-foot-exit-row{flex-direction:column}
+  #app-root .clip-foot-exit-row .btn-leave-sesi,#app-root .clip-foot-exit-row .btn-end-sesi{width:100%}
 }

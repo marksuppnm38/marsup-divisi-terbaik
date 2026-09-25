@@ -92,6 +92,7 @@ function subscribeToSesiRealtime(sesiId) {
     .on('presence', { event: 'leave' }, handlePresenceLeave)
     .on('broadcast', { event: 'item_removed' }, handleItemRemovedBroadcast)
     .on('broadcast', { event: 'checklist_item_updated' }, handleChecklistItemUpdatedBroadcast)
+    .on('broadcast', { event: 'checklist_reload' }, handleChecklistReloadBroadcast)
     .on('broadcast', { event: 'editing' }, S.handleEditingBroadcast)
     .on('broadcast', { event: 'editing_stop' }, S.handleEditingStopBroadcast)
     .subscribe(async (status) => {
@@ -288,12 +289,30 @@ function broadcastChecklistItemUpdated(item) {
   }).catch(() => { /* broadcast gagal gak boleh nge-block update lokal — item ini tetap keupdate di sisi yang ngirim */ });
 }
 S.broadcastChecklistItemUpdated = broadcastChecklistItemUpdated;
+// Daftar item Permintaan RS berubah (tambah item / koreksi nama-qty): kolaborator muat ulang
+// dari server. Sengaja "muat ulang", bukan kirim datanya lewat broadcast — sumber kebenaran tetap DB.
+function broadcastChecklistReload() {
+  if (!S.sesiPresenceChannel) return;
+  S.sesiPresenceChannel.send({
+    type: 'broadcast',
+    event: 'checklist_reload',
+    payload: { actor: currentDisplayName() }
+  }).catch(() => { /* gagal broadcast gak boleh nge-block; kolaborator masih bisa klik refresh manual */ });
+}
+S.broadcastChecklistReload = broadcastChecklistReload;
+function handleChecklistReloadBroadcast({ payload }) {
+  if (!S.currentSesiId) return;
+  S.loadChecklistForSesi(S.currentSesiId, { quiet: true });
+  pushActivity(`${payload && payload.actor ? payload.actor + ' mengubah' : 'Ada perubahan pada'} daftar Permintaan RS`);
+}
 function handleChecklistItemUpdatedBroadcast({ payload }) {
   if (!payload || payload.id == null) return;
   const item = S.checklistItems.find(i => i.id === payload.id);
   if (!item) return;
   const statusChanged = payload.status !== item.status;
   S.patchChecklistItem(payload.id, { status: payload.status, matched_items: payload.matched_items || [] });
+  // badge "RS n" di clipboard ikut segar — tapi jangan rebuild kalau user lagi ngetik di baris clipboard
+  if (!S.clipList.contains(document.activeElement)) S.updateClipboard();
   if (statusChanged) {
     const label = payload.status === 'TERPENUHI' ? 'bisa dipenuhi' : payload.status === 'TIDAK_TERPENUHI' ? 'tidak bisa dipenuhi' : 'PENDING lagi';
     const actor = payload.actor ? payload.actor + ' menandai ' : '';
@@ -379,7 +398,8 @@ function renderPresenceRoster() {
 // Ambil Permintaan RS yang nempel ke sesi ini (kalau ada) dan tampilin di
 // panel "Kebutuhan RS", persis kayak saat baru disubmit — bedanya ini dipicu
 // pas buka sesi, jadi berlaku juga buat temen yang bukan pembuat pertamanya.
-async function loadChecklistForSesi(sesiId) {
+async function loadChecklistForSesi(sesiId, opts) {
+  const quiet = !!(opts && opts.quiet); // quiet: jangan pindahin tab / ganti item yang lagi kebuka (dipakai reload otomatis & abis edit)
   try {
     const res = await fetch(`${S.SUPABASE_URL}/rest/v1/rpc/get_permintaan_by_sesi`, {
       method: 'POST',
@@ -390,9 +410,9 @@ async function loadChecklistForSesi(sesiId) {
       },
       body: JSON.stringify({ p_sesi_id: sesiId })
     });
-    if (!res.ok) { S.kbRefreshStatus.textContent = 'Gagal memuat checklist.'; return; }
+    if (!res.ok) { S.kbRefreshStatus.textContent = 'Gagal memuat checklist.'; return null; }
     const data = await res.json();
-    if (!data) { S.kbRefreshStatus.textContent = ''; return; } // sesi ini emang gak punya Permintaan RS
+    if (!data) { S.kbRefreshStatus.textContent = ''; return null; } // sesi ini emang gak punya Permintaan RS
 
     S.checklistItems = Array.isArray(data.items) ? data.items : [];
     S.checklistItems.forEach(it => { it.matched_items = S.normalizeMatchedItems(it); });
@@ -414,7 +434,8 @@ async function loadChecklistForSesi(sesiId) {
     // Buka otomatis requirement PENDING pertama, biar langsung ada yang bisa
     // dikerjain begitu Kebutuhan RS ini tampil — bukan daftar kolaps semua.
     const firstPending = S.checklistItems.find(i => i.status === 'PENDING');
-    S.checklistExpandedId = firstPending ? firstPending.id : null;
+    const keepExpanded = quiet && S.checklistExpandedId != null && S.checklistItems.some(i => i.id === S.checklistExpandedId);
+    if (!keepExpanded) S.checklistExpandedId = firstPending ? firstPending.id : null;
 
     S.kbSection.classList.remove('kb-collapsed');
     S.kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
@@ -423,9 +444,15 @@ async function loadChecklistForSesi(sesiId) {
     S.maybeFetchSuggestionForExpanded();
     // Sesi ini punya Permintaan RS yang nempel — langsung arahkan ke tab
     // Kebutuhan RS, karena itu kemungkinan besar yang mau dicek duluan.
-    S.switchClipTab('kb');
+    if (!quiet) S.switchClipTab('kb');
+    // Badge "RS n" di baris clipboard bergantung ke matched_items yang baru dimuat.
+    S.updateClipboard();
+    // Return = id Permintaan RS yang beneran kebaca dari server (dipakai buat verifikasi
+    // persist setelah simpan/tambah, dan buat ngecek "sesi ini udah punya belum").
+    return data.permintaan_id;
   } catch {
     S.kbRefreshStatus.textContent = 'Gagal memuat checklist.';
+    return null;
   }
 }
 S.loadChecklistForSesi = loadChecklistForSesi;

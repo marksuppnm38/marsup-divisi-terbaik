@@ -342,7 +342,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
     <div class="clip-sticky-top" id="clip-sticky-top">
     <div class="clip-header" id="clip-header">
       <div class="clip-title-row">
-        <div class="clip-title"><i class="ti ti-clipboard" style="font-size:11px"></i> Clipboard Konversi</div>
+        <div class="clip-title"><i class="ti ti-building-hospital" style="font-size:11px"></i> Sesi Konversi</div>
         <div style="display:flex;align-items:center;gap:6px">
           <button class="clip-header-edit-btn" id="btn-butuh-bantuan" type="button" title="Tandai sesi ini butuh bantuan tim">🙋 Minta Bantuan</button>
           <button class="clip-header-icon-btn" id="clip-header-toggle" type="button" title="Ciutkan form sesi">
@@ -386,6 +386,22 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       </div>
     </div>
 
+    <!-- PERMINTAAN RS (state sesi): satu baris yang SELALU nunjukin apakah sesi ini
+         sudah punya Permintaan RS, berapa item, dan jalan pintas eksplisit ke
+         Catat / Tambah / Edit. Ini yang bikin state permintaan kelihatan di dalam
+         sesi, bukan cuma tombol di toolbar. Diisi updateRsStrip() (permintaan-rs.js). -->
+    <div class="rs-strip" id="rs-strip">
+      <button type="button" class="rs-strip-state" id="rs-strip-state" title="Lihat isi Permintaan RS sesi ini">
+        <i class="ti ti-clipboard-text"></i>
+        <span class="rs-strip-title">Permintaan RS</span>
+        <span class="rs-strip-info" id="rs-strip-info">belum dicatat</span>
+      </button>
+      <div class="rs-strip-actions">
+        <button type="button" class="rs-strip-btn" id="rs-strip-add"><i class="ti ti-plus"></i> Catat</button>
+        <button type="button" class="rs-strip-btn" id="rs-strip-edit" style="display:none"><i class="ti ti-pencil"></i> Edit</button>
+      </div>
+    </div>
+
     <!-- TAB: Kebutuhan RS (pencocokan permintaan RS ↔ produk) vs Clipboard (hasil
          final yang mau di-export/record). Dulu dua-duanya ditumpuk vertikal dan
          rebutan tinggi di panel yang sempit — sekarang dipisah tab, jadi yang lagi
@@ -401,6 +417,9 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         <i class="ti ti-file-text"></i> <span class="clip-tab-label">Buat SPH</span>
       </button>
     </div>
+    <!-- Label tahap: satu baris kecil yang bilang "lagi di tahap apa" — diisi
+         switchClipTab() (clipboard.js). -->
+    <div class="clip-stage-label" id="clip-stage-label"></div>
     <!-- MODE HARGA OUTPUT: state INDEPENDEN dari toggle "Harga Swasta" di panel
          pencarian (tswasta/modeSwasta di konversian.js). Toggle di pencarian itu
          cuma preferensi lihat² pas quick lookup; yang di bawah ini yang beneran
@@ -548,11 +567,9 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 
     <div class="clip-footer">
       <div class="clip-budget" id="clip-budget"></div>
-      <!-- clip-summary sekarang cuma info kecil/senyap di sini — angka yang
-           sama udah jadi headline di .clip-summary-strip di atas tab-tab.
-           Disatuin sebaris sama "Hapus semua" (yang sekarang jadi text-link
-           kecil, bukan tombol berbingkai selebar panel) biar gak nambah baris
-           penuh sendiri buat aksi yang jarang dipake & destruktif. -->
+      <!-- Footer dikelompokkan per tahap: (1) ringkasan hasil, (2) Output
+           (Export → Drive), (3) Finalisasi (Record), (4) keluar sesi. Semua ID
+           tombol TETAP SAMA — cuma pengelompokan & label, logic gak disentuh. -->
       <div class="clip-utility-row">
         <div class="clip-summary">
           <span>Total: <span id="clip-total">0</span> produk dipilih</span>
@@ -560,48 +577,51 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         </div>
         <button class="btn-clear-all" id="btn-clear-all">Hapus semua</button>
       </div>
-      <!-- ALUR KONVERSI: Export → Drive ditampilkan sebagai 2 langkah yang terhubung
-           (bukan 2 tombol biru identik ditumpuk) biar kelihatan jelas ini satu alur
-           berurutan, bukan 2 aksi independen. Nomor step ganti jadi centang begitu
-           step itu selesai (lihat #conv-flow-status script di bawah, dekat
-           #export-modal). ID tombol TETAP SAMA (btn-export, btn-drive-upload,
-           btn-record) biar konversian.js gak perlu diubah. -->
-      <div class="conv-steps" id="conv-steps">
-        <button class="btn-export conv-step" id="btn-export" data-step="export" disabled>
-          <span class="conv-step-num">1</span>
-          <span class="conv-step-check"><i class="ti ti-check"></i></span>
-          <span class="conv-step-body">
-            <span class="conv-step-label">Export ke Excel</span>
-            <span class="conv-step-hint">Buat file rincian konversi</span>
-          </span>
-          <i class="ti ti-file-spreadsheet conv-step-icon"></i>
-        </button>
-        <div class="conv-step-connector"></div>
-        <div class="conv-step-row" id="conv-step-drive-row">
-          <button class="btn-export conv-step" id="btn-drive-upload" data-step="drive" disabled title="Aktif setelah Export ke Excel. Butuh sesi ini punya Permintaan RS (buat nentuin folder tahun).">
-            <span class="conv-step-num">2</span>
+
+      <div class="clip-foot-group">
+        <div class="clip-foot-label">Output</div>
+        <div class="conv-steps" id="conv-steps">
+          <button class="btn-export conv-step" id="btn-export" data-step="export" disabled>
+            <span class="conv-step-num">1</span>
             <span class="conv-step-check"><i class="ti ti-check"></i></span>
             <span class="conv-step-body">
-              <span class="conv-step-label">Simpan ke Drive</span>
-              <span class="conv-step-hint" id="conv-step-drive-hint">Aktif setelah Export selesai</span>
+              <span class="conv-step-label">Export ke Excel</span>
+              <span class="conv-step-hint">Buat file rincian konversi</span>
             </span>
-            <i class="ti ti-cloud-upload conv-step-icon"></i>
+            <i class="ti ti-file-spreadsheet conv-step-icon"></i>
           </button>
-          <a class="conv-step-open" id="conv-step-drive-open" href="#" target="_blank" rel="noopener" title="Buka folder di Drive">
-            <i class="ti ti-external-link"></i>
-          </a>
+          <div class="conv-step-connector"></div>
+          <div class="conv-step-row" id="conv-step-drive-row">
+            <button class="btn-export conv-step" id="btn-drive-upload" data-step="drive" disabled title="Aktif setelah Export ke Excel. Butuh sesi ini punya Permintaan RS (buat nentuin folder tahun).">
+              <span class="conv-step-num">2</span>
+              <span class="conv-step-check"><i class="ti ti-check"></i></span>
+              <span class="conv-step-body">
+                <span class="conv-step-label">Simpan ke Drive</span>
+                <span class="conv-step-hint" id="conv-step-drive-hint">Aktif setelah Export selesai</span>
+              </span>
+              <i class="ti ti-cloud-upload conv-step-icon"></i>
+            </button>
+            <a class="conv-step-open" id="conv-step-drive-open" href="#" target="_blank" rel="noopener" title="Buka folder di Drive">
+              <i class="ti ti-external-link"></i>
+            </a>
+          </div>
         </div>
       </div>
 
-      <button class="btn-record" id="btn-record" disabled>
-        <i class="ti ti-clipboard-check"></i> Record Konversi
-      </button>
-      <button class="btn-leave-sesi" id="btn-leave-sesi" type="button" disabled title="Keluar dari tampilan sesi ini — sesi TETAP 'berjalan', tetap di daftar Konversi Berjalan, gak ada yang berubah. Buat sekadar pindah kerjaan, bukan nutup sesi.">
-        <i class="ti ti-logout"></i> Keluar dari Sesi
-      </button>
-      <button class="btn-end-sesi" id="btn-end-sesi" type="button" disabled title="Tutup sesi ini tanpa Record — data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan">
-        <i class="ti ti-square-check"></i> Selesaikan Sesi
-      </button>
+      <div class="clip-foot-group clip-foot-final">
+        <div class="clip-foot-label">Finalisasi</div>
+        <button class="btn-record" id="btn-record" disabled>
+          <i class="ti ti-clipboard-check"></i> Record Konversi
+        </button>
+        <div class="clip-foot-exit-row">
+          <button class="btn-leave-sesi" id="btn-leave-sesi" type="button" disabled title="Keluar dari tampilan sesi ini — sesi TETAP 'berjalan', tetap di daftar Konversi Berjalan, gak ada yang berubah. Buat sekadar pindah kerjaan, bukan nutup sesi.">
+            <i class="ti ti-logout"></i> Keluar dari Sesi
+          </button>
+          <button class="btn-end-sesi" id="btn-end-sesi" type="button" disabled title="Tutup sesi ini tanpa Record — data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan">
+            <i class="ti ti-square-check"></i> Selesaikan Sesi
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -799,8 +819,37 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 <div class="modal-overlay" id="pr-modal">
 
   <div class="pr-modal-box">
-    <h3>Catat Permintaan RS</h3>
-    <div class="pr-sub">Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Ini murni buat data insight — bukan proses konversi otomatis.</div>
+    <h3 id="pr-modal-title">Catat Permintaan RS</h3>
+    <div class="pr-sub" id="pr-modal-sub">Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Ini murni buat data insight — bukan proses konversi otomatis.</div>
+
+    <!-- STATE AKTIF: sesi ini sudah punya Permintaan RS. Modal TIDAK langsung
+         nampilin form kosong (itu yang bikin kesan "ketimpa") — tapi nunjukin
+         isi permintaan yang tersimpan + dua aksi eksplisit: Tambah / Edit.
+         Diisi renderPrActiveView() di permintaan-rs.js. -->
+    <div id="pr-active-wrap" style="display:none">
+      <div class="pr-active-meta" id="pr-active-meta"></div>
+      <div class="pr-active-list" id="pr-active-list"></div>
+      <div class="pr-active-note">Satu sesi = satu Permintaan RS. <b>Tambah item</b> menambahkan ke daftar ini (yang lama tidak berubah). <b>Edit item</b> mengoreksi nama/qty item yang sudah ada.</div>
+      <div class="pr-actions">
+        <button class="pr-cancel" id="pr-active-close-btn" type="button">Tutup</button>
+        <button class="pr-cancel" id="pr-active-edit-btn" type="button"><i class="ti ti-pencil"></i> Edit item</button>
+        <button id="pr-active-add-btn" type="button"><i class="ti ti-plus"></i> Tambah item</button>
+      </div>
+    </div>
+
+    <!-- MODE EDIT: koreksi nama/qty item yang sudah tersimpan. Cuma baris yang
+         berubah yang ditulis ke server. -->
+    <div id="pr-edit-wrap" style="display:none">
+      <div class="pr-review-box">
+        <div class="pr-review-info">Koreksi nama atau qty. Hanya baris yang kamu ubah yang disimpan. Status pencocokan item tidak berubah.</div>
+        <div class="pr-edit-head"><span>Item diminta</span><span>Qty</span></div>
+        <div class="pr-edit-list" id="pr-edit-rows"></div>
+      </div>
+      <div class="pr-actions">
+        <button class="pr-cancel" id="pr-edit-back-btn" type="button">Kembali</button>
+        <button id="pr-edit-save-btn" type="button">Simpan perubahan</button>
+      </div>
+    </div>
 
     <!-- Strip referensi screenshot (kalau ada) — muncul begitu OCR selesai baca gambar,
          biar user bisa cek balik ke sumber pas ngedit hasil parse. RAM-only, gak
@@ -809,6 +858,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 
     <!-- Login sudah ditangani di gerbang awal (satu login buat seluruh app) -->
     <div id="pr-form-wrap">
+      <div id="pr-header-fields">
       <div class="pr-row2">
         <div class="pr-field">
           <label>Nama RS / Instansi</label>
@@ -832,6 +882,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
           <input type="text" inputmode="numeric" id="pr-pagu" placeholder="cth: 150.000.000"/>
         </div>
       </div>
+      </div><!-- /pr-header-fields -->
 
       <div class="pr-tabs">
         <button class="pr-tab active" id="pr-tab-teks" type="button">Paste Teks</button>

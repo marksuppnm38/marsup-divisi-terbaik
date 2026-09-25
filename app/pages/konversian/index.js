@@ -1792,6 +1792,10 @@ async function renderSetRincianInLampiranModal(kode_produk) {
     lampiranStatus.textContent = 'Rincian isi set tidak ditemukan buat produk ini.';
     return;
   }
+  // Jumlah item set ikut tampil di judul modal, dan masuk cache yang dipakai label tombol
+  // "Lihat Lampiran · N item" (satu sumber angka, gak mungkin beda antara tombol & isi modal).
+  S.setItemCountCache.set(kode_produk, items.length);
+  lampiranTitle.textContent = `Lampiran — ${kode_produk} · ${items.length} item`;
 
   // Gambar tiap komponen diambil PARALEL (bukan satu-satu) — sama pola kayak
   // worker pool di export Excel, biar gak lelet kalau isi setnya banyak.
