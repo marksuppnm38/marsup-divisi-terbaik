@@ -1252,13 +1252,22 @@ btnDictRefresh.addEventListener('click', () => { dictStatsLoaded = false; loadDi
 // tombol hapus/kembalikan biar tau mesti update pair yang mana.
 let dictModalCurrentIstilah = null;
 
-function dictDetailRowHtml(d, isManual) {
-  const kodeForUrl = (d.kode_asli && d.kode_asli.trim()) ? d.kode_asli.trim() : d.kode_produk;
-  const thumbUrl = S.THUMB_BASE + kodeForUrl + '.png';
+// SECURITY FIX: `thumbUrl` dulu dibangun sync dari S.THUMB_BASE (URL public
+// deterministik). Bucket 'thumbnails' sekarang privat, jadi signed URL-nya
+// harus SUDAH diminta lebih dulu (batch, lihat openDictionaryDetail() yang
+// manggil S.resolveThumbUrls() sebelum .map() ke fungsi ini) -- makanya
+// signature-nya nambah parameter `thumbUrl` (bukan dihitung sendiri di sini).
+// 1x1 transparent GIF -- dipakai sebagai src kalau signed URL gagal dibuat
+// (kode ini belum ada gambarnya di bucket). Sengaja bukan string kosong (""):
+// <img src=""> di beberapa browser diam-diam nge-request ULANG halaman ini
+// sendiri, bukan cuma gagal diam-diam kayak yang diharapkan.
+const DICT_BLANK_THUMB = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+
+function dictDetailRowHtml(d, isManual, thumbUrl) {
   return `
     <div class="dict-detail-row" style="display:block" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}">
       <div style="display:flex;align-items:flex-start;gap:10px">
-        <img src="${thumbUrl}" class="dict-detail-thumb" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}"
+        <img src="${S.escapeHtmlAttr(thumbUrl || DICT_BLANK_THUMB)}" class="dict-detail-thumb" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}"
           data-kode-asli="${S.escapeHtmlAttr(d.kode_asli || '')}" data-nama="${S.escapeHtmlAttr(d.nama_produk || '')}"
           style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);flex-shrink:0;cursor:pointer"/>
         <div style="flex:1;min-width:0">
@@ -1328,9 +1337,19 @@ async function openDictionaryDetail(istilah) {
     if (!data.length) {
       dictModalList.innerHTML = '<div style="padding:16px 0;text-align:center;color:var(--text-muted);font-size:13px">Belum ada produk yang dihubungkan ke istilah ini — tambah lewat kolom di bawah.</div>';
     } else {
+      // SECURITY FIX: bucket 'thumbnails' privat -- signed URL buat SEMUA baris
+      // diminta SEKALIGUS (satu request createSignedUrls, lihat S.resolveThumbUrls
+      // di index.js) SEBELUM dictDetailRowHtml() dipanggil, karena fungsi itu sendiri
+      // sekarang murni sync (cuma nyusun HTML dari thumbUrl yang udah jadi).
+      let urlMap;
+      try {
+        urlMap = await S.resolveThumbUrls(data);
+      } catch (e) {
+        urlMap = new Map(); // gagal minta signed URL (mis. network) -- tampilin baris tanpa gambar drpd gagal total
+      }
       // Sudah terurut dari server berdasarkan frekuensi terbesar (JANGAN diurutkan ulang —
       // satu istilah customer memang wajar punya beberapa produk Robust, ini bukan error).
-      dictModalList.innerHTML = data.map(d => dictDetailRowHtml(d, manualAddedKodes.has(d.kode_produk))).join('');
+      dictModalList.innerHTML = data.map(d => dictDetailRowHtml(d, manualAddedKodes.has(d.kode_produk), urlMap.get(S.thumbKeyForItem(d)))).join('');
       // SET yang belum ada angka item-nya di cache -> ambil lazy, label nyusul (sama pola dengan hasil pencarian).
       S.hydrateSetCounts(dictModalList, data.filter(d => d.is_set && S.cachedSetItemCount(d) == null).map(d => d.kode_produk));
     }

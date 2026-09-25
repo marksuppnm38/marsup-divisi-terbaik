@@ -138,13 +138,16 @@ export async function mount(container) {
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.innerHTML = EXPORT_GAMBAR_MARKUP;
 
-      // Sumber gambar sekarang Supabase Storage bucket "thumbnails" (public, key by
-      // kode_asli). URL/anon key project sendiri memang publik (dilindungi RLS di server)
-      // dan sudah tersedia dari shared/supabase-client.js — jadi dipakai dari situ langsung,
-      // gak perlu dobel-declare di sini.
+      // SECURITY FIX: bucket "thumbnails" SEKARANG PRIVATE (dulu public, key by
+      // kode_asli, siapa aja bisa GET langsung tanpa login). URL/anon key project
+      // sendiri memang publik (dilindungi RLS di server) dan sudah tersedia dari
+      // shared/supabase-client.js — jadi dipakai dari situ langsung, gak perlu
+      // dobel-declare di sini. Gambar individual sekarang diambil lewat signed URL
+      // (window.PNM_getSignedUrl, lihat getSupabaseImageUrl() di bawah), bukan lagi
+      // URL public deterministik.
       const SUPABASE_URL = window.PNM_SUPABASE_URL;
       const THUMBNAILS_BUCKET = "thumbnails";
-      const TEMPLATE_URL = `${SUPABASE_URL}/storage/v1/object/public/${THUMBNAILS_BUCKET}/TEMPLATE_THUMBNAIL_ROBUST.png`;
+      const TEMPLATE_FILENAME = "TEMPLATE_THUMBNAIL_ROBUST.png";
   
       const sb = window.pnmSupabase;
 
@@ -329,9 +332,12 @@ export async function mount(container) {
       const imageCache = {};
   
       function getSupabaseImageUrl(kode) {
-          // Bucket "thumbnails" publik & gambar disimpan by kode_asli — URL-nya deterministik,
-          // nggak perlu API call/API key sama sekali buat ambil gambar individual.
-          return `${SUPABASE_URL}/storage/v1/object/public/${THUMBNAILS_BUCKET}/${encodeURIComponent(kode)}.png`;
+          // SECURITY FIX: bucket "thumbnails" sekarang PRIVATE -- URL public
+          // deterministik gak jalan lagi. Perlu signed URL (window.PNM_getSignedUrl,
+          // shared/supabase-client.js), jadi fungsi ini sekarang ASYNC. Path yang
+          // dikirim ke Storage API HARUS mentah (bukan encodeURIComponent) -- SDK-nya
+          // sendiri yang urus encoding pas bikin request.
+          return window.PNM_getSignedUrl(THUMBNAILS_BUCKET, `${kode}.png`);
       }
   
       // Load gambar dengan retry + exponential backoff, khusus menangani 429
@@ -361,7 +367,7 @@ export async function mount(container) {
               console.log("[CACHE] Pakai gambar overlay dari cache untuk:", kode);
               return imageCache[kode];
           }
-          const overlaySrc = getSupabaseImageUrl(kode);
+          const overlaySrc = await getSupabaseImageUrl(kode);
           const overlayImg = await loadImageWithRetry(overlaySrc);
           const processedOverlay = await removeBackgroundHighQuality(overlayImg);
           imageCache[kode] = processedOverlay;
@@ -500,11 +506,16 @@ export async function mount(container) {
           try {
               console.log("[INFO] Mengambil gambar template & overlay...");
   
-              const templateImg = imageCache[TEMPLATE_URL]
-                  ? imageCache[TEMPLATE_URL]
+              // SECURITY FIX: TEMPLATE_URL (URL public tetap) diganti TEMPLATE_FILENAME
+              // (nama file doang) + signed URL yang diminta tiap kali cache kosong --
+              // cache key-nya sekarang TEMPLATE_FILENAME (string tetap), bukan lagi URL
+              // (yang sekarang berubah tiap signing, gak bisa lagi dipakai sebagai key).
+              const templateImg = imageCache[TEMPLATE_FILENAME]
+                  ? imageCache[TEMPLATE_FILENAME]
                   : await (async () => {
-                      const img = await loadImageWithRetry(TEMPLATE_URL);
-                      imageCache[TEMPLATE_URL] = img;
+                      const templateUrl = await window.PNM_getSignedUrl(THUMBNAILS_BUCKET, TEMPLATE_FILENAME);
+                      const img = await loadImageWithRetry(templateUrl);
+                      imageCache[TEMPLATE_FILENAME] = img;
                       return img;
                   })();
   

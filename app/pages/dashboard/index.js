@@ -227,9 +227,21 @@ async function openDetail(kode){
     document.getElementById('dm-title').textContent = d.nama_produk || '—';
     document.getElementById('dm-kode').textContent = d.kode_produk;
 
-    const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
+    // SECURITY FIX: bucket 'thumbnails' sekarang PRIVATE (dulu URL public
+    // deterministik THUMB_BASE + kode_asli + '.png', bisa diakses siapa aja
+    // tanpa login). Sekarang minta signed URL (sementara, lihat
+    // window.PNM_getSignedUrl di shared/supabase-client.js) -- perlu await,
+    // jadi blok ini dipindah ke dalam try/catch openDetail() yang sudah async.
     const mediaThumb = d.media ? d.media.find(m=>m.is_primary && m.url) || d.media.find(m=>m.url) : null;
-    let thumbUrl = mediaThumb?.url || (d.kode_asli ? THUMB_BASE + encodeURIComponent(d.kode_asli) + '.png' : null);
+    let thumbUrl = mediaThumb?.url || null;
+    if (!thumbUrl && d.kode_asli) {
+      try {
+        thumbUrl = await window.PNM_getSignedUrl('thumbnails', d.kode_asli + '.png');
+      } catch (e) {
+        thumbUrl = null; // kode_asli belum ada gambarnya -- sama seperti dulu 404 pada URL public
+      }
+      if (myReq !== detailReqId) return; // user sudah pindah produk lain selama nunggu signed URL
+    }
     if (thumbUrl && !isSafeHttpUrl(thumbUrl)) thumbUrl = null;
 
     const hargaMap = {};

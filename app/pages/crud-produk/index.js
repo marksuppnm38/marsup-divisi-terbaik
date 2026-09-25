@@ -162,7 +162,10 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // <script> tag di <head> udah menjamin shared/supabase-client.js kelar duluan
 // sebelum crud-produk.js ini dievaluasi). Sekarang di-assign di DALAM mount(),
 // SETELAH await ensureVendorScripts() -- lihat di bawah.
-const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
+// SECURITY FIX (bucket 'thumbnails' jadi private): dulu ada THUMB_BASE
+// (URL public deterministik) di sini, dipakai buat preview di
+// checkGambarInstrumen(). Sekarang preview-nya lewat window.PNM_getSignedUrl()
+// (shared/supabase-client.js) -- lihat pemakaiannya di checkGambarInstrumen().
 
 const SEAL_LABELS = {
   terhubung: 'Terhubung',
@@ -1523,9 +1526,12 @@ async function cekMaster(kodeAsli, silent){
 
 // ================================================================
 // GAMBAR INSTRUMEN — cek bucket 'thumbnails' by kode_asli.png, upload kalau belum ada.
-// Bucket-nya udah public buat DIBACA (GET file langsung bypass RLS), tapi list & upload
-// tetep lewat Storage API yang kena RLS storage.objects -> perlu policy select/insert/update
-// khusus bucket ini (lihat catatan migrasi terpisah).
+// SECURITY FIX: bucket ini SEKARANG PRIVATE (dulu public buat DIBACA -- GET file
+// langsung tanpa auth, bypass RLS sepenuhnya). List & upload udah dari dulu lewat
+// Storage API yang kena RLS storage.objects (perlu policy select/insert/update khusus
+// bucket ini, lihat catatan migrasi terpisah) -- itu gak berubah. Yang berubah: preview
+// gambar (dulu <img src> langsung ke URL public deterministik) sekarang lewat
+// window.PNM_getSignedUrl(), yang juga lewat RLS select policy yang sama.
 // ================================================================
 const GAMBAR_BUCKET = 'thumbnails';
 function gambarInstrumenFilename(kodeAsli){ return `${kodeAsli}.png`; }
@@ -1612,7 +1618,16 @@ async function checkGambarInstrumen(){
     badge.innerHTML = '<i class="ti ti-check"></i> Ada di bucket';
     hint.textContent = filename;
     previewWrap.style.display = '';
-    document.getElementById('gambarInstrumenPreview').src = THUMB_BASE + filename + '?t=' + Date.now();
+    // SECURITY FIX: bucket privat -- URL public gak jalan lagi, minta signed URL
+    // (sementara, lihat window.PNM_getSignedUrl di shared/supabase-client.js).
+    // Cache-busting '?t=' lama gak relevan lagi (tiap signed URL sudah unik/fresh).
+    try {
+      document.getElementById('gambarInstrumenPreview').src = await window.PNM_getSignedUrl(GAMBAR_BUCKET, filename);
+    } catch (e) {
+      badge.className = 'status-pill bad';
+      badge.textContent = 'Gagal buat URL preview';
+      hint.textContent = e.message || String(e);
+    }
     uploadBtn.innerHTML = '<i class="ti ti-refresh"></i> Ganti Gambar';
   } else {
     badge.className = 'status-pill warn';

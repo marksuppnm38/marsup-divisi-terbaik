@@ -1162,8 +1162,18 @@ if (btnLogout) {
 }
 
 initAuth();
-const THUMB_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/thumbnails/';
-S.THUMB_BASE = THUMB_BASE;
+// SECURITY FIX (bucket 'thumbnails' jadi private): THUMB_BASE (URL public
+// deterministik) DIHAPUS. Semua tempat yang dulu pakai THUMB_BASE + kode + '.png'
+// sekarang lewat window.PNM_getSignedUrl()/window.PNM_getSignedUrls() (shared/
+// supabase-client.js) -- lihat openGambarModal(), handleGambarFileDropped(),
+// thumbKeyForItem()/resolveThumbUrls() di bawah, dan pemakainya di dictionary.js/
+// search.js/clipboard.js (S.thumbKeyForItem/S.resolveThumbUrls, dulu S.THUMB_BASE).
+//
+// NOTE bucket 'lampiran-unit' (LAMPIRAN_BASE di bawah) SENGAJA BELUM disentuh --
+// itu bucket TERPISAH dan masih public sama persis kayak 'thumbnails' dulu
+// (URL deterministik by kode_produk.pdf, siapa aja bisa buka tanpa login kalau
+// nebak/dapat linknya). Kalau itu juga mau diprivate-kan, perlu perlakuan sama
+// (signed URL) di titik-titik LAMPIRAN_BASE di bawah -- belum termasuk di sesi ini.
 const LAMPIRAN_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/lampiran-unit/';
 
 // Regex resmi dari storage-api Supabase buat validasi object key (S3-safe chars).
@@ -1439,10 +1449,22 @@ ssRefPrevBtn.addEventListener('click', () => { ssRefLightboxIndex = (ssRefLightb
 ssRefNextBtn.addEventListener('click', () => { ssRefLightboxIndex = (ssRefLightboxIndex + 1) % ssReferences.length; renderSsRefLightbox(); });
 
 let gambarCurrentKodeForUrl = null;
+// Token buat guard race condition: openGambarModal() sekarang async (nunggu
+// signed URL) -- kalau user buka produk A lalu langsung buka produk B sebelum
+// signed URL punya A kelar, respons telat punya A gak boleh nimpa modal B.
+let gambarModalReqId = 0;
 
-function openGambarModal(kode_asli, kode_produk, nama_produk) {
+// SECURITY FIX: dulu sync (URL public deterministik langsung ditaruh di
+// img.src, 404 ditangani img.onerror). Sekarang perlu minta signed URL dulu
+// (async) -- kalau gagal DIBUAT (mis. file belum pernah diupload -> Supabase
+// balikin error di createSignedUrl, bukan nunggu <img> gagal load), diperlakukan
+// SAMA PERSIS kayak dulu 404: tampilin dropzone upload. img.onerror tetap
+// dipasang juga sebagai jaring pengaman kedua (mis. signed URL kebentuk tapi
+// fetch-nya sendiri gagal karena alasan lain).
+async function openGambarModal(kode_asli, kode_produk, nama_produk) {
   const kodeForUrl = (kode_asli && kode_asli.trim()) ? kode_asli.trim() : kode_produk;
   gambarCurrentKodeForUrl = kodeForUrl;
+  const myReq = ++gambarModalReqId;
   gambarTitle.textContent = nama_produk || 'Gambar Produk';
   gambarImg.style.display = 'none';
   gambarDropzone.style.display = 'none';
@@ -1453,13 +1475,25 @@ function openGambarModal(kode_asli, kode_produk, nama_produk) {
   gambarStatus.textContent = 'Memuat gambar…';
   gambarModal.classList.add('show');
 
-  const url = THUMB_BASE + kodeForUrl + '.png';
   gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarImg.style.display = 'block'; gambarDropzone.style.display = 'none'; gambarGantiBtn.style.display = 'inline-block'; };
   gambarImg.onerror = () => {
+    if (myReq !== gambarModalReqId) return;
     gambarStatus.style.display = 'none';
     gambarGantiBtn.style.display = 'none';
     showGambarDropzone();
   };
+
+  let url;
+  try {
+    url = await window.PNM_getSignedUrl('thumbnails', kodeForUrl + '.png');
+  } catch (e) {
+    if (myReq !== gambarModalReqId) return; // user udah buka produk lain / tutup modal selama nunggu
+    gambarStatus.style.display = 'none';
+    gambarGantiBtn.style.display = 'none';
+    showGambarDropzone();
+    return;
+  }
+  if (myReq !== gambarModalReqId) return;
   gambarImg.src = url;
 }
 S.openGambarModal = openGambarModal;
@@ -1547,7 +1581,16 @@ async function handleGambarFileDropped(file) {
     gambarStatus.textContent = 'Memuat gambar…';
     gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarUploadStatus.style.display = 'none'; gambarImg.style.opacity = '1'; gambarImg.style.display = 'block'; gambarGantiBtn.style.display = 'inline-block'; };
     gambarImg.onerror = () => { gambarImg.style.opacity = '1'; gambarUploadStatus.textContent = 'Gambar sudah diunggah, tapi gagal dimuat ulang — coba buka lagi.'; };
-    gambarImg.src = THUMB_BASE + gambarCurrentKodeForUrl + '.png?t=' + Date.now();
+    // SECURITY FIX: bucket privat -- signed URL, bukan URL public + cache-busting
+    // '?t='. File baru diupload barusan (upsert:true), jadi createSignedUrl-nya
+    // pasti nemu objectnya -- cache-busting lama gak relevan lagi (signed URL-nya
+    // sendiri sudah unik/fresh tiap kali diminta).
+    try {
+      gambarImg.src = await window.PNM_getSignedUrl('thumbnails', gambarCurrentKodeForUrl + '.png');
+    } catch (e) {
+      gambarImg.style.opacity = '1';
+      gambarUploadStatus.textContent = 'Gambar tersimpan, tapi gagal membuat URL preview: ' + (e.message || e);
+    }
     // Toast eksplisit di luar modal (gak cuma teks kecil di dalam modal) —
     // supaya user yang matanya udah pindah dari modal (mis. abis paste
     // langsung mau lanjut kerjaan lain) tetap kelihatan konfirmasi tegas
@@ -1867,20 +1910,32 @@ async function renderSetRincianInLampiranModal(kode_produk) {
   }
 }
 
-// URL thumbnail publik buat satu komponen set. Sama aturannya kayak
-// fetchImageBase64() di clipboard.js (pakai kode_asli kalau ada, fallback ke
-// kode_produk), cuma di sini URL-nya dipakai MENTAH (bukan di-fetch jadi
-// base64) karena Excel & Google Sheet yang bakal nge-download sendiri.
-// encodeURIComponent dipasang di sini — kode yang mengandung spasi/slash
-// bakal bikin =IMAGE() dan <img> gagal diam-diam kalau gak di-encode.
-function thumbUrlForSetItem(it) {
+// Nama object (path) di bucket 'thumbnails' buat satu komponen set/produk.
+// Sama aturannya kayak fetchImageBase64() di clipboard.js (pakai kode_asli
+// kalau ada, fallback ke kode_produk). Ini path MENTAH buat storage API
+// (bukan bagian URL yang perlu di-encode -- SDK Supabase yang urus encoding-
+// nya sendiri pas createSignedUrl(s) dipanggil).
+function thumbKeyForItem(it) {
   const kode = (it.kode_asli && String(it.kode_asli).trim()) ? String(it.kode_asli).trim() : it.kode_produk;
-  return S.THUMB_BASE + encodeURIComponent(kode) + '.png';
+  return kode + '.png';
 }
-// Bentuk item clipboard/convRows sama persis (punya kode_asli + kode_produk),
-// jadi fungsi ini dipakai ulang di dua tempat: modal Rincian Set (di bawah)
-// dan tombol Copy + Gambar di Converter (lihat search.js).
-S.thumbUrlForItem = thumbUrlForSetItem;
+// SECURITY FIX (bucket 'thumbnails' privat): dulu ada thumbUrlForSetItem()
+// yang sync nge-build URL public MENTAH ('.../object/public/thumbnails/KODE.png')
+// buat langsung ditaruh ke <img src> / rumus =IMAGE() di clipboard export --
+// Excel & Google Sheet yang nge-download gambarnya sendiri, makanya dulu gak
+// butuh fetch apa pun di sisi app ini. Sekarang bucket privat, jadi Excel/Sheet
+// (yang sama sekali gak punya sesi login app ini) CUMA bisa download gambar itu
+// kalau URL-nya SUDAH berupa signed URL (token akses ada di URL-nya sendiri,
+// bukan di header Authorization yang gak bisa dikirim <img>/=IMAGE()).
+// resolveThumbUrls() di bawah minta signed URL buat SEMUA item sekaligus
+// (satu request createSignedUrls, bukan N request createSignedUrl) SEBELUM
+// baris-baris HTML/TSV dibangun -- lihat copySetRincianWithImages() & pemakai
+// lain (search.js's Copy+Gambar) yang sekarang await ini duluan.
+async function resolveThumbUrls(items) {
+  return window.PNM_getSignedUrls('thumbnails', items.map(thumbKeyForItem));
+}
+S.thumbKeyForItem = thumbKeyForItem;
+S.resolveThumbUrls = resolveThumbUrls;
 
 // Tulis beberapa "rasa" (flavor) sekaligus ke clipboard: text/html DAN
 // text/plain. Aplikasi tujuan yang milih mau pakai yang mana — Excel & Word
@@ -1924,29 +1979,53 @@ S.writeRichClipboard = writeRichClipboard;
 // (text/plain) secara definisi cuma bisa bawa karakter — gambar gak punya
 // representasi di situ. Jadi dipakai dua jalur sekaligus dalam SATU kali copy:
 //
-//   text/html  → tabel HTML lengkap sama <img src="https://…thumbnails/KODE.png">.
+//   text/html  → tabel HTML lengkap sama <img src="https://…/object/sign/thumbnails/KODE.png?token=…">.
 //                Excel (desktop) ngebaca flavor ini pas paste, nge-download
 //                gambarnya, dan naruh sebagai picture di atas cell-nya. URL-nya
-//                sengaja URL publik, BUKAN data:base64 hasil removeBackground(),
-//                karena Excel gak mau nge-render data-URI pas paste HTML —
-//                konsekuensinya gambar di sini masih ada background aslinya.
+//                BUKAN data:base64 hasil removeBackground(), karena Excel gak
+//                mau nge-render data-URI pas paste HTML — konsekuensinya
+//                gambar di sini masih ada background aslinya.
 //   text/plain → TSV yang kolom terakhirnya rumus =IMAGE("url"). Google Sheet
 //                (dan Excel 365, yang udah punya fungsi IMAGE) bakal nge-render
 //                rumus ini jadi gambar di DALAM cell. Di Google Sheet pastikan
 //                paste-nya Ctrl+Shift+V (paste teks polos), soalnya kalau paste
 //                biasa Sheet milih flavor HTML di atas dan <img>-nya dibuang.
+// SECURITY FIX: bucket 'thumbnails' sekarang PRIVATE -- URL di atas BUKAN lagi
+// URL public permanen, tapi signed URL (resolveThumbUrls(), lihat komentarnya)
+// yang kadaluarsa (lihat SIGNED_URL_TTL_SECONDS di shared/supabase-client.js).
+// Konsekuensi yang harus disadari tim: kalau sheet/file Excel hasil paste ini
+// dibuka LAGI setelah token itu kadaluarsa DAN aplikasi tujuan coba fetch ulang
+// gambarnya (Google Sheet's =IMAGE() bisa begitu), gambarnya bakal gagal muat.
+// Ini trade-off yang DISENGAJA (itu tujuannya bucket di-private-kan) -- kalau
+// kejadian di lapangan, solusi PALING PASTI adalah tombol .xlsx di bawah
+// (downloadSetRincianXlsx), yang nge-embed gambar BENERAN ke file (bukan link),
+// gak kena masalah token expired sama sekali.
 async function copySetRincianWithImages(items, imgs, btnEl) {
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const clean = (s) => String(s ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ').trim();
 
+  // SECURITY FIX: signed URL buat SEMUA item di set ini diminta SEKALIGUS
+  // (satu request), sebelum baris HTML/TSV dibangun -- lihat komentar panjang
+  // di resolveThumbUrls() di atas soal kenapa ini gak bisa lagi sync kayak dulu.
+  let urlMap;
+  try {
+    urlMap = await resolveThumbUrls(items);
+  } catch (e) {
+    S.showToast('Gagal menyiapkan URL gambar: ' + (e.message || e), 'error');
+    return;
+  }
+
   const rowsHtml = items.map((it, i) => {
-    const url = thumbUrlForSetItem(it);
+    const url = urlMap.get(thumbKeyForItem(it)) || '';
+    const gambarCell = url
+      ? `<img src="${esc(url)}" width="80" height="65" alt="${esc(it.kode_produk)}">`
+      : ''; // kode ini belum ada gambarnya di bucket -- sel dibiarkan kosong (dulu: <img> 404/broken)
     return `<tr>` +
       `<td style="border:1px solid #000;text-align:center">${it.urutan || i + 1}</td>` +
       `<td style="border:1px solid #000">${esc(it.kode_produk)}</td>` +
       `<td style="border:1px solid #000">${esc(it.nama_produk)}</td>` +
       `<td style="border:1px solid #000;text-align:center">${it.qty ?? 1}</td>` +
-      `<td style="border:1px solid #000;text-align:center"><img src="${esc(url)}" width="80" height="65" alt="${esc(it.kode_produk)}"></td>` +
+      `<td style="border:1px solid #000;text-align:center">${gambarCell}</td>` +
       `</tr>`;
   }).join('');
 
@@ -1957,12 +2036,15 @@ async function copySetRincianWithImages(items, imgs, btnEl) {
       .map(h => `<th style="border:1px solid #000;background:#1D5BD4;color:#fff">${h}</th>`).join('') +
     `</tr></thead><tbody>${rowsHtml}</tbody></table>`;
 
-  const plain = items.map((it) => [
-    clean(it.kode_produk),
-    clean(it.nama_produk),
-    it.qty ?? 1,
-    `=IMAGE("${thumbUrlForSetItem(it)}")`
-  ].join('\t')).join('\n');
+  const plain = items.map((it) => {
+    const url = urlMap.get(thumbKeyForItem(it)) || '';
+    return [
+      clean(it.kode_produk),
+      clean(it.nama_produk),
+      it.qty ?? 1,
+      url ? `=IMAGE("${url}")` : ''
+    ].join('\t');
+  }).join('\n');
 
   const ok = await writeRichClipboard(html, plain);
   if (!ok) {

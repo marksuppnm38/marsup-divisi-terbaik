@@ -120,4 +120,81 @@
   window.pnmSupabase = pnmSupabase;
   window.PNM_SUPABASE_URL = SUPABASE_URL;
   window.PNM_SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+
+  // ══════════════════════════════════════════
+  // SIGNED URL HELPER (sesi keamanan, bucket 'thumbnails'/'lampiran-unit' privat)
+  // ══════════════════════════════════════════
+  // Dulu semua modul nge-build URL gambar/lampiran langsung sebagai string
+  // deterministik ('.../object/public/<bucket>/<kode>.png') karena bucketnya
+  // di-flag PUBLIC di Supabase -- siapa aja yang punya/nebak URL itu (link
+  // "Copy image address" di browser, dsb.) bisa buka file itu SELAMANYA,
+  // tanpa login, dari luar app ini sama sekali. Sekarang bucket-nya PRIVATE
+  // (RLS storage.objects yang nentuin siapa boleh baca), jadi satu-satunya
+  // cara ngambil URL yang beneran bisa diakses adalah minta Supabase nanda-
+  // tangani URL sementara (createSignedUrl) pakai sesi login yang aktif --
+  // itu yang dua fungsi di bawah ini bungkus, PLUS cache in-memory pendek
+  // biar gambar yang sama (dilihat berkali-kali dalam satu sesi tab, mis.
+  // buka-tutup modal yang sama) gak nembak endpoint signing berkali-kali.
+  //
+  // TTL sengaja gak dibikin "selamanya" atau "sangat panjang": ini PERSIS
+  // titik keseimbangan yang dulu gak ada sama sekali (public = TTL tak
+  // terhingga). URL hasil sign ini akan ditempel ke tempat yang bisa
+  // "kabur" dari app (di-paste ke Excel/Google Sheet lewat fitur "Copy +
+  // Gambar" / <img>/=IMAGE()) -- practice standar adalah kasih token itu
+  // umur pendek, cukup buat kebutuhan paste/lihat saat itu juga, supaya
+  // begitu lewat TTL-nya, link yang sempat ke-paste itu OTOMATIS jadi gak
+  // guna lagi (401/expired) walau linknya sendiri masih "hidup" di sheet
+  // orang. Kalau kebutuhan berubah (mis. tim komplain gambar di sheet lama
+  // ilang kecepetan), naikkan angka ini -- jangan hapus mekanisme sign-nya.
+  const SIGNED_URL_TTL_SECONDS = 3600; // 1 jam
+  const SIGNED_URL_CACHE_MARGIN_MS = 30 * 1000; // anggap kadaluarsa 30dtk lebih awal dari klaimnya, buffer utk latency jaringan
+  const signedUrlCache = new Map(); // key `${bucket}\u0000${path}` -> { url, expiresAtMs }
+
+  function cacheKey(bucket, path) { return bucket + '\u0000' + path; }
+
+  // Satu file. Lempar Error kalau gagal (path gak ada / gak ada akses) --
+  // caller yang mutusin fallback-nya (tampilin placeholder, biarin
+  // <img onerror>, dst), sama kayak dulu kalau URL public 404.
+  async function pnmGetSignedUrl(bucket, path, expiresInSeconds = SIGNED_URL_TTL_SECONDS) {
+    const key = cacheKey(bucket, path);
+    const cached = signedUrlCache.get(key);
+    if (cached && cached.expiresAtMs > Date.now()) return cached.url;
+    const { data, error } = await pnmSupabase.storage.from(bucket).createSignedUrl(path, expiresInSeconds);
+    if (error) throw error;
+    signedUrlCache.set(key, { url: data.signedUrl, expiresAtMs: Date.now() + expiresInSeconds * 1000 - SIGNED_URL_CACHE_MARGIN_MS });
+    return data.signedUrl;
+  }
+
+  // Banyak file sekaligus (satu request Storage API, bukan N request) --
+  // buat list/tabel/clipboard-export yang butuh beberapa gambar bersamaan
+  // (dictionary detail, rincian set, copy+gambar Converter). Balikinnya Map
+  // path -> url ('' kalau gagal buat path itu spesifik, misal filenya emang
+  // belum pernah diupload -- caller cek falsy-nya, sama kayak dulu <img
+  // onerror> nanganin 404).
+  async function pnmGetSignedUrls(bucket, paths, expiresInSeconds = SIGNED_URL_TTL_SECONDS) {
+    const result = new Map();
+    const uncached = [];
+    const uniquePaths = [...new Set(paths)];
+    uniquePaths.forEach((p) => {
+      const key = cacheKey(bucket, p);
+      const cached = signedUrlCache.get(key);
+      if (cached && cached.expiresAtMs > Date.now()) result.set(p, cached.url);
+      else uncached.push(p);
+    });
+    if (uncached.length) {
+      const { data, error } = await pnmSupabase.storage.from(bucket).createSignedUrls(uncached, expiresInSeconds);
+      if (error) throw error;
+      (data || []).forEach((row) => {
+        // signed URLs (path yang ditemukan, gak error per-item) -- SDK balikin satu
+        // entri per path yg diminta, urut sama, tiap entri punya .path/.signedUrl/.error.
+        const url = (!row.error && row.signedUrl) ? row.signedUrl : '';
+        if (url) signedUrlCache.set(cacheKey(bucket, row.path), { url, expiresAtMs: Date.now() + expiresInSeconds * 1000 - SIGNED_URL_CACHE_MARGIN_MS });
+        result.set(row.path, url);
+      });
+    }
+    return result;
+  }
+
+  window.PNM_getSignedUrl = pnmGetSignedUrl;
+  window.PNM_getSignedUrls = pnmGetSignedUrls;
 })();

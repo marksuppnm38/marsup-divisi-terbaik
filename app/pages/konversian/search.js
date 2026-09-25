@@ -300,13 +300,26 @@ if (S.btnConvCopyGambar) {
     // SET dilewati gambarnya (bukan barisnya) dengan alasan sama persis kayak
     // di modal Rincian Set: SET gak punya thumbnail sendiri (imgMap di export
     // isinya komponen, bukan set-nya), jadi <img> buat kode SET bakal 404 /
-    // gambar rusak kalau dipaksa.
+    // gambar rusak kalau dipaksa -- jadi gak usah ikut diminta signed URL-nya.
+    const nonSetProduk = rows.map(row => row.produk).filter(r => !(r.tipe && r.tipe.toLowerCase() === 'set'));
+    // SECURITY FIX: bucket 'thumbnails' privat -- signed URL buat semua produk
+    // (non-SET) yang tercentang diminta SEKALIGUS (S.resolveThumbUrls, lihat
+    // komentarnya di index.js) SEBELUM baris HTML/TSV dibangun.
+    let urlMap;
+    try {
+      urlMap = await S.resolveThumbUrls(nonSetProduk);
+    } catch (e) {
+      S.showToast('Gagal menyiapkan URL gambar: ' + (e.message || e), 'error');
+      return;
+    }
+
     const rowsHtml = rows.map((row, i) => {
       const r = row.produk;
       const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
+      const url = isSet ? '' : (urlMap.get(S.thumbKeyForItem(r)) || '');
       const gambarCell = isSet
         ? `<td style="border:1px solid #000;text-align:center;font-size:10px;color:#6B7280">${esc(SET_NOTE)}</td>`
-        : `<td style="border:1px solid #000;text-align:center"><img src="${esc(S.thumbUrlForItem(r))}" width="80" height="65" alt="${esc(r.kode_produk)}"></td>`;
+        : `<td style="border:1px solid #000;text-align:center">${url ? `<img src="${esc(url)}" width="80" height="65" alt="${esc(r.kode_produk)}">` : ''}</td>`;
       return `<tr>` +
         `<td style="border:1px solid #000;text-align:center">${i + 1}</td>` +
         `<td style="border:1px solid #000">${esc(r.kode_produk)}</td>` +
@@ -326,7 +339,8 @@ if (S.btnConvCopyGambar) {
     const plain = rows.map((row, i) => {
       const r = row.produk;
       const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
-      return [i + 1, clean(r.kode_produk), clean(r.nama_produk), 1, isSet ? SET_NOTE : `=IMAGE("${S.thumbUrlForItem(r)}")`].join('\t');
+      const url = isSet ? '' : (urlMap.get(S.thumbKeyForItem(r)) || '');
+      return [i + 1, clean(r.kode_produk), clean(r.nama_produk), 1, isSet ? SET_NOTE : (url ? `=IMAGE("${url}")` : '')].join('\t');
     }).join('\n');
 
     const ok = await S.writeRichClipboard(html, plain);

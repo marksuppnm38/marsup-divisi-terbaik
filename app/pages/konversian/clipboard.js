@@ -800,10 +800,18 @@ async function removeBackground(base64) {
 S.removeBackground = removeBackground;
 
 // FETCH IMAGE AS BASE64
+// SECURITY FIX: bucket 'thumbnails' privat -- dulu `fetch(url)` ke URL public
+// deterministik (S.THUMB_BASE + kode + '.png') gak butuh auth apa pun. Sekarang
+// perlu signed URL dulu (window.PNM_getSignedUrl, sudah di-cache di sana per
+// kode -- pemanggil fungsi ini biasanya lewat Promise.all() per-kode paralel,
+// jadi cache itu juga yang mencegah dobel-sign kalau kode yang sama kebetulan
+// diminta lagi di tempat lain dalam sesi yang sama, mis. abis kelihatan di
+// preview modal). createSignedUrl gagal (file gak ada) diperlakukan sama
+// seperti dulu response non-ok: balikin null, pemanggil yang mutusin fallback.
 async function fetchImageBase64(kode_asli, kode_produk) {
   const kodeForUrl = (kode_asli && kode_asli.trim()) ? kode_asli.trim() : kode_produk;
   try {
-    const url = S.THUMB_BASE + kodeForUrl + '.png';
+    const url = await window.PNM_getSignedUrl('thumbnails', kodeForUrl + '.png');
     const res = await fetch(url);
     if (!res.ok) return null;
     const blob = await res.blob();
