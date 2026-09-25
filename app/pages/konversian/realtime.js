@@ -457,19 +457,82 @@ async function loadChecklistForSesi(sesiId, opts) {
 }
 S.loadChecklistForSesi = loadChecklistForSesi;
 
-// Refresh ringan badge jumlah sesi aktif tiap 30 detik, biar kelihatan
-// walau lagi di tab Cari Produk — tanpa nge-reload seluruh daftar.
-const __konvHeartbeatTimer = setInterval(async () => {
+// Badge jumlah sesi aktif (S.sesiBadge) — GANTI dari poll setInterval 30 detik
+// (versi lama, lihat COORD LOG index.js kalau perlu riwayatnya) jadi live dari
+// Realtime, per instruksi audit. Beda dari channel sesi-db-${sesiId} di atas:
+// channel ini SENGAJA TIDAK difilter per sesi, karena badge ini butuh tau
+// TOTAL sesi 'berjalan' di seluruh tim — termasuk pas user belum/gak lagi
+// buka sesi manapun (mis. lagi di tab Cari Produk, sama seperti niat poll
+// lama) — jadi hidup dari mount() sampai unmount() halaman ini, BUKAN
+// ngikutin siklus currentSesiId kayak sesi-db-*/sesi-presence-*.
+//
+// AMAN dari bug postgres_changes DELETE yang gak reliable di setup ini
+// (lihat catatan broadcastItemRemoved di atas): sesi TIDAK PERNAH di-hard-
+// DELETE selama masih 'berjalan' — "Selesaikan Sesi" itu UPDATE status jadi
+// 'selesai' dulu (lihat endSesi() dkk di index.js/clipboard.js), baru bisa
+// dihapus permanen (deleteSesi(), DELETE beneran) belakangan dari layar
+// Riwayat SETELAH statusnya sudah 'selesai' — jadi baris yang lagi dihitung
+// badge ini (status='berjalan') gak pernah hilang lewat jalur DELETE yang
+// bermasalah itu. INSERT+UPDATE saja sudah cukup buat itung badge; event
+// DELETE tetap ditangani di bawah kalau kebetulan nyampe (bonus, bukan
+// disandarkan).
+//
+// Tetap ada resync fallback tiap 5 menit (JAUH lebih jarang dari poll lama
+// 30 detik, dan lewat REST/sesiFetch — bukan socket Realtime) sebagai jaring
+// pengaman kalau koneksi sempat putus/reconnect dan ada event yang kelewat
+// di antaranya, atau token socket Realtime sempat basi (lihat komentar
+// syncRealtimeAuth() di index.js) — REST-nya sendiri selalu ambil token
+// fresh lewat sesiFetch, jadi tetap self-healing walau socket-nya diam.
+const activeSesiIds = new Set();
+let sesiCountChannel = null;
+let sesiCountResyncTimer = null;
+
+function renderSesiBadge() {
+  if (!S.sesiBadge) return;
+  S.sesiBadge.textContent = activeSesiIds.size;
+  S.sesiBadge.style.display = activeSesiIds.size > 0 ? 'inline-block' : 'none';
+}
+
+async function hydrateSesiCount() {
   if (!S.stokAccessToken) return;
   try {
     const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.berjalan&select=id`);
     if (!res.ok) return;
     const rows = await res.json();
-    S.sesiBadge.textContent = rows.length;
-    S.sesiBadge.style.display = rows.length > 0 ? 'inline-block' : 'none';
-  } catch { /* diamkan */ }
-}, 30000);
-S.__konvHeartbeatTimer = __konvHeartbeatTimer;
+    activeSesiIds.clear();
+    rows.forEach((r) => activeSesiIds.add(r.id));
+    renderSesiBadge();
+  } catch { /* diamkan — badge tetap nunjukin angka terakhir yang diketahui, resync berikutnya nyoba lagi */ }
+}
+
+function handleSesiCountChange(payload) {
+  const newRow = payload.new && Object.keys(payload.new).length ? payload.new : null;
+  const oldRow = payload.old && Object.keys(payload.old).length ? payload.old : null;
+  if (payload.eventType === 'DELETE') {
+    if (oldRow) activeSesiIds.delete(oldRow.id); // bonus, lihat catatan di atas — jangan disandarkan
+  } else if (newRow) {
+    if (newRow.status === 'berjalan') activeSesiIds.add(newRow.id);
+    else activeSesiIds.delete(newRow.id); // transisi keluar dari 'berjalan' (mis. jadi 'selesai') = keluar dari hitungan
+  }
+  renderSesiBadge();
+}
+
+function initSesiCountLive() {
+  hydrateSesiCount(); // snapshot awal, independen dari status channel di bawah — badge langsung ada angkanya begitu token siap
+  if (!S.rt) return; // SDK Realtime gagal dimuat — badge tetap kepasang dari snapshot di atas, cuma gak live-update lagi sampai resync 5 menit berikutnya
+  S.syncRealtimeAuth(); // sama kayak sesi-db-* — pastiin socket Realtime pakai token authenticated, bukan anon (lihat komentar syncRealtimeAuth())
+  sesiCountChannel = S.rt.channel('konv-sesi-count')
+    .on('postgres_changes', { event: '*', schema: 'public', table: S.SESI_TABLE }, handleSesiCountChange)
+    .subscribe((status) => { if (status === 'SUBSCRIBED') hydrateSesiCount(); }); // re-snapshot pas (re)connect, nutup celah event yang kelewat pas socket sempat putus
+  sesiCountResyncTimer = setInterval(hydrateSesiCount, 5 * 60 * 1000);
+}
+initSesiCountLive();
+
+function cleanupSesiCountLive() {
+  if (sesiCountChannel) { S.rt?.removeChannel(sesiCountChannel); sesiCountChannel = null; }
+  if (sesiCountResyncTimer) { clearInterval(sesiCountResyncTimer); sesiCountResyncTimer = null; }
+}
+S.__konvSesiCountCleanup = cleanupSesiCountLive;
 
 function updateClipHeaderCompact() {
   const rsRaw = S.inpRs.value.trim();

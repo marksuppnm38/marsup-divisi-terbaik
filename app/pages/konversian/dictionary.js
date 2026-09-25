@@ -2166,7 +2166,7 @@ async function muatRevisiKeClipboard(idx, btnEl) {
 // ini jalan, karena baris ini ada di paling akhir eksekusi top-level).
 window.__konvBridge = {
   authUnsub: S.__konvAuthUnsub,
-  heartbeatTimer: S.__konvHeartbeatTimer,
+  sesiCountCleanup: S.__konvSesiCountCleanup, // ganti heartbeatTimer (setInterval) — sekarang channel Realtime + resync timer, lihat realtime.js
   dismissAcOnOutsideClick: S.__konvDismissAcOnOutsideClick,
   updateOnlineStatus: S.updateOnlineStatus,
   switchTab: S.switchTab,

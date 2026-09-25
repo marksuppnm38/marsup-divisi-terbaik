@@ -23,8 +23,11 @@
 //   1. konversian.js: PNMAuth.onAuthStateChange(...) return value ditangkep
 //      ke __konvAuthUnsub (dulu: dibuang, sesi lama gapapa krn cuma load
 //      sekali seumur hidup tab; SPA bisa mount-unmount-mount ulang).
-//   2. konversian.js: setInterval refresh badge sesi (30 detik) ditangkep ke
-//      __konvHeartbeatTimer.
+//   2. konversian.js: refresh badge sesi ditangkep ke __konvSesiCountCleanup
+//      (awalnya setInterval 30 detik biasa; sejak audit 2026-09-25 sudah
+//      diganti channel Realtime + resync timer 5 menit, lihat COORD LOG di
+//      bawah dan realtime.js — nama handle-nya ikut berubah tapi titik
+//      tangkapan buat unmount() ini masih sama).
 //   3. konversian.js: listener document click buat nutup autocomplete
 //      di-nama-in (__konvDismissAcOnOutsideClick) biar bisa di-removeEventListener.
 //   4. konversian.js: baris paling akhir nambahin window.__konvBridge = {...}
@@ -924,6 +927,7 @@ export async function mount(container, initialSub) {
   // sph-module.js — sph-module.js baca fungsi/variabel dari konversian.js
   // lewat shared scope, lihat komentar di kepala sph-module.js sendiri). ──
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-09-25: AUDIT — badge jumlah sesi aktif (S.sesiBadge) diganti dari poll setInterval 30 detik ke channel Realtime (realtime.js: initSesiCountLive/handleSesiCountChange, channel 'konv-sesi-count', TIDAK difilter per sesi karena butuh total lintas tim) + resync REST tiap 5 menit sebagai fallback. Aman dari bug DELETE postgres_changes yang sudah didokumentasikan di file ini karena sesi 'berjalan' cuma pernah di-UPDATE (bukan di-DELETE) sampai statusnya 'selesai'. Bridge unmount() ikut berubah: heartbeatTimer -> sesiCountCleanup — Claude
 // 2026-08-18: SECURITY — RLS produk/produk_harga/produk_set_item/akd/produk_akd/master_produk diketatin dari publik jadi allowed_users-only (harga_swasta sempat bisa dibaca siapa aja tanpa login). getProdukId/rpc()/getSetItems/enrichStok diganti dari ANON_KEY mentah ke sesiFetch(token sesi). Login gate sekarang juga checkWhitelist() ke allowed_users (dulu cuma cek kredensial valid, gak cek whitelist) — Claude
 // 2026-08-13(7): 3 behavior fix fundamental (per diskusi manual): (a) isian tab Buat SPH nempel ke SPH terakhir — sph-module.js sekarang expose window.sphFlow.reset() dipanggil dari resetChecklistUI(); (b) nambah tombol "Keluar dari Sesi" (btn-leave-sesi) — beda dari Selesaikan Sesi, cuma bersihin tampilan lokal, GAK ngubah status server, sesi tetap 'berjalan'; (c) badge "Jadi Order"/"Ditutup Tanpa Order" di kartu riwayat dulu auto-derived dari ada-gaknya konversi_record (keliru — itu nunjukin "Record diklik", bukan "beneran jadi order"), sekarang dropdown manual hasil_order (kolom BARU sesi_konversi, perlu migration SQL manual dulu, lihat catatan terpisah), default null = "Menunggu Feedback Sales" — Claude
 // 2026-08-13(6): fix "notif kolaborator (mode harga, dll) kadang muncul kadang enggak" — syncRealtimeAuth() dulu baca stokAccessToken (cache) langsung buat auth socket Realtime, dan cuma kepanggil pas event TOKEN_REFRESHED/(re)subscribe channel. Kalau tab di-background lama, timer refresh SDK bisa ke-throttle, socket kepasang token basi, dan RLS DIAM-DIAM nge-filter postgres_changes tanpa error apapun (beda dari REST yang minimal 401 kelihatan). Sekarang syncRealtimeAuth() ambil token fresh (getFreshToken()) + dipaksa kepanggil ulang pas tab balik visible (bukan cuma nunggu TOKEN_REFRESHED) — Claude
@@ -3894,7 +3898,7 @@ export function unmount() {
   const bridge = window.__konvBridge;
   if (bridge) {
     try { bridge.authUnsub?.(); } catch (err) { console.error('unmount konversian: authUnsub gagal', err); }
-    if (bridge.heartbeatTimer) clearInterval(bridge.heartbeatTimer);
+    try { bridge.sesiCountCleanup?.(); } catch (err) { console.error('unmount konversian: sesiCountCleanup gagal', err); }
     if (bridge.dismissAcOnOutsideClick) document.removeEventListener('click', bridge.dismissAcOnOutsideClick);
     if (bridge.updateOnlineStatus) {
       window.removeEventListener('online', bridge.updateOnlineStatus);
