@@ -408,9 +408,12 @@ async function handleNavParamsIfAny() {
 
 // ---- Log Aktivitas ----
 const LOG_ACTION_LABELS = { INSERT: 'Tambah', UPDATE: 'Ubah', DELETE: 'Hapus' };
+// Kalau diisi { id, kode }, modal log dibatasi ke aktivitas set itu aja (dibuka dari tab History
+// di Set Detail). null = log global. Di-reset tiap modal dibuka dari tombol "Log Aktivitas" header.
+let logSetScope = null;
 const LOG_TABLE_LABELS = { produk: 'Produk', produk_harga: 'Harga', produk_media: 'Media', master_produk: 'Master Produk', produk_akd: 'Relasi AKD', produk_set_item: 'Komposisi Set', akd: 'AKD' };
 const logModalOverlay = document.getElementById('logModalOverlay');
-document.getElementById('logToggle').addEventListener('click', () => { logModalOverlay.classList.add('open'); loadLog(1); });
+document.getElementById('logToggle').addEventListener('click', () => { logSetScope = null; logModalOverlay.classList.add('open'); loadLog(1); });
 document.getElementById('logModalCloseBtn').addEventListener('click', () => logModalOverlay.classList.remove('open'));
 logModalOverlay.addEventListener('click', e => { if (e.target === logModalOverlay) logModalOverlay.classList.remove('open'); });
 document.getElementById('log_refresh').addEventListener('click', () => loadLog(1));
@@ -424,6 +427,7 @@ const LOG_PAGE_SIZE = 30;
 async function loadLog(page){
   logPage = page || logPage || 1;
   const logList = document.getElementById('logList');
+  renderLogScopeBar();
   logList.innerHTML = '<div style="color:var(--text-muted);padding:14px;">Memuat log...</div>';
   let query = sb.from('audit_log').select('*', { count: 'exact' }).order('changed_at', { ascending: false });
   const tgl = document.getElementById('log_tanggal').value;
@@ -432,6 +436,7 @@ async function loadLog(page){
   if (tgl) query = query.gte('changed_at', tgl + 'T00:00:00').lte('changed_at', tgl + 'T23:59:59');
   if (tbl) query = query.eq('table_name', tbl);
   if (act) query = query.eq('action', act);
+  if (logSetScope) query = query.or(buildSetAuditOrFilter(logSetScope.id, logSetScope.kode));
   const from = (logPage - 1) * LOG_PAGE_SIZE;
   const to = from + LOG_PAGE_SIZE - 1;
   query = query.range(from, to);
@@ -445,6 +450,7 @@ async function loadLog(page){
   });
   if (!data || data.length === 0) { logList.innerHTML = '<div style="color:var(--text-muted);padding:14px;">Tidak ada aktivitas.</div>'; return; }
 
+  const itemMap = logSetScope ? await resolveSetItemNames(data) : new Map();
   logList.innerHTML = '';
   data.forEach((row, idx) => {
     const el = document.createElement('div');
@@ -456,7 +462,7 @@ async function loadLog(page){
         <span class="log-table">${LOG_TABLE_LABELS[row.table_name] || row.table_name}</span>
         <span class="log-meta">${jam} · ${escapeHtml(row.changed_by || 'tidak diketahui')}</span>
       </div>
-      <div class="log-summary">${buildLogSummary(row)}</div>
+      <div class="log-summary">${logSetScope ? buildSetHistorySummary(row, itemMap) : buildLogSummary(row)}</div>
       <button class="log-diff-toggle" data-idx="${idx}">Lihat detail</button>
       <div class="log-diff" id="logdiff-${idx}">${escapeHtml(JSON.stringify({ before: row.old_data, sesudah: row.new_data }, null, 2))}</div>
     `;
@@ -2465,25 +2471,115 @@ document.getElementById('setAkdSearchInput').addEventListener('input', () => {
   }, 250);
 });
 
-// ---- History (tab, best-effort — level produk; detail item/harga/AKD ada di Log global) ----
+// ---- History (tab) -- SEMUA aktivitas yang nyangkut ke set ini ----
+// audit_log itu satu tabel buat semua entitas, jadi filter per set dilakukan
+// lewat isi JSON old_data/new_data-nya:
+//   produk                    -> record_id = kode_produk set (id-nya dicoba juga, jaga-jaga)
+//   produk_set_item           -> set_id di old_data/new_data = set ini (komposisi: tambah/hapus/ubah qty item)
+//   produk_harga, produk_akd  -> produk_id di old_data/new_data = set ini
+function buildSetAuditOrFilter(id, kode){
+  // Buang karakter yang ngerusak sintaks filter PostgREST (koma & kurung).
+  const setId = String(id || '').replace(/[(),]/g, '');
+  const setKode = String(kode || '').replace(/[(),]/g, '');
+  return [
+    `and(table_name.eq.produk,record_id.in.(${setKode},${setId}))`,
+    `and(table_name.eq.produk_set_item,or(new_data->>set_id.eq.${setId},old_data->>set_id.eq.${setId}))`,
+    `and(table_name.in.(produk_harga,produk_akd),or(new_data->>produk_id.eq.${setId},old_data->>produk_id.eq.${setId}))`,
+  ].join(',');
+}
+
+// Resolve nama item buat baris komposisi (1 query buat semua baris).
+async function resolveSetItemNames(rows){
+  const itemIds = [...new Set(rows
+    .filter(r => r.table_name === 'produk_set_item')
+    .map(r => (r.new_data || r.old_data || {}).produk_id)
+    .filter(Boolean))];
+  const itemMap = new Map();
+  if (itemIds.length) {
+    const { data: prods } = await sb.from('produk').select('id, kode_produk, nama_produk').in('id', itemIds);
+    (prods || []).forEach(p => itemMap.set(p.id, p));
+  }
+  return itemMap;
+}
+
+// Bar kecil di atas daftar log kalau lagi dibatasi ke satu set.
+function renderLogScopeBar(){
+  let bar = document.getElementById('logSetScopeBar');
+  if (!logSetScope) { if (bar) bar.remove(); return; }
+  const logList = document.getElementById('logList');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'logSetScopeBar';
+    bar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;margin:8px 0;border:1px solid var(--border, #e5e5e5);border-radius:8px;font-size:12px;';
+    logList.parentNode.insertBefore(bar, logList);
+  }
+  bar.innerHTML = `<i class="ti ti-filter"></i><span>Dibatasi ke set <span class="kode-cell">${escapeHtml(logSetScope.kode || '')}</span></span><button class="btn btn-ghost btn-sm" id="logSetScopeClear" style="margin-left:auto;">Lihat semua</button>`;
+  bar.querySelector('#logSetScopeClear').addEventListener('click', () => { logSetScope = null; loadLog(1); });
+}
+
+function buildSetHistorySummary(row, itemMap){
+  const b = row.old_data || {}, a = row.new_data || {};
+  const fmtRp = v => (v === null || v === undefined || v === '') ? '—' : 'Rp ' + Number(v).toLocaleString('id-ID');
+
+  if (row.table_name === 'produk_set_item') {
+    const pid = a.produk_id || b.produk_id;
+    const p = itemMap.get(pid);
+    const label = p
+      ? `<span class="kode-cell">${escapeHtml(p.kode_produk || '')}</span>${p.nama_produk ? ' — ' + escapeHtml(p.nama_produk) : ''}`
+      : `<span class="kode-cell">${escapeHtml(String(pid || '?'))}</span>`;
+    if (row.action === 'INSERT') return `Tambah item ${label} (qty ${escapeHtml(String(a.qty ?? '?'))})`;
+    if (row.action === 'DELETE') return `Hapus item ${label} (qty ${escapeHtml(String(b.qty ?? '?'))})`;
+    if (b.qty !== a.qty) return `Ubah qty item ${label}: ${escapeHtml(String(b.qty ?? '?'))} → ${escapeHtml(String(a.qty ?? '?'))}`;
+    return `Ubah item ${label}`;
+  }
+
+  if (row.table_name === 'produk_harga') {
+    const jenis = escapeHtml(String(a.jenis || b.jenis || ''));
+    const tahun = escapeHtml(String(a.tahun || b.tahun || ''));
+    const tag = `${jenis} ${tahun}`.trim();
+    if (row.action === 'INSERT') return `Tambah harga ${tag}: ${fmtRp(a.harga)}`;
+    if (row.action === 'DELETE') return `Hapus harga ${tag}: ${fmtRp(b.harga)}`;
+    if (b.harga !== a.harga) return `Ubah harga ${tag}: ${fmtRp(b.harga)} → ${fmtRp(a.harga)}`;
+    return buildLogSummary(row);
+  }
+
+  if (row.table_name === 'produk_akd') {
+    if (row.action === 'INSERT') return 'Tambah relasi AKD';
+    if (row.action === 'DELETE') return 'Hapus relasi AKD';
+    return 'Ubah relasi AKD';
+  }
+
+  return buildLogSummary(row);
+}
+
 async function loadSetHistory(){
   const wrap = document.getElementById('setHistoryList');
   wrap.innerHTML = '<div style="color:var(--text-muted);">Memuat...</div>';
-  const { data, error } = await sb.from('audit_log').select('*').eq('table_name', 'produk').eq('record_id', currentSetKode).order('changed_at', { ascending: false }).limit(30);
+
+  const orFilter = buildSetAuditOrFilter(currentSetId, currentSetKode);
+
+  const { data, error } = await sb.from('audit_log').select('*').or(orFilter).order('changed_at', { ascending: false }).limit(50);
   if (error) { wrap.innerHTML = `<div style="color:var(--rust);">Gagal memuat: ${escapeHtml(error.message)}</div>`; return; }
-  if (!data || data.length === 0) { wrap.innerHTML = '<div class="akd-empty">Belum ada riwayat perubahan level produk untuk set ini.</div>'; return; }
+  if (!data || data.length === 0) { wrap.innerHTML = '<div class="akd-empty">Belum ada riwayat aktivitas untuk set ini.</div>'; return; }
+
+  const itemMap = await resolveSetItemNames(data);
+
   wrap.innerHTML = '';
   data.forEach(row => {
     const el = document.createElement('div');
     el.className = 'log-entry';
     const jam = new Date(row.changed_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
-    el.innerHTML = `<div class="log-entry-top"><span class="log-action ${row.action}">${LOG_ACTION_LABELS[row.action] || row.action}</span><span class="log-meta">${jam} · ${escapeHtml(row.changed_by || 'tidak diketahui')}</span></div>
-      <div class="log-summary">${buildLogSummary(row)}</div>`;
+    el.innerHTML = `<div class="log-entry-top"><span class="log-action ${row.action}">${LOG_ACTION_LABELS[row.action] || row.action}</span><span class="log-table">${LOG_TABLE_LABELS[row.table_name] || row.table_name}</span><span class="log-meta">${jam} · ${escapeHtml(row.changed_by || 'tidak diketahui')}</span></div>
+      <div class="log-summary">${buildSetHistorySummary(row, itemMap)}</div>`;
     wrap.appendChild(el);
   });
 }
 document.getElementById('openFullLogFromSetBtn').addEventListener('click', () => {
-  document.getElementById('log_table').value = 'produk_set_item';
+  // Log lengkap, tapi dibatasi ke set yang lagi dibuka (info dasar, komposisi, harga, AKD).
+  logSetScope = { id: currentSetId, kode: currentSetKode };
+  document.getElementById('log_table').value = '';
+  document.getElementById('log_action').value = '';
+  document.getElementById('log_tanggal').value = '';
   logModalOverlay.classList.add('open');
   loadLog(1);
 });
