@@ -36,6 +36,9 @@ function switchDoor(door) {
     S.switchSubTab('cari'); // pintu ini cuma nyisain 1 opsi, pastiin itu yang aktif
     if (typeof S.switchTab === 'function') S.switchTab('search'); // sinkron sama mekanisme tab mobile yang udah ada
   } else if (typeof S.switchTab === 'function') {
+    // Buka sesi / muat revisi / tambah produk pertama = jelas mau kerja di clipboard → panelnya
+    // dibuka lagi kalau tadi ditutup (manual maupun otomatis waktu di Riwayat).
+    if (typeof S.setClipClosed === 'function') S.setClipClosed(false);
     S.switchTab('clip'); // default landing di workspace-nya, subtab lain (Kebutuhan RS dkk) tetep dijangkau dari situ
   }
 }

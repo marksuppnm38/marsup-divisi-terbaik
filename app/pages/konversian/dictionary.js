@@ -1916,7 +1916,7 @@ S.openSphRiwayatModal = openSphRiwayatModal;
         <div class="modal-title" style="margin:0" id="konversi-riwayat-title"><i class="ti ti-versions"></i> Riwayat Konversi</div>
         <button id="konversi-riwayat-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
       </div>
-      <div class="modal-sub" style="margin-bottom:12px">Semua revisi Record Konversi yang pernah disimpan dari sesi ini, urut dari revisi terbaru.</div>
+      <div class="modal-sub" style="margin-bottom:12px;font-family:inherit;line-height:1.5">Semua revisi Record Konversi yang pernah disimpan dari sesi ini, urut dari revisi terbaru.</div>
       <div id="konversi-riwayat-list"></div>
     </div>`;
   document.body.appendChild(modal);
@@ -1974,19 +1974,22 @@ function konversiRiwayatRowHtml(r, idx) {
   // insert konversi_item gagal partial dulu). Taruh di luar tombol toggle
   // (bukan di dalam <button> toggle) + stopPropagation di listener-nya, biar
   // klik tombol ini gak ikut expand/collapse baris.
-  const loadBtn = `<button type="button" class="konversi-riwayat-load-btn" data-idx="${idx}" ${items.length ? '' : 'disabled'} style="flex-shrink:0;display:flex;align-items:center;gap:5px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:600;cursor:${items.length ? 'pointer' : 'not-allowed'};font-family:inherit;opacity:${items.length ? '1' : '.5'}"><i class="ti ti-clipboard-copy"></i>Muat ke Clipboard</button>`;
-  return `<div class="rcard" style="margin-bottom:8px;padding:10px 12px">
-    <div style="display:flex;align-items:flex-start;gap:8px">
-      <button type="button" class="konversi-riwayat-toggle" data-target="${rowId}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex:1;min-width:0;border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit;text-align:left">
-        <div style="min-width:0">
-          <div style="font-weight:600;font-size:12.5px">${revLabel} · ${kategoriSafe}</div>
-          <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${tgl} · ${total} · ${items.length} produk</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Sales: ${salesSafe} · Marsup: ${marsupSafe}</div>
-        </div>
-        <i class="ti ti-chevron-down" style="flex-shrink:0"></i>
-      </button>
-      ${loadBtn}
-    </div>
+  // Copy ke Sheet — TSV (Kode/Produk/Qty/Harga/Subtotal) dari item revisi ini, harga persis
+  // yang direkam. Logika copy-nya satu tempat: S.copyItemsToSheet (index.js).
+  const actBase = 'display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;font-size:12px;font-weight:600;font-family:inherit;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text)';
+  const actOn = items.length ? 'cursor:pointer' : 'cursor:not-allowed;opacity:.5';
+  const copyBtn = `<button type="button" class="konversi-riwayat-copy-btn" data-idx="${idx}" ${items.length ? '' : 'disabled'} title="Copy ke clipboard, tinggal paste di Google Sheets" style="${actBase};${actOn}"><i class="ti ti-table-export"></i><span>Copy ke Sheet</span></button>`;
+  const loadBtn = `<button type="button" class="konversi-riwayat-load-btn" data-idx="${idx}" ${items.length ? '' : 'disabled'} style="${actBase};${actOn}"><i class="ti ti-clipboard-copy"></i><span>Muat ke Clipboard</span></button>`;
+  return `<div class="rcard" style="margin-bottom:10px;padding:12px 14px;border-radius:12px">
+    <button type="button" class="konversi-riwayat-toggle" data-target="${rowId}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit;text-align:left">
+      <div style="min-width:0">
+        <div style="font-weight:600;font-size:13px">${revLabel} · ${kategoriSafe}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${tgl} · ${total} · ${items.length} produk</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Sales: ${salesSafe} · Marsup: ${marsupSafe}</div>
+      </div>
+      <i class="ti ti-chevron-down" style="flex-shrink:0"></i>
+    </button>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">${copyBtn}${loadBtn}</div>
     ${expandBody}
   </div>`;
 }
@@ -2021,6 +2024,14 @@ async function openKonversiRiwayatModal(sesiId, namaRs) {
         const isOpen = target.style.display !== 'none';
         target.style.display = isOpen ? 'none' : 'block';
         if (icon) icon.className = isOpen ? 'ti ti-chevron-down' : 'ti ti-chevron-up';
+      });
+    });
+    list.querySelectorAll('.konversi-riwayat-copy-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const row = konversiRiwayatRowsCache[parseInt(btn.dataset.idx, 10)];
+        const its = ((row && row.konversi_item) || []).map(it => ({ kode: it.kode_produk, nama: it.nama_produk, qty: it.qty, harga: it.harga }));
+        S.copyItemsToSheet(its, btn);
       });
     });
     list.querySelectorAll('.konversi-riwayat-load-btn').forEach(btn => {

@@ -63,7 +63,7 @@ export const KONVERSIAN_MARKUP = `
     <div class="rt-avatar-cluster" id="rt-avatar-cluster"></div>
   </div>
   <div class="header-right">
-    <span class="clip-count" id="hdr-clip-count-wrap">Clipboard: <span id="hdr-count">0</span> item</span>
+    <span class="clip-count" id="hdr-clip-count-wrap" role="button" tabindex="0" title="Tutup clipboard">Clipboard: <span id="hdr-count">0</span> item<i class="ti ti-layout-sidebar-right-collapse" id="hdr-clip-toggle-ic"></i></span>
     <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ti ti-clipboard-text"></i> <span class="toggle-btn-label">Permintaan RS</span></button>
   </div>
 </div>
@@ -181,7 +181,7 @@ export const KONVERSIAN_MARKUP = `
       <div class="riwayat-toolbar">
         <div class="search-wrap riwayat-toolbar-search">
           <i class="ti ti-search"></i>
-          <input id="riwayat-search-input" type="text" placeholder="Cari nama RS, PIC, atau sales…" autocomplete="off"/>
+          <input id="riwayat-search-input" type="text" placeholder="Cari barang, RS, PIC, atau sales…" autocomplete="off"/>
           <button class="clear-btn" id="riwayat-clear-btn"><i class="ti ti-x"></i></button>
         </div>
         <select class="filter-select" id="riwayat-sales-filter">
@@ -197,7 +197,15 @@ export const KONVERSIAN_MARKUP = `
         </select>
         <button class="toggle-btn" id="btn-riwayat-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
       </div>
-      <div class="riwayat-scope-note">Sesi yang sudah selesai — jadi order maupun enggak</div>
+      <!-- Scope pencarian: "Barang" nyari ke isi konversi (kode/nama produk di
+           konversi_item + sesi_konversi_item), "RS · PIC · Sales" nyari ke
+           header sesinya aja (perilaku lama), "Semua" gabungan keduanya. -->
+      <div class="riwayat-scope" id="riwayat-scope" role="group" aria-label="Cari berdasarkan">
+        <button type="button" class="riwayat-scope-btn active" data-scope="semua">Semua</button>
+        <button type="button" class="riwayat-scope-btn" data-scope="barang"><i class="ti ti-package"></i> Barang</button>
+        <button type="button" class="riwayat-scope-btn" data-scope="transaksi"><i class="ti ti-building-hospital"></i> RS · PIC · Sales</button>
+      </div>
+      <div class="riwayat-scope-note">Sesi yang sudah selesai — jadi order maupun enggak. Cari nama/kode barang buat tahu barang itu pernah masuk konversi mana.</div>
       <div id="riwayat-summary" class="riwayat-summary" style="display:none"></div>
       <div id="riwayat-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat riwayat…</div>
       <div id="riwayat-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
@@ -347,6 +355,9 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
           <button class="clip-header-edit-btn" id="btn-butuh-bantuan" type="button" title="Tandai sesi ini butuh bantuan tim">🙋 Minta Bantuan</button>
           <button class="clip-header-icon-btn" id="clip-header-toggle" type="button" title="Ciutkan form sesi">
             <i class="ti ti-chevron-up" id="clip-header-toggle-icon"></i>
+          </button>
+          <button class="clip-header-icon-btn" id="clip-close-btn" type="button" title="Tutup clipboard" aria-label="Tutup clipboard">
+            <i class="ti ti-x"></i>
           </button>
         </div>
       </div>

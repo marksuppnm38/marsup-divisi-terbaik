@@ -2715,7 +2715,30 @@ const SUBTAB_LABELS = {
   setcari: 'Cari SET',
   dictionary: 'Dictionary',
 };
+// Tutup/buka panel Clipboard (kolom kanan, desktop). Otomatis ketutup pas masuk tab
+// Riwayat — di situ user lagi baca arsip, bukan kerja di clipboard — dan otomatis
+// dibuka lagi pas keluar dari Riwayat KALAU ketutupnya gara-gara otomatis tadi
+// (kalau user nutup sendiri, tetap ketutup sampai dia buka sendiri). Mobile gak
+// kena: di sana clipboard udah tab terpisah (lihat switchTab).
+function setClipClosed(closed, auto) {
+  const root = document.getElementById('app-root');
+  if (!root) return;
+  root.classList.toggle('clip-closed', !!closed);
+  S.clipClosedAuto = !!closed && !!auto;
+  const wrap = document.getElementById('hdr-clip-count-wrap');
+  const ic = document.getElementById('hdr-clip-toggle-ic');
+  if (wrap) wrap.title = closed ? 'Buka clipboard' : 'Tutup clipboard';
+  if (ic) ic.className = 'ti ' + (closed ? 'ti-layout-sidebar-right-expand' : 'ti-layout-sidebar-right-collapse');
+}
+S.setClipClosed = setClipClosed;
+
 function switchSubTab(tab) {
+  const rootEl = document.getElementById('app-root');
+  if (tab === 'riwayat') {
+    if (rootEl && !rootEl.classList.contains('clip-closed')) setClipClosed(true, true);
+  } else if (S.clipClosedAuto) {
+    setClipClosed(false);
+  }
   S.subtabCari.classList.toggle('active', tab === 'cari');
   S.subtabSesi.classList.toggle('active', tab === 'sesi');
   S.subtabRiwayat.classList.toggle('active', tab === 'riwayat');
@@ -2757,6 +2780,15 @@ S.subtabRiwayat.addEventListener('click', () => switchSubTab('riwayat'));
 S.subtabConverter.addEventListener('click', () => switchSubTab('converter'));
 S.subtabSetcari.addEventListener('click', () => switchSubTab('setcari'));
 S.subtabDictionary.addEventListener('click', () => switchSubTab('dictionary'));
+(function bindClipCloseButtons() {
+  const toggle = () => setClipClosed(!document.getElementById('app-root').classList.contains('clip-closed'), false);
+  document.getElementById('clip-close-btn')?.addEventListener('click', () => setClipClosed(true, false));
+  const wrap = document.getElementById('hdr-clip-count-wrap');
+  if (wrap) {
+    wrap.addEventListener('click', toggle);
+    wrap.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  }
+})();
 _switchSubTab = switchSubTab; // expose to the real top-level setSubroute() near the bottom of this file
 
 function sesiTimeAgo(iso) {
@@ -2808,96 +2840,389 @@ function renderSesiCard(s) {
 }
 
 // Kartu riwayat: sesi yang statusnya 'selesai', apapun hasilnya.
-// FIX (fundamental, per diskusi): "Jadi Order"/"Ditutup Tanpa Order" DULU
-// didiktein otomatis dari ada-gaknya baris konversi_record (Record Konversi
-// pernah diklik atau enggak) — itu keliru, karena "pernah di-Record" beda
-// sama "beneran jadi order", yang faktanya nunggu feedback sales dan bisa
-// berubah lama SETELAH sesi ditutup. Sekarang hasil_order itu field manual
-// (kolom baru di sesi_konversi, lihat migration terpisah) yang manusia set
-// sendiri lewat dropdown di kartu ini — default null = "Menunggu Feedback
-// Sales" (netral, BUKAN diasumsikan gagal). REV/grand_total/link tetap dari
-// konversi_record seperti biasa, itu emang soal dokumennya sendiri, bukan
-// soal hasil order.
-function renderRiwayatCard(s) {
+// hasil_order itu field MANUAL (bukan diturunin dari ada-gaknya konversi_record):
+// null = "Menunggu feedback sales" -> 'jadi_sph' -> 'klik_ekat' (lingo tim). Sekarang dipilih lewat
+// pill + menu kecil (ikon tabler), bukan <select> native yang gak bisa berikon.
+const RO_STATES = {
+  '':          { icon: 'ti-hourglass-empty', label: 'Menunggu feedback sales', cls: 'ro-nunggu' },
+  jadi_sph:    { icon: 'ti-file-invoice',    label: 'Jadi SPH',                cls: 'ro-sph' },
+  klik_ekat:   { icon: 'ti-click',           label: 'Klik e-Kat',              cls: 'ro-ekat' },
+  // Nilai lama (sebelum lingo diganti) — tetap tampil kalau ada di data, tapi gak ada di menu pilihan.
+  jadi_order:  { icon: 'ti-circle-check',    label: 'Jadi order (lama)',       cls: 'ro-jadi', legacy: true },
+  tanpa_order: { icon: 'ti-circle-x',        label: 'Tidak jadi (lama)',       cls: 'ro-tanpa', legacy: true }
+};
+function roApplyState(root, value) {
+  const v = value || '';
+  const st = RO_STATES[v] || RO_STATES[''];
+  root.dataset.value = v;
+  const pill = root.querySelector('.ro-pill');
+  pill.className = 'ro-pill ' + st.cls;
+  pill.querySelector('.ro-ico').className = 'ti ' + st.icon + ' ro-ico';
+  pill.querySelector('.ro-label').textContent = st.label;
+  root.querySelectorAll('.ro-item').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+}
+function roStatusHtml(id, value) {
+  const v = value || '';
+  const st = RO_STATES[v] || RO_STATES[''];
+  const items = Object.entries(RO_STATES).filter(([, x]) => !x.legacy).map(([k, x]) =>
+    `<button type="button" class="ro-item ${k === v ? 'active' : ''} ${x.cls}" role="menuitem" data-v="${k}"><i class="ti ${x.icon}"></i><span>${x.label}</span><i class="ti ti-check ro-tick"></i></button>`).join('');
+  return `<div class="ro-status" data-id="${id}" data-value="${v}">
+      <button type="button" class="ro-pill ${st.cls}" aria-haspopup="menu" title="Hasil order diisi manual — nunggu feedback sales"><i class="ti ${st.icon} ro-ico"></i><span class="ro-label">${st.label}</span><i class="ti ti-chevron-down ro-caret"></i></button>
+      <div class="ro-menu" role="menu">${items}</div>
+    </div>`;
+}
+
+function renderRiwayatCard(s, matches, tokens) {
   const itemCount = (s.sesi_konversi_item && s.sesi_konversi_item[0] && s.sesi_konversi_item[0].count) || 0;
-  // SECURITY FIX 2026-08-14: sama seperti renderSesiCard — escape free-text
-  // sebelum masuk innerHTML (stored XSS fix).
+  // SECURITY FIX 2026-08-14: escape free-text sebelum masuk innerHTML (stored XSS).
   const namaSafe = S.escapeHtmlAttr(s.nama_rs || '(Nama RS belum diisi)');
   const picSafe = S.escapeHtmlAttr(s.pic_marsup || '-');
   const salesSafe = S.escapeHtmlAttr(s.nama_sales || '-');
   const records = s.konversi_record || [];
   const latest = records.length ? records.reduce((a, b) => (b.revisi > a.revisi ? b : a)) : null;
-  const hasilOrder = s.hasil_order || null; // null | 'jadi_order' | 'tanpa_order'
-  const hasilOrderCls = hasilOrder === 'jadi_order' ? 'hasil-order-jadi' : hasilOrder === 'tanpa_order' ? 'hasil-order-tanpa' : 'hasil-order-nunggu';
-  const orderBadge = `<select class="hasil-order-select ${hasilOrderCls}" data-id="${s.id}" title="Hasil order ditentukan manusia, bukan otomatis — nunggu feedback sales">
-      <option value="" ${!hasilOrder ? 'selected' : ''}>⏳ Menunggu Feedback Sales</option>
-      <option value="jadi_order" ${hasilOrder === 'jadi_order' ? 'selected' : ''}>✅ Jadi Order</option>
-      <option value="tanpa_order" ${hasilOrder === 'tanpa_order' ? 'selected' : ''}>◻️ Tidak Jadi Order</option>
-    </select>${latest ? `<span class="mi" style="margin-left:4px"><i class="ti ti-file-text"></i><span>${latest.revisi > 0 ? 'REV' + latest.revisi : 'Ada Record'}${latest.grand_total != null ? ' · Rp' + Number(latest.grand_total).toLocaleString('id-ID') : ''}</span></span>` : ''}`;
-  // Chip "X versi tersimpan" — dulu cuma teks statis, sekarang tombol yang
-  // buka modal "Riwayat Konversi" (lihat setupKonversiRiwayatModal di bawah),
-  // pola sama persis kayak sphChip/openSphRiwayatModal di bawahnya. Sengaja
-  // fetch ulang per-sesi di modal (bukan pakai `records` yang udah kebawa di
-  // sini) karena kartu ini cuma minta grand_total/kategori/revisi/link —
-  // gak ada notes/pic/item, jadi modal butuh query sendiri yang lebih detail.
-  const versiChip = records.length > 1
-    ? `<button type="button" class="mi konversi-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}" style="border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit"><i class="ti ti-versions"></i><span>${records.length} versi tersimpan</span></button>`
-    : '';
-  // Jumlah SPH yang pernah digenerate dari sesi ini — sekarang bisa dihitung
-  // beneran (sph_records.sesi_id) bukan tebak-tebakan, lihat migration
-  // migration_sph_link_sesi.sql. Cuma nongol kalau ada, biar kartu yang belum
-  // pernah bikin SPH gak penuh chip kosong.
   const sphCount = (s.sph_records && s.sph_records[0] && s.sph_records[0].count) || 0;
-  const sphChip = sphCount > 0
-    ? `<button type="button" class="mi sph-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}" style="border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit"><i class="ti ti-file-invoice"></i><span>${sphCount} SPH — lihat riwayat</span></button>`
-    : '';
-  // Link file/dokumen yang nempel di record terbaru (biasanya link Drive dari
-  // "Simpan ke Drive" → auto-filled ke rec-link → ikut kesimpen di sini).
-  // stopPropagation biar klik link gak ikut ngebuka sesi (card-nya sendiri
-  // punya click handler buat openSesi).
-  const linkChip = (latest && latest.link && S.isSafeHttpUrl(latest.link))
-    ? `<a class="mi record-link-chip" href="${S.escapeHtmlAttr(latest.link)}" target="_blank" rel="noopener" style="color:var(--accent-text)"><i class="ti ti-link"></i><span>Buka file</span></a>`
-    : '';
-  return `<div class="rcard riwayat-card" data-id="${s.id}" style="position:relative">
-    <div class="rcard-top" style="padding-right:8px">
-      <div class="rcard-name">${namaSafe}</div>
-      ${orderBadge}
+  // Item yang di-klik di e-Kat (kode_produk) — disimpan di sesi_konversi.klik_ekat_items (jsonb).
+  // Cuma relevan kalau status = klik_ekat; bisa semua item konversi atau cuma sebagian.
+  const isEkat = s.hasil_order === 'klik_ekat';
+  const klikArr = Array.isArray(s.klik_ekat_items) ? s.klik_ekat_items : [];
+  const klikSet = isEkat ? new Set(klikArr) : null;
+
+  const stats = [
+    `<span class="rc-stat"><i class="ti ti-package"></i>${itemCount} produk</span>`,
+    latest ? `<span class="rc-stat"><i class="ti ti-file-text"></i>${latest.revisi > 0 ? 'REV' + latest.revisi : 'Ada record'}</span>` : '',
+    (latest && latest.grand_total != null) ? `<span class="rc-stat rc-total"><i class="ti ti-cash"></i>${S.rupiah(latest.grand_total)}</span>` : '',
+    `<span class="rc-stat rc-klik${klikArr.length ? '' : ' empty'}" ${isEkat ? '' : 'hidden'}><i class="ti ti-click"></i><span>${klikArr.length ? klikArr.length + ' item di-klik' : 'Item yang di-klik belum dipilih'}</span></span>`,
+    `<span class="rc-stat rc-time"><i class="ti ti-clock"></i>Selesai ${sesiTimeAgo(s.updated_at)}</span>`
+  ].join('');
+
+  // stopPropagation di listener (lihat loadRiwayatList) biar klik aksi gak ikut buka sesi.
+  const actions = [
+    `<button type="button" class="rc-act riwayat-peek-btn" data-id="${s.id}"><i class="ti ti-eye"></i><span>Lihat isi</span></button>`,
+    records.length > 1 ? `<button type="button" class="rc-act konversi-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}"><i class="ti ti-versions"></i><span>${records.length} versi</span></button>` : '',
+    sphCount > 0 ? `<button type="button" class="rc-act sph-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}"><i class="ti ti-file-invoice"></i><span>${sphCount} SPH</span></button>` : '',
+    (latest && latest.link && S.isSafeHttpUrl(latest.link)) ? `<a class="rc-act record-link-chip" href="${S.escapeHtmlAttr(latest.link)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i><span>Buka file</span></a>` : ''
+  ].join('');
+
+  return `<div class="rcard riwayat-card" data-id="${s.id}">
+    <div class="rc-head">
+      <div class="rc-title">
+        <div class="rc-name">${namaSafe}</div>
+        <div class="rc-sub"><span><i class="ti ti-user"></i>${picSafe}</span><span><i class="ti ti-users"></i>${salesSafe}</span></div>
+      </div>
+      ${roStatusHtml(s.id, s.hasil_order)}
     </div>
-    <div class="rcard-meta">
-      <span class="mi"><i class="ti ti-user"></i><span>PIC: ${picSafe}</span></span>
-      <span class="mi"><i class="ti ti-users"></i><span>Sales: ${salesSafe}</span></span>
-      <span class="mi"><i class="ti ti-package"></i><span>${itemCount} produk</span></span>
-      ${versiChip}
-      ${sphChip}
-      ${linkChip}
-      <span class="mi"><i class="ti ti-clock"></i><span>Selesai ${sesiTimeAgo(s.updated_at)}</span></span>
-    </div>
+    <div class="rc-stats">${stats}</div>
+    ${renderRiwayatMatchStrip(matches, tokens, klikSet)}
+    <div class="rc-actions">${actions}</div>
+    <div class="riwayat-peek${isEkat ? ' ek-on' : ''}" data-id="${s.id}" data-loaded="0" style="display:none"></div>
   </div>`;
 }
 
-// Nulis hasil_order (manual, dari dropdown kartu riwayat) ke server. Optimistic
-// UI — dropdown udah kepilih duluan pas ini jalan — jadi kalau gagal, dropdown
-// dibalikin ke value lama + toast error, biar gak nampilin state yang gak
-// beneran kesimpen.
-async function persistHasilOrder(sesiId, value, selectEl) {
-  const prevValue = selectEl.dataset.prevValue || '';
-  selectEl.dataset.prevValue = value;
-  selectEl.classList.remove('hasil-order-jadi', 'hasil-order-tanpa', 'hasil-order-nunggu');
-  selectEl.classList.add(value === 'jadi_order' ? 'hasil-order-jadi' : value === 'tanpa_order' ? 'hasil-order-tanpa' : 'hasil-order-nunggu');
-  try {
-    const res = await S.sesiFetch(`${S.SESI_TABLE}?id=eq.${sesiId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ hasil_order: value || null, updated_at: new Date().toISOString() })
-    });
-    if (!res.ok) throw new Error('PATCH gagal');
-  } catch (err) {
-    selectEl.value = prevValue;
-    selectEl.dataset.prevValue = prevValue;
-    selectEl.classList.remove('hasil-order-jadi', 'hasil-order-tanpa', 'hasil-order-nunggu');
-    selectEl.classList.add(prevValue === 'jadi_order' ? 'hasil-order-jadi' : prevValue === 'tanpa_order' ? 'hasil-order-tanpa' : 'hasil-order-nunggu');
-    S.showToast('Gagal simpan hasil order, coba lagi', 'error');
+// ===== Riwayat: pencarian per BARANG + peek isi =====
+// Sumber data item ada dua, dan dua-duanya dicari:
+//  - konversi_item      : snapshot yang beneran di-Record (ada harga + REV)
+//  - sesi_konversi_item : isi clipboard sesinya (fallback buat sesi yang
+//                         di-Selesaikan tanpa Record)
+// Tanpa migration/RPC baru — cuma PostgREST ilike per token (AND antar
+// token, tiap token cocok ke kode ATAU nama).
+function riwayatTokens(term) {
+  return String(term || '')
+    .split(/\s+/)
+    .map(t => t.replace(/[,()*%\\"']/g, '').trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+function riwayatHl(text, tokens) {
+  const raw = String(text == null ? '' : text);
+  if (!tokens || !tokens.length) return S.escapeHtmlAttr(raw);
+  const re = new RegExp('(' + tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'gi');
+  return raw.split(re).map((part, i) => (i % 2 ? `<mark class="riwayat-hl">${S.escapeHtmlAttr(part)}</mark>` : S.escapeHtmlAttr(part))).join('');
+}
+// Copy isi konversi ke clipboard sebagai TSV → tinggal Ctrl+V di Google Sheets/Excel
+// (tiap kolom masuk sel sendiri). Angka mentah tanpa titik ribuan biar kebaca
+// sebagai angka di Sheet; tab/newline di teks dibuang biar kolom gak geser.
+// Dipakai juga sama modal Riwayat Konversi (dictionary.js) lewat S.copyItemsToSheet.
+async function copyItemsToSheet(items, btn) {
+  if (!items || !items.length) { S.showToast('Gak ada item buat dicopy', 'error'); return; }
+  const clean = (v) => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ').trim();
+  const num = (v) => (v != null && v !== '' && !isNaN(Number(v))) ? String(Number(v)) : '';
+  const withKlik = items.some(i => typeof i.klik === 'boolean');
+  const lines = [['Kode', 'Produk', 'Qty', 'Harga', 'Subtotal'].concat(withKlik ? ['Klik e-Kat'] : []).join('\t')];
+  items.forEach(i => {
+    const sub = (i.harga != null && i.qty != null) ? Number(i.harga) * Number(i.qty) : null;
+    lines.push([clean(i.kode), clean(i.nama), num(i.qty), num(i.harga), num(sub)].concat(withKlik ? [i.klik ? 'Ya' : ''] : []).join('\t'));
+  });
+  const text = lines.join('\n');
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch (_) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(ta); ta.select();
+      ok = document.execCommand('copy'); ta.remove();
+    } catch (__) { ok = false; }
+  }
+  if (!ok) { S.showToast('Gagal copy — browser nolak akses clipboard', 'error'); return; }
+  S.showToast(`${items.length} produk dicopy — tinggal paste di Sheet`, 'success');
+  if (btn) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="ti ti-check"></i><span>Tercopy</span>';
+    setTimeout(() => { btn.innerHTML = orig; }, 1600);
   }
 }
+S.copyItemsToSheet = copyItemsToSheet;
+
+function riwayatRp(n) { return n != null && n !== '' ? Number(n).toLocaleString('id-ID') : '-'; }
+
+async function fetchRiwayatItemMatches(tokens) {
+  const out = new Map(); // String(sesiId) -> [{kode,nama,qty,harga,revisi,src}]
+  if (!tokens.length) return { map: out, capped: false };
+  const LIMIT = 800;
+  const cond = 'and=' + encodeURIComponent('(' + tokens.map(t => `or(kode_produk.ilike.*${t}*,nama_produk.ilike.*${t}*)`).join(',') + ')');
+  const [recRes, sesiRes] = await Promise.allSettled([
+    S.sesiFetch(`konversi_item?${cond}&select=kode_produk,nama_produk,qty,harga,konversi_record!inner(sesi_id,revisi)&limit=${LIMIT}`),
+    S.sesiFetch(`${S.SESI_ITEM_TABLE}?${cond}&select=sesi_id,kode_produk,nama_produk,qty,harga_ekat&limit=${LIMIT}`)
+  ]);
+  let capped = false, okCount = 0;
+  const put = (sesiId, m) => {
+    if (sesiId == null) return;
+    const k = String(sesiId);
+    const arr = out.get(k) || [];
+    const ex = arr.find(x => x.kode === m.kode);
+    if (!ex) { arr.push(m); }
+    else if (m.src === 'record' && (ex.src !== 'record' || (m.revisi || 0) > (ex.revisi || 0))) { Object.assign(ex, m); }
+    out.set(k, arr);
+  };
+  if (recRes.status === 'fulfilled' && recRes.value.ok) {
+    okCount++;
+    const rows = await recRes.value.json();
+    if (rows.length >= LIMIT) capped = true;
+    rows.forEach(r => {
+      const rec = r.konversi_record || {};
+      put(rec.sesi_id, { kode: r.kode_produk, nama: r.nama_produk, qty: r.qty, harga: r.harga, revisi: rec.revisi || 0, src: 'record' });
+    });
+  } else console.warn('Riwayat: cari barang di konversi_item gagal', recRes.reason || recRes.value);
+  if (sesiRes.status === 'fulfilled' && sesiRes.value.ok) {
+    okCount++;
+    const rows = await sesiRes.value.json();
+    if (rows.length >= LIMIT) capped = true;
+    rows.forEach(r => put(r.sesi_id, { kode: r.kode_produk, nama: r.nama_produk, qty: r.qty, harga: r.harga_ekat, revisi: null, src: 'sesi' }));
+  } else console.warn('Riwayat: cari barang di sesi item gagal', sesiRes.reason || sesiRes.value);
+  if (!okCount) throw new Error('Gagal mencari barang di riwayat (cek koneksi / akses tabel konversi_item).');
+  return { map: out, capped };
+}
+
+function renderRiwayatMatchStrip(matches, tokens, klikSet) {
+  if (!matches || !matches.length) return '';
+  const rows = matches.slice(0, 3).map(m => `<div class="riwayat-match">
+      <span class="rm-kode">${riwayatHl(m.kode, tokens)}</span>
+      <span class="rm-nama" title="${S.escapeHtmlAttr(m.nama || '')}">${riwayatHl(m.nama, tokens)}</span>
+      ${klikSet && klikSet.has(m.kode) ? '<span class="rm-ek"><i class="ti ti-click"></i>Klik</span>' : ''}
+      <span class="rm-meta">×${m.qty ?? '-'}${m.harga != null ? ' · ' + riwayatRp(m.harga) : ''}${m.revisi != null ? ' · REV' + m.revisi : ''}</span>
+    </div>`).join('');
+  const more = matches.length > 3 ? `<div class="riwayat-match-more">+${matches.length - 3} barang lain cocok</div>` : '';
+  return `<div class="riwayat-match-strip">${rows}${more}</div>`;
+}
+
+// Isi konversi satu sesi, dimuat lazy pas "Lihat isi konversi" diklik.
+// Prioritas: record TERBARU (ada harga + REV); kalau gak ada record / item-nya
+// kosong, fallback ke isi clipboard sesi (qty aja, harga = harga_ekat).
+async function loadRiwayatPeek(sesiId, box, tokens) {
+  box.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:11.5px"><i class="ti ti-loader-2"></i> Memuat isi…</div>';
+  try {
+    const idSafe = encodeURIComponent(sesiId);
+    let items = [], head = '';
+    const recRes = await S.sesiFetch(`konversi_record?sesi_id=eq.${idSafe}&select=revisi,tanggal,grand_total,konversi_item(kode_produk,nama_produk,qty,harga)&order=revisi.desc,created_at.desc&limit=1`);
+    if (recRes.ok) {
+      const rec = (await recRes.json())[0];
+      if (rec && (rec.konversi_item || []).length) {
+        items = rec.konversi_item.map(i => ({ kode: i.kode_produk, nama: i.nama_produk, qty: i.qty, harga: i.harga }));
+        head = `REV${rec.revisi || 0}${rec.tanggal ? ' · ' + S.escapeHtmlAttr(rec.tanggal) : ''} (record terbaru)`;
+      }
+    }
+    if (!items.length) {
+      const sRes = await S.sesiFetch(`${S.SESI_ITEM_TABLE}?sesi_id=eq.${idSafe}&select=kode_produk,nama_produk,qty,harga_ekat&order=nama_produk.asc`);
+      if (!sRes.ok) throw new Error('Gagal memuat isi sesi.');
+      items = (await sRes.json()).map(i => ({ kode: i.kode_produk, nama: i.nama_produk, qty: i.qty, harga: i.harga_ekat }));
+      head = 'Isi clipboard sesi (belum ada Record tersimpan)';
+    }
+    if (!items.length) { box.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:11.5px">Sesi ini gak punya item tersimpan.</div>'; box.dataset.loaded = '1'; return; }
+    const total = items.reduce((a, i) => a + ((i.harga != null && i.qty != null) ? Number(i.harga) * Number(i.qty) : 0), 0);
+    const isHit = (i) => tokens.length && tokens.every(t => (`${i.kode || ''} ${i.nama || ''}`).toLowerCase().includes(t.toLowerCase()));
+    const rowsHtml = items.map((i, ix) => `<tr class="${isHit(i) ? 'hit' : ''}" data-i="${ix}" data-kode="${S.escapeHtmlAttr(i.kode || '')}" data-q="${S.escapeHtmlAttr(`${i.kode || ''} ${i.nama || ''}`.toLowerCase())}">
+        <td class="ek-col"><input type="checkbox" class="ek-cb" ${i.kode ? '' : 'disabled'} aria-label="Di-klik di e-Kat"/></td>
+        <td class="kode">${riwayatHl(i.kode, tokens)}</td><td>${riwayatHl(i.nama, tokens)}</td>
+        <td class="num">${i.qty ?? '-'}</td><td class="num">${riwayatRp(i.harga)}</td>
+        <td class="num">${(i.harga != null && i.qty != null) ? riwayatRp(Number(i.harga) * Number(i.qty)) : '-'}</td></tr>`).join('');
+    box.innerHTML = `<div class="riwayat-peek-head">
+        <span>${head} · <b style="color:var(--text)">${items.length}</b> produk${total ? ' · ' + riwayatRp(total) : ''}</span>
+        <span class="riwayat-peek-tools">
+          <span class="ek-tools"><span class="ek-count"></span><button type="button" class="rc-act ek-all"><i class="ti ti-checks"></i><span>Semua item</span></button><button type="button" class="rc-act ek-none"><i class="ti ti-square-off"></i><span>Kosongkan</span></button></span>
+          ${items.length > 6 ? '<input type="text" class="riwayat-peek-filter" placeholder="Filter isi…" autocomplete="off"/>' : ''}
+          <button type="button" class="rc-act riwayat-peek-copy" title="Copy tabel ini (sesuai filter) — tinggal paste di Google Sheets"><i class="ti ti-table-export"></i><span>Copy ke Sheet</span></button>
+        </span>
+      </div>
+      <div class="riwayat-peek-wrap"><table><thead><tr><th class="ek-col" title="Di-klik di e-Kat">e-Kat</th><th>Kode</th><th>Produk</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Subtotal</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    const f = box.querySelector('.riwayat-peek-filter');
+    if (f) f.addEventListener('input', () => {
+      const q = f.value.trim().toLowerCase();
+      box.querySelectorAll('tbody tr').forEach(tr => { tr.style.display = !q || tr.dataset.q.includes(q) ? '' : 'none'; });
+    });
+    // Copy = baris yang lagi kelihatan (ikut filter isi), bukan selalu semua.
+    box.querySelector('.riwayat-peek-copy').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const vis = [...box.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none').map(tr => items[Number(tr.dataset.i)]);
+      const ekOn = box.classList.contains('ek-on');
+      const sel = ekatSelected(sesiId);
+      copyItemsToSheet(ekOn ? vis.map(i => ({ ...i, klik: sel.has(i.kode) })) : vis, e.currentTarget);
+    });
+    // Checklist "di-klik di e-Kat" — simpen otomatis tiap centang berubah.
+    const cardEl = box.closest('.riwayat-card');
+    box.addEventListener('change', (e) => {
+      const cb = e.target.closest && e.target.closest('.ek-cb');
+      if (!cb) return;
+      toggleKlikEkat(sesiId, cb.closest('tr').dataset.kode, cb.checked, cardEl);
+    });
+    box.querySelector('.ek-all').addEventListener('click', () => setKlikEkatAll(sesiId, items.map(i => i.kode).filter(Boolean), cardEl));
+    box.querySelector('.ek-none').addEventListener('click', () => setKlikEkatAll(sesiId, [], cardEl));
+    if (cardEl) refreshEkatUI(cardEl);
+    box.dataset.loaded = '1';
+  } catch (err) {
+    box.innerHTML = `<div style="padding:8px;color:var(--danger);font-size:11.5px">${S.escapeHtmlAttr(err.message)}</div>`;
+  }
+}
+
+// ===== Item yang di-klik di e-Kat =====
+// Konversi bisa di-klik SEMUA itemnya atau cuma sebagian, jadi disimpen per item:
+// sesi_konversi.klik_ekat_items = jsonb array kode_produk (bukan per-revisi, biar
+// tetap nempel walau ada REV baru). Autosave tiap centang, debounce 350ms.
+function ekatRow(sesiId) { return (S.riwayatDataCache || []).find(x => String(x.id) === String(sesiId)); }
+function ekatSelected(sesiId) {
+  const row = ekatRow(sesiId);
+  return new Set(row && Array.isArray(row.klik_ekat_items) ? row.klik_ekat_items : []);
+}
+function refreshEkatUI(card) {
+  if (!card) return;
+  const id = card.dataset.id;
+  const sel = ekatSelected(id);
+  const isEkat = (card.querySelector('.ro-status')?.dataset.value || '') === 'klik_ekat';
+  const box = card.querySelector('.riwayat-peek');
+  let total = 0;
+  if (box) {
+    box.classList.toggle('ek-on', isEkat);
+    box.querySelectorAll('tbody tr').forEach(tr => {
+      total++;
+      const on = sel.has(tr.dataset.kode);
+      tr.classList.toggle('ek-yes', on && isEkat);
+      const cb = tr.querySelector('.ek-cb'); if (cb) cb.checked = on;
+    });
+    const cnt = box.querySelector('.ek-count');
+    if (cnt) cnt.textContent = `${sel.size}/${total} di-klik`;
+  }
+  const chip = card.querySelector('.rc-klik');
+  if (chip) {
+    chip.hidden = !isEkat;
+    chip.classList.toggle('empty', sel.size === 0);
+    chip.querySelector('span').textContent = sel.size === 0 ? 'Item yang di-klik belum dipilih'
+      : (total && sel.size === total) ? `Semua ${total} item di-klik` : `${sel.size}${total ? ' dari ' + total : ''} item di-klik`;
+  }
+}
+const ekatTimers = {};
+function persistKlikEkat(sesiId, card) {
+  clearTimeout(ekatTimers[sesiId]);
+  ekatTimers[sesiId] = setTimeout(async () => {
+    const row = ekatRow(sesiId);
+    if (!row) return;
+    const arr = Array.isArray(row.klik_ekat_items) ? row.klik_ekat_items : [];
+    try {
+      const res = await S.sesiFetch(`${S.SESI_TABLE}?id=eq.${encodeURIComponent(sesiId)}`, {
+        method: 'PATCH', body: JSON.stringify({ klik_ekat_items: arr })
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw Object.assign(new Error(e.message || e.hint || ('HTTP ' + res.status)), { code: e.code });
+      }
+      row._klikSaved = arr.slice();
+    } catch (err) {
+      console.error('Simpan klik_ekat_items gagal:', err);
+      row.klik_ekat_items = Array.isArray(row._klikSaved) ? row._klikSaved.slice() : [];
+      refreshEkatUI(card);
+      renderRiwayatSummary(S.riwayatDataCache);
+      const missingCol = err.code === 'PGRST204' || err.code === '42703' || /klik_ekat_items/i.test(err.message);
+      S.showToast(missingCol ? 'Kolom klik_ekat_items belum ada di sesi_konversi — jalankan migration SQL terbaru'
+        : `Gagal simpan item yang di-klik: ${err.message}`, 'error');
+    }
+  }, 350);
+}
+function toggleKlikEkat(sesiId, kode, checked, card) {
+  const row = ekatRow(sesiId); if (!row || !kode) return;
+  if (!Array.isArray(row._klikSaved)) row._klikSaved = Array.isArray(row.klik_ekat_items) ? row.klik_ekat_items.slice() : [];
+  const set = ekatSelected(sesiId);
+  if (checked) set.add(kode); else set.delete(kode);
+  row.klik_ekat_items = [...set];
+  refreshEkatUI(card); renderRiwayatSummary(S.riwayatDataCache);
+  persistKlikEkat(sesiId, card);
+}
+function setKlikEkatAll(sesiId, kodes, card) {
+  const row = ekatRow(sesiId); if (!row) return;
+  if (!Array.isArray(row._klikSaved)) row._klikSaved = Array.isArray(row.klik_ekat_items) ? row.klik_ekat_items.slice() : [];
+  row.klik_ekat_items = [...new Set(kodes)];
+  refreshEkatUI(card); renderRiwayatSummary(S.riwayatDataCache);
+  persistKlikEkat(sesiId, card);
+}
+
+// Nulis hasil_order ke server. Optimistic UI — pill udah berubah duluan — kalau
+// gagal dibalikin ke value lama. Alasan gagal SEKARANG ditampilin (toast +
+// console), bukan "PATCH gagal" doang, biar kelihatan kalau penyebabnya kolom
+// hasil_order belum ada di sesi_konversi / kena CHECK constraint / RLS.
+// updated_at SENGAJA gak ikut di-PATCH: itu jam "Selesai … lalu" + urutan
+// daftar; ganti feedback sales gak boleh ngubah kapan sesi selesai.
+async function persistHasilOrder(sesiId, value, root) {
+  const prev = root.dataset.value || '';
+  const next = value || '';
+  if (next === prev) return;
+  roApplyState(root, next);
+  const cardEl = root.closest('.riwayat-card');
+  root.classList.add('busy');
+  try {
+    const res = await S.sesiFetch(`${S.SESI_TABLE}?id=eq.${encodeURIComponent(sesiId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ hasil_order: next || null })
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      const err = new Error(e.message || e.hint || ('HTTP ' + res.status));
+      err.code = e.code;
+      throw err;
+    }
+    const row = (S.riwayatDataCache || []).find(x => String(x.id) === String(sesiId));
+    if (row) { row.hasil_order = next || null; renderRiwayatSummary(S.riwayatDataCache); }
+    if (cardEl) {
+      refreshEkatUI(cardEl);
+      // Pilih "Klik e-Kat" → langsung buka isi konversi biar bisa centang item mana aja yang di-klik.
+      if (next === 'klik_ekat') {
+        const box = cardEl.querySelector('.riwayat-peek');
+        if (box && box.style.display === 'none') cardEl.querySelector('.riwayat-peek-btn')?.click();
+      }
+    }
+  } catch (err) {
+    roApplyState(root, prev);
+    if (cardEl) refreshEkatUI(cardEl);
+    console.error('Simpan hasil_order gagal:', err);
+    const missingCol = err.code === 'PGRST204' || err.code === '42703' || /hasil_order/i.test(err.message);
+    const badValue = err.code === '23514';
+    S.showToast(
+      missingCol ? 'Kolom hasil_order belum ada di sesi_konversi — jalankan migration SQL-nya dulu'
+      : badValue ? 'Nilai hasil_order ditolak constraint database — jalankan migration SQL terbaru (jadi_sph / klik_ekat)'
+      : `Gagal simpan hasil order: ${err.message}`, 'error');
+  } finally {
+    root.classList.remove('busy');
+  }
+}
+// Satu listener global buat nutup menu status pas klik di luar.
+document.addEventListener('click', () => {
+  document.querySelectorAll('.riwayat-card.ro-open').forEach(c => c.classList.remove('ro-open'));
+});
 
 // Filter periode "Riwayat" — dihitung di client (bukan RPC baru), karena
 // sesi_konversi.updated_at sudah cukup buat semua opsi di bawah dan gak ada
@@ -2987,29 +3312,28 @@ function riwayatLatestRecord(s) {
 function renderRiwayatSummary(data) {
   if (!S.riwayatSummary) return;
   if (!data.length) { S.riwayatSummary.style.display = 'none'; S.riwayatSummary.innerHTML = ''; return; }
-  let jadiCount = 0, jadiValue = 0, tanpaCount = 0, nungguCount = 0, totalRecorded = 0, recordedCount = 0;
+  let sphCount = 0, sphValue = 0, ekatCount = 0, ekatItems = 0, nungguCount = 0, totalRecorded = 0, recordedCount = 0;
   data.forEach(s => {
     const latest = riwayatLatestRecord(s);
     const val = (latest && latest.grand_total != null) ? Number(latest.grand_total) : null;
     if (val != null) { totalRecorded += val; recordedCount++; }
-    if (s.hasil_order === 'jadi_order') { jadiCount++; if (val != null) jadiValue += val; }
-    else if (s.hasil_order === 'tanpa_order') tanpaCount++;
-    else nungguCount++;
+    if (s.hasil_order === 'jadi_sph') { sphCount++; if (val != null) sphValue += val; }
+    else if (s.hasil_order === 'klik_ekat') { ekatCount++; if (Array.isArray(s.klik_ekat_items)) ekatItems += s.klik_ekat_items.length; }
+    else if (!s.hasil_order) nungguCount++;
   });
-  // limit=100 di query -- kalau pas kena 100 pas, kemungkinan masih ada baris
-  // lain yang cocok filter tapi gak ketarik; angka di bawah cuma dari yang
-  // tertampil, bukan klaim "semua data yang cocok filter ini".
-  const cappedNote = data.length === 100
-    ? ` <span title="Query dibatasi 100 baris terbaru — rekap ini cuma dari yang tertampil">(100 teratas)</span>`
-    : '';
+  // limit=100 di query — kalau pas 100, kemungkinan masih ada sesi lain yang cocok.
+  const capped = data.length === 100 ? '<span class="rsum-s" title="Query dibatasi 100 sesi terbaru">100 teratas</span>' : '';
+  // Nilai per status dipisah dari "Nilai tercatat": grand_total ada di SEMUA sesi
+  // yang pernah di-Record apa pun statusnya — digabung bakal kebaca kayak omzet.
   S.riwayatSummary.innerHTML = `
-    <span><b style="color:var(--text)">${data.length}</b> sesi${cappedNote}</span>
-    <span style="color:var(--success)"><b>${jadiCount}</b> jadi order${jadiValue ? ' · ' + S.rupiah(jadiValue) : ''}</span>
-    <span>${nungguCount} menunggu feedback</span>
-    <span style="color:var(--danger)">${tanpaCount} tidak jadi order</span>
-    <span style="margin-left:auto;color:var(--text)">Total nilai tercatat (${recordedCount} sesi ada record): <b>${S.rupiah(totalRecorded)}</b></span>
+    <div class="rsum-tile"><span class="rsum-k">Sesi</span><span class="rsum-v">${data.length}</span>${capped}</div>
+    <div class="rsum-tile warn"><span class="rsum-k"><i class="ti ti-hourglass-empty"></i>Menunggu</span><span class="rsum-v">${nungguCount}</span></div>
+    <div class="rsum-tile sph"><span class="rsum-k"><i class="ti ti-file-invoice"></i>Jadi SPH</span><span class="rsum-v">${sphCount}</span>${sphValue ? `<span class="rsum-s">${S.rupiah(sphValue)}</span>` : ''}</div>
+    <div class="rsum-tile ok"><span class="rsum-k"><i class="ti ti-click"></i>Klik e-Kat</span><span class="rsum-v">${ekatCount}</span><span class="rsum-s">${ekatItems} item di-klik</span></div>
+    <div class="rsum-tile wide"><span class="rsum-k"><i class="ti ti-cash"></i>Nilai tercatat</span><span class="rsum-v">${S.rupiah(totalRecorded)}</span><span class="rsum-s">${recordedCount} sesi ada record</span></div>
+    ${S.riwayatBarangNote || ''}
   `;
-  S.riwayatSummary.style.display = 'flex';
+  S.riwayatSummary.style.display = 'grid';
 }
 
 async function loadRiwayatList() {
@@ -3019,13 +3343,28 @@ async function loadRiwayatList() {
   S.riwayatList.innerHTML = '';
   if (S.riwayatSummary) S.riwayatSummary.style.display = 'none';
   try {
-    // Search realtime di nama RS / PIC / Sales — pake `or=` PostgREST biar
-    // kepencet satu kotak aja, gak perlu tiga filter field terpisah.
+    // Search: scope "transaksi" = header sesi (nama RS/PIC/Sales, perilaku lama),
+    // "barang" = isi konversi (kode/nama produk), "semua" = gabungan (OR).
     const term = S.riwayatSearchInput ? S.riwayatSearchInput.value.trim() : '';
+    const scope = S.riwayatScopeVal || 'semua';
+    const tokens = riwayatTokens(term);
     let searchFilter = '';
+    let itemMatches = new Map(), itemCapped = false;
     if (term) {
-      const esc = term.replace(/[,()]/g, ' ').trim();
-      searchFilter = `&or=(nama_rs.ilike.*${encodeURIComponent(esc)}*,pic_marsup.ilike.*${encodeURIComponent(esc)}*,nama_sales.ilike.*${encodeURIComponent(esc)}*)`;
+      const orParts = [];
+      if (scope !== 'barang') {
+        const esc = term.replace(/[,()]/g, ' ').trim();
+        const e = encodeURIComponent(esc);
+        orParts.push(`nama_rs.ilike.*${e}*`, `pic_marsup.ilike.*${e}*`, `nama_sales.ilike.*${e}*`);
+      }
+      if (scope !== 'transaksi') {
+        const r = await fetchRiwayatItemMatches(tokens);
+        itemMatches = r.map; itemCapped = r.capped;
+        const ids = [...itemMatches.keys()].filter(k => /^[\w-]+$/.test(k)).slice(0, 150);
+        if (ids.length) orParts.push(`id.in.(${ids.join(',')})`);
+      }
+      // Scope "barang" tanpa hasil → paksa kosong (jangan jatuh ke semua sesi).
+      searchFilter = orParts.length ? `&or=(${orParts.join(',')})` : '&id=eq.-1';
     }
     const salesVal = S.riwayatSalesFilter ? S.riwayatSalesFilter.value : '';
     const salesFilter = salesVal ? `&nama_sales=eq.${encodeURIComponent(salesVal)}` : '';
@@ -3046,15 +3385,45 @@ async function loadRiwayatList() {
       S.riwayatListEmpty.style.display = 'block';
       return;
     }
-    S.riwayatList.innerHTML = data.map(renderRiwayatCard).join('');
+    S.riwayatDataCache = data;
+    S.riwayatBarangNote = '';
+    if (itemMatches.size) {
+      const shown = data.filter(sx => itemMatches.has(String(sx.id)));
+      const totalQty = shown.reduce((a, sx) => a + itemMatches.get(String(sx.id)).reduce((b, m) => b + (Number(m.qty) || 0), 0), 0);
+      S.riwayatBarangNote = `<div class="rsum-note"><i class="ti ti-package"></i>Barang cocok muncul di <b>${shown.length}</b> sesi · total qty <b>${totalQty}</b>${itemCapped ? ' <span title="Hasil pencarian barang dibatasi 800 baris per sumber">· mungkin belum lengkap, persempit kata kunci</span>' : ''}</div>`;
+    }
+    S.riwayatList.innerHTML = data.map(sx => renderRiwayatCard(sx, itemMatches.get(String(sx.id)), tokens)).join('');
     renderRiwayatSummary(data);
+    S.riwayatList.querySelectorAll('.riwayat-peek-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const box = btn.closest('.riwayat-card').querySelector('.riwayat-peek');
+        const open = box.style.display !== 'none';
+        box.style.display = open ? 'none' : 'block';
+        btn.classList.toggle('on', !open);
+        btn.querySelector('i').className = open ? 'ti ti-eye' : 'ti ti-eye-off';
+        btn.querySelector('span').textContent = open ? 'Lihat isi' : 'Tutup isi';
+        if (!open && box.dataset.loaded !== '1') loadRiwayatPeek(btn.dataset.id, box, tokens);
+      });
+    });
+    S.riwayatList.querySelectorAll('.riwayat-peek, .riwayat-match-strip').forEach(el => {
+      el.addEventListener('click', (e) => e.stopPropagation());
+    });
+    S.riwayatList.querySelectorAll('.ro-status').forEach(root => {
+      const card = root.closest('.riwayat-card');
+      root.addEventListener('click', (e) => e.stopPropagation());
+      root.querySelector('.ro-pill').addEventListener('click', () => {
+        const wasOpen = card.classList.contains('ro-open');
+        document.querySelectorAll('.riwayat-card.ro-open').forEach(c => c.classList.remove('ro-open'));
+        if (!wasOpen) card.classList.add('ro-open');
+      });
+      root.querySelectorAll('.ro-item').forEach(it => it.addEventListener('click', () => {
+        card.classList.remove('ro-open');
+        persistHasilOrder(root.dataset.id, it.dataset.v, root);
+      }));
+    });
     S.riwayatList.querySelectorAll('.riwayat-card').forEach(card => {
       card.addEventListener('click', () => openSesi(card.dataset.id));
-    });
-    S.riwayatList.querySelectorAll('.hasil-order-select').forEach(sel => {
-      sel.addEventListener('click', (e) => e.stopPropagation());
-      sel.addEventListener('mousedown', (e) => e.stopPropagation());
-      sel.addEventListener('change', (e) => persistHasilOrder(sel.dataset.id, sel.value, sel));
     });
     // Dulu inline onclick="event.stopPropagation()" di linkChip -- tanpa ini klik "Buka file"
     // bakal ikut buka kartu sesi (bubbling ke card.addEventListener('click', openSesi) di atas).
@@ -3092,6 +3461,15 @@ S.riwayatClearBtn.addEventListener('click', () => {
   S.riwayatSearchInput.value = '';
   S.riwayatClearBtn.style.display = 'none';
   loadRiwayatList();
+});
+S.riwayatScope.addEventListener('click', (e) => {
+  const b = e.target.closest('.riwayat-scope-btn');
+  if (!b) return;
+  S.riwayatScopeVal = b.dataset.scope;
+  S.riwayatScope.querySelectorAll('.riwayat-scope-btn').forEach(x => x.classList.toggle('active', x === b));
+  S.riwayatSearchInput.placeholder = S.riwayatScopeVal === 'barang' ? 'Cari kode / nama barang…'
+    : S.riwayatScopeVal === 'transaksi' ? 'Cari nama RS, PIC, atau sales…' : 'Cari barang, RS, PIC, atau sales…';
+  if (S.riwayatSearchInput.value.trim()) loadRiwayatList();
 });
 S.riwayatSalesFilter.addEventListener('change', () => loadRiwayatList());
 S.riwayatPeriodFilter.addEventListener('change', () => loadRiwayatList());
