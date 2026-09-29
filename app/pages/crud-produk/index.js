@@ -1436,6 +1436,7 @@ function openAdd(prefill){
   document.getElementById('akdHint').textContent = 'Simpan produk dulu sebelum mengelola relasi AKD.';
   if (prefill?.kode_produk) document.getElementById('f_kode_produk').value = prefill.kode_produk;
   if (prefill?.link_v6) document.getElementById('f_link_v6').value = prefill.link_v6;
+  if (prefill?.nama_produk) document.getElementById('f_nama_produk').value = prefill.nama_produk;
   renderLinkV6Hint();
   modalOverlay.classList.add('open');
 }

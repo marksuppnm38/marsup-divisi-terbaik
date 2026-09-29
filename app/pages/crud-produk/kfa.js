@@ -203,7 +203,7 @@ async function loadSyncUnmatched(){
   const tbody = document.getElementById('syncTableBody');
   const { data: rawData, error } = await S.sb.from('sync_unmatched_produk').select('*').order('last_seen_at', { ascending: false });
   if (error) {
-    tbody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal memuat: ${S.escapeHtml(error.message)}</td></tr>`;
+    tbody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal memuat: ${S.escapeHtml(error.message)}</td></tr>`;
     document.getElementById('syncCount').textContent = 'Gagal memuat';
     return;
   }
@@ -230,7 +230,7 @@ async function loadSyncUnmatched(){
 
   document.getElementById('syncCount').textContent = `${data.length} kode produk belum terdaftar`;
   if (!data.length) {
-    tbody.innerHTML = `<tr class="state-row"><td colspan="6">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
+    tbody.innerHTML = `<tr class="state-row"><td colspan="7">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
     return;
   }
   tbody.innerHTML = '';
@@ -238,6 +238,7 @@ async function loadSyncUnmatched(){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="kode-cell">${S.escapeHtml(row.kode_produk)}</td>
+      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}</td>
       <td>${row.link ? `<a href="${S.escapeHtml(row.link)}" target="_blank" rel="noopener">${S.escapeHtml(row.link)}</a>` : '—'}</td>
       <td>${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '—'}</td>
       <td>${S.escapeHtml(row.source_sheet || '—')}</td>
@@ -245,7 +246,7 @@ async function loadSyncUnmatched(){
       <td><button class="btn btn-sm btn-accent sync-add-btn"><i class="ti ti-plus"></i> Tambah Produk</button></td>
     `;
     tr.querySelector('.sync-add-btn').addEventListener('click', () => {
-      S.openAdd({ kode_produk: row.kode_produk, link_v6: row.link });
+      S.openAdd({ kode_produk: row.kode_produk, link_v6: row.link, nama_produk: row.deskripsi });
     });
     tbody.appendChild(tr);
   });

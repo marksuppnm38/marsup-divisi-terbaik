@@ -363,15 +363,15 @@ export const CRUD_PRODUK_MARKUP = `
       </div>
       <div class="paste-hint">
         Kode produk ini muncul di Google Sheets (lewat sync otomatis) tapi belum ada di database.
-        Klik <b>Tambah Produk</b> buat bikin produknya — kode &amp; link V6-nya udah otomatis keisi di form.
+        Klik <b>Tambah Produk</b> buat bikin produknya — kode, deskripsi (jadi Nama Produk) &amp; link V6-nya udah otomatis keisi di form.
       </div>
       <div class="table-card">
         <table>
           <thead>
-            <tr><th>Kode Produk</th><th>Link V6</th><th>Harga E-KAT</th><th>Sumber Sheet</th><th>Terakhir Terlihat</th><th></th></tr>
+            <tr><th>Kode Produk</th><th>Deskripsi</th><th>Link V6</th><th>Harga E-KAT</th><th>Sumber Sheet</th><th>Terakhir Terlihat</th><th></th></tr>
           </thead>
           <tbody id="syncTableBody">
-            <tr class="state-row"><td colspan="6">Memuat data...</td></tr>
+            <tr class="state-row"><td colspan="7">Memuat data...</td></tr>
           </tbody>
         </table>
       </div>
