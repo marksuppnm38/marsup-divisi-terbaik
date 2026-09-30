@@ -928,6 +928,10 @@
 #app-root .riwayat-peek:not(.ek-on) .ek-col{display:none}
 #app-root .riwayat-peek td.ek-col,#app-root .riwayat-peek th.ek-col{width:44px;text-align:center}
 #app-root .riwayat-peek .ek-cb{width:15px;height:15px;cursor:pointer;accent-color:var(--success)}
+#app-root .riwayat-peek td.ek-qty-col,#app-root .riwayat-peek th.ek-qty-col{width:76px;text-align:center}
+#app-root .riwayat-peek .ek-qty{width:58px;padding:3px 4px;text-align:center;font:inherit;font-size:12px;color:var(--text);background:var(--bg-input, transparent);border:1px solid var(--border);border-radius:5px}
+#app-root .riwayat-peek .ek-qty:disabled{opacity:.35}
+#app-root .riwayat-peek .ek-qty.diff{border-color:var(--warning, #f59e0b);color:var(--warning, #f59e0b);font-weight:700}
 #app-root .riwayat-peek tr.ek-yes td{background:rgba(34,197,94,.10)}
 #app-root .riwayat-peek .ek-tools{display:none;align-items:center;gap:6px}
 #app-root .riwayat-peek.ek-on .ek-tools{display:inline-flex}

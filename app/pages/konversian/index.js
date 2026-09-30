@@ -2947,10 +2947,10 @@ async function copyItemsToSheet(items, btn) {
   const clean = (v) => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ').trim();
   const num = (v) => (v != null && v !== '' && !isNaN(Number(v))) ? String(Number(v)) : '';
   const withKlik = items.some(i => typeof i.klik === 'boolean');
-  const lines = [['Kode', 'Produk', 'Qty', 'Harga', 'Subtotal'].concat(withKlik ? ['Klik e-Kat'] : []).join('\t')];
+  const lines = [['Kode', 'Produk', 'Qty', 'Harga', 'Subtotal'].concat(withKlik ? ['Klik e-Kat', 'Qty Klik'] : []).join('\t')];
   items.forEach(i => {
     const sub = (i.harga != null && i.qty != null) ? Number(i.harga) * Number(i.qty) : null;
-    lines.push([clean(i.kode), clean(i.nama), num(i.qty), num(i.harga), num(sub)].concat(withKlik ? [i.klik ? 'Ya' : ''] : []).join('\t'));
+    lines.push([clean(i.kode), clean(i.nama), num(i.qty), num(i.harga), num(sub)].concat(withKlik ? [i.klik ? 'Ya' : '', i.klik ? num(i.klikQty) : ''] : []).join('\t'));
   });
   const text = lines.join('\n');
   let ok = false;
@@ -3049,10 +3049,12 @@ async function loadRiwayatPeek(sesiId, box, tokens) {
     if (!items.length) { box.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:11.5px">Sesi ini gak punya item tersimpan.</div>'; box.dataset.loaded = '1'; return; }
     const total = items.reduce((a, i) => a + ((i.harga != null && i.qty != null) ? Number(i.harga) * Number(i.qty) : 0), 0);
     const isHit = (i) => tokens.length && tokens.every(t => (`${i.kode || ''} ${i.nama || ''}`).toLowerCase().includes(t.toLowerCase()));
-    const rowsHtml = items.map((i, ix) => `<tr class="${isHit(i) ? 'hit' : ''}" data-i="${ix}" data-kode="${S.escapeHtmlAttr(i.kode || '')}" data-q="${S.escapeHtmlAttr(`${i.kode || ''} ${i.nama || ''}`.toLowerCase())}">
+    const rowsHtml = items.map((i, ix) => `<tr class="${isHit(i) ? 'hit' : ''}" data-i="${ix}" data-kode="${S.escapeHtmlAttr(i.kode || '')}" data-qty="${i.qty ?? ''}" data-q="${S.escapeHtmlAttr(`${i.kode || ''} ${i.nama || ''}`.toLowerCase())}">
         <td class="ek-col"><input type="checkbox" class="ek-cb" ${i.kode ? '' : 'disabled'} aria-label="Di-klik di e-Kat"/></td>
         <td class="kode">${riwayatHl(i.kode, tokens)}</td><td>${riwayatHl(i.nama, tokens)}</td>
-        <td class="num">${i.qty ?? '-'}</td><td class="num">${riwayatRp(i.harga)}</td>
+        <td class="num">${i.qty ?? '-'}</td>
+        <td class="ek-col ek-qty-col"><input type="number" min="1" step="1" inputmode="numeric" class="ek-qty" disabled aria-label="Qty yang di-klik di e-Kat" title="Qty yang beneran di-klik di e-Kat (default = qty konversi)"/></td>
+        <td class="num">${riwayatRp(i.harga)}</td>
         <td class="num">${(i.harga != null && i.qty != null) ? riwayatRp(Number(i.harga) * Number(i.qty)) : '-'}</td></tr>`).join('');
     box.innerHTML = `<div class="riwayat-peek-head">
         <span>${head} · <b style="color:var(--text)">${items.length}</b> produk${total ? ' · ' + riwayatRp(total) : ''}</span>
@@ -3062,7 +3064,7 @@ async function loadRiwayatPeek(sesiId, box, tokens) {
           <button type="button" class="rc-act riwayat-peek-copy" title="Copy tabel ini (sesuai filter) — tinggal paste di Google Sheets"><i class="ti ti-table-export"></i><span>Copy ke Sheet</span></button>
         </span>
       </div>
-      <div class="riwayat-peek-wrap"><table><thead><tr><th class="ek-col" title="Di-klik di e-Kat">e-Kat</th><th>Kode</th><th>Produk</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Subtotal</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+      <div class="riwayat-peek-wrap"><table><thead><tr><th class="ek-col" title="Di-klik di e-Kat">e-Kat</th><th>Kode</th><th>Produk</th><th class="num">Qty</th><th class="ek-col ek-qty-col" title="Qty yang di-klik di e-Kat (bisa beda dari qty konversi)">Qty Klik</th><th class="num">Harga</th><th class="num">Subtotal</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
     const f = box.querySelector('.riwayat-peek-filter');
     if (f) f.addEventListener('input', () => {
       const q = f.value.trim().toLowerCase();
@@ -3074,11 +3076,13 @@ async function loadRiwayatPeek(sesiId, box, tokens) {
       const vis = [...box.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none').map(tr => items[Number(tr.dataset.i)]);
       const ekOn = box.classList.contains('ek-on');
       const sel = ekatSelected(sesiId);
-      copyItemsToSheet(ekOn ? vis.map(i => ({ ...i, klik: sel.has(i.kode) })) : vis, e.currentTarget);
+      copyItemsToSheet(ekOn ? vis.map(i => ({ ...i, klik: sel.has(i.kode), klikQty: sel.has(i.kode) ? ekatQtyFor(sesiId, i.kode, i.qty) : null })) : vis, e.currentTarget);
     });
     // Checklist "di-klik di e-Kat" — simpen otomatis tiap centang berubah.
     const cardEl = box.closest('.riwayat-card');
     box.addEventListener('change', (e) => {
+      const qi = e.target.closest && e.target.closest('.ek-qty');
+      if (qi) { setKlikEkatQty(sesiId, qi.closest('tr').dataset.kode, qi.value, cardEl); return; }
       const cb = e.target.closest && e.target.closest('.ek-cb');
       if (!cb) return;
       toggleKlikEkat(sesiId, cb.closest('tr').dataset.kode, cb.checked, cardEl);
@@ -3101,6 +3105,17 @@ function ekatSelected(sesiId) {
   const row = ekatRow(sesiId);
   return new Set(row && Array.isArray(row.klik_ekat_items) ? row.klik_ekat_items : []);
 }
+// Qty yang beneran di-klik per item: sesi_konversi.klik_ekat_qty = jsonb {kode: qty}.
+// Cuma disimpen kalau BEDA dari qty konversi; gak ada entri = di-klik sebanyak qty konversi.
+function ekatQtyMap(sesiId) {
+  const row = ekatRow(sesiId);
+  const m = row && row.klik_ekat_qty;
+  return (m && typeof m === 'object' && !Array.isArray(m)) ? { ...m } : {};
+}
+function ekatQtyFor(sesiId, kode, defaultQty) {
+  const v = ekatQtyMap(sesiId)[kode];
+  return (v != null && Number(v) > 0) ? Number(v) : (defaultQty != null ? Number(defaultQty) : null);
+}
 function refreshEkatUI(card) {
   if (!card) return;
   const id = card.dataset.id;
@@ -3115,6 +3130,15 @@ function refreshEkatUI(card) {
       const on = sel.has(tr.dataset.kode);
       tr.classList.toggle('ek-yes', on && isEkat);
       const cb = tr.querySelector('.ek-cb'); if (cb) cb.checked = on;
+      const qi = tr.querySelector('.ek-qty');
+      if (qi) {
+        qi.disabled = !on;
+        if (on) {
+          if (document.activeElement !== qi) qi.value = ekatQtyFor(id, tr.dataset.kode, tr.dataset.qty === '' ? null : tr.dataset.qty) ?? '';
+          const def = tr.dataset.qty === '' ? null : Number(tr.dataset.qty);
+          qi.classList.toggle('diff', def != null && Number(qi.value) !== def);
+        } else { qi.value = ''; qi.classList.remove('diff'); }
+      }
     });
     const cnt = box.querySelector('.ek-count');
     if (cnt) cnt.textContent = `${sel.size}/${total} di-klik`;
@@ -3134,22 +3158,29 @@ function persistKlikEkat(sesiId, card) {
     const row = ekatRow(sesiId);
     if (!row) return;
     const arr = Array.isArray(row.klik_ekat_items) ? row.klik_ekat_items : [];
+    const qmap = ekatQtyMap(sesiId);
+    const body = { klik_ekat_items: arr };
+    // Kolom klik_ekat_qty baru dikirim kalau memang ada isinya (atau perlu dikosongin),
+    // jadi centang biasa tetap jalan walau migration kolom barunya belum dijalankan.
+    if (Object.keys(qmap).length || (row._klikSavedQty && Object.keys(row._klikSavedQty).length)) body.klik_ekat_qty = qmap;
     try {
       const res = await S.sesiFetch(`${S.SESI_TABLE}?id=eq.${encodeURIComponent(sesiId)}`, {
-        method: 'PATCH', body: JSON.stringify({ klik_ekat_items: arr })
+        method: 'PATCH', body: JSON.stringify(body)
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
         throw Object.assign(new Error(e.message || e.hint || ('HTTP ' + res.status)), { code: e.code });
       }
       row._klikSaved = arr.slice();
+      row._klikSavedQty = { ...qmap };
     } catch (err) {
       console.error('Simpan klik_ekat_items gagal:', err);
       row.klik_ekat_items = Array.isArray(row._klikSaved) ? row._klikSaved.slice() : [];
+      row.klik_ekat_qty = { ...(row._klikSavedQty || {}) };
       refreshEkatUI(card);
       renderRiwayatSummary(S.riwayatDataCache);
-      const missingCol = err.code === 'PGRST204' || err.code === '42703' || /klik_ekat_items/i.test(err.message);
-      S.showToast(missingCol ? 'Kolom klik_ekat_items belum ada di sesi_konversi — jalankan migration SQL terbaru'
+      const missingCol = err.code === 'PGRST204' || err.code === '42703' || /klik_ekat_(items|qty)/i.test(err.message);
+      S.showToast(missingCol ? 'Kolom klik_ekat_items/klik_ekat_qty belum ada di sesi_konversi — jalankan migration SQL terbaru'
         : `Gagal simpan item yang di-klik: ${err.message}`, 'error');
     }
   }, 350);
@@ -3157,8 +3188,9 @@ function persistKlikEkat(sesiId, card) {
 function toggleKlikEkat(sesiId, kode, checked, card) {
   const row = ekatRow(sesiId); if (!row || !kode) return;
   if (!Array.isArray(row._klikSaved)) row._klikSaved = Array.isArray(row.klik_ekat_items) ? row.klik_ekat_items.slice() : [];
+  if (!row._klikSavedQty) row._klikSavedQty = { ...ekatQtyMap(sesiId) };
   const set = ekatSelected(sesiId);
-  if (checked) set.add(kode); else set.delete(kode);
+  if (checked) set.add(kode); else { set.delete(kode); const qm = ekatQtyMap(sesiId); delete qm[kode]; row.klik_ekat_qty = qm; }
   row.klik_ekat_items = [...set];
   refreshEkatUI(card); renderRiwayatSummary(S.riwayatDataCache);
   persistKlikEkat(sesiId, card);
@@ -3166,8 +3198,28 @@ function toggleKlikEkat(sesiId, kode, checked, card) {
 function setKlikEkatAll(sesiId, kodes, card) {
   const row = ekatRow(sesiId); if (!row) return;
   if (!Array.isArray(row._klikSaved)) row._klikSaved = Array.isArray(row.klik_ekat_items) ? row.klik_ekat_items.slice() : [];
+  if (!row._klikSavedQty) row._klikSavedQty = { ...ekatQtyMap(sesiId) };
   row.klik_ekat_items = [...new Set(kodes)];
+  const keep = new Set(row.klik_ekat_items), qm = ekatQtyMap(sesiId);
+  Object.keys(qm).forEach(k => { if (!keep.has(k)) delete qm[k]; });
+  row.klik_ekat_qty = qm;
   refreshEkatUI(card); renderRiwayatSummary(S.riwayatDataCache);
+  persistKlikEkat(sesiId, card);
+}
+// Edit qty yang di-klik untuk satu item (event 'change' = Enter/blur). Angka kosong/<1
+// dianggap batal -> balik ke nilai sebelumnya. Sama dengan qty konversi -> override dihapus.
+function setKlikEkatQty(sesiId, kode, raw, card) {
+  const row = ekatRow(sesiId); if (!row || !kode) return;
+  const tr = card && [...card.querySelectorAll('.riwayat-peek tbody tr')].find(t => t.dataset.kode === kode);
+  const n = Math.floor(Number(raw));
+  if (!raw || !isFinite(n) || n < 1) { refreshEkatUI(card); return; }
+  if (!Array.isArray(row._klikSaved)) row._klikSaved = Array.isArray(row.klik_ekat_items) ? row.klik_ekat_items.slice() : [];
+  if (!row._klikSavedQty) row._klikSavedQty = { ...ekatQtyMap(sesiId) };
+  const def = tr && tr.dataset.qty !== '' ? Number(tr.dataset.qty) : null;
+  const qm = ekatQtyMap(sesiId);
+  if (def != null && n === def) delete qm[kode]; else qm[kode] = n;
+  row.klik_ekat_qty = qm;
+  refreshEkatUI(card);
   persistKlikEkat(sesiId, card);
 }
 
