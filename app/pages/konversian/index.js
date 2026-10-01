@@ -1676,9 +1676,18 @@ async function listLampiranBucket() {
     headers: {'apikey':ANON_KEY,'Authorization':'Bearer '+listToken,'Content-Type':'application/json'},
     body: JSON.stringify({prefix:'', limit:1000, offset:0, sortBy:{column:'name',order:'asc'}})
   });
-  const data = await r.json();
-  lampiranBucketFiles = (Array.isArray(data) ? data : []).map(f => f.name).filter(n => n && n.toLowerCase().endsWith('.pdf'));
-  return lampiranBucketFiles;
+  const data = await r.json().catch(() => null);
+  // FIX: dulu response non-OK (400/403, mis. RLS nolak) diam-diam dianggap daftar
+  // kosong DAN ke-cache sebagai [] -> picker bilang "Tidak ada file yang cocok"
+  // tanpa error apa pun. Sekarang error-nya dilempar biar kelihatan di UI, dan
+  // daftar kosong gak di-cache (biar bisa dicoba lagi tanpa reload).
+  if (!r.ok || !Array.isArray(data)) {
+    throw new Error((data && (data.message || data.error)) || ('Gagal list bucket (HTTP ' + r.status + ')'));
+  }
+  const names = data.map(f => f.name).filter(n => n && n.toLowerCase().endsWith('.pdf'));
+  console.debug('[lampiran] list bucket:', data.length, 'objek,', names.length, 'pdf');
+  if (names.length) lampiranBucketFiles = names;
+  return names;
 }
 
 function renderSuggestList(filterText) {
@@ -2268,7 +2277,7 @@ async function showLampiranPicker() {
   lampiranPicker.style.display = 'block';
   lampiranSearchInput.value = '';
   try {
-    await listLampiranBucket();
+    lampiranBucketFiles = await listLampiranBucket();
     renderSuggestList('');
   } catch (e2) {
     lampiranStatus.textContent = 'Gagal mengambil daftar file dari bucket: ' + (e2.message||e2);
