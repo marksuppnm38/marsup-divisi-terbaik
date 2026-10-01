@@ -107,11 +107,37 @@ function today() { return new Date().toISOString().slice(0, 10); }
 function region(name) { return S.host.querySelector(`[data-kel-region="${name}"]`); }
 
 // ───────── API ─────────
-async function api(ctx, path, extra) {
-  const token = await window.PNMAuth.getAccessToken();
-  const res = await fetch(`${ctx.url}/rest/v1/${path}`, {
-    headers: Object.assign({ apikey: ctx.key, Authorization: 'Bearer ' + token }, extra || {})
+// DIAGNOSA "memuat terus": tanpa timeout, token/fetch yang menggantung gak
+// pernah reject -> gak ada error di console & spinner selamanya. Sekarang
+// keduanya dibatasi waktu, jadi hang berubah jadi banner error yang jelas.
+function withTimeout(p, ms, label) {
+  let t;
+  const timeout = new Promise((_, rej) => {
+    t = setTimeout(() => rej(Object.assign(
+      new Error(label + ' tidak merespons setelah ' + (ms / 1000) + ' detik'), { code: 'TIMEOUT' })), ms);
   });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(t));
+}
+
+async function api(ctx, path, extra) {
+  const label = path.split('?')[0];
+  const t0 = performance.now();
+  const token = await withTimeout(window.PNMAuth.getAccessToken(), 8000, 'PNMAuth.getAccessToken()');
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 20000);
+  let res;
+  try {
+    res = await fetch(`${ctx.url}/rest/v1/${path}`, {
+      headers: Object.assign({ apikey: ctx.key, Authorization: 'Bearer ' + token }, extra || {}),
+      signal: ctl.signal
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw Object.assign(new Error('Query ' + label + ' lebih dari 20 detik (view terlalu berat?)'), { code: 'TIMEOUT' });
+    }
+    throw e;
+  } finally { clearTimeout(timer); }
+  console.debug('[kelengkapan]', label, res.status, Math.round(performance.now() - t0) + 'ms');
   if (res.status === 401) { window.PNMAuth.logout(); throw new Error('Sesi habis, silakan login ulang.'); }
   if (!res.ok && res.status !== 416) {
     let body = {};
