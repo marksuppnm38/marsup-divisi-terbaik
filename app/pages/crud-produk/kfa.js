@@ -200,14 +200,17 @@ document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
 // function sync-sheet nyatet ke tabel sync_unmatched_produk, hilang
 // sendiri dari daftar ini begitu produknya dibuat) ----
 // Keterangan di bawah deskripsi baris sync: komponen yang dibutuhkan set
-// (dari RINCIAN SET) atau kode set baru. Daftar set dipotong 5 biar baris
-// gak melar; daftar lengkap ada di tooltip.
-function syncNoteHtml(row){
+// (dari RINCIAN SET) atau kode set baru. Set ditampilkan pakai DESKRIPSI-nya
+// (nameByKode), kode cuma jadi fallback + muncul di tooltip. Daftar dipotong 3
+// karena deskripsi lebih panjang dari kode.
+function syncNoteHtml(row, nameByKode){
   const needed = Array.isArray(row.dibutuhkan_oleh) ? row.dibutuhkan_oleh : [];
+  const label = (k) => (nameByKode && nameByKode.get(k)) || k;
   if (needed.length) {
-    const shown = needed.slice(0, 5).map(k => S.escapeHtml(k)).join(', ');
-    const more = needed.length > 5 ? ` +${needed.length - 5} lainnya` : '';
-    return `<div style="margin-top:4px;font-size:11.5px;color:var(--warn-text, #b45309);" title="${S.escapeHtml(needed.join(', '))}"><i class="ti ti-alert-triangle"></i> Belum ada di database, dibutuhkan oleh set: ${shown}${more}</div>`;
+    const shown = needed.slice(0, 3).map(k => S.escapeHtml(label(k))).join(', ');
+    const more = needed.length > 3 ? ` +${needed.length - 3} lainnya` : '';
+    const tip = needed.map(k => `${label(k)} (${k})`).join('\n');
+    return `<div style="margin-top:4px;font-size:11.5px;color:var(--warn-text, #b45309);" title="${S.escapeHtml(tip)}"><i class="ti ti-alert-triangle"></i> Belum ada di database, dibutuhkan oleh set: ${shown}${more}</div>`;
   }
   if (row.is_set) {
     return `<div style="margin-top:4px;font-size:11.5px;color:var(--text-muted);"><i class="ti ti-stack-2"></i> Set baru dari sheet. Buat produknya (tipe SET), komposisi terisi otomatis di sync berikutnya</div>`;
@@ -244,6 +247,17 @@ async function loadSyncUnmatched(){
     }
   }
 
+  // Nama set untuk keterangan "dibutuhkan oleh set": prioritas nama_produk di
+  // tabel produk (set sudah dibuat), lalu deskripsi dari baris sync (set baru
+  // dari sheet), terakhir fallback ke kode.
+  const nameByKode = new Map();
+  data.forEach(r => { if (r.deskripsi) nameByKode.set(r.kode_produk, r.deskripsi); });
+  const setKodes = [...new Set(data.flatMap(r => Array.isArray(r.dibutuhkan_oleh) ? r.dibutuhkan_oleh : []))];
+  for (let i = 0; i < setKodes.length; i += 200) {
+    const { data: setRows } = await S.sb.from('produk').select('kode_produk, nama_produk').in('kode_produk', setKodes.slice(i, i + 200));
+    (setRows || []).forEach(p => { if (p.nama_produk) nameByKode.set(p.kode_produk, p.nama_produk); });
+  }
+
   document.getElementById('syncCount').textContent = `${data.length} kode produk belum terdaftar`;
   if (!data.length) {
     tbody.innerHTML = `<tr class="state-row"><td colspan="7">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
@@ -254,7 +268,7 @@ async function loadSyncUnmatched(){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="kode-cell">${S.escapeHtml(row.kode_produk)}</td>
-      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}${syncNoteHtml(row)}</td>
+      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}${syncNoteHtml(row, nameByKode)}</td>
       <td>${row.link ? `<a href="${S.escapeHtml(row.link)}" target="_blank" rel="noopener">${S.escapeHtml(row.link)}</a>` : '—'}</td>
       <td>${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '—'}</td>
       <td>${S.escapeHtml(row.source_sheet || '—')}</td>
