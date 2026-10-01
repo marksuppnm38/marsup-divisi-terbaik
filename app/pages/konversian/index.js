@@ -3364,7 +3364,7 @@ function riwayatLatestRecord(s) {
 function renderRiwayatSummary(data) {
   if (!S.riwayatSummary) return;
   if (!data.length) { S.riwayatSummary.style.display = 'none'; S.riwayatSummary.innerHTML = ''; return; }
-  // Kartu yang ditampilin dibatasi 100, tapi ringkasan harus ngitung SEMUA sesi yang cocok
+  // Kartu yang ditampilin dipaginasi (RIWAYAT_PAGE_SIZE per halaman), tapi ringkasan harus ngitung SEMUA sesi yang cocok
   // filter (S.riwayatSummaryAll, query ringan terpisah). Data cache (yang bisa di-edit user:
   // status / centang e-Kat) menimpa baris yang sama biar perubahan tetap kerasa langsung.
   const shownCount = data.length;
@@ -3381,8 +3381,7 @@ function renderRiwayatSummary(data) {
     else if (s.hasil_order === 'klik_ekat') { ekatCount++; if (Array.isArray(s.klik_ekat_items)) ekatItems += s.klik_ekat_items.length; }
     else if (!s.hasil_order) nungguCount++;
   });
-  // limit=100 di query — kalau pas 100, kemungkinan masih ada sesi lain yang cocok.
-  const capped = data.length > shownCount ? `<span class="rsum-s" title="Kartu di bawah dibatasi 100 sesi terbaru; angka di atas ngitung semua sesi yang cocok filter">${shownCount} ditampilkan</span>` : '';
+  const capped = data.length > shownCount ? `<span class="rsum-s" title="Angka ngitung semua sesi yang cocok filter; kartu di bawah dibagi per halaman">halaman ini: ${shownCount}</span>` : '';
   // Nilai per status dipisah dari "Nilai tercatat": grand_total ada di SEMUA sesi
   // yang pernah di-Record apa pun statusnya — digabung bakal kebaca kayak omzet.
   S.riwayatSummary.innerHTML = `
@@ -3396,7 +3395,56 @@ function renderRiwayatSummary(data) {
   S.riwayatSummary.style.display = 'grid';
 }
 
-async function loadRiwayatList() {
+const RIWAYAT_PAGE_SIZE = 20;
+function renderRiwayatPager(total, rowsOnPage) {
+  let el = document.getElementById('riwayat-pager');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'riwayat-pager';
+    el.className = 'riwayat-pager';
+    S.riwayatList.insertAdjacentElement('afterend', el);
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-page]');
+      if (!b || b.disabled) return;
+      S.riwayatPage = Number(b.dataset.page);
+      (S.riwayatSummary || S.riwayatList).scrollIntoView({ block: 'start', behavior: 'smooth' });
+      loadRiwayatList(true);
+    });
+  }
+  const cur = S.riwayatPage;
+  const known = total != null;
+  const pages = known ? Math.max(1, Math.ceil(total / RIWAYAT_PAGE_SIZE)) : null;
+  const hasNext = known ? cur < pages - 1 : rowsOnPage === RIWAYAT_PAGE_SIZE;
+  if (cur === 0 && !hasNext) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const btn = (label, page, opts = {}) =>
+    `<button type="button" class="rp-btn${opts.active ? ' active' : ''}" data-page="${page}"${opts.disabled ? ' disabled' : ''}${opts.active ? ' aria-current="page"' : ''}>${label}</button>`;
+  let html = btn('<i class="ti ti-chevron-left"></i> Sebelumnya', cur - 1, { disabled: cur === 0 });
+  if (known) {
+    const set = new Set([0, pages - 1, cur - 1, cur, cur + 1]);
+    let prev = -1;
+    [...set].filter(n => n >= 0 && n < pages).sort((a, b) => a - b).forEach(n => {
+      if (prev !== -1 && n - prev > 1) html += '<span class="rp-gap">…</span>';
+      html += btn(n + 1, n, { active: n === cur });
+      prev = n;
+    });
+  } else {
+    html += `<span class="rp-gap">Hal. ${cur + 1}</span>`;
+  }
+  html += btn('Berikutnya <i class="ti ti-chevron-right"></i>', cur + 1, { disabled: !hasNext });
+  if (known) {
+    const from = cur * RIWAYAT_PAGE_SIZE + 1, to = cur * RIWAYAT_PAGE_SIZE + rowsOnPage;
+    html += `<span class="rp-info">${from}–${to} dari ${total} sesi</span>`;
+  }
+  el.innerHTML = html;
+  el.style.display = 'flex';
+}
+S.riwayatPage = 0;
+// keepPage === true -> tetap di halaman sekarang (pindah halaman / refresh realtime).
+// Pemanggilan lain (ganti filter, search, tombol refresh, listener event) balik ke halaman 1.
+async function loadRiwayatList(keepPage) {
+  if (keepPage !== true) S.riwayatPage = 0;
+  const pager0 = document.getElementById('riwayat-pager');
+  if (pager0) pager0.style.display = 'none';
   S.riwayatListLoading.style.display = 'block';
   S.riwayatListError.style.display = 'none';
   S.riwayatListEmpty.style.display = 'none';
@@ -3432,7 +3480,7 @@ async function loadRiwayatList() {
     const range = riwayatPeriodRange(periodVal);
     const dateFilter = range ? `&updated_at=gte.${range.start.toISOString()}&updated_at=lte.${range.end.toISOString()}` : '';
     const anyFilterActive = !!(term || salesVal || range);
-    const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.selesai${searchFilter}${salesFilter}${dateFilter}&select=*,${S.SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link),sph_records(count)&order=updated_at.desc&limit=100`);
+    const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.selesai${searchFilter}${salesFilter}${dateFilter}&select=*,${S.SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link),sph_records(count)&order=updated_at.desc&limit=${RIWAYAT_PAGE_SIZE}&offset=${S.riwayatPage * RIWAYAT_PAGE_SIZE}`);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
@@ -3440,7 +3488,7 @@ async function loadRiwayatList() {
     const data = await res.json();
     // Query ringan buat ringkasan: semua sesi yang cocok filter, tanpa limit 100.
     S.riwayatSummaryAll = null;
-    if (data.length >= 100) {
+    {
       try {
         const all = [];
         for (let off = 0; off < 10000; off += 1000) {
@@ -3451,8 +3499,9 @@ async function loadRiwayatList() {
           if (part.length < 1000) break;
         }
         S.riwayatSummaryAll = all;
-      } catch (e) { console.warn('Ringkasan semua sesi gagal, fallback ke 100 teratas:', e); }
+      } catch (e) { console.warn('Ringkasan semua sesi gagal, fallback ke halaman ini aja:', e); }
     }
+    if (data.length === 0 && S.riwayatPage > 0) { S.riwayatPage = 0; return await loadRiwayatList(true); }
     if (data.length === 0) {
       S.riwayatListEmpty.querySelector('p').innerHTML = anyFilterActive
         ? `Gak ada riwayat yang cocok dengan filter ini${term ? ` ("${term.replace(/</g, '&lt;')}")` : ''}.`
@@ -3463,12 +3512,14 @@ async function loadRiwayatList() {
     S.riwayatDataCache = data;
     S.riwayatBarangNote = '';
     if (itemMatches.size) {
-      const shown = data.filter(sx => itemMatches.has(String(sx.id)));
-      const totalQty = shown.reduce((a, sx) => a + itemMatches.get(String(sx.id)).reduce((b, m) => b + (Number(m.qty) || 0), 0), 0);
+      const allIds = new Set((S.riwayatSummaryAll || data).map(sx => String(sx.id)));
+      const shown = [...itemMatches.keys()].filter(k => allIds.has(String(k)));
+      const totalQty = shown.reduce((a, k) => a + itemMatches.get(String(k)).reduce((b, m) => b + (Number(m.qty) || 0), 0), 0);
       S.riwayatBarangNote = `<div class="rsum-note"><i class="ti ti-package"></i>Barang cocok muncul di <b>${shown.length}</b> sesi · total qty <b>${totalQty}</b>${itemCapped ? ' <span title="Hasil pencarian barang dibatasi 800 baris per sumber">· mungkin belum lengkap, persempit kata kunci</span>' : ''}</div>`;
     }
     S.riwayatList.innerHTML = data.map(sx => renderRiwayatCard(sx, itemMatches.get(String(sx.id)), tokens)).join('');
     renderRiwayatSummary(data);
+    renderRiwayatPager(S.riwayatSummaryAll ? S.riwayatSummaryAll.length : null, data.length);
     S.riwayatList.querySelectorAll('.riwayat-peek-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3960,7 +4011,7 @@ S.recordSubmitBtn.addEventListener('click', async () => {
       // di server, jadi tetap gak nyangkut di daftar "Konversi Berjalan".
       S.updateEndSesiBtnState();
       loadSesiList();
-      if (S.subtabRiwayat.classList.contains('active')) loadRiwayatList();
+      if (S.subtabRiwayat.classList.contains('active')) loadRiwayatList(true);
     }
     if (S.checklistPermintaanId) {
       S.autoFinalizePermintaan().catch(() => {});
