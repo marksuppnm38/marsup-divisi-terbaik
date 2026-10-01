@@ -3363,7 +3363,6 @@ function riwayatLatestRecord(s) {
 }
 function renderRiwayatSummary(data) {
   if (!S.riwayatSummary) return;
-  if (!data.length) { S.riwayatSummary.style.display = 'none'; S.riwayatSummary.innerHTML = ''; return; }
   // Kartu yang ditampilin dipaginasi (RIWAYAT_PAGE_SIZE per halaman), tapi ringkasan harus ngitung SEMUA sesi yang cocok
   // filter (S.riwayatSummaryAll, query ringan terpisah). Data cache (yang bisa di-edit user:
   // status / centang e-Kat) menimpa baris yang sama biar perubahan tetap kerasa langsung.
@@ -3372,6 +3371,8 @@ function renderRiwayatSummary(data) {
     const live = new Map(data.map(x => [String(x.id), x]));
     data = S.riwayatSummaryAll.map(x => live.get(String(x.id)) || x);
   }
+  if (!data.length) { S.riwayatSummary.style.display = 'none'; S.riwayatSummary.innerHTML = ''; return; }
+  const f = S.riwayatStatusFilter;
   let sphCount = 0, sphValue = 0, ekatCount = 0, ekatItems = 0, nungguCount = 0, totalRecorded = 0, recordedCount = 0;
   data.forEach(s => {
     const latest = riwayatLatestRecord(s);
@@ -3385,17 +3386,27 @@ function renderRiwayatSummary(data) {
   // Nilai per status dipisah dari "Nilai tercatat": grand_total ada di SEMUA sesi
   // yang pernah di-Record apa pun statusnya — digabung bakal kebaca kayak omzet.
   S.riwayatSummary.innerHTML = `
-    <div class="rsum-tile"><span class="rsum-k">Sesi</span><span class="rsum-v">${data.length}</span>${capped}</div>
-    <div class="rsum-tile warn"><span class="rsum-k"><i class="ti ti-hourglass-empty"></i>Menunggu</span><span class="rsum-v">${nungguCount}</span></div>
-    <div class="rsum-tile sph"><span class="rsum-k"><i class="ti ti-file-invoice"></i>Jadi SPH</span><span class="rsum-v">${sphCount}</span>${sphValue ? `<span class="rsum-s">${S.rupiah(sphValue)}</span>` : ''}</div>
-    <div class="rsum-tile ok"><span class="rsum-k"><i class="ti ti-click"></i>Klik e-Kat</span><span class="rsum-v">${ekatCount}</span><span class="rsum-s">${ekatItems} item di-klik</span></div>
+    <div class="rsum-tile clickable" data-rfilter="" role="button" tabindex="0" title="Tampilkan semua status"><span class="rsum-k">Sesi</span><span class="rsum-v">${data.length}</span>${capped}</div>
+    <div class="rsum-tile warn clickable${f === 'menunggu' ? ' active' : ''}" data-rfilter="menunggu" role="button" tabindex="0" aria-pressed="${f === 'menunggu'}" title="Filter: menunggu feedback sales"><span class="rsum-k"><i class="ti ti-hourglass-empty"></i>Menunggu</span><span class="rsum-v">${nungguCount}</span></div>
+    <div class="rsum-tile sph clickable${f === 'jadi_sph' ? ' active' : ''}" data-rfilter="jadi_sph" role="button" tabindex="0" aria-pressed="${f === 'jadi_sph'}" title="Filter: jadi SPH"><span class="rsum-k"><i class="ti ti-file-invoice"></i>Jadi SPH</span><span class="rsum-v">${sphCount}</span>${sphValue ? `<span class="rsum-s">${S.rupiah(sphValue)}</span>` : ''}</div>
+    <div class="rsum-tile ok clickable${f === 'klik_ekat' ? ' active' : ''}" data-rfilter="klik_ekat" role="button" tabindex="0" aria-pressed="${f === 'klik_ekat'}" title="Filter: klik e-Kat"><span class="rsum-k"><i class="ti ti-click"></i>Klik e-Kat</span><span class="rsum-v">${ekatCount}</span><span class="rsum-s">${ekatItems} item di-klik</span></div>
     <div class="rsum-tile wide"><span class="rsum-k"><i class="ti ti-cash"></i>Nilai tercatat</span><span class="rsum-v">${S.rupiah(totalRecorded)}</span><span class="rsum-s">${recordedCount} sesi ada record</span></div>
+    ${f ? `<div class="rsum-note"><i class="ti ti-filter"></i>Difilter: <b>${RIWAYAT_STATUS_LABEL[f]}</b> · ${data.filter(riwayatStatusMatch).length} sesi <button type="button" class="rsum-clear" data-rfilter="">Hapus filter</button></div>` : ''}
     ${S.riwayatBarangNote || ''}
   `;
   S.riwayatSummary.style.display = 'grid';
 }
 
 const RIWAYAT_PAGE_SIZE = 20;
+// Filter status dari klik tile ringkasan: '' (semua) | 'menunggu' | 'jadi_sph' | 'klik_ekat'.
+// 'menunggu' = hasil_order NULL (sama persis dengan cara tile Menunggu ngitung).
+S.riwayatStatusFilter = '';
+const RIWAYAT_STATUS_LABEL = { menunggu: 'Menunggu', jadi_sph: 'Jadi SPH', klik_ekat: 'Klik e-Kat' };
+function riwayatStatusMatch(row) {
+  const f = S.riwayatStatusFilter;
+  if (!f) return true;
+  return f === 'menunggu' ? !row.hasil_order : row.hasil_order === f;
+}
 function renderRiwayatPager(total, rowsOnPage) {
   let el = document.getElementById('riwayat-pager');
   if (!el) {
@@ -3479,8 +3490,11 @@ async function loadRiwayatList(keepPage) {
     const periodVal = S.riwayatPeriodFilter ? S.riwayatPeriodFilter.value : '';
     const range = riwayatPeriodRange(periodVal);
     const dateFilter = range ? `&updated_at=gte.${range.start.toISOString()}&updated_at=lte.${range.end.toISOString()}` : '';
-    const anyFilterActive = !!(term || salesVal || range);
-    const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.selesai${searchFilter}${salesFilter}${dateFilter}&select=*,${S.SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link),sph_records(count)&order=updated_at.desc&limit=${RIWAYAT_PAGE_SIZE}&offset=${S.riwayatPage * RIWAYAT_PAGE_SIZE}`);
+    const sf = S.riwayatStatusFilter;
+    const statusFilter = sf === 'menunggu' ? '&hasil_order=is.null'
+      : (sf && RIWAYAT_STATUS_LABEL[sf]) ? `&hasil_order=eq.${sf}` : '';
+    const anyFilterActive = !!(term || salesVal || range || sf);
+    const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.selesai${searchFilter}${salesFilter}${dateFilter}${statusFilter}&select=*,${S.SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link),sph_records(count)&order=updated_at.desc&limit=${RIWAYAT_PAGE_SIZE}&offset=${S.riwayatPage * RIWAYAT_PAGE_SIZE}`);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
@@ -3504,9 +3518,11 @@ async function loadRiwayatList(keepPage) {
     if (data.length === 0 && S.riwayatPage > 0) { S.riwayatPage = 0; return await loadRiwayatList(true); }
     if (data.length === 0) {
       S.riwayatListEmpty.querySelector('p').innerHTML = anyFilterActive
-        ? `Gak ada riwayat yang cocok dengan filter ini${term ? ` ("${term.replace(/</g, '&lt;')}")` : ''}.`
+        ? `Gak ada riwayat yang cocok dengan filter ini${term ? ` ("${term.replace(/</g, '&lt;')}")` : ''}${sf ? ` · status ${RIWAYAT_STATUS_LABEL[sf] || ''}` : ''}.`
         : 'Belum ada sesi yang selesai.<br>Sesi yang di-Record atau di-Selesaikan bakal muncul di sini.';
       S.riwayatListEmpty.style.display = 'block';
+      S.riwayatDataCache = [];
+      renderRiwayatSummary([]); // tile tetap tampil (kalau ada data ringkasan) biar filter status bisa dilepas
       return;
     }
     S.riwayatDataCache = data;
@@ -3519,7 +3535,7 @@ async function loadRiwayatList(keepPage) {
     }
     S.riwayatList.innerHTML = data.map(sx => renderRiwayatCard(sx, itemMatches.get(String(sx.id)), tokens)).join('');
     renderRiwayatSummary(data);
-    renderRiwayatPager(S.riwayatSummaryAll ? S.riwayatSummaryAll.length : null, data.length);
+    renderRiwayatPager(S.riwayatSummaryAll ? S.riwayatSummaryAll.filter(riwayatStatusMatch).length : null, data.length);
     S.riwayatList.querySelectorAll('.riwayat-peek-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3576,6 +3592,27 @@ async function loadRiwayatList(keepPage) {
   }
 }
 S.btnRiwayatRefresh.addEventListener('click', loadRiwayatList);
+
+// Klik tile ringkasan = filter status (klik lagi / klik tile Sesi / "Hapus filter" = lepas).
+// Delegasi di container karena innerHTML tile di-render ulang tiap kali.
+function riwayatApplyTileFilter(el) {
+  const v = el.dataset.rfilter || '';
+  S.riwayatStatusFilter = (v && v === S.riwayatStatusFilter) ? '' : v;
+  loadRiwayatList();
+}
+if (S.riwayatSummary) {
+  S.riwayatSummary.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-rfilter]');
+    if (t) riwayatApplyTileFilter(t);
+  });
+  S.riwayatSummary.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const t = e.target.closest('.rsum-tile[data-rfilter]');
+    if (!t || e.target !== t) return;
+    e.preventDefault();
+    riwayatApplyTileFilter(t);
+  });
+}
 
 // Search realtime, di-debounce biar gak nembak Supabase tiap ketikan huruf.
 S.riwayatSearchInput.addEventListener('input', () => {
