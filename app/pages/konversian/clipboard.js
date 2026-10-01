@@ -750,7 +750,7 @@ function stokBadgeHtml(r, isSet) {
         ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · bisa rakit ${r.stok_qty} set</span></span>`
         : r.stok_status === 'INDENT'
           ? `<span class="mi stok-indent"><i class="ti ti-clock"></i><span>Indent${r.stok_qty ? ' · bisa rakit '+r.stok_qty+' set' : ''}</span></span>`
-          : `<span class="mi stok-warn" title="${r.stok_komponen_terdata||0}/${r.stok_komponen_total||'?'} komponen sudah ada data stok"><i class="ti ti-alert-circle"></i><span>Data stok komponen blm lengkap</span></span>`)
+          : `<span class="mi stok-warn" data-set-kode="${S.escapeHtmlAttr(r.kode_produk || '')}" data-terdata="${r.stok_komponen_terdata||0}" data-total="${r.stok_komponen_total||''}" style="cursor:help"><i class="ti ti-alert-circle"></i><span>Data stok komponen blm lengkap</span></span>`)
     : (r.stok_status === 'READY'
         ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · ${r.stok_qty} pcs</span></span>`
         : r.stok_status === 'INDENT'
@@ -1510,6 +1510,148 @@ function hydrateSetCounts(root, kodes) {
   });
 }
 S.hydrateSetCounts = hydrateSetCounts;
+
+// ── KOMPONEN SET YANG STOKNYA BELUM ADA (hover badge "Data stok komponen blm lengkap") ──
+// Badge cuma tau hitungannya (mis. 13/14) dari v_stok_status_set. Buat tau KOMPONEN MANA
+// yang bolong, kita ambil rincian set (getSetItems, sudah ter-cache di server-side RPC yg
+// sama dgn modal Lampiran) lalu cek tiap kode_asli-nya ke v_stok_status — persis sumber
+// yang dipakai enrichNonSetStok. Komponen tanpa baris di v_stok_status = belum ada data
+// stok sama sekali. Hasil di-cache per kode set selama modul hidup (null = gagal, boleh retry).
+S.setStokGapCache = new Map(); // kode_produk -> Promise<{missing, kurang, total, kosong}>
+async function getSetStokGap(kode) {
+  if (S.setStokGapCache.has(kode)) return S.setStokGapCache.get(kode);
+  const p = (async () => {
+    const items = await getSetItems(kode);
+    if (!Array.isArray(items) || !items.length) return { missing: [], kurang: [], total: 0, kosong: true };
+    const kodeAsliList = [...new Set(items.map(it => it.kode_asli).filter(Boolean))];
+    const stokMap = new Map();
+    if (kodeAsliList.length) {
+      const inList = kodeAsliList.map(k => `"${String(k).replace(/"/g,'')}"`).join(',');
+      const res = await sesiFetch(`v_stok_status?kode_asli=in.(${inList})&select=kode_asli,qty,status`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      (await res.json()).forEach(x => stokMap.set(x.kode_asli, x));
+    }
+    // Aturan sama dgn v_stok_status_set: komponen cukup kalau stok >= qty yg dibutuhkan per set
+    // (BUKAN status READY/INDENT per-item yang pakai ambang 5 pcs).
+    const missing = [], kurang = [];
+    items.forEach(it => {
+      const st = it.kode_asli ? stokMap.get(it.kode_asli) : null;
+      if (!st) missing.push(it);
+      else if (Number(st.qty) < Number(it.qty ?? 1)) kurang.push({ ...it, _stok_qty: st.qty });
+    });
+    return { missing, kurang, total: items.length, kosong: false };
+  })();
+  S.setStokGapCache.set(kode, p);
+  p.catch(() => S.setStokGapCache.delete(kode)); // gagal -> jangan di-cache, hover berikutnya coba lagi
+  return p;
+}
+S.getSetStokGap = getSetStokGap;
+
+// Popover custom (title native gak bisa isi async + gak bisa daftar panjang). Satu elemen
+// global, dipakai bareng Cari Cepat & Converter lewat event delegation di document —
+// jadi gak perlu sentuh tiap tempat yang manggil stokBadgeHtml().
+(function installSetStokPopover() {
+  if (window.__setStokPopoverInstalled) return;
+  window.__setStokPopoverInstalled = true;
+
+  const st = document.createElement('style');
+  st.textContent = `
+    #set-stok-pop{position:fixed;z-index:10000;max-width:360px;min-width:220px;max-height:320px;overflow:auto;
+      background:var(--surface,#171717);color:var(--text,inherit);border:1px solid var(--border,#444);
+      border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);padding:10px 12px;font-size:12px;line-height:1.45;display:none}
+    #set-stok-pop .ssp-head{font-weight:600;margin-bottom:6px}
+    #set-stok-pop .ssp-sec{margin-top:8px;font-weight:600;color:var(--warning,#b45309)}
+    #set-stok-pop .ssp-sec.indent{color:var(--text-muted,#999)}
+    #set-stok-pop .ssp-row{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--border,#333)}
+    #set-stok-pop .ssp-row:last-child{border-bottom:0}
+    #set-stok-pop .ssp-kode{font-family:monospace;white-space:nowrap;color:var(--text-muted,#999)}
+    #set-stok-pop .ssp-nama{flex:1}
+    #set-stok-pop .ssp-qty{white-space:nowrap;color:var(--text-muted,#999)}
+    #set-stok-pop .ssp-muted{color:var(--text-muted,#999)}
+  `;
+  document.head.appendChild(st);
+
+  const pop = document.createElement('div');
+  pop.id = 'set-stok-pop';
+  document.body.appendChild(pop);
+
+  const esc = (v) => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let activeEl = null, hideTimer = null, seq = 0;
+
+  function place(el) {
+    const r = el.getBoundingClientRect();
+    pop.style.display = 'block';
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    let left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+  }
+
+  function headText(el) {
+    const t = el.dataset.terdata, tot = el.dataset.total;
+    return `${t || 0}/${tot || '?'} komponen sudah ada data stok`;
+  }
+
+  function renderGap(el, gap) {
+    const rows = (arr, withQty) => arr.map(it => `
+      <div class="ssp-row">
+        <span class="ssp-kode">${esc(it.kode_asli || it.kode_produk)}</span>
+        <span class="ssp-nama">${esc(it.nama_produk)}</span>
+        <span class="ssp-qty">${withQty ? 'stok ' + esc(it._stok_qty ?? 0) + ' · ' : ''}butuh ${esc(it.qty ?? 1)}</span>
+      </div>`).join('');
+    let html = `<div class="ssp-head">${esc(headText(el))}</div>`;
+    if (gap.kosong) {
+      html += `<div class="ssp-muted">Rincian isi set tidak ditemukan.</div>`;
+    } else {
+      if (gap.missing.length) html += `<div class="ssp-sec">Belum ada data stok (${gap.missing.length})</div>${rows(gap.missing, false)}`;
+      if (gap.kurang.length) html += `<div class="ssp-sec indent">Stok kurang dari kebutuhan set (${gap.kurang.length})</div>${rows(gap.kurang, true)}`;
+      if (!gap.missing.length && !gap.kurang.length) html += `<div class="ssp-muted">Semua komponen sudah punya data stok — coba muat ulang hasil pencarian.</div>`;
+    }
+    pop.innerHTML = html;
+  }
+
+  async function show(el) {
+    clearTimeout(hideTimer);
+    if (activeEl === el && pop.style.display === 'block') return;
+    activeEl = el;
+    const mySeq = ++seq;
+    const kode = el.dataset.setKode;
+    pop.innerHTML = `<div class="ssp-head">${esc(headText(el))}</div><div class="ssp-muted">Memuat komponen yang kosong…</div>`;
+    place(el);
+    try {
+      const gap = await getSetStokGap(kode);
+      if (mySeq !== seq || activeEl !== el) return; // udah pindah hover
+      renderGap(el, gap);
+    } catch (e) {
+      if (mySeq !== seq || activeEl !== el) return;
+      pop.innerHTML = `<div class="ssp-head">${esc(headText(el))}</div><div class="ssp-muted">Gagal memuat rincian komponen. Hover lagi buat coba ulang.</div>`;
+    }
+    place(el);
+  }
+
+  function hide() {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { pop.style.display = 'none'; activeEl = null; seq++; }, 120);
+  }
+
+  document.addEventListener('mouseover', (e) => {
+    const el = e.target.closest && e.target.closest('.mi.stok-warn[data-set-kode]');
+    if (el) show(el);
+  });
+  document.addEventListener('mouseout', (e) => {
+    const el = e.target.closest && e.target.closest('.mi.stok-warn[data-set-kode]');
+    if (el && !(e.relatedTarget && el.contains(e.relatedTarget))) hide();
+  });
+  // Touch/mobile: tap badge buat buka, tap di luar buat nutup
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest && e.target.closest('.mi.stok-warn[data-set-kode]');
+    if (el) { show(el); return; }
+    if (!pop.contains(e.target)) { pop.style.display = 'none'; activeEl = null; seq++; }
+  });
+  document.addEventListener('scroll', () => { pop.style.display = 'none'; activeEl = null; seq++; }, true);
+})();
 
 // ── SIMPAN KE DRIVE (manual, lewat tombol — bukan otomatis pas Export) ──
 // Export ke Excel cuma nyiapin file + download lokal seperti biasa. Blob hasil
