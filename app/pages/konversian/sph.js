@@ -562,6 +562,17 @@ async function sphRecordToSupabase(record, ownerValue) {
       throw new Error(errData.message || errData.hint || 'Header tersimpan, tapi detail item gagal (cek sph_record_items)');
     }
   }
+  // Auto-tag sesi jadi "Jadi SPH" begitu SPH-nya tersimpan. Filter hasil_order=is.null =
+  // cuma nimpa yang masih "Menunggu feedback sales", jadi status yang sudah dipilih manual
+  // (jadi_sph / klik_ekat) gak pernah diturunin. Best-effort: gagal tag jangan ngegagalin SPH.
+  if (sesiIdUntukSph) {
+    try {
+      await S.sesiFetch(`${S.SESI_TABLE}?id=eq.${encodeURIComponent(sesiIdUntukSph)}&hasil_order=is.null`, {
+        method: 'PATCH',
+        body: JSON.stringify({ hasil_order: 'jadi_sph' })
+      });
+    } catch (e) { console.warn('Auto-tag jadi_sph gagal:', e); }
+  }
   return headerRow.id;
 }
 
