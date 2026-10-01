@@ -29,6 +29,7 @@ export function crudConfirm(message, { title = 'Konfirmasi', okLabel = 'Ya, Lanj
 
     titleEl.textContent = title;
     msgEl.textContent = message;
+    msgEl.style.whiteSpace = 'pre-line'; // biar \n di pesan (daftar kode, dll) kebaca sebagai baris baru
     okBtn.textContent = alertOnly ? 'Oke' : okLabel;
     card.classList.toggle('danger', danger);
     iconEl.className = danger ? 'ti ti-alert-triangle' : 'ti ti-info-circle';

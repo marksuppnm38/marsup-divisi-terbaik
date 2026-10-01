@@ -203,7 +203,73 @@ document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
 // (dari RINCIAN SET) atau kode set baru. Set ditampilkan pakai DESKRIPSI-nya
 // (nameByKode), kode cuma jadi fallback + muncul di tooltip. Daftar dipotong 3
 // karena deskripsi lebih panjang dari kode.
-function syncNoteHtml(row, nameByKode){
+const SYNC_PAGE_SIZE = 25;
+let syncRows = [];   // hasil akhir (sudah difilter yang sudah ada di produk), semua halaman
+let syncPage = 1;
+let syncSearchQuery = '';
+
+// Filter client-side dari syncRows (sudah ada di memori semua, jadi gak perlu query ulang).
+// Cocokkan ke kode, deskripsi, sumber sheet, dan kode set yang membutuhkan produk ini.
+function getFilteredSyncRows(){
+  const q = syncSearchQuery.trim().toLowerCase();
+  if (!q) return syncRows;
+  return syncRows.filter(r => {
+    const hay = [r.kode_produk, r.deskripsi, r.source_sheet].concat(Array.isArray(r.dibutuhkan_oleh) ? r.dibutuhkan_oleh : []);
+    return hay.some(v => v && String(v).toLowerCase().includes(q));
+  });
+}
+
+let syncSearchDebounce = null;
+const syncSearchEl = document.getElementById('syncSearchInput');
+if (syncSearchEl) {
+  syncSearchEl.addEventListener('input', (e) => {
+    clearTimeout(syncSearchDebounce);
+    syncSearchDebounce = setTimeout(() => { syncSearchQuery = e.target.value; syncPage = 1; renderSyncPage(); }, 250);
+  });
+}
+
+// Ambil semua baris tabel dengan paging 1000-an (PostgREST default max 1000 baris/request,
+// tanpa ini daftar sync yang >1000 kepotong diam-diam).
+async function fetchAllSyncRows(){
+  const all = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await S.sb.from('sync_unmatched_produk').select('*')
+      .order('last_seen_at', { ascending: false }).order('kode_produk').range(from, from + 999);
+    if (error) return { error };
+    all.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return { data: all };
+}
+
+// Map kode_produk -> tipe untuk kode yang SUDAH ada di tabel produk (di-chunk biar URL .in() gak kepanjangan).
+// Return null kalau query gagal -- pemanggil harus memperlakukan itu sebagai "gak tahu", bukan "semua kosong".
+async function fetchProdukTipeMap(kodes){
+  const map = new Map();
+  const uniq = [...new Set(kodes.filter(Boolean))];
+  for (let i = 0; i < uniq.length; i += 200) {
+    const { data, error } = await S.sb.from('produk').select('kode_produk, tipe').in('kode_produk', uniq.slice(i, i + 200));
+    if (error) return null;
+    (data || []).forEach(p => map.set(p.kode_produk, p.tipe));
+  }
+  return map;
+}
+
+// Bandingkan komposisi set dari sheet dengan isi tabel produk.
+//   missing = belum ada sama sekali di database
+//   nested  = ada, tapi bertipe SET -> seedSetKomposisi() sengaja gak memasukkannya
+function summarizeKomposisi(komposisi, tipeMap){
+  const kodes = [...new Set((Array.isArray(komposisi) ? komposisi : []).map(k => k?.kode_produk).filter(Boolean))];
+  const missing = kodes.filter(k => !tipeMap.has(k));
+  const nested = kodes.filter(k => tipeMap.get(k) === 'SET');
+  return { total: kodes.length, missing, nested };
+}
+
+// Keterangan di bawah deskripsi baris sync: komponen yang dibutuhkan set
+// (dari RINCIAN SET) atau kode set baru. Set ditampilkan pakai DESKRIPSI-nya
+// (nameByKode), kode cuma jadi fallback + muncul di tooltip. Daftar dipotong 3
+// karena deskripsi lebih panjang dari kode.
+function syncNoteHtml(row, nameByKode, komposisiInfo){
   const needed = Array.isArray(row.dibutuhkan_oleh) ? row.dibutuhkan_oleh : [];
   const label = (k) => (nameByKode && nameByKode.get(k)) || k;
   if (needed.length) {
@@ -213,17 +279,140 @@ function syncNoteHtml(row, nameByKode){
     return `<div style="margin-top:4px;font-size:11.5px;color:var(--warn-text, #b45309);" title="${S.escapeHtml(tip)}"><i class="ti ti-alert-triangle"></i> Belum ada di database, dibutuhkan oleh set: ${shown}${more}</div>`;
   }
   if (row.is_set) {
-    return `<div style="margin-top:4px;font-size:11.5px;color:var(--text-muted);"><i class="ti ti-stack-2"></i> Set baru dari sheet. Buat produknya (tipe SET), komposisi terisi otomatis di sync berikutnya</div>`;
+    let html = `<div style="margin-top:4px;font-size:11.5px;color:var(--text-muted);"><i class="ti ti-stack-2"></i> Set baru dari sheet. Buat produknya (tipe SET), komposisi terisi otomatis di sync berikutnya</div>`;
+    if (komposisiInfo && (komposisiInfo.missing.length || komposisiInfo.nested.length)) {
+      const parts = [];
+      if (komposisiInfo.missing.length) parts.push(`${komposisiInfo.missing.length} dari ${komposisiInfo.total} instrumen belum ada di database`);
+      if (komposisiInfo.nested.length) parts.push(`${komposisiInfo.nested.length} berupa SET (gak masuk komposisi)`);
+      const tip = komposisiInfo.missing.concat(komposisiInfo.nested).join('\n');
+      html += `<div style="margin-top:4px;font-size:11.5px;color:var(--warn-text, #b45309);" title="${S.escapeHtml(tip)}"><i class="ti ti-alert-triangle"></i> Cek dulu komposisinya: ${S.escapeHtml(parts.join(', '))}</div>`;
+    }
+    return html;
   }
   return '';
 }
 
+// Warning sebelum nambah SET dari tab Sync: komposisi dari sheet dicek ulang ke database SEKARANG
+// (bukan pakai data render, bisa aja udah berubah), lalu user diminta konfirmasi kalau ada
+// instrumen yang belum terdaftar. Return true = lanjut buka form.
+async function confirmSetKomposisi(row){
+  const komposisi = Array.isArray(row.komposisi) ? row.komposisi : [];
+  if (!komposisi.length) return true;
+  const tipeMap = await fetchProdukTipeMap(komposisi.map(k => k?.kode_produk));
+  if (!tipeMap) {
+    showToast('Gagal mengecek komposisi ke database, cek manual di Set Management setelah set dibuat', true);
+    return true;
+  }
+  const { total, missing, nested } = summarizeKomposisi(komposisi, tipeMap);
+  if (!missing.length && !nested.length) return true;
+
+  // Nama instrumen yang belum ada: ambil dari baris sync lain (deskripsi dari sheet) biar pesannya kebaca.
+  const descByKode = new Map();
+  if (missing.length) {
+    const { data } = await S.sb.from('sync_unmatched_produk').select('kode_produk, deskripsi').in('kode_produk', missing.slice(0, 200));
+    (data || []).forEach(r => { if (r.deskripsi) descByKode.set(r.kode_produk, r.deskripsi); });
+  }
+  const fmt = (k) => descByKode.has(k) ? `• ${k} — ${descByKode.get(k)}` : `• ${k}`;
+  const MAX = 8;
+  const lines = [`Tolong dicek dulu sebelum menambah set ini.`, ''];
+  if (missing.length) {
+    lines.push(`${missing.length} dari ${total} instrumen di komposisinya belum ada di database:`);
+    lines.push(...missing.slice(0, MAX).map(fmt));
+    if (missing.length > MAX) lines.push(`…dan ${missing.length - MAX} lainnya`);
+    lines.push('');
+  }
+  if (nested.length) {
+    lines.push(`${nested.length} item berupa SET (SET tidak boleh jadi isi set lain, jadi tidak ikut masuk): ${nested.slice(0, MAX).join(', ')}${nested.length > MAX ? ', …' : ''}`);
+    lines.push('');
+  }
+  lines.push('Kalau lanjut, komposisi hanya terisi instrumen yang sudah ada. Sisanya bisa ditambahkan nanti lewat bagian "Belum ada di database" di halaman Composition set. Disarankan: tambahkan instrumen yang kurang dulu.');
+  return crudConfirm(lines.join('\n'), { title: 'Komposisi belum lengkap', okLabel: 'Tetap Tambah Set' });
+}
+
+async function renderSyncPage(){
+  const tbody = document.getElementById('syncTableBody');
+  if (!tbody) return; // user udah pindah halaman selagi query jalan
+  const list = getFilteredSyncRows();
+  const total = list.length;
+  const q = syncSearchQuery.trim();
+  document.getElementById('syncCount').textContent = q
+    ? `${total} dari ${syncRows.length} kode produk cocok dengan "${q}"`
+    : `${syncRows.length} kode produk belum terdaftar`;
+  const pagEl = document.getElementById('syncPagination');
+
+  if (!total) {
+    tbody.innerHTML = q
+      ? `<tr class="state-row"><td colspan="7">Tidak ada kode produk yang cocok dengan "${S.escapeHtml(q)}".</td></tr>`
+      : `<tr class="state-row"><td colspan="7">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
+    renderPgBar(pagEl, { page: 1, pageSize: SYNC_PAGE_SIZE, total: 0, onPageChange: () => {} });
+    return;
+  }
+  const totalPages = Math.max(1, Math.ceil(total / SYNC_PAGE_SIZE));
+  if (syncPage > totalPages) syncPage = totalPages;
+  if (syncPage < 1) syncPage = 1;
+  const pageRows = list.slice((syncPage - 1) * SYNC_PAGE_SIZE, syncPage * SYNC_PAGE_SIZE);
+  const pageAtRender = syncPage;
+
+  // Lookup pendukung cuma untuk baris di halaman ini (bukan seluruh daftar).
+  // Nama set untuk keterangan "dibutuhkan oleh set": prioritas nama_produk di
+  // tabel produk (set sudah dibuat), lalu deskripsi dari baris sync (set baru
+  // dari sheet), terakhir fallback ke kode.
+  const nameByKode = new Map();
+  syncRows.forEach(r => { if (r.deskripsi) nameByKode.set(r.kode_produk, r.deskripsi); });
+  const setKodes = [...new Set(pageRows.flatMap(r => Array.isArray(r.dibutuhkan_oleh) ? r.dibutuhkan_oleh : []))];
+  for (let i = 0; i < setKodes.length; i += 200) {
+    const { data: setRows } = await S.sb.from('produk').select('kode_produk, nama_produk').in('kode_produk', setKodes.slice(i, i + 200));
+    (setRows || []).forEach(p => { if (p.nama_produk) nameByKode.set(p.kode_produk, p.nama_produk); });
+  }
+  // Status komposisi tiap SET di halaman ini (1 query batch) -> dipakai buat penanda peringatan di baris.
+  const komposisiKodes = pageRows.filter(r => r.is_set).flatMap(r => (Array.isArray(r.komposisi) ? r.komposisi : []).map(k => k?.kode_produk));
+  const tipeMap = komposisiKodes.length ? await fetchProdukTipeMap(komposisiKodes) : null;
+  if (pageAtRender !== syncPage || !document.getElementById('syncTableBody')) return; // user ganti halaman/pindah view selagi query jalan
+
+  renderPgBar(pagEl, { page: syncPage, pageSize: SYNC_PAGE_SIZE, total, onPageChange: (p) => { syncPage = p; renderSyncPage(); } });
+  tbody.innerHTML = '';
+  pageRows.forEach(row => {
+    const komposisiInfo = (row.is_set && tipeMap) ? summarizeKomposisi(row.komposisi, tipeMap) : null;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="kode-cell">${S.escapeHtml(row.kode_produk)}</td>
+      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}${syncNoteHtml(row, nameByKode, komposisiInfo)}</td>
+      <td>${row.link ? `<a href="${S.escapeHtml(row.link)}" target="_blank" rel="noopener">${S.escapeHtml(row.link)}</a>` : '—'}</td>
+      <td>${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '—'}</td>
+      <td>${S.escapeHtml(row.source_sheet || '—')}</td>
+      <td>${row.last_seen_at ? new Date(row.last_seen_at).toLocaleString('id-ID') : '—'}</td>
+      <td><button class="btn btn-sm btn-accent sync-add-btn"><i class="ti ti-plus"></i> Tambah Produk</button></td>
+    `;
+    const btn = tr.querySelector('.sync-add-btn');
+    btn.addEventListener('click', async () => {
+      // SET dikenali dari sheet SET FIX V6, atau dari kode_set di RINCIAN SET.
+      const isSet = !!(row.is_set || row.source_sheet === 'SET FIX V6');
+      if (isSet) {
+        btn.disabled = true;
+        try { if (!await confirmSetKomposisi(row)) return; }
+        finally { btn.disabled = false; }
+      }
+      S.openAdd({
+        kode_produk: row.kode_produk,
+        link_v6: row.link,
+        nama_produk: row.deskripsi,
+        tipe: isSet ? 'SET' : undefined,
+      });
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+// Sumber data tab Sync. Dipanggil tiap tab dibuka (refetch penuh, halaman aktif dipertahankan
+// dan di-clamp kalau daftar menyusut). Ganti halaman cuma render ulang dari syncRows, tanpa refetch.
 async function loadSyncUnmatched(){
   const tbody = document.getElementById('syncTableBody');
-  const { data: rawData, error } = await S.sb.from('sync_unmatched_produk').select('*').order('last_seen_at', { ascending: false });
+  if (!tbody) return;
+  const { data: rawData, error } = await fetchAllSyncRows();
   if (error) {
     tbody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal memuat: ${S.escapeHtml(error.message)}</td></tr>`;
     document.getElementById('syncCount').textContent = 'Gagal memuat';
+    renderPgBar(document.getElementById('syncPagination'), { page: 1, pageSize: SYNC_PAGE_SIZE, total: 0, onPageChange: () => {} });
     return;
   }
 
@@ -235,57 +424,29 @@ async function loadSyncUnmatched(){
   // yang udah punya baris di produk dianggap SUDAH sync, di-filter dari
   // tampilan, dan row-nya dihapus dari sync_unmatched_produk (fire-and-forget,
   // gak nunda render) biar gak keperiksa lagi ke depannya.
+  // Di-chunk 200 kode per query biar URL .in() gak kepanjangan kalau daftar sync besar.
   let data = rawData || [];
   if (data.length) {
-    const kodeList = data.map(r => r.kode_produk);
-    const { data: sudahAda } = await S.sb.from('produk').select('kode_produk').in('kode_produk', kodeList);
-    const sudahAdaSet = new Set((sudahAda || []).map(p => p.kode_produk));
-    if (sudahAdaSet.size) {
+    const sudahAdaSet = new Set();
+    let cekOk = true;
+    for (let i = 0; i < data.length; i += 200) {
+      const chunk = data.slice(i, i + 200).map(r => r.kode_produk);
+      const { data: sudahAda, error: cekErr } = await S.sb.from('produk').select('kode_produk').in('kode_produk', chunk);
+      if (cekErr) { cekOk = false; break; }
+      (sudahAda || []).forEach(p => sudahAdaSet.add(p.kode_produk));
+    }
+    if (cekOk && sudahAdaSet.size) {
       data = data.filter(r => !sudahAdaSet.has(r.kode_produk));
-      S.sb.from('sync_unmatched_produk').delete().in('kode_produk', Array.from(sudahAdaSet))
-        .then(({ error: delErr }) => { if (delErr) console.warn('Gagal bersihin sync_unmatched_produk:', delErr.message); });
+      const del = Array.from(sudahAdaSet);
+      for (let i = 0; i < del.length; i += 200) {
+        S.sb.from('sync_unmatched_produk').delete().in('kode_produk', del.slice(i, i + 200))
+          .then(({ error: delErr }) => { if (delErr) console.warn('Gagal bersihin sync_unmatched_produk:', delErr.message); });
+      }
     }
   }
 
-  // Nama set untuk keterangan "dibutuhkan oleh set": prioritas nama_produk di
-  // tabel produk (set sudah dibuat), lalu deskripsi dari baris sync (set baru
-  // dari sheet), terakhir fallback ke kode.
-  const nameByKode = new Map();
-  data.forEach(r => { if (r.deskripsi) nameByKode.set(r.kode_produk, r.deskripsi); });
-  const setKodes = [...new Set(data.flatMap(r => Array.isArray(r.dibutuhkan_oleh) ? r.dibutuhkan_oleh : []))];
-  for (let i = 0; i < setKodes.length; i += 200) {
-    const { data: setRows } = await S.sb.from('produk').select('kode_produk, nama_produk').in('kode_produk', setKodes.slice(i, i + 200));
-    (setRows || []).forEach(p => { if (p.nama_produk) nameByKode.set(p.kode_produk, p.nama_produk); });
-  }
-
-  document.getElementById('syncCount').textContent = `${data.length} kode produk belum terdaftar`;
-  if (!data.length) {
-    tbody.innerHTML = `<tr class="state-row"><td colspan="7">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = '';
-  data.forEach(row => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="kode-cell">${S.escapeHtml(row.kode_produk)}</td>
-      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}${syncNoteHtml(row, nameByKode)}</td>
-      <td>${row.link ? `<a href="${S.escapeHtml(row.link)}" target="_blank" rel="noopener">${S.escapeHtml(row.link)}</a>` : '—'}</td>
-      <td>${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '—'}</td>
-      <td>${S.escapeHtml(row.source_sheet || '—')}</td>
-      <td>${row.last_seen_at ? new Date(row.last_seen_at).toLocaleString('id-ID') : '—'}</td>
-      <td><button class="btn btn-sm btn-accent sync-add-btn"><i class="ti ti-plus"></i> Tambah Produk</button></td>
-    `;
-    tr.querySelector('.sync-add-btn').addEventListener('click', () => {
-      S.openAdd({
-        kode_produk: row.kode_produk,
-        link_v6: row.link,
-        nama_produk: row.deskripsi,
-        // SET dikenali dari sheet SET FIX V6, atau dari kode_set di RINCIAN SET.
-        tipe: (row.is_set || row.source_sheet === 'SET FIX V6') ? 'SET' : undefined,
-      });
-    });
-    tbody.appendChild(tr);
-  });
+  syncRows = data;
+  await renderSyncPage();
 }
 
   // Diakses dari switchView()/index.js (tab KFA & Sinkronisasi) dan dari

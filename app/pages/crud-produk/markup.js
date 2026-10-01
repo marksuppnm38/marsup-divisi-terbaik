@@ -366,6 +366,12 @@ export const CRUD_PRODUK_MARKUP = `
         Kode produk ini muncul di Google Sheets (lewat sync otomatis) tapi belum ada di database.
         Klik <b>Tambah Produk</b> buat bikin produknya — kode, deskripsi (jadi Nama Produk) &amp; link V6-nya udah otomatis keisi di form.
       </div>
+      <div class="akd-toolbar">
+        <div class="akd-search-box">
+          <i class="ti ti-search"></i>
+          <input type="text" id="syncSearchInput" placeholder="Cari kode produk, deskripsi, sumber sheet, kode set..."/>
+        </div>
+      </div>
       <div class="table-card">
         <table>
           <thead>
@@ -376,6 +382,7 @@ export const CRUD_PRODUK_MARKUP = `
           </tbody>
         </table>
       </div>
+      <div class="pg-bar" id="syncPagination" style="display:none;"></div>
     </div>
   </main>
 </div>
