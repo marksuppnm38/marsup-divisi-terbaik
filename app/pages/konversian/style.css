@@ -966,3 +966,12 @@
 #app-root .rsum-tile.clickable.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:var(--surface-2)}
 #app-root .rsum-clear{margin-left:6px;padding:2px 8px;font:inherit;font-size:11px;color:var(--accent-text);background:transparent;border:1px solid var(--border);border-radius:999px;cursor:pointer}
 #app-root .rsum-clear:hover{border-color:var(--accent)}
+
+/* Fokus keyboard Riwayat */
+#app-root .riwayat-card:focus{outline:none}
+#app-root .riwayat-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app-root .rp-btn:focus-visible,
+#app-root .ro-pill:focus-visible,
+#app-root .ro-item:focus-visible,
+#app-root .rsum-clear:focus-visible,
+#app-root .riwayat-card button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

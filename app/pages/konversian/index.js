@@ -2501,7 +2501,7 @@ if (panelSearchCollapseBtn && panelSearchRail) {
 // baris pertama di modal ini biar semua preferensi ada di satu tempat.
 // ══════════════════════════════════════════
 const PNM_SETTINGS_KEY = 'pnm_settings';
-const PNM_SETTINGS_DEFAULT = { autoComplete: true };
+const PNM_SETTINGS_DEFAULT = { autoComplete: false };
 function loadPnmSettings() {
   try {
     return Object.assign({}, PNM_SETTINGS_DEFAULT, JSON.parse(localStorage.getItem(PNM_SETTINGS_KEY) || '{}'));
@@ -2903,7 +2903,7 @@ function renderRiwayatCard(s, matches, tokens) {
     (latest && latest.link && S.isSafeHttpUrl(latest.link)) ? `<a class="rc-act record-link-chip" href="${S.escapeHtmlAttr(latest.link)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i><span>Buka file</span></a>` : ''
   ].join('');
 
-  return `<div class="rcard riwayat-card" data-id="${s.id}">
+  return `<div class="rcard riwayat-card" data-id="${s.id}" tabindex="0" role="article" aria-label="Sesi ${S.escapeHtmlAttr(s.nama_rs || '')} — Enter untuk buka">
     <div class="rc-head">
       <div class="rc-title">
         <div class="rc-name">${namaSafe}</div>
@@ -3418,6 +3418,7 @@ function renderRiwayatPager(total, rowsOnPage) {
       const b = e.target.closest('button[data-page]');
       if (!b || b.disabled) return;
       S.riwayatPage = Number(b.dataset.page);
+      S.riwayatFocusFirst = true;
       (S.riwayatSummary || S.riwayatList).scrollIntoView({ block: 'start', behavior: 'smooth' });
       loadRiwayatList(true);
     });
@@ -3444,7 +3445,7 @@ function renderRiwayatPager(total, rowsOnPage) {
   html += btn('Berikutnya <i class="ti ti-chevron-right"></i>', cur + 1, { disabled: !hasNext });
   if (known) {
     const from = cur * RIWAYAT_PAGE_SIZE + 1, to = cur * RIWAYAT_PAGE_SIZE + rowsOnPage;
-    html += `<span class="rp-info">${from}–${to} dari ${total} sesi</span>`;
+    html += `<span class="rp-info">${from}–${to} dari ${total} sesi · ← → ganti halaman · j/k pindah kartu · / cari</span>`;
   }
   el.innerHTML = html;
   el.style.display = 'flex';
@@ -3557,7 +3558,20 @@ async function loadRiwayatList(keepPage) {
       root.querySelector('.ro-pill').addEventListener('click', () => {
         const wasOpen = card.classList.contains('ro-open');
         document.querySelectorAll('.riwayat-card.ro-open').forEach(c => c.classList.remove('ro-open'));
-        if (!wasOpen) card.classList.add('ro-open');
+        if (!wasOpen) {
+          card.classList.add('ro-open');
+          // dipicu keyboard (detail 0) -> fokus ke item aktif biar bisa langsung panah + Enter
+          setTimeout(() => (root.querySelector('.ro-item.active') || root.querySelector('.ro-item'))?.focus(), 0);
+        }
+      });
+      root.addEventListener('keydown', (e) => {
+        if (!card.classList.contains('ro-open')) return;
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+        const its = [...root.querySelectorAll('.ro-item')];
+        const i = its.indexOf(document.activeElement);
+        const n = e.key === 'ArrowDown' ? Math.min(i + 1, its.length - 1) : Math.max(i - 1, 0);
+        e.preventDefault();
+        its[i < 0 ? 0 : n]?.focus();
       });
       root.querySelectorAll('.ro-item').forEach(it => it.addEventListener('click', () => {
         card.classList.remove('ro-open');
@@ -3566,7 +3580,17 @@ async function loadRiwayatList(keepPage) {
     });
     S.riwayatList.querySelectorAll('.riwayat-card').forEach(card => {
       card.addEventListener('click', () => openSesi(card.dataset.id));
+      card.addEventListener('keydown', (e) => {
+        if (e.target !== card || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        openSesi(card.dataset.id);
+      });
     });
+    // Setelah pindah halaman lewat pager/keyboard: fokus ke kartu pertama (bukan cuma scroll).
+    if (S.riwayatFocusFirst) {
+      S.riwayatFocusFirst = false;
+      S.riwayatList.querySelector('.riwayat-card')?.focus({ preventScroll: true });
+    }
     // Dulu inline onclick="event.stopPropagation()" di linkChip -- tanpa ini klik "Buka file"
     // bakal ikut buka kartu sesi (bubbling ke card.addEventListener('click', openSesi) di atas).
     S.riwayatList.querySelectorAll('.record-link-chip').forEach(a => {
@@ -3595,6 +3619,54 @@ S.btnRiwayatRefresh.addEventListener('click', loadRiwayatList);
 
 // Klik tile ringkasan = filter status (klik lagi / klik tile Sesi / "Hapus filter" = lepas).
 // Delegasi di container karena innerHTML tile di-render ulang tiap kali.
+// ===== Keyboard: tab Riwayat =====
+//   /  fokus ke kolom cari      j / k  pindah antar kartu      ← / →  halaman sebelum/berikut
+//   Esc  tutup menu status (atau kosongkan search kalau lagi di kolom cari)
+// Listener document-level -> disimpan di window biar bisa dilepas di unmount() dan gak numpuk
+// kalau modul di-mount ulang.
+function riwayatKeyHandler(e) {
+  if (!S.subtabRiwayat || !S.subtabRiwayat.classList.contains('active')) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+  if (document.querySelector('[class*="modal"].show, [class*="overlay"].show, [id*="modal"].show')) return;
+  if (e.key === 'Escape') {
+    const open = document.querySelector('.riwayat-card.ro-open');
+    if (open) { open.classList.remove('ro-open'); open.querySelector('.ro-pill')?.focus(); e.preventDefault(); }
+    return;
+  }
+  const t = e.target;
+  if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  if (e.key === '/') {
+    if (!S.riwayatSearchInput) return;
+    e.preventDefault();
+    S.riwayatSearchInput.focus();
+    S.riwayatSearchInput.select();
+  } else if (e.key === 'j' || e.key === 'k') {
+    const cards = [...S.riwayatList.querySelectorAll('.riwayat-card')];
+    if (!cards.length) return;
+    const cur = cards.indexOf(document.activeElement && document.activeElement.closest ? document.activeElement.closest('.riwayat-card') : null);
+    const n = cur < 0 ? 0 : (e.key === 'j' ? Math.min(cur + 1, cards.length - 1) : Math.max(cur - 1, 0));
+    e.preventDefault();
+    cards[n].focus();
+    cards[n].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    const target = S.riwayatPage + (e.key === 'ArrowRight' ? 1 : -1);
+    const b = document.querySelector(`#riwayat-pager button[data-page="${target}"]`);
+    if (b && !b.disabled) { e.preventDefault(); b.click(); }
+  }
+}
+if (window.__konvRiwayatKeydown) document.removeEventListener('keydown', window.__konvRiwayatKeydown);
+window.__konvRiwayatKeydown = riwayatKeyHandler;
+document.addEventListener('keydown', riwayatKeyHandler);
+if (S.riwayatSearchInput) {
+  S.riwayatSearchInput.setAttribute('aria-keyshortcuts', '/');
+  S.riwayatSearchInput.title = 'Pintasan: / cari · j/k pindah kartu · ←/→ halaman';
+  S.riwayatSearchInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    if (S.riwayatSearchInput.value) S.riwayatClearBtn.click(); else S.riwayatSearchInput.blur();
+  });
+}
+
 function riwayatApplyTileFilter(el) {
   const v = el.dataset.rfilter || '';
   S.riwayatStatusFilter = (v && v === S.riwayatStatusFilter) ? '' : v;
@@ -4436,6 +4508,10 @@ export function setSubroute(sub) {
 }
 
 export function unmount() {
+  if (window.__konvRiwayatKeydown) {
+    document.removeEventListener('keydown', window.__konvRiwayatKeydown);
+    window.__konvRiwayatKeydown = null;
+  }
   const bridge = window.__konvBridge;
   if (bridge) {
     try { bridge.authUnsub?.(); } catch (err) { console.error('unmount konversian: authUnsub gagal', err); }
