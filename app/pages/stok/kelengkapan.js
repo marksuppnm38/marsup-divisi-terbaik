@@ -9,6 +9,10 @@
 // v_set_kelengkapan) + hitungan status dari v_stok_status_set + upload
 // terakhir di stok_upload_log (buat nebak ALASAN kenapa kode belum ada stok).
 //
+// Kartu ringkasan = tombol filter (klik "Siap rakit" → daftar set siap rakit, dst).
+// Tautan silang: klik angka "set terblokir" / kode komponen di daftar set →
+// langsung lihat set yang bolong di kode itu.
+//
 // Output ramah Sheets/Excel: Salin ke Sheets (TSV, tinggal Ctrl+V di sel A1),
 // Download .xlsx (kolom kode = sel teks, gak ke-auto-convert jadi tanggal/angka),
 // Download CSV (UTF-8 BOM), dan Salin kode saja (satu kode per baris).
@@ -25,7 +29,10 @@ let S = null; // state modul; null = gak termount
 
 const CSS = `
 #kelengkapan-card .kel-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
-#kelengkapan-card .kel-stat{border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px}
+#kelengkapan-card .kel-stat{display:block;width:100%;text-align:left;background:transparent;font-family:inherit;border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;cursor:pointer;transition:border-color .12s,background .12s}
+#kelengkapan-card .kel-stat:hover{border-color:var(--accent)}
+#kelengkapan-card .kel-stat:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#kelengkapan-card .kel-stat.active{border-color:var(--accent);background:var(--accent-soft,rgba(80,120,255,.08))}
 #kelengkapan-card .kel-stat .n{font-family:var(--font-mono,monospace);font-size:20px;font-weight:600;color:var(--text);line-height:1.2}
 #kelengkapan-card .kel-stat .l{font-size:11px;color:var(--text-muted);margin-top:2px}
 #kelengkapan-card .kel-stat.warn .n{color:var(--warn-text,#b45309)}
@@ -51,6 +58,10 @@ const CSS = `
 #kelengkapan-card .kel-tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--border);color:var(--text-secondary)}
 #kelengkapan-card .kel-tag.skip{border-color:var(--warn,#d97706);color:var(--warn-text,#b45309)}
 #kelengkapan-card .kel-tag.mirip{border-color:var(--accent);color:var(--accent-text)}
+#kelengkapan-card .kel-tag.ok{border-color:var(--success-dot,#16a34a);color:var(--success-text,#15803d)}
+#kelengkapan-card .kel-muted{color:var(--text-muted)}
+#kelengkapan-card .kel-link{background:none;border:0;padding:0;margin:0;font:inherit;color:var(--accent-text);cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+#kelengkapan-card .kel-link:hover{text-decoration-style:solid}
 #kelengkapan-card .kel-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;font-size:11.5px;color:var(--text-muted);flex-wrap:wrap}
 #kelengkapan-card .kel-empty{padding:22px;text-align:center;color:var(--text-muted);font-size:12.5px}
 #kelengkapan-card .kel-list{margin:0;padding:0;list-style:none}
@@ -201,9 +212,28 @@ async function loadSets(ctx) {
   ctx.setsLoading = true;
   if (S === ctx) renderList();
   try {
-    const rows = await fetchAll(ctx, 'v_set_kelengkapan?select=set_id,kode_produk,nama_produk,jumlah_komponen,jumlah_terdata,jumlah_bolong,bolong_kode,bolong_nama&jumlah_bolong=gt.0&order=jumlah_bolong.asc,set_id.asc');
+    // Status/bisa-rakit dari v_stok_status_set (sumber kebenaran status), detail komponen
+    // bolong dari v_set_kelengkapan — digabung di sini lewat id set. ~500 baris, murah.
+    const [stat, kel] = await Promise.all([
+      fetchAll(ctx, 'v_stok_status_set?select=produk_id,kode_produk,nama_produk,jumlah_komponen,jumlah_komponen_terdata,buildable_qty,status&order=produk_id.asc'),
+      fetchAll(ctx, 'v_set_kelengkapan?select=set_id,jumlah_bolong,bolong_kode,bolong_nama&jumlah_bolong=gt.0&order=set_id.asc')
+    ]);
     if (S !== ctx) return;
-    ctx.sets = rows;
+    const kelById = new Map(kel.map(k => [k.set_id, k]));
+    const rank = { DATA_TIDAK_LENGKAP: 0, INDENT: 1, READY: 2 };
+    ctx.sets = stat.map(r => {
+      const k = kelById.get(r.produk_id);
+      const total = Number(r.jumlah_komponen) || 0, terdata = Number(r.jumlah_komponen_terdata) || 0;
+      return {
+        set_id: r.produk_id, kode_produk: r.kode_produk, nama_produk: r.nama_produk, status: r.status,
+        jumlah_komponen: total, jumlah_terdata: terdata,
+        jumlah_bolong: k ? Number(k.jumlah_bolong) : Math.max(0, total - terdata),
+        bolong_kode: (k && k.bolong_kode) || [], bolong_nama: (k && k.bolong_nama) || [],
+        buildable_qty: r.buildable_qty == null ? null : Number(r.buildable_qty)
+      };
+    }).sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9)
+      || a.jumlah_bolong - b.jumlah_bolong
+      || String(a.kode_produk).localeCompare(String(b.kode_produk)));
   } catch (e) {
     if (S !== ctx) return;
     ctx.error = e;
@@ -229,9 +259,14 @@ function filtered() {
         || (k.nama_produk || '').toLowerCase().includes(q);
     });
   }
-  const max = S.fSet === 'all' ? Infinity : Number(S.fSet);
+  const f = S.fSet; // all | READY | INDENT | TL (semua tidak lengkap) | TL1 | TL2 | TL3
   return (S.sets || []).filter(s => {
-    if (s.jumlah_bolong > max) return false;
+    if (f === 'READY' || f === 'INDENT') {
+      if (s.status !== f) return false;
+    } else if (f.startsWith('TL')) {
+      if (s.status !== 'DATA_TIDAK_LENGKAP') return false;
+      if (f !== 'TL' && s.jumlah_bolong > Number(f.slice(2))) return false;
+    }
     if (!q) return true;
     return (s.kode_produk || '').toLowerCase().includes(q)
       || (s.nama_produk || '').toLowerCase().includes(q)
@@ -246,15 +281,27 @@ function renderAll() {
   renderStats(); renderBanner(); renderTabs(); syncToolbar(); renderList();
 }
 
+function statActive(key) {
+  if (key === 'komp') return S.tab === 'komponen';
+  if (S.tab !== 'set') return false;
+  if (key === 'total') return S.fSet === 'all';
+  if (key === 'ready') return S.fSet === 'READY';
+  if (key === 'indent') return S.fSet === 'INDENT';
+  return S.fSet.startsWith('TL');
+}
+
 function renderStats() {
   const c = S.counts;
   const v = (n) => (c ? fmtN(n) : '…');
-  region('stats').innerHTML = `
-    <div class="kel-stat"><div class="n">${v(c && c.total)}</div><div class="l">Total set</div></div>
-    <div class="kel-stat"><div class="n">${v(c && c.ready)}</div><div class="l">Siap rakit</div></div>
-    <div class="kel-stat"><div class="n">${v(c && c.indent)}</div><div class="l">Indent</div></div>
-    <div class="kel-stat warn"><div class="n">${v(c && c.tidakLengkap)}</div><div class="l">Data stok tidak lengkap</div></div>
-    <div class="kel-stat warn"><div class="n">${S.komponen ? fmtN(S.komponen.length) : '…'}</div><div class="l">Komponen tanpa data</div></div>`;
+  const card = (key, num, label, warn, hint) =>
+    `<button type="button" class="kel-stat${warn ? ' warn' : ''}${statActive(key) ? ' active' : ''}" data-kel="stat" data-stat="${key}" aria-pressed="${statActive(key)}" title="${hint}">` +
+    `<div class="n">${num}</div><div class="l">${label}</div></button>`;
+  region('stats').innerHTML =
+    card('total', v(c && c.total), 'Total set', false, 'Tampilkan semua set') +
+    card('ready', v(c && c.ready), 'Siap rakit', false, 'Filter: set siap rakit') +
+    card('indent', v(c && c.indent), 'Indent', false, 'Filter: set indent') +
+    card('tl', v(c && c.tidakLengkap), 'Data stok tidak lengkap', true, 'Filter: set dengan komponen tanpa data stok') +
+    card('komp', S.komponen ? fmtN(S.komponen.length) : '…', 'Komponen tanpa data', true, 'Lihat daftar komponen yang bolong');
 }
 
 function renderBanner() {
@@ -274,17 +321,20 @@ function renderBanner() {
 
 function renderTabs() {
   const nKomp = S.komponen ? fmtN(S.komponen.length) : '…';
-  const nSet = S.counts ? fmtN(S.counts.tidakLengkap) : '…';
+  const nSet = S.counts ? fmtN(S.counts.total) : '…';
   region('tabs').innerHTML =
     `<button class="kel-tab ${S.tab === 'komponen' ? 'active' : ''}" data-kel="tab" data-tab="komponen">Komponen bolong (${nKomp})</button>` +
-    `<button class="kel-tab ${S.tab === 'set' ? 'active' : ''}" data-kel="tab" data-tab="set">Set belum lengkap (${nSet})</button>`;
+    `<button class="kel-tab ${S.tab === 'set' ? 'active' : ''}" data-kel="tab" data-tab="set">Daftar set (${nSet})</button>`;
 }
 
 function syncToolbar() {
   const sel = S.host.querySelector('[data-kel="filter"]');
+  const qIn = S.host.querySelector('[data-kel="q"]');
+  if (qIn.value !== S.q) qIn.value = S.q; // sinkron kalau q di-set dari klik kartu/tautan
   const opts = S.tab === 'komponen'
     ? [['all', 'Semua alasan'], ['absen', 'Tidak ada di file stok'], ['skip', 'Ter-skip saat upload'], ['mirip', 'Mirip kode ter-skip'], ['kosong', 'kode_asli kosong']]
-    : [['1', 'Kurang 1 komponen'], ['2', 'Maks. 2 komponen bolong'], ['3', 'Maks. 3 komponen bolong'], ['all', 'Semua set tidak lengkap']];
+    : [['all', 'Semua status'], ['READY', 'Siap rakit'], ['INDENT', 'Indent'], ['TL', 'Tidak lengkap · semua'],
+       ['TL1', 'Tidak lengkap · kurang 1 komponen'], ['TL2', 'Tidak lengkap · maks. 2 bolong'], ['TL3', 'Tidak lengkap · maks. 3 bolong']];
   const cur = S.tab === 'komponen' ? S.fKomp : S.fSet;
   sel.innerHTML = opts.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('');
   region('btns').innerHTML =
@@ -301,8 +351,8 @@ function renderList() {
   const busy = S.loading || (!isKomp && (S.setsLoading || S.sets === null));
   thead.innerHTML = isKomp
     ? '<tr><th>Kode Asli</th><th>Nama Komponen</th><th class="kel-num">Set terblokir</th><th>Alasan</th></tr>'
-    : '<tr><th>Kode Set</th><th>Nama Set</th><th class="kel-num">Terdata</th><th>Komponen bolong</th></tr>';
-  const cols = 4;
+    : '<tr><th>Kode Set</th><th>Nama Set</th><th>Status</th><th class="kel-num">Terdata</th><th>Detail</th></tr>';
+  const cols = isKomp ? 4 : 5;
   if (S.error && !S.komponen) { tbody.innerHTML = `<tr><td colspan="${cols}"><div class="kel-empty">Data belum bisa ditampilkan.</div></td></tr>`; foot.innerHTML = ''; return; }
   if (busy) { tbody.innerHTML = `<tr><td colspan="${cols}"><div class="kel-empty">Memuat…</div></td></tr>`; foot.innerHTML = ''; return; }
 
@@ -317,19 +367,35 @@ function renderList() {
       return `<tr>
         <td class="kel-mono">${esc(k.kode_asli || '—')}</td>
         <td>${esc(k.nama_produk)}</td>
-        <td class="kel-num"><b>${fmtN(k.set_terblokir)}</b><span class="kel-bar"><i style="width:${Math.max(3, Math.round(k.set_terblokir / max * 100))}%"></i></span></td>
+        <td class="kel-num">${k.kode_asli
+          ? `<button type="button" class="kel-link" data-kel="blocked" data-kode="${esc(k.kode_asli)}" title="Lihat set yang terblokir komponen ini"><b>${fmtN(k.set_terblokir)}</b></button>`
+          : `<b>${fmtN(k.set_terblokir)}</b>`}<span class="kel-bar"><i style="width:${Math.max(3, Math.round(k.set_terblokir / max * 100))}%"></i></span></td>
         <td><span class="kel-tag ${a.type === 'skip' ? 'skip' : a.type === 'mirip' ? 'mirip' : ''}">${esc(a.text)}</span></td>
       </tr>`;
     }).join('');
   } else {
+    const STATUS = {
+      READY: ['ok', 'Siap rakit'],
+      INDENT: ['', 'Indent'],
+      DATA_TIDAK_LENGKAP: ['skip', 'Data tidak lengkap']
+    };
     tbody.innerHTML = shown.map(s => {
       const kode = s.bolong_kode || [], nama = s.bolong_nama || [];
-      const li = kode.map((c, i) => `<li><span class="kel-mono">${esc(c)}</span> · ${esc(nama[i] || '')}</li>`).join('');
+      const st = STATUS[s.status] || ['', s.status || '-'];
+      let detail;
+      if (s.status === 'DATA_TIDAK_LENGKAP') {
+        detail = '<ul class="kel-list">' + kode.map((c, i) =>
+          `<li><button type="button" class="kel-link kel-mono" data-kel="blocked" data-kode="${esc(c)}" title="Cari set lain yang bolong di kode ini">${esc(c)}</button> · ${esc(nama[i] || '')}</li>`).join('') + '</ul>';
+      } else {
+        const n = s.buildable_qty;
+        detail = `<span class="kel-muted">${s.status === 'INDENT' ? 'Stok komponen belum cukup' : 'Semua komponen cukup'}${n != null ? ` · bisa rakit ${fmtN(n)} set` : ''}</span>`;
+      }
       return `<tr>
         <td class="kel-mono">${esc(s.kode_produk)}</td>
         <td>${esc(s.nama_produk)}</td>
+        <td><span class="kel-tag ${st[0]}">${esc(st[1])}</span></td>
         <td class="kel-num">${fmtN(s.jumlah_terdata)}/${fmtN(s.jumlah_komponen)}</td>
-        <td><ul class="kel-list">${li}</ul></td>
+        <td>${detail}</td>
       </tr>`;
     }).join('');
   }
@@ -353,12 +419,15 @@ function tableData(rows) {
         rows.map(k => [String(k.kode_asli || ''), String(k.nama_produk || ''), Number(k.set_terblokir) || 0, k._alasan.text]))
     };
   }
+  const label = { READY: 'Siap rakit', INDENT: 'Indent', DATA_TIDAK_LENGKAP: 'Data tidak lengkap' };
   return {
-    name: 'set-belum-lengkap',
-    widths: [24, 50, 12, 10, 10, 40, 70],
-    aoa: [['Kode Set', 'Nama Set', 'Jumlah Komponen', 'Terdata', 'Bolong', 'Kode Komponen Bolong', 'Nama Komponen Bolong']].concat(
-      rows.map(s => [String(s.kode_produk || ''), String(s.nama_produk || ''), Number(s.jumlah_komponen) || 0, Number(s.jumlah_terdata) || 0,
-        Number(s.jumlah_bolong) || 0, (s.bolong_kode || []).join('; '), (s.bolong_nama || []).join('; ')]))
+    name: 'daftar-set',
+    widths: [24, 50, 18, 12, 10, 10, 14, 40, 70],
+    aoa: [['Kode Set', 'Nama Set', 'Status', 'Jumlah Komponen', 'Terdata', 'Bolong', 'Bisa Rakit (set)', 'Kode Komponen Bolong', 'Nama Komponen Bolong']].concat(
+      rows.map(s => [String(s.kode_produk || ''), String(s.nama_produk || ''), label[s.status] || String(s.status || ''),
+        Number(s.jumlah_komponen) || 0, Number(s.jumlah_terdata) || 0, Number(s.jumlah_bolong) || 0,
+        s.buildable_qty == null ? '' : Number(s.buildable_qty),
+        (s.bolong_kode || []).join('; '), (s.bolong_nama || []).join('; ')]))
   };
 }
 
@@ -427,15 +496,37 @@ async function doExport(kind, btn) {
 }
 
 // ───────── events ─────────
+// Satu pintu buat semua perubahan tab/filter/pencarian (kartu, tab, tautan silang).
+function go({ tab, fSet, fKomp, q }) {
+  if (tab) S.tab = tab;
+  if (fSet !== undefined) S.fSet = fSet;
+  if (fKomp !== undefined) S.fKomp = fKomp;
+  if (q !== undefined) S.q = q;
+  S.limit = PAGE_STEP;
+  renderStats(); renderTabs(); syncToolbar();
+  if (S.tab === 'set') ensureSets();
+  renderList();
+}
+
+const STAT_TARGET = {
+  total:  { tab: 'set', fSet: 'all' },
+  ready:  { tab: 'set', fSet: 'READY' },
+  indent: { tab: 'set', fSet: 'INDENT' },
+  tl:     { tab: 'set', fSet: 'TL' },
+  komp:   { tab: 'komponen', fKomp: 'all' }
+};
+
 function onClick(e) {
   const t = e.target.closest('[data-kel]');
   if (!t || !S) return;
   const act = t.dataset.kel;
-  if (act === 'tab') {
-    S.tab = t.dataset.tab; S.limit = PAGE_STEP;
-    renderTabs(); syncToolbar();
-    if (S.tab === 'set') ensureSets();
-    renderList();
+  if (act === 'stat') {
+    // pindah ke daftar yang dituju; pencarian lama dibersihkan biar hasilnya sesuai angka di kartu
+    go(Object.assign({ q: '' }, STAT_TARGET[t.dataset.stat]));
+  } else if (act === 'blocked') {
+    go({ tab: 'set', fSet: 'TL', q: t.dataset.kode });
+  } else if (act === 'tab') {
+    go({ tab: t.dataset.tab });
   } else if (act === 'refresh') {
     loadAll();
   } else if (act === 'more') {
@@ -451,7 +542,7 @@ function onInput(e) {
 function onChange(e) {
   if (!S || !e.target.matches('[data-kel="filter"]')) return;
   if (S.tab === 'komponen') S.fKomp = e.target.value; else S.fSet = e.target.value;
-  S.limit = PAGE_STEP; renderList();
+  S.limit = PAGE_STEP; renderStats(); renderList();
 }
 
 // ───────── lifecycle ─────────
@@ -466,7 +557,7 @@ export function mountKelengkapan({ supabaseUrl, anonKey }) {
   }
   S = {
     url: supabaseUrl, key: anonKey, host,
-    tab: 'komponen', q: '', fKomp: 'all', fSet: '1', limit: PAGE_STEP,
+    tab: 'komponen', q: '', fKomp: 'all', fSet: 'TL1', limit: PAGE_STEP,
     counts: null, komponen: null, sets: null, setsLoading: false,
     skip: buildSkipIndex(null), logMeta: null,
     loading: true, error: null, warn: null
