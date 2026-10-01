@@ -2018,6 +2018,14 @@ async function saveProdukInner(){
   // jaring pengaman di siklus poll berikutnya. loadSyncUnmatched() sendiri
   // juga udah defensif filter row yang kode_produk-nya udah ada di produk,
   // jadi walau delete ini gak sempet jalan, tab Sync tetap gak nampilin lagi.
+  // SET baru yang berasal dari tab Sync: ambil komposisi dari sheet SEBELUM baris
+  // sync-nya dihapus di bawah, lalu isi sekarang juga (gak nunggu polling).
+  let seedKomposisi = null;
+  if (wasNew && tipe === 'SET') {
+    const { data: syncRow } = await sb.from('sync_unmatched_produk').select('komposisi').eq('kode_produk', kodeProduk).maybeSingle();
+    seedKomposisi = Array.isArray(syncRow?.komposisi) ? syncRow.komposisi : null;
+  }
+
   if (wasNew) {
     sb.from('sync_unmatched_produk').delete().eq('kode_produk', kodeProduk)
       .then(({ error: delErr }) => { if (delErr) console.warn('Gagal bersihin sync_unmatched_produk:', delErr.message); });
@@ -2028,6 +2036,7 @@ async function saveProdukInner(){
   // tab Harga/AKD generic di modal ini (bakal langsung dikunci ulang lain kali dibuka
   // lewat monkey-patch openEdit di bagian SET Management di bawah).
   if (wasNew && tipe === 'SET') {
+    if (seedKomposisi && seedKomposisi.length) await seedSetKomposisi(currentProdukId, seedKomposisi);
     closeModal();
     invalidateProdukStackCache();
     loadProduk();
@@ -2230,6 +2239,25 @@ async function loadCompMissing(){
     });
     list.appendChild(div);
   });
+}
+
+// Isi komposisi SET yang baru dibuat dari data sheet (sync_unmatched_produk.komposisi).
+// Cuma komponen yang SUDAH ada di tabel produk dan bukan SET yang dimasukkan; sisanya
+// muncul di blok "Belum ada di database" di halaman Composition. Mode 'gabung' = aman.
+async function seedSetKomposisi(setId, komposisi){
+  const kodes = [...new Set(komposisi.map(k => k.kode_produk))];
+  const idByKode = new Map();
+  for (let i = 0; i < kodes.length; i += 200) {
+    const { data } = await sb.from('produk').select('id, kode_produk, tipe').in('kode_produk', kodes.slice(i, i + 200));
+    (data || []).forEach(p => { if (p.tipe !== 'SET') idByKode.set(p.kode_produk, p.id); });
+  }
+  const items = komposisi.filter(k => idByKode.has(k.kode_produk)).map(k => ({ produk_id: idByKode.get(k.kode_produk), qty: k.qty || 1 }));
+  const belum = komposisi.length - items.length;
+  if (items.length) {
+    const { error } = await sb.rpc('save_set_composisi', { p_set_id: setId, p_items: items, p_mode: 'gabung' });
+    if (error) { showToast('Set dibuat, tapi gagal mengisi komposisi dari sheet: ' + error.message, true); return; }
+  }
+  showToast(`Komposisi dari sheet: ${items.length} item masuk` + (belum ? `, ${belum} belum ada di database` : ''));
 }
 
 // Dipanggil dari saveProdukInner() untuk produk baru yang berasal dari compMissing.
