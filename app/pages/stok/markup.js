@@ -115,6 +115,8 @@ export const STOK_MARKUP = `
     <div id="stok-status-msg"></div>
     <div class="trust-note"><i class="ti ti-shield-check"></i>Data stok akan menggantikan data stok sebelumnya. Pastikan file sudah sesuai sebelum upload.</div>
   </div>
+  <!-- KELENGKAPAN STOK SET (diisi kelengkapan.js) -->
+  <div class="card" id="kelengkapan-card"></div>
   <!-- RIWAYAT -->
   <div class="card">
     <div class="card-head">

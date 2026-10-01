@@ -43,6 +43,7 @@
 // module scope, lihat map.md checklist).
 
 import { STOK_MARKUP } from './markup.js';
+import { mountKelengkapan, refreshKelengkapan, unmountKelengkapan } from './kelengkapan.js';
 
 // SECURITY FIX: renderSkipTable() and the upload-history table below render
 // `kode_asli` (parsed straight from cells in the Excel file the user
@@ -225,6 +226,7 @@ export async function mount(container) {
   window.PNMAuth.getUser().then((user) => { stokCurrentEmail = user?.email || null; });
   renderLastStatus();
   renderHistory();
+  mountKelengkapan({ supabaseUrl: SUPABASE_URL, anonKey: ANON_KEY });
 
   // ══════════════════════════════════════════
   // RIWAYAT — dibaca/ditulis ke tabel bersama `stok_upload_log` di Supabase.
@@ -710,6 +712,7 @@ export async function mount(container) {
       await renderLastStatus();
       historyShowAll = false;
       await renderHistory();
+      refreshKelengkapan(); // stok baru masuk → hitung ulang komponen bolong
       resetUploadUI();
     } catch (err) {
       stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal: ${err.message}</div>`;
@@ -731,6 +734,7 @@ export function unmount() {
   // shell.html/index.html, which also fixes a flash-of-unstyled-content
   // "jaggy zoom" that removing/reloading it on every navigation was causing.
   document.getElementById('page-stok-style')?.remove();
+  unmountKelengkapan();
 
   mountedContainer = null;
 }
