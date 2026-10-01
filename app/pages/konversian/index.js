@@ -1173,12 +1173,36 @@ initAuth();
 // thumbKeyForItem()/resolveThumbUrls() di bawah, dan pemakainya di dictionary.js/
 // search.js/clipboard.js (S.thumbKeyForItem/S.resolveThumbUrls, dulu S.THUMB_BASE).
 //
-// NOTE bucket 'lampiran-unit' (LAMPIRAN_BASE di bawah) SENGAJA BELUM disentuh --
-// itu bucket TERPISAH dan masih public sama persis kayak 'thumbnails' dulu
-// (URL deterministik by kode_produk.pdf, siapa aja bisa buka tanpa login kalau
-// nebak/dapat linknya). Kalau itu juga mau diprivate-kan, perlu perlakuan sama
-// (signed URL) di titik-titik LAMPIRAN_BASE di bawah -- belum termasuk di sesi ini.
+// SECURITY FIX (bucket 'lampiran-unit' jadi private, sama kayak 'thumbnails'):
+// LAMPIRAN_BASE di bawah SEKARANG CUMA PENANDA/PREFIX, BUKAN URL yang boleh
+// langsung dibuka -- URL public-nya sudah mati begitu bucket di-flag private.
+// Dua fungsi dipakai buat itu:
+//   - lampiranPath(x)      : URL lama (public/signed) ATAU nama file -> path
+//                            di bucket. Penting karena produk_media.url di DB
+//                            masih berisi URL public penuh dari sebelum bucket
+//                            diprivate-kan; format itu SENGAJA dipertahankan
+//                            (gak perlu migrasi data, rollback tinggal flip
+//                            bucket jadi public lagi).
+//   - lampiranSignedUrl(x) : path -> signed URL via window.PNM_getSignedUrl
+//                            (shared/supabase-client.js, cache + TTL 1 jam).
+// URL non-lampiran-unit (mis. link eksternal yang diisi manual di crud-produk)
+// dikembalikan apa adanya, gak disentuh.
+const LAMPIRAN_BUCKET = 'lampiran-unit';
 const LAMPIRAN_BASE = 'https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/lampiran-unit/';
+
+function lampiranPath(fileOrUrl) {
+  const v = String(fileOrUrl || '');
+  if (!/^https?:\/\//i.test(v)) return v; // sudah berupa nama file/path
+  const m = v.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/lampiran-unit\/([^?#]+)/);
+  if (!m) return null; // URL ke tempat lain
+  try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+}
+
+async function lampiranSignedUrl(fileOrUrl) {
+  const path = lampiranPath(fileOrUrl);
+  if (path === null) return String(fileOrUrl); // link eksternal, biarkan
+  return window.PNM_getSignedUrl(LAMPIRAN_BUCKET, path);
+}
 
 // Regex resmi dari storage-api Supabase buat validasi object key (S3-safe chars).
 // Nama file dari WA/HP sering nyelundupin karakter unicode "siluman" (nbsp,
@@ -1681,8 +1705,8 @@ async function selectLampiranFile(filename) {
   lampiranCurrentFilename = filename;
   lampiranSearchInput.value = filename;
   lampiranSuggestList.style.display = 'none';
-  const url = LAMPIRAN_BASE + encodeURIComponent(filename);
   try {
+    const url = await lampiranSignedUrl(filename);
     await renderPdfFromUrl(url);
     lampiranSaveRow.style.display = 'flex';
     lampiranGantiBtn.style.display = 'inline-block';
@@ -1755,16 +1779,15 @@ async function getLampiranPagesForKode(kode_produk) {
       const savedUrl = await getSavedBrosurUrl(produk_id);
       if (savedUrl) {
         try {
-          const pages = await getPdfPagesBase64(savedUrl);
+          const pages = await getPdfPagesBase64(await lampiranSignedUrl(savedUrl));
           return { filename: filenameFromUrl(savedUrl), pages };
         } catch (e) { /* lanjut coba auto */ }
       }
     }
   } catch (e) {}
-  const autoUrl = LAMPIRAN_BASE + encodeURIComponent(kode_produk) + '.pdf';
   try {
-    const pages = await getPdfPagesBase64(autoUrl);
-    return { filename: filenameFromUrl(autoUrl), pages };
+    const pages = await getPdfPagesBase64(await lampiranSignedUrl(kode_produk + '.pdf'));
+    return { filename: kode_produk, pages };
   } catch (e) {
     return { filename: kode_produk, pages: [] };
   }
@@ -2208,7 +2231,7 @@ async function runPdfLookupFlow(kode_produk) {
     const savedUrl = await getSavedBrosurUrl(lampiranCurrentProdukId);
     if (savedUrl) {
       try {
-        await renderPdfFromUrl(savedUrl);
+        await renderPdfFromUrl(await lampiranSignedUrl(savedUrl));
         lampiranGantiBtn.style.display = 'inline-block';
         return;
       }
@@ -2217,9 +2240,8 @@ async function runPdfLookupFlow(kode_produk) {
   }
 
   // 2. Coba auto-match kode_produk.pdf
-  const autoUrl = LAMPIRAN_BASE + encodeURIComponent(kode_produk) + '.pdf';
   try {
-    await renderPdfFromUrl(autoUrl);
+    await renderPdfFromUrl(await lampiranSignedUrl(kode_produk + '.pdf'));
     lampiranGantiBtn.style.display = 'inline-block';
     return;
   } catch (e) {
@@ -2262,7 +2284,7 @@ async function handleLampiranFileDropped(file) {
   // SECURITY FIX: dulu cuma cek file.type/nama ekstensi — nilai itu ditentukan
   // browser dari EKSTENSI NAMA FILE, bukan isi asli, jadi gampang dilewati (rename
   // file apapun jadi ".pdf"). Sekarang dicek juga magic bytes (%PDF di awal file)
-  // sebelum diupload ke bucket publik dengan Content-Type dipaksa application/pdf.
+  // sebelum diupload ke bucket lampiran dengan Content-Type dipaksa application/pdf.
   const extLooksLikePdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
   if (!extLooksLikePdf) {
     S.showToast('File harus berupa PDF.', 'error');
@@ -2310,6 +2332,8 @@ lampiranSaveBtn.addEventListener('click', async () => {
     // sesi user yang beneran login, sejalan sama uploadToSupabaseStorage() di atas.
     const writeToken = await getFreshToken();
     if (!writeToken || writeToken === ANON_KEY) throw new Error('Sesi login sudah habis / belum login — silakan login ulang dulu.');
+    // Format URL lama dipertahankan (lihat komentar LAMPIRAN_BASE) -- dibaca balik
+    // lewat lampiranPath(), BUKAN dibuka langsung.
     const url = LAMPIRAN_BASE + encodeURIComponent(lampiranCurrentFilename);
     const r = await fetch(`${SUPABASE_URL}/rest/v1/produk_media`, {
       method: 'POST',

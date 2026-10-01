@@ -1894,6 +1894,23 @@ function renderMediaTable(){
       <td><button class="btn btn-danger-ghost btn-sm" data-id="${m.id}"><i class="ti ti-trash"></i></button></td>
     `;
     tr.querySelector('button').addEventListener('click', () => deleteMedia(m.id));
+    // SECURITY FIX: bucket 'lampiran-unit' private -> URL public di kolom url
+    // gak bisa dibuka langsung. Klik link = minta signed URL dulu, baru buka.
+    const lm = String(m.url || '').match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/lampiran-unit\/([^?#]+)/);
+    if (lm) {
+      tr.querySelector('a.media-link').addEventListener('click', async (e) => {
+        e.preventDefault();
+        const win = window.open('', '_blank'); // dibuka sync dulu biar gak kena popup-blocker
+        try {
+          let path = lm[1]; try { path = decodeURIComponent(path); } catch {}
+          const signed = await window.PNM_getSignedUrl('lampiran-unit', path);
+          if (win) { win.opener = null; win.location.href = signed; }
+        } catch (err) {
+          if (win) win.close();
+          showToast('Gagal membuka lampiran: ' + (err.message || err), true);
+        }
+      });
+    }
     tbody.appendChild(tr);
   });
 }
