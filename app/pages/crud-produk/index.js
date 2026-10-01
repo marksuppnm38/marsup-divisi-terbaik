@@ -1430,6 +1430,7 @@ function resetForm(){
 // panel-nya lagi display:none atau enggak, jadi udah otomatis keisi pas
 // user nyampe ke tab itu setelah Info Dasar pertama disimpan.
 function openAdd(prefill){
+  pendingSetLink = null; // tombol "Tambah ke set" (compMissing) mengisinya SETELAH openAdd() dipanggil
   resetForm();
   currentProdukId = null;
   modalTitle.textContent = 'Tambah Produk';
@@ -1443,6 +1444,7 @@ function openAdd(prefill){
   if (prefill?.kode_produk) document.getElementById('f_kode_produk').value = prefill.kode_produk;
   if (prefill?.link_v6) document.getElementById('f_link_v6').value = prefill.link_v6;
   if (prefill?.nama_produk) document.getElementById('f_nama_produk').value = prefill.nama_produk;
+  if (prefill?.tipe) { const ft = document.getElementById('f_tipe'); ft.value = prefill.tipe; ft.dispatchEvent(new Event('change')); }
   renderLinkV6Hint();
   modalOverlay.classList.add('open');
 }
@@ -2001,6 +2003,12 @@ async function saveProdukInner(){
   modalDirty = false; // data form sekarang sudah sama persis dengan yang di database
   currentProdukId = result.data.id;
 
+  // Produk baru yang dibuat dari daftar "belum ada di database" di Composition set:
+  // langsung dimasukkan ke komposisi set tsb dengan qty dari sheet.
+  if (wasNew && pendingSetLink && pendingSetLink.kode === kodeProduk) {
+    await linkNewProdukToSet(result.data.id, tipe);
+  }
+
   // FIX: produk baru yang kode_produk-nya match ke tabel sync_unmatched_produk
   // (kode_produk yg kepantau di Sheet tapi belum ada di DB) sekarang langsung
   // dihapus dari sana pas produknya disimpan -- gak perlu nunggu poll/edge
@@ -2051,6 +2059,9 @@ document.getElementById('saveBtn').addEventListener('click', saveProduk);
 // ================================================================
 let currentSetId = null;
 let currentSetKode = '';
+// Diisi saat user klik "Tambah ke set" di daftar instrumen yang belum ada (compMissing).
+// openAdd() mereset ini ke null di awal, jadi hanya berlaku untuk modal yang dibuka dari tombol itu.
+let pendingSetLink = null; // { setId, kode, qty }
 let compRows = [];
 let lastAddedItemRowId = null;
 
@@ -2174,6 +2185,69 @@ async function loadComposition(){
   if (error) { document.getElementById('compList').innerHTML = `<div style="color:var(--rust);">Gagal memuat: ${escapeHtml(error.message)}</div>`; return; }
   compRows = (data || []).sort((a,b) => (a.item?.nama_produk || '').localeCompare(b.item?.nama_produk || ''));
   renderComposition();
+  loadCompMissing(); // sengaja tidak di-await: jangan nahan render komposisi
+}
+
+// ---- Instrumen yang dibutuhkan set ini (dari sheet RINCIAN SET) tapi belum ada di tabel produk ----
+// Sumber: sync_unmatched_produk, diisi edge function sync-sheet (dibutuhkan_oleh / kebutuhan_set).
+async function loadCompMissing(){
+  const wrap = document.getElementById('compMissing');
+  if (!wrap) return;
+  const forSetId = currentSetId, forKode = currentSetKode;
+  if (!forSetId || !forKode) { wrap.innerHTML = ''; return; }
+
+  const { data, error } = await sb.from('sync_unmatched_produk')
+    .select('kode_produk, deskripsi, kebutuhan_set')
+    .contains('dibutuhkan_oleh', [forKode]);
+  if (forSetId !== currentSetId) return; // user pindah set selagi query jalan
+  if (error || !data || !data.length) { wrap.innerHTML = ''; return; }
+
+  // Defensif (sama seperti tab Sync): kalau produknya ternyata sudah ada, jangan ditampilkan.
+  const { data: sudahAda } = await sb.from('produk').select('kode_produk').in('kode_produk', data.map(r => r.kode_produk));
+  if (forSetId !== currentSetId) return;
+  const sudahAdaSet = new Set((sudahAda || []).map(p => p.kode_produk));
+  const rows = data.filter(r => !sudahAdaSet.has(r.kode_produk)).sort((a, b) => a.kode_produk.localeCompare(b.kode_produk));
+  if (!rows.length) { wrap.innerHTML = ''; return; }
+
+  wrap.innerHTML = `
+    <div class="sec-label" style="margin-top:18px;">Belum ada di database (${rows.length})</div>
+    <div class="akd-hint" style="margin-bottom:8px;"><i class="ti ti-alert-triangle"></i> Instrumen ini ada di rincian set di sheet, tapi belum terdaftar sebagai produk. Tambah sekalian ke database dan ke komposisi set ini?</div>
+    <div id="compMissingRows"></div>`;
+  const list = document.getElementById('compMissingRows');
+  rows.forEach(r => {
+    const qty = (r.kebutuhan_set || []).find(e => e.kode_set === forKode)?.qty || 1;
+    const div = document.createElement('div');
+    div.className = 'akd-result-row';
+    div.style.cursor = 'default';
+    div.innerHTML = `
+      <span class="ar-no">${escapeHtml(r.kode_produk)}</span>
+      <span class="ar-nama">${escapeHtml(r.deskripsi || '—')}</span>
+      <span class="tipe-chip">qty ${qty}</span>
+      <button class="btn btn-sm btn-accent" style="margin-left:auto;"><i class="ti ti-plus"></i> Tambah ke set</button>`;
+    div.querySelector('button').addEventListener('click', () => {
+      openAdd({ kode_produk: r.kode_produk, nama_produk: r.deskripsi });
+      pendingSetLink = { setId: forSetId, kode: r.kode_produk, qty };
+    });
+    list.appendChild(div);
+  });
+}
+
+// Dipanggil dari saveProdukInner() untuk produk baru yang berasal dari compMissing.
+async function linkNewProdukToSet(newProdukId, tipe){
+  const link = pendingSetLink;
+  pendingSetLink = null;
+  if (!link) return;
+  if (tipe === 'SET') {
+    showToast('Produk tersimpan, tapi tipe SET tidak boleh jadi isi set lain — tidak dimasukkan ke komposisi', true);
+    return;
+  }
+  const { error } = await sb.from('produk_set_item').insert({ set_id: link.setId, produk_id: newProdukId, qty: link.qty });
+  if (error && error.code !== '23505') {
+    showToast('Produk tersimpan, tapi gagal masuk komposisi set: ' + error.message, true);
+    return;
+  }
+  showToast(`Produk ditambahkan dan dimasukkan ke komposisi set (qty ${link.qty})`);
+  if (currentSetId === link.setId) { await loadComposition(); await refreshSetHeader(); }
 }
 function renderComposition(){
   const wrap = document.getElementById('compList');

@@ -140,6 +140,7 @@ export const CRUD_PRODUK_MARKUP = `
             <span>Estimasi berat: <b id="compEstBerat">0 g</b></span>
           </div>
           <div id="compList"></div>
+          <div id="compMissing"></div>
           <div class="comp-add">
             <label class="field-label">Tambah item (cari instrumen/unit)</label>
             <input type="text" class="field-input" id="compSearchInput" placeholder="Ketik nama atau kode produk..."/>

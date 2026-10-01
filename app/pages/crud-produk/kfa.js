@@ -199,6 +199,22 @@ document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
 // Apps Script pollAndSync, tapi belum punya row di tabel produk -- edge
 // function sync-sheet nyatet ke tabel sync_unmatched_produk, hilang
 // sendiri dari daftar ini begitu produknya dibuat) ----
+// Keterangan di bawah deskripsi baris sync: komponen yang dibutuhkan set
+// (dari RINCIAN SET) atau kode set baru. Daftar set dipotong 5 biar baris
+// gak melar; daftar lengkap ada di tooltip.
+function syncNoteHtml(row){
+  const needed = Array.isArray(row.dibutuhkan_oleh) ? row.dibutuhkan_oleh : [];
+  if (needed.length) {
+    const shown = needed.slice(0, 5).map(k => S.escapeHtml(k)).join(', ');
+    const more = needed.length > 5 ? ` +${needed.length - 5} lainnya` : '';
+    return `<div style="margin-top:4px;font-size:11.5px;color:var(--warn-text, #b45309);" title="${S.escapeHtml(needed.join(', '))}"><i class="ti ti-alert-triangle"></i> Belum ada di database, dibutuhkan oleh set: ${shown}${more}</div>`;
+  }
+  if (row.is_set) {
+    return `<div style="margin-top:4px;font-size:11.5px;color:var(--text-muted);"><i class="ti ti-stack-2"></i> Set baru dari sheet. Buat produknya (tipe SET), komposisi terisi otomatis di sync berikutnya</div>`;
+  }
+  return '';
+}
+
 async function loadSyncUnmatched(){
   const tbody = document.getElementById('syncTableBody');
   const { data: rawData, error } = await S.sb.from('sync_unmatched_produk').select('*').order('last_seen_at', { ascending: false });
@@ -238,7 +254,7 @@ async function loadSyncUnmatched(){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="kode-cell">${S.escapeHtml(row.kode_produk)}</td>
-      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}</td>
+      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}${syncNoteHtml(row)}</td>
       <td>${row.link ? `<a href="${S.escapeHtml(row.link)}" target="_blank" rel="noopener">${S.escapeHtml(row.link)}</a>` : '—'}</td>
       <td>${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '—'}</td>
       <td>${S.escapeHtml(row.source_sheet || '—')}</td>
@@ -246,7 +262,13 @@ async function loadSyncUnmatched(){
       <td><button class="btn btn-sm btn-accent sync-add-btn"><i class="ti ti-plus"></i> Tambah Produk</button></td>
     `;
     tr.querySelector('.sync-add-btn').addEventListener('click', () => {
-      S.openAdd({ kode_produk: row.kode_produk, link_v6: row.link, nama_produk: row.deskripsi });
+      S.openAdd({
+        kode_produk: row.kode_produk,
+        link_v6: row.link,
+        nama_produk: row.deskripsi,
+        // SET dikenali dari sheet SET FIX V6, atau dari kode_set di RINCIAN SET.
+        tipe: (row.is_set || row.source_sheet === 'SET FIX V6') ? 'SET' : undefined,
+      });
     });
     tbody.appendChild(tr);
   });
