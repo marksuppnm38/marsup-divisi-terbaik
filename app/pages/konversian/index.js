@@ -3364,6 +3364,14 @@ function riwayatLatestRecord(s) {
 function renderRiwayatSummary(data) {
   if (!S.riwayatSummary) return;
   if (!data.length) { S.riwayatSummary.style.display = 'none'; S.riwayatSummary.innerHTML = ''; return; }
+  // Kartu yang ditampilin dibatasi 100, tapi ringkasan harus ngitung SEMUA sesi yang cocok
+  // filter (S.riwayatSummaryAll, query ringan terpisah). Data cache (yang bisa di-edit user:
+  // status / centang e-Kat) menimpa baris yang sama biar perubahan tetap kerasa langsung.
+  const shownCount = data.length;
+  if (Array.isArray(S.riwayatSummaryAll) && S.riwayatSummaryAll.length >= data.length) {
+    const live = new Map(data.map(x => [String(x.id), x]));
+    data = S.riwayatSummaryAll.map(x => live.get(String(x.id)) || x);
+  }
   let sphCount = 0, sphValue = 0, ekatCount = 0, ekatItems = 0, nungguCount = 0, totalRecorded = 0, recordedCount = 0;
   data.forEach(s => {
     const latest = riwayatLatestRecord(s);
@@ -3374,7 +3382,7 @@ function renderRiwayatSummary(data) {
     else if (!s.hasil_order) nungguCount++;
   });
   // limit=100 di query — kalau pas 100, kemungkinan masih ada sesi lain yang cocok.
-  const capped = data.length === 100 ? '<span class="rsum-s" title="Query dibatasi 100 sesi terbaru">100 teratas</span>' : '';
+  const capped = data.length > shownCount ? `<span class="rsum-s" title="Kartu di bawah dibatasi 100 sesi terbaru; angka di atas ngitung semua sesi yang cocok filter">${shownCount} ditampilkan</span>` : '';
   // Nilai per status dipisah dari "Nilai tercatat": grand_total ada di SEMUA sesi
   // yang pernah di-Record apa pun statusnya — digabung bakal kebaca kayak omzet.
   S.riwayatSummary.innerHTML = `
@@ -3430,6 +3438,21 @@ async function loadRiwayatList() {
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
     }
     const data = await res.json();
+    // Query ringan buat ringkasan: semua sesi yang cocok filter, tanpa limit 100.
+    S.riwayatSummaryAll = null;
+    if (data.length >= 100) {
+      try {
+        const all = [];
+        for (let off = 0; off < 10000; off += 1000) {
+          const r2 = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.selesai${searchFilter}${salesFilter}${dateFilter}&select=id,hasil_order,klik_ekat_items,konversi_record(grand_total,revisi)&order=updated_at.desc&limit=1000&offset=${off}`);
+          if (!r2.ok) throw new Error('summary fetch gagal');
+          const part = await r2.json();
+          all.push(...part);
+          if (part.length < 1000) break;
+        }
+        S.riwayatSummaryAll = all;
+      } catch (e) { console.warn('Ringkasan semua sesi gagal, fallback ke 100 teratas:', e); }
+    }
     if (data.length === 0) {
       S.riwayatListEmpty.querySelector('p').innerHTML = anyFilterActive
         ? `Gak ada riwayat yang cocok dengan filter ini${term ? ` ("${term.replace(/</g, '&lt;')}")` : ''}.`
