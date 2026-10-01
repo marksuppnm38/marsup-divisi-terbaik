@@ -3410,7 +3410,8 @@ function renderRiwayatSummary(data) {
   data.forEach(s => {
     const latest = riwayatLatestRecord(s);
     const val = (latest && latest.grand_total != null) ? Number(latest.grand_total) : null;
-    if (val != null) { totalRecorded += val; recordedCount++; }
+    // Nilai tercatat ngikutin filter status yang aktif (tile lain tetap ngitung semua, biar bisa diklik buat pindah filter).
+    if (val != null && riwayatStatusMatch(s)) { totalRecorded += val; recordedCount++; }
     if (s.hasil_order === 'jadi_sph') { sphCount++; if (val != null) sphValue += val; }
     else if (s.hasil_order === 'klik_ekat') { ekatCount++; if (Array.isArray(s.klik_ekat_items)) ekatItems += s.klik_ekat_items.length; }
     else if (!s.hasil_order) nungguCount++;
@@ -3423,7 +3424,7 @@ function renderRiwayatSummary(data) {
     <div class="rsum-tile warn clickable${f === 'menunggu' ? ' active' : ''}" data-rfilter="menunggu" role="button" tabindex="0" aria-pressed="${f === 'menunggu'}" title="Filter: menunggu feedback sales"><span class="rsum-k"><i class="ti ti-hourglass-empty"></i>Menunggu</span><span class="rsum-v">${nungguCount}</span></div>
     <div class="rsum-tile sph clickable${f === 'jadi_sph' ? ' active' : ''}" data-rfilter="jadi_sph" role="button" tabindex="0" aria-pressed="${f === 'jadi_sph'}" title="Filter: jadi SPH"><span class="rsum-k"><i class="ti ti-file-invoice"></i>Jadi SPH</span><span class="rsum-v">${sphCount}</span>${sphValue ? `<span class="rsum-s">${S.rupiah(sphValue)}</span>` : ''}</div>
     <div class="rsum-tile ok clickable${f === 'klik_ekat' ? ' active' : ''}" data-rfilter="klik_ekat" role="button" tabindex="0" aria-pressed="${f === 'klik_ekat'}" title="Filter: klik e-Kat"><span class="rsum-k"><i class="ti ti-click"></i>Klik e-Kat</span><span class="rsum-v">${ekatCount}</span><span class="rsum-s">${ekatItems} item di-klik</span></div>
-    <div class="rsum-tile wide"><span class="rsum-k"><i class="ti ti-cash"></i>Nilai tercatat</span><span class="rsum-v">${S.rupiah(totalRecorded)}</span><span class="rsum-s">${recordedCount} sesi ada record</span></div>
+    <div class="rsum-tile wide"><span class="rsum-k"><i class="ti ti-cash"></i>Nilai tercatat${f ? ` · ${RIWAYAT_STATUS_LABEL[f]}` : ''}</span><span class="rsum-v">${S.rupiah(totalRecorded)}</span><span class="rsum-s">${recordedCount} sesi ada record</span></div>
     ${f ? `<div class="rsum-note"><i class="ti ti-filter"></i>Difilter: <b>${RIWAYAT_STATUS_LABEL[f]}</b> · ${data.filter(riwayatStatusMatch).length} sesi <button type="button" class="rsum-clear" data-rfilter="">Hapus filter</button></div>` : ''}
     ${S.riwayatBarangNote || ''}
   `;
