@@ -77,6 +77,12 @@ export const EXPORT_GAMBAR_MARKUP = `
         <input type="text" id="searchInput" class="field-input" placeholder="Ketik untuk mencari..." aria-label="Cari nama file">
 
         <div id="fileList" class="eg-file-list eg-mt-16" role="listbox" aria-multiselectable="true" aria-label="Daftar file"></div>
+        <div class="eg-drop eg-mt-16">
+          <i class="ti ti-clipboard-plus" aria-hidden="true"></i>
+          <span>Tempel gambar (Ctrl+V) atau seret ke sini &middot;</span>
+          <button type="button" class="eg-link-btn" data-action="pick-image">pilih file</button>
+          <input type="file" id="imageFileInput" accept="image/*" multiple hidden>
+        </div>
         <div id="selectedChips" class="eg-chips"></div>
 
         <button id="previewBtn" class="btn btn-accent eg-mt-16" data-action="merge-and-preview" aria-label="Tampilkan preview hasil merge">

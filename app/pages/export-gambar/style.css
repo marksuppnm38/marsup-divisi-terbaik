@@ -149,6 +149,22 @@
 }
 .eg-chips .chip button:hover { background: var(--danger-bg); color: var(--danger); }
 
+/* Gambar dari luar bucket (paste / drag-drop / pilih file) */
+.eg-drop {
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px;
+  padding: 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.eg-drop .eg-link-btn { margin-top: 0; }
+.eg-chips .chip img {
+  width: 20px; height: 20px; object-fit: contain;
+  border-radius: 3px; background: var(--surface);
+}
+.eg-chips .chip:has(img) { padding-left: 6px; }
+
 .eg-canvas {
   display: block;
   width: 100%;

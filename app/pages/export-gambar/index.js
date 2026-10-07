@@ -114,6 +114,7 @@ function ensureStyle() {
 let mountedContainer = null;
 let activeObserver = null;
 let containerHandlers = null;   // listener delegasi di container -- dilepas di unmount()
+let docPasteHandler = null;     // listener paste di document (paste jatuh ke elemen fokus, bukan container) -- dilepas di unmount()
 // FIX (sesi lanjutan, bug ditemukan lewat testing browser beneran): guard
 // buat async operation yang nyambung setelah user udah pindah halaman.
 // loadFileList() (dipanggil di bawah, fire-and-forget) nge-fetch dari
@@ -194,7 +195,11 @@ export async function mount(container) {
               return;
           }
   
+          // gambar paste/upload tetap dipertahankan, kode bucket mengisi sisa slot
+          const kept = selectedIds.filter(isCustomId);
+          matchedIds.splice(Math.max(0, MAX_IMAGES - kept.length));
           selectedIds.length = 0;
+          kept.forEach(id => selectedIds.push(id));
           matchedIds.forEach(id => selectedIds.push(id));
           renderFileList();
           renderChips();
@@ -308,6 +313,7 @@ export async function mount(container) {
           const idx = selectedIds.indexOf(id);
           if (idx > -1) {
               selectedIds.splice(idx, 1);
+              if (isCustomId(id)) { delete customImages[id]; delete imageCache[id]; }
           } else {
               if (selectedIds.length >= MAX_IMAGES) {
                   toast(`Maksimal ${MAX_IMAGES} gambar per template.`, "error");
@@ -323,9 +329,11 @@ export async function mount(container) {
           const chipsEl = container.querySelector('#' + "selectedChips");
           chipsEl.innerHTML = selectedIds.map(id => {
               const file = allFiles.find(f => f.id === id);
-              const rawName = file ? file.name : id;
+              const custom = customImages[id];
+              const rawName = custom ? custom.name : (file ? file.name : id);
               const name = escapeHtml(rawName);
-              return `<span class="chip">${name}<button type="button" aria-label="Hapus ${name}" data-action="toggle-file" data-id="${escapeHtml(id)}">✕</button></span>`;
+              const thumb = custom ? `<img src="${custom.thumb}" alt="">` : "";
+              return `<span class="chip">${thumb}${name}<button type="button" aria-label="Hapus ${name}" data-action="toggle-file" data-id="${escapeHtml(id)}">✕</button></span>`;
           }).join("");
       }
       // Cache supaya gambar yang sama tidak difetch ulang ke Google
@@ -477,6 +485,60 @@ export async function mount(container) {
           });
       }
   
+      // ── GAMBAR DARI LUAR BUCKET (paste / drag-drop / pilih file) ──
+      // Gambar custom dikasih id "paste:N" dan langsung dimasukkan ke imageCache
+      // (sudah lewat removeBackground + trim, sama kayak gambar bucket), jadi
+      // getOverlayCanvasCached()/mergeAndPreview() gak perlu tahu bedanya.
+      const customImages = {};   // id -> { name, thumb }
+      let customCounter = 0;
+      function isCustomId(id) { return typeof id === "string" && id.startsWith("paste:"); }
+
+      function makeThumb(canvas) {
+          const s = Math.min(1, 40 / Math.max(canvas.width, canvas.height));
+          const t = document.createElement("canvas");
+          t.width = Math.max(1, Math.round(canvas.width * s));
+          t.height = Math.max(1, Math.round(canvas.height * s));
+          t.getContext("2d").drawImage(canvas, 0, 0, t.width, t.height);
+          return t.toDataURL("image/png");
+      }
+
+      async function addImageFiles(files) {
+          for (const file of files) {
+              if (selectedIds.length >= MAX_IMAGES) {
+                  toast(`Maksimal ${MAX_IMAGES} gambar per template.`, "error");
+                  break;
+              }
+              const url = URL.createObjectURL(file);
+              try {
+                  const img = await loadImage(url);
+                  const processed = await removeBackgroundHighQuality(img);
+                  if (!isMounted) return;
+                  if (selectedIds.length >= MAX_IMAGES) {
+                      toast(`Maksimal ${MAX_IMAGES} gambar per template.`, "error");
+                      break;
+                  }
+                  const n = ++customCounter;
+                  const id = `paste:${n}`;
+                  const base = (file.name || "").replace(/\.[a-z0-9]{2,5}$/i, "");
+                  imageCache[id] = processed;
+                  customImages[id] = {
+                      name: base && base.toLowerCase() !== "image" ? base : `Gambar ${n}`,
+                      thumb: makeThumb(processed),
+                  };
+                  selectedIds.push(id);
+                  renderFileList();
+                  renderChips();
+              } catch (err) {
+                  console.error("[ERROR] Gagal membaca gambar dari luar bucket:", err);
+                  if (isMounted) toast("Gagal membaca gambar itu.", "error");
+              } finally {
+                  URL.revokeObjectURL(url);
+              }
+          }
+      }
+
+      const imageFilesOf = (list) => [...(list || [])].filter(f => f.type && f.type.startsWith("image/"));
+
       // kode_asli tervalidasi longgar — cukup pastikan nggak kosong/aneh sebelum dipakai di URL
       function isValidFileId(id) {
           return typeof id === "string" && id.trim().length > 0;
@@ -569,6 +631,7 @@ export async function mount(container) {
     'merge-and-preview':  () => mergeAndPreview(),
     'export-canvas-png':  () => exportCanvasAsPNG(),
     'toggle-file':        (el) => toggleFile(el.dataset.id),
+    'pick-image':         () => container.querySelector('#imageFileInput').click(),
   };
   function onContainerClick(e) {
     const el = e.target.closest('[data-action]');
@@ -579,8 +642,38 @@ export async function mount(container) {
   function onContainerInput(e) {
     if (e.target.id === 'searchInput') renderFileList();
   }
-  containerHandlers = { click: onContainerClick, input: onContainerInput };
+  function onContainerChange(e) {
+    if (e.target.id !== 'imageFileInput') return;
+    const files = imageFilesOf(e.target.files);
+    e.target.value = '';
+    if (files.length) addImageFiles(files);
+  }
+  function onContainerDragOver(e) {
+    if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault();
+  }
+  function onContainerDrop(e) {
+    if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    const files = imageFilesOf(e.dataTransfer.files);
+    if (files.length) addImageFiles(files);
+    else toast("File yang dilepas bukan gambar.", "error");
+  }
+  containerHandlers = {
+    click: onContainerClick, input: onContainerInput, change: onContainerChange,
+    dragover: onContainerDragOver, drop: onContainerDrop,
+  };
   Object.entries(containerHandlers).forEach(([type, fn]) => container.addEventListener(type, fn));
+
+  // Paste: event-nya jatuh ke elemen yang lagi fokus (bisa body), jadi listener
+  // harus di document, bukan container. Teks biasa dibiarkan lewat (gak di-preventDefault).
+  docPasteHandler = (e) => {
+    if (!isMounted) return;
+    const files = imageFilesOf(e.clipboardData && e.clipboardData.files);
+    if (!files.length) return;
+    e.preventDefault();
+    addImageFiles(files);
+  };
+  document.addEventListener('paste', docPasteHandler);
 }
 
 export function unmount() {
@@ -591,6 +684,8 @@ export function unmount() {
     Object.entries(containerHandlers).forEach(([type, fn]) => mountedContainer.removeEventListener(type, fn));
   }
   containerHandlers = null;
+  if (docPasteHandler) document.removeEventListener('paste', docPasteHandler);
+  docPasteHandler = null;
 
   // Sesi kesembilan belas: sebelum rewrite ini, style.css halaman ini TIDAK
   // PERNAH dilepas di sini -- itu bug-nya (lihat map-history.md untuk root
