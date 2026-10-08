@@ -18,6 +18,7 @@ const NAV_ICONS = {
   'dashboard':     'ti-layout-dashboard',
   'kompres-pdf':   'ti-file-zip',
   'export-gambar': 'ti-photo',
+  'spek-maker':    'ti-file-description',
 };
 
 // UPDATE (sesi lanjutan -- "double nav" fix): module -> its own SUBNAV

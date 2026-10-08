@@ -1,0 +1,120 @@
+/* spek-maker/style.css
+   Token (warna, radius, mono, dst) semuanya dari pnm-universal.css, sama
+   seperti export-gambar. NOL bare selector: semuanya di bawah `.sm-page` /
+   kelas `sm-*` sendiri (pelajaran dari bug style bocor di export-gambar). */
+
+.sm-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.sm-page main {
+  flex: 1;
+  max-width: none;
+  margin: 0;
+  padding: 40px 20px 64px;
+  background: var(--surface);
+}
+.sm-col { max-width: 720px; margin: 0 auto; }
+
+.sm-mt-16 { margin-top: 16px; }
+
+.sm-field-hint { margin-left: 4px; font-weight: 400; color: var(--text-muted); }
+
+.sm-textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.sm-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* Daftar item */
+.sm-list { border: 1px solid var(--border); border-radius: var(--radius); }
+.sm-list .sm-row {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 0.5px solid var(--border);
+}
+.sm-list .sm-row:last-child { border-bottom: none; }
+
+.sm-list .sm-thumb {
+  width: 76px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 18px;
+  overflow: hidden;
+}
+.sm-list .sm-thumb img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+
+.sm-list .sm-row-main { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sm-list .sm-row-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sm-list .sm-kode {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sm-list .sm-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--text-muted);
+}
+.sm-list .sm-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+.sm-list .sm-tag.ok .dot { background: var(--success-dot, var(--success)); }
+.sm-list .sm-tag.warn .dot { background: var(--danger-dot, var(--danger)); }
+
+.sm-list .sm-row-tools { display: flex; gap: 12px; flex-wrap: wrap; }
+.sm-list .sm-link-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: none; background: none; padding: 2px 0;
+  font-size: 12px; font-weight: 500; font-family: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.sm-list .sm-link-btn:hover { color: var(--accent); }
+.sm-list .sm-link-btn.danger:hover { color: var(--danger); }
+.sm-list .sm-link-btn i { font-size: 13px; }
+
+.sm-preview {
+  display: block;
+  width: 100%;
+  height: 720px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.sm-toast-root {
+  position: fixed; bottom: 20px; right: 20px; z-index: 3000;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.sm-toast-root .toast {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface-raised, var(--surface));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--text);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .15s, transform .15s;
+}
+.sm-toast-root .toast.in { opacity: 1; transform: translateY(0); }
+.sm-toast-root .toast .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--text-muted); }
+.sm-toast-root .toast.success .dot { background: var(--success-dot, var(--success)); }
+.sm-toast-root .toast.error .dot { background: var(--danger-dot, var(--danger)); }
+
+@media (max-width: 768px) {
+  .sm-page main { padding: 24px 12px 48px; }
+  .sm-preview { height: 520px; }
+  .sm-actions .btn { flex: 1; justify-content: center; }
+}
