@@ -1062,8 +1062,34 @@ async function fetchHargaLatestMap(produkIds){
   return map;
 }
 
+// ---- Ambil No. AKD per produk (bisa >1 AKD per produk -> digabung koma).
+// Dipecah per-chunk sama kayak fetchHargaLatestMap biar query .in() gak kepanjangan.
+async function fetchAkdNoMap(produkIds){
+  const map = new Map(); // produk_id -> [no_akd, ...]
+  const CHUNK = 300;
+  for (let i = 0; i < produkIds.length; i += CHUNK) {
+    const chunk = produkIds.slice(i, i + CHUNK);
+    const { data, error } = await sb.from('produk_akd')
+      .select('produk_id, akd:akd_id(no_akd)')
+      .in('produk_id', chunk);
+    if (error) { showToast('Gagal ambil data AKD: ' + error.message, true); return null; }
+    (data || []).forEach(l => {
+      const no = l.akd && l.akd.no_akd;
+      if (!no) return;
+      if (!map.has(l.produk_id)) map.set(l.produk_id, []);
+      const arr = map.get(l.produk_id);
+      if (!arr.includes(no)) arr.push(no);
+    });
+  }
+  return map;
+}
+
 // ---- Download Excel (hasil filter yang lagi aktif — chip status + filter tambahan
 // + search, bukan cuma halaman yang lagi tampil) ----
+// Isi: No. AKD beneran (bukan cuma status), harga EKATALOG/SWASTA beneran kalau
+// sudah ada (bukan Ya/Tidak), + styling (judul, header berwarna, zebra, format Rp,
+// freeze header, autofilter, status berwarna). Semua pakai xlsx-js-style yang sama
+// dengan exportPricelistSales.
 async function exportProdukToExcel(){
   const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
   if (needsHarga) await ensureProdukHargaSet();
@@ -1071,22 +1097,127 @@ async function exportProdukToExcel(){
   const rowsToExport = await getRowsToExport();
   if (rowsToExport === null) return; // error sudah di-toast di getRowsToExport
   if (!rowsToExport.length) { showToast('Tidak ada data untuk diexport', true); return; }
-  await ensureProdukHargaSet();
-  const sheetData = rowsToExport.map(r => ({
-    'Kode Produk': r.kode_produk || '',
-    'Nama Produk': r.nama_produk || '',
-    'Tipe': r.tipe || '',
-    'Golongan': r.golongan || '',
-    'Status AKD': SEAL_LABELS[r.status_akd] || r.status_akd || '',
-    'Status INAPROC': r.status_inaproc || '',
-    'Link V6': r.link_v6 || '',
-    'Aktif': r.is_active ? 'Ya' : 'Tidak',
-    'Sudah Ada Harga': produkHargaIdSet.has(r.id) ? 'Ya' : 'Tidak',
-  }));
-  const ws = XLSX.utils.json_to_sheet(sheetData);
+
+  const ids = rowsToExport.map(r => r.id);
+  const [hargaMap, akdMap] = await Promise.all([fetchHargaLatestMap(ids), fetchAkdNoMap(ids)]);
+  if (hargaMap === null || akdMap === null) return;
+
+  const HEADER = ['No', 'Kode Produk', 'Nama Produk', 'Tipe', 'Golongan', 'No. AKD', 'Status AKD', 'Status INAPROC', 'Harga EKATALOG', 'Harga SWASTA', 'Tahun Harga', 'Aktif', 'Link V6'];
+  const COL = { no: 0, akd: 5, statusAkd: 6, inaproc: 7, ekat: 8, swasta: 9, tahun: 10, aktif: 11, link: 12 };
+  const KOSONG = '—';
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filterParts = describeActiveFilters();
+  const subtitle = (filterParts.length ? filterParts.join(' · ') + ' — ' : 'Semua produk — ') + `per ${dateStr} — ${rowsToExport.length} produk`;
+
+  const aoa = [['EXPORT PRODUK'], [subtitle], HEADER];
+  rowsToExport.forEach((r, idx) => {
+    const h = hargaMap.get(r.id);
+    const akdList = akdMap.get(r.id) || (r.no_akd ? [r.no_akd] : []);
+    aoa.push([
+      idx + 1,
+      r.kode_produk || '',
+      r.nama_produk || '',
+      r.tipe || '',
+      r.golongan || '',
+      akdList.length ? akdList.join(', ') : KOSONG,
+      SEAL_LABELS[r.status_akd] || r.status_akd || KOSONG,
+      r.status_inaproc || KOSONG,
+      h && h.ekatalog != null ? h.ekatalog : KOSONG,
+      h && h.swasta != null ? h.swasta : KOSONG,
+      h ? h.tahun : KOSONG,
+      r.is_active ? 'Ya' : 'Tidak',
+      r.link_v6 || KOSONG,
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const lastCol = HEADER.length - 1;
+  const lastRow = aoa.length - 1;
+
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } },
+  ];
+  ws['A1'].s = { font: { bold: true, sz: 15 } };
+  ws['A2'].s = { font: { italic: true, sz: 10.5, color: { rgb: '666666' } } };
+
+  const thin = { style: 'thin', color: { rgb: 'D9D9D9' } };
+  const border = { top: thin, bottom: thin, left: thin, right: thin };
+  const headerStyle = {
+    font: { bold: true, color: { rgb: 'FFFFFF' } },
+    fill: { fgColor: { rgb: '2F5496' } },
+    alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
+    border,
+  };
+  HEADER.forEach((_, c) => {
+    const addr = XLSX.utils.encode_cell({ r: 2, c });
+    if (ws[addr]) ws[addr].s = headerStyle;
+  });
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: lastRow, c: lastCol } }) };
+  ws['!freeze'] = { xSplit: 3, ySplit: 3 }; // header + kolom No/Kode/Nama tetap kelihatan pas scroll
+  ws['!views'] = [{ state: 'frozen', xSplit: 3, ySplit: 3 }];
+
+  // Warna status (teks + background lembut) biar bolongnya langsung kelihatan.
+  const STATUS_COLOR = {
+    'Terhubung':       { fg: '1E6B3A', bg: 'E2F4E8' },
+    'Perlu AKD':       { fg: '9C2B2B', bg: 'FBE4E4' },
+    'Belum Firm':      { fg: '8A5A00', bg: 'FFF1D6' },
+    'Di Luar Cakupan': { fg: '555555', bg: 'ECECEC' },
+    'Disetujui':       { fg: '1E6B3A', bg: 'E2F4E8' },
+  };
+
+  for (let r = 3; r <= lastRow; r++) {
+    const zebra = (r - 3) % 2 === 1;
+    for (let c = 0; c <= lastCol; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[addr];
+      if (!cell) continue;
+      const style = { border, alignment: { vertical: 'center' } };
+      if (zebra) style.fill = { fgColor: { rgb: 'F2F2F2' } };
+
+      const isEmpty = cell.v === KOSONG;
+      if (isEmpty) style.font = { color: { rgb: 'A0A0A0' } };
+
+      if ([COL.no, COL.tahun, COL.aktif, COL.statusAkd, COL.inaproc].includes(c) || isEmpty) {
+        style.alignment = { vertical: 'center', horizontal: 'center' };
+      }
+      if ((c === COL.ekat || c === COL.swasta) && typeof cell.v === 'number') {
+        cell.z = '"Rp" #,##0';
+        style.alignment = { vertical: 'center', horizontal: 'right' };
+      }
+      if ((c === COL.statusAkd || c === COL.inaproc) && STATUS_COLOR[cell.v]) {
+        const sc = STATUS_COLOR[cell.v];
+        style.font = { bold: true, color: { rgb: sc.fg } };
+        style.fill = { fgColor: { rgb: sc.bg } };
+      }
+      if (c === COL.link && !isEmpty && /^https?:\/\//i.test(String(cell.v))) {
+        cell.l = { Target: String(cell.v) };
+        style.font = { color: { rgb: '0563C1' }, underline: true };
+      }
+      cell.s = style;
+    }
+  }
+
+  ws['!cols'] = [
+    { wch: 5 },   // No
+    { wch: 22 },  // Kode Produk
+    { wch: 45 },  // Nama Produk
+    { wch: 12 },  // Tipe
+    { wch: 18 },  // Golongan
+    { wch: 24 },  // No. AKD
+    { wch: 15 },  // Status AKD
+    { wch: 16 },  // Status INAPROC
+    { wch: 16 },  // Harga EKATALOG
+    { wch: 16 },  // Harga SWASTA
+    { wch: 11 },  // Tahun Harga
+    { wch: 8 },   // Aktif
+    { wch: 40 },  // Link V6
+  ];
+  ws['!rows'] = [{ hpt: 22 }, { hpt: 16 }, { hpt: 20 }];
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Produk');
-  const dateStr = new Date().toISOString().slice(0, 10);
   const filterTag = buildFilterFilenameTag();
   XLSX.writeFile(wb, `produk_export_${dateStr}${filterTag || '_semua'}.xlsx`);
   showToast(`Excel terdownload — ${rowsToExport.length} baris`);
