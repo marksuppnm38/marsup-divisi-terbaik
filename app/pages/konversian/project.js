@@ -166,7 +166,7 @@ export function installProject(S) {
   const PRJ = 'konversi_project';
   const KLIK = 'konversi_project_klik';
   const HASIL = { '': 'Menunggu feedback', jadi_sph: 'Jadi SPH', klik_ekat: 'Klik e-Kat', jadi_order: 'Jadi order (lama)', tanpa_order: 'Tidak jadi (lama)' };
-  const st = { view: 'list', cur: null, d: null, a: null, token: 0, onlyKlik: false, suggestions: [] };
+  const st = { view: 'list', cur: null, d: null, a: null, token: 0, onlyKlik: false, suggestions: [], pickRows: [], pickMore: false, pickSeq: 0, prjNames: null };
   let pickTimer = null;
 
   async function api(path, opts) {
@@ -350,7 +350,8 @@ export function installProject(S) {
         <div class="prj-sec-head"><b>Konversi dalam project</b>
           <button class="toggle-btn" type="button" data-act="picker-toggle"><i class="ti ti-plus"></i> Tambah konversi</button></div>
         <div id="prj-picker" class="prj-picker" style="display:none">
-          <input id="prj-pick-q" class="prj-input" type="text" placeholder="Cari nama RS…" autocomplete="off" value="${esc(p.instansi || '')}">
+          <input id="prj-pick-q" class="prj-input" type="text" placeholder="Cari nama RS, sales, atau PIC…" autocomplete="off" value="${esc(p.instansi || '')}">
+          <div class="prj-hint">Kata kunci awal cuma tebakan dari instansi — bukan batasan. Ganti, hapus, atau kosongkan buat lihat semua konversi (nama RS, sales, atau PIC). Konversi yang sudah di project lain juga bisa dipindah ke sini.</div>
           <div id="prj-pick-res"></div>
         </div>
         <div id="prj-sesi-list"></div>
@@ -530,24 +531,50 @@ export function installProject(S) {
 
   async function setSesiProject(sesiId, projectId) {
     await api(`${S.SESI_TABLE}?id=eq.${encodeURIComponent(sesiId)}`, { method: 'PATCH', body: JSON.stringify({ project_id: projectId }) });
-    if (projectId == null) await api(`${KLIK}?project_id=eq.${encodeURIComponent(st.cur)}&pinned_sesi_id=eq.${encodeURIComponent(sesiId)}`, { method: 'PATCH', body: JSON.stringify({ pinned_sesi_id: null }) }).catch(() => {});
+    // Konversi pindah/keluar project -> pin yang nunjuk ke dia (di project lama) dilepas.
+    await api(`${KLIK}?pinned_sesi_id=eq.${encodeURIComponent(sesiId)}`, { method: 'PATCH', body: JSON.stringify({ pinned_sesi_id: null }) }).catch(() => {});
   }
 
-  async function runPicker() {
+  // Picker konversi: filter awal = instansi, tapi BUKAN batasan. Cocok ke nama RS / sales / PIC,
+  // kosong = semua konversi (terbaru dulu), bisa muat lebih banyak, dan konversi yang sudah
+  // di project lain bisa dipindah (tim sering tau "yang ini sebenarnya RS X" walau di sesi belum ditulis).
+  const PICK_PAGE = 30;
+  async function runPicker(more) {
     const out = document.getElementById('prj-pick-res'); if (!out) return;
-    const toks = (document.getElementById('prj-pick-q').value || '').replace(/[,()*]/g, ' ').trim().split(/\s+/).filter(Boolean);
-    out.innerHTML = `<div class="prj-hint" style="padding:6px 2px"><i class="ti ti-loader-2"></i> Mencari…</div>`;
+    if (!more) { st.pickRows = []; st.pickMore = false; }
+    const toks = (document.getElementById('prj-pick-q').value || '').replace(/[,()*:]/g, ' ').trim().split(/\s+/).filter(Boolean);
+    if (!more) out.innerHTML = `<div class="prj-hint" style="padding:6px 2px"><i class="ti ti-loader-2"></i> Mencari…</div>`;
+    const my = ++st.pickSeq;
     try {
-      const f = toks.map(t => `&nama_rs=ilike.*${encodeURIComponent(t)}*`).join('');
-      const rows = await api(`${S.SESI_TABLE}?status=in.(selesai,berjalan)${f}&select=id,nama_rs,nama_sales,status,hasil_order,updated_at,project_id&order=updated_at.desc&limit=30`);
-      const inProj = new Set(st.d.sesi.map(s => String(s.id)));
-      const list = (rows || []).filter(r => !inProj.has(String(r.id)));
-      out.innerHTML = list.length ? list.map(r => `<div class="prj-pick-row">
-          <div class="prj-sesi-main"><div class="prj-sesi-name">${esc(r.nama_rs || '(Nama RS belum diisi)')}</div>
-          <div class="prj-sesi-sub">${esc(r.nama_sales || '-')} · ${esc(r.status === 'berjalan' ? 'Berjalan' : 'Selesai')} · ${esc(S.sesiTimeAgo(r.updated_at))}</div></div>
-          ${r.project_id ? `<span class="prj-hint">sudah di project lain</span>` : `<button class="rc-act" type="button" data-act="pick-add" data-id="${esc(r.id)}"><i class="ti ti-plus"></i><span>Tambah</span></button>`}
-        </div>`).join('') : `<div class="prj-hint" style="padding:6px 2px">Tidak ada konversi yang cocok.</div>`;
-    } catch (err) { out.innerHTML = `<div class="prj-error">${esc(friendly(err))}</div>`; }
+      const f = toks.length
+        ? '&and=' + encodeURIComponent('(' + toks.map(t => { const e = t; return `or(nama_rs.ilike.*${e}*,nama_sales.ilike.*${e}*,pic_marsup.ilike.*${e}*)`; }).join(',') + ')')
+        : '';
+      const [rows, prjs] = await Promise.all([
+        api(`${S.SESI_TABLE}?status=in.(selesai,berjalan)${f}&select=id,nama_rs,pic_marsup,nama_sales,status,hasil_order,updated_at,project_id&order=updated_at.desc&limit=${PICK_PAGE + 1}&offset=${(st.pickRows || []).length}`),
+        st.prjNames ? Promise.resolve(null) : api(`${PRJ}?select=id,nama&limit=500`).catch(() => [])
+      ]);
+      if (my !== st.pickSeq) return;
+      if (prjs) st.prjNames = new Map(prjs.map(x => [String(x.id), x.nama]));
+      const got = rows || [];
+      st.pickMore = got.length > PICK_PAGE;
+      st.pickRows = (st.pickRows || []).concat(got.slice(0, PICK_PAGE));
+      renderPickRows();
+    } catch (err) { if (my === st.pickSeq) out.innerHTML = `<div class="prj-error">${esc(friendly(err))}</div>`; }
+  }
+  function renderPickRows() {
+    const out = document.getElementById('prj-pick-res'); if (!out) return;
+    const inProj = new Set(st.d.sesi.map(s => String(s.id)));
+    const list = (st.pickRows || []).filter(r => !inProj.has(String(r.id)));
+    if (!list.length && !st.pickMore) { out.innerHTML = `<div class="prj-hint" style="padding:6px 2px">Tidak ada konversi yang cocok. Coba kata kunci lain, atau kosongkan kotak cari.</div>`; return; }
+    out.innerHTML = list.map(r => {
+      const other = r.project_id && String(r.project_id) !== String(st.cur);
+      const from = other ? (st.prjNames && st.prjNames.get(String(r.project_id))) || 'project lain' : '';
+      return `<div class="prj-pick-row">
+        <div class="prj-sesi-main"><div class="prj-sesi-name">${esc(r.nama_rs || '(Nama RS belum diisi)')}</div>
+        <div class="prj-sesi-sub">${esc(r.nama_sales || '-')}${r.pic_marsup ? ' · PIC ' + esc(r.pic_marsup) : ''} · ${esc(r.status === 'berjalan' ? 'Berjalan' : 'Selesai')} · ${esc(S.sesiTimeAgo(r.updated_at))}${other ? ` · <span class="prj-moved">sekarang di "${esc(from)}"</span>` : ''}</div></div>
+        <button class="rc-act" type="button" data-act="pick-add" data-id="${esc(r.id)}" ${other ? `data-from="${esc(from)}"` : ''}><i class="ti ${other ? 'ti-arrows-exchange' : 'ti-plus'}"></i><span>${other ? 'Pindahkan ke sini' : 'Tambah'}</span></button>
+      </div>`;
+    }).join('') + (st.pickMore ? `<button class="toggle-btn" type="button" data-act="pick-more" style="margin-top:6px"><i class="ti ti-chevron-down"></i> Muat lebih banyak</button>` : '');
   }
 
   async function saveMeta(field, value) {
@@ -588,7 +615,16 @@ export function installProject(S) {
         return loadProjects();
       }
       if (act === 'picker-toggle') { const p = document.getElementById('prj-picker'); const open = p.style.display === 'none'; p.style.display = open ? 'block' : 'none'; if (open) runPicker(); return; }
-      if (act === 'pick-add') { el.disabled = true; await setSesiProject(el.dataset.id, st.cur); await reloadDetail(); return runPicker(); }
+      if (act === 'pick-add') {
+        if (el.dataset.from && !confirm(`Konversi ini sekarang ada di project "${el.dataset.from}".\nPindahkan ke project ini? (pin klik di project lama untuk konversi ini ikut dilepas)`)) return;
+        el.disabled = true;
+        await setSesiProject(el.dataset.id, st.cur);
+        st.pickRows = (st.pickRows || []).filter(r => String(r.id) !== String(el.dataset.id));
+        st.prjNames = null; // jumlah/daftar project berubah, ambil ulang di pencarian berikutnya
+        renderPickRows();
+        return reloadDetail();
+      }
+      if (act === 'pick-more') { el.disabled = true; return runPicker(true); }
       if (act === 'rm-sesi') {
         const s = st.d.sesi.find(x => String(x.id) === el.dataset.id);
         if (!confirm(`Keluarkan "${(s && s.nama_rs) || 'konversi ini'}" dari project?`)) return;
