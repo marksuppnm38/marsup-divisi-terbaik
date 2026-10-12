@@ -148,7 +148,26 @@ export async function mount(container) {
       // URL public deterministik.
       const SUPABASE_URL = window.PNM_SUPABASE_URL;
       const THUMBNAILS_BUCKET = "thumbnails";
-      const TEMPLATE_FILENAME = "TEMPLATE_THUMBNAIL_ROBUST.png";
+      // Template per brand. `file` = nama file di bucket "thumbnails" (private,
+      // diambil via signed URL). `box` = area kotak putih di template (fraksi
+      // 0..1 dari lebar/tinggi kanvas) tempat gambar produk disusun.
+      //  - robust: hasil pengukuran piksel kotak putih (persegi panjang).
+      //  - adler : kotak putihnya jajargenjang miring, jadi `box` = persegi
+      //    panjang terbesar yang muat DI DALAM jajargenjang itu (x 220-858,
+      //    y 295-785 dari 1080px) supaya gambar gak keluar dari tepi miring.
+      const TEMPLATES = {
+          robust: {
+              label: "Robust",
+              file: "TEMPLATE_THUMBNAIL_ROBUST.png",
+              box: { xStart: 0.1664, xEnd: 0.8620, yStart: 0.2199, yEnd: 0.6523 },
+          },
+          adler: {
+              label: "Adler",
+              file: "TEMPLATE_THUMBNAIL_ADLER.png",
+              box: { xStart: 0.2037, xEnd: 0.7944, yStart: 0.2731, yEnd: 0.7269 },
+          },
+      };
+      let currentTemplate = "robust";
   
       const sb = window.pnmSupabase;
 
@@ -242,7 +261,7 @@ export async function mount(container) {
   
       // Nama file template ini sendiri juga hidup di bucket "thumbnails" yang sama,
       // jadi harus difilter supaya nggak nongol sebagai "produk" di daftar pilihan.
-      const EXCLUDED_FILENAMES = new Set(["TEMPLATE_THUMBNAIL_ROBUST.png"]);
+      const EXCLUDED_FILENAMES = new Set(Object.values(TEMPLATES).map(t => t.file));
   
       async function loadFileList() {
           console.log("[INFO] Mengambil daftar file dari Supabase Storage...");
@@ -445,7 +464,7 @@ export async function mount(container) {
       // Menyusun 1–4 overlay dalam grid, DI DALAM kotak putih template (koordinat
       // diukur langsung dari template: x 16.6%–86.2%, y 22%–65.2% dari kanvas).
       // Zona ini tetap sama untuk semua jumlah gambar — hanya grid di dalamnya yang berubah.
-      function drawMergedCanvas(templateImg, overlayCanvases) {
+      function drawMergedCanvas(templateImg, overlayCanvases, BOX) {
           let canvas = container.querySelector('#' + "finalCanvas");
           let ctx = canvas.getContext("2d");
           canvas.width = templateImg.width;
@@ -454,8 +473,7 @@ export async function mount(container) {
   
           const count = overlayCanvases.length;
   
-          // Batas kotak putih pada template (hasil pengukuran piksel langsung).
-          const BOX = { xStart: 0.1664, xEnd: 0.8620, yStart: 0.2199, yEnd: 0.6523 };
+          // Batas area gambar ikut template yang dipilih (lihat TEMPLATES di atas).
           const zoneX = canvas.width * BOX.xStart;
           const zoneY = canvas.height * BOX.yStart;
           const zoneWidth = canvas.width * (BOX.xEnd - BOX.xStart);
@@ -544,7 +562,30 @@ export async function mount(container) {
           return typeof id === "string" && id.trim().length > 0;
       }
   
+      let canvasTemplateKey = "robust"; // template yang sedang tergambar di kanvas (buat nama file export)
       let isMerging = false; // guard supaya tidak ada request bertumpuk
+
+      // Ambil gambar template (cache per nama file, signed URL tiap cache kosong).
+      async function getTemplateImage(tpl) {
+          if (imageCache[tpl.file]) return imageCache[tpl.file];
+          const templateUrl = await window.PNM_getSignedUrl(THUMBNAILS_BUCKET, tpl.file);
+          const img = await loadImageWithRetry(templateUrl);
+          imageCache[tpl.file] = img;
+          return img;
+      }
+
+      function setTemplate(key) {
+          if (!TEMPLATES[key] || key === currentTemplate) return;
+          currentTemplate = key;
+          container.querySelectorAll('[data-action="set-template"]').forEach(btn => {
+              const on = btn.dataset.template === key;
+              btn.classList.toggle("active", on);
+              btn.setAttribute("aria-checked", String(on));
+          });
+          // Kalau preview sudah tampil, langsung render ulang pakai template baru.
+          const previewShown = container.querySelector('#previewContainer').style.display !== "none";
+          if (previewShown && selectedIds.length > 0 && !isMerging) mergeAndPreview();
+      }
   
       async function mergeAndPreview() {
           if (isMerging) {
@@ -562,24 +603,25 @@ export async function mount(container) {
           console.log("[INFO] File ID yang dipilih:", selectedIds);
   
           const btn = container.querySelector('#' + "previewBtn");
+          const tplKey = currentTemplate; // snapshot: user bisa ganti template di tengah proses
+          const tpl = TEMPLATES[tplKey];
           isMerging = true;
           setButtonLoading(btn, true, "Memproses...");
   
           try {
               console.log("[INFO] Mengambil gambar template & overlay...");
   
-              // SECURITY FIX: TEMPLATE_URL (URL public tetap) diganti TEMPLATE_FILENAME
-              // (nama file doang) + signed URL yang diminta tiap kali cache kosong --
-              // cache key-nya sekarang TEMPLATE_FILENAME (string tetap), bukan lagi URL
-              // (yang sekarang berubah tiap signing, gak bisa lagi dipakai sebagai key).
-              const templateImg = imageCache[TEMPLATE_FILENAME]
-                  ? imageCache[TEMPLATE_FILENAME]
-                  : await (async () => {
-                      const templateUrl = await window.PNM_getSignedUrl(THUMBNAILS_BUCKET, TEMPLATE_FILENAME);
-                      const img = await loadImageWithRetry(templateUrl);
-                      imageCache[TEMPLATE_FILENAME] = img;
-                      return img;
-                  })();
+              // SECURITY FIX: template diambil lewat signed URL (bucket private);
+              // cache key-nya nama file template (string tetap), bukan URL-nya
+              // (yang berubah tiap signing). Lihat getTemplateImage().
+              let templateImg;
+              try {
+                  templateImg = await getTemplateImage(tpl);
+              } catch (err) {
+                  console.error("[ERROR] Gagal memuat template:", tpl.file, err);
+                  if (isMounted) toast(`Template ${tpl.label} gagal dimuat. Pastikan ${tpl.file} sudah ada di bucket thumbnails.`, "error", 6000);
+                  return;
+              }
   
               // ambil semua overlay secara paralel, masing-masing pakai cache + retry sendiri
               let processedOverlays = await Promise.all(
@@ -587,7 +629,9 @@ export async function mount(container) {
               );
   
               console.log("[SUCCESS] Gambar berhasil diproses.");
-              drawMergedCanvas(templateImg, processedOverlays);
+              if (!isMounted) return;
+              drawMergedCanvas(templateImg, processedOverlays, tpl.box);
+              canvasTemplateKey = tplKey;
               container.querySelector('#' + "metaCount").textContent = String(selectedIds.length);
               container.querySelector('#' + "previewContainer").style.display = "block";
               container.querySelector('#' + "exportBtn").style.display = "inline-flex";
@@ -599,6 +643,8 @@ export async function mount(container) {
               isMerging = false;
               setButtonLoading(btn, false);
           }
+          // User ganti template selagi proses jalan -> render ulang dengan pilihan terbaru.
+          if (isMounted && tplKey !== currentTemplate) mergeAndPreview();
       }
       // loadFileList() dipanggil langsung setelah mount() (lihat atas) -- router.js
       // udah mastiin sesi valid sebelum modul ini di-mount, jadi gak perlu nunggu
@@ -607,7 +653,7 @@ export async function mount(container) {
       function exportCanvasAsPNG() {
           let canvas = container.querySelector('#' + "finalCanvas");
           let link = document.createElement("a");
-          link.download = "combined-image.png";
+          link.download = `combined-image-${canvasTemplateKey}.png`;
           link.href = canvas.toDataURL("image/png");
           link.click();
           toast("Gambar berhasil diunduh.", "success", 2500);
@@ -631,6 +677,7 @@ export async function mount(container) {
     'merge-and-preview':  () => mergeAndPreview(),
     'export-canvas-png':  () => exportCanvasAsPNG(),
     'toggle-file':        (el) => toggleFile(el.dataset.id),
+    'set-template':       (el) => setTemplate(el.dataset.template),
     'pick-image':         () => container.querySelector('#imageFileInput').click(),
   };
   function onContainerClick(e) {

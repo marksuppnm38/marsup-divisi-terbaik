@@ -67,7 +67,13 @@ export const EXPORT_GAMBAR_MARKUP = `
             <p>Tempel kode produk atau cari manual.</p>
           </div>
         </div>
-        <label class="field-label" for="bulkInput">Kode produk <span class="eg-field-hint">satu per baris, maks 4</span></label>
+        <span class="field-label" id="templateLabel">Template</span>
+        <div class="eg-seg" role="radiogroup" aria-labelledby="templateLabel">
+          <button type="button" role="radio" aria-checked="true" class="eg-seg-btn active" data-action="set-template" data-template="robust">Robust</button>
+          <button type="button" role="radio" aria-checked="false" class="eg-seg-btn" data-action="set-template" data-template="adler">Adler</button>
+        </div>
+
+        <label class="field-label eg-mt-16" for="bulkInput">Kode produk <span class="eg-field-hint">satu per baris, maks 4</span></label>
         <textarea id="bulkInput" class="field-input eg-textarea" placeholder="MY001&#10;MY002&#10;MY003&#10;MY004" aria-label="Input kode file, satu per baris"></textarea>
         <button type="button" class="eg-link-btn" data-action="apply-bulk-input">
           <i class="ti ti-corner-down-left" aria-hidden="true"></i> Terapkan

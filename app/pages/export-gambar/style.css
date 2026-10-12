@@ -68,6 +68,31 @@
   color: var(--text-muted);
 }
 
+/* Pemilih template (Robust / Adler) -- segmented control datar, tanpa
+   shadow. Border transparan di state non-aktif supaya lebar gak loncat
+   waktu ganti pilihan. */
+.eg-seg {
+  display: inline-flex; gap: 2px; padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.eg-seg-btn {
+  border: 1px solid transparent; background: none;
+  padding: 6px 18px;
+  font-size: 12.5px; font-weight: 500; font-family: inherit;
+  color: var(--text-secondary);
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  transition: color .12s, background .12s;
+}
+.eg-seg-btn:hover { color: var(--text); }
+.eg-seg-btn.active {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
 .eg-meta {
   margin: 10px 2px 0;
   font-size: 12px;
