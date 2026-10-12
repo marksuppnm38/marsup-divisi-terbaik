@@ -2971,8 +2971,12 @@ function renderRiwayatCard(s, matches, tokens) {
   const klikArr = Array.isArray(s.klik_ekat_items) ? s.klik_ekat_items : [];
   const klikSet = isEkat ? new Set(klikArr) : null;
 
+  // Sesi yang ditutup otomatis oleh sweep (auto_closed_at) tapi belum pernah
+  // di-Record -> kasih penanda + tombol "Buka & Record" (lihat handler di bawah).
+  const perluRecord = !!s.auto_closed_at && records.length === 0 && itemCount > 0;
   const stats = [
     `<span class="rc-stat"><i class="ti ti-package"></i>${itemCount} produk</span>`,
+    perluRecord ? `<span class="rc-stat" style="background:var(--warning-bg,#fff7e6);color:var(--warning,#b45309);border-radius:6px;padding:1px 6px" title="Ditutup otomatis karena mandek, belum pernah di-Record"><i class="ti ti-alert-triangle"></i>Belum di-Record</span>` : '',
     latest ? `<span class="rc-stat"><i class="ti ti-file-text"></i>${latest.revisi > 0 ? 'REV' + latest.revisi : 'Ada record'}</span>` : '',
     (latest && latest.grand_total != null) ? `<span class="rc-stat rc-total"><i class="ti ti-cash"></i>${S.rupiah(latest.grand_total)}</span>` : '',
     `<span class="rc-stat rc-klik${klikArr.length ? '' : ' empty'}" ${isEkat ? '' : 'hidden'}><i class="ti ti-click"></i><span>${klikArr.length ? klikArr.length + ' item di-klik' : 'Item yang di-klik belum dipilih'}</span></span>`,
@@ -2981,6 +2985,7 @@ function renderRiwayatCard(s, matches, tokens) {
 
   // stopPropagation di listener (lihat loadRiwayatList) biar klik aksi gak ikut buka sesi.
   const actions = [
+    perluRecord ? `<button type="button" class="rc-act riwayat-record-btn" data-id="${s.id}"><i class="ti ti-file-export"></i><span>Buka &amp; Record</span></button>` : '',
     `<button type="button" class="rc-act riwayat-peek-btn" data-id="${s.id}"><i class="ti ti-eye"></i><span>Lihat isi</span></button>`,
     records.length > 1 ? `<button type="button" class="rc-act konversi-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}"><i class="ti ti-versions"></i><span>${records.length} versi</span></button>` : '',
     sphCount > 0 ? `<button type="button" class="rc-act sph-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}"><i class="ti ti-file-invoice"></i><span>${sphCount} SPH</span></button>` : '',
@@ -3680,6 +3685,22 @@ async function loadRiwayatList(keepPage) {
     // bakal ikut buka kartu sesi (bubbling ke card.addEventListener('click', openSesi) di atas).
     S.riwayatList.querySelectorAll('.record-link-chip').forEach(a => {
       a.addEventListener('click', (e) => e.stopPropagation());
+    });
+    // Buka & Record: buka sesi lewat openSesi() yang sudah ada (PIC terisi dari
+    // sesi.pic_marsup, kategori & total dihitung computeKonversiSummary() dari
+    // isi clipboard), lalu langsung buka modal Record. Sisanya (catatan, link
+    // Drive, sync Sheet) lewat alur normal. Status sesi sudah 'selesai', PATCH
+    // 'selesai' lagi saat Record submit itu aman (idempoten).
+    S.riwayatList.querySelectorAll('.riwayat-record-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        btn.disabled = true;
+        try {
+          await openSesi(id);
+          if (S.currentSesiId === id) openRecordModal(); // gagal buka sesi -> openSesi sudah kasih pesan error
+        } finally { btn.disabled = false; }
+      });
     });
     S.riwayatList.querySelectorAll('.sph-riwayat-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
