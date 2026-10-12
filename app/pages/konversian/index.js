@@ -2836,6 +2836,56 @@ function sesiTimeAgo(iso) {
 }
 S.sesiTimeAgo = sesiTimeAgo;
 
+// ══════════════════════════════════════════
+// SESI MANDEK: sesi 'berjalan' yang gak ada aktivitas > SESI_STALE_DAYS hari.
+// "Aktivitas" = sesi_konversi.updated_at (di-bump tiap simpan item, ganti mode
+// harga, butuh bantuan, dst — lihat clipboard.js), BUKAN created_at.
+// Tahap 1: badge di kartu. Tahap 2: lazy sweep (sweepSesiMandek) yang nutup
+// otomatis sesi mandek BERISI PRODUK -> status 'selesai' (masuk Riwayat,
+// "Menunggu Feedback Sales"). Sengaja BUKAN Record penuh: Record butuh input
+// PIC/kategori/harga + sync Sheets dari modal (belum ada di sesi mandek),
+// jadi yang dilakukan sweep = setara tombol "Selesaikan Sesi".
+// Butuh kolom: ALTER TABLE sesi_konversi ADD COLUMN auto_closed_at timestamptz;
+// ══════════════════════════════════════════
+const SESI_STALE_DAYS = 7;
+function sesiIdleDays(s) {
+  if (!s || !s.updated_at) return 0;
+  return Math.floor((Date.now() - new Date(s.updated_at).getTime()) / 86400000);
+}
+function isSesiStale(s) { return sesiIdleDays(s) >= SESI_STALE_DAYS; }
+function sesiItemCountOf(s) {
+  return (s.sesi_konversi_item && s.sesi_konversi_item[0] && s.sesi_konversi_item[0].count) || 0;
+}
+let sesiSweepRunning = false;
+// Return true kalau ada baris yang beneran ditutup (caller perlu reload list).
+async function sweepSesiMandek(rows) {
+  if (sesiSweepRunning) return false;
+  const cand = rows.filter(s => isSesiStale(s) && sesiItemCountOf(s) > 0 && s.id !== S.currentSesiId);
+  if (!cand.length) return false;
+  sesiSweepRunning = true;
+  let closed = 0;
+  try {
+    for (const s of cand) {
+      try {
+        // Optimistic lock: cuma PATCH kalau masih 'berjalan' DAN updated_at
+        // belum berubah (kalau ada yang barusan edit/dua klien sweep bareng,
+        // filter gak match -> 0 baris, aman). updated_at dikirim balik ke
+        // nilai lama biar jam "Selesai … lalu" di Riwayat = aktivitas terakhir.
+        const res = await S.sesiFetch(
+          `${S.SESI_TABLE}?id=eq.${encodeURIComponent(s.id)}&status=eq.berjalan&updated_at=eq.${encodeURIComponent(s.updated_at)}`,
+          { method: 'PATCH', headers: { Prefer: 'return=representation' },
+            body: JSON.stringify({ status: 'selesai', auto_closed_at: new Date().toISOString(), updated_at: s.updated_at }) }
+        );
+        if (!res.ok) continue;
+        const out = await res.json().catch(() => []);
+        if (Array.isArray(out) && out.length) closed++;
+      } catch { /* satu sesi gagal jangan matiin yang lain */ }
+    }
+  } finally { sesiSweepRunning = false; }
+  if (closed) S.showToast(`${closed} sesi mandek > ${SESI_STALE_DAYS} hari otomatis ditutup → Riwayat`);
+  return closed > 0;
+}
+
 function renderSesiCard(s) {
   const itemCount = (s.sesi_konversi_item && s.sesi_konversi_item[0] && s.sesi_konversi_item[0].count) || 0;
   // SECURITY FIX 2026-08-14: nama_rs/pic_marsup/nama_sales itu free-text yang
@@ -2861,6 +2911,7 @@ function renderSesiCard(s) {
     <div class="rcard-top" style="padding-right:66px">
       <div class="rcard-name">${namaSafe}</div>
       ${bantuanBadge}
+      ${isSesiStale(s) ? `<span class="tipe-badge" style="background:var(--warning-bg,#fff7e6);color:var(--warning,#b45309)" title="Tidak ada aktivitas ${sesiIdleDays(s)} hari">${itemCount > 0 ? '⏳ Mandek — auto-tutup' : '⏳ Mandek (kosong)'}</span>` : ''}
     </div>
     <div class="rcard-meta">
       <span class="mi"><i class="ti ti-user"></i><span>PIC: ${picSafe}</span></span>
@@ -3778,7 +3829,15 @@ async function loadSesiList() {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Tabel sesi_konversi belum tersedia di Supabase — jalankan dulu SQL setup-nya.');
     }
-    const data = await res.json();
+    let data = await res.json();
+    // Lazy sweep: tutup sesi mandek berisi produk, lalu muat ulang SEKALI.
+    if (!loadSesiList._swept) {
+      loadSesiList._swept = true;
+      try {
+        if (await sweepSesiMandek(data)) { loadSesiList._swept = false; return loadSesiList(); }
+      } catch { /* sweep opsional */ }
+      setTimeout(() => { loadSesiList._swept = false; }, 60000); // maks 1x/menit per tab
+    }
     S.sesiBadge.textContent = data.length;
     S.sesiBadge.style.display = data.length > 0 ? 'inline-block' : 'none';
     if (data.length === 0) { S.sesiListEmpty.style.display = 'block'; return; }
