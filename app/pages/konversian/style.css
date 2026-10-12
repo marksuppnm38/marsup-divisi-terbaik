@@ -975,3 +975,82 @@
 #app-root .ro-item:focus-visible,
 #app-root .rsum-clear:focus-visible,
 #app-root .riwayat-card button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* ============================================================
+   PROJECT (2026-10-12) — tab pengelompokan konversi per instansi.
+   Semua class berawalan .prj-, pakai token yang sama kayak Riwayat
+   (.rcard/.rc-*/.rc-act dipakai ulang langsung).
+   ============================================================ */
+#app-root .prj-loading{padding:24px;text-align:center;color:var(--text-muted);font-size:12.5px}
+#app-root .prj-error{margin:12px;padding:10px 12px;font-size:12px;line-height:1.5;color:var(--danger-text,var(--danger));background:var(--danger-bg);border:1px solid var(--danger-border,var(--border));border-radius:8px}
+#app-root .prj-toolbar{align-items:center;gap:8px;flex-wrap:wrap}
+#app-root .prj-lead{flex:1;min-width:200px;font-size:11.5px;color:var(--text-muted)}
+#app-root .prj-list{display:flex;flex-direction:column;gap:10px;padding:0 12px 16px}
+#app-root .prj-card{cursor:pointer}
+#app-root .prj-card:hover,#app-root .prj-card:focus-visible{border-color:var(--accent);outline:none}
+#app-root .prj-new{display:flex;flex-wrap:wrap;gap:8px;padding:0 12px 12px}
+#app-root .prj-new .prj-input{flex:1;min-width:180px}
+#app-root .prj-input{height:34px;padding:0 10px;font-size:12.5px;font-family:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;outline:none;box-sizing:border-box}
+#app-root textarea.prj-input{height:auto;padding:8px 10px;line-height:1.5;resize:vertical;width:100%}
+#app-root .prj-input:focus{border-color:var(--accent)}
+#app-root .prj-input-title{font-size:15px;font-weight:600;height:38px}
+#app-root .prj-mono{font-family:var(--mono)}
+#app-root .prj-hint{font-size:11px;color:var(--text-muted)}
+#app-root .prj-sug{margin:0 12px 14px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px}
+#app-root .prj-sug-row{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:12.5px}
+#app-root .prj-sug-name{flex:1;min-width:0;font-weight:500;color:var(--text);overflow-wrap:anywhere}
+#app-root .prj-detail{padding:0 12px 20px;display:flex;flex-direction:column;gap:14px}
+#app-root .prj-top{display:flex;align-items:center;gap:8px;padding-top:10px}
+#app-root .prj-meta{display:flex;flex-direction:column;gap:8px}
+#app-root .prj-danger:hover{background:var(--danger-bg);color:var(--danger-text,var(--danger));border-color:var(--danger)}
+#app-root .prj-summary{display:flex;flex-wrap:wrap;gap:6px}
+#app-root .prj-pill{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;font-size:11.5px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border);border-radius:999px}
+#app-root .prj-pill b{color:var(--text)}
+#app-root .prj-pill.prj-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+#app-root .prj-pill.prj-warn{background:var(--warning-bg);border-color:var(--warning-border);color:var(--warning)}
+#app-root .prj-pill.prj-bad{background:var(--danger-bg);border-color:var(--danger-border,var(--border));color:var(--danger-text,var(--danger))}
+#app-root .prj-sec{display:flex;flex-direction:column;gap:8px}
+#app-root .prj-sec-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--text)}
+#app-root .prj-note{font-size:11.5px;line-height:1.5;color:var(--text-muted)}
+#app-root .prj-empty{padding:14px;text-align:center;font-size:12px;color:var(--text-muted);background:var(--surface-2);border:1px dashed var(--border);border-radius:8px}
+#app-root .prj-picker{display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px}
+#app-root .prj-pick-row,#app-root .prj-sesi{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:8px}
+#app-root .prj-picker .prj-pick-row{margin-top:4px}
+#app-root #prj-sesi-list{display:flex;flex-direction:column;gap:6px}
+#app-root .prj-sesi-main{flex:1;min-width:0}
+#app-root .prj-sesi-name{font-size:12.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
+#app-root .prj-sesi-sub{font-size:11px;color:var(--text-muted);margin-top:1px}
+#app-root .prj-sesi-cov{font-size:11.5px;color:var(--text-secondary);white-space:nowrap}
+#app-root .prj-sesi-cov b{color:var(--text)}
+#app-root .prj-chip{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:20px;padding:0 6px;margin-right:3px;font-size:10.5px;font-weight:700;border-radius:6px;border:1px solid transparent}
+#app-root .prj-c0{background:#e6f0ff;color:#1d4ed8;border-color:#bfd6ff}
+#app-root .prj-c1{background:#e7f8ee;color:#15803d;border-color:#b7e8cb}
+#app-root .prj-c2{background:#fff3e0;color:#b45309;border-color:#ffd9a3}
+#app-root .prj-c3{background:#f3e8ff;color:#7e22ce;border-color:#dcc0fb}
+#app-root .prj-c4{background:#ffe8ef;color:#be185d;border-color:#ffc2d6}
+#app-root .prj-c5{background:#e5f7f7;color:#0f766e;border-color:#b0e3e0}
+#app-root .prj-klik-tools{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px}
+#app-root .prj-tool{display:flex;flex-direction:column;gap:3px;font-size:10.5px;color:var(--text-muted)}
+#app-root .prj-tool .prj-input{height:32px}
+#app-root .prj-grow{flex:1;min-width:150px}
+#app-root .prj-paste{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+#app-root .prj-table-wrap{max-height:none;overflow-x:auto}
+#app-root .prj-table{width:100%;border-collapse:collapse;font-size:12px}
+#app-root .prj-table th{text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.02em;color:var(--text-muted);padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+#app-root .prj-table td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text-secondary)}
+#app-root .prj-table td.kode{font-family:var(--mono);font-size:11px;color:var(--text);white-space:nowrap}
+#app-root .prj-table .num{text-align:right;white-space:nowrap}
+#app-root .prj-table tr.prj-on{background:var(--accent-bg)}
+#app-root .prj-table tr.prj-r-orphan{background:var(--danger-bg)}
+#app-root .prj-qty{width:58px;height:26px;padding:0 6px;font-size:12px;font-family:inherit;text-align:right;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);border-radius:6px}
+#app-root .prj-qty:disabled{opacity:.4}
+#app-root .prj-attr{min-width:150px}
+#app-root .prj-cand{display:inline-flex;align-items:center;gap:2px;margin-right:6px;font-size:11px;color:var(--text)}
+#app-root .prj-st{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:999px}
+#app-root .prj-st-sure{background:var(--success-bg);color:var(--success)}
+#app-root .prj-st-amb{background:var(--warning-bg);color:var(--warning)}
+#app-root .prj-st-orph{background:var(--danger-bg);color:var(--danger-text,var(--danger))}
+#app-root .prj-pin{height:24px;max-width:150px;margin-left:4px;font-size:11px;font-family:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);border-radius:6px}
+@media (max-width:860px){
+  #app-root .prj-sesi{flex-wrap:wrap}
+  #app-root .prj-sesi-cov{width:100%}
+}

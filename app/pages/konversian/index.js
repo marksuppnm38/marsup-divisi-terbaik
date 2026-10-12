@@ -111,6 +111,7 @@ import { installClipboard } from './clipboard.js';
 import { installSearch } from './search.js';
 import { installDictionary } from './dictionary.js';
 import { installSetMendekati } from './set-mendekati.js';
+import { installProject } from './project.js';
 import { installPermintaanRs } from './permintaan-rs.js';
 import { installSph } from './sph.js';
 
@@ -927,6 +928,7 @@ export async function mount(container, initialSub) {
   // sph-module.js — sph-module.js baca fungsi/variabel dari konversian.js
   // lewat shared scope, lihat komentar di kepala sph-module.js sendiri). ──
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-10-12: FITUR BARU tab "Project" (project.js) — ngelompokin beberapa konversi satu instansi + catat item yang di-klik di e-Kat di level project, asal klik ditebak dari bukti (tanpa primary key). Perubahan di file ini cuma: import+installProject(S), subtab 'project' di switchSubTab/SUBTAB_LABELS, ref S.subtabProject/S.panelBodyProject. Perlu migration-project-konversi.sql dulu (tabel konversi_project, konversi_project_klik, kolom sesi_konversi.project_id) — Claude
 // 2026-09-25: AUDIT — badge jumlah sesi aktif (S.sesiBadge) diganti dari poll setInterval 30 detik ke channel Realtime (realtime.js: initSesiCountLive/handleSesiCountChange, channel 'konv-sesi-count', TIDAK difilter per sesi karena butuh total lintas tim) + resync REST tiap 5 menit sebagai fallback. Aman dari bug DELETE postgres_changes yang sudah didokumentasikan di file ini karena sesi 'berjalan' cuma pernah di-UPDATE (bukan di-DELETE) sampai statusnya 'selesai'. Bridge unmount() ikut berubah: heartbeatTimer -> sesiCountCleanup — Claude
 // 2026-08-18: SECURITY — RLS produk/produk_harga/produk_set_item/akd/produk_akd/master_produk diketatin dari publik jadi allowed_users-only (harga_swasta sempat bisa dibaca siapa aja tanpa login). getProdukId/rpc()/getSetItems/enrichStok diganti dari ANON_KEY mentah ke sesiFetch(token sesi). Login gate sekarang juga checkWhitelist() ke allowed_users (dulu cuma cek kredensial valid, gak cek whitelist) — Claude
 // 2026-08-13(7): 3 behavior fix fundamental (per diskusi manual): (a) isian tab Buat SPH nempel ke SPH terakhir — sph-module.js sekarang expose window.sphFlow.reset() dipanggil dari resetChecklistUI(); (b) nambah tombol "Keluar dari Sesi" (btn-leave-sesi) — beda dari Selesaikan Sesi, cuma bersihin tampilan lokal, GAK ngubah status server, sesi tetap 'berjalan'; (c) badge "Jadi Order"/"Ditutup Tanpa Order" di kartu riwayat dulu auto-derived dari ada-gaknya konversi_record (keliru — itu nunjukin "Record diklik", bukan "beneran jadi order"), sekarang dropdown manual hasil_order (kolom BARU sesi_konversi, perlu migration SQL manual dulu, lihat catatan terpisah), default null = "Menunggu Feedback Sales" — Claude
@@ -2744,6 +2746,7 @@ const SUBTAB_LABELS = {
   cari: 'Cari Produk',
   sesi: 'Konversi Berjalan',
   riwayat: 'Riwayat',
+  project: 'Project',
   converter: 'Converter',
   setcari: 'Cari SET',
   dictionary: 'Dictionary',
@@ -2765,9 +2768,15 @@ function setClipClosed(closed, auto) {
 }
 S.setClipClosed = setClipClosed;
 
+// Tab Project (2026-10-12, lihat project.js): ref elemennya ditangkep di sini, bukan di
+// clipboard.js bareng subtab lain, biar fitur ini gak nyentuh file itu.
+S.subtabProject = document.getElementById('subtab-project');
+S.panelBodyProject = document.getElementById('panel-body-project');
+
 function switchSubTab(tab) {
   const rootEl = document.getElementById('app-root');
-  if (tab === 'riwayat') {
+  // Project = tab baca/analisis kayak Riwayat -> clipboard ikut ditutup otomatis.
+  if (tab === 'riwayat' || tab === 'project') {
     if (rootEl && !rootEl.classList.contains('clip-closed')) setClipClosed(true, true);
   } else if (S.clipClosedAuto) {
     setClipClosed(false);
@@ -2775,12 +2784,14 @@ function switchSubTab(tab) {
   S.subtabCari.classList.toggle('active', tab === 'cari');
   S.subtabSesi.classList.toggle('active', tab === 'sesi');
   S.subtabRiwayat.classList.toggle('active', tab === 'riwayat');
+  S.subtabProject.classList.toggle('active', tab === 'project');
   S.subtabConverter.classList.toggle('active', tab === 'converter');
   S.subtabSetcari.classList.toggle('active', tab === 'setcari');
   S.subtabDictionary.classList.toggle('active', tab === 'dictionary');
   S.panelBodyCari.style.display = tab === 'cari' ? 'block' : 'none';
   S.panelBodySesi.style.display = tab === 'sesi' ? 'block' : 'none';
   S.panelBodyRiwayat.style.display = tab === 'riwayat' ? 'block' : 'none';
+  S.panelBodyProject.style.display = tab === 'project' ? 'block' : 'none';
   S.panelBodyConverter.style.display = tab === 'converter' ? 'block' : 'none';
   S.panelBodySetcari.style.display = tab === 'setcari' ? 'block' : 'none';
   S.panelBodyDictionary.style.display = tab === 'dictionary' ? 'block' : 'none';
@@ -2803,6 +2814,7 @@ function switchSubTab(tab) {
     });
     return;
   }
+  if (tab === 'project' && typeof S.loadProjects === 'function') S.loadProjects();
   if (tab === 'dictionary') S.loadDictionary();
   if (tab === 'setcari' && typeof S.updateSetcariSourceCount === 'function') S.updateSetcariSourceCount();
 }
@@ -2810,6 +2822,7 @@ S.switchSubTab = switchSubTab;
 S.subtabCari.addEventListener('click', () => switchSubTab('cari'));
 S.subtabSesi.addEventListener('click', () => switchSubTab('sesi'));
 S.subtabRiwayat.addEventListener('click', () => switchSubTab('riwayat'));
+S.subtabProject.addEventListener('click', () => switchSubTab('project'));
 S.subtabConverter.addEventListener('click', () => switchSubTab('converter'));
 S.subtabSetcari.addEventListener('click', () => switchSubTab('setcari'));
 S.subtabDictionary.addEventListener('click', () => switchSubTab('dictionary'));
@@ -4602,6 +4615,7 @@ S.convManualSearch = convManualSearch;
   installPermintaanRs(S);
   installDictionary(S);
   installSetMendekati(S);
+  installProject(S);
   installSph(S);
 
   // Restore the sub-tab the URL asked for (e.g. a refresh/direct-link on

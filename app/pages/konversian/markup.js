@@ -115,6 +115,7 @@ export const KONVERSIAN_MARKUP = `
         <button class="subtab-btn active" id="subtab-cari" type="button"><i class="ti ti-search"></i> Cari Produk</button>
         <button class="subtab-btn" id="subtab-sesi" type="button"><i class="ti ti-list-details"></i> Konversi Berjalan <span class="subtab-badge" id="sesi-badge" style="display:none">0</span></button>
         <button class="subtab-btn" id="subtab-riwayat" type="button"><i class="ti ti-history"></i> Riwayat</button>
+        <button class="subtab-btn" id="subtab-project" type="button"><i class="ti ti-folders"></i> Project</button>
         <button class="subtab-btn" id="subtab-converter" type="button"><i class="ti ti-clipboard-copy"></i> Converter</button>
         <button class="subtab-btn" id="subtab-setcari" type="button"><i class="ti ti-box-multiple"></i> Cari SET <span class="subtab-badge" id="setcari-badge" style="display:none">0</span></button>
         <button class="subtab-btn" id="subtab-dictionary" type="button"><i class="ti ti-book-2"></i> Dictionary</button>
@@ -214,6 +215,11 @@ export const KONVERSIAN_MARKUP = `
         <p>Belum ada sesi yang selesai.<br>Sesi yang di-Record atau di-Selesaikan bakal muncul di sini.</p>
       </div>
       <div id="riwayat-list"></div>
+    </div>
+    <!-- ===== PROJECT (2026-10-12): kelompok beberapa konversi satu instansi + klik e-Kat di level project.
+         Isi dirender penuh oleh project.js ke #prj-root. ===== -->
+    <div class="panel-body" id="panel-body-project" style="display:none">
+      <div id="prj-root"></div>
     </div>
     <div class="panel-body" id="panel-body-converter" style="display:none">
       <div class="sesi-toolbar">
