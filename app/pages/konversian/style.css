@@ -1020,6 +1020,11 @@
 #app-root .prj-sesi-name{font-size:12.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
 #app-root .prj-sesi-sub{font-size:11px;color:var(--text-muted);margin-top:1px}
 #app-root .prj-moved{color:var(--warning)}
+#app-root .prj-matches{display:flex;flex-direction:column;gap:2px;margin-top:5px}
+#app-root .prj-match{display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:var(--text-secondary)}
+#app-root .prj-match-kode{font-family:var(--mono);font-size:10.5px;color:var(--text);white-space:nowrap}
+#app-root .prj-match-nama{min-width:0;overflow-wrap:anywhere}
+#app-root .prj-hl{background:var(--warning-bg);color:inherit;border-radius:3px;padding:0 1px}
 #app-root .prj-sesi-cov{font-size:11.5px;color:var(--text-secondary);white-space:nowrap}
 #app-root .prj-sesi-cov b{color:var(--text)}
 #app-root .prj-chip{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:20px;padding:0 6px;margin-right:3px;font-size:10.5px;font-weight:700;border-radius:6px;border:1px solid transparent}
@@ -1055,3 +1060,27 @@
   #app-root .prj-sesi{flex-wrap:wrap}
   #app-root .prj-sesi-cov{width:100%}
 }
+
+/* PROJECT: level Transaksi + nilai (2026-10-12) */
+#app-root .prj-trx-form{display:none;padding:10px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px}
+#app-root .prj-trx-fields{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+#app-root .prj-trx-fields .prj-tool select.prj-input{padding-right:6px}
+#app-root .prj-trx-actions{display:flex;gap:8px;margin-top:10px}
+#app-root #prj-trx-list{display:flex;flex-direction:column;gap:8px}
+#app-root .prj-trx{padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px}
+#app-root .prj-trx.active{border-color:var(--accent);background:var(--accent-bg)}
+#app-root .prj-trx.virt{background:var(--surface-2);border-style:dashed}
+#app-root .prj-trx.editing{border-color:var(--border-strong)}
+#app-root .prj-trx-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#app-root .prj-trx-title{font-size:12.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
+#app-root .prj-trx-body{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px;font-size:11.5px;color:var(--text-secondary)}
+#app-root .prj-trx-body b{color:var(--text)}
+#app-root .prj-trx-chip{display:inline-flex;align-items:center;height:20px;padding:0 7px;font-size:10.5px;font-weight:700;color:var(--text);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:6px;white-space:nowrap}
+#app-root .prj-trx-chip.virt{border-style:dashed;color:var(--text-muted)}
+#app-root .prj-attr-line{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:2px 0}
+#app-root .prj-est{color:var(--warning);font-weight:700}
+#app-root .prj-pill.prj-val{background:var(--accent-bg);border-color:var(--accent);color:var(--text)}
+#app-root .prj-sesi-val{margin-top:2px;font-size:11px;color:var(--text-secondary)}
+#app-root .prj-sesi-val b{color:var(--text)}
+#app-root .prj-harga{width:104px;height:26px;padding:0 6px;font-size:12px;font-family:inherit;text-align:right;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);border-radius:6px}
+#app-root .prj-harga:disabled{opacity:.4}
