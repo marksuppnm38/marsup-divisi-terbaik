@@ -1094,3 +1094,17 @@
 #app-root .prj-meta-row{display:flex;flex-wrap:wrap;gap:8px}
 #app-root .prj-meta .prj-tool{font-size:10.5px}
 #app-root .prj-meta .prj-tool .prj-input{font-size:12.5px}
+
+/* PERLU TINDAKAN (auto-record.js, 2026-10-13) */
+#app-root .subtab-badge.todo{background:var(--warning-bg);color:var(--warning);border:1px solid var(--warning-border)}
+#app-root #todo-inbox{padding:0 12px 10px}
+#app-root .todo-box{display:flex;flex-direction:column;gap:10px;padding:10px 12px;background:var(--warning-bg);border:1px solid var(--warning-border);border-radius:10px}
+#app-root .todo-head{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text)}
+#app-root .todo-group{display:flex;flex-direction:column;gap:4px}
+#app-root .todo-group-title{font-size:11.5px;font-weight:600;color:var(--text)}
+#app-root .todo-n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:4px;font-size:10.5px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:999px}
+#app-root .todo-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:8px}
+#app-root .todo-main{flex:1;min-width:140px}
+#app-root .todo-name{font-size:12.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
+#app-root .todo-sub{font-size:11px;color:var(--text-muted)}
+#app-root .todo-acts{display:flex;gap:6px;flex-wrap:wrap}

@@ -2311,6 +2311,9 @@ S.btnExport.addEventListener('click', async () => {
     S.lastExportBlob = blob;
     S.lastExportFilename = filename;
     S.lastExportNamaSales = namaSales;
+    // Export = konversi ini beneran kejadian -> pastikan sesinya punya Record (tahap database; Sheet tetap manual).
+    // Fire-and-forget: gak boleh nahan/ngegagalin export. Nama file di atas sudah dihitung sebelum ini, jadi gak berubah.
+    if (S.autoRecordCurrent) S.autoRecordCurrent('export').catch(() => {});
     if (btnDriveUpload) btnDriveUpload.disabled = false;
 
   } catch(e) {

@@ -512,6 +512,9 @@ async function sphGetNextRevisi(sesiId) {
 
 async function sphRecordToSupabase(record, ownerValue) {
   const sesiIdUntukSph = (typeof S.currentSesiId !== 'undefined') ? S.currentSesiId : null;
+  // Record SPH = konversi ini sudah sampai ke customer -> pastikan ada konversi_record (auto-record.js) SEBELUM
+  // dicari di bawah, biar SPH langsung ke-link ke Record-nya. Gagal = SPH tetap lanjut seperti biasa.
+  if (S.autoRecordCurrent) { try { await S.autoRecordCurrent('sph'); } catch { /* opsional */ } }
   const [konversiRecordId, revisiKe] = await Promise.all([
     sphGetLatestKonversiRecordId(sesiIdUntukSph),
     sphGetNextRevisi(sesiIdUntukSph)

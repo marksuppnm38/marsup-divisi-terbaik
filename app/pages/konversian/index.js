@@ -112,6 +112,7 @@ import { installSearch } from './search.js';
 import { installDictionary } from './dictionary.js';
 import { installSetMendekati } from './set-mendekati.js';
 import { installProject } from './project.js';
+import { installAutoRecord } from './auto-record.js';
 import { installPermintaanRs } from './permintaan-rs.js';
 import { installSph } from './sph.js';
 
@@ -928,6 +929,7 @@ export async function mount(container, initialSub) {
   // sph-module.js — sph-module.js baca fungsi/variabel dari konversian.js
   // lewat shared scope, lihat komentar di kepala sph-module.js sendiri). ──
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-10-13: AUTO-RECORD + "Perlu tindakan" (auto-record.js): Record tahap database dibuat otomatis saat Export / Record SPH / sesi mandek ditutup sweep (cuma kalau sesi belum punya Record; sumber='auto_*'), Sheet tetap 1 ketukan manual. Sweep sekarang juga jalan saat app dibuka (sweepOnOpen). "Selesaikan Sesi" SENGAJA tidak auto-record. Perlu migration-auto-record.sql — Claude
 // 2026-10-12: FITUR BARU tab "Project" (project.js) — ngelompokin beberapa konversi satu instansi + catat item yang di-klik di e-Kat di level project, asal klik ditebak dari bukti (tanpa primary key). Perubahan di file ini cuma: import+installProject(S), subtab 'project' di switchSubTab/SUBTAB_LABELS, ref S.subtabProject/S.panelBodyProject. Perlu migration-project-konversi.sql dulu (tabel konversi_project, konversi_project_klik, kolom sesi_konversi.project_id) — Claude
 // 2026-09-25: AUDIT — badge jumlah sesi aktif (S.sesiBadge) diganti dari poll setInterval 30 detik ke channel Realtime (realtime.js: initSesiCountLive/handleSesiCountChange, channel 'konv-sesi-count', TIDAK difilter per sesi karena butuh total lintas tim) + resync REST tiap 5 menit sebagai fallback. Aman dari bug DELETE postgres_changes yang sudah didokumentasikan di file ini karena sesi 'berjalan' cuma pernah di-UPDATE (bukan di-DELETE) sampai statusnya 'selesai'. Bridge unmount() ikut berubah: heartbeatTimer -> sesiCountCleanup — Claude
 // 2026-08-18: SECURITY — RLS produk/produk_harga/produk_set_item/akd/produk_akd/master_produk diketatin dari publik jadi allowed_users-only (harga_swasta sempat bisa dibaca siapa aja tanpa login). getProdukId/rpc()/getSetItems/enrichStok diganti dari ANON_KEY mentah ke sesiFetch(token sesi). Login gate sekarang juga checkWhitelist() ke allowed_users (dulu cuma cek kredensial valid, gak cek whitelist) — Claude
@@ -1048,6 +1050,24 @@ function showApp() {
   openSesiFromUrlIfAny();
   loadSalesOptions();
   restoreNavContext();
+  sweepOnOpen();
+}
+
+// Sweep sesi mandek TIDAK lagi cuma jalan pas tab Konversi Berjalan dibuka (yang lupa justru yang jarang buka
+// tab itu): sekarang jalan pas app dibuka oleh SIAPA PUN di tim — database-nya dipakai bareng, jadi sesi
+// si pelupa ikut ketutup. Maks 1x / 3 jam per browser; optimistic lock di sweepSesiMandek jaga dua klien
+// gak saling timpa. Tanpa cron/infra tambahan.
+async function sweepOnOpen() {
+  try {
+    const last = Number(localStorage.getItem('sweep_on_open_at') || 0);
+    if (Date.now() - last < 3 * 3600 * 1000) { if (S.loadTodoInbox) S.loadTodoInbox(true); return; }
+    const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.berjalan&select=id,updated_at,${S.SESI_ITEM_TABLE}(count)&order=updated_at.asc&limit=300`);
+    if (!res.ok) return;
+    localStorage.setItem('sweep_on_open_at', String(Date.now()));
+    const rows = await res.json();
+    if (await sweepSesiMandek(rows)) { loadSesiList._swept = false; loadSesiList(); }
+    if (S.loadTodoInbox) S.loadTodoInbox(true);
+  } catch { /* sweep opsional */ }
 }
 
 // Isi datalist "Nama Sales" dari tabel master `sales` (via RPC get_sales_aktif,
@@ -2891,7 +2911,11 @@ async function sweepSesiMandek(rows) {
         );
         if (!res.ok) continue;
         const out = await res.json().catch(() => []);
-        if (Array.isArray(out) && out.length) closed++;
+        if (Array.isArray(out) && out.length) {
+          closed++;
+          // Sesi yang ditutup sweep ikut dibuatkan Record (tahap database SAJA, bukan Sheet) — lihat auto-record.js.
+          try { if (S.autoRecordSesiById) await S.autoRecordSesiById(s.id, 'mandek'); } catch { /* opsional */ }
+        }
       } catch { /* satu sesi gagal jangan matiin yang lain */ }
     }
   } finally { sesiSweepRunning = false; }
@@ -2991,6 +3015,8 @@ function renderRiwayatCard(s, matches, tokens) {
     `<span class="rc-stat"><i class="ti ti-package"></i>${itemCount} produk</span>`,
     perluRecord ? `<span class="rc-stat" style="background:var(--warning-bg,#fff7e6);color:var(--warning,#b45309);border-radius:6px;padding:1px 6px" title="Ditutup otomatis karena mandek, belum pernah di-Record"><i class="ti ti-alert-triangle"></i>Belum di-Record</span>` : '',
     latest ? `<span class="rc-stat"><i class="ti ti-file-text"></i>${latest.revisi > 0 ? 'REV' + latest.revisi : 'Ada record'}</span>` : '',
+    (latest && String(latest.sumber || '').startsWith('auto')) ? `<span class="rc-stat" title="Record dibuat otomatis (Export / SPH / sesi mandek)"><i class="ti ti-wand"></i>Record otomatis</span>` : '',
+    (latest && latest.synced_to_sheet === false) ? `<span class="rc-stat" style="background:var(--warning-bg,#fff7e6);color:var(--warning,#b45309);border-radius:6px;padding:1px 6px"><i class="ti ti-cloud-off"></i>Belum ke Sheet</span>` : '',
     (latest && latest.grand_total != null) ? `<span class="rc-stat rc-total"><i class="ti ti-cash"></i>${S.rupiah(latest.grand_total)}</span>` : '',
     `<span class="rc-stat rc-klik${klikArr.length ? '' : ' empty'}" ${isEkat ? '' : 'hidden'}><i class="ti ti-click"></i><span>${klikArr.length ? klikArr.length + ' item di-klik' : 'Item yang di-klik belum dipilih'}</span></span>`,
     `<span class="rc-stat rc-time"><i class="ti ti-clock"></i>Selesai ${sesiTimeAgo(s.updated_at)}</span>`
@@ -2999,6 +3025,8 @@ function renderRiwayatCard(s, matches, tokens) {
   // stopPropagation di listener (lihat loadRiwayatList) biar klik aksi gak ikut buka sesi.
   const actions = [
     perluRecord ? `<button type="button" class="rc-act riwayat-record-btn" data-id="${s.id}"><i class="ti ti-file-export"></i><span>Buka &amp; Record</span></button>` : '',
+    (records.length === 0 && itemCount > 0 && (perluRecord || isEkat || s.hasil_order === 'jadi_sph')) ? `<button type="button" class="rc-act riwayat-qrec-btn" data-id="${s.id}" data-sheet="0" title="Simpan Record sekarang, tanpa isi modal"><i class="ti ti-file-check"></i><span>Record cepat</span></button><button type="button" class="rc-act riwayat-qrec-btn" data-id="${s.id}" data-sheet="1" title="Simpan Record lalu langsung kirim ke Sheet"><i class="ti ti-cloud-upload"></i><span>Record &amp; Sheet</span></button>` : '',
+    (latest && latest.synced_to_sheet === false) ? `<button type="button" class="rc-act riwayat-sheet-btn" data-rec="${latest.id}"><i class="ti ti-cloud-upload"></i><span>Kirim ke Sheet</span></button>` : '',
     `<button type="button" class="rc-act riwayat-peek-btn" data-id="${s.id}"><i class="ti ti-eye"></i><span>Lihat isi</span></button>`,
     records.length > 1 ? `<button type="button" class="rc-act konversi-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}"><i class="ti ti-versions"></i><span>${records.length} versi</span></button>` : '',
     sphCount > 0 ? `<button type="button" class="rc-act sph-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}"><i class="ti ti-file-invoice"></i><span>${sphCount} SPH</span></button>` : '',
@@ -3598,7 +3626,7 @@ async function loadRiwayatList(keepPage) {
     const statusFilter = sf === 'menunggu' ? '&hasil_order=is.null'
       : (sf && RIWAYAT_STATUS_LABEL[sf]) ? `&hasil_order=eq.${sf}` : '';
     const anyFilterActive = !!(term || salesVal || range || sf);
-    const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.selesai${searchFilter}${salesFilter}${dateFilter}${statusFilter}&select=*,${S.SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link),sph_records(count)&order=updated_at.desc&limit=${RIWAYAT_PAGE_SIZE}&offset=${S.riwayatPage * RIWAYAT_PAGE_SIZE}`);
+    const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.selesai${searchFilter}${salesFilter}${dateFilter}${statusFilter}&select=*,${S.SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link,synced_to_sheet,sumber),sph_records(count)&order=updated_at.desc&limit=${RIWAYAT_PAGE_SIZE}&offset=${S.riwayatPage * RIWAYAT_PAGE_SIZE}`);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
@@ -3713,6 +3741,32 @@ async function loadRiwayatList(keepPage) {
           await openSesi(id);
           if (S.currentSesiId === id) openRecordModal(); // gagal buka sesi -> openSesi sudah kasih pesan error
         } finally { btn.disabled = false; }
+      });
+    });
+    // Record cepat / kirim ke Sheet tanpa modal (auto-record.js) — 2026-10-13.
+    S.riwayatList.querySelectorAll('.riwayat-qrec-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        btn.disabled = true;
+        const withSheet = btn.dataset.sheet === '1';
+        try {
+          const { sheetError } = await S.quickRecord(btn.dataset.id, { sheet: withSheet });
+          S.showToast(sheetError ? 'Record tersimpan ✓, tapi Sheet gagal: ' + sheetError : (withSheet ? 'Record tersimpan & terkirim ke Sheet ✓' : 'Record tersimpan ✓'), sheetError ? 'error' : undefined);
+          loadRiwayatList(true);
+          if (S.loadTodoInbox) S.loadTodoInbox(true);
+        } catch (err) { S.showToast('Gagal Record: ' + err.message, 'error'); btn.disabled = false; }
+      });
+    });
+    S.riwayatList.querySelectorAll('.riwayat-sheet-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        btn.disabled = true;
+        try {
+          await S.sendRecordToSheetById(btn.dataset.rec);
+          S.showToast('Terkirim ke Sheet ✓');
+          loadRiwayatList(true);
+          if (S.loadTodoInbox) S.loadTodoInbox(true);
+        } catch (err) { S.showToast('Gagal kirim ke Sheet: ' + err.message, 'error'); btn.disabled = false; }
       });
     });
     S.riwayatList.querySelectorAll('.sph-riwayat-btn').forEach(btn => {
@@ -3874,6 +3928,7 @@ async function loadSesiList() {
     }
     S.sesiBadge.textContent = data.length;
     S.sesiBadge.style.display = data.length > 0 ? 'inline-block' : 'none';
+    if (typeof S.loadTodoInbox === 'function') S.loadTodoInbox();
     if (data.length === 0) { S.sesiListEmpty.style.display = 'block'; return; }
     await attachPermintaanSummary(data);
     S.sesiList.innerHTML = data.map(renderSesiCard).join('');
@@ -3899,6 +3954,10 @@ async function loadSesiList() {
   }
 }
 S.loadSesiList = loadSesiList;
+// Dipakai auto-record.js (kotak "Perlu tindakan" + Record cepat) — 2026-10-13.
+S.openSesi = openSesi;
+S.deleteSesi = deleteSesi;
+S.loadRiwayatList = loadRiwayatList;
 
 // Hapus sesi konversi secara permanen (beserta semua item di dalamnya).
 // Kalau sesi yang dihapus adalah sesi yang sedang dibuka, layar clipboard
@@ -4616,6 +4675,7 @@ S.convManualSearch = convManualSearch;
   installDictionary(S);
   installSetMendekati(S);
   installProject(S);
+  installAutoRecord(S);
   installSph(S);
 
   // Restore the sub-tab the URL asked for (e.g. a refresh/direct-link on

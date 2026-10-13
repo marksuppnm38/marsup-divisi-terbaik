@@ -113,7 +113,7 @@ export const KONVERSIAN_MARKUP = `
     <div class="panel-header">
       <div class="subtab-row">
         <button class="subtab-btn active" id="subtab-cari" type="button"><i class="ti ti-search"></i> Cari Produk</button>
-        <button class="subtab-btn" id="subtab-sesi" type="button"><i class="ti ti-list-details"></i> Konversi Berjalan <span class="subtab-badge" id="sesi-badge" style="display:none">0</span></button>
+        <button class="subtab-btn" id="subtab-sesi" type="button"><i class="ti ti-list-details"></i> Konversi Berjalan <span class="subtab-badge" id="sesi-badge" style="display:none">0</span><span class="subtab-badge todo" id="todo-badge" style="display:none" title="Perlu tindakan">0</span></button>
         <button class="subtab-btn" id="subtab-riwayat" type="button"><i class="ti ti-history"></i> Riwayat</button>
         <button class="subtab-btn" id="subtab-project" type="button"><i class="ti ti-folders"></i> Project</button>
         <button class="subtab-btn" id="subtab-converter" type="button"><i class="ti ti-clipboard-copy"></i> Converter</button>
@@ -166,6 +166,8 @@ export const KONVERSIAN_MARKUP = `
         <i class="ti ti-list-details"></i>
         <p>Belum ada konversi yang berjalan.<br>Mulai dari tab Cari Produk, sesi otomatis muncul di sini.</p>
       </div>
+      <!-- Kotak "Perlu tindakan" (auto-record.js): sembunyi sendiri kalau gak ada yang perlu dikerjain. -->
+      <div id="todo-inbox" style="display:none"></div>
       <div id="sesi-list"></div>
     </div>
     <div class="panel-body" id="panel-body-riwayat" style="display:none">
