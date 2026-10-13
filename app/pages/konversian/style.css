@@ -1084,3 +1084,10 @@
 #app-root .prj-sesi-val b{color:var(--text)}
 #app-root .prj-harga{width:104px;height:26px;padding:0 6px;font-size:12px;font-family:inherit;text-align:right;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);border-radius:6px}
 #app-root .prj-harga:disabled{opacity:.4}
+
+/* PROJECT: panel konfirmasi ke Riwayat (2026-10-12) */
+#app-root .prj-cf{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)}
+#app-root .prj-cf-group{padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px}
+#app-root .prj-cf-group.muted{border-style:dashed}
+#app-root .prj-cf-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+#app-root .prj-cf-item{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;font-size:11.5px;color:var(--text-secondary)}

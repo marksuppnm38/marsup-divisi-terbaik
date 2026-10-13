@@ -32,7 +32,16 @@
 // Rp Y" per konversi. total_bayar (Total Harga di INAPROC, sudah termasuk ongkir+PPN)
 // ditampilkan terpisah dari nilai produk.
 //
-// Skema: migration-project-konversi.sql + migration-project-transaksi.sql.
+// KONFIRMASI KE RIWAYAT (migration-project-konfirmasi.sql): Riwayat (sesi_konversi.hasil_order /
+// klik_ekat_items / klik_ekat_qty) adalah "kebenaran terakhir" status klik per konversi. Tombol
+// "Konfirmasi ke Riwayat" di tiap transaksi nulis ke sana: status NAIK ke Klik e-Kat (gak pernah
+// turun), item DITAMBAH (cuma yang di-klik), qty = jumlah semua entry terkonfirmasi (nilai Project
+// menang kalau bentrok). Status SEBELUM konfirmasi dicatat (riwayat_prev_status) dan dikembalikan
+// apa adanya saat dibatalkan — gak ada tebakan "balik ke SPH"; kalau gak tercatat, status dibiarin. Item yang ditulis ditandai riwayat_sesi_id + di-pin, jadi gak muncul dobel
+// sebagai transaksi "Riwayat Kx" dan bisa dibatalkan persis. Konfirmasi SELALU eksplisit — tebakan
+// gak pernah otomatis jadi fakta (kalau iya, Project bakal baca tebakannya sendiri sbg bukti pasti).
+//
+// Skema: migration-project-konversi.sql + migration-project-transaksi.sql + migration-project-konfirmasi.sql.
 // State lintas-file lewat objek S (pola sama kayak set-mendekati.js). Semua REST
 // lewat S.sesiFetch.
 
@@ -94,6 +103,10 @@ export function analyzeProject(d) {
     k.sesi.push(s);
   }));
 
+  // Item yang UDAH ditulis ke Riwayat dari konfirmasi project (riwayat_sesi_id) gak ditampilin lagi
+  // sebagai transaksi "Riwayat Kx" — kalau iya, item & nilainya kehitung dobel.
+  const syncedKey = new Set((d.klik || []).filter(r => r.riwayat_sesi_id != null).map(r => `${r.riwayat_sesi_id}|${r.kode_produk}`));
+
   // Transaksi: yang dibuat di project ini + 1 transaksi "virtual" per konversi yang punya klik di Riwayat.
   const trxList = [];
   (d.trx || []).forEach((t, i) => trxList.push({
@@ -101,8 +114,9 @@ export function analyzeProject(d) {
     total: t.total_bayar != null && t.total_bayar !== '' ? Number(t.total_bayar) : null, entries: []
   }));
   mem.forEach(s => {
-    if (s.hasil_order === 'klik_ekat' && Array.isArray(s.klik_ekat_items) && s.klik_ekat_items.length)
-      trxList.push({ id: 'sesi:' + s.id, row: null, virtual: true, n: null, sesi: s, tanggal: null, total: null, entries: [] });
+    if (s.hasil_order !== 'klik_ekat' || !Array.isArray(s.klik_ekat_items)) return;
+    const kk = s.klik_ekat_items.filter(k => !syncedKey.has(`${s.id}|${k}`));
+    if (kk.length) trxList.push({ id: 'sesi:' + s.id, row: null, virtual: true, n: null, sesi: s, tanggal: null, total: null, entries: [], virtualItems: kk });
   });
   const trxById = new Map(trxList.map(t => [t.id, t]));
 
@@ -114,7 +128,7 @@ export function analyzeProject(d) {
       nama: o.nama || (kodes.get(kode) || {}).nama || '',
       qty: o.qty != null && o.qty !== '' ? Number(o.qty) : null,
       harga: o.harga != null && o.harga !== '' ? Number(o.harga) : null,
-      row: o.row || null, fromSesi: o.fromSesi || null, pinned: o.pinned || null,
+      row: o.row || null, fromSesi: o.fromSesi || null, pinned: o.pinned || null, synced: o.synced || null,
       cands: [], status: '', value: 0, est: false, unknown: false
     };
     entries.push(e); t.entries.push(e);
@@ -124,12 +138,13 @@ export function analyzeProject(d) {
     const t = trxById.get(String(r.transaksi_id));
     if (!t) return;
     const p = r.pinned_sesi_id != null ? String(r.pinned_sesi_id) : null;
-    mk(t, r.kode_produk, { nama: r.nama_produk, qty: r.qty, harga: r.harga, row: r, pinned: p && memById.has(p) ? p : null }); // pin ke konversi yang bukan anggota = diabaikan
+    const sy = r.riwayat_sesi_id != null ? String(r.riwayat_sesi_id) : null;
+    mk(t, r.kode_produk, { nama: r.nama_produk, qty: r.qty, harga: r.harga, row: r, pinned: p && memById.has(p) ? p : null, synced: sy && memById.has(sy) ? sy : null }); // pin ke konversi yang bukan anggota = diabaikan
   });
   trxList.filter(t => t.virtual).forEach(t => {
     const s = t.sesi;
     const qm = (s.klik_ekat_qty && typeof s.klik_ekat_qty === 'object' && !Array.isArray(s.klik_ekat_qty)) ? s.klik_ekat_qty : {};
-    s.klik_ekat_items.forEach(kode => {
+    t.virtualItems.forEach(kode => {
       const it = itemOf(s, kode);
       mk(t, kode, { qty: qm[kode] != null ? qm[kode] : (it ? it.qty : null), fromSesi: s });
     });
@@ -254,7 +269,7 @@ export function installProject(S) {
   const JENIS = { negosiasi: 'Negosiasi', pesanan: 'Pesanan' };
   const st = {
     view: 'list', cur: null, d: null, a: null, token: 0, onlyKlik: false, suggestions: [],
-    activeTrx: null, editTrx: null,
+    activeTrx: null, editTrx: null, confirmTrx: null, confirmChoice: new Map(),
     pickRows: [], pickMore: false, pickSeq: 0, prjNames: null, pickScope: 'semua', pickMatches: new Map(), pickIds: [], pickCapped: false, pickToks: []
   };
   let pickTimer = null;
@@ -403,7 +418,7 @@ export function installProject(S) {
   }
 
   async function openProject(id) {
-    st.view = 'detail'; st.cur = id; st.onlyKlik = false; st.activeTrx = null; st.editTrx = null;
+    st.view = 'detail'; st.cur = id; st.onlyKlik = false; st.activeTrx = null; st.editTrx = null; st.confirmTrx = null; st.confirmChoice = new Map();
     const my = ++st.token;
     root.innerHTML = `<div class="prj-loading"><i class="ti ti-loader-2"></i> Membuka project…</div>`;
     try {
@@ -586,10 +601,14 @@ export function installProject(S) {
           </div></div>`;
       }
       const meta = [t.row.jenis ? JENIS[t.row.jenis] : '', t.tanggal ? fmtDate(t.tanggal) : ''].filter(Boolean).join(' · ');
+      const nSynced = t.entries.filter(e => e.synced).length;
+      const nPending = t.entries.filter(e => !e.synced && e.status !== 'orphan').length;
       return `<div class="prj-trx${isActive ? ' active' : ''}">
         <div class="prj-trx-head">${trxChip(t)}<span class="prj-trx-title">${esc(trxTitle(t))}</span>${meta ? `<span class="prj-hint">${esc(meta)}</span>` : ''}
           <span style="flex:1"></span>
           ${isActive ? `<span class="prj-st prj-st-sure"><i class="ti ti-check"></i> aktif</span>` : `<button class="toggle-btn" type="button" data-act="trx-active" data-id="${esc(t.id)}">Aktifkan</button>`}
+          ${nPending ? `<button class="toggle-btn" type="button" data-act="trx-confirm" data-id="${esc(t.id)}" title="Tulis item transaksi ini ke status klik di Riwayat konversinya"><i class="ti ti-circle-check"></i> Konfirmasi ke Riwayat</button>` : ''}
+          ${nSynced ? `<button class="rc-act" type="button" data-act="trx-unconfirm" data-id="${esc(t.id)}" title="Cabut item transaksi ini dari Riwayat"><i class="ti ti-arrow-back-up"></i><span>Batalkan konfirmasi</span></button>` : ''}
           <button class="rc-act" type="button" data-act="trx-edit" data-id="${esc(t.id)}" title="Ubah"><i class="ti ti-pencil"></i></button>
           <button class="rc-act prj-danger" type="button" data-act="trx-del" data-id="${esc(t.id)}" title="Hapus transaksi"><i class="ti ti-trash"></i></button>
         </div>
@@ -599,7 +618,9 @@ export function installProject(S) {
           ${t.total != null ? `<span title="Total Harga di INAPROC (termasuk ongkir + PPN)">Total <b>${esc(rp(t.total))}</b></span>` : `<span class="prj-hint">total belum diisi</span>`}
           ${origin ? `<span>Asal: ${origin}${t.origin.size > 1 ? ' <span class="prj-st prj-st-amb">campuran</span>' : ''}</span>` : ''}
           ${t.unknown ? `<span class="prj-hint">${t.unknown} item belum ada harga</span>` : ''}
-        </div></div>`;
+          ${nSynced ? `<span class="prj-st prj-st-sure"><i class="ti ti-circle-check"></i> ${nSynced} item tercatat di Riwayat</span>` : ''}
+        </div>
+        ${st.confirmTrx === t.id ? confirmPanelHtml(t) : ''}</div>`;
     }).join('');
   }
 
@@ -621,16 +642,192 @@ export function installProject(S) {
     return row;
   }
 
+  // ── Konfirmasi ke Riwayat ─────────────────────────────────────────────
+  const sesiById = (sid) => st.d.sesi.find(x => String(x.id) === String(sid));
+  const qtyOf = (e) => (e.qty != null ? e.qty : 1);
+  const klikQtyMap = (row) => (row && row.klik_ekat_qty && typeof row.klik_ekat_qty === 'object' && !Array.isArray(row.klik_ekat_qty)) ? { ...row.klik_ekat_qty } : {};
+  const klikItemsOf = (row) => (row && Array.isArray(row.klik_ekat_items)) ? row.klik_ekat_items.slice() : [];
+  const inKodes = (kodes) => encodeURIComponent('(' + kodes.map(k => '"' + String(k).replace(/"/g, '\\"') + '"').join(',') + ')');
+
+  // Rencana tulis: tiap item -> konversi tujuan (pilihan user di panel, kalau gak ada = tebakan teratas).
+  function confirmPlan(t) {
+    const groups = new Map(), skipped = [], orphans = [];
+    t.entries.forEach(e => {
+      if (e.status === 'orphan') { orphans.push(e); return; }
+      const ch = st.confirmChoice.get(e.kode);
+      const sid = ch !== undefined ? ch : (e.cands[0] ? String(e.cands[0].s.id) : '');
+      const s = sid ? sesiById(sid) : null;
+      if (!s) { skipped.push(e); return; }
+      const g = groups.get(String(s.id)) || { s, items: [] };
+      g.items.push(e); groups.set(String(s.id), g);
+    });
+    return { groups: [...groups.values()], skipped, orphans };
+  }
+
+  function confirmPanelHtml(t) {
+    const plan = confirmPlan(t);
+    const choiceSel = (e) => {
+      if (e.status !== 'ambiguous') return '';
+      const cur = st.confirmChoice.has(e.kode) ? st.confirmChoice.get(e.kode) : String(e.cands[0].s.id);
+      return `<select class="prj-pin prj-cf-choice" data-kode="${esc(e.kode)}" title="Konversi tujuan item ini">
+        ${e.cands.map(c => `<option value="${esc(c.s.id)}" ${cur === String(c.s.id) ? 'selected' : ''}>K${sesiIdx(c.s) + 1} · ${Math.round(c.p * 100)}%</option>`).join('')}
+        <option value="" ${cur === '' ? 'selected' : ''}>Jangan dimasukkan</option></select>`;
+    };
+    const line = (e) => `<div class="prj-cf-item"><span class="prj-match-kode">${esc(e.kode)}</span><span class="prj-match-nama">${esc(e.nama || '')}</span><span class="prj-hint">×${esc(qtyOf(e))}</span>${e.synced ? '<span class="prj-hint">(sudah tercatat)</span>' : ''}${choiceSel(e)}</div>`;
+    const groups = plan.groups.map(g => {
+      const total = st.d.items.get(String(g.s.id)) ? st.d.items.get(String(g.s.id)).size : 0;
+      const cur = g.s.hasil_order || '';
+      const stat = cur === 'klik_ekat' ? 'sudah Klik e-Kat (tetap)' : `${esc(HASIL[cur] || cur || 'Menunggu feedback')} → <b>Klik e-Kat</b>`;
+      return `<div class="prj-cf-group"><div class="prj-cf-head">${chip(g.s)}<span class="prj-sesi-name">${esc(g.s.nama_rs || '')}</span>
+        <span class="prj-hint">${g.items.length}${total ? ' dari ' + total : ''} item di-klik · status: ${stat}</span></div>${g.items.map(line).join('')}</div>`;
+    }).join('');
+    const skipped = plan.skipped.length ? `<div class="prj-cf-group muted"><div class="prj-hint">Tidak dimasukkan ke Riwayat (${plan.skipped.length}):</div>${plan.skipped.map(line).join('')}</div>` : '';
+    const orphans = plan.orphans.length ? `<div class="prj-cf-group muted"><div class="prj-hint">Di luar konversi, gak ada Riwayat yang bisa diupdate (${plan.orphans.length}): ${plan.orphans.map(e => esc(e.kode)).join(', ')}</div></div>` : '';
+    return `<div class="prj-cf">
+      <div class="prj-note"><b>Tulis ke Riwayat?</b> Status konversi naik ke Klik e-Kat (gak pernah turun), cuma item di bawah ini yang ditandai di-klik, dan qty dihitung dari semua transaksi terkonfirmasi. Item ambigu: pilih konversinya dulu.</div>
+      ${groups || '<div class="prj-empty">Belum ada item yang bisa dikonfirmasi.</div>'}${skipped}${orphans}
+      <div class="prj-trx-actions">
+        <button class="pr-add-clip-btn" type="button" data-act="trx-confirm-do" data-id="${esc(t.id)}" ${plan.groups.length ? '' : 'disabled'}><i class="ti ti-circle-check"></i> Konfirmasi &amp; tulis ke Riwayat</button>
+        <button class="toggle-btn" type="button" data-act="trx-confirm-cancel">Batal</button>
+      </div></div>`;
+  }
+
+  // Ambil baris sesi TERBARU (Riwayat bisa saja diubah orang lain sejak project dibuka) sebelum nulis.
+  async function freshSesi(ids) {
+    const list = [...new Set(ids.map(String))].filter(idOk);
+    if (!list.length) return new Map();
+    const rows = await api(`${S.SESI_TABLE}?id=in.(${list.join(',')})&select=id,hasil_order,klik_ekat_items,klik_ekat_qty`);
+    return new Map((rows || []).map(r => [String(r.id), r]));
+  }
+  async function writeSesi(sid, patch) {
+    await api(`${S.SESI_TABLE}?id=eq.${encodeURIComponent(sid)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+    // Riwayat nyimpen datanya di cache lokal + s di project; samain biar gak basi sebelum reload.
+    const s = sesiById(sid); if (s) Object.assign(s, patch);
+    const rc = (S.riwayatDataCache || []).find(x => String(x.id) === String(sid)); if (rc) Object.assign(rc, patch);
+  }
+
+  // Status Riwayat sebelum konfirmasi dicatat di konversi_project_klik.riwayat_prev_status
+  // ('__none__' = dulu belum ada status / "Menunggu feedback"; kosong = gak tercatat, mis. sudah
+  // Klik e-Kat duluan dari Riwayat). Semua baris terkonfirmasi satu konversi nyimpen nilai yang sama.
+  const PREV_NONE = '__none__';
+  const statusLabel = (v) => (v === PREV_NONE ? HASIL[''] : (HASIL[v] || v));
+  const prevOf = (entries) => { const r = entries.find(e => e.row && e.row.riwayat_prev_status); return r ? r.row.riwayat_prev_status : null; };
+
+  // Dipakai dialog "Batalkan konfirmasi": apa yang BAKAL terjadi di tiap konversi, sebelum nulis apa pun.
+  function revertPreview(entries) {
+    const leaving = new Set(entries.map(e => e.key));
+    const bySesi = new Map();
+    entries.filter(e => e.synced).forEach(e => { const a = bySesi.get(e.synced) || []; a.push(e); bySesi.set(e.synced, a); });
+    return [...bySesi.entries()].map(([sid, es]) => {
+      const s = sesiById(sid) || {};
+      const items = new Set(klikItemsOf(s));
+      new Set(es.map(e => e.kode)).forEach(kode => {
+        if (!st.a.entries.some(o => o.synced === sid && o.kode === kode && !leaving.has(o.key))) items.delete(kode);
+      });
+      return { sid, nama: s.nama_rs || 'konversi', n: es.length, empty: !items.size && s.hasil_order === 'klik_ekat', prev: prevOf(es) };
+    });
+  }
+
+  // Cabut item (yang dulu ditulis dari project) dari Riwayat. qty dihitung ulang dari entry lain yang
+  // masih tercatat. Kalau konversi jadi tanpa item klik: status dikembalikan ke status SEBELUM konfirmasi
+  // (kalau tercatat); kalau gak tercatat, status DIBIARIN apa adanya (gak nebak). Return: daftar catatan.
+  async function revertFromRiwayat(entries) {
+    const notes = [];
+    const leaving = new Set(entries.map(e => e.key));
+    const bySesi = new Map();
+    entries.filter(e => e.synced).forEach(e => { const a = bySesi.get(e.synced) || []; a.push(e); bySesi.set(e.synced, a); });
+    const fresh = await freshSesi([...bySesi.keys()]);
+    for (const [sid, es] of bySesi) {
+      const cur = fresh.get(sid) || sesiById(sid) || {};
+      const items = new Set(klikItemsOf(cur)), qm = klikQtyMap(cur);
+      new Set(es.map(e => e.kode)).forEach(kode => {
+        let remain = 0;
+        st.a.entries.forEach(o => { if (o.synced === sid && o.kode === kode && !leaving.has(o.key)) remain += qtyOf(o); });
+        if (remain > 0) qm[kode] = remain; else { items.delete(kode); delete qm[kode]; }
+      });
+      const patch = { klik_ekat_items: [...items], klik_ekat_qty: qm };
+      if (!items.size && cur.hasil_order === 'klik_ekat') {
+        const prev = prevOf(es);
+        const nm = (sesiById(sid) || {}).nama_rs || 'konversi';
+        if (prev) patch.hasil_order = prev === PREV_NONE ? null : prev;
+        else notes.push(`Status "${nm}" tetap Klik e-Kat (status sebelumnya tidak tercatat) — ubah manual di Riwayat kalau perlu.`);
+      }
+      await writeSesi(sid, patch);
+    }
+    return notes;
+  }
+
+  async function doConfirm(trxId, btn) {
+    const t = st.a.trxList.find(x => x.id === trxId); if (!t) return;
+    const plan = confirmPlan(t);
+    if (!plan.groups.length) { S.showToast('Belum ada item yang bisa dikonfirmasi.', 'error'); return; }
+    btn.disabled = true;
+    try {
+      // Item yang sebelumnya dikonfirmasi ke konversi LAIN (dipindah di panel) dicabut dari konversi lama dulu.
+      const target = new Map();
+      plan.groups.forEach(g => g.items.forEach(e => target.set(e.key, String(g.s.id))));
+      const moved = t.entries.filter(e => e.synced && target.has(e.key) && target.get(e.key) !== e.synced);
+      const notes = moved.length ? await revertFromRiwayat(moved) : [];
+      const fresh = await freshSesi(plan.groups.map(g => g.s.id));
+      for (const g of plan.groups) {
+        const sid = String(g.s.id);
+        const cur = fresh.get(sid) || g.s;
+        const items = new Set(klikItemsOf(cur)), qm = klikQtyMap(cur);
+        // qty = jumlah semua entry project yang terkonfirmasi ke konversi ini (transaksi lain) + entry di transaksi ini.
+        const sum = new Map();
+        const add = (e) => sum.set(e.kode, (sum.get(e.kode) || 0) + qtyOf(e));
+        st.a.entries.forEach(e => { if (e.synced === sid && e.trx.id !== trxId && !moved.includes(e)) add(e); });
+        g.items.forEach(add);
+        sum.forEach((q, kode) => { items.add(kode); qm[kode] = q; });
+        // Status sebelum konfirmasi: ikut yang sudah tercatat (konfirmasi sebelumnya), kalau belum ada ambil status
+        // sekarang. Sudah Klik e-Kat duluan (mis. dari Riwayat) = gak ada yang perlu dikembalikan -> null.
+        const inh = st.a.entries.find(e => e.synced === sid && !moved.includes(e) && e.row && e.row.riwayat_prev_status);
+        const curStatus = cur.hasil_order || '';
+        const prev = inh ? inh.row.riwayat_prev_status : (curStatus === 'klik_ekat' ? null : (curStatus || PREV_NONE));
+        await writeSesi(sid, { hasil_order: 'klik_ekat', klik_ekat_items: [...items], klik_ekat_qty: qm });
+        // Penanda + pin dipasang SETELAH Riwayat berhasil ditulis; kalau ini gagal, konfirmasi ulang aman (idempotent).
+        await api(`${KLIK}?transaksi_id=eq.${encodeURIComponent(trxId)}&kode_produk=in.${inKodes(g.items.map(e => e.kode))}`, { method: 'PATCH', body: JSON.stringify({ pinned_sesi_id: g.s.id, riwayat_sesi_id: g.s.id, riwayat_prev_status: prev }) });
+        g.items.forEach(e => { const r = klikRow(trxId, e.kode); if (r) { r.pinned_sesi_id = g.s.id; r.riwayat_sesi_id = g.s.id; r.riwayat_prev_status = prev; } });
+      }
+      st.confirmTrx = null; st.confirmChoice = new Map();
+      renderDynamic();
+      S.showToast(`Riwayat diupdate: ${plan.groups.map(g => `K${sesiIdx(g.s) + 1} (${g.items.length} item)`).join(', ')} ✓`);
+      notes.forEach(m => S.showToast(m));
+    } catch (err) {
+      btn.disabled = false;
+      fail('Gagal menulis ke Riwayat', err);
+      reloadDetail();
+    }
+  }
+
+  async function doUnconfirm(trxId) {
+    const t = st.a.trxList.find(x => x.id === trxId); if (!t) return;
+    const es = t.entries.filter(e => e.synced); if (!es.length) return;
+    const lines = revertPreview(es).map(p => `• ${p.n} item dicabut dari "${p.nama}"` + (p.empty
+      ? (p.prev ? ` — status kembali ke "${statusLabel(p.prev)}"` : ' — status tetap Klik e-Kat (status sebelumnya tidak tercatat)')
+      : ' — status tetap Klik e-Kat (masih ada item klik lain)')).join('\n');
+    if (!confirm(`Batalkan konfirmasi ke Riwayat?\n${lines}`)) return;
+    try {
+      const notes = await revertFromRiwayat(es);
+      await api(`${KLIK}?transaksi_id=eq.${encodeURIComponent(trxId)}&riwayat_sesi_id=not.is.null`, { method: 'PATCH', body: JSON.stringify({ riwayat_sesi_id: null }) });
+      es.forEach(e => { const r = klikRow(trxId, e.kode); if (r) r.riwayat_sesi_id = null; });
+      renderDynamic();
+      S.showToast('Konfirmasi dibatalkan, Riwayat diupdate.');
+      notes.forEach(m => S.showToast(m));
+    } catch (err) { fail('Gagal membatalkan konfirmasi', err); reloadDetail(); }
+  }
+
   // ── Item / tabel ──────────────────────────────────────────────────────
   function attrHtml(e) {
     if (e.status === 'confirmed') return `${chip(e.cands[0].s)} <span class="prj-st prj-st-sure" title="Dicatat di Riwayat konversi itu sendiri"><i class="ti ti-lock"></i> dari Riwayat</span>`;
+    if (e.synced) return `${chip(e.cands[0].s)} <span class="prj-st prj-st-sure" title="Sudah ditulis ke Riwayat konversi itu. Batalkan konfirmasi dulu kalau mau ganti."><i class="ti ti-circle-check"></i> di Riwayat</span>`;
     if (e.status === 'pinned') return `${chip(e.cands[0].s)} <span class="prj-st prj-st-sure"><i class="ti ti-pin"></i> manual</span>`;
     if (e.status === 'sure') return `${chip(e.cands[0].s)} <span class="prj-st prj-st-sure">pasti</span>`;
     if (e.status === 'orphan') return `<span class="prj-st prj-st-orph">di luar konversi</span>`;
     return e.cands.map(c => `<span class="prj-cand">${chip(c.s)}<b>${Math.round(c.p * 100)}%</b></span>`).join('') + ` <span class="prj-st prj-st-amb">tebakan</span>`;
   }
   function pinHtml(e) {
-    if (!e.row || e.fromSesi || e.status === 'orphan') return '';
+    if (!e.row || e.fromSesi || e.synced || e.status === 'orphan') return '';
     const cands = (st.a.kodes.get(e.kode) || { sesi: [] }).sesi;
     const ds = `data-trx="${esc(e.trx.id)}" data-kode="${esc(e.kode)}"`;
     if (cands.length < 2) return e.status === 'pinned' ? `<button class="rc-act" type="button" data-act="unpin" ${ds} title="Lepas pin"><i class="ti ti-pin-off"></i></button>` : '';
@@ -690,6 +887,8 @@ export function installProject(S) {
         st.d.klik = st.d.klik.filter(r => !(String(r.transaksi_id) === String(trx.id) && r.kode_produk === kode)).concat(saved || body);
       } else {
         if (!st.activeTrx) return renderTable();
+        const ent = (st.a.byKode.get(kode) || []).find(e => e.trx.id === st.activeTrx);
+        if (ent && ent.synced && confirm(`Item ini sudah tercatat di Riwayat ${(sesiById(ent.synced) || {}).nama_rs || 'konversi'}.\nCabut juga dari Riwayat? (OK = cabut, Batal = biarkan di Riwayat)`)) (await revertFromRiwayat([ent])).forEach(m => S.showToast(m));
         await api(`${KLIK}?${kEq(st.activeTrx, kode)}`, { method: 'DELETE' });
         st.d.klik = st.d.klik.filter(r => !(String(r.transaksi_id) === st.activeTrx && r.kode_produk === kode));
       }
@@ -906,6 +1105,10 @@ export function installProject(S) {
         finally { el.disabled = false; }
         return;
       }
+      if (act === 'trx-confirm') { st.confirmTrx = el.dataset.id; st.confirmChoice = new Map(); st.editTrx = null; return renderTrxList(); }
+      if (act === 'trx-confirm-cancel') { st.confirmTrx = null; st.confirmChoice = new Map(); return renderTrxList(); }
+      if (act === 'trx-confirm-do') return doConfirm(el.dataset.id, el);
+      if (act === 'trx-unconfirm') return doUnconfirm(el.dataset.id);
       if (act === 'trx-active') { st.activeTrx = el.dataset.id; return renderDynamic(); }
       if (act === 'trx-edit') { st.editTrx = el.dataset.id; return renderTrxList(); }
       if (act === 'trx-edit-cancel') { st.editTrx = null; return renderTrxList(); }
@@ -922,6 +1125,8 @@ export function installProject(S) {
       if (act === 'trx-del') {
         const t = st.a.trxList.find(x => x.id === el.dataset.id); if (!t) return;
         if (!confirm(`Hapus "${trxTitle(t)}" beserta ${t.entries.length} item di dalamnya?`)) return;
+        const synced = t.entries.filter(e => e.synced);
+        if (synced.length && confirm(`${synced.length} item transaksi ini sudah tercatat di Riwayat.\nCabut juga dari Riwayat? (OK = cabut, Batal = biarkan di Riwayat)`)) (await revertFromRiwayat(synced)).forEach(m => S.showToast(m));
         await api(`${TRX}?id=eq.${encodeURIComponent(t.id)}`, { method: 'DELETE' });
         st.d.trx = st.d.trx.filter(x => String(x.id) !== t.id);
         st.d.klik = st.d.klik.filter(r => String(r.transaksi_id) !== t.id);
@@ -944,6 +1149,7 @@ export function installProject(S) {
     if (t.id === 'prj-f-nama') return saveMeta('nama', t.value);
     if (t.id === 'prj-f-instansi') return saveMeta('instansi', t.value);
     if (t.id === 'prj-f-catatan') return saveMeta('catatan', t.value);
+    if (t.classList.contains('prj-cf-choice')) { st.confirmChoice.set(t.dataset.kode, t.value); return renderTrxList(); }
     if (t.classList.contains('prj-pin')) return patchKlik(t.dataset.trx, t.dataset.kode, { pinned_sesi_id: t.value || null });
     const tr = t.closest && t.closest('tr[data-kode]');
     if (!tr) return;
