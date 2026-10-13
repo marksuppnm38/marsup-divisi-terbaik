@@ -84,6 +84,22 @@ export function installAutoRecord(S) {
   }
   const enc = encodeURIComponent;
 
+  // Umpan balik instan di tombol: Apps Script/Sheet bisa butuh beberapa detik, dan tanpa tanda apa pun orang
+  // mengira klik-nya gak masuk (lalu klik lagi). Return fungsi restore(). Dipakai juga oleh handler di index.js.
+  function btnBusy(btn, label) {
+    if (!btn) return () => {};
+    const icon = btn.querySelector('i'), span = btn.querySelector('span');
+    const prev = { icon: icon ? icon.className : null, text: span ? span.textContent : null };
+    btn.disabled = true;
+    if (icon) icon.className = 'ti ti-loader-2 prj-spin';
+    if (span) span.textContent = label;
+    return () => {
+      btn.disabled = false;
+      if (icon && prev.icon != null) icon.className = prev.icon;
+      if (span && prev.text != null) span.textContent = prev.text;
+    };
+  }
+
   async function latestRecord(sesiId) {
     const rows = await api(`konversi_record?sesi_id=eq.${enc(sesiId)}&select=*&order=revisi.desc&limit=1`);
     return rows && rows[0] ? rows[0] : null;
@@ -176,12 +192,23 @@ export function installAutoRecord(S) {
       kategori: rec.kategori, value: rec.grand_total, notes: rec.notes || '', link: rec.link || '',
       record_id: rec.id
     };
-    const res = await fetch(S.SHEETS_PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ target: 'konversi', data: payload })
-    });
-    const raw = await res.text();
+    // Batas waktu: Sheet yang gak merespons jangan bikin tombol menggantung selamanya. Kalau habis, pesannya jujur —
+    // barisnya BISA SAJA sudah masuk (idempotency key record_id menjaga dobel, tapi tetap cek dulu).
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 45000);
+    let res, raw;
+    try {
+      res = await fetch(S.SHEETS_PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ target: 'konversi', data: payload }),
+        signal: ctl.signal
+      });
+      raw = await res.text();
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw new Error('Sheet belum merespons dalam 45 detik — barisnya mungkin SUDAH masuk, cek Sheet dulu sebelum coba lagi supaya gak dobel.');
+      throw err;
+    } finally { clearTimeout(timer); }
     let result;
     try { result = JSON.parse(raw); }
     catch {
@@ -223,6 +250,7 @@ export function installAutoRecord(S) {
     await api(`konversi_record?id=eq.${enc(recordId)}&sumber=like.auto*&synced_to_sheet=eq.false`, { method: 'DELETE' });
   }
 
+  S.btnBusy = btnBusy;
   S.autoRecordCurrent = autoRecordCurrent;
   S.autoRecordSesiById = autoRecordSesiById;
   S.sendRecordToSheet = sendRecordToSheet;
@@ -230,11 +258,14 @@ export function installAutoRecord(S) {
   S.quickRecord = quickRecord;
 
   // ── Kotak "Perlu tindakan" ────────────────────────────────────────────
-  const st = { last: 0, view: null, data: null, open: {} };
+  const st = { last: 0, view: null, data: null, open: {}, warn: [] };
   const MANDEK_MIN = 2, MANDEK_MAX = 7; // >= 7 hari ditutup sweep, jadi bukan "perlu tindakan" lagi
   const myPic = () => { try { return (localStorage.getItem('pic_marsup_name') || '').trim(); } catch { return ''; } };
   const cnt = (s) => (s[S.SESI_ITEM_TABLE] && s[S.SESI_ITEM_TABLE][0] && s[S.SESI_ITEM_TABLE][0].count) || 0;
 
+  // Tiap query berdiri sendiri: satu gagal (mis. kolom `sumber` belum ada karena migration belum dijalankan)
+  // gak boleh bikin seluruh kotak diam — sisanya tetap tampil + ada peringatan yang KELIHATAN.
+  const run = (p) => p.then(v => ({ ok: true, v }), e => ({ ok: false, e }));
   async function loadTodoInbox(force) {
     const el = document.getElementById('todo-inbox');
     if (!el) return;
@@ -242,14 +273,28 @@ export function installAutoRecord(S) {
     st.last = Date.now();
     try {
       const IT = S.SESI_ITEM_TABLE;
-      const [berjalan, unsynced, klik] = await Promise.all([
-        api(`${S.SESI_TABLE}?status=eq.berjalan&select=id,nama_rs,nama_sales,pic_marsup,updated_at,${IT}(count)&order=updated_at.asc&limit=300`),
-        api(`konversi_record?synced_to_sheet=eq.false&select=id,sesi_id,revisi,nama_rs,pic_sales,pic_marsup,grand_total,sumber,tanggal&order=created_at.desc&limit=300`),
-        api(`${S.SESI_TABLE}?status=eq.selesai&hasil_order=eq.klik_ekat&select=id,nama_rs,nama_sales,pic_marsup,updated_at,${IT}(count),konversi_record(id)&order=updated_at.desc&limit=300`)
+      const U1 = 'konversi_record?synced_to_sheet=eq.false&select=id,sesi_id,revisi,nama_rs,pic_sales,pic_marsup,grand_total,sumber,tanggal&order=created_at.desc&limit=300';
+      const [rB, rU, rK] = await Promise.all([
+        run(api(`${S.SESI_TABLE}?status=eq.berjalan&select=id,nama_rs,nama_sales,pic_marsup,updated_at,${IT}(count)&order=updated_at.asc&limit=300`)),
+        run(api(U1)),
+        run(api(`${S.SESI_TABLE}?status=eq.selesai&hasil_order=eq.klik_ekat&select=id,nama_rs,nama_sales,pic_marsup,updated_at,${IT}(count),konversi_record(id)&order=updated_at.desc&limit=300`))
       ]);
+      const warn = [];
+      let unsynced = rU.ok ? rU.v : [];
+      if (!rU.ok) {
+        if (/sumber/i.test(rU.e.message)) {
+          warn.push('Kolom konversi_record.sumber belum ada — jalankan migration-auto-record.sql di Supabase (Record otomatis belum bisa dibuat sebelum itu).');
+          const r2 = await run(api(U1.replace('sumber,', '')));
+          if (r2.ok) unsynced = r2.v; else warn.push('Daftar Record belum ke Sheet gagal dimuat: ' + r2.e.message);
+        } else warn.push('Daftar Record belum ke Sheet gagal dimuat: ' + rU.e.message);
+      }
+      if (!rB.ok) warn.push('Daftar sesi berjalan gagal dimuat: ' + rB.e.message);
+      if (!rK.ok) warn.push('Daftar klik e-Kat gagal dimuat: ' + rK.e.message);
+      const berjalan = rB.ok ? rB.v : [], klik = rK.ok ? rK.v : [];
       const sesiIds = [...new Set((unsynced || []).map(r => r.sesi_id).filter(x => x != null && idOk(x)))].slice(0, 150);
       const allRev = sesiIds.length ? await api(`konversi_record?sesi_id=in.(${sesiIds.join(',')})&select=sesi_id,revisi,synced_to_sheet`).catch(() => []) : [];
       const now = Date.now();
+      st.warn = warn;
       st.data = {
         klik: (klik || []).filter(s => !(s.konversi_record || []).length && cnt(s) > 0).map(s => ({ id: s.id, nama: s.nama_rs, pic: s.pic_marsup, sales: s.nama_sales, days: idleDays(s.updated_at, now) })),
         sheet: latestUnsynced(unsynced, allRev).map(r => ({ id: r.id, sesiId: r.sesi_id, nama: r.nama_rs, pic: r.pic_marsup, sales: r.pic_sales, total: r.grand_total, auto: String(r.sumber || '').startsWith('auto'), rev: r.revisi })),
@@ -263,6 +308,24 @@ export function installAutoRecord(S) {
   }
   S.loadTodoInbox = loadTodoInbox;
 
+  // Di layout sidebar baris subtab di dalam halaman disembunyikan, jadi badge angka juga dipasang di item
+  // sidebar "Konversi Berjalan". Nav dirender ulang tiap pindah route — badge dipasang lagi tiap kotak ini dimuat.
+  function setNavBadge(n) {
+    try {
+      const a = document.querySelector('.pw-nav-subitem[data-module="konversian"][data-sub="sesi"]');
+      if (!a) return;
+      let b = a.querySelector('.pw-nav-badge-todo');
+      if (!n) { if (b) b.remove(); return; }
+      if (!b) {
+        b = document.createElement('span');
+        b.className = 'pw-nav-badge-todo';
+        b.style.cssText = 'margin-left:auto;min-width:18px;height:18px;padding:0 5px;font-size:10.5px;font-weight:700;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:var(--warning-bg,#fff7e6);color:var(--warning,#b45309);border:1px solid var(--warning-border,#f5d9a8)';
+        a.appendChild(b);
+      }
+      b.textContent = String(n);
+      b.title = 'Perlu tindakan';
+    } catch { /* badge opsional */ }
+  }
   function viewOf() { return st.view || (myPic() ? 'mine' : 'all'); }
   function renderTodo() {
     const el = document.getElementById('todo-inbox');
@@ -276,7 +339,10 @@ export function installAutoRecord(S) {
     const total = G.klik.length + G.sheet.length + G.mandek.length + G.kosong.length;
     const allTotal = st.data.klik.length + st.data.sheet.length + st.data.mandek.length + st.data.kosong.length;
     if (badge) { badge.textContent = total; badge.style.display = total ? 'inline-block' : 'none'; }
-    if (!allTotal) { el.innerHTML = ''; el.style.display = 'none'; return; } // gak ada yang perlu dikerjain = gak ada kotak (gak nambah keribetan)
+    setNavBadge(total);
+    const warnHtml = (st.warn || []).length ? `<div class="todo-warn"><i class="ti ti-alert-triangle"></i> ${st.warn.map(esc).join('<br>')}</div>` : '';
+    // gak ada yang perlu dikerjain & gak ada masalah muat = gak ada kotak (gak nambah keribetan); masalah muat SELALU ditampilkan.
+    if (!allTotal && !warnHtml) { el.innerHTML = ''; el.style.display = 'none'; return; }
     el.style.display = 'block';
     const meta = (x) => [x.sales, x.pic ? 'PIC ' + x.pic : '', x.days != null ? x.days + ' hari lalu' : ''].filter(Boolean).map(esc).join(' · ');
     const row = (x, actions, extra) => `<div class="todo-row"><div class="todo-main"><div class="todo-name">${esc(x.nama || '(Nama RS belum diisi)')}${extra || ''}</div><div class="todo-sub">${meta(x)}</div></div><div class="todo-acts">${actions}</div></div>`;
@@ -293,7 +359,8 @@ export function installAutoRecord(S) {
         <span style="flex:1"></span>
         ${mine ? `<button type="button" class="toggle-btn ${v === 'mine' ? 'on' : ''}" data-todo="view" data-v="mine">Punyaku</button><button type="button" class="toggle-btn ${v === 'all' ? 'on' : ''}" data-todo="view" data-v="all">Semua</button>` : ''}
       </div>
-      ${total ? '' : `<div class="prj-hint" style="padding:6px 2px">Tidak ada yang perlu kamu tindak lanjuti. ${allTotal} item milik orang lain — pilih "Semua" untuk melihat.</div>`}
+      ${warnHtml}
+      ${(total || !allTotal) ? '' : `<div class="prj-hint" style="padding:6px 2px">Tidak ada yang perlu kamu tindak lanjuti. ${allTotal} item milik orang lain — pilih "Semua" untuk melihat.</div>`}
       ${group('klik', 'Klik e-Kat tapi belum di-Record', 'konversi ini sudah terbukti jadi — prioritas', G.klik, x => row(x, btn('qrec', x.id, 'Record cepat', 'ti-file-check') + btn('qrec-sheet', x.id, '+ Sheet', 'ti-cloud-upload') + btn('open', x.id, 'Buka', 'ti-external-link')))}
       ${group('sheet', 'Record belum dikirim ke Sheet', '', G.sheet, x => row(x, btn('sheet', x.id, 'Kirim ke Sheet', 'ti-cloud-upload') + (x.auto ? btn('discard', x.id, 'Bukan transaksi', 'ti-trash', 'title="Hapus Record otomatis ini; sesinya tetap ada"') : '') + (x.sesiId ? btn('open', x.sesiId, 'Buka', 'ti-external-link') : ''), (x.auto ? ' <span class="prj-st prj-st-amb">otomatis</span>' : '') + (x.rev ? ' <span class="prj-hint">REV' + esc(x.rev) + '</span>' : '')))}
       ${group('mandek', `Mandek ${MANDEK_MIN}+ hari`, `ditutup otomatis di hari ke-${MANDEK_MAX}`, G.mandek, x => row(x, btn('open', x.id, 'Buka', 'ti-external-link')))}
@@ -310,7 +377,10 @@ export function installAutoRecord(S) {
       if (act === 'more') { st.open[b.dataset.key] = !st.open[b.dataset.key]; return renderTodo(); }
       if (act === 'open') return S.openSesi(id);
       if (act === 'delete') return S.deleteSesi(id, b.dataset.nama || '', b);
-      b.disabled = true;
+      const withSheet = act === 'qrec-sheet' || act === 'sheet';
+      const restore = btnBusy(b, withSheet ? 'Mengirim ke Sheet…' : 'Menyimpan…');
+      if (withSheet) S.showToast('Mengirim ke Sheet… (bisa beberapa detik)');
+      b._restore = restore;
       if (act === 'qrec' || act === 'qrec-sheet') {
         const { sheetError } = await quickRecord(id, { sheet: act === 'qrec-sheet' });
         S.showToast(sheetError ? 'Record tersimpan ✓, tapi Sheet gagal: ' + sheetError : (act === 'qrec-sheet' ? 'Record tersimpan & terkirim ke Sheet ✓' : 'Record tersimpan ✓'), sheetError ? 'error' : undefined);
@@ -318,7 +388,7 @@ export function installAutoRecord(S) {
         await sendRecordToSheetById(id);
         S.showToast('Terkirim ke Sheet ✓');
       } else if (act === 'discard') {
-        if (!(await S.showConfirmModal({ title: 'Bukan transaksi', text: 'Hapus Record otomatis ini? Sesinya tetap ada, hanya Record-nya yang dibuang.', okText: 'Ya, hapus Record' }))) { b.disabled = false; return; }
+        if (!(await S.showConfirmModal({ title: 'Bukan transaksi', text: 'Hapus Record otomatis ini? Sesinya tetap ada, hanya Record-nya yang dibuang.', okText: 'Ya, hapus Record' }))) { restore(); return; }
         await discardAutoRecord(id);
         S.showToast('Record otomatis dihapus.');
       }
@@ -326,7 +396,7 @@ export function installAutoRecord(S) {
       if (typeof S.loadRiwayatList === 'function' && S.subtabRiwayat && S.subtabRiwayat.classList.contains('active')) S.loadRiwayatList(true);
     } catch (err) {
       S.showToast('Gagal: ' + err.message, 'error');
-      b.disabled = false;
+      if (b._restore) b._restore(); else b.disabled = false;
     }
   });
 }

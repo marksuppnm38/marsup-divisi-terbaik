@@ -3626,7 +3626,14 @@ async function loadRiwayatList(keepPage) {
     const statusFilter = sf === 'menunggu' ? '&hasil_order=is.null'
       : (sf && RIWAYAT_STATUS_LABEL[sf]) ? `&hasil_order=eq.${sf}` : '';
     const anyFilterActive = !!(term || salesVal || range || sf);
-    const res = await S.sesiFetch(`${S.SESI_TABLE}?status=eq.selesai${searchFilter}${salesFilter}${dateFilter}${statusFilter}&select=*,${S.SESI_ITEM_TABLE}(count),konversi_record(id,grand_total,kategori,revisi,link,synced_to_sheet,sumber),sph_records(count)&order=updated_at.desc&limit=${RIWAYAT_PAGE_SIZE}&offset=${S.riwayatPage * RIWAYAT_PAGE_SIZE}`);
+    // Kolom konversi_record.sumber (migration-auto-record.sql) belum tentu sudah ada: kalau belum, muat ulang tanpa itu
+    // supaya Riwayat TIDAK ikut rusak gara-gara fitur Record otomatis.
+    const riwayatQ = (recCols) => `${S.SESI_TABLE}?status=eq.selesai${searchFilter}${salesFilter}${dateFilter}${statusFilter}&select=*,${S.SESI_ITEM_TABLE}(count),konversi_record(${recCols}),sph_records(count)&order=updated_at.desc&limit=${RIWAYAT_PAGE_SIZE}&offset=${S.riwayatPage * RIWAYAT_PAGE_SIZE}`;
+    let res = await S.sesiFetch(riwayatQ('id,grand_total,kategori,revisi,link,synced_to_sheet,sumber'));
+    if (!res.ok) {
+      const probe = await res.clone().json().catch(() => ({}));
+      if (/sumber/i.test(probe.message || '')) res = await S.sesiFetch(riwayatQ('id,grand_total,kategori,revisi,link,synced_to_sheet'));
+    }
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.message || errData.hint || 'Gagal memuat riwayat (cek relasi konversi_record.sesi_id → sesi_konversi.id di Supabase).');
@@ -3747,26 +3754,28 @@ async function loadRiwayatList(keepPage) {
     S.riwayatList.querySelectorAll('.riwayat-qrec-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        btn.disabled = true;
         const withSheet = btn.dataset.sheet === '1';
+        const restore = S.btnBusy(btn, withSheet ? 'Mengirim ke Sheet…' : 'Menyimpan Record…');
+        if (withSheet) S.showToast('Mengirim ke Sheet… (bisa beberapa detik)');
         try {
           const { sheetError } = await S.quickRecord(btn.dataset.id, { sheet: withSheet });
           S.showToast(sheetError ? 'Record tersimpan ✓, tapi Sheet gagal: ' + sheetError : (withSheet ? 'Record tersimpan & terkirim ke Sheet ✓' : 'Record tersimpan ✓'), sheetError ? 'error' : undefined);
           loadRiwayatList(true);
           if (S.loadTodoInbox) S.loadTodoInbox(true);
-        } catch (err) { S.showToast('Gagal Record: ' + err.message, 'error'); btn.disabled = false; }
+        } catch (err) { S.showToast('Gagal Record: ' + err.message, 'error'); restore(); }
       });
     });
     S.riwayatList.querySelectorAll('.riwayat-sheet-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        btn.disabled = true;
+        const restore = S.btnBusy(btn, 'Mengirim ke Sheet…');
+        S.showToast('Mengirim ke Sheet… (bisa beberapa detik)');
         try {
           await S.sendRecordToSheetById(btn.dataset.rec);
           S.showToast('Terkirim ke Sheet ✓');
           loadRiwayatList(true);
           if (S.loadTodoInbox) S.loadTodoInbox(true);
-        } catch (err) { S.showToast('Gagal kirim ke Sheet: ' + err.message, 'error'); btn.disabled = false; }
+        } catch (err) { S.showToast('Gagal kirim ke Sheet: ' + err.message, 'error'); restore(); }
       });
     });
     S.riwayatList.querySelectorAll('.sph-riwayat-btn').forEach(btn => {

@@ -1108,3 +1108,6 @@
 #app-root .todo-name{font-size:12.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
 #app-root .todo-sub{font-size:11px;color:var(--text-muted)}
 #app-root .todo-acts{display:flex;gap:6px;flex-wrap:wrap}
+#app-root .todo-warn{padding:8px 10px;font-size:11.5px;line-height:1.5;color:var(--danger-text,var(--danger));background:var(--danger-bg);border:1px solid var(--danger-border,var(--border));border-radius:8px}
+@keyframes prj-spin{to{transform:rotate(360deg)}}
+#app-root .prj-spin{display:inline-block;animation:prj-spin .9s linear infinite}
