@@ -288,6 +288,7 @@ export function installProject(S) {
   function friendly(err) {
     const m = String(err && err.message || '');
     if (err && err.code === '23505' && /no_uidx|no_transaksi/i.test(m)) return 'Nomor transaksi itu sudah ada di project ini.';
+    if (err && (err.code === 'PGRST204' || err.code === '42703') && /nama_sales/i.test(m)) return 'Kolom sales project belum ada — jalankan migration-project-sales.sql di Supabase dulu.';
     if (err && (err.code === 'PGRST205' || err.code === '42P01' || /konversi_project/i.test(m) && /not find|does not exist|schema cache/i.test(m)))
       return 'Tabel project belum ada — jalankan migration-project-konversi.sql lalu migration-project-transaksi.sql di Supabase dulu.';
     if (err && (err.code === 'PGRST204' || err.code === '42703' || /project_id|transaksi_id/i.test(m)))
@@ -297,6 +298,8 @@ export function installProject(S) {
   const fail = (prefix, err) => { console.error(prefix, err); S.showToast(`${prefix}: ${friendly(err)}`, 'error'); };
   const idOk = (x) => /^[\w-]+$/.test(String(x));
   const fmtDate = (iso) => { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${d}/${m}/${y}`; };
+  // Sales yang paling sering muncul di sekumpulan konversi (buat saran pas bikin project).
+  const topSales = (rows) => { const c = new Map(); (rows || []).forEach(x => { const n = String(x.nama_sales || '').trim(); if (n) c.set(n, (c.get(n) || 0) + 1); }); return [...c.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0])[0] || ''; };
   const numFmt = (n) => (n == null || !isFinite(n)) ? '' : Number(n).toLocaleString('id-ID');
 
   // ── LIST ──────────────────────────────────────────────────────────────
@@ -304,7 +307,7 @@ export function installProject(S) {
     st.view = 'list'; st.cur = null; st.d = null; st.a = null;
     root.innerHTML = `<div class="prj-loading"><i class="ti ti-loader-2"></i> Memuat project…</div>`;
     try {
-      const rows = await api(`${PRJ}?select=id,nama,instansi,updated_at,${S.SESI_TABLE}!project_id(count),${TRX}!project_id(total_bayar)&order=updated_at.desc&limit=300`);
+      const rows = await api(`${PRJ}?select=id,nama,instansi,nama_sales,updated_at,${S.SESI_TABLE}!project_id(count),${TRX}!project_id(total_bayar)&order=updated_at.desc&limit=300`);
       st.suggestions = await loadSuggestions().catch(e => { console.warn('Saran project gagal:', e); return []; });
       renderList(rows || []);
     } catch (err) {
@@ -316,18 +319,18 @@ export function installProject(S) {
   // Konversi selesai yang belum masuk project, dikelompokkan per nama RS mirip —
   // jalan pintas buat data lama (1 klik = 1 project dari beberapa konversi).
   async function loadSuggestions() {
-    const rows = await api(`${S.SESI_TABLE}?status=eq.selesai&project_id=is.null&nama_rs=not.is.null&select=id,nama_rs&order=updated_at.desc&limit=1000`);
+    const rows = await api(`${S.SESI_TABLE}?status=eq.selesai&project_id=is.null&nama_rs=not.is.null&select=id,nama_rs,nama_sales&order=updated_at.desc&limit=1000`);
     const groups = new Map();
     (rows || []).forEach(r => {
       const key = normRs(r.nama_rs);
       if (!key) return;
-      const g = groups.get(key) || { key, ids: [], names: new Map() };
-      g.ids.push(String(r.id));
+      const g = groups.get(key) || { key, ids: [], names: new Map(), rows: [] };
+      g.ids.push(String(r.id)); g.rows.push(r);
       g.names.set(r.nama_rs, (g.names.get(r.nama_rs) || 0) + 1);
       groups.set(key, g);
     });
     return [...groups.values()].filter(g => g.ids.length >= 2).map(g => ({
-      ids: g.ids,
+      ids: g.ids, sales: topSales(g.rows),
       nama: [...g.names.entries()].sort((a, b) => b[1] - a[1])[0][0]
     })).sort((a, b) => b.ids.length - a.ids.length).slice(0, 12);
   }
@@ -341,7 +344,7 @@ export function installProject(S) {
       return `<div class="rcard prj-card" data-act="open" data-id="${esc(p.id)}" tabindex="0" role="button">
         <div class="rc-head"><div class="rc-title">
           <div class="rc-name">${esc(p.nama)}</div>
-          ${p.instansi ? `<div class="rc-sub"><span><i class="ti ti-building-hospital"></i>${esc(p.instansi)}</span></div>` : ''}
+          ${(p.instansi || p.nama_sales) ? `<div class="rc-sub">${p.instansi ? `<span><i class="ti ti-building-hospital"></i>${esc(p.instansi)}</span>` : ''}${p.nama_sales ? `<span><i class="ti ti-user"></i>${esc(p.nama_sales)}</span>` : ''}</div>` : ''}
         </div></div>
         <div class="rc-stats">
           <span class="rc-stat"><i class="ti ti-arrows-left-right"></i>${nSesi} konversi</span>
@@ -366,16 +369,17 @@ export function installProject(S) {
       <div class="prj-new" id="prj-new" style="display:none">
         <input id="prj-new-nama" class="prj-input" type="text" placeholder="Nama project, mis. RSUD PANDEGA PANGANDARAN" autocomplete="off">
         <input id="prj-new-instansi" class="prj-input" type="text" placeholder="Instansi (opsional)" autocomplete="off">
+        <input id="prj-new-sales" class="prj-input" type="text" list="sales-datalist" placeholder="Sales (opsional)" autocomplete="off">
         <button class="pr-add-clip-btn" type="button" data-act="new-save"><i class="ti ti-check"></i> Buat</button>
       </div>
       ${sug}
       ${rows.length ? `<div class="prj-list">${cards}</div>` : `<div class="clip-empty"><i class="ti ti-folders"></i><p>Belum ada project.<br>Klik "Project Baru", atau pakai saran di atas kalau ada.</p></div>`}`;
   }
 
-  async function createProject(nama, instansi, sesiIds) {
+  async function createProject(nama, instansi, sesiIds, sales) {
     const made = await api(PRJ, {
       method: 'POST', headers: { Prefer: 'return=representation' },
-      body: JSON.stringify({ nama, instansi: instansi || null })
+      body: JSON.stringify({ nama, instansi: instansi || null, nama_sales: sales || null })
     });
     const p = made && made[0];
     if (!p) throw new Error('Gagal membuat project.');
@@ -447,6 +451,7 @@ export function installProject(S) {
 
   function renderShell() {
     const p = st.d.project;
+    const salesSug = topSales(st.d.sesi);
     root.innerHTML = `<div class="prj-detail">
       <div class="prj-top">
         <button class="toggle-btn" type="button" data-act="back"><i class="ti ti-arrow-left"></i> Semua Project</button>
@@ -455,8 +460,11 @@ export function installProject(S) {
       </div>
       <div class="prj-meta">
         <input id="prj-f-nama" class="prj-input prj-input-title" type="text" value="${esc(p.nama)}" placeholder="Nama project" autocomplete="off">
-        <input id="prj-f-instansi" class="prj-input" type="text" value="${esc(p.instansi || '')}" placeholder="Instansi (opsional)" autocomplete="off">
-        <textarea id="prj-f-catatan" class="prj-input" rows="2" placeholder="Catatan lapangan (siapa sales-nya, kondisi tender, dst)">${esc(p.catatan || '')}</textarea>
+        <div class="prj-meta-row">
+          <label class="prj-tool prj-grow"><span>Instansi</span><input id="prj-f-instansi" class="prj-input" type="text" value="${esc(p.instansi || '')}" placeholder="Instansi (opsional)" autocomplete="off"></label>
+          <label class="prj-tool prj-grow"><span>Sales</span><input id="prj-f-sales" class="prj-input" type="text" list="sales-datalist" value="${esc(p.nama_sales || '')}" placeholder="${esc(salesSug ? 'Nama sales (di konversi: ' + salesSug + ')' : 'Nama sales')}" autocomplete="off"></label>
+        </div>
+        <label class="prj-tool"><span>Catatan lapangan</span><textarea id="prj-f-catatan" class="prj-input" rows="2" placeholder="Kondisi tender, kontak, progres, dst">${esc(p.catatan || '')}</textarea></label>
       </div>
       <div id="prj-summary" class="prj-summary"></div>
       <div class="prj-sec">
@@ -477,7 +485,7 @@ export function installProject(S) {
       <div class="prj-sec">
         <div class="prj-sec-head"><b>Transaksi e-Katalog</b>
           <button class="toggle-btn" type="button" data-act="trx-new-toggle"><i class="ti ti-plus"></i> Transaksi baru</button></div>
-        <div class="prj-note">1 transaksi = 1 klik di INAPROC (negosiasi atau pesanan), yang bisa berisi banyak item. Aktifkan transaksinya, lalu centang item yang ada di dalamnya. Nomor, tanggal, dan total boleh dikosongkan kalau infonya gak ada.</div>
+        <div class="prj-note">1 transaksi = 1 klik di INAPROC (negosiasi atau pesanan), yang bisa berisi banyak item. Kalau transaksinya lebih dari satu, pilih dulu yang mau diisi lewat tombol "Isi item di sini" — item yang kamu centang di tabel bawah masuk ke transaksi yang sedang diisi itu. Nomor, tanggal, dan total boleh dikosongkan kalau infonya gak ada.</div>
         <div id="prj-trx-new" class="prj-trx-form" style="display:none"></div>
         <div id="prj-trx-list"></div>
       </div>
@@ -489,8 +497,8 @@ export function installProject(S) {
           <button class="toggle-btn" type="button" data-act="paste-toggle"><i class="ti ti-clipboard-text"></i> Tempel kode</button>
         </div>
         <div id="prj-paste" class="prj-paste" style="display:none">
-          <textarea id="prj-paste-ta" class="prj-input prj-mono" rows="4" placeholder="1 baris = 1 kode, boleh dengan qty setelahnya (masuk ke transaksi yang aktif):&#10;RB999-KE921-B99-U238&#9;2&#10;RB999-KE921-B99-U109"></textarea>
-          <button class="pr-add-clip-btn" type="button" data-act="paste-save"><i class="ti ti-check"></i> Simpan ke transaksi aktif</button>
+          <textarea id="prj-paste-ta" class="prj-input prj-mono" rows="4" placeholder="1 baris = 1 kode, boleh dengan qty setelahnya (masuk ke transaksi yang sedang diisi):&#10;RB999-KE921-B99-U238&#9;2&#10;RB999-KE921-B99-U109"></textarea>
+          <button class="pr-add-clip-btn" type="button" data-act="paste-save"><i class="ti ti-check"></i> Simpan ke transaksi yang sedang diisi</button>
           <span id="prj-paste-status" class="prj-hint"></span>
         </div>
         <div id="prj-klik-wrap"></div>
@@ -578,7 +586,7 @@ export function installProject(S) {
     const el = $('prj-trx-list'); if (!el) return;
     const lbl = $('prj-active-label');
     const act = activeObj();
-    if (lbl) lbl.innerHTML = act ? `centang item = masuk ke <b>${esc(trxTitle(act))}</b>` : 'belum ada transaksi aktif — mencentang item akan membuat transaksi baru';
+    if (lbl) lbl.innerHTML = act ? `item yang dicentang masuk ke <b>${esc(trxTitle(act))}</b>` : 'belum ada transaksi yang dipilih — mencentang item akan membuat transaksi baru';
     if (!st.a.trxList.length) { el.innerHTML = `<div class="prj-empty">Belum ada transaksi. Klik "Transaksi baru", atau langsung centang item di bawah (transaksi dibuat otomatis).</div>`; return; }
     el.innerHTML = st.a.trxList.map(t => {
       const origin = [...t.origin.entries()].sort((a, b) => b[1] - a[1]).map(([sid, n]) => {
@@ -606,7 +614,7 @@ export function installProject(S) {
       return `<div class="prj-trx${isActive ? ' active' : ''}">
         <div class="prj-trx-head">${trxChip(t)}<span class="prj-trx-title">${esc(trxTitle(t))}</span>${meta ? `<span class="prj-hint">${esc(meta)}</span>` : ''}
           <span style="flex:1"></span>
-          ${isActive ? `<span class="prj-st prj-st-sure"><i class="ti ti-check"></i> aktif</span>` : `<button class="toggle-btn" type="button" data-act="trx-active" data-id="${esc(t.id)}">Aktifkan</button>`}
+          ${isActive ? `<span class="prj-st prj-st-sure"><i class="ti ti-check"></i> sedang diisi</span>` : `<button class="toggle-btn" type="button" data-act="trx-active" data-id="${esc(t.id)}" title="Item yang dicentang di tabel bawah akan masuk ke transaksi ini">Isi item di sini</button>`}
           ${nPending ? `<button class="toggle-btn" type="button" data-act="trx-confirm" data-id="${esc(t.id)}" title="Tulis item transaksi ini ke status klik di Riwayat konversinya"><i class="ti ti-circle-check"></i> Konfirmasi ke Riwayat</button>` : ''}
           ${nSynced ? `<button class="rc-act" type="button" data-act="trx-unconfirm" data-id="${esc(t.id)}" title="Cabut item transaksi ini dari Riwayat"><i class="ti ti-arrow-back-up"></i><span>Batalkan konfirmasi</span></button>` : ''}
           <button class="rc-act" type="button" data-act="trx-edit" data-id="${esc(t.id)}" title="Ubah"><i class="ti ti-pencil"></i></button>
@@ -1052,13 +1060,13 @@ export function installProject(S) {
         const nama = $('prj-new-nama').value.trim();
         if (!nama) { S.showToast('Isi nama project dulu.', 'error'); return; }
         el.disabled = true;
-        try { const p = await createProject(nama, $('prj-new-instansi').value.trim()); return openProject(p.id); }
+        try { const p = await createProject(nama, $('prj-new-instansi').value.trim(), null, $('prj-new-sales').value.trim()); return openProject(p.id); }
         finally { el.disabled = false; }
       }
       if (act === 'sug-create') {
         const g = st.suggestions[Number(el.dataset.i)]; if (!g) return;
         el.disabled = true;
-        try { const p = await createProject(g.nama, g.nama, g.ids); S.showToast(`Project "${g.nama}" dibuat dari ${g.ids.length} konversi ✓`); return openProject(p.id); }
+        try { const p = await createProject(g.nama, g.nama, g.ids, g.sales); S.showToast(`Project "${g.nama}" dibuat dari ${g.ids.length} konversi ✓`); return openProject(p.id); }
         finally { el.disabled = false; }
       }
       if (act === 'del-prj') {
@@ -1148,6 +1156,7 @@ export function installProject(S) {
     const t = ev.target;
     if (t.id === 'prj-f-nama') return saveMeta('nama', t.value);
     if (t.id === 'prj-f-instansi') return saveMeta('instansi', t.value);
+    if (t.id === 'prj-f-sales') return saveMeta('nama_sales', t.value);
     if (t.id === 'prj-f-catatan') return saveMeta('catatan', t.value);
     if (t.classList.contains('prj-cf-choice')) { st.confirmChoice.set(t.dataset.kode, t.value); return renderTrxList(); }
     if (t.classList.contains('prj-pin')) return patchKlik(t.dataset.trx, t.dataset.kode, { pinned_sesi_id: t.value || null });
