@@ -3627,18 +3627,57 @@ function riwayatPeriodRange(key) {
 // bukan FK ke tabel `sales`), jadi dropdown-nya diisi dari distinct value
 // yang sudah kepakai, bukan dari daftar master. Dipanggil sekali (guard via
 // dataset.loaded) tiap kali tab Riwayat pertama kali dibuka.
+function normalizeSalesKey(s) {
+  return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+// Alias buat typo/ejaan beda yang orangnya sama (bukan cuma beda huruf besar/kecil).
+// Format: kunci kanonik (lowercase) -> daftar ejaan lain (lowercase).
+// Tambah baris baru di sini kalau ada sales lain yang ejaannya kebelah.
+const SALES_ALIASES = {
+  freddy: ['fredy'],
+};
+const SALES_ALIAS_LOOKUP = {};
+for (const [canon, alts] of Object.entries(SALES_ALIASES)) {
+  for (const a of alts) SALES_ALIAS_LOOKUP[a] = canon;
+}
+function canonicalSalesKey(s) {
+  const k = normalizeSalesKey(s);
+  return SALES_ALIAS_LOOKUP[k] || k;
+}
+function salesVariants(key) {
+  return [key, ...(SALES_ALIASES[key] || [])];
+}
+// Escape wildcard ilike PostgREST (* % _ \) biar nama dicocokkan apa adanya,
+// tapi tetap case-insensitive.
+function salesIlikePattern(key) {
+  return key.replace(/[\\%_*]/g, '\\$&');
+}
 async function loadRiwayatSalesOptions() {
   if (!S.riwayatSalesFilter || S.riwayatSalesFilter.dataset.loaded === '1') return;
   try {
     const res = await S.sesiFetch(`${S.SESI_TABLE}?select=nama_sales&status=eq.selesai&nama_sales=not.is.null`);
     if (!res.ok) return;
     const rows = await res.json();
-    const names = [...new Set(rows.map(r => (r.nama_sales || '').trim()).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, 'id'));
+    // Gabung ejaan yang beda cuma huruf besar/kecil (mis. "Bidang" / "BIDANG" /
+    // "bidang") jadi SATU opsi. value = kunci ternormalisasi (lowercase + spasi
+    // dirapikan), label = ejaan yang paling sering dipakai.
+    const groups = new Map(); // key -> Map(ejaan -> jumlah)
+    for (const r of rows) {
+      const raw = (r.nama_sales || '').trim().replace(/\s+/g, ' ');
+      if (!raw) continue;
+      const key = canonicalSalesKey(raw);
+      if (!groups.has(key)) groups.set(key, new Map());
+      const spell = groups.get(key);
+      spell.set(raw, (spell.get(raw) || 0) + 1);
+    }
+    const opts = [...groups.entries()].map(([key, spell]) => {
+      const label = [...spell.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'id'))[0][0];
+      return { key, label };
+    }).sort((a, b) => a.label.localeCompare(b.label, 'id', { sensitivity: 'base' }));
     const prevVal = S.riwayatSalesFilter.value;
     S.riwayatSalesFilter.innerHTML = '<option value="">Semua Sales</option>'
-      + names.map(n => `<option value="${S.escapeHtmlAttr(n)}">${S.escapeHtmlAttr(n)}</option>`).join('');
-    if (prevVal) S.riwayatSalesFilter.value = prevVal;
+      + opts.map(o => `<option value="${S.escapeHtmlAttr(o.key)}">${S.escapeHtmlAttr(o.label)}</option>`).join('');
+    if (prevVal) S.riwayatSalesFilter.value = canonicalSalesKey(prevVal);
     S.riwayatSalesFilter.dataset.loaded = '1';
   } catch (e) { console.warn('Gagal memuat daftar sales buat filter Riwayat:', e); }
 }
@@ -3658,7 +3697,7 @@ function applyPendingRiwayatFilter() {
     pending = JSON.parse(raw);
   } catch (e) { return; }
   if (!pending) return;
-  if (typeof pending.sales === 'string' && S.riwayatSalesFilter) S.riwayatSalesFilter.value = pending.sales;
+  if (typeof pending.sales === 'string' && S.riwayatSalesFilter) S.riwayatSalesFilter.value = canonicalSalesKey(pending.sales);
   if (typeof pending.period === 'string' && S.riwayatPeriodFilter) S.riwayatPeriodFilter.value = pending.period;
 }
 
@@ -3801,7 +3840,14 @@ async function loadRiwayatList(keepPage) {
       searchFilter = orParts.length ? `&or=(${orParts.join(',')})` : '&id=eq.-1';
     }
     const salesVal = S.riwayatSalesFilter ? S.riwayatSalesFilter.value : '';
-    const salesFilter = salesVal ? `&nama_sales=eq.${encodeURIComponent(salesVal)}` : '';
+    // ilike (bukan eq) supaya "Bidang"/"BIDANG"/"bidang" dianggap sales yang sama.
+    let salesFilter = '';
+    if (salesVal) {
+      const variants = salesVariants(canonicalSalesKey(salesVal));
+      salesFilter = variants.length === 1
+        ? `&nama_sales=ilike.${encodeURIComponent(salesIlikePattern(variants[0]))}`
+        : `&and=(${encodeURIComponent(`or(${variants.map(v => `nama_sales.ilike.${salesIlikePattern(v)}`).join(',')})`)})`;
+    }
     const periodVal = S.riwayatPeriodFilter ? S.riwayatPeriodFilter.value : '';
     const range = riwayatPeriodRange(periodVal);
     const dateFilter = range ? `&updated_at=gte.${range.start.toISOString()}&updated_at=lte.${range.end.toISOString()}` : '';
