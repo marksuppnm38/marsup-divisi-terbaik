@@ -1655,7 +1655,7 @@ S.normalizeMatchedItems = normalizeMatchedItems;
 
   closeBtn.addEventListener('click', () => modal.classList.remove('show'));
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
-  document.addEventListener('keydown', e => {
+  S.onGlobal(document, 'keydown', e => {
     if (e.key === 'Escape' && modal.classList.contains('show')) modal.classList.remove('show');
   });
 
@@ -2026,11 +2026,15 @@ async function openKonversiRiwayatModal(sesiId, namaRs) {
         if (icon) icon.className = isOpen ? 'ti ti-chevron-down' : 'ti ti-chevron-up';
       });
     });
+    // Prefetch link semua revisi sekali jalan (hasilnya masuk S.linkCache) supaya klik Copy gak nunggu jaringan.
+    S.attachLinks(rows.flatMap(r => (r.konversi_item || []).map(it => ({ kode: it.kode_produk })))).catch(() => {});
     list.querySelectorAll('.konversi-riwayat-copy-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const row = konversiRiwayatRowsCache[parseInt(btn.dataset.idx, 10)];
         const its = ((row && row.konversi_item) || []).map(it => ({ kode: it.kode_produk, nama: it.nama_produk, qty: it.qty, harga: it.harga }));
+        // Link e-Katalog ikut di-copy (diambil dari katalog; udah di-prefetch di bawah).
+        try { await S.attachLinks(its); } catch (_) { S.showToast('Link e-Katalog gagal dimuat — di-copy tanpa kolom Link', 'error'); }
         S.copyItemsToSheet(its, btn);
       });
     });

@@ -400,6 +400,10 @@ export async function mount(container, initialSub) {
   // (Realtime, refresh) gak nutup isi yang lagi dibaca dan gak fetch ulang terus.
   S.sesiPeekOpen = new Set();
   S.sesiPeekCache = new Map();
+  // kode_produk -> link e-Katalog bersih (atau null) buat kolom Link di Copy ke Sheet.
+  // Diisi attachLinks(); per mount, jadi link yang baru dibenerin di modul lain ikut
+  // ke-refresh begitu halaman ini dibuka lagi.
+  S.linkCache = new Map();
   // BUGFIX 2026-09-15: escapeHtmlAttr dulu cuma didefinisikan+ditempel ke S di
   // dalam installPermintaanRs(S) (lihat permintaan-rs.js), yang baru dipanggil
   // MENJELANG AKHIR mount() -- tapi installRealtime(S), yang dipanggil jauh
@@ -3017,8 +3021,9 @@ async function loadSesiPeek(sesiId, box) {
       box.dataset.loaded = '1';
       return;
     }
+    attachLinks(items).catch(() => {}); // prefetch link e-Katalog biar Copy ke Sheet langsung jalan
     const total = items.reduce((a, i) => a + ((i.harga != null && i.qty != null) ? Number(i.harga) * Number(i.qty) : 0), 0);
-    const rowsHtml = items.map((i, ix) => `<tr data-i="${ix}" data-q="${S.escapeHtmlAttr(`${i.kode || ''} ${i.nama || ''}`.toLowerCase())}">
+    const rowsHtml = items.map((i, ix) => `<tr data-i="${ix}" data-q=""${S.escapeHtmlAttr(`${i.kode || ''} ${i.nama || ''}`.toLowerCase())}">
         <td class="kode">${S.escapeHtmlAttr(i.kode || '')}</td><td>${S.escapeHtmlAttr(i.nama || '')}</td>
         <td class="num">${i.qty ?? '-'}</td>
         <td class="num">${riwayatRp(i.harga)}</td>
@@ -3037,10 +3042,12 @@ async function loadSesiPeek(sesiId, box) {
       box.querySelectorAll('tbody tr').forEach(tr => { tr.style.display = !q || tr.dataset.q.includes(q) ? '' : 'none'; });
     });
     // Copy = baris yang lagi kelihatan (ikut filter isi), bukan selalu semua.
-    box.querySelector('.riwayat-peek-copy').addEventListener('click', (e) => {
+    box.querySelector('.riwayat-peek-copy').addEventListener('click', async (e) => {
       e.stopPropagation();
+      const btn = e.currentTarget;
       const vis = [...box.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none').map(tr => items[Number(tr.dataset.i)]);
-      copyItemsToSheet(vis, e.currentTarget);
+      try { await attachLinks(vis); } catch (_) { S.showToast('Link e-Katalog gagal dimuat — di-copy tanpa kolom Link', 'error'); }
+      copyItemsToSheet(vis, btn);
     });
     box.dataset.loaded = '1';
   } catch (err) {
@@ -3069,6 +3076,7 @@ async function copySesiToSheet(btn) {
   btn.disabled = true;
   try {
     const items = await fetchSesiItems(btn.dataset.id, box.dataset.stamp);
+    try { await attachLinks(items); } catch (_) { S.showToast('Link e-Katalog gagal dimuat — di-copy tanpa kolom Link', 'error'); }
     await copyItemsToSheet(items, btn);
   } catch (err) {
     S.showToast('Gagal copy: ' + err.message, 'error');
@@ -3194,10 +3202,14 @@ async function copyItemsToSheet(items, btn) {
   const clean = (v) => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ').trim();
   const num = (v) => (v != null && v !== '' && !isNaN(Number(v))) ? String(Number(v)) : '';
   const withKlik = items.some(i => typeof i.klik === 'boolean');
-  const lines = [['Kode', 'Produk', 'Qty', 'Harga', 'Subtotal'].concat(withKlik ? ['Klik e-Kat', 'Qty Klik'] : []).join('\t')];
+  // Kolom Link: isinya URL e-Katalog kalau ada, kalau gak ada diisi catatannya
+  // (lihat linkInfoFromProduk). Cuma muncul di mode e-Katalog — di mode Swasta
+  // link memang gak relevan (sama kayak Export Excel).
+  const withLink = !S.modeSwastaOutput && items.some(i => i.link || i.linkNote);
+  const lines = [['Kode', 'Produk', 'Qty', 'Harga', 'Subtotal'].concat(withLink ? ['Link'] : []).concat(withKlik ? ['Klik e-Kat', 'Qty Klik'] : []).join('\t')];
   items.forEach(i => {
     const sub = (i.harga != null && i.qty != null) ? Number(i.harga) * Number(i.qty) : null;
-    lines.push([clean(i.kode), clean(i.nama), num(i.qty), num(i.harga), num(sub)].concat(withKlik ? [i.klik ? 'Ya' : '', i.klik ? num(i.klikQty) : ''] : []).join('\t'));
+    lines.push([clean(i.kode), clean(i.nama), num(i.qty), num(i.harga), num(sub)].concat(withLink ? [clean(i.link || i.linkNote || '')] : []).concat(withKlik ? [i.klik ? 'Ya' : '', i.klik ? num(i.klikQty) : ''] : []).join('\t'));
   });
   const text = lines.join('\n');
   let ok = false;
@@ -3218,6 +3230,56 @@ async function copyItemsToSheet(items, btn) {
   }
 }
 S.copyItemsToSheet = copyItemsToSheet;
+
+// Info link e-Katalog per produk buat kolom "Link" di Copy ke Sheet — logikanya
+// sama persis kayak badge e-Katalog di kartu produk (katalogBadgeHtml):
+//  - link bersih                          -> URL-nya
+//  - link ada catatan / bukan URL         -> isi catatannya (belum firm)
+//  - kosong + status INAPROC "Disetujui"  -> "Disetujui, bisa dibuatkan link e-Kat"
+//  - kosong lainnya                       -> "Belum ada link"
+function linkInfoFromProduk(p) {
+  const L = S.parseLinkV6(p && p.link_v6);
+  if (L.state === 'bersih') return { link: L.url, note: '' };
+  if (L.state === 'catatan' || L.state === 'invalid') return { link: null, note: L.catatan };
+  return { link: null, note: (p && p.status_inaproc === 'Disetujui') ? 'Disetujui, bisa dibuatkan link e-Kat' : 'Belum ada link' };
+}
+
+// Lengkapi item[].link + item[].linkNote buat Copy ke Sheet. Snapshot Record
+// (konversi_item) dan item sesi gak nyimpen status INAPROC, jadi semuanya diambil
+// dari katalog `produk` per kode_produk (batch 80, hasilnya di-cache di
+// S.linkCache). Aman dipanggil berkali-kali (idempotent, cuma fetch kode yang belum
+// ada di cache) — dipakai juga buat prefetch pas isi dibuka, biar pas klik Copy
+// datanya udah siap. Mode Swasta: dilewati (kolom Link gak dipakai).
+// Throw kalau fetch gagal; pemanggil sebaiknya tetap lanjut copy tanpa link.
+async function attachLinks(items) {
+  if (!items || !items.length || S.modeSwastaOutput) return items;
+  const miss = [...new Set(items.filter(i => i && i.kode && i.link === undefined).map(i => i.kode))]
+    .filter(k => !S.linkCache.has(k));
+  let failed = false;
+  for (let n = 0; n < miss.length; n += 80) {
+    const chunk = miss.slice(n, n + 80);
+    const inList = chunk.map(k => `"${String(k).replace(/"/g, '')}"`).join(',');
+    const base = `produk?kode_produk=in.(${encodeURIComponent(inList)})&select=kode_produk,link_v6`;
+    try {
+      // status_inaproc dicoba dulu (buat catatan "Disetujui…"); kalau kolom itu gak bisa
+      // di-select langsung dari tabel produk, ulang tanpa dia biar link tetap kebawa.
+      let res = await S.sesiFetch(base + ',status_inaproc');
+      if (!res.ok) res = await S.sesiFetch(base);
+      if (!res.ok) { failed = true; continue; }
+      (await res.json()).forEach(p => S.linkCache.set(p.kode_produk, linkInfoFromProduk(p)));
+      chunk.forEach(k => { if (!S.linkCache.has(k)) S.linkCache.set(k, { link: null, note: '' }); }); // kode gak ada di katalog
+    } catch (_) { failed = true; }
+  }
+  items.forEach(i => {
+    if (i && i.link === undefined && S.linkCache.has(i.kode)) {
+      const c = S.linkCache.get(i.kode);
+      i.link = c.link; i.linkNote = c.note;
+    }
+  });
+  if (failed) throw new Error('Gagal memuat link e-Katalog');
+  return items;
+}
+S.attachLinks = attachLinks;
 
 function riwayatRp(n) { return n != null && n !== '' ? Number(n).toLocaleString('id-ID') : '-'; }
 
@@ -3295,6 +3357,7 @@ async function loadRiwayatPeek(sesiId, box, tokens) {
     }
     if (!items.length) { box.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:11.5px">Sesi ini gak punya item tersimpan.</div>'; box.dataset.loaded = '1'; return; }
     const total = items.reduce((a, i) => a + ((i.harga != null && i.qty != null) ? Number(i.harga) * Number(i.qty) : 0), 0);
+    attachLinks(items).catch(() => {}); // prefetch link e-Katalog biar Copy ke Sheet langsung jalan
     const isHit = (i) => tokens.length && tokens.every(t => (`${i.kode || ''} ${i.nama || ''}`).toLowerCase().includes(t.toLowerCase()));
     const rowsHtml = items.map((i, ix) => `<tr class="${isHit(i) ? 'hit' : ''}" data-i="${ix}" data-kode="${S.escapeHtmlAttr(i.kode || '')}" data-qty="${i.qty ?? ''}" data-q="${S.escapeHtmlAttr(`${i.kode || ''} ${i.nama || ''}`.toLowerCase())}">
         <td class="ek-col"><input type="checkbox" class="ek-cb" ${i.kode ? '' : 'disabled'} aria-label="Di-klik di e-Kat"/></td>
@@ -3318,12 +3381,15 @@ async function loadRiwayatPeek(sesiId, box, tokens) {
       box.querySelectorAll('tbody tr').forEach(tr => { tr.style.display = !q || tr.dataset.q.includes(q) ? '' : 'none'; });
     });
     // Copy = baris yang lagi kelihatan (ikut filter isi), bukan selalu semua.
-    box.querySelector('.riwayat-peek-copy').addEventListener('click', (e) => {
+    box.querySelector('.riwayat-peek-copy').addEventListener('click', async (e) => {
       e.stopPropagation();
       const vis = [...box.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none').map(tr => items[Number(tr.dataset.i)]);
       const ekOn = box.classList.contains('ek-on');
       const sel = ekatSelected(sesiId);
-      copyItemsToSheet(ekOn ? vis.map(i => ({ ...i, klik: sel.has(i.kode), klikQty: sel.has(i.kode) ? ekatQtyFor(sesiId, i.kode, i.qty) : null })) : vis, e.currentTarget);
+      const btn = e.currentTarget;
+      const rows = ekOn ? vis.map(i => ({ ...i, klik: sel.has(i.kode), klikQty: sel.has(i.kode) ? ekatQtyFor(sesiId, i.kode, i.qty) : null })) : vis;
+      try { await attachLinks(rows); } catch (_) { S.showToast('Link e-Katalog gagal dimuat — di-copy tanpa kolom Link', 'error'); }
+      copyItemsToSheet(rows, btn);
     });
     // Checklist "di-klik di e-Kat" — simpen otomatis tiap centang berubah.
     const cardEl = box.closest('.riwayat-card');
