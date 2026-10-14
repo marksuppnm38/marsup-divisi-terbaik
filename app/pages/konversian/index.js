@@ -379,8 +379,27 @@ let mountedContainer = null;
 // reachable from there).
 let _switchSubTab = null;
 
+// Registry listener global (document/window) yang dipasang selama mount() ini.
+// Semua yang lewat S.onGlobal(...) otomatis dilepas di unmount() — termasuk kalau
+// mount() crash di tengah jalan (registry-nya di level modul, bukan di bridge).
+let _globalOffs = [];
+
 export async function mount(container, initialSub) {
   const S = {}; // shared cross-module state (breakup konversian/index.js — lihat map.md bagian 3)
+  // Pasang listener ke document/window DAN daftarkan pelepasnya buat unmount().
+  // Pakai ini (bukan addEventListener langsung) buat semua listener global baru.
+  // Mengembalikan fungsi off() kalau mau dilepas lebih awal.
+  S.onGlobal = function onGlobal(target, type, fn, opts) {
+    target.addEventListener(type, fn, opts);
+    const off = () => target.removeEventListener(type, fn, opts);
+    _globalOffs.push(off);
+    return off;
+  };
+  // Konversi Berjalan: kartu mana yang lagi "Lihat isi"-nya kebuka + cache isi per
+  // sesi (dibuang kalau updated_at/jumlah item berubah) — biar re-render list
+  // (Realtime, refresh) gak nutup isi yang lagi dibaca dan gak fetch ulang terus.
+  S.sesiPeekOpen = new Set();
+  S.sesiPeekCache = new Map();
   // BUGFIX 2026-09-15: escapeHtmlAttr dulu cuma didefinisikan+ditempel ke S di
   // dalam installPermintaanRs(S) (lihat permintaan-rs.js), yang baru dipanggil
   // MENJELANG AKHIR mount() -- tapi installRealtime(S), yang dipanggil jauh
@@ -1566,7 +1585,7 @@ setupDropzone(gambarDropzone, gambarFileInput, handleGambarFileDropped);
 // Listener dipasang di document (bukan di gambarDropzone) karena elemen
 // dropzone-nya sendiri kadang disembunyikan (display:none) pas gambar lama
 // lagi ketampil, dan elemen yang disembunyikan gak bisa nerima focus/paste.
-document.addEventListener('paste', (e) => {
+S.onGlobal(document, 'paste', (e) => {
   if (!gambarModal.classList.contains('show')) return;
   const items = e.clipboardData && e.clipboardData.items;
   if (!items || !items.length) return;
@@ -2943,6 +2962,15 @@ function renderSesiCard(s) {
   const permintaanChip = p
     ? `<span class="mi"><i class="ti ti-clipboard-text"></i><span>Permintaan RS: ${p.items_terpenuhi}/${p.items_total} terpenuhi${p.items_pending > 0 ? ' · ' + p.items_pending + ' belum dicek' : ''}</span></span>`
     : '';
+  const peekOpen = S.sesiPeekOpen.has(String(s.id));
+  const peekStamp = S.escapeHtmlAttr(sesiPeekStamp(s, itemCount));
+  const sesiActions = itemCount > 0
+    ? `<div class="rc-actions">
+        <button type="button" class="rc-act sesi-peek-btn${peekOpen ? ' on' : ''}" data-id="${s.id}"><i class="ti ${peekOpen ? 'ti-eye-off' : 'ti-eye'}"></i><span>${peekOpen ? 'Tutup isi' : 'Lihat isi'}</span></button>
+        <button type="button" class="rc-act sesi-copy-btn" data-id="${s.id}" title="Copy isi sesi ini — tinggal paste di Google Sheets"><i class="ti ti-table-export"></i><span>Copy ke Sheet</span></button>
+      </div>
+      <div class="riwayat-peek sesi-peek" data-id="${s.id}" data-loaded="0" data-stamp="${peekStamp}" style="display:${peekOpen ? 'block' : 'none'}"></div>`
+    : '';
   return `<div class="rcard sesi-card" data-id="${s.id}" style="position:relative">
     <button class="sesi-delete-btn" data-id="${s.id}" data-nama="${namaSafe}" title="Hapus sesi ini" type="button"><i class="ti ti-trash"></i></button>
     <div class="rcard-top" style="padding-right:66px">
@@ -2957,7 +2985,96 @@ function renderSesiCard(s) {
       ${permintaanChip}
       <span class="mi"><i class="ti ti-clock"></i><span>${sesiTimeAgo(s.updated_at)}</span></span>
     </div>
+    ${sesiActions}
   </div>`;
+}
+
+// ===== Konversi Berjalan: Lihat isi + Copy ke Sheet =====
+// Sama kayak "Lihat isi" di Riwayat, tapi sumbernya isi clipboard sesi yang lagi
+// jalan (sesi_konversi_item) — belum ada Record, jadi harga = harga e-Katalog.
+function sesiPeekStamp(s, itemCount) { return `${s.updated_at || ''}|${itemCount}`; }
+
+async function fetchSesiItems(sesiId, stamp) {
+  const key = String(sesiId);
+  const hit = S.sesiPeekCache.get(key);
+  if (hit && hit.stamp === stamp) return hit.items;
+  const res = await S.sesiFetch(`${S.SESI_ITEM_TABLE}?sesi_id=eq.${encodeURIComponent(sesiId)}&select=kode_produk,nama_produk,qty,harga_ekat&order=nama_produk.asc`);
+  if (!res.ok) throw new Error('Gagal memuat isi sesi.');
+  const items = (await res.json()).map(i => ({ kode: i.kode_produk, nama: i.nama_produk, qty: i.qty, harga: i.harga_ekat }));
+  S.sesiPeekCache.set(key, { stamp, items });
+  return items;
+}
+
+async function loadSesiPeek(sesiId, box) {
+  const cached = S.sesiPeekCache.get(String(sesiId));
+  if (!(cached && cached.stamp === box.dataset.stamp)) {
+    box.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:11.5px"><i class="ti ti-loader-2"></i> Memuat isi…</div>';
+  }
+  try {
+    const items = await fetchSesiItems(sesiId, box.dataset.stamp);
+    if (!items.length) {
+      box.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:11.5px">Sesi ini belum punya item.</div>';
+      box.dataset.loaded = '1';
+      return;
+    }
+    const total = items.reduce((a, i) => a + ((i.harga != null && i.qty != null) ? Number(i.harga) * Number(i.qty) : 0), 0);
+    const rowsHtml = items.map((i, ix) => `<tr data-i="${ix}" data-q="${S.escapeHtmlAttr(`${i.kode || ''} ${i.nama || ''}`.toLowerCase())}">
+        <td class="kode">${S.escapeHtmlAttr(i.kode || '')}</td><td>${S.escapeHtmlAttr(i.nama || '')}</td>
+        <td class="num">${i.qty ?? '-'}</td>
+        <td class="num">${riwayatRp(i.harga)}</td>
+        <td class="num">${(i.harga != null && i.qty != null) ? riwayatRp(Number(i.harga) * Number(i.qty)) : '-'}</td></tr>`).join('');
+    box.innerHTML = `<div class="riwayat-peek-head">
+        <span>Isi clipboard sesi · <b style="color:var(--text)">${items.length}</b> produk${total ? ' · ' + riwayatRp(total) : ''}</span>
+        <span class="riwayat-peek-tools">
+          ${items.length > 6 ? '<input type="text" class="riwayat-peek-filter" placeholder="Filter isi…" autocomplete="off"/>' : ''}
+          <button type="button" class="rc-act riwayat-peek-copy" title="Copy tabel ini (sesuai filter) — tinggal paste di Google Sheets"><i class="ti ti-table-export"></i><span>Copy ke Sheet</span></button>
+        </span>
+      </div>
+      <div class="riwayat-peek-wrap"><table><thead><tr><th>Kode</th><th>Produk</th><th class="num">Qty</th><th class="num">Harga</th><th class="num">Subtotal</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    const f = box.querySelector('.riwayat-peek-filter');
+    if (f) f.addEventListener('input', () => {
+      const q = f.value.trim().toLowerCase();
+      box.querySelectorAll('tbody tr').forEach(tr => { tr.style.display = !q || tr.dataset.q.includes(q) ? '' : 'none'; });
+    });
+    // Copy = baris yang lagi kelihatan (ikut filter isi), bukan selalu semua.
+    box.querySelector('.riwayat-peek-copy').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const vis = [...box.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none').map(tr => items[Number(tr.dataset.i)]);
+      copyItemsToSheet(vis, e.currentTarget);
+    });
+    box.dataset.loaded = '1';
+  } catch (err) {
+    box.innerHTML = `<div style="padding:8px;color:var(--danger);font-size:11.5px">${S.escapeHtmlAttr(err.message)}</div>`;
+  }
+}
+
+function toggleSesiPeek(btn) {
+  const box = btn.closest('.sesi-card')?.querySelector('.sesi-peek');
+  if (!box) return;
+  const id = String(btn.dataset.id);
+  const open = box.style.display !== 'none';
+  box.style.display = open ? 'none' : 'block';
+  btn.classList.toggle('on', !open);
+  btn.querySelector('i').className = open ? 'ti ti-eye' : 'ti ti-eye-off';
+  btn.querySelector('span').textContent = open ? 'Lihat isi' : 'Tutup isi';
+  if (open) { S.sesiPeekOpen.delete(id); return; }
+  S.sesiPeekOpen.add(id);
+  if (box.dataset.loaded !== '1') loadSesiPeek(id, box);
+}
+
+// Copy langsung dari kartu, tanpa harus buka isinya dulu.
+async function copySesiToSheet(btn) {
+  const box = btn.closest('.sesi-card')?.querySelector('.sesi-peek');
+  if (!box) return;
+  btn.disabled = true;
+  try {
+    const items = await fetchSesiItems(btn.dataset.id, box.dataset.stamp);
+    await copyItemsToSheet(items, btn);
+  } catch (err) {
+    S.showToast('Gagal copy: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // Kartu riwayat: sesi yang statusnya 'selesai', apapun hasilnya.
@@ -3402,7 +3519,7 @@ async function persistHasilOrder(sesiId, value, root) {
   }
 }
 // Satu listener global buat nutup menu status pas klik di luar.
-document.addEventListener('click', () => {
+S.onGlobal(document, 'click', () => {
   document.querySelectorAll('.riwayat-card.ro-open').forEach(c => c.classList.remove('ro-open'));
 });
 
@@ -3937,6 +4054,10 @@ async function loadSesiList() {
     }
     S.sesiBadge.textContent = data.length;
     S.sesiBadge.style.display = data.length > 0 ? 'inline-block' : 'none';
+    // Buang state "Lihat isi" + cache buat sesi yang udah gak ada di daftar (selesai/dihapus).
+    const liveIds = new Set(data.map(x => String(x.id)));
+    [...S.sesiPeekOpen].forEach(id => { if (!liveIds.has(id)) S.sesiPeekOpen.delete(id); });
+    [...S.sesiPeekCache.keys()].forEach(id => { if (!liveIds.has(id)) S.sesiPeekCache.delete(id); });
     if (typeof S.loadTodoInbox === 'function') S.loadTodoInbox();
     if (data.length === 0) { S.sesiListEmpty.style.display = 'block'; return; }
     await attachPermintaanSummary(data);
@@ -3955,6 +4076,16 @@ async function loadSesiList() {
         e.stopPropagation();
         shareSesiToWhatsApp(btn.dataset.id, btn.dataset.nama);
       });
+    });
+    // Lihat isi / Copy ke Sheet — klik di area ini jangan ikut buka sesinya.
+    S.sesiList.querySelectorAll('.sesi-card .rc-actions, .sesi-peek').forEach(el => {
+      el.addEventListener('click', (e) => e.stopPropagation());
+    });
+    S.sesiList.querySelectorAll('.sesi-peek-btn').forEach(btn => btn.addEventListener('click', () => toggleSesiPeek(btn)));
+    S.sesiList.querySelectorAll('.sesi-copy-btn').forEach(btn => btn.addEventListener('click', () => copySesiToSheet(btn)));
+    // Isi yang tadi lagi kebuka sebelum re-render: muat lagi (dari cache kalau belum berubah).
+    S.sesiList.querySelectorAll('.sesi-peek').forEach(box => {
+      if (box.style.display !== 'none') loadSesiPeek(box.dataset.id, box);
     });
   } catch (err) {
     S.renderListError(S.sesiListError, err.message, loadSesiList);
@@ -4705,6 +4836,13 @@ export function setSubroute(sub) {
 }
 
 export function unmount() {
+  // Lepas semua listener global yang didaftarkan lewat S.onGlobal (paste, klik
+  // menu riwayat, Escape modal link-gen, dst). Dijalankan paling awal supaya
+  // tetap jalan walau bridge belum kebentuk (mount() crash di tengah).
+  const offs = _globalOffs;
+  _globalOffs = [];
+  offs.forEach(off => { try { off(); } catch (err) { console.error('unmount konversian: lepas listener global gagal', err); } });
+
   if (window.__konvRiwayatKeydown) {
     document.removeEventListener('keydown', window.__konvRiwayatKeydown);
     window.__konvRiwayatKeydown = null;
