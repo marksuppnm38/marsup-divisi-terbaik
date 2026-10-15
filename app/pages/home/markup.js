@@ -85,4 +85,13 @@ export const MODULES = [
     color: '#2563EB',
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>',
   },
+  {
+    id: 'rekon-meeting',
+    title: 'Rekon Meeting',
+    desc: 'Recap meeting vs data sistem.',
+    url: '/rekon-meeting',
+    migrated: true,
+    color: '#F59E0B',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v18"/><path d="M5 7h14"/><path d="M5 7l-3 7a3 3 0 0 0 6 0z"/><path d="M19 7l-3 7a3 3 0 0 0 6 0z"/></svg>',
+  },
 ];

@@ -1,0 +1,139 @@
+/* app/pages/rekon-meeting/style.css
+   Semua selector di-scope ke .rk-page (class yang dipasang index.js ke container #app),
+   tanpa selector telanjang, tanpa :root — tidak bisa bocor ke halaman lain.
+   Warna memakai token global pnm-universal.css (ikut tema terang/gelap). */
+
+.rk-page .rk-main { padding: 24px; }
+.rk-page .rk-wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.rk-page .rk-head h1 { margin: 0 0 4px; font-size: 22px; font-weight: 650; color: var(--text); letter-spacing: -.01em; }
+.rk-page .rk-head p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-muted); max-width: 760px; }
+.rk-page .rk-head b { color: var(--text-secondary); font-weight: 600; }
+
+/* tombol */
+.rk-page .rk-btn { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; font-weight: 550; padding: 7px 12px; border-radius: 8px;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-secondary); cursor: pointer; transition: border-color .12s, background .12s; }
+.rk-page .rk-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-text); }
+.rk-page .rk-btn:disabled { opacity: .45; cursor: not-allowed; }
+.rk-page .rk-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.rk-page .rk-btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+.rk-page .rk-link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-decoration: underline; }
+
+/* dropzone */
+.rk-page .rk-drop { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border: 1.5px dashed var(--border-strong); border-radius: 12px;
+  background: var(--surface); color: var(--text-secondary); transition: border-color .12s, background .12s; }
+.rk-page .rk-drop.is-over { border-color: var(--accent); background: var(--accent-bg); }
+.rk-page .rk-drop.is-compact { padding: 10px 16px; }
+.rk-page .rk-drop-ico { font-size: 28px; color: var(--accent); }
+.rk-page .rk-drop-txt { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.rk-page .rk-drop-txt strong { color: var(--text); font-size: 14px; }
+.rk-page .rk-drop.is-compact .rk-drop-txt span { display: none; }
+
+/* status */
+.rk-page .rk-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface); font-size: 12.5px; color: var(--text-secondary); }
+.rk-page .rk-status.is-error { background: var(--danger-bg); border-color: var(--danger-border); color: var(--danger-text); }
+.rk-page .rk-status.is-busy { color: var(--text-muted); }
+.rk-page .rk-status .rk-sp { flex: 1; }
+.rk-page .rk-status b { color: var(--text); font-weight: 600; }
+
+/* toolbar */
+.rk-page .rk-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; font-size: 13px; color: var(--text-secondary); }
+.rk-page .rk-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.rk-page .rk-check small { color: var(--text-muted); font-size: 11.5px; }
+.rk-page .rk-sel, .rk-page .rk-input { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); }
+.rk-page .rk-input:focus, .rk-page .rk-sel:focus, .rk-page .rk-area:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+
+/* ringkasan */
+.rk-page .rk-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.rk-page .rk-card { padding: 12px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
+.rk-page .rk-card .rk-k { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.rk-page .rk-card .rk-v { margin-top: 4px; font-size: 20px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
+.rk-page .rk-card .rk-s { margin-top: 2px; font-size: 11.5px; color: var(--text-muted); }
+.rk-page .rk-card.is-bad .rk-v { color: var(--danger); }
+.rk-page .rk-card.is-warn .rk-v { color: var(--warning); }
+.rk-page .rk-card.is-ok .rk-v { color: var(--success); }
+
+/* tab + filter */
+.rk-page .rk-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.rk-page .rk-tab { font: inherit; font-size: 13.5px; font-weight: 550; padding: 9px 14px; margin-bottom: -1px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-muted); cursor: pointer; }
+.rk-page .rk-tab:hover { color: var(--text); }
+.rk-page .rk-tab.is-active { color: var(--accent-text); border-bottom-color: var(--accent); }
+.rk-page .rk-tab .rk-n { margin-left: 6px; font-size: 11px; padding: 1px 7px; border-radius: 20px; background: var(--surface-3); color: var(--text-secondary); }
+.rk-page .rk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 14px 0 12px; }
+.rk-page .rk-pill { font: inherit; font-size: 12.5px; padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-secondary); cursor: pointer; }
+.rk-page .rk-pill:hover { border-color: var(--accent); }
+.rk-page .rk-pill.is-active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.rk-page .rk-bar .rk-grow { flex: 1; min-width: 160px; }
+
+/* baris prospek */
+.rk-page .rk-list { display: flex; flex-direction: column; gap: 10px; }
+.rk-page .rk-row { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--border-strong); border-radius: 10px; padding: 12px 14px; }
+.rk-page .rk-row.v-klop { border-left-color: var(--success); }
+.rk-page .rk-row.v-info { border-left-color: var(--gray-out); }
+.rk-page .rk-row.v-warn { border-left-color: var(--warning); }
+.rk-page .rk-row.v-bad { border-left-color: var(--danger); }
+.rk-page .rk-row-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rk-page .rk-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+.rk-page .rk-title strong { font-size: 14.5px; color: var(--text); font-weight: 620; }
+.rk-page .rk-no { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.rk-page .rk-pic { font-size: 11.5px; padding: 1px 8px; border-radius: 20px; background: var(--surface-3); color: var(--text-secondary); }
+.rk-page .rk-verdict { font-size: 11.5px; font-weight: 650; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+.rk-page .v-klop .rk-verdict { background: var(--success-bg); color: var(--success-text); }
+.rk-page .v-info .rk-verdict { background: var(--surface-3); color: var(--text-secondary); }
+.rk-page .v-warn .rk-verdict { background: var(--warning-bg); color: var(--warn-text); }
+.rk-page .v-bad .rk-verdict { background: var(--danger-bg); color: var(--danger-text); }
+
+.rk-page .rk-cols { display: grid; grid-template-columns: 1fr 1fr 90px; gap: 14px; margin-top: 10px; align-items: start; }
+.rk-page .rk-lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 650; color: var(--text-muted); }
+.rk-page .rk-big { font-size: 18px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.rk-page .rk-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; display: flex; flex-wrap: wrap; gap: 3px 8px; align-items: center; }
+.rk-page .rk-quote { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.45; }
+.rk-page .rk-diff { text-align: right; font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.rk-page .rk-diff.is-bad { color: var(--danger); }
+.rk-page .rk-diff.is-warn { color: var(--warning); }
+.rk-page .rk-diff.is-ok { color: var(--success); }
+.rk-page .rk-diff small { display: block; font-size: 10.5px; font-weight: 500; color: var(--text-muted); }
+
+.rk-page .rk-why { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.rk-page .rk-why-i { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--text-secondary); line-height: 1.45; }
+.rk-page .rk-chip { flex: none; font-size: 11px; font-weight: 650; padding: 2px 9px; border-radius: 20px; white-space: nowrap; }
+.rk-page .rk-chip.l-bad { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
+.rk-page .rk-chip.l-warn { background: var(--warning-bg); color: var(--warn-text); border: 1px solid var(--warning-border); }
+.rk-page .rk-chip.l-info { background: var(--surface-3); color: var(--text-secondary); border: 1px solid var(--border); }
+.rk-page .rk-note-ok { font-size: 12px; color: var(--success-text); margin-top: 8px; }
+
+.rk-page .rk-more { margin-top: 10px; }
+.rk-page .rk-more .rk-link { font-size: 12.5px; }
+
+/* status sistem */
+.rk-page .rk-st { font-size: 11px; font-weight: 650; padding: 1px 8px; border-radius: 20px; background: var(--surface-3); color: var(--text-secondary); }
+.rk-page .rk-st-jadi_sph { background: var(--accent-bg); color: var(--accent-text); }
+.rk-page .rk-st-klik_ekat, .rk-page .rk-st-jadi_order { background: var(--success-bg); color: var(--success-text); }
+
+/* panel detail */
+.rk-page .rk-detail { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
+.rk-page .rk-detail h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+.rk-page .rk-kwrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rk-page .rk-kwrow .rk-input { flex: 1; min-width: 220px; }
+.rk-page .rk-hint { font-size: 11.5px; color: var(--text-muted); }
+.rk-page .rk-area { width: 100%; min-height: 54px; resize: vertical; font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); }
+
+.rk-page .rk-tblwrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.rk-page .rk-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.rk-page .rk-tbl th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); font-weight: 650; padding: 8px 10px; background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.rk-page .rk-tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: top; }
+.rk-page .rk-tbl tr:last-child td { border-bottom: 0; }
+.rk-page .rk-tbl tr.is-off td { color: var(--text-muted); }
+.rk-page .rk-tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rk-page .rk-tbl .nm { color: var(--text); font-weight: 500; min-width: 200px; }
+.rk-page .rk-tag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 20px; margin: 1px 3px 1px 0; background: var(--surface-3); color: var(--text-secondary); }
+.rk-page .rk-tag.t-hi { background: var(--success-bg); color: var(--success-text); }
+.rk-page .rk-tag.t-lo { background: var(--warning-bg); color: var(--warn-text); }
+
+.rk-page .rk-empty { padding: 28px; text-align: center; color: var(--text-muted); font-size: 13px; border: 1px dashed var(--border-strong); border-radius: 10px; }
+
+@media (max-width: 760px) {
+  .rk-page .rk-main { padding: 14px; }
+  .rk-page .rk-cols { grid-template-columns: 1fr; gap: 10px; }
+  .rk-page .rk-diff { text-align: left; }
+}

@@ -19,6 +19,7 @@ const NAV_ICONS = {
   'kompres-pdf':   'ti-file-zip',
   'export-gambar': 'ti-photo',
   'spek-maker':    'ti-file-description',
+  'rekon-meeting': 'ti-scale',
 };
 
 // UPDATE (sesi lanjutan -- "double nav" fix): module -> its own SUBNAV

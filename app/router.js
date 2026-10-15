@@ -76,6 +76,7 @@ const ROUTES = {
   'kompres-pdf': () => import('./pages/kompres-pdf/index.js'),
   'export-gambar': () => import('./pages/export-gambar/index.js'),
   'spek-maker': () => import('./pages/spek-maker/index.js'),
+  'rekon-meeting': () => import('./pages/rekon-meeting/index.js'),
   'konversian': () => import('./pages/konversian/index.js'),
   'crud-produk': () => import('./pages/crud-produk/index.js'),
   'dashboard': () => import('./pages/dashboard/index.js'),
