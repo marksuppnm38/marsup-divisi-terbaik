@@ -385,7 +385,18 @@
 #app-root .panel-clip.tab-kb-active .kb-list:has(> .kb-section-group){
   /* cuma di tab "Semua" (isinya .kb-section-group) grid multi-kolom kepake */
   display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));align-items:start;gap:14px;
+  /* FIX item numpuk: tanpa ini baris grid boleh mengecil sampai 0 (karena .kb-section-group
+     overflow:hidden), jadi pas item banyak & .kb-list kena batas tinggi, kartu-kartunya
+     ketekan dan saling tindih. max-content = tinggi baris selalu ngikutin isinya, sisanya di-scroll. */
+  grid-auto-rows:max-content;align-content:start;
 }
+/* FIX item numpuk: kartu/baris Kebutuhan RS gak boleh ikut ke-shrink. Kalau daftar kepanjangan,
+   yang scroll itu .kb-list-nya, bukan kartunya yang diperas. */
+#app-root .kb-list > *,
+#app-root .kb-section-items > *,
+#app-root .kb-item,
+#app-root .kb-item > *{flex-shrink:0;min-height:auto}
+#app-root .kb-section-group{flex-shrink:0;min-height:min-content}
 #app-root .kb-item[draggable="true"]{cursor:grab}
 #app-root .kb-item[draggable="true"]:active{cursor:grabbing}
 
