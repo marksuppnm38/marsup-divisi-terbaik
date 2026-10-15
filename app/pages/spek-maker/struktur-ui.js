@@ -6,7 +6,7 @@
 // struktur-pdf.js. Dependensi umum (toast, loadScript, token, dst) disuntik dari
 // index.js lewat `deps` supaya gak ada kode helper yang digandakan.
 
-import { buildStrukturPdf } from './struktur-pdf.js';
+import { buildStrukturPdf, loadStrukturFonts } from './struktur-pdf.js';
 import { DEFAULT_ISIAN, buatItem, hitungStruktur, periksaItem, fmtAngka } from './struktur-harga.js';
 import { fileSafeName } from './pdf.js';
 
@@ -212,7 +212,7 @@ export function mountStruktur(panel, deps) {
   // ---- PDF ----
   async function makeDoc(it) {
     await loadScript(cfg.JSPDF_SRC, cfg.JSPDF_SRI);
-    return buildStrukturPdf(window.jspdf.jsPDF, it);
+    return buildStrukturPdf(window.jspdf.jsPDF, it, await loadStrukturFonts());
   }
   function hidePreview() {
     const f = $('shPreviewFrame');

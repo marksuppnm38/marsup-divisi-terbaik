@@ -77,15 +77,18 @@ export function hitungStruktur(hargaEkat) {
   return { ekat, pengajuan, baris, total, totalPct, plusPpn, pembulatan: Math.round(plusPpn) };
 }
 
-// ---- format angka (meniru tampilan sheet: Rp di kiri, 1,234.56 di kanan) ----
+// ---- format angka (locale Indonesia, sama dengan sheet: 7.527.927,93) ----
 export function fmtAngka(n, desimal = 2) {
-  return Number(n).toLocaleString('en-US', { minimumFractionDigits: desimal, maximumFractionDigits: desimal });
+  const neg = Number(n) < 0;
+  const [int, dec] = Math.abs(Number(n)).toFixed(desimal).split('.');
+  const g = int.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return (neg ? '-' : '') + g + (dec ? ',' + dec : '');
 }
 export function fmtPct(p) {
-  return (p * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+  return (p * 100).toFixed(1).replace('.', ',') + '%';
 }
-const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-// '2030-10-14' / Date -> '14-Oct-2030' (format di sheet). Gagal parse -> string asli.
+const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+// '2030-10-14' / Date -> '14-Okt-2030' (format sheet, locale Indonesia). Gagal parse -> string asli.
 export function fmtTanggal(v) {
   if (!v) return '';
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
