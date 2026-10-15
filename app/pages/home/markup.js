@@ -78,8 +78,8 @@ export const MODULES = [
   },
   {
     id: 'spek-maker',
-    title: 'Spek Maker',
-    desc: 'Lembar spesifikasi PDF dari kode produk.',
+    title: 'Document Maker',
+    desc: 'Spesifikasi & struktur harga PDF dari kode produk.',
     url: '/spek-maker',
     migrated: true,
     color: '#2563EB',

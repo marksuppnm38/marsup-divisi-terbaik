@@ -1,4 +1,5 @@
-// spek-maker page module: mount(container) / unmount().
+// spek-maker page module (tampil sebagai "Document Maker"): mount(container) / unmount().
+// Dua tab: Spesifikasi (file ini) dan Struktur Harga (struktur-ui.js).
 //
 // Input: kode produk (satu per baris). Per kode, halaman ini mengambil:
 //   - Kode        -> produk.kode_produk
@@ -16,6 +17,7 @@
 
 import { SPEK_MAKER_MARKUP } from './markup.js';
 import { buildSpekPdf, loadSpekFonts, fileSafeName } from './pdf.js';
+import { mountStruktur } from './struktur-ui.js';
 
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 // anon key publik, sama dengan yang sudah ada di konversian/index.js
@@ -137,6 +139,7 @@ let previewUrl = null;
 let pendingReplaceId = null;
 let logosPromise = null;
 let handlers = [];
+let unmountStruktur = null;
 
 function toast(msg, type = 'success') {
   const host = document.getElementById('smToastRoot');
@@ -475,6 +478,18 @@ function listen(target, type, fn) {
   handlers.push(() => target.removeEventListener(type, fn));
 }
 
+// ---- tab Spesifikasi / Struktur Harga ------------------------------------
+function switchTab(name) {
+  const spek = name !== 'struktur';
+  document.getElementById('smPanelSpek').style.display = spek ? '' : 'none';
+  document.getElementById('smPanelStruktur').style.display = spek ? 'none' : '';
+  root.querySelectorAll('.sm-tab').forEach((t) => {
+    const on = t.dataset.tab === (spek ? 'spek' : 'struktur');
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', String(on));
+  });
+}
+
 // ---- mount / unmount -----------------------------------------------------
 export async function mount(container) {
   await loadLink(STYLE_ID, new URL('./style.css', import.meta.url).href);
@@ -484,10 +499,17 @@ export async function mount(container) {
   items = [];
   nextId = 1;
 
+  // tab Struktur Harga: logika & UI di struktur-ui.js, helper umum disuntik dari sini
+  unmountStruktur = mountStruktur(container.querySelector('#smPanelStruktur'), {
+    toast, loadScript, getToken, el, triggerDownload,
+    cfg: { SUPABASE_URL, ANON_KEY, JSPDF_SRC, JSPDF_SRI, JSZIP_SRC, JSZIP_SRI },
+  });
+
   listen(container, 'click', (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn || !container.contains(btn)) return;
     switch (btn.dataset.action) {
+      case 'tab': switchTab(btn.dataset.tab); break;
       case 'resolve-codes': resolveCodes(); break;
       case 'preview-first': previewItem(items[0]); break;
       case 'preview-item': previewItem(itemById(btn.dataset.id)); break;
@@ -529,6 +551,7 @@ export async function mount(container) {
 }
 
 export function unmount() {
+  if (unmountStruktur) { unmountStruktur(); unmountStruktur = null; }
   alive = false;
   runId++;
   handlers.forEach((off) => off());

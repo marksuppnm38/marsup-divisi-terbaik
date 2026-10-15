@@ -5,15 +5,22 @@
 export const SPEK_MAKER_MARKUP = `
 <div class="sm-page">
   <div class="pw-topbar">
-    <div class="pw-topbar-crumb"><strong>Spek Maker</strong></div>
+    <div class="pw-topbar-crumb"><strong>Document Maker</strong></div>
   </div>
 
   <main>
     <div class="sm-col">
       <div class="page-head">
-        <h1>Spek Maker</h1>
-        <p>Buat lembar spesifikasi PDF dari kode produk.</p>
+        <h1>Document Maker</h1>
+        <p>Buat dokumen PDF dari kode produk: lembar spesifikasi dan struktur harga.</p>
       </div>
+
+      <div class="sm-tabs" role="tablist" aria-label="Jenis dokumen">
+        <button type="button" class="sm-tab active" role="tab" aria-selected="true" data-action="tab" data-tab="spek"><i class="ti ti-file-description" aria-hidden="true"></i> Spesifikasi</button>
+        <button type="button" class="sm-tab" role="tab" aria-selected="false" data-action="tab" data-tab="struktur"><i class="ti ti-receipt-2" aria-hidden="true"></i> Struktur Harga</button>
+      </div>
+
+      <div id="smPanelSpek" role="tabpanel">
 
       <!-- INPUT -->
       <div class="card">
@@ -59,6 +66,9 @@ export const SPEK_MAKER_MARKUP = `
         </div>
         <iframe id="smPreviewFrame" class="sm-preview" title="Preview PDF spesifikasi"></iframe>
       </div>
+      </div>
+
+      <div id="smPanelStruktur" role="tabpanel" style="display:none;"></div>
     </div>
   </main>
 

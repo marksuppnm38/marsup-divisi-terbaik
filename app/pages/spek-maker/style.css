@@ -113,6 +113,23 @@
 .sm-toast-root .toast.success .dot { background: var(--success-dot, var(--success)); }
 .sm-toast-root .toast.error .dot { background: var(--danger-dot, var(--danger)); }
 
+/* Tab Spesifikasi / Struktur Harga */
+.sm-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.sm-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; margin-bottom: -1px;
+  border: none; border-bottom: 2px solid transparent; background: none;
+  font-family: inherit; font-size: 13px; font-weight: 500;
+  color: var(--text-secondary); cursor: pointer;
+}
+.sm-tab:hover { color: var(--text); }
+.sm-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* Grid isian (Struktur Harga) */
+.sm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 12px; }
+.sm-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sm-f > span { font-size: 11px; color: var(--text-muted); }
+
 @media (max-width: 768px) {
   .sm-page main { padding: 24px 12px 48px; }
   .sm-preview { height: 520px; }
