@@ -79,7 +79,7 @@ export const MODULES = [
   {
     id: 'spek-maker',
     title: 'Document Maker',
-    desc: 'Spesifikasi & struktur harga PDF dari kode produk.',
+    desc: 'Spesifikasi, struktur harga & surat permohonan presentasi (SPP) PDF.',
     url: '/spek-maker',
     migrated: true,
     color: '#2563EB',
