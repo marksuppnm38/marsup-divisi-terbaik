@@ -236,6 +236,64 @@ function updateKbCounts() {
 
 // Template satu baris Kebutuhan RS — dipakai render awal (renderChecklist) MAUPUN
 // patch realtime (patchChecklistItem), biar markup-nya gak dobel definisi.
+// ---- Filter status daftar Kebutuhan RS (buat workflow item banyak) ----
+// Chip di atas daftar: Semua / Belum / Tidak bisa / Terpenuhi. Hitungannya
+// ngikutin "scope" tab yang lagi aktif (Semua = seluruh item, tab section = isi
+// section itu). Rollup/progress tetap dihitung dari SEMUA item, filter cuma
+// ngatur baris mana yang digambar — jadi angka 36/41 gak ikut berubah.
+S.kbStatusFilter = S.kbStatusFilter || 'semua';
+const KB_FILTERS = [
+  { key: 'semua',     label: 'Semua',      test: () => true },
+  { key: 'belum',     label: 'Belum',      test: i => i.status === 'PENDING' },
+  { key: 'tidak',     label: 'Tidak bisa', test: i => i.status === 'TIDAK_TERPENUHI' },
+  { key: 'terpenuhi', label: 'Terpenuhi',  test: i => i.status === 'TERPENUHI' }
+];
+function kbFilterDef() { return KB_FILTERS.find(f => f.key === S.kbStatusFilter) || KB_FILTERS[0]; }
+function kbItemMatchesFilter(it) { return kbFilterDef().test(it); }
+
+function kbScopeItems() {
+  if (S.activeSectionTab === null || !S.checklistSections.length) return S.checklistItems;
+  const ids = new Set(S.checklistSections.map(s => s.id));
+  if (S.activeSectionTab === 'orphan') return S.checklistItems.filter(i => !ids.has(i.section_id));
+  return S.checklistItems.filter(i => i.section_id === S.activeSectionTab);
+}
+
+// Bar cuma muncul kalau item-nya lumayan banyak (atau filter lagi aktif, biar
+// selalu ada jalan keluar). Item sedikit = gak perlu nambah elemen.
+function kbFilterBarHtml() {
+  if (S.checklistItems.length <= 8 && S.kbStatusFilter === 'semua') return '';
+  const scope = kbScopeItems();
+  const chips = KB_FILTERS.map(f => {
+    const n = f.key === 'semua' ? scope.length : scope.filter(f.test).length;
+    const active = S.kbStatusFilter === f.key;
+    return `<button type="button" class="kb-filter-chip kb-filter-${f.key}${active ? ' active' : ''}${n === 0 && !active ? ' zero' : ''}" data-kb-filter="${f.key}" aria-pressed="${active ? 'true' : 'false'}">${f.label}<span class="kb-filter-count">${n}</span></button>`;
+  }).join('');
+  return `<div class="kb-filter-bar" role="group" aria-label="Filter status kebutuhan">${chips}</div>`;
+}
+
+// Update angka/aktif chip di tempat (tanpa re-render daftar) — dipakai patch realtime.
+function refreshKbFilterBar() {
+  const bar = S.kbList.querySelector('.kb-filter-bar');
+  if (!bar) return;
+  const temp = document.createElement('div');
+  temp.innerHTML = kbFilterBarHtml();
+  if (temp.firstElementChild) bar.replaceWith(temp.firstElementChild);
+}
+
+function kbFilterEmptyHtml() {
+  return `<div class="kb-section-empty">Gak ada item "${kbFilterDef().label}" di sini. <button type="button" class="kb-filter-reset" data-kb-filter="semua">Tampilkan semua</button></div>`;
+}
+
+S.kbList.addEventListener('click', e => {
+  const chip = e.target.closest('[data-kb-filter]');
+  if (!chip) return;
+  const key = chip.dataset.kbFilter;
+  if (!KB_FILTERS.some(f => f.key === key) || key === S.kbStatusFilter) return;
+  S.kbStatusFilter = key;
+  renderChecklist();
+  S.kbList.scrollTop = 0;
+});
+
 function renderChecklistItemHtml(item) {
   const isPending = item.status === 'PENDING';
   const isDone = item.status === 'TERPENUHI';
@@ -267,7 +325,7 @@ function renderChecklistItemHtml(item) {
   const headerHtml = `<div class="kb-item-header" data-action="toggle-expand" data-id="${item.id}">
     <span class="kb-item-status-icon">${statusIcon}</span>
     <div class="kb-item-header-text">
-      <div class="kb-item-text">${S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
+      <div class="kb-item-text" title="${S.escapeHtmlAttr(item.raw_text)}${qtyTxt}">${S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
       ${!isExpanded ? compactMatchedTxt : ''}
     </div>
     <i class="ti ti-chevron-down kb-item-chevron"></i>
@@ -568,7 +626,20 @@ S.kbList.addEventListener('dragstart', e => {
   dragPayload = { type: 'item', id: Number(itemEl.dataset.id) };
 });
 
+// Bungkus render: jaga posisi scroll daftar biar gak loncat ke atas tiap re-render
+// (buka/tutup baris, konfirmasi, ganti filter dll).
 function renderChecklist() {
+  const prevScroll = S.kbList.scrollTop;
+  renderChecklistInner();
+  S.kbList.scrollTop = prevScroll;
+}
+
+function renderChecklistInner() {
+  // Filter status itu per Permintaan RS — ganti permintaan/sesi, balik ke "Semua".
+  if (S._kbFilterPid !== S.checklistPermintaanId) {
+    S._kbFilterPid = S.checklistPermintaanId;
+    S.kbStatusFilter = 'semua';
+  }
   updateKbCounts();
   renderSectionTabs();
 
@@ -586,7 +657,9 @@ function renderChecklist() {
   if (!S.checklistSections.length) {
     // Belum ada section (Permintaan RS single-sheet, atau RPC belum di-update
     // buat ngirim field sections) — tampilin flat kayak sebelumnya, gak ada regresi.
-    S.kbList.innerHTML = S.checklistItems.map(renderChecklistItemHtml).join('');
+    const visFlat = S.checklistItems.filter(kbItemMatchesFilter);
+    S.kbList.innerHTML = kbFilterBarHtml()
+      + (visFlat.length ? visFlat.map(renderChecklistItemHtml).join('') : (S.checklistItems.length ? kbFilterEmptyHtml() : ''));
     return;
   }
 
@@ -602,18 +675,24 @@ function renderChecklist() {
     // sheet sekilas — buat overview, bukan tempat kerja detail (itu di tab masing-masing).
     const groups = S.checklistSections.map(s => ({ section: s, items: bySection.get(s.id) }));
     if (bySection.get(null).length) groups.push({ section: null, items: bySection.get(null) });
-    S.kbList.innerHTML = groups.map(g => {
+    let anyVisible = false;
+    const groupsHtml = groups.map(g => {
       if (!g.items.length) return '';
-      const rollup = computeSectionRollup(g.items, g.section ? g.section.pagu : null);
+      const visItems = g.items.filter(kbItemMatchesFilter);
+      if (!visItems.length) return ''; // grup tanpa baris yang lolos filter disembunyiin
+      anyVisible = true;
+      const rollup = computeSectionRollup(g.items, g.section ? g.section.pagu : null); // rollup tetap dari SEMUA baris
       const title = g.section ? S.escapeHtmlAttr(g.section.nama_section) : 'Tanpa section';
       return `<div class="kb-section-group" data-section-id="${g.section ? g.section.id : 'null'}">
         <div class="kb-section-header">
           <span class="kb-section-title">${title}</span>
           ${kbRollupHtml(rollup, 'sm')}
         </div>
-        <div class="kb-section-items">${g.items.map(renderChecklistItemHtml).join('')}</div>
+        <div class="kb-section-items">${visItems.map(renderChecklistItemHtml).join('')}</div>
       </div>`;
     }).join('');
+    S.kbList.innerHTML = kbFilterBarHtml()
+      + (anyVisible || S.kbStatusFilter === 'semua' ? groupsHtml : kbFilterEmptyHtml());
     return;
   }
 
@@ -629,11 +708,17 @@ function renderChecklist() {
     ? `<div class="kb-section-pagu-row">Pagu section: <input type="text" inputmode="numeric" id="kb-section-pagu-input" data-section-id="${section.id}"
          value="${section.pagu != null ? formatRibuan(section.pagu) : ''}" placeholder="belum diisi"></div>`
     : '';
-  S.kbList.innerHTML = `<div class="kb-active-section-head">
+  const visItems = items.filter(kbItemMatchesFilter);
+  const bodyHtml = visItems.length
+    ? visItems.map(renderChecklistItemHtml).join('')
+    : (items.length
+      ? kbFilterEmptyHtml()
+      : '<div class="kb-section-empty">Belum ada baris di section ini. Drag baris dari tab lain ke sini, atau tambah lewat Permintaan RS.</div>');
+  S.kbList.innerHTML = `${kbFilterBarHtml()}<div class="kb-active-section-head">
       ${kbRollupHtml(rollup, 'sm')}
       ${paguRow}
     </div>
-    ${items.length ? items.map(renderChecklistItemHtml).join('') : '<div class="kb-section-empty">Belum ada baris di section ini. Drag baris dari tab lain ke sini, atau tambah lewat Permintaan RS.</div>'}`;
+    ${bodyHtml}`;
 }
 S.renderChecklist = renderChecklist;
 
@@ -677,6 +762,14 @@ function patchChecklistItem(id, changes) {
   Object.assign(item, changes);
   updateKbCounts();
   const node = S.kbList.querySelector(`.kb-item[data-id="${CSS.escape(String(id))}"]`);
+  // Filter aktif: status berubah bisa bikin baris ini keluar/masuk filter.
+  const visible = kbItemMatchesFilter(item);
+  if (!!node !== visible) { renderChecklist(); return; }
+  if (!node) { // baris ini memang lagi disembunyiin filter — cukup update angka
+    refreshRollupHeadersOnly();
+    refreshKbFilterBar();
+    return;
+  }
   if (node) {
     const temp = document.createElement('div');
     temp.innerHTML = renderChecklistItemHtml(item);
@@ -687,6 +780,7 @@ function patchChecklistItem(id, changes) {
     // global di kbSummary) kemungkinan besar ikut geser. Re-render header aja
     // (bukan renderChecklist() penuh) biar gak ngerender ulang semua baris.
     refreshRollupHeadersOnly();
+    refreshKbFilterBar();
   } else {
     renderChecklist(); // fallback aman kalau node-nya gak ketemu (harusnya jarang)
   }

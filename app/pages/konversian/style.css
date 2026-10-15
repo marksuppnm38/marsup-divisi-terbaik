@@ -397,6 +397,46 @@
 #app-root .kb-item,
 #app-root .kb-item > *{flex-shrink:0;min-height:auto}
 #app-root .kb-section-group{flex-shrink:0;min-height:min-content}
+/* ---- Filter status Kebutuhan RS (chip di atas daftar, nempel pas di-scroll) ---- */
+#app-root .kb-filter-bar{
+  position:sticky;top:0;z-index:3;display:flex;gap:6px;flex-wrap:wrap;
+  padding:8px 0 8px;margin-bottom:4px;background:var(--surface);
+  grid-column:1 / -1; /* di tab "Semua" (grid) bar tetap selebar penuh */
+}
+#app-root .kb-filter-chip{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+  border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);
+  font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;
+  transition:background .12s ease,border-color .12s ease,color .12s ease;
+}
+#app-root .kb-filter-chip:hover{border-color:var(--border-strong);color:var(--text)}
+#app-root .kb-filter-chip.zero{opacity:.55}
+#app-root .kb-filter-count{
+  min-width:18px;padding:0 5px;border-radius:999px;background:var(--surface-3);
+  color:var(--text-muted);font-size:10.5px;line-height:17px;text-align:center;
+}
+#app-root .kb-filter-chip.active{background:var(--accent);border-color:var(--accent);color:#fff}
+#app-root .kb-filter-chip.active .kb-filter-count{background:rgba(255,255,255,.25);color:#fff}
+#app-root .kb-filter-reset{
+  margin-left:4px;border:none;background:none;padding:0;font:inherit;font-weight:600;
+  color:var(--accent-text,var(--accent));text-decoration:underline;cursor:pointer;
+}
+
+/* ---- Baris TERPENUHI yang lagi ketutup: padat, satu baris (nama kebutuhan → produk) ----
+   Biar 30+ baris hijau gak makan tempat; yang butuh perhatian (belum/tidak bisa) tetap lega.
+   Klik baris = buka detail kayak biasa. */
+#app-root .kb-item.terpenuhi.collapsed{margin-bottom:3px}
+#app-root .kb-item.terpenuhi.collapsed .kb-item-header{padding:5px 10px;align-items:center}
+#app-root .kb-item.terpenuhi.collapsed .kb-item-header-text{
+  display:flex;align-items:baseline;gap:10px;min-width:0;
+}
+#app-root .kb-item.terpenuhi.collapsed .kb-item-text{
+  flex:0 1 52%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#app-root .kb-item.terpenuhi.collapsed .kb-item-compact-matched{flex:1 1 48%;min-width:0;margin-top:0}
+#app-root .kb-item.terpenuhi.collapsed .kb-item-chevron{margin-top:0}
+#app-root .kb-item.terpenuhi.collapsed .kb-item-status-icon{margin-top:0}
+
 #app-root .kb-item[draggable="true"]{cursor:grab}
 #app-root .kb-item[draggable="true"]:active{cursor:grabbing}
 
