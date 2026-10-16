@@ -482,6 +482,25 @@ function stopRouting() {
   if (navContainer) navContainer.style.display = 'none';
 }
 
+// PREFETCH SPEKULATIF halaman yang hampir pasti dibuka berikutnya. Tanpa ini chunk
+// halaman baru mulai diunduh SETELAH gate login + cek allowed_users selesai (rantai
+// serial). Di sini import() dipanggil sekarang, paralel dengan proses auth; hasilnya
+// di-cache modul-loader, jadi import() di render() nanti langsung selesai. Aman:
+// scope modul semua halaman cuma deklarasi (mount() yang bekerja), dan chunk-nya
+// file statis publik. Cuma jalan kalau browser ini punya sesi tersimpan (user yang
+// akan langsung masuk) -- yang belum login dapat gate login tanpa download ekstra.
+function prefetchLikelyRoute() {
+  try {
+    if (!localStorage.getItem('pnm_auth_session')) return;
+    let mod = location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0];
+    if (!mod) { const last = readLastRoute(); mod = last ? last.split('/')[0] : DEFAULT_ROUTE; }
+    if (RETIRED_REDIRECTS[mod]) mod = RETIRED_REDIRECTS[mod];
+    const load = ROUTES[mod];
+    if (load) load().catch(() => {});
+  } catch (err) { /* prefetch cuma optimasi -- gagal ya diam */ }
+}
+prefetchLikelyRoute();
+
 window.addEventListener('DOMContentLoaded', () => {
   initNoAutofillGuard();
   initAuthGate({ onReady: startRouting, onLoggedOut: stopRouting });

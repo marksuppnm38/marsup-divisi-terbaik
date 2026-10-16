@@ -163,6 +163,9 @@ function hashOf(content) {
 // path (see big comment at top of file) -- everything else in shared/ is
 // either pure ESM-import-only (auth-gate.js, inlined automatically) or
 // doesn't exist.
+const SUPABASE_VENDOR_KEY = 'vendor:supabase-js';
+// Dua bentuk URL CDN yang dipakai di source (konversian pakai yang panjang).
+const SUPABASE_CDN_RE = /(['"])https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2(?:\/dist\/umd\/supabase\.js)?\1/g;
 const CLASSIC_SHARED_SCRIPTS = ['supabase-client.js', 'auth-session.js', 'toast.js'];
 
 // ─── Step 1: hash + copy page-local CSS (loaded via
@@ -172,7 +175,10 @@ const CLASSIC_SHARED_SCRIPTS = ['supabase-client.js', 'auth-session.js', 'toast.
 async function buildHashedAssetMaps() {
   const cssMap = new Map();
   const jsMap = new Map(); // absolute shared/<name>.js path -> '/assets/<hash>.js'
-  const assetsDir = path.join(OUT, 'assets');
+  // Hashed output ke dist/static/ (BUKAN dist/assets/): folder assets/ di repo isinya PNG
+  // tanpa hash, jadi gak bisa diberi Cache-Control immutable. static/ cuma berisi file
+  // content-hashed -> aman di-cache setahun (lihat vercel.json).
+  const assetsDir = path.join(OUT, 'static');
   await fs.mkdir(assetsDir, { recursive: true });
 
   async function walkCss(dir) {
@@ -189,7 +195,7 @@ async function buildHashedAssetMaps() {
       const hash = hashOf(minified);
       const outName = `${hash}.css`;
       await fs.writeFile(path.join(assetsDir, outName), minified);
-      cssMap.set(full, `/assets/${outName}`);
+      cssMap.set(full, `/static/${outName}`);
     }
   }
   await walkCss(path.join(ROOT, 'app'));
@@ -214,7 +220,22 @@ async function buildHashedAssetMaps() {
     const hash = hashOf(result.code);
     const outName = `${hash}.js`;
     await fs.writeFile(path.join(assetsDir, outName), result.code);
-    jsMap.set(full, `/assets/${outName}`);
+    jsMap.set(full, `/static/${outName}`);
+  }
+
+  // supabase-js: dulu dimuat dari cdn.jsdelivr.net (floating '@2') di tiap titik
+  // VENDOR_CHAIN. Sekarang di-self-host dari node_modules (versi dipin di package.json):
+  // satu hop DNS/TLS eksternal hilang, URL-nya hashed + immutable, versinya gak bisa
+  // berubah diam-diam. Pemanggil di source TIDAK diubah -- literal URL CDN-nya
+  // ditimpa plugin di bawah (dev lokal tetap pakai CDN, zero-build).
+  const supaPath = path.join(ROOT, 'node_modules/@supabase/supabase-js/dist/umd/supabase.js');
+  try {
+    const code = await fs.readFile(supaPath);
+    const outName = `${hashOf(code)}.js`;
+    await fs.writeFile(path.join(assetsDir, outName), code);
+    jsMap.set(SUPABASE_VENDOR_KEY, `/static/${outName}`);
+  } catch {
+    console.warn('WARNING: @supabase/supabase-js tidak ada di node_modules -- jalankan `npm install`. Fallback: tetap pakai CDN jsDelivr.');
   }
 
   return { cssMap, jsMap };
@@ -275,6 +296,11 @@ function assetUrlRewritePlugin(cssMap, jsMap) {
           }
         );
 
+        const supaUrl = jsMap.get(SUPABASE_VENDOR_KEY);
+        if (supaUrl) {
+          rewritten = rewritten.replace(SUPABASE_CDN_RE, () => { changed = true; return JSON.stringify(supaUrl); });
+        }
+
         if (!changed) return null; // let esbuild read the file normally
         return { contents: rewritten, loader: 'js' };
       });
@@ -314,7 +340,7 @@ async function bundleApp(cssMap, jsMap) {
 // ─── Step 4: generic copy walk for everything NOT handled above (html,
 // images, favicon, the shared root pnm-universal.css, docs exclusions,
 // etc.), stripping comments from html/css as it goes.
-async function copyStaticFiles(routerPublicUrl) {
+async function copyStaticFiles(routerPublicUrl, jsMap) {
   async function walk(dir) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
@@ -339,6 +365,13 @@ async function copyStaticFiles(routerPublicUrl) {
         let html = await fs.readFile(fullPath, 'utf8');
         html = stripHtmlComments(html);
         html = html.replaceAll('/app/router.js', routerPublicUrl);
+        // <link rel=preload> di index.html menunjuk path dev -> arahkan ke file hashed.
+        const supaUrl = jsMap.get(SUPABASE_VENDOR_KEY);
+        if (supaUrl) html = html.replaceAll('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', supaUrl);
+        for (const name of CLASSIC_SHARED_SCRIPTS) {
+          const hashed = jsMap.get(path.join(ROOT, 'shared', name));
+          if (hashed) html = html.replaceAll('/shared/' + name, hashed);
+        }
         await fs.writeFile(outPath, html);
       } else if (entry.name.endsWith('.css')) {
         // Root-level shared CSS (e.g. pnm-universal.css) referenced by a
@@ -361,7 +394,7 @@ async function main() {
 
   const { cssMap, jsMap } = await buildHashedAssetMaps();
   const routerPublicUrl = await bundleApp(cssMap, jsMap);
-  await copyStaticFiles(routerPublicUrl);
+  await copyStaticFiles(routerPublicUrl, jsMap);
 
   console.log('Build complete ->', OUT);
   console.log('Router entry ->', routerPublicUrl);

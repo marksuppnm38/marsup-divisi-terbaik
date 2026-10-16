@@ -20,6 +20,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link id="shared-google-fonts" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<!-- Unduh script auth PARALEL dengan router.js. Loader di auth-gate.js memuat tiga file ini
+     berurutan (supabase-js -> supabase-client -> auth-session) -- tanpa hint ini tiap file baru
+     mulai diunduh setelah file sebelumnya selesai. Build produksi menimpa tiga URL ini ke
+     file hashed (scripts/build.mjs). -->
+<link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+<link rel="preload" as="script" href="/shared/supabase-client.js">
+<link rel="preload" as="script" href="/shared/auth-session.js">
 <link id="shared-pnm-universal-css" rel="stylesheet" href="/pnm-universal.css?v=20260813b">
 </head>
 <body>

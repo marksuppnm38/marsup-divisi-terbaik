@@ -1498,11 +1498,19 @@ function setProgress(current, total, label) {
 }
 
 // GET SET ITEMS
-async function getSetItems(kode_produk) {
-  const r1 = await sesiFetch(`produk?kode_produk=eq.${encodeURIComponent(kode_produk)}&select=id&limit=1`);
-  const prodList = await r1.json();
-  if (!prodList || !prodList.length) return [];
-  const set_id = prodList[0].id;
+// produkIdPromise (opsional): kalau pemanggil sudah punya lookup id produk yang sedang jalan
+// (modal Lampiran), pakai itu -- jangan lookup ulang berurutan (hemat 1 round-trip).
+async function getSetItems(kode_produk, produkIdPromise) {
+  let set_id;
+  if (produkIdPromise) {
+    set_id = await produkIdPromise;
+    if (!set_id) return [];
+  } else {
+    const r1 = await sesiFetch(`produk?kode_produk=eq.${encodeURIComponent(kode_produk)}&select=id&limit=1`);
+    const prodList = await r1.json();
+    if (!prodList || !prodList.length) return [];
+    set_id = prodList[0].id;
+  }
 
   const r2 = await sesiFetch(`rpc/get_set_items`, {
     method: 'POST',

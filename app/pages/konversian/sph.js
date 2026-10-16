@@ -1476,21 +1476,6 @@ if (sphGenerateBtn) sphGenerateBtn.addEventListener('click', sphGenerate);
 [sphNomorInput, sphRsInput].forEach(el => {
   if (el) el.addEventListener('input', () => { sphValidationEl.style.display = 'none'; });
 });
-  // Inline handler yang masih ada di markup (cuma satu: mobile tab switcher —
-  // lihat map.md/investigasi sesi ini, sisanya sudah pakai addEventListener).
-  window.switchTab = S.switchTab;
-
-  // UPDATE (sesi lanjutan -- nav redesign): initial sub-tab, driven by the
-  // URL's sub-route if the user arrived via a deep link (global sidebar's
-  // accordion, or a bookmark/refresh on e.g. #konversian/riwayat) --
-  // defaults to 'cari' same as before this session (previously implicit,
-  // markup.js's static HTML just happened to start with subtab-cari
-  // active/panel-body-cari visible; explicit now since a direct link to a
-  // different sub-tab needs this to actually land there). konversian's own
-  // in-page subtab row (subtabCari.addEventListener(...) etc, right above
-  // switchSubTab's definition) is UNCHANGED and still works exactly as
-  // before -- this is purely an ADDITIONAL way to land on a given tab, not
-  // a replacement for the existing one. See subnav.js's header comment for
-  // why that row isn't being removed this session.
-  S.switchSubTab(S.initialSub || 'cari');
+  // (window.switchTab + initial sub-tab dipindah ke index.js mount() supaya
+  // sph.js bisa di-lazy-load -- lihat loadSphLazy() di index.js.)
 }

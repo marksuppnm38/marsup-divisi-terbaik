@@ -37,6 +37,33 @@
           "value": "max-age=63072000; includeSubDomains; preload"
         }
       ]
+    },
+    {
+      "source": "/(chunks|static)/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/(assets|favicon)/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
+        }
+      ]
+    },
+    {
+      "source": "/pnm-universal.css",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600, stale-while-revalidate=604800"
+        }
+      ]
     }
   ]
 }

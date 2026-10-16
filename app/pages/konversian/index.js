@@ -114,7 +114,7 @@ import { installSetMendekati } from './set-mendekati.js';
 import { installProject } from './project.js';
 import { installAutoRecord } from './auto-record.js';
 import { installPermintaanRs } from './permintaan-rs.js';
-import { installSph } from './sph.js';
+// installSph di-lazy-load (dynamic import) -- lihat loadSphLazy() di bawah.
 
 // Independent vendor libs — gak saling bergantung satu sama lain, aman
 // di-Promise.all (pola sama kayak kompres-pdf).
@@ -377,6 +377,38 @@ let mountedContainer = null;
 // call-time rather than a SyntaxError at parse-time -- the export itself
 // WAS correctly placed at top-level already, switchSubTab just wasn't
 // reachable from there).
+// LAZY-LOAD sph.js (~71KB source): modul ini cuma dibutuhkan begitu user buka
+// tab "Buat SPH" di clipboard. Surface ke luar cuma dua global yang SUDAH
+// dicek `typeof === 'function'` / `window.sphFlow &&` oleh pemanggilnya
+// (clipboard.js switchClipTab, resetChecklistUI) -- jadi sebelum ke-install,
+// onSphTabOpen di bawah ini yang jawab, sphFlow belum ada (field SPH memang
+// belum pernah terisi, jadi reset() gak ada yang perlu direset).
+let _sphMountToken = 0;
+function installSphLazyStub(S) {
+  const myToken = ++_sphMountToken;
+  let loading = null;
+  const stub = function () {
+    if (!loading) {
+      loading = import('./sph.js').then(({ installSph }) => {
+        // mount ini sudah di-unmount / diganti mount baru selagi chunk diunduh
+        // -> jangan pasang ke DOM lama.
+        if (myToken !== _sphMountToken || !mountedContainer) return false;
+        installSph(S); // ini menimpa window.onSphTabOpen dengan versi asli
+        return true;
+      }).catch(err => {
+        loading = null; // boleh dicoba lagi pas tab diklik ulang
+        console.error('Gagal memuat modul SPH:', err);
+        S.showToast?.('Gagal memuat modul SPH, coba klik tab lagi.', 'error');
+        return false;
+      });
+    }
+    return loading.then(ok => {
+      if (ok && window.onSphTabOpen && window.onSphTabOpen !== stub) window.onSphTabOpen();
+    });
+  };
+  window.onSphTabOpen = stub;
+}
+
 let _switchSubTab = null;
 
 // Registry listener global (document/window) yang dipasang selama mount() ini.
@@ -1869,25 +1901,33 @@ async function openLampiranModal(kode_produk, isSet) {
   lampiranStatus.textContent = 'Memuat lampiran…';
   lampiranModal.classList.add('show');
   lampiranCurrentKode = kode_produk;
+  lampiranCurrentProdukId = null; // jangan bawa id produk sebelumnya selagi lookup baru jalan
   lampiranCurrentFilename = null;
   lampiranCurrentIsSet = !!isSet;
 
-  const produk_id = await getProdukId(kode_produk);
-  lampiranCurrentProdukId = produk_id;
+  // getProdukId() dijalankan SEKALI dan promise-nya dibagi ke getSetItems()
+  // (dulu: lookup id ini dikerjakan dua kali, berurutan, sebelum rincian set
+  // mulai di-fetch -- 2 round-trip sia-sia, terasa banget di jaringan HP).
+  const produkIdPromise = getProdukId(kode_produk);
 
   if (lampiranCurrentIsSet) {
+    produkIdPromise.then(id => {
+      if (lampiranCurrentKode === kode_produk) lampiranCurrentProdukId = id; // jangan timpa kalau modal sudah ganti produk
+    }).catch(() => {});
     // Default buat SET: rincian isi set + gambar — "lampiran" SET pada
     // dasarnya emang dari isi komponennya (persis sheet per-set di export
     // Excel), bukan brosur terpisah yang perlu dicari/diupload. Pintu upload
     // PDF manual TETAP dibuka lewat toggle-btn, buat kasus SET yang beneran
     // punya brosur paket dari vendor.
-    await renderSetRincianInLampiranModal(kode_produk);
+    await renderSetRincianInLampiranModal(kode_produk, produkIdPromise);
     lampiranToggleBtn.textContent = 'Upload Lampiran PDF';
     lampiranToggleBtn.style.display = 'inline-block';
-    lampiranToggleBtn.onclick = () => runPdfLookupFlow(kode_produk);
+    // pastikan lampiranCurrentProdukId sudah terisi sebelum alur PDF jalan
+    lampiranToggleBtn.onclick = async () => { await produkIdPromise.catch(() => {}); runPdfLookupFlow(kode_produk); };
     return;
   }
 
+  lampiranCurrentProdukId = await produkIdPromise;
   await runPdfLookupFlow(kode_produk);
 }
 S.openLampiranModal = openLampiranModal;
@@ -1896,7 +1936,25 @@ S.openLampiranModal = openLampiranModal;
 // data & foto diambil dari sumber yang SAMA dengan sheet per-set di export
 // Excel (get_set_items via getSetItems + fetchImageBase64/removeBackground),
 // jadi apa yang keliatan di sini bakal konsisten sama isi file export nanti.
-async function renderSetRincianInLampiranModal(kode_produk) {
+// Cache thumbnail yang SUDAH diproses (downscale + removeBackground) per key bucket,
+// selama modul konversian ini hidup -- buka ulang lampiran set yang sama = gambar
+// langsung ada, nol fetch. Dibatasi 200 entri (FIFO) biar memori HP gak membengkak.
+const lampiranThumbCache = new Map();
+const LAMPIRAN_THUMB_CACHE_MAX = 200;
+const LAMPIRAN_IMG_CONCURRENCY = 4; // dulu tak terbatas (semua item sekaligus) -> HP tersedak decode+canvas paralel
+async function getRincianThumb(it) {
+  const key = thumbKeyForItem(it);
+  if (lampiranThumbCache.has(key)) return lampiranThumbCache.get(key);
+  const raw = await S.fetchImageBase64(it.kode_asli, it.kode_produk);
+  const out = raw ? await S.removeBackground(raw) : null;
+  if (out) {
+    lampiranThumbCache.set(key, out);
+    if (lampiranThumbCache.size > LAMPIRAN_THUMB_CACHE_MAX) lampiranThumbCache.delete(lampiranThumbCache.keys().next().value);
+  }
+  return out; // null (gagal/gak ada gambar) sengaja gak di-cache, biar bisa dicoba lagi
+}
+
+async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
   lampiranPages.innerHTML = '';
   lampiranPicker.style.display = 'none';
   lampiranSaveRow.style.display = 'none';
@@ -1907,7 +1965,7 @@ async function renderSetRincianInLampiranModal(kode_produk) {
 
   let items;
   try {
-    items = await S.getSetItems(kode_produk);
+    items = await S.getSetItems(kode_produk, produkIdPromise);
   } catch (e) {
     lampiranStatus.textContent = 'Gagal memuat rincian set: ' + (e.message || e);
     return;
@@ -1921,13 +1979,10 @@ async function renderSetRincianInLampiranModal(kode_produk) {
   S.setItemCountCache.set(kode_produk, items.length);
   lampiranTitle.textContent = `Lampiran — ${kode_produk} · ${items.length} item`;
 
-  // Gambar tiap komponen diambil PARALEL (bukan satu-satu) — sama pola kayak
-  // worker pool di export Excel, biar gak lelet kalau isi setnya banyak.
-  const imgs = new Array(items.length);
-  await Promise.all(items.map(async (it, i) => {
-    const raw = await S.fetchImageBase64(it.kode_asli, it.kode_produk);
-    imgs[i] = raw ? await S.removeBackground(raw) : null;
-  }));
+  // Gambar TIDAK lagi ditunggu semuanya sebelum tabel muncul: tabel (kode/nama/qty)
+  // dirender dulu, gambar nyusul satu-satu (pool terbatas) -- lihat blok setelah
+  // innerHTML di bawah. imgs[] diprefill dari cache supaya buka-ulang instan.
+  const imgs = items.map(it => lampiranThumbCache.get(thumbKeyForItem(it)) || null);
 
   lampiranStatus.style.display = 'none';
   const esc = (s) => String(s ?? '').replace(/</g, '&lt;');
@@ -1939,7 +1994,7 @@ async function renderSetRincianInLampiranModal(kode_produk) {
       <td style="padding:8px;text-align:center;font-size:13px">${it.qty ?? 1}</td>
       <td style="padding:8px;text-align:center">${imgs[i]
         ? `<img src="data:image/png;base64,${imgs[i]}" style="width:56px;height:56px;object-fit:contain"/>`
-        : '<span style="color:var(--text-muted);font-size:11px">—</span>'}</td>
+        : '<span style="color:var(--text-muted);font-size:11px">…</span>'}</td>
     </tr>`).join('');
 
   lampiranSetRincian.innerHTML = `
@@ -1987,8 +2042,37 @@ async function renderSetRincianInLampiranModal(kode_produk) {
   }
   const xlsxBtn = document.getElementById('lampiran-xlsx-btn');
   if (xlsxBtn) {
-    xlsxBtn.addEventListener('click', () => downloadSetRincianXlsx(kode_produk, items, imgs, xlsxBtn));
+    // .xlsx menanam gambar -> tunggu pemuatan gambar selesai kalau user klik terlalu cepat.
+    // (Copy+Gambar sengaja TIDAK menunggu: dia pakai signed URL, bukan imgs[], dan
+    // menahan klik bisa bikin Safari menganggap user-gesture-nya sudah hangus.)
+    xlsxBtn.addEventListener('click', async () => { await imgsReady; downloadSetRincianXlsx(kode_produk, items, imgs, xlsxBtn); });
   }
+
+  // ── Muat gambar progresif ──
+  // 1) SATU request createSignedUrls utk semua item (mengisi cache PNM_getSignedUrl),
+  //    bukan N request createSignedUrl terpisah dari tiap fetchImageBase64().
+  // 2) Pool 4 worker: fetch -> downscale -> removeBackground, tiap gambar langsung
+  //    di-paint begitu selesai. Berhenti sendiri kalau modal sudah ganti isi.
+  const tbody = lampiranSetRincian.querySelector('tbody');
+  const imgsReady = (async () => {
+    try { await window.PNM_getSignedUrls('thumbnails', items.map(thumbKeyForItem)); } catch (e) { /* fetchImageBase64 punya jalur sign sendiri */ }
+    let next = 0;
+    const worker = async () => {
+      while (tbody && tbody.isConnected) {
+        const i = next++;
+        if (i >= items.length) return;
+        if (imgs[i]) continue; // sudah dari cache
+        let out = null;
+        try { out = await getRincianThumb(items[i]); } catch (e) { out = null; }
+        imgs[i] = out;
+        const cell = tbody.rows[i] && tbody.rows[i].cells[4];
+        if (cell) cell.innerHTML = out
+          ? `<img src="data:image/png;base64,${out}" style="width:56px;height:56px;object-fit:contain"/>`
+          : '<span style="color:var(--text-muted);font-size:11px">—</span>';
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(LAMPIRAN_IMG_CONCURRENCY, items.length) }, worker));
+  })();
 }
 
 // Nama object (path) di bucket 'thumbnails' buat satu komponen set/produk.
@@ -5026,7 +5110,10 @@ S.convManualSearch = convManualSearch;
   installSetMendekati(S);
   installProject(S);
   installAutoRecord(S);
-  installSph(S);
+  installSphLazyStub(S);
+  // Dulu dikerjakan di ujung installSph() (sph.js) -- dipindah ke sini supaya
+  // gak ikut ke-lazy-load. Inline handler mobile tab switcher di markup:
+  window.switchTab = S.switchTab;
 
   // Restore the sub-tab the URL asked for (e.g. a refresh/direct-link on
   // /konversian/dictionary) -- mount() used to accept `initialSub` but never
@@ -5100,6 +5187,8 @@ export function unmount() {
   delete window.openLinkGenModal;
   delete window.convFlow;
   delete window.sphFlow;
+  delete window.onSphTabOpen;
+  _sphMountToken++; // batalkan install SPH yang masih menunggu chunk
   _switchSubTab = null; // avoid a stale closure over this mount's DOM being callable after teardown
   mountedContainer = null;
 }
