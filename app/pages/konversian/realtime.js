@@ -337,7 +337,7 @@ function renderActivityFeed() {
   el.innerHTML = rtActivityLog.map((a, i) => {
     const hh = String(a.ts.getHours()).padStart(2, '0');
     const mm = String(a.ts.getMinutes()).padStart(2, '0');
-    return `<div${i === 0 ? ' class="rt-fade-in"' : ''} style="padding:2px 0">${hh}:${mm} — ${a.msg}</div>`;
+    return `<div${i === 0 ? ' class="rt-fade-in"' : ''} style="padding:2px 0">${hh}:${mm} — ${S.escapeHtmlAttr(a.msg)}</div>`;
   }).join('');
 }
 document.getElementById('rt-feed-toggle').addEventListener('click', () => {
@@ -389,7 +389,7 @@ function renderPresenceRoster() {
   const overflow = entries.length - shown.length;
   cluster.innerHTML = shown.map(p => {
     const awayCls = p.status === 'away' ? ' away' : '';
-    return `<span class="rt-avatar${awayCls}" style="background:${avatarColorFor(p.nama)}">${initialsFor(p.nama)}</span>`;
+    return `<span class="rt-avatar${awayCls}" style="background:${avatarColorFor(p.nama)}">${S.escapeHtmlAttr(initialsFor(p.nama))}</span>`;
   }).join('') + (overflow > 0 ? `<span class="rt-avatar-more">+${overflow}</span>` : '');
   const names = entries.map(p => p.nama + (p.status === 'away' ? ' (away)' : ''));
   wrap.title = (names.length ? names.join(', ') : 'Cuma kamu di sesi ini') + ' — ' + (RT_STATUS_LABELS[rtConnState] || '');

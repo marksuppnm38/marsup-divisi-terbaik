@@ -865,7 +865,7 @@ function renderAutocomplete(data) {
   S.acBox.innerHTML = S.acItems.map(r => {
     const t = (r.tipe || '').toUpperCase();
     const tipeLabel = t === 'SET' ? 'Set' : t === 'UNIT' ? 'Unit' : 'Instrumen';
-    return `<div class="ac-item"><span class="ac-name">${r.nama_produk}</span><span class="ac-code">${r.kode_produk || ''}</span><span class="ac-badge">${tipeLabel}</span></div>`;
+    return `<div class="ac-item"><span class="ac-name">${S.escapeHtmlAttr(r.nama_produk)}</span><span class="ac-code">${S.escapeHtmlAttr(r.kode_produk || '')}</span><span class="ac-badge">${tipeLabel}</span></div>`;
   }).join('');
   S.acBox.querySelectorAll('.ac-item').forEach((el, i) => {
     el.addEventListener('click', () => {
@@ -1321,6 +1321,9 @@ S.updateClipAggregates = updateClipAggregates;
 // patch realtime (insertClipItem/patchClipItem), biar markup-nya gak dobel definisi.
 function renderClipItemHtml(item) {
   const isSet = item.is_set;
+  // Escape sekali di depan: kode_produk dipakai di banyak atribut data-kode, tipe di badge (2026-10-16).
+  const kodeEsc = S.escapeHtmlAttr(item.kode_produk);
+  const tipeEsc = S.escapeHtmlAttr(item.tipe || '—');
   const tipeColor = isSet ? 'background:var(--success-bg);color:var(--success)' : 'background:var(--accent-bg);color:var(--accent-text)';
   const hargaTampil = S.modeSwastaOutput ? item.harga_swasta : item.harga_ekat;
   const totalHarga = hargaTampil ? hargaTampil * item.qty : null;
@@ -1335,22 +1338,22 @@ function renderClipItemHtml(item) {
   if (rsQty != null) {
     rsBadge = item.qty === rsQty
       ? `<span class="clip-rs-qty" title="Qty sesuai Permintaan RS">RS ${rsQty}</span>`
-      : `<span class="clip-rs-qty override" title="Qty diubah manual. Permintaan RS: ${rsQty}">manual · RS ${rsQty}<button type="button" class="clip-rs-reset" data-kode="${item.kode_produk}" data-qty="${rsQty}" title="Kembalikan ke qty Permintaan RS (${rsQty})" aria-label="Kembalikan ke qty Permintaan RS">↺</button></span>`;
+      : `<span class="clip-rs-qty override" title="Qty diubah manual. Permintaan RS: ${rsQty}">manual · RS ${rsQty}<button type="button" class="clip-rs-reset" data-kode="${kodeEsc}" data-qty="${rsQty}" title="Kembalikan ke qty Permintaan RS (${rsQty})" aria-label="Kembalikan ke qty Permintaan RS">↺</button></span>`;
   }
-  return `<div class="clip-item" data-kode="${item.kode_produk}">
+  return `<div class="clip-item" data-kode="${kodeEsc}">
       <div class="clip-item-info">
         <div class="clip-item-name">${S.escapeHtmlAttr(item.nama_produk)}</div>
         <div class="clip-item-meta">
-          <span class="clip-item-code">${item.kode_produk}</span>
+          <span class="clip-item-code">${kodeEsc}</span>
           ${S.isVerified(item) ? '<i class="ti ti-rosette-discount-check-filled" style="font-size:13px;color:#1d9bf0" title="Verified Product — tayang di INAPROC"></i>' : ''}
           ${rsBadge}
-          <span class="clip-item-tipe" style="${tipeColor}">${item.tipe||'—'}</span>
+          <span class="clip-item-tipe" style="${tipeColor}">${tipeEsc}</span>
           ${hargaTampil?`<span class="clip-item-harga">${rupiah(totalHarga)}</span>`:'<span class="clip-item-code" style="color:var(--text-muted)">Harga N/A</span>'}
         </div>
       </div>
       <div class="clip-item-right">
         <div class="qty-ctrl">
-          <button class="qty-btn" data-kode="${item.kode_produk}" data-d="-1" title="Kurangi qty" aria-label="Kurangi qty">−</button>
+          <button class="qty-btn" data-kode="${kodeEsc}" data-d="-1" title="Kurangi qty" aria-label="Kurangi qty">−</button>
           <input
             class="qty-input"
             type="number"
@@ -1358,11 +1361,11 @@ function renderClipItemHtml(item) {
             step="1"
             inputmode="numeric"
             value="${item.qty}"
-            data-kode="${item.kode_produk}"
+            data-kode="${kodeEsc}"
             aria-label="Jumlah qty"
           />
-          <button class="qty-btn" data-kode="${item.kode_produk}" data-d="1" title="Tambah qty" aria-label="Tambah qty">+</button>
-          <button class="clip-remove" data-kode="${item.kode_produk}" title="Hapus dari clipboard" aria-label="Hapus dari clipboard">×</button>
+          <button class="qty-btn" data-kode="${kodeEsc}" data-d="1" title="Tambah qty" aria-label="Tambah qty">+</button>
+          <button class="clip-remove" data-kode="${kodeEsc}" title="Hapus dari clipboard" aria-label="Hapus dari clipboard">×</button>
         </div>
       </div>
     </div>`;

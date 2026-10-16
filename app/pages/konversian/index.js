@@ -1107,7 +1107,7 @@ async function loadSalesOptions() {
     if (error || !Array.isArray(data)) return; // gagal diam-diam, gak boleh blocking alur konversi
     const dl = document.getElementById('sales-datalist');
     if (!dl) return;
-    dl.innerHTML = data.map(r => `<option value="${String(r.nama).replace(/"/g, '&quot;')}">`).join('');
+    dl.innerHTML = data.map(r => `<option value="${S.escapeHtmlAttr(r.nama)}">`).join('');
   } catch {
     // koneksi gagal / token belum siap — biarkan, field tetap bisa dipakai manual
   }
@@ -1479,7 +1479,7 @@ function resetSsReferences() {
 
 function ssRefStripHtml() {
   const chips = ssReferences.map((r, idx) => `<button type="button" class="ss-ref-chip" data-idx="${idx}" title="Lihat screenshot ${idx + 1} dari ${ssReferences.length}" style="flex-shrink:0;padding:0;border:1.5px solid var(--border-strong);border-radius:8px;overflow:hidden;cursor:pointer;width:48px;height:48px;background:var(--surface-2)">
-    <img src="${r.url}" alt="Screenshot ${idx + 1}" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none"/>
+    <img src="${S.escapeHtmlAttr(r.url)}" alt="Screenshot ${idx + 1}" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none"/>
   </button>`).join('');
   return `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px 10px">
     <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;white-space:nowrap"><i class="ti ti-photo"></i> Referensi:</span>

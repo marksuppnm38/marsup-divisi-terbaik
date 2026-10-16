@@ -146,7 +146,7 @@ function clipboardPickerHtml(itemId, matchedItems) {
     // biar ketik "scalpel" nemu meski yang diinget cuma sebagian nama produknya.
     const haystack = `${c.kode_produk} ${c.nama_produk}`.toLowerCase();
     return `<label class="kb-picker-row" data-search="${S.escapeHtmlAttr(haystack)}">
-      <input type="checkbox" data-picker-check="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}" data-produk-id="${c.produk_id||''}"${checked}>
+      <input type="checkbox" data-picker-check="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}" data-produk-id="${S.escapeHtmlAttr(c.produk_id||'')}"${checked}>
       <span class="kb-picker-name">${S.escapeHtmlAttr(c.kode_produk)} — ${S.escapeHtmlAttr(c.nama_produk)}</span>
       <input type="number" min="0" class="kb-picker-qty" data-picker-qty="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}"
         placeholder="qty" value="${qtyVal}" style="${checked ? '' : 'display:none'}">
@@ -343,7 +343,7 @@ function renderChecklistItemHtml(item) {
       matchedHtml = `<div class="kb-item-matched">${item.matched_items.map(l => {
         const nama = namaProdukByKode(l.kode_produk);
         const qtyLineTxt = l.qty_alokasi != null ? ` · qty ${l.qty_alokasi}` : '';
-        return `<span class="kb-matched-row">→ ${l.kode_produk}${nama ? ' — ' + nama : ''}${qtyLineTxt}</span>`;
+        return `<span class="kb-matched-row">→ ${S.escapeHtmlAttr(l.kode_produk)}${nama ? ' — ' + S.escapeHtmlAttr(nama) : ''}${qtyLineTxt}</span>`;
       }).join('')}</div>`;
     }
 
@@ -379,8 +379,8 @@ function renderChecklistItemHtml(item) {
               <span class="kb-dict-sugg-freq">${Number(p.jumlah_pemakaian).toLocaleString('id-ID')}× dipakai${p.persentase != null ? ' · ' + p.persentase + '%' : ''}</span>
             </div>
             ${inClip
-              ? `<button class="kb-dict-sugg-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${p.kode_produk}">Pakai</button>`
-              : `<button class="kb-dict-sugg-attach" data-action="attach-suggestion" data-id="${item.id}" data-kode="${p.kode_produk}" title="Belum ada di Clipboard sesi ini — tambahin dulu">+ Tambah & Pakai</button>`}
+              ? `<button class="kb-dict-sugg-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${S.escapeHtmlAttr(p.kode_produk)}">Pakai</button>`
+              : `<button class="kb-dict-sugg-attach" data-action="attach-suggestion" data-id="${item.id}" data-kode="${S.escapeHtmlAttr(p.kode_produk)}" title="Belum ada di Clipboard sesi ini — tambahin dulu">+ Tambah & Pakai</button>`}
           </div>`;
         }).join('');
         suggHtml = `<div class="kb-dict-suggestion">
@@ -1578,7 +1578,7 @@ dictModalAddInput.addEventListener('input', () => {
       }
       dictModalAddResults.style.display = 'block';
       dictModalAddResults.innerHTML = data.slice(0, 8).map(p => `
-        <div class="dict-add-result-row" data-kode="${S.escapeHtmlAttr(p.kode_produk)}" data-produk-id="${p.id || ''}"
+        <div class="dict-add-result-row" data-kode="${S.escapeHtmlAttr(p.kode_produk)}" data-produk-id="${S.escapeHtmlAttr(p.id || '')}"
           style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--border)">
           <span>${S.escapeHtmlAttr(p.kode_produk)} — ${S.escapeHtmlAttr(p.nama_produk || '')}</span>
           <i class="ti ti-plus" style="flex-shrink:0"></i>
@@ -1586,7 +1586,7 @@ dictModalAddInput.addEventListener('input', () => {
       `).join('');
     } catch (err) {
       dictModalAddResults.style.display = 'block';
-      dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--danger)">${err.message}</div>`;
+      dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--danger)">${S.escapeHtmlAttr(err.message)}</div>`;
     }
   }, 300);
 });
@@ -1979,7 +1979,7 @@ async function openSphRiwayatModal(sesiId, namaRs) {
       });
     });
   } catch (err) {
-    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${err.message}</div>`;
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${S.escapeHtmlAttr(err.message)}</div>`;
   }
 }
 S.openSphRiwayatModal = openSphRiwayatModal;
@@ -2139,7 +2139,7 @@ async function openKonversiRiwayatModal(sesiId, namaRs) {
       });
     });
   } catch (err) {
-    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${err.message}</div>`;
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${S.escapeHtmlAttr(err.message)}</div>`;
   }
 }
 S.openKonversiRiwayatModal = openKonversiRiwayatModal;
