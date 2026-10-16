@@ -4283,14 +4283,14 @@ async function purgeSesi(id) {
     await delRows(`sph_records?konversi_record_id=in.(${recIds.join(',')})`).catch(() => {});
     await delRows(`konversi_item?konversi_record_id=in.(${recIds.join(',')})`);
     const gone = await delRows(`konversi_record?sesi_id=eq.${idSafe}`);
-    if (gone.length < recIds.length) throw new Error('Record tidak bisa dihapus (kemungkinan kebijakan DELETE di tabel konversi_record belum diizinkan di Supabase).');
+    if (gone.length < recIds.length) throw new Error('Akunmu belum diizinkan menghapus riwayat (Record/SPH). Hubungi admin, atau minta akun yang berwenang menghapusnya.');
   }
   // Tautan project (tab Project) ke sesi ini dilepas; gagal/kolom gak ada = abaikan.
   await S.sesiFetch(`konversi_project_klik?pinned_sesi_id=eq.${idSafe}`, { method: 'PATCH', body: JSON.stringify({ pinned_sesi_id: null }) }).catch(() => {});
   await S.sesiFetch(`konversi_project_klik?riwayat_sesi_id=eq.${idSafe}`, { method: 'PATCH', body: JSON.stringify({ riwayat_sesi_id: null }) }).catch(() => {});
   await delRows(`${S.SESI_ITEM_TABLE}?sesi_id=eq.${idSafe}`);
   const gone = await delRows(`${S.SESI_TABLE}?id=eq.${idSafe}`);
-  if (!gone.length) throw new Error('Sesi tidak terhapus (sudah hilang, atau kebijakan DELETE di Supabase belum mengizinkan).');
+  if (!gone.length) throw new Error('Sesi tidak terhapus (sudah hilang, atau akunmu tidak diizinkan menghapus sesi yang sudah punya Record/SPH).');
 }
 
 function resetLayarKalauSesiAktif(id) {
