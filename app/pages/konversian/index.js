@@ -4221,6 +4221,17 @@ S.loadRiwayatList = loadRiwayatList;
 // Kalau sesi yang dihapus adalah sesi yang sedang dibuka, layar clipboard
 // ikut direset biar gak nyisa data sesi yang udah gak ada.
 async function deleteSesi(id, nama, btn) {
+  // Sesi yang sudah pernah di-Record punya baris di konversi_record (FK konversi_record_sesi_id_fkey,
+  // tanpa cascade) = jadi riwayat/arsip. DB memang menolak hapus sesinya — dan karena item sesi dihapus
+  // DULU sebelum sesinya, penolakan itu dulu bikin sesi nyisa KOSONG. Cek di depan, sebelum apa pun dihapus.
+  try {
+    const chk = await S.sesiFetch(`konversi_record?sesi_id=eq.${encodeURIComponent(id)}&select=id&limit=1`);
+    const rows = chk.ok ? await chk.json().catch(() => []) : [];
+    if (Array.isArray(rows) && rows.length) {
+      S.showToast(`Sesi "${nama}" sudah di-Record konversinya, jadi tersimpan sebagai riwayat dan tidak bisa dihapus.`, 'error');
+      return;
+    }
+  } catch (_) { /* gagal cek -> lanjut, DB tetap jadi pengaman terakhir */ }
   if (!(await S.showConfirmModal({ title: 'Hapus Sesi', text: `Hapus sesi "${nama}"? Semua produk di dalamnya ikut terhapus dan tidak bisa dikembalikan.`, okText: 'Ya, Hapus', danger: true }))) return;
   if (btn) btn.disabled = true;
   try {
