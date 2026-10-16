@@ -742,9 +742,17 @@ S.verifiedReady = (async () => {
     const { data, error } = await rpc('get_verified_kode_produk', {});
     if (!error && Array.isArray(data)) S.verifiedKode = new Set(data);
   } catch (_) { /* abaikan */ }
+  // Clipboard hasil resume sesi / Converter bisa sudah ke-render sebelum data ini datang.
+  try {
+    if (S.verifiedKode.size && S.clipboard && S.clipboard.length && typeof S.updateClipboard === 'function') S.updateClipboard();
+    if (S.verifiedKode.size && S.convRows && S.convRows.length && typeof S.renderConvResults === 'function') S.renderConvResults(S.convRows);
+  } catch (_) { /* render ulang best-effort */ }
 })();
 S.isVerified = (r) => !!(r && S.verifiedKode.has(r.kode_produk));
 // 0 = verified, 1 = link e-Katalog bersih, 2 = lainnya (dipakai applySort)
+// Teks sel Link di OUTPUT (Export Excel, dst). Penanda Verified cuma ikut kalau opsi
+// "Tandai Verified di output" di Pengaturan dinyalakan — default mati.
+S.linkLabelOutput = (kode) => 'Lihat di e-Katalog' + ((S.pnmSettings && S.pnmSettings.outputVerified && S.verifiedKode.has(kode)) ? ' · Verified ✓' : '');
 S.katalogRank = (r) => S.isVerified(r) ? 0 : (S.cleanLinkV6(r.link_v6) ? 1 : 2);
 
 function rupiah(n) {
@@ -1131,6 +1139,7 @@ function copyProdukToClipboard(kode) {
     harga ? rupiah(harga) : 'Harga belum ada',
     S.modeSwasta ? '' : (S.cleanLinkV6(r.link_v6) || '')
   ];
+  if (S.pnmSettings && S.pnmSettings.outputVerified && S.isVerified(r)) lines.push('Verified');
   const text = lines.join('\t');
 
   function fallbackCopy(str) {
@@ -1333,6 +1342,7 @@ function renderClipItemHtml(item) {
         <div class="clip-item-name">${S.escapeHtmlAttr(item.nama_produk)}</div>
         <div class="clip-item-meta">
           <span class="clip-item-code">${item.kode_produk}</span>
+          ${S.isVerified(item) ? '<i class="ti ti-rosette-discount-check-filled" style="font-size:13px;color:#1d9bf0" title="Verified Product — tayang di INAPROC"></i>' : ''}
           ${rsBadge}
           <span class="clip-item-tipe" style="${tipeColor}">${item.tipe||'—'}</span>
           ${hargaTampil?`<span class="clip-item-harga">${rupiah(totalHarga)}</span>`:'<span class="clip-item-code" style="color:var(--text-muted)">Harga N/A</span>'}
@@ -1936,7 +1946,7 @@ S.btnExport.addEventListener('click', async () => {
       row.getCell(6).value = total || '';
       const linkBersih = S.modeSwastaOutput ? null : S.cleanLinkV6(item.link_v6);
       if (linkBersih) {
-        row.getCell(7).value = {text:'Lihat di e-Katalog', hyperlink: linkBersih};
+        row.getCell(7).value = {text: S.linkLabelOutput(item.kode_produk), hyperlink: linkBersih};
         row.getCell(7).font = {color:{argb:'FF1D4ED8'}, underline:true};
       }
       const stokLabel = item.stok_status === 'READY' ? 'Ready'
@@ -2083,7 +2093,7 @@ S.btnExport.addEventListener('click', async () => {
               row.getCell(7).value = totalBaris;
               const mLinkBersih = S.cleanLinkV6(m.link_v6);
               if (colLink && mLinkBersih) {
-                row.getCell(colLink).value = {text:'Lihat di e-Katalog', hyperlink: mLinkBersih};
+                row.getCell(colLink).value = {text: S.linkLabelOutput(m.kode_produk), hyperlink: mLinkBersih};
                 row.getCell(colLink).font = {color:{argb:'FF1D4ED8'}, underline:true};
               }
               addImg(wsKb, imgMap[m.kode_produk], kbRow, colGambar, 80, 65, m.kode_produk);

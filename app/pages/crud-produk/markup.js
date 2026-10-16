@@ -498,6 +498,11 @@ export const CRUD_PRODUK_MARKUP = `
         <div class="f"><label>Link V6</label><input type="text" id="f_link_v6"/></div>
         <div class="f full akd-hint" id="linkV6Hint" style="display:none;margin-top:-4px;color:var(--amber-text);"></div>
         <div class="f full" id="inaprocIndikator" style="display:none;"></div>
+        <div class="f full check-row" id="verifiedRow" style="display:none;">
+          <input type="checkbox" id="f_verified" disabled/>
+          <label for="f_verified"><i class="ti ti-rosette-discount-check-filled vbadge" style="margin:0 4px 0 0;"></i>Verified Product (centang biru INAPROC)</label>
+          <span id="verifiedSrc" style="font-size:11.5px;color:var(--text-muted);margin-left:6px;"></span>
+        </div>
         <div class="f full"><label>Spesifikasi</label><textarea id="f_spesifikasi"></textarea></div>
         <div class="f full check-row">
           <input type="checkbox" id="f_is_active" checked/>

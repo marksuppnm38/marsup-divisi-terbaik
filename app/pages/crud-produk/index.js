@@ -676,6 +676,46 @@ function invalidateProdukStackCache(){
   produkVerifiedRows = null;
 }
 
+// ---- Tandai Verified MANUAL (jalur cadangan buat produk yang gak kebaca dari bulk TSV) ----
+// Langsung tulis ke produk_verified (matched_by='manual') begitu checkbox diubah — bukan bagian
+// dari tombol Simpan produk. Baris manual dilindungi dari sync snapshot (lihat verified_manual.sql).
+let modalInaprocCtx = { status: null, link: null };
+async function refreshVerifiedRow(){
+  const row = document.getElementById('verifiedRow');
+  if (!row) return;
+  if (!currentProdukId) { row.style.display = 'none'; return; }
+  const idAtCall = currentProdukId;
+  row.style.display = '';
+  const cb = document.getElementById('f_verified');
+  const src = document.getElementById('verifiedSrc');
+  cb.disabled = true; src.textContent = '';
+  const { data, error } = await sb.from('produk_verified').select('matched_by').eq('produk_id', idAtCall).maybeSingle();
+  if (idAtCall !== currentProdukId) return; // modal sudah pindah produk
+  if (error) { src.textContent = '(gagal cek status)'; return; }
+  cb.checked = !!data;
+  src.textContent = data ? (data.matched_by === 'manual' ? '· ditandai manual' : '· dari sync TSV (' + data.matched_by + ')') : '';
+  cb.disabled = false;
+}
+document.getElementById('f_verified').addEventListener('change', async (e) => {
+  if (!currentProdukId) return;
+  const cb = e.target, want = cb.checked, id = currentProdukId;
+  cb.disabled = true;
+  const { error } = want
+    ? await sb.from('produk_verified').insert({ produk_id: id, matched_by: 'manual' })
+    : await sb.from('produk_verified').delete().eq('produk_id', id);
+  if (error && error.code !== '23505') { // 23505 = sudah ada (mis. keburu ditandai sync) -> anggap sukses
+    showToast('Gagal mengubah status Verified: ' + error.message, true);
+    cb.checked = !want; cb.disabled = false;
+    return;
+  }
+  showToast(want ? 'Ditandai Verified' : 'Badge Verified dilepas');
+  invalidateProdukStackCache();
+  renderInaprocIndikator(modalInaprocCtx.status, modalInaprocCtx.link, want);
+  await refreshVerifiedRow();
+  loadProduk(lastQuery, produkPage);
+  refreshProdukFilterCounts();
+});
+
 function produkRowMatchesFilter(row, filt){
   switch (filt.dim) {
     case 'tipe': return filt.values ? filt.values.includes(row.tipe) : row.tipe === filt.value;
@@ -1638,6 +1678,7 @@ function openAdd(prefill){
   if (prefill?.nama_produk) document.getElementById('f_nama_produk').value = prefill.nama_produk;
   if (prefill?.tipe) { const ft = document.getElementById('f_tipe'); ft.value = prefill.tipe; ft.dispatchEvent(new Event('change')); }
   renderLinkV6Hint();
+  document.getElementById('verifiedRow').style.display = 'none';
   modalOverlay.classList.add('open');
 }
 
@@ -1668,7 +1709,9 @@ async function openEdit(produkId){
   document.getElementById('f_status_v6').value = p.status_v6 || '';
   document.getElementById('f_link_v6').value = p.link_v6 || '';
   renderLinkV6Hint();
+  modalInaprocCtx = { status: p.status_inaproc, link: p.link_v6 };
   renderInaprocIndikator(p.status_inaproc, p.link_v6, !!produkVerifiedIdSet && produkVerifiedIdSet.has(produkId));
+  refreshVerifiedRow();
   document.getElementById('f_spesifikasi').value = p.spesifikasi || '';
   document.getElementById('f_is_active').checked = !!p.is_active;
   document.getElementById('akdSealHolder').innerHTML = sealHtml(p.status_akd);
@@ -2251,6 +2294,7 @@ async function saveProdukInner(){
   invalidateProdukStackCache();
   loadProduk();
   refreshProdukFilterCounts();
+  refreshVerifiedRow();
   return true;
 }
 document.getElementById('saveBtn').addEventListener('click', saveProduk);
