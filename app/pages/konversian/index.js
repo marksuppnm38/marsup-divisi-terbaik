@@ -3161,7 +3161,8 @@ function renderRiwayatCard(s, matches, tokens) {
     `<button type="button" class="rc-act riwayat-peek-btn" data-id="${s.id}"><i class="ti ti-eye"></i><span>Lihat isi</span></button>`,
     records.length > 1 ? `<button type="button" class="rc-act konversi-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}"><i class="ti ti-versions"></i><span>${records.length} versi</span></button>` : '',
     sphCount > 0 ? `<button type="button" class="rc-act sph-riwayat-btn" data-id="${s.id}" data-nama="${namaSafe}"><i class="ti ti-file-invoice"></i><span>${sphCount} SPH</span></button>` : '',
-    (latest && latest.link && S.isSafeHttpUrl(latest.link)) ? `<a class="rc-act record-link-chip" href="${S.escapeHtmlAttr(latest.link)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i><span>Buka file</span></a>` : ''
+    (latest && latest.link && S.isSafeHttpUrl(latest.link)) ? `<a class="rc-act record-link-chip" href="${S.escapeHtmlAttr(latest.link)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i><span>Buka file</span></a>` : '',
+    `<button type="button" class="rc-act riwayat-del-btn" data-id="${s.id}" data-nama="${namaSafe}" title="Hapus riwayat ini (beserta Record/SPH-nya)" style="color:var(--danger);border-color:var(--danger-border);background:var(--danger-bg)"><i class="ti ti-trash"></i><span>Hapus</span></button>`
   ].join('');
 
   return `<div class="rcard riwayat-card" data-id="${s.id}" tabindex="0" role="article" aria-label="Sesi ${S.escapeHtmlAttr(s.nama_rs || '')} — Enter untuk buka">
@@ -4019,6 +4020,13 @@ async function loadRiwayatList(keepPage) {
         S.openSphRiwayatModal(btn.dataset.id, btn.dataset.nama);
       });
     });
+    // Hapus riwayat (bersih-bersih sesi tes/junk) — 2026-10-16. Konfirmasi + cascade ada di deleteSesi().
+    S.riwayatList.querySelectorAll('.riwayat-del-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteSesi(btn.dataset.id, btn.dataset.nama, btn);
+      });
+    });
     S.riwayatList.querySelectorAll('.konversi-riwayat-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -4217,48 +4225,120 @@ S.openSesi = openSesi;
 S.deleteSesi = deleteSesi;
 S.loadRiwayatList = loadRiwayatList;
 
-// Hapus sesi konversi secara permanen (beserta semua item di dalamnya).
-// Kalau sesi yang dihapus adalah sesi yang sedang dibuka, layar clipboard
-// ikut direset biar gak nyisa data sesi yang udah gak ada.
+// Hapus sesi konversi secara permanen.
+//
+// 2026-10-16 (fix "sesi test gak bisa dihapus"): Record bisa muncul TANPA sengaja dibuat user — Export /
+// Record SPH / sesi mandek membuat Record otomatis (auto-record.js, sumber = 'auto_*'). Dulu sesi yang punya
+// Record dikunci selamanya (FK konversi_record_sesi_id_fkey tanpa cascade), jadi sesi tes pun nyangkut.
+// Sekarang dibedakan berdasarkan ISI Record-nya:
+//   - tanpa Record                           -> hapus biasa
+//   - cuma Record OTOMATIS, belum ke Sheet,
+//     belum ada SPH                          -> hapus sesi + Record-nya (konfirmasi ringan)
+//   - ada Record manual / sudah ke Sheet / SPH -> tetap bisa dihapus (buat bersih-bersih), tapi konfirmasi
+//                                              keras yang menyebut apa saja yang ikut hilang
+// Urutan hapus: dari anak ke induk (sph_record_items -> sph_records -> konversi_item -> konversi_record ->
+// sesi_konversi_item -> sesi_konversi), dan sesi_konversi_item dihapus TERAKHIR sebelum sesi — jadi kalau satu
+// langkah ditolak DB, isi sesi belum keburu hilang.
+async function delRows(path) {
+  const res = await S.sesiFetch(path, { method: 'DELETE', headers: { Prefer: 'return=representation' } });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || errData.hint || ('HTTP ' + res.status));
+  }
+  const rows = await res.json().catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function inspectSesiRecords(id) {
+  const idSafe = encodeURIComponent(id);
+  const get = async (path) => {
+    const res = await S.sesiFetch(path);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const rows = await res.json().catch(() => []);
+    return Array.isArray(rows) ? rows : [];
+  };
+  const [records, sph] = await Promise.all([
+    get(`konversi_record?sesi_id=eq.${idSafe}&select=id,revisi,sumber,synced_to_sheet`).catch(async () =>
+      // kolom `sumber` belum ada (migration-auto-record.sql belum jalan) -> anggap semua Record manual (lebih hati-hati)
+      get(`konversi_record?sesi_id=eq.${idSafe}&select=id,revisi,synced_to_sheet`)),
+    get(`sph_records?sesi_id=eq.${idSafe}&select=id`).catch(() => [])
+  ]);
+  const manual = records.filter(r => !String(r.sumber || '').startsWith('auto'));
+  const synced = records.filter(r => r.synced_to_sheet);
+  return { records, sph, manual, synced, onlyAuto: records.length > 0 && !manual.length && !synced.length && !sph.length };
+}
+
+// Hapus permanen sesi + semua turunannya. Lempar error kalau sesinya sendiri gagal terhapus
+// (mis. kebijakan DELETE di Supabase belum mengizinkan) — jangan pura-pura sukses.
+async function purgeSesi(id) {
+  const idSafe = encodeURIComponent(id);
+  const recs = await S.sesiFetch(`konversi_record?sesi_id=eq.${idSafe}&select=id`).then(r => r.ok ? r.json() : []).catch(() => []);
+  const recIds = (recs || []).map(r => r.id).filter(x => /^[\w-]+$/.test(String(x)));
+  const sphs = await S.sesiFetch(`sph_records?sesi_id=eq.${idSafe}&select=id`).then(r => r.ok ? r.json() : []).catch(() => []);
+  const sphIds = (sphs || []).map(r => r.id).filter(x => /^[\w-]+$/.test(String(x)));
+  // SPH (header + item) dulu: sph_records bisa menunjuk ke konversi_record.
+  if (sphIds.length) await delRows(`sph_record_items?sph_record_id=in.(${sphIds.join(',')})`);
+  if (sphIds.length) await delRows(`sph_records?sesi_id=eq.${idSafe}`);
+  if (recIds.length) {
+    await delRows(`sph_records?konversi_record_id=in.(${recIds.join(',')})`).catch(() => {});
+    await delRows(`konversi_item?konversi_record_id=in.(${recIds.join(',')})`);
+    const gone = await delRows(`konversi_record?sesi_id=eq.${idSafe}`);
+    if (gone.length < recIds.length) throw new Error('Record tidak bisa dihapus (kemungkinan kebijakan DELETE di tabel konversi_record belum diizinkan di Supabase).');
+  }
+  // Tautan project (tab Project) ke sesi ini dilepas; gagal/kolom gak ada = abaikan.
+  await S.sesiFetch(`konversi_project_klik?pinned_sesi_id=eq.${idSafe}`, { method: 'PATCH', body: JSON.stringify({ pinned_sesi_id: null }) }).catch(() => {});
+  await S.sesiFetch(`konversi_project_klik?riwayat_sesi_id=eq.${idSafe}`, { method: 'PATCH', body: JSON.stringify({ riwayat_sesi_id: null }) }).catch(() => {});
+  await delRows(`${S.SESI_ITEM_TABLE}?sesi_id=eq.${idSafe}`);
+  const gone = await delRows(`${S.SESI_TABLE}?id=eq.${idSafe}`);
+  if (!gone.length) throw new Error('Sesi tidak terhapus (sudah hilang, atau kebijakan DELETE di Supabase belum mengizinkan).');
+}
+
+function resetLayarKalauSesiAktif(id) {
+  if (S.currentSesiId !== id) return;
+  S.currentSesiId = null;
+  S.clipboard = [];
+  inpRs.value = '';
+  inpSales.value = '';
+  S.currentButuhBantuan = false;
+  S.updateClipboard();
+  S.renderResults(S.lastResults);
+  S.renderButuhBantuanBtn();
+  S.setSesiSavedStatus('');
+  S.updateClipHeaderCompact();
+  resetChecklistUI();
+  S.updateEndSesiBtnState();
+}
+
 async function deleteSesi(id, nama, btn) {
-  // Sesi yang sudah pernah di-Record punya baris di konversi_record (FK konversi_record_sesi_id_fkey,
-  // tanpa cascade) = jadi riwayat/arsip. DB memang menolak hapus sesinya — dan karena item sesi dihapus
-  // DULU sebelum sesinya, penolakan itu dulu bikin sesi nyisa KOSONG. Cek di depan, sebelum apa pun dihapus.
-  try {
-    const chk = await S.sesiFetch(`konversi_record?sesi_id=eq.${encodeURIComponent(id)}&select=id&limit=1`);
-    const rows = chk.ok ? await chk.json().catch(() => []) : [];
-    if (Array.isArray(rows) && rows.length) {
-      S.showToast(`Sesi "${nama}" sudah di-Record konversinya, jadi tersimpan sebagai riwayat dan tidak bisa dihapus.`, 'error');
-      return;
-    }
-  } catch (_) { /* gagal cek -> lanjut, DB tetap jadi pengaman terakhir */ }
-  if (!(await S.showConfirmModal({ title: 'Hapus Sesi', text: `Hapus sesi "${nama}"? Semua produk di dalamnya ikut terhapus dan tidak bisa dikembalikan.`, okText: 'Ya, Hapus', danger: true }))) return;
+  let info = null;
+  try { info = await inspectSesiRecords(id); } catch (_) { /* gagal cek -> konfirmasi hati-hati di bawah */ }
+  let title = 'Hapus Sesi', text, okText = 'Ya, Hapus';
+  if (!info) {
+    text = `Hapus sesi "${nama}"? Semua produk di dalamnya ikut terhapus. Kalau sesi ini sudah punya Record/SPH, itu juga ikut terhapus. Tidak bisa dikembalikan.`;
+  } else if (!info.records.length && !info.sph.length) {
+    text = `Hapus sesi "${nama}"? Semua produk di dalamnya ikut terhapus dan tidak bisa dikembalikan.`;
+  } else if (info.onlyAuto) {
+    text = `Sesi "${nama}" punya ${info.records.length} Record otomatis (dibuat saat Export / SPH / sesi mandek) yang belum dikirim ke Sheet. Hapus sesi beserta Record-nya? Tidak bisa dikembalikan.`;
+  } else {
+    title = 'Hapus Sesi + Riwayat';
+    const bagian = [];
+    if (info.manual.length) bagian.push(`${info.manual.length} Record manual`);
+    if (info.records.length - info.manual.length > 0) bagian.push(`${info.records.length - info.manual.length} Record otomatis`);
+    if (info.sph.length) bagian.push(`${info.sph.length} SPH`);
+    text = `Sesi "${nama}" punya ${bagian.join(', ')}. Semuanya ikut terhapus PERMANEN.`
+      + (info.synced.length ? ' Baris di Google Sheet TIDAK ikut terhapus — hapus manual di Sheet kalau perlu.' : '')
+      + ' Lanjutkan?';
+    okText = 'Ya, hapus semuanya';
+  }
+  if (!(await S.showConfirmModal({ title, text, okText, danger: true }))) return;
   if (btn) btn.disabled = true;
   try {
-    // Defense-in-depth: id di sini normalnya dataset.id dari baris DB (bukan input bebas),
-    // tapi di-encode juga supaya konsisten dengan openSesi() dan gak bergantung ke asumsi itu.
-    const idSafe = encodeURIComponent(id);
-    await S.sesiFetch(`${S.SESI_ITEM_TABLE}?sesi_id=eq.${idSafe}`, { method: 'DELETE' });
-    const res = await S.sesiFetch(`${S.SESI_TABLE}?id=eq.${idSafe}`, { method: 'DELETE' });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.message || errData.hint || 'Gagal menghapus sesi');
-    }
-    if (S.currentSesiId === id) {
-      S.currentSesiId = null;
-      S.clipboard = [];
-      inpRs.value = '';
-      inpSales.value = '';
-      S.currentButuhBantuan = false;
-      S.updateClipboard();
-      S.renderResults(S.lastResults);
-      S.renderButuhBantuanBtn();
-      S.setSesiSavedStatus('');
-      S.updateClipHeaderCompact();
-      resetChecklistUI();
-      S.updateEndSesiBtnState();
-    }
+    await purgeSesi(id);
+    resetLayarKalauSesiAktif(id);
+    S.showToast(`Sesi "${nama}" dihapus.`);
     await loadSesiList();
+    if (S.subtabRiwayat && S.subtabRiwayat.classList.contains('active')) loadRiwayatList(true);
+    if (typeof S.loadTodoInbox === 'function') S.loadTodoInbox(true);
   } catch (err) {
     S.showToast('Gagal hapus sesi: ' + err.message, 'error');
     if (btn) btn.disabled = false;
