@@ -732,6 +732,21 @@ async function rpc(fn, params) {
 }
 S.rpc = rpc;
 
+// Verified Product (centang biru INAPROC) — daftar kode_produk-nya ditarik SEKALI per mount
+// (1 baris jsonb, RPC get_verified_kode_produk). Gagal/belum dimigrasi -> set kosong, fitur
+// lain tetap jalan. Dipakai buat: badge di kartu, urutan (verified paling atas), toggle "Verified".
+S.verifiedKode = new Set();
+S.onlyVerified = false;
+S.verifiedReady = (async () => {
+  try {
+    const { data, error } = await rpc('get_verified_kode_produk', {});
+    if (!error && Array.isArray(data)) S.verifiedKode = new Set(data);
+  } catch (_) { /* abaikan */ }
+})();
+S.isVerified = (r) => !!(r && S.verifiedKode.has(r.kode_produk));
+// 0 = verified, 1 = link e-Katalog bersih, 2 = lainnya (dipakai applySort)
+S.katalogRank = (r) => S.isVerified(r) ? 0 : (S.cleanLinkV6(r.link_v6) ? 1 : 2);
+
 function rupiah(n) {
   if (!n && n !== 0) return '—';
   return 'Rp ' + Number(n).toLocaleString('id-ID');
@@ -880,9 +895,15 @@ async function runSearch() {
     q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false
   });
   // Produk belum firm (link_v6 ada catatan) disembunyikan dari hasil — lihat S.filterFirm.
-  const data = dataRaw ? S.filterFirm(dataRaw, S.modeSwasta) : dataRaw;
+  await S.verifiedReady;
+  let data = dataRaw ? S.filterFirm(dataRaw, S.modeSwasta) : dataRaw;
   const hiddenNotFirm = (dataRaw && data) ? dataRaw.length - data.length : 0;
-  const hiddenNote = hiddenNotFirm ? ` (${hiddenNotFirm} produk belum firm disembunyikan)` : '';
+  let hiddenNote = hiddenNotFirm ? ` (${hiddenNotFirm} produk belum firm disembunyikan)` : '';
+  if (S.onlyVerified && data) {
+    const sebelum = data.length;
+    data = data.filter(S.isVerified);
+    hiddenNote += ` (${sebelum - data.length} non-Verified disembunyikan)`;
+  }
   if (mySeq !== searchSeq) return; // sudah ada pencarian lebih baru — buang hasil basi ini
 
   S.loadingEl.style.display = 'none'; // FIX: matikan loading begitu response datang (sebelum branching)
@@ -926,9 +947,7 @@ function applySort() {
   if (S.sortMode === 'relevance') {
     if (useLinkPriority) {
       S.lastResults = [...S.lastResults].sort((a, b) => {
-        const aHas = S.cleanLinkV6(a.link_v6) ? 0 : 1;
-        const bHas = S.cleanLinkV6(b.link_v6) ? 0 : 1;
-        return aHas - bHas; // stable sort: urutan relevansi asli tetap terjaga di tiap grup
+        return S.katalogRank(a) - S.katalogRank(b); // verified > link bersih > lainnya; stable sort: urutan relevansi asli tetap terjaga di tiap grup
       });
     }
     return; // urutan asli dari backend (score DESC), atau sudah dipartisi link_v6 di atas
@@ -955,8 +974,8 @@ function applySort() {
   const dir = S.sortMode === 'harga_asc' ? 1 : -1;
   S.lastResults.sort((a, b) => {
     if (useLinkPriority) {
-      const aHas = S.cleanLinkV6(a.link_v6) ? 0 : 1;
-      const bHas = S.cleanLinkV6(b.link_v6) ? 0 : 1;
+      const aHas = S.katalogRank(a);
+      const bHas = S.katalogRank(b);
       if (aHas !== bHas) return aHas - bHas;
     }
     const av = a[field], bv = b[field];
@@ -973,8 +992,14 @@ function applySort() {
 // harganya belum tentu valid — jadi dikasih badge kuning + isi catatannya.
 function katalogBadgeHtml(r) {
   const L = S.parseLinkV6(r.link_v6);
+  const verified = S.isVerified(r);
+  const vIcon = verified ? ' <i class="ti ti-rosette-discount-check-filled" style="font-size:13px;color:#1d9bf0" title="Verified Product — tayang di INAPROC"></i>' : '';
   if (L.state === 'bersih') {
-    return `<a href="${S.escapeHtmlAttr(L.url)}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6</a>`;
+    return `<a href="${S.escapeHtmlAttr(L.url)}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6${vIcon}</a>`;
+  }
+  if (verified && L.state !== 'catatan') {
+    // tayang & verified di INAPROC, tapi Link V6 belum diisi di database kita
+    return `<span class="badge-katalog-yes" data-role="verified-tanpa-link" title="Sudah Verified di INAPROC, Link V6 belum diisi di CRUD Produk"><i class="ti ti-rosette-discount-check-filled" style="font-size:13px;color:#1d9bf0"></i> Verified INAPROC · Link V6 belum diisi</span>`;
   }
   if (L.state === 'catatan') {
     const ringkas = L.catatan.length > 48 ? L.catatan.slice(0, 48) + '…' : L.catatan;
@@ -2358,6 +2383,7 @@ function reset() {
 
 // EVENTS
 S.takd.addEventListener('click', () => { S.onlyAkd=!S.onlyAkd; S.takd.classList.toggle('on',S.onlyAkd); runSearch(); });
+if (S.tverif) S.tverif.addEventListener('click', () => { S.onlyVerified=!S.onlyVerified; S.tverif.classList.toggle('on',S.onlyVerified); runSearch(); });
 S.tswasta.addEventListener('click', () => {
   S.modeSwasta = !S.modeSwasta;
   S.tswasta.classList.toggle('on', S.modeSwasta);

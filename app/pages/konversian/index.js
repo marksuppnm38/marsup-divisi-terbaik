@@ -2448,6 +2448,7 @@ const tipeBtns = document.querySelectorAll('.tipe-btn');
 S.tipeBtns = tipeBtns;
 const takd = document.getElementById('takd');
 S.takd = takd;
+S.tverif = document.getElementById('tverif');
 const tswasta = document.getElementById('tswasta');
 S.tswasta = tswasta;
 const comEkatBtn = document.getElementById('com-ekat');
@@ -2579,7 +2580,7 @@ if (panelSearchCollapseBtn && panelSearchRail) {
 // baris pertama di modal ini biar semua preferensi ada di satu tempat.
 // ══════════════════════════════════════════
 const PNM_SETTINGS_KEY = 'pnm_settings';
-const PNM_SETTINGS_DEFAULT = { autoComplete: false };
+const PNM_SETTINGS_DEFAULT = { autoComplete: false, outputVerified: false };
 function loadPnmSettings() {
   try {
     return Object.assign({}, PNM_SETTINGS_DEFAULT, JSON.parse(localStorage.getItem(PNM_SETTINGS_KEY) || '{}'));
@@ -2600,6 +2601,11 @@ const SETTINGS_SCHEMA = [
     label: 'Auto Complete',
     desc: 'Tampilkan saran ejaan otomatis di bawah kolom pencarian sambil mengetik.',
     onChange: (val) => { if (!val) { acBox.style.display = 'none'; acBox.innerHTML = ''; } }
+  },
+  {
+    key: 'outputVerified',
+    label: 'Tandai Verified di output',
+    desc: 'Teks link e-Katalog di Export Excel dan hasil Copy produk ikut ditambah "Verified" untuk produk centang biru INAPROC. Mati = output sama seperti biasa. (SPH tidak terpengaruh.)'
   }
 ];
 
@@ -4813,6 +4819,7 @@ function convRowHtml(r, i) {
   const stokBadge = r.produk ? S.stokBadgeHtml(r.produk, isSet) : '';
   const metaLine = `<div class="clip-item-meta">
     <span class="clip-item-code">${S.escapeHtmlAttr(r.kode)}</span>
+    ${S.isVerified(r.produk) ? '<i class="ti ti-rosette-discount-check-filled" style="font-size:13px;color:#1d9bf0" title="Verified Product — tayang di INAPROC"></i>' : ''}
     <span style="color:${meta.color};font-size:11px">${meta.badge}</span>
     ${stokBadge}
   </div>`;
