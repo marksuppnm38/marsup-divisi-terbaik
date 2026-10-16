@@ -1906,17 +1906,17 @@ S.btnExport.addEventListener('click', async () => {
     // ── SHEET 1: SUMMARY ──
     const wsSummary = wb.addWorksheet('SUMMARY');
     // header info
-    wsSummary.getRow(1).getCell(1).value = 'DOKUMEN KONVERSI INSTRUMEN';
+    // 2026-10-16: judul dibikin netral ("Daftar Produk") — dokumen ini dipakai buat konversi, cek stok, rincian set,
+    // dll, dan dibaca user RS; "konversi instrumen" itu istilah internal (dan salah buat Set/Unit). Nama PT dan
+    // nama sales juga dicabut dari isi dokumen (kop perusahaan cukup di SPH; nama sales tetap ada di nama file).
+    wsSummary.getRow(1).getCell(1).value = 'DAFTAR PRODUK';
     wsSummary.getRow(1).getCell(1).font = {bold:true, size:13};
-    wsSummary.getRow(2).getCell(1).value = 'PT Pionir Nusantara Manufacturing';
-    wsSummary.getRow(2).getCell(1).font = {italic:true, color:{argb:'FF4B5563'}};
-    wsSummary.getRow(3).getCell(1).value = 'RS / Instansi'; wsSummary.getRow(3).getCell(2).value = namaRs;
-    wsSummary.getRow(4).getCell(1).value = 'Nama Sales';    wsSummary.getRow(4).getCell(2).value = namaSales;
-    wsSummary.getRow(5).getCell(1).value = 'Tanggal';       wsSummary.getRow(5).getCell(2).value = tanggal;
-    wsSummary.getRow(6).getCell(1).value = '';
+    wsSummary.getRow(2).getCell(1).value = 'RS / Instansi'; wsSummary.getRow(2).getCell(2).value = namaRs;
+    wsSummary.getRow(3).getCell(1).value = 'Tanggal';       wsSummary.getRow(3).getCell(2).value = tanggal;
+    const SUM_HDR_ROW = 5, SUM_FIRST_ROW = 6; // baris 4 sengaja kosong sebagai jarak
 
     // column headers (dinamis sesuai mode)
-    const sumHdrRow = wsSummary.getRow(7);
+    const sumHdrRow = wsSummary.getRow(SUM_HDR_ROW);
     const sumHeaders = S.modeSwastaOutput
       ? ['No.','Kode Produk','Nama Produk / Deskripsi','QTY','Harga Swasta','Total Harga','Status Stok']
       : ['No.','Kode Produk','Nama Produk / Deskripsi','QTY','Harga e-Kat','Total Harga','Link e-Katalog v6','Status Stok'];
@@ -1933,7 +1933,7 @@ S.btnExport.addEventListener('click', async () => {
       ? [{width:5},{width:24},{width:50},{width:8},{width:18},{width:18},{width:14}]
       : [{width:5},{width:24},{width:50},{width:8},{width:18},{width:18},{width:45},{width:14}];
 
-    let sumRow = 8;
+    let sumRow = SUM_FIRST_ROW;
     let grandTotal = 0;
     const stokColIdx = S.modeSwastaOutput ? 7 : 8;
     S.clipboard.forEach((item, idx) => {
@@ -1984,7 +1984,7 @@ S.btnExport.addEventListener('click', async () => {
     }
 
     // format harga cols
-    for (let r = 8; r <= sumRow; r++) {
+    for (let r = SUM_FIRST_ROW; r <= sumRow; r++) {
       wsSummary.getRow(r).getCell(5).numFmt = '#,##0';
       wsSummary.getRow(r).getCell(6).numFmt = '#,##0';
     }
@@ -2069,11 +2069,18 @@ S.btnExport.addEventListener('click', async () => {
             row.getCell(1).value = idx + 1;
             row.getCell(2).value = item.raw_text;
             row.getCell(3).value = item.qty_diminta || '';
+            // 2026-10-16: baris miss diberi label + warna, bukan cuma sel kosong — user RS jadi langsung lihat
+            // mana yang belum bisa dipenuhi (dan bedanya "tidak tersedia" vs "belum dicek").
+            const missLabel = item.status === 'TIDAK_TERPENUHI' ? 'Tidak tersedia'
+              : item.status === 'TERPENUHI' ? 'Produk belum ada di daftar'
+              : 'Belum dicek';
+            row.getCell(5).value = missLabel;
             for (let c = 1; c <= colGambar; c++) {
               row.getCell(c).border = GRID_BORDER;
               row.getCell(c).alignment = {vertical:'middle', horizontal:'center', wrapText: c===2||c===5};
-              if (idx % 2 === 0) row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F6F8'}};
+              row.getCell(c).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFFEE2E2'}};
             }
+            row.getCell(5).font = {italic:true, bold:true, color:{argb:'FFB91C1C'}};
             kbRow++;
           } else {
             matchedList.forEach((m, mIdx) => {
@@ -2134,7 +2141,12 @@ S.btnExport.addEventListener('click', async () => {
         const totalCount = items.length;
         const pct = totalCount > 0 ? Math.round((doneCount/totalCount)*1000)/10 : 0;
         const kbRekapRow = wsKb.getRow(kbRow);
-        kbRekapRow.getCell(2).value = `Tingkat pemenuhan: ${pct}% (${doneCount}/${totalCount} item)`;
+        const tdkCount = items.filter(i => i.status === 'TIDAK_TERPENUHI').length;
+        const blmCount = items.filter(i => i.status === 'PENDING').length;
+        const missNote = (tdkCount || blmCount)
+          ? ` · ${[tdkCount ? tdkCount + ' tidak tersedia' : '', blmCount ? blmCount + ' belum dicek' : ''].filter(Boolean).join(', ')}`
+          : '';
+        kbRekapRow.getCell(2).value = `Tingkat pemenuhan: ${pct}% (${doneCount}/${totalCount} item)${missNote}`;
         kbRekapRow.getCell(2).font = {italic:true, color:{argb:'FF4B5563'}};
 
         for (let r = 2; r < kbRow - 1; r++) {
@@ -2174,11 +2186,9 @@ S.btnExport.addEventListener('click', async () => {
       ws.mergeCells('A1:E1');
       ws.getRow(1).height = 30;
 
-      ws.getRow(2).getCell(1).value = 'PT Pionir Nusantara Manufacturing';
-      ws.getRow(2).getCell(1).font = {italic:true, size:10, color:{argb:'FF4B5563'}};
-      ws.mergeCells('A2:E2');
-
-      ws.getRow(3).getCell(1).value = '';
+      // Nama PT dicabut (2026-10-16). Baris 2-3 tetap ada tapi dipipihkan, biar posisi tabel & gambar di bawah gak geser.
+      ws.getRow(2).height = 4;
+      ws.getRow(3).height = 4;
 
       const hdrRow = ws.getRow(4);
       ['NO','KODE PNM','DESKRIPSI BARANG','QTY','GAMBAR'].forEach((h, i) => {
