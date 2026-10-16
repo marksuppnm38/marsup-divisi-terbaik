@@ -521,54 +521,88 @@ document.getElementById('bulkVerifiedFile').addEventListener('change', async (e)
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   document.getElementById('bulkVerifiedPaste').value = await f.text();
+  document.getElementById('bulkVerifiedFileName').textContent = f.name;
 });
 function resetBulkVerified(){
   document.getElementById('bulkVerifiedPaste').value = '';
   document.getElementById('bulkVerifiedFile').value = '';
+  document.getElementById('bulkVerifiedFileName').textContent = 'Belum ada file';
   document.getElementById('bulkVerifiedPreviewWrap').style.display = 'none';
   document.getElementById('bulkVerifiedSummary').innerHTML = '';
   document.getElementById('bulkVerifiedProsesBtn').style.display = 'none';
   bulkVerifiedItems = []; bulkVerifiedReport = null; bulkVerifiedChoices = {}; bulkVerifiedCand = {};
 }
-function renderBulkVerifiedReport(r){
-  const summary = document.getElementById('bulkVerifiedSummary');
-  const body = document.getElementById('bulkVerifiedPreviewBody');
+// Kartu ringkasan di atas tabel. Dipisah dari render tabel supaya bisa di-update tiap kali user
+// milih dropdown ambigu TANPA render ulang tabel (dropdown yang lagi dipegang gak reset).
+function renderBulkVerifiedSummary(r){
   const amb = r.ambiguous || [];
   const dipilih = Object.keys(bulkVerifiedChoices).length;
-  const masalah = (r.unmatched || []).length + (amb.length - dipilih);
-  summary.innerHTML =
-    `<span class="ok">${r.matched}/${r.total} cocok (UUID ${r.by_id} · link ${r.by_link} · nama ${r.by_nama})</span>` +
-    `<span class="ok">+${r.gain} dapat badge · ${r.keep} tetap</span>` +
-    (r.lose ? `<span class="warn">${r.lose} kehilangan badge</span>` : '') +
-    (amb.length ? `<span class="${dipilih === amb.length ? 'ok' : 'warn'}">${dipilih}/${amb.length} ambigu sudah kamu putuskan</span>` : '') +
-    (masalah ? `<span class="warn">${masalah} baris bermasalah (tidak ikut)</span>` : '');
+  const nUn = (r.unmatched || []).length;
+  const chip = (cls, icon, main, sub) =>
+    `<div class="vs-chip ${cls}"><i class="ti ti-${icon}"></i><div><b>${main}</b>${sub ? `<small>${sub}</small>` : ''}</div></div>`;
+  let h = chip('is-ok', 'circle-check', `${r.matched}/${r.total} cocok`, `UUID ${r.by_id} · link ${r.by_link} · nama ${r.by_nama}`) +
+          chip('is-blue', 'rosette-discount-check-filled', `+${r.gain} badge baru`, `${r.keep} tetap`);
+  if (r.lose) h += chip('is-warn', 'alert-triangle', `${r.lose} kehilangan badge`, 'tidak ada di data ini');
+  if (amb.length) h += chip(dipilih === amb.length ? 'is-ok' : 'is-warn', 'hand-click',
+    `${dipilih}/${amb.length} ambigu diputuskan`, dipilih === amb.length ? 'semua beres' : `${amb.length - dipilih} akan dilewati`);
+  if (nUn) h += chip('is-muted', 'unlink', `${nUn} tidak ketemu`, 'tidak ikut disinkronkan');
+  document.getElementById('bulkVerifiedSummary').innerHTML = h;
+}
+function renderBulkVerifiedReport(r){
+  const body = document.getElementById('bulkVerifiedPreviewBody');
+  const amb = r.ambiguous || [];
+  const unm = r.unmatched || [];
+  const vn = r.via_nama || [];
+  renderBulkVerifiedSummary(r);
   body.innerHTML = '';
-  // Ambigu: user yang mutusin. Pilih salah satu kandidat, atau biarkan "Lewati".
-  amb.forEach((x, i) => {
+  const esc = S.escapeHtml;
+  const head = (icon, title, n, sub) => {
     const tr = document.createElement('tr');
-    const opts = (x.kode || []).map(k => {
-      const c = bulkVerifiedCand[k];
-      const label = k + (c && c.nama_produk ? ' — ' + c.nama_produk : '');
-      return `<option value="${S.escapeHtml(k)}"${bulkVerifiedChoices[i] && bulkVerifiedChoices[i].kode === k ? ' selected' : ''}>${S.escapeHtml(label)}</option>`;
-    }).join('');
-    tr.innerHTML = `<td>${S.escapeHtml(x.name || '—')}</td><td class="kode-cell">${S.escapeHtml(x.slug || '—')}</td>` +
-      `<td><select class="verified-amb-select" data-i="${i}" style="max-width:100%;font-size:12px;">` +
-      `<option value="">Ambigu — lewati (tidak dapat badge)</option>${opts}</select></td>`;
+    tr.className = 'vg-head';
+    tr.innerHTML = `<td colspan="2"><i class="ti ti-${icon}"></i> ${title}<span class="vg-count">${n}</span><span class="vg-sub">${sub}</span></td>`;
     body.appendChild(tr);
-  });
-  [
-    ...(r.unmatched || []).map(x => ({ ...x, cls: 'err', msg: 'Tidak ketemu di database' })),
-    ...(r.via_nama || []).map(x => ({ ...x, slug: '', cls: 'ok', msg: 'Cocok via nama → ' + x.kode + ' (cek sekilas)' })),
-  ].forEach(x => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${S.escapeHtml(x.name || '—')}</td><td class="kode-cell">${S.escapeHtml(x.slug || '—')}</td><td><span class="row-status ${x.cls}">${S.escapeHtml(x.msg)}</span></td>`;
-    body.appendChild(tr);
-  });
+  };
+  const nameCell = x => `<td><div class="vr-name">${esc(x.name || '—')}</div>${x.slug ? `<div class="vr-slug" title="${esc(x.slug)}">${esc(x.slug)}</div>` : ''}</td>`;
+
+  if (amb.length) {
+    head('hand-click', 'Perlu keputusanmu', amb.length, 'pilih produk yang benar, atau biarkan dilewati');
+    amb.forEach((x, i) => {
+      const cur = bulkVerifiedChoices[i];
+      const opts = (x.kode || []).map(k => {
+        const c = bulkVerifiedCand[k];
+        const label = k + (c && c.nama_produk ? ' — ' + c.nama_produk : '');
+        return `<option value="${esc(k)}"${cur && cur.kode === k ? ' selected' : ''}>${esc(label)}</option>`;
+      }).join('');
+      const tr = document.createElement('tr');
+      tr.className = 'vr-amb' + (cur ? ' decided' : '');
+      tr.innerHTML = nameCell(x) +
+        `<td><div class="vsel-wrap${cur ? ' decided' : ''}"><i class="ti ti-${cur ? 'circle-check-filled' : 'help-hexagon'} vsel-ic"></i>` +
+        `<select class="verified-amb-select" data-i="${i}" title="Pilih produk yang benar">` +
+        `<option value="">Ambigu, lewati (tidak dapat badge)</option>${opts}</select></div></td>`;
+      body.appendChild(tr);
+    });
+  }
+  if (unm.length) {
+    head('unlink', 'Tidak ketemu di database', unm.length, 'tidak ikut disinkronkan');
+    unm.forEach(x => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = nameCell(x) + '<td><span class="row-status err">Tidak ketemu</span></td>';
+      body.appendChild(tr);
+    });
+  }
+  if (vn.length) {
+    head('replace', 'Cocok via nama', vn.length, 'cek sekilas, pastikan sudah benar');
+    vn.forEach(x => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = nameCell({ name: x.name }) + `<td><span class="row-status ok">→ ${esc(x.kode)}</span></td>`;
+      body.appendChild(tr);
+    });
+  }
   document.getElementById('bulkVerifiedPreviewWrap').style.display = body.children.length ? 'block' : 'none';
   document.getElementById('bulkVerifiedProsesBtn').style.display = (r.matched > 0 || amb.length) ? 'inline-flex' : 'none';
 }
-// Delegasi: simpan pilihan user per baris ambigu, lalu update ringkasan tanpa render ulang tabel
-// (biar dropdown yang lagi dipegang gak reset).
+// Delegasi: simpan pilihan user per baris ambigu, update tampilan baris + kartu ringkasan
+// tanpa render ulang tabel.
 document.getElementById('bulkVerifiedPreviewBody').addEventListener('change', (e) => {
   const sel = e.target.closest('.verified-amb-select');
   if (!sel || !bulkVerifiedReport) return;
@@ -577,10 +611,12 @@ document.getElementById('bulkVerifiedPreviewBody').addEventListener('change', (e
   if (!kode) delete bulkVerifiedChoices[i];
   else if (bulkVerifiedCand[kode]) bulkVerifiedChoices[i] = { kode, id: bulkVerifiedCand[kode].id };
   else { sel.value = ''; showToast('Produk ' + kode + ' tidak ditemukan', true); return; }
-  const r = bulkVerifiedReport, amb = r.ambiguous || [];
-  const dipilih = Object.keys(bulkVerifiedChoices).length;
-  const chip = [...document.querySelectorAll('#bulkVerifiedSummary span')].find(el => /ambigu sudah kamu putuskan/.test(el.textContent));
-  if (chip) { chip.textContent = `${dipilih}/${amb.length} ambigu sudah kamu putuskan`; chip.className = dipilih === amb.length ? 'ok' : 'warn'; }
+  const decided = !!bulkVerifiedChoices[i];
+  sel.closest('tr').classList.toggle('decided', decided);
+  const wrap = sel.closest('.vsel-wrap');
+  wrap.classList.toggle('decided', decided);
+  wrap.querySelector('.vsel-ic').className = 'ti ti-' + (decided ? 'circle-check-filled' : 'help-hexagon') + ' vsel-ic';
+  renderBulkVerifiedSummary(bulkVerifiedReport);
 });
 document.getElementById('bulkVerifiedPreviewBtn').addEventListener('click', async () => {
   const items = parseVerifiedTsv(document.getElementById('bulkVerifiedPaste').value);

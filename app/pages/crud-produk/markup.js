@@ -353,22 +353,29 @@ export const CRUD_PRODUK_MARKUP = `
 
       <!-- BULK VERIFIED PRODUCT (centang biru INAPROC) -->
       <div class="bulk-panel" id="bulk-verified">
-        <div class="paste-hint">
-          Paste hasil console script <code>semua-produk-tayang.js</code> (TSV, boleh dengan header) atau pilih file <code>.tsv</code>-nya.
-          Yang dipakai cuma 3 kolom: <code>product_id</code>, <code>name</code>, <code>slug</code>. Produk dicocokkan otomatis (UUID INAPROC &rarr; slug di Link V6 &rarr; nama).
-          Ini <b>snapshot lengkap</b>: produk yang sekarang berbadge tapi tidak ada di data ini akan kehilangan badge. Paste ulang aman.
-          Baris <b>Ambigu</b> (cocok ke &gt;1 produk) tidak diputuskan algoritma: pilih sendiri produk yang benar lewat dropdown, atau biarkan &ldquo;lewati&rdquo;. Pilihanmu disimpan sebagai badge <i>manual</i> (aman dari sync berikutnya).
+        <div class="vp-hint">
+          <i class="ti ti-info-circle"></i>
+          <ul>
+            <li>Paste hasil console script <code>semua-produk-tayang.js</code> (TSV, header boleh) atau pilih file <code>.tsv</code>-nya. Yang dipakai cuma <code>product_id</code>, <code>name</code>, <code>slug</code>.</li>
+            <li>Dicocokkan otomatis: UUID INAPROC &rarr; slug di Link V6 &rarr; nama. Ini <b>snapshot lengkap</b>: produk berbadge yang tidak ada di data ini kehilangan badge. Paste ulang aman.</li>
+            <li>Baris <b>Ambigu</b> (cocok ke &gt;1 produk) tidak diputuskan algoritma, kamu yang pilih lewat dropdown atau biarkan dilewati. Pilihanmu disimpan sebagai badge <i>manual</i> dan diingat di sync berikutnya.</li>
+          </ul>
         </div>
-        <input type="file" id="bulkVerifiedFile" accept=".tsv,.txt,.csv" style="margin-bottom:8px;font-size:12px;"/>
+        <div class="vp-file">
+          <label class="btn btn-ghost vp-file-btn" for="bulkVerifiedFile"><i class="ti ti-file-upload"></i> Pilih file .tsv</label>
+          <span class="vp-file-name" id="bulkVerifiedFileName">Belum ada file</span>
+          <input type="file" id="bulkVerifiedFile" accept=".tsv,.txt,.csv" hidden/>
+        </div>
         <textarea class="paste-area" id="bulkVerifiedPaste" placeholder="product_id&#9;name&#9;slug&#9;..."></textarea>
         <div class="bulk-actions">
           <button class="btn btn-ghost" id="bulkVerifiedPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
           <button class="btn btn-accent" id="bulkVerifiedProsesBtn" style="display:none;"><i class="ti ti-check"></i> Sinkronkan</button>
         </div>
-        <div class="bulk-summary" id="bulkVerifiedSummary"></div>
+        <div class="bulk-summary vs-stats" id="bulkVerifiedSummary"></div>
         <div class="preview-table-wrap" id="bulkVerifiedPreviewWrap" style="display:none;">
           <table>
-            <thead><tr><th>Nama di INAPROC</th><th>Slug</th><th>Catatan</th></tr></thead>
+            <colgroup><col style="width:44%"><col></colgroup>
+            <thead><tr><th>Listing INAPROC</th><th>Keputusan / catatan</th></tr></thead>
             <tbody id="bulkVerifiedPreviewBody"></tbody>
           </table>
         </div>
