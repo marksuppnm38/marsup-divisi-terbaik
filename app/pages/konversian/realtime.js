@@ -22,14 +22,37 @@ export function installRealtime(S) {
 // resetSsReferences().
 // ══════════════════════════════════════════════════════════════════════════
 let sesiDbChannel = null;
-// Nama yang ditampilin buat presence/activity/editing-indicator — pake PIC Marsup
-// (lebih manusiawi daripada email), fallback ke email kalau belum diisi.
+// IDENTITAS PRESENCE/ACTIVITY/EDITING-INDICATOR = EMAIL LOGIN (S.currentUser dari
+// Supabase Auth), BUKAN field PIC Marsup. PIC Marsup itu teks bebas yang bisa
+// diisi/diganti siapa aja di sesi (dan ikut ke-sync ke semua kolaborator), jadi
+// kalau dipakai sebagai identitas, bubble salah orang dan berubah tiap PIC diedit.
+// Nama tampilan = bagian sebelum '@' dari email; email lengkap tetap dikirim di
+// payload presence (buat tooltip & warna avatar yang stabil per user).
+function emailLocalPart(email) {
+  const e = String(email || '').trim();
+  const at = e.indexOf('@');
+  return (at > 0 ? e.slice(0, at) : e) || '';
+}
+function currentIdentity() {
+  const u = S.currentUser;
+  if (!u || !u.id || !u.email) return null;
+  return { id: u.id, email: u.email, nama: emailLocalPart(u.email) };
+}
 function currentDisplayName() {
-  return (S.inpMarsup && S.inpMarsup.value.trim()) || (S.currentUser && S.currentUser.email) || 'Anonim';
+  const me = currentIdentity();
+  return me ? me.nama : 'Anonim';
 }
 S.currentDisplayName = currentDisplayName;
+// Nama yang ditampilin buat satu entri presence (milik orang lain ATAU diri sendiri).
+// Sengaja diturunkan dari email di payload, bukan percaya mentah field `nama`.
+function displayNameOfPresence(p) {
+  if (!p) return '';
+  return (p.email ? emailLocalPart(p.email) : p.nama) || '';
+}
 S.sesiPresenceChannel = null;
-let presenceRoster = {}; // presence key -> {nama, status, joined_at}
+let presenceRoster = {}; // presence key -> {user_id, email, nama, status, joined_at}
+let presenceStatus = 'online'; // status terakhir yang kita track ('online' | 'away') — dipakai ulang tiap re-track/reconnect
+let presenceJoinedAt = null;   // dicap sekali per subscribe, BUKAN direset tiap online<->away (biar urutan avatar stabil)
 let rtActivityLog = []; // {ts, msg} — dicap N item terakhir, lihat pushActivity()
 
 // Jejak tulisan lokal barusan, biar event postgres_changes yang notabene
@@ -79,14 +102,23 @@ function subscribeToSesiRealtime(sesiId) {
   const dbChannel = S.rt.channel(`sesi-db-${sesiId}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: S.SESI_TABLE, filter: `id=eq.${sesiId}` }, handleSesiRowChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: S.SESI_ITEM_TABLE, filter: `sesi_id=eq.${sesiId}` }, handleItemRowChange);
-  sesiDbChannel = dbChannel.subscribe((status) => {
+  sesiDbChannel = dbChannel;
+  dbChannel.subscribe((status) => {
+    if (sesiDbChannel !== dbChannel) return; // callback telat dari channel lama (sesi sudah ganti/keluar) — jangan ngubah status UI
     if (status === 'SUBSCRIBED') updateRtStatus('live');
     else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') updateRtStatus('reconnecting');
     else if (status === 'CLOSED') updateRtStatus('offline');
   });
 
-  const presenceKey = S.currentUser ? S.currentUser.id : ('anon-' + Math.random().toString(36).slice(2, 9));
-  S.sesiPresenceChannel = S.rt.channel(`sesi-presence-${sesiId}`, { config: { presence: { key: presenceKey } } })
+  // Key presence = auth user id (stabil, unik per akun; beberapa tab akun yang sama
+  // jadi satu orang di roster). Kalau belum ada user (seharusnya mustahil karena
+  // router sudah gate login), channel tetap dipasang buat broadcast tapi TIDAK
+  // di-track — jadi gak ada bubble "anon" siluman.
+  const me = currentIdentity();
+  const presenceKey = me ? me.id : ('anon-' + Math.random().toString(36).slice(2, 9));
+  presenceJoinedAt = new Date().toISOString();
+  presenceStatus = document.hidden ? 'away' : 'online';
+  const presenceChannel = S.rt.channel(`sesi-presence-${sesiId}`, { config: { presence: { key: presenceKey } } })
     .on('presence', { event: 'sync' }, handlePresenceSync)
     .on('presence', { event: 'join' }, handlePresenceJoin)
     .on('presence', { event: 'leave' }, handlePresenceLeave)
@@ -94,34 +126,49 @@ function subscribeToSesiRealtime(sesiId) {
     .on('broadcast', { event: 'checklist_item_updated' }, handleChecklistItemUpdatedBroadcast)
     .on('broadcast', { event: 'checklist_reload' }, handleChecklistReloadBroadcast)
     .on('broadcast', { event: 'editing' }, S.handleEditingBroadcast)
-    .on('broadcast', { event: 'editing_stop' }, S.handleEditingStopBroadcast)
-    .subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        try {
-          await S.sesiPresenceChannel.track({
-            nama: currentDisplayName(),
-            status: 'online',
-            joined_at: new Date().toISOString()
-          });
-        } catch { /* presence gagal gak boleh nge-block kerjaan utama */ }
-      }
-    });
+    .on('broadcast', { event: 'editing_stop' }, S.handleEditingStopBroadcast);
+  S.sesiPresenceChannel = presenceChannel;
+  presenceChannel.subscribe((status) => {
+    if (S.sesiPresenceChannel !== presenceChannel) return; // channel basi, abaikan
+    // Dipanggil lagi tiap SUBSCRIBED (termasuk setelah reconnect) → identitas
+    // ke-track ulang otomatis, bubble gak hilang diam-diam abis koneksi putus.
+    if (status === 'SUBSCRIBED') trackPresence();
+  });
 
   // Away kalau tab disembunyikan >30 detik — kembali online begitu dibuka lagi.
   document.addEventListener('visibilitychange', handleVisibilityForPresence);
 }
 S.subscribeToSesiRealtime = subscribeToSesiRealtime;
 
+// Satu-satunya pintu track() — payload selalu dibangun dari email login.
+// Mengembalikan false kalau gak ada identitas / channel (gak ada yang di-track).
+async function trackPresence(status) {
+  if (status) presenceStatus = status;
+  const ch = S.sesiPresenceChannel;
+  const me = currentIdentity();
+  if (!ch || !me) return false;
+  try {
+    await ch.track({
+      user_id: me.id,
+      email: me.email,
+      nama: me.nama,
+      status: presenceStatus,
+      joined_at: presenceJoinedAt || (presenceJoinedAt = new Date().toISOString())
+    });
+    return true;
+  } catch { /* presence gagal gak boleh nge-block kerjaan utama */ return false; }
+}
+// Dipanggil kalau identitas login berubah di tengah sesi (mis. USER_UPDATED).
+S.refreshPresenceIdentity = () => trackPresence();
+
 let awayTimer = null;
 function handleVisibilityForPresence() {
   if (!S.sesiPresenceChannel) return;
   clearTimeout(awayTimer);
   if (document.hidden) {
-    awayTimer = setTimeout(() => {
-      S.sesiPresenceChannel && S.sesiPresenceChannel.track({ nama: currentDisplayName(), status: 'away', joined_at: new Date().toISOString() }).catch(() => {});
-    }, 30000);
+    awayTimer = setTimeout(() => { trackPresence('away'); }, 30000);
   } else {
-    S.sesiPresenceChannel.track({ nama: currentDisplayName(), status: 'online', joined_at: new Date().toISOString() }).catch(() => {});
+    trackPresence('online');
     // Tab baru balik kelihatan — jangan andelin TOKEN_REFRESHED (bisa telat/
     // ke-throttle browser pas tab tadi di-background), paksa re-sync token
     // realtime di sini juga biar postgres_changes gak kena filter diam-diam
@@ -133,10 +180,17 @@ function handleVisibilityForPresence() {
 function unsubscribeFromSesiRealtime() {
   document.removeEventListener('visibilitychange', handleVisibilityForPresence);
   clearTimeout(awayTimer);
-  if (S.rt && sesiDbChannel) S.rt.removeChannel(sesiDbChannel);
-  if (S.rt && S.sesiPresenceChannel) S.rt.removeChannel(S.sesiPresenceChannel);
+  const oldDb = sesiDbChannel;
+  const oldPresence = S.sesiPresenceChannel;
+  // Null-kan DULU sebelum removeChannel, supaya callback status yang masih
+  // nyangkut dari channel lama gagal lolos guard `=== channel` di subscribe.
   sesiDbChannel = null;
   S.sesiPresenceChannel = null;
+  if (oldPresence) { try { oldPresence.untrack(); } catch { /* best-effort: leave tetap dikirim removeChannel */ } }
+  if (S.rt && oldDb) S.rt.removeChannel(oldDb);
+  if (S.rt && oldPresence) S.rt.removeChannel(oldPresence);
+  presenceJoinedAt = null;
+  presenceStatus = 'online';
   presenceRoster = {};
   rtActivityLog = [];
   renderPresenceRoster();
@@ -350,30 +404,48 @@ function handlePresenceSync() {
   const state = S.sesiPresenceChannel.presenceState();
   const roster = {};
   Object.keys(state).forEach(key => {
-    const entries = state[key];
-    if (entries && entries.length) roster[key] = entries[entries.length - 1];
+    const entries = (state[key] || []).filter(e => e && (e.email || e.nama));
+    if (!entries.length) return;
+    // Satu akun bisa punya beberapa tab: tampilkan sebagai SATU orang. Pakai
+    // entri terbaru, tapi statusnya 'online' kalau ada tab yang masih online
+    // (jangan sampai satu tab background bikin orangnya kelihatan away).
+    const latest = entries[entries.length - 1];
+    const anyOnline = entries.some(e => e.status !== 'away');
+    roster[key] = Object.assign({}, latest, { status: anyOnline ? 'online' : 'away' });
   });
   presenceRoster = roster;
   renderPresenceRoster();
 }
-function handlePresenceJoin({ key, newPresences }) {
-  if (S.currentUser && key === S.currentUser.id) return; // diri sendiri, gak usah notif
-  const nama = newPresences && newPresences[0] && newPresences[0].nama;
+function isSelfKey(key) {
+  return !!(S.currentUser && key === S.currentUser.id);
+}
+function handlePresenceJoin({ key, currentPresences, newPresences }) {
+  if (isSelfKey(key)) return; // diri sendiri, gak usah notif
+  // track() ulang (online<->away) atau tab kedua akun yang sama juga muncul sebagai
+  // 'join' — itu bukan orang baru. Cuma notif kalau key ini sebelumnya belum ada.
+  if (currentPresences && currentPresences.length) return;
+  const nama = displayNameOfPresence(newPresences && newPresences[0]);
   if (nama) S.showToast(`${nama} bergabung ke sesi ini`, 'presence');
 }
 function handlePresenceLeave({ key, leftPresences }) {
-  if (S.currentUser && key === S.currentUser.id) return;
-  const nama = leftPresences && leftPresences[0] && leftPresences[0].nama;
+  if (isSelfKey(key)) return;
+  // Masih ada tab/meta lain dengan key sama → bukan beneran keluar (mis. cuma ganti status).
+  const still = S.sesiPresenceChannel && S.sesiPresenceChannel.presenceState()[key];
+  if (still && still.length) return;
+  const nama = displayNameOfPresence(leftPresences && leftPresences[0]);
   if (nama) S.showToast(`${nama} keluar dari sesi`, 'presence');
 }
 const RT_AVATAR_PALETTE = ['#e5484d', '#f76b15', '#ffb224', '#46a758', '#12a594', '#0091ff', '#8e4ec6', '#e93d82'];
 function avatarColorFor(seed) {
+  seed = String(seed || '');
   let hash = 0;
   for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
   return RT_AVATAR_PALETTE[hash % RT_AVATAR_PALETTE.length];
 }
 function initialsFor(nama) {
-  const parts = nama.trim().split(/\s+/).filter(Boolean);
+  // Pecah di spasi/titik/underscore/strip/plus — "stephanus.sabd" → "SS",
+  // "stephanussabd" (satu kata) → 2 huruf pertama "ST".
+  const parts = String(nama || '').trim().split(/[\s._\-+]+/).filter(Boolean);
   if (!parts.length) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
@@ -383,15 +455,25 @@ function renderPresenceRoster() {
   const wrap = document.getElementById('rt-live');
   const cluster = document.getElementById('rt-avatar-cluster');
   if (!wrap || !cluster) return;
-  const entries = Object.values(presenceRoster).filter(p => p.nama);
+  // Diri sendiri dulu, sisanya urut siapa yang masuk duluan — urutan stabil, gak loncat tiap sync.
+  const entries = Object.keys(presenceRoster)
+    .map(key => ({ key, p: presenceRoster[key] }))
+    .filter(e => displayNameOfPresence(e.p))
+    .sort((a, b) => {
+      const sa = isSelfKey(a.key) ? 0 : 1, sb = isSelfKey(b.key) ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return String(a.p.joined_at || '').localeCompare(String(b.p.joined_at || '')) || a.key.localeCompare(b.key);
+    });
   const MAX_SHOWN = 4;
   const shown = entries.slice(0, MAX_SHOWN);
   const overflow = entries.length - shown.length;
-  cluster.innerHTML = shown.map(p => {
+  cluster.innerHTML = shown.map(({ key, p }) => {
     const awayCls = p.status === 'away' ? ' away' : '';
-    return `<span class="rt-avatar${awayCls}" style="background:${avatarColorFor(p.nama)}">${S.escapeHtmlAttr(initialsFor(p.nama))}</span>`;
+    const nama = displayNameOfPresence(p);
+    const label = (p.email || nama) + (isSelfKey(key) ? ' (kamu)' : '') + (p.status === 'away' ? ' — away' : '');
+    return `<span class="rt-avatar${awayCls}" title="${S.escapeHtmlAttr(label)}" style="background:${avatarColorFor(p.email || nama)}">${S.escapeHtmlAttr(initialsFor(nama))}</span>`;
   }).join('') + (overflow > 0 ? `<span class="rt-avatar-more">+${overflow}</span>` : '');
-  const names = entries.map(p => p.nama + (p.status === 'away' ? ' (away)' : ''));
+  const names = entries.map(({ key, p }) => (p.email || displayNameOfPresence(p)) + (isSelfKey(key) ? ' (kamu)' : '') + (p.status === 'away' ? ' (away)' : ''));
   wrap.title = (names.length ? names.join(', ') : 'Cuma kamu di sesi ini') + ' — ' + (RT_STATUS_LABELS[rtConnState] || '');
 }
 
