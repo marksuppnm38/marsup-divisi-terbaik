@@ -1986,6 +1986,12 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
 
   lampiranStatus.style.display = 'none';
   const esc = (s) => String(s ?? '').replace(/</g, '&lt;');
+  // Ringkasan: jenis item unik (kode_produk berbeda) + total qty (jumlah pcs semua
+  // baris). qty null dihitung 1 -- sama dengan yang ditampilkan di kolom Qty.
+  const uniqueCount = new Set(items.map(it => it.kode_produk)).size;
+  const totalQty = items.reduce((sum, it) => sum + (Number(it.qty ?? 1) || 0), 0);
+  const fmtNum = (n) => n.toLocaleString('id-ID');
+  const chipStyle = 'display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:var(--surface-2);font-size:12px;color:var(--text-secondary,var(--text))';
   const rows = items.map((it, i) => `
     <tr style="border-bottom:1px solid var(--border)">
       <td style="padding:8px;text-align:center;color:var(--text-muted);font-size:12px">${it.urutan || i + 1}</td>
@@ -1999,7 +2005,13 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
 
   lampiranSetRincian.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-      <div style="font-size:12px;color:var(--text-muted);flex:1 1 200px">Rincian isi set — sama seperti sheet per-set di export Excel.</div>
+      <div style="flex:1 1 200px">
+        <div style="font-size:12px;color:var(--text-muted)">Rincian isi set — sama seperti sheet per-set di export Excel.</div>
+        <div id="lampiran-set-summary" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          <span style="${chipStyle}"><i class="ti ti-category"></i><b>${fmtNum(uniqueCount)}</b> jenis item</span>
+          <span style="${chipStyle}"><i class="ti ti-stack-2"></i><b>${fmtNum(totalQty)}</b> pcs total</span>
+        </div>
+      </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <button id="lampiran-copy-sheet-btn" title="Copy kode, deskripsi, qty — teks doang, paling aman ke mana pun" style="border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-size:12px;font-weight:500;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">
           <i class="ti ti-copy"></i><span>Copy Teks</span>
@@ -2023,6 +2035,13 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
         </tr>
       </thead>
       <tbody>${rows}</tbody>
+      <tfoot>
+        <tr style="background:var(--surface-2);font-weight:600">
+          <td colspan="3" style="padding:10px 8px;font-size:13px;text-align:right">Total · ${fmtNum(uniqueCount)} jenis item</td>
+          <td style="padding:10px 8px;text-align:center;font-size:13px">${fmtNum(totalQty)}</td>
+          <td></td>
+        </tr>
+      </tfoot>
     </table>`;
   lampiranSetRincian.style.display = 'block';
 
