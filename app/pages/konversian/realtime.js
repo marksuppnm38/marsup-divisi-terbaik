@@ -118,7 +118,7 @@ function subscribeToSesiRealtime(sesiId) {
   const presenceKey = me ? me.id : ('anon-' + Math.random().toString(36).slice(2, 9));
   presenceJoinedAt = new Date().toISOString();
   presenceStatus = document.hidden ? 'away' : 'online';
-  const presenceChannel = S.rt.channel(`sesi-presence-${sesiId}`, { config: { presence: { key: presenceKey } } })
+  const presenceChannel = S.rt.channel(`sesi-presence-${sesiId}`, { config: { private: true, presence: { key: presenceKey } } })
     .on('presence', { event: 'sync' }, handlePresenceSync)
     .on('presence', { event: 'join' }, handlePresenceJoin)
     .on('presence', { event: 'leave' }, handlePresenceLeave)
