@@ -101,3 +101,6 @@ td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle
 .prod-step-check{color:var(--accent);font-size:14px}
 .prod-tab-panel{display:none}
 .prod-tab-panel.active{display:block}
+/* Verified Product (centang biru INAPROC) */
+.vbadge{color:#1d9bf0;font-size:15px;vertical-align:-2px;margin-left:3px}
+.vbadge-chip{margin:0 2px 0 0;font-size:14px;vertical-align:-2px}

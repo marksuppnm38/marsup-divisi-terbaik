@@ -486,6 +486,107 @@ document.getElementById('bulkInaprocProsesBtn').addEventListener('click', async 
 });
 
 
+// ---- BULK VERIFIED PRODUCT (centang biru INAPROC) ----
+// TSV dari semua-produk-tayang.js = SNAPSHOT lengkap produk yang lagi tayang. Seluruh
+// pencocokan ke tabel produk + penulisan dikerjakan di Postgres (RPC bulk_sync_verified,
+// 1 panggilan, bukan N query dari browser). Preview = RPC yang sama dgn p_dry_run=true,
+// jadi laporan yang kamu lihat PERSIS sama dengan yang akan ditulis.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function parseVerifiedTsv(raw){
+  const lines = parsePasteLines(raw);
+  let iId = 0, iName = 1, iSlug = 2;
+  if (lines.length && lines[0].some(c => c.toLowerCase() === 'product_id')) {
+    const head = lines.shift().map(c => c.toLowerCase());
+    iId = head.indexOf('product_id'); iName = head.indexOf('name'); iSlug = head.indexOf('slug');
+  }
+  return lines
+    .map(l => ({ id: (l[iId] || '').trim(), name: (l[iName] || '').trim(), slug: (l[iSlug] || '').trim() }))
+    .filter(r => UUID_RE.test(r.id));
+}
+let bulkVerifiedItems = [];
+let bulkVerifiedReport = null;
+document.getElementById('bulkVerifiedFile').addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  document.getElementById('bulkVerifiedPaste').value = await f.text();
+});
+function resetBulkVerified(){
+  document.getElementById('bulkVerifiedPaste').value = '';
+  document.getElementById('bulkVerifiedFile').value = '';
+  document.getElementById('bulkVerifiedPreviewWrap').style.display = 'none';
+  document.getElementById('bulkVerifiedSummary').innerHTML = '';
+  document.getElementById('bulkVerifiedProsesBtn').style.display = 'none';
+  bulkVerifiedItems = []; bulkVerifiedReport = null;
+}
+function renderBulkVerifiedReport(r){
+  const summary = document.getElementById('bulkVerifiedSummary');
+  const body = document.getElementById('bulkVerifiedPreviewBody');
+  const masalah = (r.unmatched || []).length + (r.ambiguous || []).length;
+  summary.innerHTML =
+    `<span class="ok">${r.matched}/${r.total} cocok (UUID ${r.by_id} · link ${r.by_link} · nama ${r.by_nama})</span>` +
+    `<span class="ok">+${r.gain} dapat badge · ${r.keep} tetap</span>` +
+    (r.lose ? `<span class="warn">${r.lose} kehilangan badge</span>` : '') +
+    (masalah ? `<span class="warn">${masalah} baris bermasalah (tidak ikut)</span>` : '');
+  const rows = [
+    ...(r.ambiguous || []).map(x => ({ ...x, cls: 'err', msg: 'Ambigu — cocok ke: ' + (x.kode || []).join(', ') })),
+    ...(r.unmatched || []).map(x => ({ ...x, cls: 'err', msg: 'Tidak ketemu di database' })),
+    ...(r.via_nama || []).map(x => ({ ...x, slug: '', cls: 'ok', msg: 'Cocok via nama → ' + x.kode + ' (cek sekilas)' })),
+  ];
+  body.innerHTML = '';
+  rows.forEach(x => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${S.escapeHtml(x.name || '—')}</td><td class="kode-cell">${S.escapeHtml(x.slug || '—')}</td><td><span class="row-status ${x.cls}">${S.escapeHtml(x.msg)}</span></td>`;
+    body.appendChild(tr);
+  });
+  document.getElementById('bulkVerifiedPreviewWrap').style.display = rows.length ? 'block' : 'none';
+  document.getElementById('bulkVerifiedProsesBtn').style.display = r.matched > 0 ? 'inline-flex' : 'none';
+}
+document.getElementById('bulkVerifiedPreviewBtn').addEventListener('click', async () => {
+  const items = parseVerifiedTsv(document.getElementById('bulkVerifiedPaste').value);
+  if (items.length === 0) { showToast('Tidak ada baris valid (kolom product_id harus UUID)', true); return; }
+  const btn = document.getElementById('bulkVerifiedPreviewBtn');
+  const asal = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span> Mencocokkan ${items.length} baris...`;
+  try {
+    const { data, error } = await S.sb.rpc('bulk_sync_verified', { p_items: items, p_dry_run: true });
+    if (error) { showToast('Gagal preview: ' + error.message, true); return; }
+    bulkVerifiedItems = items; bulkVerifiedReport = data;
+    renderBulkVerifiedReport(data);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = asal;
+  }
+});
+document.getElementById('bulkVerifiedProsesBtn').addEventListener('click', async () => {
+  if (!bulkVerifiedItems.length || !bulkVerifiedReport) return;
+  const r = bulkVerifiedReport;
+  // Pengaman snapshot: paste yang kepotong / salah file bisa nyabut banyak badge sekaligus.
+  if (r.lose > 0 || r.matched < r.total * 0.5) {
+    const ok = await crudConfirm(
+      `+${r.gain} produk dapat badge, ${r.lose} produk KEHILANGAN badge (tidak ada di data ini).\n` +
+      (r.matched < r.total * 0.5 ? `Perhatian: baru ${r.matched} dari ${r.total} baris yang cocok.\n` : '') +
+      'Lanjut sinkronkan?', { okLabel: 'Ya, Sinkronkan', danger: r.lose > 0 });
+    if (!ok) return;
+  }
+  const btn = document.getElementById('bulkVerifiedProsesBtn');
+  const asal = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Menyimpan...';
+  try {
+    const { data, error } = await S.sb.rpc('bulk_sync_verified', { p_items: bulkVerifiedItems, p_dry_run: false });
+    if (error) { showToast('Gagal sinkron: ' + error.message, true); return; }
+    showToast(`Selesai — ${data.matched} produk verified (+${data.gain}, -${data.lose})`);
+    resetBulkVerified();
+    S.invalidateProdukStackCache();
+    S.loadProduk();
+    S.refreshProdukFilterCounts();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = asal;
+  }
+});
+
   // parseSetKompLine (tab Set Detail, index.js) manggil ini balik lewat S
   // buat parse textarea paste rincian set.
   S.parsePasteLines = parsePasteLines;

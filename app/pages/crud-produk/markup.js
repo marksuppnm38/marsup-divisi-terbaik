@@ -71,6 +71,7 @@ export const CRUD_PRODUK_MARKUP = `
         <button class="filter-chip" data-filter="di_luar_cakupan">Di Luar Cakupan<span class="fc-count" id="fc-di_luar_cakupan"></span></button>
         <button class="filter-chip" data-filter="terhubung">Terhubung<span class="fc-count" id="fc-terhubung"></span></button>
         <button class="filter-chip" data-filter="disetujui_tanpa_link">Disetujui, Belum Ada Link<span class="fc-count" id="fc-disetujui_tanpa_link"></span></button>
+        <button class="filter-chip" data-filter="verified"><i class="ti ti-rosette-discount-check-filled vbadge vbadge-chip"></i>Verified<span class="fc-count" id="fc-verified"></span></button>
       </div>
 
       <div class="stacked-filters-row">
@@ -286,6 +287,7 @@ export const CRUD_PRODUK_MARKUP = `
         <button class="bulk-tab active" data-bulk="harga">Harga Massal</button>
         <button class="bulk-tab" data-bulk="link">Link V6 Massal</button>
         <button class="bulk-tab" data-bulk="inaproc">INAPROC Tracker</button>
+        <button class="bulk-tab" data-bulk="verified">Verified Product</button>
       </div>
 
       <!-- BULK HARGA -->
@@ -348,8 +350,31 @@ export const CRUD_PRODUK_MARKUP = `
           </table>
         </div>
       </div>
+
+      <!-- BULK VERIFIED PRODUCT (centang biru INAPROC) -->
+      <div class="bulk-panel" id="bulk-verified">
+        <div class="paste-hint">
+          Paste hasil console script <code>semua-produk-tayang.js</code> (TSV, boleh dengan header) atau pilih file <code>.tsv</code>-nya.
+          Yang dipakai cuma 3 kolom: <code>product_id</code>, <code>name</code>, <code>slug</code>. Produk dicocokkan otomatis (UUID INAPROC &rarr; slug di Link V6 &rarr; nama).
+          Ini <b>snapshot lengkap</b>: produk yang sekarang berbadge tapi tidak ada di data ini akan kehilangan badge. Paste ulang aman.
+        </div>
+        <input type="file" id="bulkVerifiedFile" accept=".tsv,.txt,.csv" style="margin-bottom:8px;font-size:12px;"/>
+        <textarea class="paste-area" id="bulkVerifiedPaste" placeholder="product_id&#9;name&#9;slug&#9;..."></textarea>
+        <div class="bulk-actions">
+          <button class="btn btn-ghost" id="bulkVerifiedPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
+          <button class="btn btn-accent" id="bulkVerifiedProsesBtn" style="display:none;"><i class="ti ti-check"></i> Sinkronkan</button>
+        </div>
+        <div class="bulk-summary" id="bulkVerifiedSummary"></div>
+        <div class="preview-table-wrap" id="bulkVerifiedPreviewWrap" style="display:none;">
+          <table>
+            <thead><tr><th>Nama di INAPROC</th><th>Slug</th><th>Catatan</th></tr></thead>
+            <tbody id="bulkVerifiedPreviewBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
+    <!-- (panel Verified Product disisipkan di bawah, di dalam #viewBulk) -->
     <!-- SYNC DARI SHEET VIEW: kode_produk yang kepantau di Google Sheets
          (lewat Apps Script pollAndSync -> Edge Function sync-sheet) tapi
          belum ada di tabel produk -- edge function nyatet ini ke tabel

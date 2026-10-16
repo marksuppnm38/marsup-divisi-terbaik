@@ -180,6 +180,12 @@ function sealHtml(status){
 }
 const TIPE_TO_AKD = { INSTRUMENT: 'satuan', SET: 'set', UNIT: 'unit' };
 
+// Centang biru "Verified Product" INAPROC (data dari tabel produk_verified, diisi lewat
+// Bulk Edit > Verified Product). Cuma ikon — styling .vbadge ada di style.css.
+function verifiedBadgeHtml(isVerified){
+  return isVerified ? ' <i class="ti ti-rosette-discount-check-filled vbadge" title="Verified Product — tayang di INAPROC"></i>' : '';
+}
+
 // BUGFIX (sesi keamanan, 15 September 2026): escapeHtml() dulu cuma
 // dideklarasikan di dalam mount()'s closure (baris jauh di bawah), padahal
 // renderInaprocIndikator() ini -- pemanggilnya -- ada di scope MODUL (luar
@@ -210,10 +216,14 @@ function renderLinkV6Hint(){
   }
 }
 
-function renderInaprocIndikator(statusInaproc, linkV6){
+function renderInaprocIndikator(statusInaproc, linkV6, isVerified){
   const el = document.getElementById('inaprocIndikator');
-  if (!statusInaproc) { el.style.display = 'none'; return; }
+  if (!statusInaproc && !isVerified) { el.style.display = 'none'; return; }
   el.style.display = 'block';
+  if (!statusInaproc) {
+    el.innerHTML = `<span style="font-size:11px;color:var(--text-muted);">Status INAPROC:</span> <span class="seal seal-terhubung">Verified Product</span>${verifiedBadgeHtml(true)}`;
+    return;
+  }
   let cls = 'seal-null', label = statusInaproc;
   if (statusInaproc === 'Disetujui') cls = 'seal-terhubung';
   else if (statusInaproc === 'Ditolak') cls = 'seal-belum_diajukan';
@@ -222,7 +232,7 @@ function renderInaprocIndikator(statusInaproc, linkV6){
   if (statusInaproc === 'Disetujui' && !linkV6) {
     extra = ' <span style="color:var(--rust-text);font-size:11.5px;">— sudah disetujui INAPROC, belum ada Link V6, siap dibuatkan!</span>';
   }
-  el.innerHTML = `<span style="font-size:11px;color:var(--text-muted);">Status INAPROC:</span> <span class="seal ${cls}">${escapeHtml(label)}</span>${extra}`;
+  el.innerHTML = `<span style="font-size:11px;color:var(--text-muted);">Status INAPROC:</span> <span class="seal ${cls}">${escapeHtml(label)}</span>${verifiedBadgeHtml(isVerified)}${extra}`;
 }
 
 export async function mount(container, initialSub) {
@@ -562,6 +572,7 @@ const PRODUK_FILTERS = {
   di_luar_cakupan: p => p.status_akd === 'di_luar_cakupan',
   terhubung: p => p.status_akd === 'terhubung',
   disetujui_tanpa_link: p => p.status_inaproc === 'Disetujui' && !p.link_v6,
+  verified: p => !!produkVerifiedIdSet && produkVerifiedIdSet.has(p.id),
 };
 let produkActiveFilter = 'all';
 function applyProdukFilterToQuery(query, filterKey){
@@ -578,6 +589,8 @@ const PRODUK_LIST_COLUMNS = 'id, kode_produk, nama_produk, tipe, golongan, is_ac
 // is_active, status_inaproc, ketersediaan harga) — bukan properti AKD.
 let produkActiveFilters = []; // [{ dim, value, label }]
 let produkDistinct = { tipe: [], golongan: [], status_inaproc: [] };
+let produkVerifiedIdSet = null; // Set<produk_id> berbadge Verified (RPC get_verified_produk_ids, 1 baris jsonb)
+let produkVerifiedRows = null;  // cache baris produk berbadge (dipakai chip "Verified" — ~700 baris, cukup ditarik sekali)
 let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
 let produkCurrentFilteredFull = null; // hasil filter lengkap dari jalur search (client-side match) -> sumber Download Excel pas search aktif
 
@@ -628,8 +641,39 @@ async function ensureProdukHargaSet(){
   }
   produkHargaIdSet = new Set(data || []);
 }
+async function ensureVerifiedSet(){
+  if (produkVerifiedIdSet) return;
+  const { data, error } = await sb.rpc('get_verified_produk_ids');
+  if (error) {
+    // tabel/RPC belum dimigrasi -> badge cukup gak muncul, halaman lain tetap jalan
+    console.warn('get_verified_produk_ids gagal:', error.message);
+    produkVerifiedIdSet = new Set();
+    return;
+  }
+  produkVerifiedIdSet = new Set(data || []);
+}
+// Chip "Verified": tarik baris produknya sekali (chunk .in() 150 id, paralel), lalu filter
+// tambahan + paging dikerjakan di client — sama pola jalur search. Aman dari limit baris
+// PostgREST karena tiap chunk <= 150 baris.
+async function ensureVerifiedRows(){
+  await ensureVerifiedSet();
+  if (produkVerifiedRows) return produkVerifiedRows;
+  const ids = [...produkVerifiedIdSet];
+  const CHUNK = 150, jobs = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    jobs.push(sb.from('produk').select(PRODUK_LIST_COLUMNS).in('id', ids.slice(i, i + CHUNK)));
+  }
+  const res = await Promise.all(jobs);
+  const bad = res.find(r => r.error);
+  if (bad) { showToast('Gagal memuat produk Verified: ' + bad.error.message, true); return null; }
+  produkVerifiedRows = res.flatMap(r => r.data || [])
+    .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+  return produkVerifiedRows;
+}
 function invalidateProdukStackCache(){
   produkHargaIdSet = null;
+  produkVerifiedIdSet = null;
+  produkVerifiedRows = null;
 }
 
 function produkRowMatchesFilter(row, filt){
@@ -677,6 +721,7 @@ async function loadProduk(q, page){
 
   const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
   if (needsHarga) await ensureProdukHargaSet();
+  await ensureVerifiedSet();
 
   let rows = [];
   let total = 0;
@@ -703,6 +748,17 @@ async function loadProduk(q, page){
     let filtered = matcher ? produkSearchRawRows.filter(matcher) : produkSearchRawRows;
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
     produkSearchAllRows = filtered;
+    produkCurrentFilteredFull = filtered;
+    total = filtered.length;
+    rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
+  } else if (produkActiveFilter === 'verified') {
+    // Chip "Verified" tanpa search: semua baris berbadge diambil dari cache, filter tambahan
+    // ("+ Tambah Filter") dipasang di client pakai produkRowMatchesFilter yang sama dgn jalur
+    // search — get_produk_list sengaja TIDAK dipakai (gak kenal status "verified").
+    const all = await ensureVerifiedRows();
+    if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat produk Verified.</td></tr>`; return; }
+    let filtered = all;
+    produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
     produkCurrentFilteredFull = filtered;
     total = filtered.length;
     rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
@@ -795,7 +851,7 @@ async function loadProduk(q, page){
     tr.className = 'clickable' + (noHarga || noLink ? ' row-attention' : '');
     tr.innerHTML = `
       <td class="kode-cell">${escapeHtml(p.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</td>
-      <td>${escapeHtml(p.nama_produk || '—')}</td>
+      <td>${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</td>
       <td><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span></td>
       <td>${sealHtml(p.status_akd)} ${noLinkIcon}</td>
       <td style="text-align:right;color:var(--text-muted);">${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga"></i>' : ''}${p.is_active ? '' : ' <i class="ti ti-eye-off" title="Nonaktif"></i>'}</td>
@@ -807,7 +863,7 @@ async function loadProduk(q, page){
     card.className = 'prod-card' + (noHarga || noLink ? ' row-attention' : '');
     card.innerHTML = `
       <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</div>
-      <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}</div>
+      <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</div>
       <div class="pc-foot"><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}${noLinkIcon}${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga" style="color:var(--amber);margin-left:4px;"></i>' : ''}</div>
     `;
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
@@ -978,8 +1034,8 @@ function renderProdukFilterChips(){
 // gak keduplikasi/berisiko divergen di 2 tempat.
 async function getRowsToExport(){
   let rowsToExport;
-  if (lastQuery.trim()) {
-    // Search aktif -> hasil match sudah lengkap di produkSearchAllRows (RPC search
+  if (lastQuery.trim() || produkActiveFilter === 'verified') {
+    // Search aktif ATAU chip Verified -> hasil match sudah lengkap di produkSearchAllRows (RPC search
     // gak paging), filter tambahan sudah diterapkan di client -> produkCurrentFilteredFull.
     rowsToExport = produkCurrentFilteredFull || [];
   } else {
@@ -1102,8 +1158,8 @@ async function exportProdukToExcel(){
   const [hargaMap, akdMap] = await Promise.all([fetchHargaLatestMap(ids), fetchAkdNoMap(ids)]);
   if (hargaMap === null || akdMap === null) return;
 
-  const HEADER = ['No', 'Kode Produk', 'Nama Produk', 'Tipe', 'Golongan', 'No. AKD', 'Status AKD', 'Status INAPROC', 'Harga EKATALOG', 'Harga SWASTA', 'Tahun Harga', 'Aktif', 'Link V6'];
-  const COL = { no: 0, akd: 5, statusAkd: 6, inaproc: 7, ekat: 8, swasta: 9, tahun: 10, aktif: 11, link: 12 };
+  const HEADER = ['No', 'Kode Produk', 'Nama Produk', 'Tipe', 'Golongan', 'No. AKD', 'Status AKD', 'Status INAPROC', 'Harga EKATALOG', 'Harga SWASTA', 'Tahun Harga', 'Aktif', 'Link V6', 'Verified INAPROC'];
+  const COL = { no: 0, akd: 5, statusAkd: 6, inaproc: 7, ekat: 8, swasta: 9, tahun: 10, aktif: 11, link: 12, verified: 13 };
   const KOSONG = '—';
 
   const dateStr = new Date().toISOString().slice(0, 10);
@@ -1128,6 +1184,7 @@ async function exportProdukToExcel(){
       h ? h.tahun : KOSONG,
       r.is_active ? 'Ya' : 'Tidak',
       r.link_v6 || KOSONG,
+      produkVerifiedIdSet && produkVerifiedIdSet.has(r.id) ? 'Ya' : KOSONG,
     ]);
   });
 
@@ -1179,7 +1236,7 @@ async function exportProdukToExcel(){
       const isEmpty = cell.v === KOSONG;
       if (isEmpty) style.font = { color: { rgb: 'A0A0A0' } };
 
-      if ([COL.no, COL.tahun, COL.aktif, COL.statusAkd, COL.inaproc].includes(c) || isEmpty) {
+      if ([COL.no, COL.tahun, COL.aktif, COL.statusAkd, COL.inaproc, COL.verified].includes(c) || isEmpty) {
         style.alignment = { vertical: 'center', horizontal: 'center' };
       }
       if ((c === COL.ekat || c === COL.swasta) && typeof cell.v === 'number') {
@@ -1213,6 +1270,7 @@ async function exportProdukToExcel(){
     { wch: 11 },  // Tahun Harga
     { wch: 8 },   // Aktif
     { wch: 40 },  // Link V6
+    { wch: 16 },  // Verified INAPROC
   ];
   ws['!rows'] = [{ hpt: 22 }, { hpt: 16 }, { hpt: 20 }];
 
@@ -1364,6 +1422,9 @@ async function refreshProdukFilterCounts(){
     const el = document.getElementById('fc-' + key);
     if (el) el.textContent = count === null ? '' : ` · ${count}`;
   });
+  await ensureVerifiedSet();
+  const fv = document.getElementById('fc-verified');
+  if (fv) fv.textContent = ` · ${produkVerifiedIdSet.size}`;
 }
 
 // debounce search dari topbar? -> topbar sekarang cuma trigger command palette,
@@ -1607,7 +1668,7 @@ async function openEdit(produkId){
   document.getElementById('f_status_v6').value = p.status_v6 || '';
   document.getElementById('f_link_v6').value = p.link_v6 || '';
   renderLinkV6Hint();
-  renderInaprocIndikator(p.status_inaproc, p.link_v6);
+  renderInaprocIndikator(p.status_inaproc, p.link_v6, !!produkVerifiedIdSet && produkVerifiedIdSet.has(produkId));
   document.getElementById('f_spesifikasi').value = p.spesifikasi || '';
   document.getElementById('f_is_active').checked = !!p.is_active;
   document.getElementById('akdSealHolder').innerHTML = sealHtml(p.status_akd);
