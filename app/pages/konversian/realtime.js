@@ -45,6 +45,12 @@ function currentDisplayName() {
 S.currentDisplayName = currentDisplayName;
 // Nama yang ditampilin buat satu entri presence (milik orang lain ATAU diri sendiri).
 // Sengaja diturunkan dari email di payload, bukan percaya mentah field `nama`.
+// Nama pelaku buat activity feed, dari kolom created_by/updated_by yang diisi TRIGGER
+// di database dari JWT login (bukan dari client — gak bisa dipalsukan, dan tetap akurat
+// walau pelakunya sudah offline). Baris lama / update sistem (kolom null) → 'Kolaborator'.
+function actorName(email) {
+  return (email ? emailLocalPart(email) : '') || 'Kolaborator';
+}
 function displayNameOfPresence(p) {
   if (!p) return '';
   return (p.email ? emailLocalPart(p.email) : p.nama) || '';
@@ -231,18 +237,18 @@ function handleSesiRowChange(payload) {
   if (row.pagu !== S.checklistPagu && !isEchoOfLocalWrite(S.SESI_TABLE, row.id, 'pagu', row.pagu)) {
     S.checklistPagu = row.pagu;
     S.updateClipAggregates(); // cuma hitung ulang total/budget, gak nyentuh daftar item
-    pushActivity('Pagu diperbarui');
+    pushActivity(`${actorName(row.updated_by)} memperbarui pagu`);
   }
   if (!!row.butuh_bantuan !== S.currentButuhBantuan && !isEchoOfLocalWrite(S.SESI_TABLE, row.id, 'butuh_bantuan', row.butuh_bantuan)) {
     S.currentButuhBantuan = !!row.butuh_bantuan;
     if (typeof S.renderButuhBantuanBtn === 'function') S.renderButuhBantuanBtn();
-    pushActivity(S.currentButuhBantuan ? 'Minta bantuan diaktifkan' : 'Minta bantuan dibatalkan');
+    pushActivity(`${actorName(row.updated_by)} ${S.currentButuhBantuan ? 'meminta bantuan' : 'membatalkan permintaan bantuan'}`);
   }
   // Mode harga (E-Katalog/Swasta) ditetapkan pembuat sesi — kolaborator lain harus
   // ikut, bukan mulai dari default lokal masing-masing (lihat COORD LOG di atas).
   if (!!row.mode_harga_swasta !== S.modeSwastaOutput && !isEchoOfLocalWrite(S.SESI_TABLE, row.id, 'mode_harga_swasta', row.mode_harga_swasta)) {
     S.setModeSwastaOutput(!!row.mode_harga_swasta);
-    pushActivity(row.mode_harga_swasta ? 'Mode harga diubah ke Swasta oleh kolaborator' : 'Mode harga diubah ke E-Katalog oleh kolaborator');
+    pushActivity(`${actorName(row.updated_by)} mengubah mode harga ke ${row.mode_harga_swasta ? 'Swasta' : 'E-Katalog'}`);
   }
 }
 
@@ -280,7 +286,7 @@ function handleItemRowChange(payload) {
     // ngecek "ini beneran baru" tanpa perlu tracking id kayak update/delete.
     if (S.clipboard.some(c => c.kode_produk === row.kode_produk)) return;
     S.insertClipItem(S.mapSesiItemRowToClipItem(row));
-    pushActivity(`${presenceNameGuess()} menambahkan ${row.nama_produk}`);
+    pushActivity(`${actorName(row.created_by || row.updated_by)} menambahkan ${row.nama_produk}`);
     return;
   }
   if (payload.eventType === 'UPDATE') {
@@ -289,17 +295,9 @@ function handleItemRowChange(payload) {
     if (row.qty !== item.qty && !isEchoOfLocalWrite(S.SESI_ITEM_TABLE, row.id, 'qty', row.qty)) {
       const oldQty = item.qty;
       S.patchClipItem(item.kode_produk, { qty: row.qty });
-      pushActivity(`Qty ${item.nama_produk} ${oldQty} → ${row.qty}`);
+      pushActivity(`${actorName(row.updated_by)} mengubah qty ${item.nama_produk} ${oldQty} → ${row.qty}`);
     }
   }
-}
-
-// Placeholder ringan buat "siapa yang ngelakuin ini" di activity feed — presence
-// gak nyimpen histori per-event, jadi paling akurat yang bisa kita bilang cuma
-// "kolaborator" kalau bukan diri sendiri. Upgrade ke nama presisi (butuh kolom
-// pengubah di tabel item) masuk tahap activity-feed berikutnya.
-function presenceNameGuess() {
-  return 'Kolaborator';
 }
 
 // ---- Penghapusan item: Broadcast manual, bukan andelin postgres_changes DELETE ----
