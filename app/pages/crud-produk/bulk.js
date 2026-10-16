@@ -505,6 +505,18 @@ function parseVerifiedTsv(raw){
 }
 let bulkVerifiedItems = [];
 let bulkVerifiedReport = null;
+// Keputusan manual buat baris AMBIGU: index baris ambigu -> { kode, id } produk pilihan user.
+// Algoritma RPC cuma bisa bilang "cocok ke beberapa kode"; yang mutusin tetap manusia.
+let bulkVerifiedChoices = {};
+let bulkVerifiedCand = {}; // kode_produk -> { id, nama_produk } (buat label dropdown + tulis manual)
+async function loadVerifiedCandidates(ambiguous){
+  const kodes = [...new Set((ambiguous || []).flatMap(x => x.kode || []))];
+  bulkVerifiedCand = {};
+  if (!kodes.length) return;
+  const { data, error } = await S.sb.from('produk').select('id, kode_produk, nama_produk').in('kode_produk', kodes);
+  if (error) { showToast('Gagal memuat kandidat ambigu: ' + error.message, true); return; }
+  (data || []).forEach(r => { bulkVerifiedCand[r.kode_produk] = { id: r.id, nama_produk: r.nama_produk }; });
+}
 document.getElementById('bulkVerifiedFile').addEventListener('change', async (e) => {
   const f = e.target.files && e.target.files[0];
   if (!f) return;
@@ -516,31 +528,60 @@ function resetBulkVerified(){
   document.getElementById('bulkVerifiedPreviewWrap').style.display = 'none';
   document.getElementById('bulkVerifiedSummary').innerHTML = '';
   document.getElementById('bulkVerifiedProsesBtn').style.display = 'none';
-  bulkVerifiedItems = []; bulkVerifiedReport = null;
+  bulkVerifiedItems = []; bulkVerifiedReport = null; bulkVerifiedChoices = {}; bulkVerifiedCand = {};
 }
 function renderBulkVerifiedReport(r){
   const summary = document.getElementById('bulkVerifiedSummary');
   const body = document.getElementById('bulkVerifiedPreviewBody');
-  const masalah = (r.unmatched || []).length + (r.ambiguous || []).length;
+  const amb = r.ambiguous || [];
+  const dipilih = Object.keys(bulkVerifiedChoices).length;
+  const masalah = (r.unmatched || []).length + (amb.length - dipilih);
   summary.innerHTML =
     `<span class="ok">${r.matched}/${r.total} cocok (UUID ${r.by_id} · link ${r.by_link} · nama ${r.by_nama})</span>` +
     `<span class="ok">+${r.gain} dapat badge · ${r.keep} tetap</span>` +
     (r.lose ? `<span class="warn">${r.lose} kehilangan badge</span>` : '') +
+    (amb.length ? `<span class="${dipilih === amb.length ? 'ok' : 'warn'}">${dipilih}/${amb.length} ambigu sudah kamu putuskan</span>` : '') +
     (masalah ? `<span class="warn">${masalah} baris bermasalah (tidak ikut)</span>` : '');
-  const rows = [
-    ...(r.ambiguous || []).map(x => ({ ...x, cls: 'err', msg: 'Ambigu — cocok ke: ' + (x.kode || []).join(', ') })),
+  body.innerHTML = '';
+  // Ambigu: user yang mutusin. Pilih salah satu kandidat, atau biarkan "Lewati".
+  amb.forEach((x, i) => {
+    const tr = document.createElement('tr');
+    const opts = (x.kode || []).map(k => {
+      const c = bulkVerifiedCand[k];
+      const label = k + (c && c.nama_produk ? ' — ' + c.nama_produk : '');
+      return `<option value="${S.escapeHtml(k)}"${bulkVerifiedChoices[i] && bulkVerifiedChoices[i].kode === k ? ' selected' : ''}>${S.escapeHtml(label)}</option>`;
+    }).join('');
+    tr.innerHTML = `<td>${S.escapeHtml(x.name || '—')}</td><td class="kode-cell">${S.escapeHtml(x.slug || '—')}</td>` +
+      `<td><select class="verified-amb-select" data-i="${i}" style="max-width:100%;font-size:12px;">` +
+      `<option value="">Ambigu — lewati (tidak dapat badge)</option>${opts}</select></td>`;
+    body.appendChild(tr);
+  });
+  [
     ...(r.unmatched || []).map(x => ({ ...x, cls: 'err', msg: 'Tidak ketemu di database' })),
     ...(r.via_nama || []).map(x => ({ ...x, slug: '', cls: 'ok', msg: 'Cocok via nama → ' + x.kode + ' (cek sekilas)' })),
-  ];
-  body.innerHTML = '';
-  rows.forEach(x => {
+  ].forEach(x => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${S.escapeHtml(x.name || '—')}</td><td class="kode-cell">${S.escapeHtml(x.slug || '—')}</td><td><span class="row-status ${x.cls}">${S.escapeHtml(x.msg)}</span></td>`;
     body.appendChild(tr);
   });
-  document.getElementById('bulkVerifiedPreviewWrap').style.display = rows.length ? 'block' : 'none';
-  document.getElementById('bulkVerifiedProsesBtn').style.display = r.matched > 0 ? 'inline-flex' : 'none';
+  document.getElementById('bulkVerifiedPreviewWrap').style.display = body.children.length ? 'block' : 'none';
+  document.getElementById('bulkVerifiedProsesBtn').style.display = (r.matched > 0 || amb.length) ? 'inline-flex' : 'none';
 }
+// Delegasi: simpan pilihan user per baris ambigu, lalu update ringkasan tanpa render ulang tabel
+// (biar dropdown yang lagi dipegang gak reset).
+document.getElementById('bulkVerifiedPreviewBody').addEventListener('change', (e) => {
+  const sel = e.target.closest('.verified-amb-select');
+  if (!sel || !bulkVerifiedReport) return;
+  const i = Number(sel.dataset.i);
+  const kode = sel.value;
+  if (!kode) delete bulkVerifiedChoices[i];
+  else if (bulkVerifiedCand[kode]) bulkVerifiedChoices[i] = { kode, id: bulkVerifiedCand[kode].id };
+  else { sel.value = ''; showToast('Produk ' + kode + ' tidak ditemukan', true); return; }
+  const r = bulkVerifiedReport, amb = r.ambiguous || [];
+  const dipilih = Object.keys(bulkVerifiedChoices).length;
+  const chip = [...document.querySelectorAll('#bulkVerifiedSummary span')].find(el => /ambigu sudah kamu putuskan/.test(el.textContent));
+  if (chip) { chip.textContent = `${dipilih}/${amb.length} ambigu sudah kamu putuskan`; chip.className = dipilih === amb.length ? 'ok' : 'warn'; }
+});
 document.getElementById('bulkVerifiedPreviewBtn').addEventListener('click', async () => {
   const items = parseVerifiedTsv(document.getElementById('bulkVerifiedPaste').value);
   if (items.length === 0) { showToast('Tidak ada baris valid (kolom product_id harus UUID)', true); return; }
@@ -551,7 +592,8 @@ document.getElementById('bulkVerifiedPreviewBtn').addEventListener('click', asyn
   try {
     const { data, error } = await S.sb.rpc('bulk_sync_verified', { p_items: items, p_dry_run: true });
     if (error) { showToast('Gagal preview: ' + error.message, true); return; }
-    bulkVerifiedItems = items; bulkVerifiedReport = data;
+    bulkVerifiedItems = items; bulkVerifiedReport = data; bulkVerifiedChoices = {};
+    await loadVerifiedCandidates(data.ambiguous);
     renderBulkVerifiedReport(data);
   } finally {
     btn.disabled = false;
@@ -576,7 +618,27 @@ document.getElementById('bulkVerifiedProsesBtn').addEventListener('click', async
   try {
     const { data, error } = await S.sb.rpc('bulk_sync_verified', { p_items: bulkVerifiedItems, p_dry_run: false });
     if (error) { showToast('Gagal sinkron: ' + error.message, true); return; }
-    showToast(`Selesai — ${data.matched} produk verified (+${data.gain}, -${data.lose})`);
+    // Keputusan manual user buat baris ambigu: tulis sebagai matched_by='manual' (jalur yang sama
+    // dgn checkbox manual di modal produk, dilindungi dari sync snapshot berikutnya).
+    // Simpan JUGA UUID INAPROC-nya (inaproc_product_id): sync berikutnya cocok di tier 1 (UUID),
+    // jadi baris ini gak ambigu lagi dan keputusanmu permanen. UUID dicari dari TSV via slug+nama
+    // (RPC gak ngembaliin id di daftar ambigu). Tulis lewat RPC resolve_verified_ambiguous karena
+    // tabel produk_verified gak punya policy UPDATE buat upsert langsung dari browser.
+    const amb = r.ambiguous || [];
+    const picks = Object.entries(bulkVerifiedChoices).map(([i, c]) => {
+      const a = amb[Number(i)] || {};
+      const slug = (a.slug || '').toLowerCase();
+      const src = bulkVerifiedItems.find(it => slug && it.slug.toLowerCase() === slug && it.name === (a.name || it.name))
+               || bulkVerifiedItems.find(it => slug && it.slug.toLowerCase() === slug);
+      return { produk_id: c.id, inaproc_product_id: src ? src.id : null };
+    });
+    let manualOk = 0;
+    if (picks.length) {
+      const { data: mRes, error: mErr } = await S.sb.rpc('resolve_verified_ambiguous', { p_items: picks });
+      if (mErr) showToast('Sinkron OK, tapi simpan pilihan ambigu gagal: ' + mErr.message, true);
+      else manualOk = mRes && mRes.written != null ? mRes.written : picks.length;
+    }
+    showToast(`Selesai — ${data.matched} produk verified (+${data.gain}, -${data.lose})` + (manualOk ? ` · ${manualOk} ambigu kamu putuskan` : ''));
     resetBulkVerified();
     S.invalidateProdukStackCache();
     S.loadProduk();

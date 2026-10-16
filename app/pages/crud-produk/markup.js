@@ -357,6 +357,7 @@ export const CRUD_PRODUK_MARKUP = `
           Paste hasil console script <code>semua-produk-tayang.js</code> (TSV, boleh dengan header) atau pilih file <code>.tsv</code>-nya.
           Yang dipakai cuma 3 kolom: <code>product_id</code>, <code>name</code>, <code>slug</code>. Produk dicocokkan otomatis (UUID INAPROC &rarr; slug di Link V6 &rarr; nama).
           Ini <b>snapshot lengkap</b>: produk yang sekarang berbadge tapi tidak ada di data ini akan kehilangan badge. Paste ulang aman.
+          Baris <b>Ambigu</b> (cocok ke &gt;1 produk) tidak diputuskan algoritma: pilih sendiri produk yang benar lewat dropdown, atau biarkan &ldquo;lewati&rdquo;. Pilihanmu disimpan sebagai badge <i>manual</i> (aman dari sync berikutnya).
         </div>
         <input type="file" id="bulkVerifiedFile" accept=".tsv,.txt,.csv" style="margin-bottom:8px;font-size:12px;"/>
         <textarea class="paste-area" id="bulkVerifiedPaste" placeholder="product_id&#9;name&#9;slug&#9;..."></textarea>
