@@ -1173,3 +1173,200 @@
 #app-root .conv-alt-nama{font-size:12px;color:var(--text);overflow-wrap:anywhere}
 #app-root .conv-alt-meta{font-size:11px;color:var(--text-muted)}
 #app-root .conv-alt-warn{color:var(--danger-text,var(--danger))}
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   WORKBENCH-FIRST LAYOUT (Okt 2026)
+   Panel kanan dibagi 3 zona, workbench dapat SISA tinggi:
+     A. Info strip   — 1 baris (identitas sesi + status + aksi kecil)
+     B. Workbench    — tab + filter + daftar item (flex:1, scroll di dalam)
+     C. Output bar   — total + Export→Drive + Record + menu ⋯
+   Blok ini sengaja ditaruh PALING AKHIR dan semua selektornya diawali
+   #app-root, jadi menang atas aturan lama (style.css di atas &
+   pnm-universal.css) tanpa perlu menyentuh keduanya. Hapus blok ini =
+   balik ke tampilan lama (markup.js-nya yang baru tetap kompatibel).
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ---------- ZONA A: info strip ---------- */
+#app-root .clip-header{padding:6px 12px;border-bottom:1px solid var(--border)}
+#app-root .clip-title-row{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin:0;min-height:30px}
+#app-root .clip-title{flex:none;display:flex;align-items:center;font-size:13px;letter-spacing:0;color:var(--text-muted)}
+#app-root .clip-id-line{flex:1 1 140px;min-width:0}
+/* compact SEKARANG selalu tampil (dulu cuma pas header collapsed) */
+#app-root .clip-header .clip-header-compact{
+  display:block;margin:0;padding:0;font-size:12px;line-height:1.3;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#app-root .clip-header .clip-header-compact:empty::before{content:'Belum ada sesi';color:var(--text-muted)}
+#app-root .clip-strip-actions{display:flex;align-items:center;gap:4px;flex:0 0 auto;margin-left:auto}
+#app-root .sesi-save-status{
+  font-size:10.5px;color:var(--text-muted);white-space:nowrap;
+  max-width:92px;overflow:hidden;text-overflow:ellipsis;margin:0 2px;min-height:0;
+}
+#app-root .clip-header-edit-btn{
+  height:22px;padding:0 7px;white-space:nowrap;font-size:10.5px;
+  border:1px solid var(--border);border-radius:6px;
+}
+#app-root .clip-header-edit-btn:hover{text-decoration:none;background:var(--surface-2)}
+/* ikon pensil/× jangan ikut muter pas header collapsed */
+#app-root .clip-header.collapsed .clip-header-icon-btn i,
+#app-root .clip-header .clip-header-icon-btn i{transform:none}
+#app-root .clip-header:not(.collapsed) #clip-header-toggle{
+  background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);
+}
+
+/* Lonceng aktivitas realtime = popover (bukan baris yang numpang tinggi) */
+#app-root .rt-feed-wrap{position:relative;margin:0}
+#app-root .rt-feed-toggle{
+  position:relative;width:22px;height:22px;padding:0;gap:0;justify-content:center;
+  border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);
+}
+#app-root .rt-feed-toggle:hover{background:var(--surface-2);color:var(--text)}
+#app-root .rt-feed-toggle #rt-feed-toggle-label{display:none}
+#app-root .rt-feed-wrap .rt-feed-toggle i,
+#app-root .rt-feed-wrap:not(.rt-feed-collapsed) .rt-feed-toggle i{transform:none;font-size:13px}
+#app-root .rt-feed-toggle::after{
+  content:'';position:absolute;top:2px;right:2px;width:6px;height:6px;border-radius:50%;background:var(--accent);
+}
+#app-root .rt-feed-collapsible{
+  display:block;position:absolute;top:calc(100% + 6px);right:0;z-index:40;
+  width:min(300px,80vw);opacity:1;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  box-shadow:0 12px 28px rgba(0,0,0,.22);
+}
+#app-root .rt-feed-wrap.rt-feed-collapsed .rt-feed-collapsible{display:none}
+#app-root .rt-feed-collapsible-inner{
+  padding:8px 10px;max-height:220px;overflow:auto;font-size:11px;color:var(--text-secondary);
+}
+
+/* Form edit RS / Sales / PIC: 1 baris inline (bukan 3 baris bertumpuk) */
+#app-root .clip-header-form{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;padding:8px 0 2px;
+}
+#app-root .clip-header-form .form-group{margin:0}
+#app-root .clip-header-form .form-group label{font-size:10.5px;margin-bottom:2px}
+#app-root .clip-header-form .form-group input{height:28px;font-size:12px}
+
+/* Label tahap & ringkasan strip: infonya udah ada di tempat lain, bikin sesak doang */
+#app-root .clip-stage-label,
+#app-root .clip-summary-strip{display:none !important}
+
+/* Baris tab + Permintaan RS (nempel di ujung kanan, turun baris sendiri kalau panel sempit) */
+#app-root .clip-tab-row{
+  display:flex;flex-wrap:wrap;align-items:center;gap:0 14px;padding:0 12px;
+  border-bottom:1px solid var(--border);
+}
+#app-root .clip-tab-btn{height:34px;flex:0 0 auto}
+#app-root .clip-tab-row .rs-strip{
+  flex:1 1 auto;min-width:0;margin:0 0 0 auto;padding:0;
+  background:none;border:none;justify-content:flex-end;gap:6px;
+}
+#app-root .clip-tab-row .rs-strip-state{flex:0 1 auto;min-width:0}
+#app-root .clip-tab-row .rs-strip-title{display:none}
+#app-root .clip-tab-row .rs-strip-info{font-size:11px}
+#app-root .clip-tab-row .rs-strip-btn{height:22px;padding:0 7px}
+
+/* ---------- ZONA B: workbench ---------- */
+/* Rantai tinggi desktop: header (auto) + workbench (sisa) + footer (auto).
+   Scroll terjadi DI DALAM daftar, bukan di seluruh panel. */
+@media (min-width:769px){
+  #app-root .panel-clip{overflow:hidden}
+  #app-root .clip-tabs-wrap{flex:1 1 0;min-height:0;overflow:hidden}
+  #app-root .clip-tab-panel{min-height:0;overflow:hidden}
+  #app-root .clip-tab-panel .clip-body{flex:1 1 auto;min-height:0}
+  #app-root .kb-list{flex:1 1 auto;min-height:0}
+}
+
+/* Baris atas workbench: rollup harga/pagu/sisa (kiri) + status Diperbarui & muat ulang (kanan) */
+#app-root .kb-head{
+  display:flex;align-items:center;gap:8px;flex-shrink:0;min-height:30px;
+  padding:4px 14px;border-bottom:1px solid var(--border);
+}
+#app-root .kb-summary{
+  flex:1 1 auto;min-width:0;padding:0;
+  display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:0 12px;
+}
+#app-root .kb-summary .kb-summary-row{display:none}               /* Nama RS: udah ada di strip atas */
+#app-root .kb-summary .kb-global-rollup{margin:0;font-size:11.5px;gap:0 12px}
+#app-root .kb-summary .kb-global-rollup > span:first-child{display:none}  /* "N/M terpenuhi": udah ada di baris tab */
+#app-root .kb-head-btns{display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0}
+#app-root .kb-refresh-status{font-size:10.5px;color:var(--text-muted);white-space:nowrap}
+
+/* Tab section lebih tipis */
+#app-root .kb-section-tabs{padding:4px 14px 0}
+#app-root .kb-tab{padding:3px 8px;font-size:11.5px}
+
+/* Daftar: lebih lega ke samping, chip filter tetap nempel di atas */
+#app-root .kb-list{padding:0 12px 8px}
+#app-root .panel-clip.tab-kb-active .kb-list{padding:0 12px 8px}
+#app-root .kb-filter-bar{padding:6px 0;margin-bottom:2px}
+#app-root .kb-active-section-head{padding:4px 2px 6px;margin-bottom:2px}
+
+/* Status autosave kebutuhan: 1 baris tipis (pesan error/sukses tetap kelihatan) */
+#app-root .kb-footer{padding:3px 14px;border-top:1px solid var(--border);gap:0}
+#app-root .kb-record-status{font-size:10px;line-height:1.4}
+
+/* ---------- ZONA C: output bar ---------- */
+#app-root .clip-footer{
+  display:flex;flex-direction:column;gap:8px;
+  padding:8px 12px 10px;border-top:1px solid var(--border);
+}
+#app-root .clip-footer > *{grid-column:auto}
+#app-root .clip-budget:empty{display:none}
+
+/* Baris 1: total · hapus semua · mode harga */
+#app-root .clip-utility-row{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px}
+#app-root .clip-utility-row .clip-summary{flex:1 1 160px;min-width:0}
+#app-root .clip-footer .clip-output-mode-row{
+  flex:0 0 auto;margin:0;padding:0;background:transparent;border:none;gap:6px;
+}
+#app-root .clip-output-mode-label{font-size:0;gap:0}               /* teks disembunyiin, tooltip tetap ada */
+#app-root .clip-output-mode-label i{font-size:13px;color:var(--text-muted)}
+#app-root .clip-output-mode-toggle{width:150px}
+
+/* Baris 2: Export → Drive · Record · ⋯ */
+#app-root .clip-foot-actions{display:flex;align-items:stretch;flex-wrap:wrap;gap:8px}
+#app-root .clip-foot-actions .conv-steps{
+  flex:0 1 auto;display:flex;flex-direction:row;align-items:stretch;gap:4px;min-width:0;
+}
+#app-root .clip-foot-actions .conv-steps > .conv-step,
+#app-root .clip-foot-actions .conv-step-row{flex:0 1 auto;min-width:0}
+#app-root .clip-foot-actions .conv-step{
+  width:auto;height:38px;min-height:38px;padding:0 10px;gap:6px;
+}
+#app-root .clip-foot-actions .conv-step-num,
+#app-root .clip-foot-actions .conv-step-check{width:18px;height:18px;font-size:10.5px}
+#app-root .clip-foot-actions .conv-step-icon{font-size:14px}
+#app-root .clip-foot-actions .conv-step-label{font-size:12px;white-space:nowrap}
+/* hint cuma muncul setelah langkahnya selesai (mis. "✓ Tersimpan · 2026 / Leo") */
+#app-root .clip-foot-actions .conv-step:not(.is-done) .conv-step-hint{display:none}
+#app-root .clip-foot-actions .conv-step-hint{
+  max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+#app-root .clip-foot-actions .conv-step-connector{width:6px;height:2px;margin:auto 0;flex-shrink:0}
+#app-root .clip-foot-actions .conv-step-open{width:34px;border-radius:var(--radius)}
+#app-root .clip-foot-actions .btn-record{flex:1 1 150px;width:auto;height:38px;font-size:13.5px}
+
+/* Menu ⋯ (murni CSS lewat :focus-within — klik di luar = nutup) */
+#app-root .clip-more{position:relative;flex:0 0 auto;outline:none}
+#app-root .clip-more-btn{
+  width:38px;height:38px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--surface-2);color:var(--text-secondary);font-size:16px;cursor:pointer;
+}
+#app-root .clip-more-btn:hover,
+#app-root .clip-more:focus-within .clip-more-btn{border-color:var(--accent);color:var(--accent-text)}
+#app-root .clip-more-menu{
+  display:none;position:absolute;right:0;bottom:calc(100% + 6px);z-index:50;
+  min-width:200px;padding:6px;flex-direction:column;gap:4px;
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  box-shadow:0 -8px 28px rgba(0,0,0,.25);
+}
+#app-root .clip-more:focus-within .clip-more-menu{display:flex}
+#app-root .clip-more-menu .btn-leave-sesi,
+#app-root .clip-more-menu .btn-end-sesi{
+  width:100%;height:34px;padding:0 10px;justify-content:flex-start;white-space:nowrap;
+  background:transparent;border-color:transparent;
+}
+#app-root .clip-more-menu .btn-leave-sesi:hover:not(:disabled),
+#app-root .clip-more-menu .btn-end-sesi:hover:not(:disabled){background:var(--surface-2)}

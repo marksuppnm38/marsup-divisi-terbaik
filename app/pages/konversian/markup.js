@@ -371,34 +371,40 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
          kalau masing2 dikasih position:sticky sendiri-sendiri. -->
     <div class="clip-sticky-top" id="clip-sticky-top">
     <div class="clip-header" id="clip-header">
+      <!-- ZONA A — INFO STRIP (1 baris). Identitas sesi (RS · Sales · PIC), status simpan,
+           aktivitas realtime (lonceng), Minta Bantuan, Edit (pensil = buka/tutup form
+           RS/Sales/PIC), Tutup. Semua ID sama persis dengan versi lama; yang berubah cuma
+           posisi & tampilannya. #clip-header-compact SEKARANG SELALU TAMPIL (dulu cuma pas
+           header collapsed). Form edit sekarang 1 baris inline, bukan 3 baris bertumpuk. -->
       <div class="clip-title-row">
-        <div class="clip-title"><i class="ti ti-building-hospital" style="font-size:11px"></i> Sesi Konversi</div>
-        <div style="display:flex;align-items:center;gap:6px">
+        <div class="clip-title" title="Sesi Konversi"><i class="ti ti-building-hospital"></i></div>
+        <div class="clip-id-line">
+          <div class="clip-header-compact" id="clip-header-compact"></div>
+        </div>
+        <div class="clip-strip-actions">
+          <span id="sesi-save-status" class="sesi-save-status"></span>
+          <!-- Feed aktivitas realtime: sekarang ikon lonceng + popover (bukan baris yang numpang tinggi).
+               Klik lonceng buat buka/tutup; toggle class rt-feed-collapsed tetap dari realtime.js. -->
+          <div class="rt-feed-wrap rt-feed-collapsed" id="rt-feed-wrap" style="display:none">
+            <button type="button" class="rt-feed-toggle" id="rt-feed-toggle" title="Aktivitas terbaru">
+              <i class="ti ti-bell" id="rt-feed-toggle-icon"></i>
+              <span id="rt-feed-toggle-label">Aktivitas terbaru</span>
+            </button>
+            <div class="rt-feed-collapsible">
+              <div class="rt-feed-collapsible-inner">
+                <div id="rt-activity-feed"></div>
+              </div>
+            </div>
+          </div>
           <button class="clip-header-edit-btn" id="btn-butuh-bantuan" type="button" title="Tandai sesi ini butuh bantuan tim">🙋 Minta Bantuan</button>
-          <button class="clip-header-icon-btn" id="clip-header-toggle" type="button" title="Ciutkan form sesi">
-            <i class="ti ti-chevron-up" id="clip-header-toggle-icon"></i>
+          <button class="clip-header-icon-btn" id="clip-header-toggle" type="button" title="Ubah RS / Sales / PIC">
+            <i class="ti ti-pencil" id="clip-header-toggle-icon"></i>
           </button>
           <button class="clip-header-icon-btn" id="clip-close-btn" type="button" title="Tutup clipboard" aria-label="Tutup clipboard">
             <i class="ti ti-x"></i>
           </button>
         </div>
       </div>
-      <div id="sesi-save-status" style="font-size:11px;color:var(--text-muted);margin-bottom:4px;min-height:14px"></div>
-      <!-- Feed aktivitas realtime — diciutkan default biar gak numpang tinggi di
-           atas panel yang udah padat. Klik header-nya buat buka/tutup, pola sama
-           kayak kb-collapsible di panel Kebutuhan RS. -->
-      <div class="rt-feed-wrap rt-feed-collapsed" id="rt-feed-wrap" style="display:none">
-        <button type="button" class="rt-feed-toggle" id="rt-feed-toggle">
-          <i class="ti ti-chevron-right" id="rt-feed-toggle-icon"></i>
-          <span id="rt-feed-toggle-label">Aktivitas terbaru</span>
-        </button>
-        <div class="rt-feed-collapsible">
-          <div class="rt-feed-collapsible-inner">
-            <div id="rt-activity-feed"></div>
-          </div>
-        </div>
-      </div>
-      <div class="clip-header-compact" id="clip-header-compact"></div>
       <div class="clip-header-form-collapsible" id="clip-header-form-collapsible">
         <div class="clip-header-form-inner">
           <div class="clip-header-form">
@@ -419,22 +425,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       </div>
     </div>
 
-    <!-- PERMINTAAN RS (state sesi): satu baris yang SELALU nunjukin apakah sesi ini
-         sudah punya Permintaan RS, berapa item, dan jalan pintas eksplisit ke
-         Catat / Tambah / Edit. Ini yang bikin state permintaan kelihatan di dalam
-         sesi, bukan cuma tombol di toolbar. Diisi updateRsStrip() (permintaan-rs.js). -->
-    <div class="rs-strip" id="rs-strip">
-      <button type="button" class="rs-strip-state" id="rs-strip-state" title="Lihat isi Permintaan RS sesi ini">
-        <i class="ti ti-clipboard-text"></i>
-        <span class="rs-strip-title">Permintaan RS</span>
-        <span class="rs-strip-info" id="rs-strip-info">belum dicatat</span>
-      </button>
-      <div class="rs-strip-actions">
-        <button type="button" class="rs-strip-btn" id="rs-strip-add"><i class="ti ti-plus"></i> Catat</button>
-        <button type="button" class="rs-strip-btn" id="rs-strip-edit" style="display:none"><i class="ti ti-pencil"></i> Edit</button>
-      </div>
-    </div>
-
     <!-- TAB: Kebutuhan RS (pencocokan permintaan RS ↔ produk) vs Clipboard (hasil
          final yang mau di-export/record). Dulu dua-duanya ditumpuk vertikal dan
          rebutan tinggi di panel yang sempit — sekarang dipisah tab, jadi yang lagi
@@ -449,24 +439,23 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       <button class="clip-tab-btn" id="clip-tab-btn-sph" type="button" data-tab="sph" title="Buat SPH">
         <i class="ti ti-file-text"></i> <span class="clip-tab-label">Buat SPH</span>
       </button>
+      <!-- Permintaan RS (state sesi) — dulu strip terpisah 1 baris penuh, sekarang nempel di ujung kanan
+           baris tab. Di panel sempit otomatis turun ke baris sendiri (flex-wrap). ID sama persis. -->
+      <div class="rs-strip" id="rs-strip">
+        <button type="button" class="rs-strip-state" id="rs-strip-state" title="Lihat isi Permintaan RS sesi ini">
+          <i class="ti ti-clipboard-text"></i>
+          <span class="rs-strip-title">Permintaan RS</span>
+          <span class="rs-strip-info" id="rs-strip-info">belum dicatat</span>
+        </button>
+        <div class="rs-strip-actions">
+          <button type="button" class="rs-strip-btn" id="rs-strip-add"><i class="ti ti-plus"></i> Catat</button>
+          <button type="button" class="rs-strip-btn" id="rs-strip-edit" style="display:none"><i class="ti ti-pencil"></i> Edit</button>
+        </div>
+      </div>
     </div>
     <!-- Label tahap: satu baris kecil yang bilang "lagi di tahap apa" — diisi
          switchClipTab() (clipboard.js). -->
     <div class="clip-stage-label" id="clip-stage-label"></div>
-    <!-- MODE HARGA OUTPUT: state INDEPENDEN dari toggle "Harga Swasta" di panel
-         pencarian (tswasta/modeSwasta di konversian.js). Toggle di pencarian itu
-         cuma preferensi lihat² pas quick lookup; yang di bawah ini yang beneran
-         nentuin harga & kolom link e-Katalog yang dipakai di Clipboard/Pagu,
-         Record Konversi, Export ke Excel, dan Generate SPH — jadi gak kepaksa
-         ngubah tampilan pencarian cuma buat ganti mode output. -->
-    <div class="clip-output-mode-row" id="clip-output-mode-row" title="Nentuin harga & kolom link e-Katalog yang dipakai di Clipboard, Record, Export Excel, dan SPH">
-      <span class="clip-output-mode-label"><i class="ti ti-receipt"></i> Mode harga output:</span>
-      <div class="clip-output-mode-toggle">
-        <span class="com-slider" aria-hidden="true"></span>
-        <button type="button" class="com-btn active" id="com-ekat" data-mode="ekat">e-Katalog</button>
-        <button type="button" class="com-btn" id="com-swasta" data-mode="swasta">Swasta</button>
-      </div>
-    </div>
     <div class="clip-summary-strip" id="clip-summary-strip" style="display:none"></div>
     </div><!-- /clip-sticky-top -->
 
@@ -481,17 +470,21 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
             </button>
           </div>
           <div id="kb-real-content" style="display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0">
+            <!-- ZONA B (atas workbench): 1 baris tipis. Kiri = rollup harga/pagu/sisa (#kb-summary),
+                 kanan = status "Diperbarui" + tombol muat ulang. Judul + hitungan lama disembunyiin
+                 (hitungannya udah ada di chip filter), tapi elemennya TETAP ADA karena JS nulis ke situ. -->
             <div class="kb-head">
-              <div>
+              <div class="kb-head-meta" style="display:none">
                 <div class="kb-title" id="kb-title">Kebutuhan RS</div>
                 <div class="kb-count" id="kb-count"></div>
               </div>
+              <div class="kb-summary" id="kb-summary"></div>
               <div class="kb-head-btns">
+                <span id="kb-refresh-status" class="kb-refresh-status"></span>
                 <button class="kb-collapse-btn" id="kb-refresh-btn" title="Muat ulang (biar lihat update dari temen)"><i class="ti ti-refresh"></i></button>
-                <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan daftar"><i class="ti ti-chevron-up"></i></button>
+                <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan daftar" style="display:none"><i class="ti ti-chevron-up"></i></button>
               </div>
             </div>
-            <div class="kb-summary" id="kb-summary"></div>
             <!-- Tab section: 1 tab = 1 "sheet" (ruangan/kategori) di Excel RS,
                  persis kayak tab sheet Excel — klik ganti section aktif, +
                  nambah section baru, dobel-klik nama buat rename, drag buat
@@ -504,7 +497,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
             <div class="kb-collapsible" id="kb-collapsible">
               <div class="kb-collapsible-inner">
                 <div class="kb-collapsible-content">
-                  <div id="kb-refresh-status" style="font-size:10.5px;color:var(--text-muted);padding:0 14px 4px;min-height:14px"></div>
                   <div id="kb-list" class="kb-list"></div>
                   <div class="kb-footer">
                     <div id="kb-record-status" class="kb-record-status">Tingkat pemenuhan tersimpan otomatis tiap item ditandai.</div>
@@ -600,19 +592,27 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 
     <div class="clip-footer">
       <div class="clip-budget" id="clip-budget"></div>
-      <!-- Footer dikelompokkan per tahap: (1) ringkasan hasil, (2) Output
-           (Export → Drive), (3) Finalisasi (Record), (4) keluar sesi. Semua ID
-           tombol TETAP SAMA — cuma pengelompokan & label, logic gak disentuh. -->
+      <!-- ZONA C — OUTPUT BAR. Baris 1: total + hapus semua + mode harga output (dulu baris sendiri di atas
+           panel). Baris 2: Export → Drive (stepper tetap, hint cuma muncul kalau udah selesai) + Record Konversi
+           (aksi utama) + menu "⋯" yang nampung Keluar dari Sesi / Selesaikan Sesi (jarang dipakai).
+           Semua ID tombol TETAP SAMA — logic JS gak disentuh. -->
       <div class="clip-utility-row">
         <div class="clip-summary">
           <span>Total: <span id="clip-total">0</span> produk dipilih</span>
           <span id="clip-total-harga"></span>
         </div>
         <button class="btn-clear-all" id="btn-clear-all">Hapus semua</button>
+    <div class="clip-output-mode-row" id="clip-output-mode-row" title="Nentuin harga & kolom link e-Katalog yang dipakai di Clipboard, Record, Export Excel, dan SPH">
+      <span class="clip-output-mode-label"><i class="ti ti-receipt"></i> Mode harga output:</span>
+      <div class="clip-output-mode-toggle">
+        <span class="com-slider" aria-hidden="true"></span>
+        <button type="button" class="com-btn active" id="com-ekat" data-mode="ekat">e-Katalog</button>
+        <button type="button" class="com-btn" id="com-swasta" data-mode="swasta">Swasta</button>
+      </div>
+    </div>
       </div>
 
-      <div class="clip-foot-group">
-        <div class="clip-foot-label">Output</div>
+      <div class="clip-foot-actions">
         <div class="conv-steps" id="conv-steps">
           <button class="btn-export conv-step" id="btn-export" data-step="export" disabled>
             <span class="conv-step-num">1</span>
@@ -639,20 +639,19 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
             </a>
           </div>
         </div>
-      </div>
-
-      <div class="clip-foot-group clip-foot-final">
-        <div class="clip-foot-label">Finalisasi</div>
         <button class="btn-record" id="btn-record" disabled>
           <i class="ti ti-clipboard-check"></i> Record Konversi
         </button>
-        <div class="clip-foot-exit-row">
+        <div class="clip-more" tabindex="-1">
+          <button type="button" class="clip-more-btn" title="Aksi sesi lainnya" aria-label="Aksi sesi lainnya"><i class="ti ti-dots"></i></button>
+          <div class="clip-more-menu">
           <button class="btn-leave-sesi" id="btn-leave-sesi" type="button" disabled title="Keluar dari tampilan sesi ini — sesi TETAP 'berjalan', tetap di daftar Konversi Berjalan, gak ada yang berubah. Buat sekadar pindah kerjaan, bukan nutup sesi.">
             <i class="ti ti-logout"></i> Keluar dari Sesi
           </button>
           <button class="btn-end-sesi" id="btn-end-sesi" type="button" disabled title="Tutup sesi ini tanpa Record — data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan">
             <i class="ti ti-square-check"></i> Selesaikan Sesi
           </button>
+          </div>
         </div>
       </div>
     </div>
