@@ -405,6 +405,8 @@ export const CRUD_PRODUK_MARKUP = `
           <input type="text" id="syncSearchInput" placeholder="Cari kode produk, deskripsi, sumber sheet, kode set..."/>
         </div>
       </div>
+      <div class="filter-bar" id="syncStatusBar"></div>
+      <div class="filter-bar" id="syncTipeBar" style="margin-top:-4px;"></div>
       <div id="syncBulkBar" class="paste-hint" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;">
         <span id="syncBulkInfo" style="flex:1;min-width:200px;"></span>
         <button class="btn btn-sm" id="syncBulkClearBtn">Kosongkan</button>
@@ -413,7 +415,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="table-card">
         <table>
           <thead>
-            <tr><th style="width:34px;"><input type="checkbox" id="syncSelectAll" title="Pilih semua yang siap (sesuai filter)"/></th><th>Kode Produk</th><th>Deskripsi</th><th>Link V6</th><th>Harga E-KAT</th><th>Sumber Sheet</th><th>Terakhir Terlihat</th><th></th></tr>
+            <tr><th style="width:34px;"><input type="checkbox" id="syncSelectAll" title="Pilih semua yang siap (sesuai filter)"/></th><th>Kode Produk</th><th>Deskripsi</th><th>Link V6</th><th>Harga E-KAT</th><th>Sumber</th><th>Status</th><th></th></tr>
           </thead>
           <tbody id="syncTableBody">
             <tr class="state-row"><td colspan="8">Memuat data...</td></tr>

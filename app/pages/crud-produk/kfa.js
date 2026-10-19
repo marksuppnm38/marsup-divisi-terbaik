@@ -210,13 +210,20 @@ let syncSearchQuery = '';
 
 // Filter client-side dari syncRows (sudah ada di memori semua, jadi gak perlu query ulang).
 // Cocokkan ke kode, deskripsi, sumber sheet, dan kode set yang membutuhkan produk ini.
-function getFilteredSyncRows(){
+let syncStatusFilter = 'all';   // all | ok | warn | bad
+let syncTipeFilter = 'all';     // all | INSTRUMENT | UNIT | SET
+function syncTipeOf(r){ return (r.is_set || r.source_sheet === 'SET FIX V6') ? 'SET' : (r.tipe_hint || 'LAINNYA'); }
+function syncMatchSearch(r){
   const q = syncSearchQuery.trim().toLowerCase();
-  if (!q) return syncRows;
-  return syncRows.filter(r => {
-    const hay = [r.kode_produk, r.deskripsi, r.source_sheet].concat(Array.isArray(r.dibutuhkan_oleh) ? r.dibutuhkan_oleh : []);
-    return hay.some(v => v && String(v).toLowerCase().includes(q));
-  });
+  if (!q) return true;
+  const hay = [r.kode_produk, r.deskripsi, r.source_sheet].concat(Array.isArray(r.dibutuhkan_oleh) ? r.dibutuhkan_oleh : []);
+  return hay.some(v => v && String(v).toLowerCase().includes(q));
+}
+// Filter client-side dari syncRows (sudah ada di memori semua, jadi gak perlu query ulang).
+function getFilteredSyncRows(){
+  return syncRows.filter(r => syncMatchSearch(r)
+    && (syncTipeFilter === 'all' || syncTipeOf(r) === syncTipeFilter)
+    && (syncStatusFilter === 'all' || evalSyncRow(r).level === syncStatusFilter));
 }
 
 let syncSearchDebounce = null;
@@ -329,18 +336,67 @@ async function confirmSetKomposisi(row){
   return crudConfirm(lines.join('\n'), { title: 'Komposisi belum lengkap', okLabel: 'Tetap Tambah Set' });
 }
 
-// Ringkasan data dari sheet (payload) di bawah deskripsi baris sync: tipe, kode asli,
-// merk (UNIT), AKD, KFA -- biar jelas apa yang akan terisi otomatis setelah produk dibuat.
+// Chip ringkas data dari sheet (tipe, kode asli, merk, AKD, KFA) di bawah deskripsi.
 function syncPayloadHtml(row){
   const p = row.payload || {};
+  const chip = (t, mono) => `<span class="tipe-chip" style="${mono ? 'font-family:var(--font-mono);' : ''}">${S.escapeHtml(t)}</span>`;
   const bits = [];
-  if (row.tipe_hint) bits.push(row.tipe_hint);
-  if (p.kode_asli) bits.push('Kode asli ' + p.kode_asli);
-  if (p.unit && p.unit.merk) bits.push('Merk ' + p.unit.merk);
-  if (Array.isArray(p.akd) && p.akd.length) bits.push('AKD ' + p.akd.slice(0, 2).map(a => a.no_akd).join(', ') + (p.akd.length > 2 ? ' …' : ''));
-  if (p.kfa && p.kfa.kode) bits.push('KFA ' + p.kfa.kode);
+  if (row.tipe_hint) bits.push(chip(row.tipe_hint));
+  if (p.kode_asli) bits.push(chip('asli ' + p.kode_asli, true));
+  if (p.unit && p.unit.merk) bits.push(chip(String(p.unit.merk).slice(0, 28)));
+  if (Array.isArray(p.akd) && p.akd.length) bits.push(chip('AKD ' + p.akd.slice(0, 2).map(a => String(a.no_akd).replace(/^AKD\s*/i, '')).join(', ') + (p.akd.length > 2 ? ' …' : ''), true));
+  if (p.kfa && p.kfa.kode) bits.push(chip('KFA ' + p.kfa.kode, true));
   if (!bits.length) return '';
-  return `<div style="margin-top:4px;font-size:11.5px;color:var(--text-muted);"><i class="ti ti-database-import"></i> Dari sheet: ${S.escapeHtml(bits.join(' · '))}</div>`;
+  return `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">${bits.join('')}</div>`;
+}
+
+// Kolom Status: pill + alasan (kalau ada).
+function syncStatusHtml(ev){
+  const label = { ok: 'Siap', warn: 'Cek dulu', bad: 'Tidak siap' }[ev.level];
+  const reasons = ev.bad.concat(ev.warn);
+  const list = reasons.length
+    ? `<div style="margin-top:5px;font-size:11px;line-height:1.4;color:var(--text-muted);">${reasons.map(r => S.escapeHtml(r)).join('<br>')}</div>` : '';
+  return `<span class="status-pill ${ev.level}">${label}</span>${list}`;
+}
+
+// Link V6: tampil ringkas (slug), tandai kalau sel berisi catatan selain URL.
+function syncLinkHtml(raw){
+  const t = String(raw == null ? '' : raw).trim();
+  if (!t) return '<span style="color:var(--text-muted);">—</span>';
+  const m = t.match(/https?:\/\/\S+/);
+  const clamp = 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all;font-size:12px;max-width:240px;';
+  if (!m) return `<span style="${clamp}color:var(--text-muted);" title="${S.escapeHtml(t)}">${S.escapeHtml(t)}</span>`;
+  const url = m[0];
+  const clean = url === t;
+  const label = url.replace(/^https?:\/\/[^/]+\//, '').replace(/^pionir-nusantara-manufacturing\//, '') || url;
+  return `<a href="${S.escapeHtml(url)}" target="_blank" rel="noopener" title="${S.escapeHtml(t)}" style="${clamp}">${S.escapeHtml(label)}</a>`
+    + (clean ? '' : `<div style="margin-top:3px;font-size:11px;color:var(--warn-text, #b45309);"><i class="ti ti-note"></i> ada catatan di sel</div>`);
+}
+
+// Chip filter status & tipe, lengkap dengan hitungan. Hitungan status mengikuti search + filter tipe,
+// hitungan tipe mengikuti search + filter status, jadi angkanya selalu sesuai apa yang akan tampil.
+function renderSyncFilters(){
+  const sb = document.getElementById('syncStatusBar'), tb = document.getElementById('syncTipeBar');
+  if (!sb || !tb) return;
+  const base = syncRows.filter(syncMatchSearch);
+  const st = { all: 0, ok: 0, warn: 0, bad: 0 }, tp = { all: 0, INSTRUMENT: 0, UNIT: 0, SET: 0 };
+  base.forEach(r => {
+    const lv = evalSyncRow(r).level, ty = syncTipeOf(r);
+    if (syncTipeFilter === 'all' || ty === syncTipeFilter) { st.all++; st[lv]++; }
+    if (syncStatusFilter === 'all' || lv === syncStatusFilter) { tp.all++; if (tp[ty] !== undefined) tp[ty]++; }
+  });
+  const chip = (attr, val, active, html, count, title) =>
+    `<button class="filter-chip${active ? ' active' : ''}" ${attr}="${val}" title="${S.escapeHtml(title || '')}">${html}<span class="fc-count">${count}</span></button>`;
+  sb.innerHTML =
+    chip('data-sst', 'all', syncStatusFilter === 'all', 'Semua', st.all) +
+    chip('data-sst', 'ok', syncStatusFilter === 'ok', '<i class="ti ti-circle-check" style="color:var(--teal-ok-text,#0f766e)"></i> Siap bulk', st.ok, 'Data lengkap & valid, aman ditambahkan massal') +
+    chip('data-sst', 'warn', syncStatusFilter === 'warn', '<i class="ti ti-alert-triangle" style="color:var(--warn-text,#b45309)"></i> Perlu dicek', st.warn, 'Bisa dibuat, tapi ada bagian data yang dilewati / perlu ditengok') +
+    chip('data-sst', 'bad', syncStatusFilter === 'bad', '<i class="ti ti-circle-x" style="color:var(--danger-text,#b91c1c)"></i> Tidak siap', st.bad, 'Tidak bisa bulk: SET, tanpa deskripsi, atau kode janggal. Tambah manual lewat form');
+  tb.innerHTML =
+    chip('data-stp', 'all', syncTipeFilter === 'all', 'Semua tipe', tp.all) +
+    chip('data-stp', 'INSTRUMENT', syncTipeFilter === 'INSTRUMENT', 'Instrument', tp.INSTRUMENT) +
+    chip('data-stp', 'UNIT', syncTipeFilter === 'UNIT', 'Unit', tp.UNIT) +
+    chip('data-stp', 'SET', syncTipeFilter === 'SET', 'Set', tp.SET);
 }
 
 // ---- Bulk tambah produk dari tab Sync ----
@@ -365,12 +421,6 @@ function evalSyncRow(row){
   return { level: bad.length ? 'bad' : (warn.length ? 'warn' : 'ok'), bad, warn };
 }
 
-function syncStatusHtml(ev){
-  if (ev.level === 'ok') return `<div style="margin-top:4px;font-size:11.5px;color:var(--teal-ok-text, #0f766e);"><i class="ti ti-circle-check"></i> Siap ditambahkan</div>`;
-  const color = ev.level === 'bad' ? 'var(--danger-text, #b91c1c)' : 'var(--warn-text, #b45309)';
-  const icon = ev.level === 'bad' ? 'ti-circle-x' : 'ti-alert-triangle';
-  return `<div style="margin-top:4px;font-size:11.5px;color:${color};"><i class="ti ${icon}"></i> ${S.escapeHtml(ev.bad.concat(ev.warn).join(' · '))}</div>`;
-}
 
 function updateSyncBulkBar(){
   const bar = document.getElementById('syncBulkBar');
@@ -425,6 +475,16 @@ async function runSyncBulkCreate(){
 }
 
 (function wireSyncBulk(){
+  const onChip = (barId, attr, setter) => {
+    const bar = document.getElementById(barId);
+    if (bar) bar.addEventListener('click', (e) => {
+      const b = e.target.closest('.filter-chip');
+      if (!b) return;
+      setter(b.getAttribute(attr)); syncPage = 1; renderSyncPage();
+    });
+  };
+  onChip('syncStatusBar', 'data-sst', v => { syncStatusFilter = v; });
+  onChip('syncTipeBar', 'data-stp', v => { syncTipeFilter = v; });
   const all = document.getElementById('syncSelectAll');
   if (all) all.addEventListener('change', () => {
     const ready = getFilteredSyncRows().filter(r => evalSyncRow(r).level === 'ok');
@@ -438,19 +498,21 @@ async function runSyncBulkCreate(){
 })();
 
 async function renderSyncPage(){
+  renderSyncFilters();
   const tbody = document.getElementById('syncTableBody');
   if (!tbody) return; // user udah pindah halaman selagi query jalan
   const list = getFilteredSyncRows();
   const total = list.length;
   const q = syncSearchQuery.trim();
-  document.getElementById('syncCount').textContent = q
-    ? `${total} dari ${syncRows.length} kode produk cocok dengan "${q}"`
+  const filtered = !!q || syncStatusFilter !== 'all' || syncTipeFilter !== 'all';
+  document.getElementById('syncCount').textContent = filtered
+    ? `${total} dari ${syncRows.length} kode produk (terfilter)`
     : `${syncRows.length} kode produk belum terdaftar`;
   const pagEl = document.getElementById('syncPagination');
 
   if (!total) {
-    tbody.innerHTML = q
-      ? `<tr class="state-row"><td colspan="8">Tidak ada kode produk yang cocok dengan "${S.escapeHtml(q)}".</td></tr>`
+    tbody.innerHTML = (q || syncStatusFilter !== 'all' || syncTipeFilter !== 'all')
+      ? `<tr class="state-row"><td colspan="8">Tidak ada kode produk yang cocok dengan filter/pencarian ini.</td></tr>`
       : `<tr class="state-row"><td colspan="8">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
     renderPgBar(pagEl, { page: 1, pageSize: SYNC_PAGE_SIZE, total: 0, onPageChange: () => {} });
     return;
@@ -485,13 +547,16 @@ async function renderSyncPage(){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><input type="checkbox" class="sync-sel" ${ev.level === 'bad' ? 'disabled' : ''} ${syncSelected.has(row.kode_produk) ? 'checked' : ''}/></td>
-      <td class="kode-cell">${S.escapeHtml(row.kode_produk)}</td>
-      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}${syncNoteHtml(row, nameByKode, komposisiInfo)}${syncPayloadHtml(row)}${syncStatusHtml(ev)}</td>
-      <td>${row.link ? `<a href="${S.escapeHtml(row.link)}" target="_blank" rel="noopener">${S.escapeHtml(row.link)}</a>` : '—'}</td>
-      <td>${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '—'}</td>
-      <td>${S.escapeHtml(row.source_sheet || '—')}</td>
-      <td>${row.last_seen_at ? new Date(row.last_seen_at).toLocaleString('id-ID') : '—'}</td>
-      <td><button class="btn btn-sm btn-accent sync-add-btn"><i class="ti ti-plus"></i> Tambah Produk</button></td>
+      <td class="kode-cell" style="white-space:normal;word-break:break-word;max-width:190px;">${S.escapeHtml(row.kode_produk)}</td>
+      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:380px;white-space:normal;">
+        <div style="font-weight:500;line-height:1.35;">${row.deskripsi ? S.escapeHtml(row.deskripsi) : '<span style="color:var(--text-muted);font-weight:400;">(tanpa deskripsi)</span>'}</div>
+        ${syncPayloadHtml(row)}${syncNoteHtml(row, nameByKode, komposisiInfo)}
+      </td>
+      <td>${syncLinkHtml(row.link)}</td>
+      <td style="white-space:nowrap;font-variant-numeric:tabular-nums;">${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '<span style="color:var(--text-muted);">—</span>'}</td>
+      <td style="white-space:nowrap;">${S.escapeHtml(row.source_sheet || '—')}<div style="margin-top:2px;font-size:11px;color:var(--text-muted);">${row.last_seen_at ? new Date(row.last_seen_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : ''}</div></td>
+      <td style="min-width:130px;">${syncStatusHtml(ev)}</td>
+      <td><button class="btn btn-sm btn-accent sync-add-btn" style="white-space:nowrap;"><i class="ti ti-plus"></i> Tambah</button></td>
     `;
     tr.querySelector('.sync-sel').addEventListener('change', (e) => {
       if (e.target.checked) syncSelected.add(row.kode_produk); else syncSelected.delete(row.kode_produk);
