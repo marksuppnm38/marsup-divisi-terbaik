@@ -397,6 +397,12 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
             </div>
           </div>
           <button class="clip-header-edit-btn" id="btn-butuh-bantuan" type="button" title="Tandai sesi ini butuh bantuan tim">🙋 Minta Bantuan</button>
+          <!-- Selesaikan Sesi dipindah dari menu "⋯" footer ke sini: user sering lupa nutup sesi
+               (jadi nyangkut di Konversi Berjalan), jadi harus kelihatan terus, sejajar Minta Bantuan.
+               ID & handler (clipboard.js) sama persis — cuma posisi DOM yang pindah. -->
+          <button class="btn-end-sesi" id="btn-end-sesi" type="button" disabled title="Tutup sesi ini tanpa Record — data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan">
+            <i class="ti ti-square-check"></i> Selesaikan Sesi
+          </button>
           <button class="clip-header-icon-btn" id="clip-header-toggle" type="button" title="Ubah RS / Sales / PIC">
             <i class="ti ti-pencil" id="clip-header-toggle-icon"></i>
           </button>
@@ -445,12 +451,9 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         <button type="button" class="rs-strip-state" id="rs-strip-state" title="Lihat isi Permintaan RS sesi ini">
           <i class="ti ti-clipboard-text"></i>
           <span class="rs-strip-title">Permintaan RS</span>
-          <span class="rs-strip-info" id="rs-strip-info">belum dicatat</span>
+          <span class="rs-strip-info" id="rs-strip-info">Catat Permintaan RS</span>
+          <i class="ti ti-chevron-right rs-strip-chev"></i>
         </button>
-        <div class="rs-strip-actions">
-          <button type="button" class="rs-strip-btn" id="rs-strip-add"><i class="ti ti-plus"></i> Catat</button>
-          <button type="button" class="rs-strip-btn" id="rs-strip-edit" style="display:none"><i class="ti ti-pencil"></i> Edit</button>
-        </div>
       </div>
     </div>
     <!-- Label tahap: satu baris kecil yang bilang "lagi di tahap apa" — diisi
@@ -480,6 +483,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
               </div>
               <div class="kb-summary" id="kb-summary"></div>
               <div class="kb-head-btns">
+                <button class="kb-add-section-btn" id="kb-add-section-btn" type="button" style="display:none" title="Kelompokkan item per sheet/ruangan (kayak tab sheet di Excel RS)"><i class="ti ti-plus"></i> Section</button>
                 <span id="kb-refresh-status" class="kb-refresh-status"></span>
                 <button class="kb-collapse-btn" id="kb-refresh-btn" title="Muat ulang (biar lihat update dari temen)"><i class="ti ti-refresh"></i></button>
                 <button class="kb-collapse-btn" id="kb-collapse-btn" title="Ciutkan daftar" style="display:none"><i class="ti ti-chevron-up"></i></button>
@@ -499,7 +503,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
                 <div class="kb-collapsible-content">
                   <div id="kb-list" class="kb-list"></div>
                   <div class="kb-footer">
-                    <div id="kb-record-status" class="kb-record-status">Tingkat pemenuhan tersimpan otomatis tiap item ditandai.</div>
+                    <div id="kb-record-status" class="kb-record-status"></div>
                   </div>
                 </div>
               </div>
@@ -594,7 +598,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
       <div class="clip-budget" id="clip-budget"></div>
       <!-- ZONA C — OUTPUT BAR. Baris 1: total + hapus semua + mode harga output (dulu baris sendiri di atas
            panel). Baris 2: Export → Drive (stepper tetap, hint cuma muncul kalau udah selesai) + Record Konversi
-           (aksi utama) + menu "⋯" yang nampung Keluar dari Sesi / Selesaikan Sesi (jarang dipakai).
+           (aksi utama) + menu "⋯" yang nampung Keluar dari Sesi (jarang dipakai). Selesaikan Sesi sekarang ada di strip header.
            Semua ID tombol TETAP SAMA — logic JS gak disentuh. -->
       <div class="clip-utility-row">
         <div class="clip-summary">
@@ -647,9 +651,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
           <div class="clip-more-menu">
           <button class="btn-leave-sesi" id="btn-leave-sesi" type="button" disabled title="Keluar dari tampilan sesi ini — sesi TETAP 'berjalan', tetap di daftar Konversi Berjalan, gak ada yang berubah. Buat sekadar pindah kerjaan, bukan nutup sesi.">
             <i class="ti ti-logout"></i> Keluar dari Sesi
-          </button>
-          <button class="btn-end-sesi" id="btn-end-sesi" type="button" disabled title="Tutup sesi ini tanpa Record — data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan">
-            <i class="ti ti-square-check"></i> Selesaikan Sesi
           </button>
           </div>
         </div>

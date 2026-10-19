@@ -721,7 +721,7 @@ async function loadChecklistForSesi(sesiId, opts) {
     if (!keepExpanded) S.checklistExpandedId = firstPending ? firstPending.id : null;
 
     S.kbSection.classList.remove('kb-collapsed');
-    S.kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
+    S.kbRecordStatus.textContent = '';
     S.kbRefreshStatus.textContent = 'Diperbarui ✓ ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
     S.renderChecklist();
     S.maybeFetchSuggestionForExpanded();
@@ -827,7 +827,15 @@ function updateClipHeaderCompact() {
   // yang isi field ini bisa nginjek script yang jalan di browsernya sendiri
   // (dan kalau field ini ke-sync/keliatan kolaborator lain via Realtime,
   // jalan juga di browser mereka).
-  S.clipHeaderCompact.innerHTML = `<b>${S.escapeHtmlAttr(rs)}</b>${sales ? ' · Sales: ' + S.escapeHtmlAttr(sales) : ''}${marsup ? ' · PIC: ' + S.escapeHtmlAttr(marsup) : ''}`;
+  // Nama RS sengaja TIDAK diulang di sini — udah ada di chip sesi (toolbar atas). Strip ini cuma
+  // nampilin yang gak ada di chip: Sales & PIC. Kalau nama RS belum diisi, tetap diingatkan di sini.
+  const parts = [];
+  if (!rsRaw) parts.push(`<b class="clip-id-warn">${S.escapeHtmlAttr(rs)}</b>`);
+  if (sales) parts.push(`Sales: <b>${S.escapeHtmlAttr(sales)}</b>`);
+  if (marsup) parts.push(`PIC: <b>${S.escapeHtmlAttr(marsup)}</b>`);
+  if (!sales && !marsup && rsRaw) parts.push('<span class="clip-id-empty">Sales &amp; PIC belum diisi</span>');
+  S.clipHeaderCompact.innerHTML = parts.join(' · ');
+  S.clipHeaderCompact.title = [rsRaw, sales && ('Sales: ' + sales), marsup && ('PIC: ' + marsup)].filter(Boolean).join(' · ');
   updateSessionIndicatorAndTitle(rsRaw, sales);
 }
 S.updateClipHeaderCompact = updateClipHeaderCompact;
@@ -844,7 +852,8 @@ function updateSessionIndicatorAndTitle(rsRaw, salesRaw) {
   S.sessionIndicator.classList.toggle('empty', !hasSesi);
   S.sessionIndicator.classList.toggle('active', hasSesi);
   if (hasSesi) {
-    const label = rsRaw ? (salesRaw ? `${rsRaw} · ${salesRaw}` : rsRaw) : 'Sesi baru (RS belum diisi)';
+    // Cuma nama RS (Sales & PIC ada di strip header clipboard — gak diulang di dua tempat)
+    const label = rsRaw || 'Sesi baru (RS belum diisi)';
     S.sessionIndicatorText.textContent = label;
     document.title = rsRaw ? `${rsRaw} — Conversion Workspace` : S.APP_TITLE_BASE;
   } else {

@@ -56,8 +56,8 @@ function prSetMode(mode, keepReview) {
     prTitleEl.textContent = 'Permintaan RS Sesi Ini';
     prSubEl.textContent = 'Tersimpan di sesi ini — tidak hilang saat modal ditutup atau sesi dibuka ulang.';
   } else if (mode === 'add') {
-    prTitleEl.textContent = 'Tambah Permintaan RS';
-    prSubEl.textContent = `Item baru ditambahkan ke Permintaan RS sesi ini (${n} item sudah ada). Item yang sudah ada tidak diubah atau ditimpa.`;
+    prTitleEl.textContent = 'Tambah Item ke Permintaan RS';
+    prSubEl.textContent = `Ini BUKAN Permintaan RS baru — item di bawah ditambahkan ke daftar sesi ini (${n} item sudah ada). Yang sudah ada tidak diubah atau ditimpa.`;
   } else if (mode === 'edit') {
     prTitleEl.textContent = 'Edit Permintaan RS';
     prSubEl.textContent = 'Koreksi nama atau qty item yang sudah tersimpan.';
@@ -146,11 +146,11 @@ document.getElementById('pr-active-edit-btn').addEventListener('click', () => op
 
 const rsStripState = document.getElementById('rs-strip-state');
 const rsStripInfo = document.getElementById('rs-strip-info');
-const rsStripAdd = document.getElementById('rs-strip-add');
-const rsStripEdit = document.getElementById('rs-strip-edit');
+// Satu pintu masuk aja: klik strip → openPrModal() tanpa mode. Kalau sesi udah punya Permintaan RS
+// jatuhnya ke view "active" (isi tersimpan + tombol Tambah item / Edit item); kalau belum → form Catat.
+// Dulu ada tombol "+ Tambah"/"Edit" terpisah di strip yang loncat langsung ke form input, jadi
+// kelihatan kayak bikin Permintaan RS baru — dibuang.
 rsStripState.addEventListener('click', () => openPrModal());
-rsStripAdd.addEventListener('click', () => openPrModal(hasActivePermintaan() ? 'add' : 'create'));
-rsStripEdit.addEventListener('click', () => openPrModal('edit'));
 
 // Satu-satunya tempat yang nyinkronin state Permintaan RS ke UI di luar modal:
 // strip di panel sesi + label tombol toolbar. Dipanggil dari updateKbTabState()
@@ -159,11 +159,9 @@ function updateRsStrip() {
   const active = hasActivePermintaan();
   const n = S.checklistItems.length;
   const done = S.checklistItems.filter(i => i.status === 'TERPENUHI').length;
-  rsStripInfo.textContent = active ? `${n} item · ${done}/${n} terpenuhi` : 'belum dicatat';
+  rsStripInfo.textContent = active ? `${n} item · ${done}/${n} terpenuhi` : 'Catat Permintaan RS';
   rsStripState.classList.toggle('has-data', active);
-  rsStripAdd.innerHTML = active ? '<i class="ti ti-plus"></i> Tambah' : '<i class="ti ti-plus"></i> Catat';
-  rsStripAdd.title = active ? 'Tambah item ke Permintaan RS sesi ini (yang lama tidak berubah)' : 'Catat Permintaan RS untuk sesi ini';
-  rsStripEdit.style.display = active ? '' : 'none';
+  rsStripState.title = active ? 'Lihat / tambah item / edit Permintaan RS sesi ini' : 'Catat Permintaan RS untuk sesi ini';
   const lbl = S.btnPermintaan.querySelector('.toggle-btn-label');
   if (lbl) lbl.textContent = active ? `Permintaan RS · ${n}` : 'Permintaan RS';
   S.btnPermintaan.title = active ? 'Lihat / tambah / edit Permintaan RS sesi ini' : 'Catat Permintaan RS';

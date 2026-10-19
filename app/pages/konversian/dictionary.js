@@ -86,7 +86,7 @@ function startChecklistSession(submitResult, namaRs, picSales, pagu, tanggal) {
   S.setClipHeaderCollapsed(true);
 
   S.kbSection.classList.remove('kb-collapsed');
-  S.kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
+  S.kbRecordStatus.textContent = '';
   S.kbRefreshStatus.textContent = '';
   renderChecklist();
   maybeFetchSuggestionForExpanded();
@@ -471,12 +471,29 @@ function kbRollupHtml(r, size) {
 // sekali, fallback lama tetap jalan).
 S.activeSectionTab = null; // null = "Semua"; angka = id permintaan_section
 
+const kbAddSectionBtn = document.getElementById('kb-add-section-btn');
+
 function renderSectionTabs() {
   // Dulu: kalau belum ada section sama sekali, tab bar (termasuk tombol "+")
   // ikut disembunyiin — bug, bikin gak ada cara mulai bikin section pertama
   // dari UI. Sekarang: selalu tampil begitu ada Permintaan RS aktif ("Semua"
   // + "+" minimal selalu ada), biar bisa bootstrap section pertama kapan pun.
-  if (!S.checklistPermintaanId) { S.kbSectionTabs.style.display = 'none'; return; }
+  if (!S.checklistPermintaanId) {
+    S.kbSectionTabs.style.display = 'none';
+    if (kbAddSectionBtn) kbAddSectionBtn.style.display = 'none';
+    return;
+  }
+  // Belum ada section sama sekali: tab "Semua" + "Tanpa section" isinya persis sama, jadi satu baris
+  // tab dibuang — diganti tombol kecil "+ Section" di baris atas (kb-head). Begitu section pertama
+  // dibuat, tab bar muncul lagi seperti biasa.
+  if (!S.checklistSections.length) {
+    S.activeSectionTab = null;
+    S.kbSectionTabs.style.display = 'none';
+    S.kbSectionTabs.innerHTML = '';
+    if (kbAddSectionBtn) kbAddSectionBtn.style.display = '';
+    return;
+  }
+  if (kbAddSectionBtn) kbAddSectionBtn.style.display = 'none';
   S.kbSectionTabs.style.display = 'flex';
   const countBySection = new Map(S.checklistSections.map(s => [s.id, 0]));
   countBySection.set(null, 0);
@@ -496,6 +513,21 @@ function renderSectionTabs() {
   tabs.push(`<button type="button" class="kb-tab kb-tab-add" data-tab="add" title="Tambah section"><i class="ti ti-plus"></i></button>`);
   S.kbSectionTabs.innerHTML = tabs.join('');
 }
+
+async function addSectionFlow() {
+  const nama = await showSectionNameModal({
+    mode: 'add',
+    existingNames: S.checklistSections.map(s => s.nama_section)
+  });
+  if (!nama) return;
+  const { data, error } = await S.rpc('add_permintaan_section', { p_permintaan_id: S.checklistPermintaanId, p_nama_section: nama });
+  if (error) { PNMToast.error('Gagal nambah section: ' + (error.message || 'error')); return; }
+  const row = Array.isArray(data) ? data[0] : data;
+  S.checklistSections.push(row);
+  S.activeSectionTab = row.id;
+  renderChecklist();
+}
+if (kbAddSectionBtn) kbAddSectionBtn.addEventListener('click', addSectionFlow);
 
 S.kbSectionTabs.addEventListener('click', async e => {
   const deleteBtn = e.target.closest('.kb-tab-delete');
@@ -524,20 +556,7 @@ S.kbSectionTabs.addEventListener('click', async e => {
   const btn = e.target.closest('.kb-tab');
   if (!btn) return;
   const tab = btn.dataset.tab;
-  if (tab === 'add') {
-    const nama = await showSectionNameModal({
-      mode: 'add',
-      existingNames: S.checklistSections.map(s => s.nama_section)
-    });
-    if (!nama) return;
-    const { data, error } = await S.rpc('add_permintaan_section', { p_permintaan_id: S.checklistPermintaanId, p_nama_section: nama });
-    if (error) { PNMToast.error('Gagal nambah section: ' + (error.message || 'error')); return; }
-    const row = Array.isArray(data) ? data[0] : data;
-    S.checklistSections.push(row);
-    S.activeSectionTab = row.id;
-    renderChecklist();
-    return;
-  }
+  if (tab === 'add') { await addSectionFlow(); return; }
   S.activeSectionTab = tab === 'semua' ? null : (tab === 'orphan' ? 'orphan' : Number(tab));
   renderChecklist();
 });
