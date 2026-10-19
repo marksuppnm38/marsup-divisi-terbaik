@@ -343,6 +343,100 @@ function syncPayloadHtml(row){
   return `<div style="margin-top:4px;font-size:11.5px;color:var(--text-muted);"><i class="ti ti-database-import"></i> Dari sheet: ${S.escapeHtml(bits.join(' · '))}</div>`;
 }
 
+// ---- Bulk tambah produk dari tab Sync ----
+// Validasi di sini cuma buat UX (status & checkbox); validasi yang menentukan ada di RPC
+// bulk_create_produk_from_sync (client hanya mengirim daftar kode).
+const SYNC_KODE_RE = /^[A-Za-z0-9][A-Za-z0-9._\-\/]{2,79}$/;
+const syncSelected = new Set();
+
+function evalSyncRow(row){
+  const bad = [], warn = [];
+  const p = row.payload || {};
+  const isSet = !!(row.is_set || row.source_sheet === 'SET FIX V6');
+  if (isSet) bad.push('SET: buat lewat form (komposisi perlu dicek)');
+  else if (row.tipe_hint !== 'INSTRUMENT' && row.tipe_hint !== 'UNIT') bad.push('tipe belum diketahui');
+  if (!String(row.deskripsi || '').trim()) bad.push('tanpa deskripsi');
+  if (!SYNC_KODE_RE.test(row.kode_produk || '')) bad.push('format kode janggal');
+  const asli = p.kode_asli;
+  if (asli && (asli.length > 60 || /[\n\r$\/]/.test(asli) || asli.includes('..'))) warn.push('kode asli janggal (tidak dipakai)');
+  else if (row.tipe_hint === 'INSTRUMENT' && !asli) warn.push('tanpa kode asli');
+  if (row.link && !/^https?:\/\/\S+$/i.test(String(row.link).trim())) warn.push('link berisi catatan (tidak dipakai)');
+  if (row.tipe_hint === 'UNIT' && row.harga_ekat == null) warn.push('tanpa harga');
+  return { level: bad.length ? 'bad' : (warn.length ? 'warn' : 'ok'), bad, warn };
+}
+
+function syncStatusHtml(ev){
+  if (ev.level === 'ok') return `<div style="margin-top:4px;font-size:11.5px;color:var(--teal-ok-text, #0f766e);"><i class="ti ti-circle-check"></i> Siap ditambahkan</div>`;
+  const color = ev.level === 'bad' ? 'var(--danger-text, #b91c1c)' : 'var(--warn-text, #b45309)';
+  const icon = ev.level === 'bad' ? 'ti-circle-x' : 'ti-alert-triangle';
+  return `<div style="margin-top:4px;font-size:11.5px;color:${color};"><i class="ti ${icon}"></i> ${S.escapeHtml(ev.bad.concat(ev.warn).join(' · '))}</div>`;
+}
+
+function updateSyncBulkBar(){
+  const bar = document.getElementById('syncBulkBar');
+  if (!bar) return;
+  const n = syncSelected.size;
+  bar.style.display = n ? 'flex' : 'none';
+  const info = document.getElementById('syncBulkInfo');
+  if (info) info.textContent = `${n} produk dipilih`;
+  const all = document.getElementById('syncSelectAll');
+  if (all) {
+    const ready = getFilteredSyncRows().filter(r => evalSyncRow(r).level === 'ok');
+    all.checked = ready.length > 0 && ready.every(r => syncSelected.has(r.kode_produk));
+  }
+}
+
+async function runSyncBulkCreate(){
+  const btn = document.getElementById('syncBulkAddBtn');
+  const rows = syncRows.filter(r => syncSelected.has(r.kode_produk));
+  const evs = rows.map(r => ({ r, ev: evalSyncRow(r) })).filter(x => x.ev.level !== 'bad');
+  if (!evs.length) { showToast('Tidak ada baris yang valid untuk ditambahkan', true); return; }
+  const nInst = evs.filter(x => x.r.tipe_hint === 'INSTRUMENT').length;
+  const nUnit = evs.filter(x => x.r.tipe_hint === 'UNIT').length;
+  const warns = evs.filter(x => x.ev.level === 'warn');
+  const lines = [`Akan membuat ${evs.length} produk: ${nInst} INSTRUMENT, ${nUnit} UNIT.`, ''];
+  if (warns.length) {
+    lines.push(`${warns.length} punya catatan (bagian bermasalah dilewati, produk tetap dibuat):`);
+    warns.slice(0, 8).forEach(x => lines.push(`• ${x.r.kode_produk} — ${x.ev.warn.join(', ')}`));
+    if (warns.length > 8) lines.push(`…dan ${warns.length - 8} lainnya`);
+    lines.push('');
+  }
+  lines.push('Yang dibuat sekarang: kode, nama, tipe, kode asli, spek, link bersih. Harga, AKD, KFA & detail unit terisi otomatis di sync berikutnya.');
+  if (!await crudConfirm(lines.join('\n'), { title: 'Tambah produk dari sheet', okLabel: `Ya, Tambah ${evs.length}` })) return;
+
+  btn.disabled = true;
+  const created = [], skipped = [];
+  try {
+    const kodes = evs.map(x => x.r.kode_produk);
+    for (let i = 0; i < kodes.length; i += 100) {
+      const { data, error } = await S.sb.rpc('bulk_create_produk_from_sync', { p_kodes: kodes.slice(i, i + 100) });
+      if (error) { showToast('Gagal: ' + error.message, true); break; }
+      created.push(...(data?.created || []));
+      skipped.push(...(data?.skipped || []));
+    }
+  } finally { btn.disabled = false; }
+
+  created.forEach(k => syncSelected.delete(k));
+  if (created.length) showToast(`${created.length} produk ditambahkan` + (skipped.length ? `, ${skipped.length} dilewati` : ''));
+  if (skipped.length) {
+    await crudAlert(`${skipped.length} produk dilewati:\n` + skipped.slice(0, 15).map(s => `• ${s.kode} — ${s.alasan}`).join('\n') + (skipped.length > 15 ? `\n…dan ${skipped.length - 15} lainnya` : ''));
+  }
+  await loadSyncUnmatched();
+}
+
+(function wireSyncBulk(){
+  const all = document.getElementById('syncSelectAll');
+  if (all) all.addEventListener('change', () => {
+    const ready = getFilteredSyncRows().filter(r => evalSyncRow(r).level === 'ok');
+    ready.forEach(r => { if (all.checked) syncSelected.add(r.kode_produk); else syncSelected.delete(r.kode_produk); });
+    renderSyncPage();
+  });
+  const clr = document.getElementById('syncBulkClearBtn');
+  if (clr) clr.addEventListener('click', () => { syncSelected.clear(); renderSyncPage(); });
+  const add = document.getElementById('syncBulkAddBtn');
+  if (add) add.addEventListener('click', runSyncBulkCreate);
+})();
+
 async function renderSyncPage(){
   const tbody = document.getElementById('syncTableBody');
   if (!tbody) return; // user udah pindah halaman selagi query jalan
@@ -356,8 +450,8 @@ async function renderSyncPage(){
 
   if (!total) {
     tbody.innerHTML = q
-      ? `<tr class="state-row"><td colspan="7">Tidak ada kode produk yang cocok dengan "${S.escapeHtml(q)}".</td></tr>`
-      : `<tr class="state-row"><td colspan="7">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
+      ? `<tr class="state-row"><td colspan="8">Tidak ada kode produk yang cocok dengan "${S.escapeHtml(q)}".</td></tr>`
+      : `<tr class="state-row"><td colspan="8">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
     renderPgBar(pagEl, { page: 1, pageSize: SYNC_PAGE_SIZE, total: 0, onPageChange: () => {} });
     return;
   }
@@ -387,16 +481,22 @@ async function renderSyncPage(){
   tbody.innerHTML = '';
   pageRows.forEach(row => {
     const komposisiInfo = (row.is_set && tipeMap) ? summarizeKomposisi(row.komposisi, tipeMap) : null;
+    const ev = evalSyncRow(row);
     const tr = document.createElement('tr');
     tr.innerHTML = `
+      <td><input type="checkbox" class="sync-sel" ${ev.level === 'bad' ? 'disabled' : ''} ${syncSelected.has(row.kode_produk) ? 'checked' : ''}/></td>
       <td class="kode-cell">${S.escapeHtml(row.kode_produk)}</td>
-      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}${syncNoteHtml(row, nameByKode, komposisiInfo)}${syncPayloadHtml(row)}</td>
+      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}${syncNoteHtml(row, nameByKode, komposisiInfo)}${syncPayloadHtml(row)}${syncStatusHtml(ev)}</td>
       <td>${row.link ? `<a href="${S.escapeHtml(row.link)}" target="_blank" rel="noopener">${S.escapeHtml(row.link)}</a>` : '—'}</td>
       <td>${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '—'}</td>
       <td>${S.escapeHtml(row.source_sheet || '—')}</td>
       <td>${row.last_seen_at ? new Date(row.last_seen_at).toLocaleString('id-ID') : '—'}</td>
       <td><button class="btn btn-sm btn-accent sync-add-btn"><i class="ti ti-plus"></i> Tambah Produk</button></td>
     `;
+    tr.querySelector('.sync-sel').addEventListener('change', (e) => {
+      if (e.target.checked) syncSelected.add(row.kode_produk); else syncSelected.delete(row.kode_produk);
+      updateSyncBulkBar();
+    });
     const btn = tr.querySelector('.sync-add-btn');
     btn.addEventListener('click', async () => {
       // SET dikenali dari sheet SET FIX V6, atau dari kode_set di RINCIAN SET.
@@ -417,6 +517,8 @@ async function renderSyncPage(){
     });
     tbody.appendChild(tr);
   });
+
+  updateSyncBulkBar();
 }
 
 // Sumber data tab Sync. Dipanggil tiap tab dibuka (refetch penuh, halaman aktif dipertahankan
@@ -426,7 +528,7 @@ async function loadSyncUnmatched(){
   if (!tbody) return;
   const { data: rawData, error } = await fetchAllSyncRows();
   if (error) {
-    tbody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal memuat: ${S.escapeHtml(error.message)}</td></tr>`;
+    tbody.innerHTML = `<tr class="state-row"><td colspan="8">Gagal memuat: ${S.escapeHtml(error.message)}</td></tr>`;
     document.getElementById('syncCount').textContent = 'Gagal memuat';
     renderPgBar(document.getElementById('syncPagination'), { page: 1, pageSize: SYNC_PAGE_SIZE, total: 0, onPageChange: () => {} });
     return;
