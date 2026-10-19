@@ -4,7 +4,7 @@
 // S.openAdd -- dipakai loadSyncUnmatched() buat tombol "Tambah Produk".
 // showToast/crudConfirm/crudAlert/renderPgBar tetap import langsung dari
 // ui-utils.js, konsisten sama akd-master.js. Logic TIDAK diubah.
-import { showToast, crudConfirm, crudAlert, renderPgBar } from './ui-utils.js';
+import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6 } from './ui-utils.js';
 
 export function installKfa(S) {
 // ============================================================
@@ -222,8 +222,41 @@ function syncMatchSearch(r){
 // Filter client-side dari syncRows (sudah ada di memori semua, jadi gak perlu query ulang).
 function getFilteredSyncRows(){
   return syncRows.filter(r => syncMatchSearch(r)
+    && syncMatchCols(r)
     && (syncTipeFilter === 'all' || syncTipeOf(r) === syncTipeFilter)
     && (syncStatusFilter === 'all' || evalSyncRow(r).level === syncStatusFilter));
+}
+
+// ---- Filter per kolom (baris input/dropdown di bawah header tabel) ----
+// Status gak masuk objek ini: dia pakai syncStatusFilter yang sama dengan chip
+// di atas tabel, jadi dropdown kolom Status & chip Status selalu sinkron.
+//   link  : all | ada (URL, bersih atau + catatan) | bersih | catatan | invalid (cuma teks) | kosong
+//   harga : all | ada | kosong
+//   sumber: all | __none__ (kosong) | nama sheet persis
+const syncColFilter = { kode: '', desk: '', link: 'all', harga: 'all', sumber: 'all' };
+function syncHasColFilter(){
+  return !!syncColFilter.kode.trim() || !!syncColFilter.desk.trim()
+    || syncColFilter.link !== 'all' || syncColFilter.harga !== 'all' || syncColFilter.sumber !== 'all';
+}
+function syncMatchCols(r){
+  const f = syncColFilter;
+  const kq = f.kode.trim().toLowerCase();
+  if (kq && !String(r.kode_produk || '').toLowerCase().includes(kq)) return false;
+  const dq = f.desk.trim().toLowerCase();
+  if (dq && !String(r.deskripsi || '').toLowerCase().includes(dq)) return false;
+  if (f.link !== 'all') {
+    const st = parseLinkV6(r.link).state;
+    if (f.link === 'ada' ? (st !== 'bersih' && st !== 'catatan') : st !== f.link) return false;
+  }
+  if (f.harga !== 'all') {
+    const adaHarga = r.harga_ekat != null && r.harga_ekat !== '';
+    if ((f.harga === 'ada') !== adaHarga) return false;
+  }
+  if (f.sumber !== 'all') {
+    const sm = String(r.source_sheet || '').trim();
+    if (f.sumber === '__none__' ? !!sm : sm !== f.sumber) return false;
+  }
+  return true;
 }
 
 let syncSearchDebounce = null;
@@ -378,7 +411,8 @@ function syncLinkHtml(raw){
 function renderSyncFilters(){
   const sb = document.getElementById('syncStatusBar'), tb = document.getElementById('syncTipeBar');
   if (!sb || !tb) return;
-  const base = syncRows.filter(syncMatchSearch);
+  const base = syncRows.filter(r => syncMatchSearch(r) && syncMatchCols(r));
+  syncSyncColFilterUi();
   const st = { all: 0, ok: 0, warn: 0, bad: 0 }, tp = { all: 0, INSTRUMENT: 0, UNIT: 0, SET: 0 };
   base.forEach(r => {
     const lv = evalSyncRow(r).level, ty = syncTipeOf(r);
@@ -497,6 +531,162 @@ async function runSyncBulkCreate(){
   if (add) add.addEventListener('click', runSyncBulkCreate);
 })();
 
+// ---- Ringkasan filter aktif (bar di atas tabel) ----
+const SYNC_LABEL = {
+  tipe: { INSTRUMENT: 'Instrument', UNIT: 'Unit', SET: 'Set' },
+  status: { ok: 'Siap', warn: 'Cek dulu', bad: 'Tidak siap' },
+  link: { ada: 'Ada link', bersih: 'Link bersih', catatan: 'Link + catatan', invalid: 'Cuma teks (bukan URL)', kosong: 'Kosong' },
+  harga: { ada: 'Ada harga', kosong: 'Kosong' },
+};
+function syncActiveFilters(){
+  const f = syncColFilter, out = [];
+  const q = syncSearchQuery.trim();
+  if (q) out.push({ key: 'search', label: 'Pencarian', val: `"${q}"` });
+  if (syncTipeFilter !== 'all') out.push({ key: 'tipe', label: 'Tipe', val: SYNC_LABEL.tipe[syncTipeFilter] || syncTipeFilter });
+  if (syncStatusFilter !== 'all') out.push({ key: 'status', label: 'Status', val: SYNC_LABEL.status[syncStatusFilter] || syncStatusFilter });
+  if (f.kode.trim()) out.push({ key: 'kode', label: 'Kode', val: `"${f.kode.trim()}"` });
+  if (f.desk.trim()) out.push({ key: 'desk', label: 'Deskripsi', val: `"${f.desk.trim()}"` });
+  if (f.link !== 'all') out.push({ key: 'link', label: 'Link V6', val: SYNC_LABEL.link[f.link] || f.link });
+  if (f.harga !== 'all') out.push({ key: 'harga', label: 'Harga E-KAT', val: SYNC_LABEL.harga[f.harga] || f.harga });
+  if (f.sumber !== 'all') out.push({ key: 'sumber', label: 'Sumber', val: f.sumber === '__none__' ? '(kosong)' : f.sumber });
+  return out;
+}
+function syncRemoveFilter(key){
+  const f = syncColFilter;
+  if (key === '__all__') {
+    Object.assign(f, { kode: '', desk: '', link: 'all', harga: 'all', sumber: 'all' });
+    syncStatusFilter = 'all'; syncTipeFilter = 'all'; syncSearchQuery = '';
+    if (syncSearchEl) syncSearchEl.value = '';
+  } else if (key === 'search') { syncSearchQuery = ''; if (syncSearchEl) syncSearchEl.value = ''; }
+  else if (key === 'tipe') syncTipeFilter = 'all';
+  else if (key === 'status') syncStatusFilter = 'all';
+  else if (key === 'kode' || key === 'desk') f[key] = '';
+  else if (key in f) f[key] = 'all';
+  syncPage = 1; renderSyncPage();
+}
+function renderSyncActiveBar(total){
+  const bar = document.getElementById('syncActiveBar');
+  if (!bar) return;
+  const act = syncActiveFilters();
+  if (!act.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML =
+    `<span class="saf-label"><i class="ti ti-filter"></i> Filter aktif (${act.length})</span>`
+    + act.map(a => `<button type="button" class="saf-chip" data-saf="${a.key}" title="Klik untuk hapus filter ini"><span class="saf-k">${S.escapeHtml(a.label)}:</span><b>${S.escapeHtml(a.val)}</b><i class="ti ti-x"></i></button>`).join('')
+    + `<span class="saf-result">Menampilkan <b>${total}</b> dari ${syncRows.length}</span>`
+    + `<button type="button" class="saf-reset" data-saf="__all__"><i class="ti ti-filter-off"></i> Reset semua</button>`;
+}
+
+// ---- Baris filter kolom: disuntik lewat JS ke <thead> (markup.js gak perlu diubah) ----
+function ensureSyncColFilterRow(){
+  const tbody = document.getElementById('syncTableBody');
+  const thead = tbody && tbody.closest('table') && tbody.closest('table').tHead;
+  if (!thead || thead.querySelector('.sync-filter-row')) return;
+  const tr = document.createElement('tr');
+  tr.className = 'sync-filter-row';
+  tr.innerHTML = `
+    <th></th>
+    <th><input type="text" class="sync-col-input" data-scol="kode" placeholder="Filter kode..." autocomplete="off"/></th>
+    <th><input type="text" class="sync-col-input" data-scol="desk" placeholder="Filter deskripsi..." autocomplete="off"/></th>
+    <th><select class="sync-col-select" data-scol="link">
+      <option value="all">Semua</option>
+      <option value="ada">Ada link</option>
+      <option value="bersih">Link bersih (URL doang)</option>
+      <option value="catatan">Link + catatan</option>
+      <option value="invalid">Cuma teks (bukan URL)</option>
+      <option value="kosong">Kosong</option>
+    </select></th>
+    <th><select class="sync-col-select" data-scol="harga">
+      <option value="all">Semua</option>
+      <option value="ada">Ada harga</option>
+      <option value="kosong">Kosong</option>
+    </select></th>
+    <th><select class="sync-col-select" data-scol="sumber"><option value="all">Semua</option></select></th>
+    <th><select class="sync-col-select" data-scol="status">
+      <option value="all">Semua</option>
+      <option value="ok">Siap</option>
+      <option value="warn">Cek dulu</option>
+      <option value="bad">Tidak siap</option>
+    </select></th>
+    <th><button type="button" class="btn btn-sm" id="syncColResetBtn" title="Reset semua filter kolom" style="display:none;"><i class="ti ti-filter-off"></i></button></th>
+  `;
+  thead.appendChild(tr);
+
+  // Bar ringkasan filter aktif, disisipkan tepat di atas kartu tabel.
+  const card = tbody.closest('.table-card');
+  if (card && !document.getElementById('syncActiveBar')) {
+    const bar = document.createElement('div');
+    bar.id = 'syncActiveBar';
+    bar.style.display = 'none';
+    card.parentNode.insertBefore(bar, card);
+  }
+  // Delegasi klik: chip (hapus 1 filter), "Reset semua", dan tombol reset di state kosong tabel.
+  const onReset = (e) => {
+    const b = e.target.closest('[data-saf]');
+    if (b) syncRemoveFilter(b.getAttribute('data-saf'));
+  };
+  const barEl = document.getElementById('syncActiveBar');
+  if (barEl) barEl.addEventListener('click', onReset);
+  tbody.addEventListener('click', onReset);
+
+  let debounce = null;
+  tr.addEventListener('input', (e) => {
+    const el = e.target.closest('.sync-col-input');
+    if (!el) return;
+    clearTimeout(debounce);
+    debounce = setTimeout(() => { syncColFilter[el.dataset.scol] = el.value; syncPage = 1; renderSyncPage(); }, 250);
+  });
+  tr.addEventListener('change', (e) => {
+    const el = e.target.closest('.sync-col-select');
+    if (!el) return;
+    const k = el.dataset.scol;
+    if (k === 'status') syncStatusFilter = el.value; else syncColFilter[k] = el.value;
+    syncPage = 1; renderSyncPage();
+  });
+  tr.querySelector('#syncColResetBtn').addEventListener('click', () => {
+    Object.assign(syncColFilter, { kode: '', desk: '', link: 'all', harga: 'all', sumber: 'all' });
+    syncStatusFilter = 'all';
+    syncPage = 1; renderSyncPage();
+  });
+}
+ensureSyncColFilterRow();
+
+// Sinkronkan tampilan baris filter dengan state (dipanggil tiap render) + isi opsi
+// Sumber dari data aktual. Opsi cuma dibangun ulang kalau daftar sumbernya berubah.
+let syncSumberSig = '';
+function syncSyncColFilterUi(){
+  const row = document.querySelector('#syncTableBody') && document.querySelector('#syncTableBody').closest('table').querySelector('.sync-filter-row');
+  if (!row) return;
+  const sumbers = [...new Set(syncRows.map(r => String(r.source_sheet || '').trim()).filter(Boolean))].sort();
+  const hasNone = syncRows.some(r => !String(r.source_sheet || '').trim());
+  const sig = sumbers.join('|') + '#' + hasNone;
+  const sel = row.querySelector('[data-scol="sumber"]');
+  if (sig !== syncSumberSig) {
+    syncSumberSig = sig;
+    sel.innerHTML = '<option value="all">Semua</option>'
+      + sumbers.map(s => `<option value="${S.escapeHtml(s)}">${S.escapeHtml(s)}</option>`).join('')
+      + (hasNone ? '<option value="__none__">(kosong)</option>' : '');
+    // sumber yang dipilih sudah gak ada di data -> kembali ke Semua
+    if (syncColFilter.sumber !== 'all' && ![...sel.options].some(o => o.value === syncColFilter.sumber)) syncColFilter.sumber = 'all';
+  }
+  sel.value = syncColFilter.sumber;
+  row.querySelector('[data-scol="link"]').value = syncColFilter.link;
+  row.querySelector('[data-scol="harga"]').value = syncColFilter.harga;
+  row.querySelector('[data-scol="status"]').value = syncStatusFilter;
+  // input teks cuma disentuh kalau beda (jangan ganggu kursor saat user lagi ngetik)
+  const ik = row.querySelector('[data-scol="kode"]'), id = row.querySelector('[data-scol="desk"]');
+  if (ik.value !== syncColFilter.kode) ik.value = syncColFilter.kode;
+  if (id.value !== syncColFilter.desk) id.value = syncColFilter.desk;
+  // Penanda visual: input/dropdown yang lagi dipakai + header kolomnya diberi warna aksen.
+  row.querySelectorAll('[data-scol]').forEach(el => el.classList.toggle('is-active', el.value.trim() !== '' && el.value !== 'all'));
+  const ths = row.closest('table').tHead.rows[0].cells;
+  const colActive = [false, !!syncColFilter.kode.trim(), !!syncColFilter.desk.trim(), syncColFilter.link !== 'all',
+    syncColFilter.harga !== 'all', syncColFilter.sumber !== 'all', syncStatusFilter !== 'all'];
+  colActive.forEach((on, i) => { if (ths[i]) ths[i].classList.toggle('sync-th-active', on); });
+  const rb = row.querySelector('#syncColResetBtn');
+  if (rb) rb.style.display = (syncHasColFilter() || syncStatusFilter !== 'all') ? '' : 'none';
+}
+
 async function renderSyncPage(){
   renderSyncFilters();
   const tbody = document.getElementById('syncTableBody');
@@ -504,15 +694,16 @@ async function renderSyncPage(){
   const list = getFilteredSyncRows();
   const total = list.length;
   const q = syncSearchQuery.trim();
-  const filtered = !!q || syncStatusFilter !== 'all' || syncTipeFilter !== 'all';
+  const filtered = !!q || syncStatusFilter !== 'all' || syncTipeFilter !== 'all' || syncHasColFilter();
   document.getElementById('syncCount').textContent = filtered
     ? `${total} dari ${syncRows.length} kode produk (terfilter)`
     : `${syncRows.length} kode produk belum terdaftar`;
   const pagEl = document.getElementById('syncPagination');
+  renderSyncActiveBar(total);
 
   if (!total) {
-    tbody.innerHTML = (q || syncStatusFilter !== 'all' || syncTipeFilter !== 'all')
-      ? `<tr class="state-row"><td colspan="8">Tidak ada kode produk yang cocok dengan filter/pencarian ini.</td></tr>`
+    tbody.innerHTML = filtered
+      ? `<tr class="state-row"><td colspan="8">Tidak ada kode produk yang cocok dengan filter/pencarian ini.<div style="margin-top:10px;"><button type="button" class="btn btn-sm" data-saf="__all__"><i class="ti ti-filter-off"></i> Reset semua filter</button></div></td></tr>`
       : `<tr class="state-row"><td colspan="8">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
     renderPgBar(pagEl, { page: 1, pageSize: SYNC_PAGE_SIZE, total: 0, onPageChange: () => {} });
     return;
