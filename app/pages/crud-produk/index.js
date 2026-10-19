@@ -45,6 +45,7 @@ import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6 } from './u
 import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
+import { installOrphan } from './orphan.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -311,9 +312,10 @@ const CRUD_VIEW_LABELS = {
   kfa: 'KFA Management',
   bulk: 'Bulk Edit',
   sync: 'Sync dari Sheet',
+  orphan: 'Orphan / Drift',
 };
 function switchView(view){
-  ['produk','set','akd','kfa','bulk','sync'].forEach(v => {
+  ['produk','set','akd','kfa','bulk','sync','orphan'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
   const crumbEl = document.getElementById('pw-topbar-crumb-text');
@@ -326,6 +328,8 @@ function switchView(view){
   // daftar ini berubah tiap pollAndSync jalan di background (tiap 5
   // menit), jadi data basi kalau cuma dimuat sekali per mount().
   if (view === 'sync') S.loadSyncUnmatched();
+  // 'orphan' juga RELOAD tiap masuk: snapshot manifest diperbarui tiap jam di background.
+  if (view === 'orphan') S.loadOrphan();
   // 'set' punya semantik beda dari akd/kfa's "sekali doang" -- dipindah
   // dari listener terpisah yang tadinya nempel di tombol sidebar sendiri
   // (`.sb-item[data-view="set"]`, gak ada lagi): reload SETIAP kali masuk
@@ -3094,6 +3098,7 @@ deleteBtn.addEventListener('click', async () => {
   // jumpToKfaLink di modal produk).
   S.openAdd = openAdd;
   installKfa(S);
+  installOrphan(S);
 
   // Kick off the initial data load now -- moved here from near the top of
   // mount() (see the long comment by the old spot, near the auth section)

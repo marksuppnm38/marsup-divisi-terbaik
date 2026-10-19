@@ -424,6 +424,40 @@ export const CRUD_PRODUK_MARKUP = `
       </div>
       <div class="pg-bar" id="syncPagination" style="display:none;"></div>
     </div>
+
+    <!-- ORPHAN / DRIFT VIEW (INFORMASI SAJA, tanpa aksi tulis): arah SEBALIKNYA dari Sync dari Sheet --
+         yang ada di Supabase tapi sudah hilang/beda di Google Sheets (sheet = source of truth).
+         Sumber: view v_sync_* + sync_orphan_produk, diisi pushManifest (Apps Script) ->
+         edge function -> reverse_check_commit. -->
+    <div class="content" id="viewOrphan" style="display:none;">
+      <div class="content-head">
+        <div>
+          <div class="content-title">Orphan / Drift</div>
+          <div class="content-sub" id="orphanCount">Memuat...</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm" id="orphanCopyBtn"><i class="ti ti-copy"></i> Salin kode</button>
+          <button class="btn btn-sm" id="orphanCsvBtn"><i class="ti ti-download"></i> Unduh CSV</button>
+          <button class="btn btn-sm" id="orphanRefreshBtn"><i class="ti ti-refresh"></i> Muat ulang</button>
+        </div>
+      </div>
+      <div id="orphanRunInfo"></div>
+      <div class="paste-hint">
+        Kebalikan tab Sync: item yang <b>masih ada di database tapi sudah tidak ada / beda di Google Sheets</b>.
+        Halaman ini <b>hanya memberi informasi</b> &mdash; tidak ada yang diubah atau dihapus otomatis.
+        Status <b>terkonfirmasi</b> berarti item hilang di 3 snapshot berturut-turut (antisipasi sheet sedang loading).
+      </div>
+      <div class="filter-bar" id="orphanSectionBar"></div>
+      <div class="akd-toolbar">
+        <div class="akd-search-box">
+          <i class="ti ti-search"></i>
+          <input type="text" id="orphanSearchInput" placeholder="Cari kode produk, nama, no AKD, kode set..."/>
+        </div>
+      </div>
+      <div class="filter-bar" id="orphanFilterBar" style="margin-top:-4px;"></div>
+      <div id="orphanBody"></div>
+      <div class="pg-bar" id="orphanPagination" style="display:none;"></div>
+    </div>
   </main>
 </div>
 

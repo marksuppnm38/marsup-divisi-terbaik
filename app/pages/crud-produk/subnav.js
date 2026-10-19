@@ -13,7 +13,7 @@
 //
 // id here is the URL sub-segment (`#crud-produk/<id>`) AND is passed
 // straight into crud-produk's existing switchView(id) — the two need to
-// stay in sync (same 6 values: produk/set/akd/kfa/bulk/sync -- 'sync'
+// stay in sync (same 7 values: produk/set/akd/kfa/bulk/sync/orphan -- 'sync'
 // added for the "produk kepantau di sheet tapi belum ada di DB" catcher).
 // If index.js's switchView() ever gets another view, add it here too,
 // and vice versa.
@@ -24,4 +24,5 @@ export const CRUD_PRODUK_SUBNAV = [
   { id: 'kfa', title: 'KFA Management', icon: 'ti-barcode' },
   { id: 'bulk', title: 'Bulk Edit', icon: 'ti-table' },
   { id: 'sync', title: 'Sync dari Sheet', icon: 'ti-refresh' },
+  { id: 'orphan', title: 'Orphan / Drift', icon: 'ti-git-compare' },
 ];
