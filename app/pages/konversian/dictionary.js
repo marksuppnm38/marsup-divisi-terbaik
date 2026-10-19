@@ -1681,6 +1681,21 @@ S.normalizeMatchedItems = normalizeMatchedItems;
    HIDDEN FEATURE: Generator Link Katalog
    Munculnya cuma kalau di search-input diketik "/linkpalsugas".
    Tidak ada tombol/menu yang mengarah ke sini secara terlihat.
+
+   Versi "pinter": selain bikin link dari deskripsi, tiap baris otomatis
+   dicocokkan ke produk di katalog (RPC search_produk_dengan_harga yang
+   sama dengan search utama), lalu link-nya bisa langsung di-attach ke
+   kolom produk.link_v6 lewat tombol "Attach ke produk" — jadi pas
+   konversian, link e-Katalog produk itu langsung kebawa.
+
+   Aturan keamanan data (produk.link_v6 dipakai di label e-Katalog, SPH,
+   export, dst — salah isi = salah tampil ke customer):
+   - Yang tercentang otomatis HANYA: nama cocok persis + link lama kosong
+     + status INAPROC Disetujui/Verified. Sisanya harus dicentang sadar.
+   - Link lama yang sudah bersih / ada catatan tim TIDAK ditimpa diam-diam.
+   - Simpan lewat konfirmasi, dengan guard "link_v6 masih sama kayak pas
+     dibaca" (gak nimpa edit orang lain) dan dicek beneran ada baris yang
+     berubah (PATCH yang ditolak RLS balik 200 + array kosong, bukan error).
    ================================================================== */
 (function () {
   const modal = document.getElementById('linkgen-modal');
@@ -1692,9 +1707,14 @@ S.normalizeMatchedItems = normalizeMatchedItems;
   const textInput = document.getElementById('linkgen-input');
   const genBtn = document.getElementById('linkgen-generate-btn');
   const copyBtn = document.getElementById('linkgen-copy-btn');
+  const attachBtn = document.getElementById('linkgen-attach-btn');
   const countEl = document.getElementById('linkgen-count');
   const outputEl = document.getElementById('linkgen-output');
   let rows = [];
+  let runSeq = 0;               // generate baru membatalkan pencocokan yang lagi jalan
+  const rpcCache = new Map();   // deskripsi ternormalisasi -> kandidat (baris duplikat gak nembak RPC lagi)
+
+  const esc = (s) => S.escapeHtmlAttr(s);
 
   function slugify(text, prefix) {
     return prefix + text
@@ -1703,43 +1723,332 @@ S.normalizeMatchedItems = normalizeMatchedItems;
       .replace(/^-+|-+$/g, '');
   }
 
-  function esc(s) {
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
+  /* ---------- pencocokan deskripsi -> produk ---------- */
+
+  // "15.5" dan "15,5" dianggap sama; prefix "ROBUST" (nama di e-Katalog) dibuang.
+  function tokensOf(s) {
+    const t = String(s == null ? '' : s).toUpperCase()
+      .replace(/(\d)[.,](\d)/g, '$1_$2')
+      .replace(/[^A-Z0-9_]+/g, ' ').trim().split(' ').filter(Boolean);
+    if (t[0] === 'ROBUST') t.shift();
+    return t;
+  }
+  function dice(a, b) {
+    if (!a.length || !b.length) return 0;
+    const sa = new Set(a), sb = new Set(b);
+    let inter = 0;
+    sa.forEach(x => { if (sb.has(x)) inter++; });
+    return 2 * inter / (sa.size + sb.size);
+  }
+  // Angka/ukuran (15_5, 17_5, 3, dst) harus sama persis — beda ukuran = beda produk.
+  const numSig = (t) => t.filter(x => /\d/.test(x)).sort().join('|');
+
+  function rankCandidates(desc, data) {
+    const dt = tokensOf(desc);
+    if (!dt.length) return [];
+    const key = dt.join(' ');
+    return (Array.isArray(data) ? data : []).filter(p => p && p.kode_produk).map(p => {
+      const pt = tokensOf(p.nama_produk);
+      return { p, exact: pt.join(' ') === key, score: dice(dt, pt), numDiff: numSig(dt) !== numSig(pt) };
+    }).filter(c => c.exact || c.score >= 0.4)
+      .sort((a, b) => (b.exact - a.exact) || (b.score - a.score))
+      .slice(0, 6);
   }
 
-  function generate() {
-    const base = baseInput.value.trim();
-    const prefix = prefixInput.value;
-    const lines = textInput.value.split('\n').map(l => l.trim()).filter(Boolean);
-    rows = lines.map(desc => ({ desc, link: base + slugify(desc, prefix) }));
+  async function searchCands(desc) {
+    const key = tokensOf(desc).join(' ');
+    if (rpcCache.has(key)) return rpcCache.get(key);
+    let data = null, lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data: d, error } = await S.rpc('search_produk_dengan_harga', { q: desc, p_tipe: null, only_akd: false, only_kfa: false });
+      if (!error) { data = d; lastErr = null; break; }
+      lastErr = error.message || JSON.stringify(error);
+      if (!(/timeout|canceling/i.test(lastErr)) ) break; // cuma timeout yang di-retry
+    }
+    if (lastErr) throw new Error(lastErr);
+    const c = rankCandidates(desc, data);
+    rpcCache.set(key, c);
+    return c;
+  }
 
+  // Detail langsung dari tabel produk (id buat PATCH + status_inaproc buat gating).
+  // Kalau status_inaproc gak bisa di-select, ulang tanpa dia (pola sama kayak attachLinks).
+  async function fetchProdukInfo(kodes) {
+    const out = new Map();
+    const uniq = [...new Set(kodes)];
+    for (let n = 0; n < uniq.length; n += 80) {
+      const inList = uniq.slice(n, n + 80).map(k => `"${String(k).replace(/"/g, '')}"`).join(',');
+      const base = `produk?kode_produk=in.(${encodeURIComponent(inList)})&select=id,kode_produk,nama_produk,link_v6`;
+      let res = await S.sesiFetch(base + ',status_inaproc');
+      if (!res.ok) res = await S.sesiFetch(base);
+      if (!res.ok) throw new Error('Gagal memuat detail produk (' + res.status + ')');
+      (await res.json()).forEach(p => out.set(p.kode_produk, p));
+    }
+    return out;
+  }
+
+  const sameUrl = (a, b) => String(a || '').trim().replace(/\/+$/, '').toLowerCase() === String(b || '').trim().replace(/\/+$/, '').toLowerCase();
+
+  // Status baris = turunan dari (produk terpilih, link_v6 sekarang, link baru). Dihitung
+  // ulang tiap render, jadi ganti dropdown / habis simpan otomatis konsisten.
+  function evaluate(r) {
+    if (r.matching) return { label: 'Mencocokkan…', tone: 'muted', savable: false };
+    if (r.matchErr) return { label: 'Gagal mencocokkan: ' + r.matchErr, tone: 'danger', savable: false };
+    const c = r.sel >= 0 ? r.cands[r.sel] : null;
+    if (!c) return { label: r.cands.length ? 'Gak ada produk dipilih' : 'Produk gak ketemu di katalog', tone: 'muted', savable: false };
+    const p = c.p;
+    if (r.save === 'ok') return { label: 'Tersimpan ✓', tone: 'ok', savable: false };
+    if (p.id == null) return { label: 'Detail produk gagal dimuat — Generate ulang', tone: 'danger', savable: false };
+
+    const cur = S.parseLinkV6(p.link_v6);
+    if (cur.state === 'bersih' && sameUrl(cur.url, r.link)) return { label: 'Sudah terpasang', tone: 'ok', savable: false };
+
+    const notes = [];
+    let overwrite = false;
+    if (cur.state === 'bersih') { notes.push('Menimpa link lain yang sudah tersimpan'); overwrite = true; }
+    else if (cur.state === 'catatan') { notes.push('Link lama ada catatan tim ("' + cur.catatan.slice(0, 40) + '") — ikut terhapus'); overwrite = true; }
+    else if (cur.state === 'invalid') notes.push('Isi lama bukan URL, diganti');
+    if (Object.prototype.hasOwnProperty.call(p, 'status_inaproc')) {
+      const approved = p.status_inaproc === 'Disetujui' || (S.verifiedKode && S.verifiedKode.has(p.kode_produk));
+      if (!approved) notes.push('Status INAPROC: ' + (p.status_inaproc || 'belum ada') + ' — link bisa belum aktif');
+    }
+    if (c.numDiff) notes.push('Angka/ukuran beda dari deskripsi');
+    if (r.dupOf) notes.push('Produk yang sama dengan baris ' + r.dupOf);
+    const risky = notes.some(n => !n.startsWith('Isi lama bukan URL'));
+    const ev = { label: notes.length ? notes.join(' · ') : 'Siap di-attach', tone: risky ? 'warn' : 'ok', savable: true, overwrite, risky };
+    if (r.save === 'err') { ev.label = 'Gagal simpan: ' + r.saveMsg; ev.tone = 'danger'; }
+    return ev;
+  }
+
+  function classify(r) {
+    const ex = r.cands.filter(c => c.exact);
+    if (!r.cands.length) { r.matchType = 'none'; r.sel = -1; }
+    else if (ex.length === 1) { r.matchType = 'exact'; r.sel = r.cands.indexOf(ex[0]); }
+    else if (ex.length > 1) { r.matchType = 'ambigu'; r.sel = r.cands.indexOf(ex[0]); }
+    else { r.matchType = 'mirip'; r.sel = 0; }
+  }
+
+  // Default centang = pilihan paling aman aja; sisanya user yang mutusin.
+  function applyDefaults() {
+    // Pass 1: baris yang nunjuk produk sama (mis. "15.5" & "15,5") — yang kedua dst dikasih
+    // catatan + gak ikut tercentang, biar 1 produk gak di-PATCH dua kali.
+    const first = new Map();
+    rows.forEach((r, i) => {
+      r.dupOf = null;
+      if (r.matchType !== 'exact' || r.sel < 0) return;
+      const kode = r.cands[r.sel].p.kode_produk;
+      if (first.has(kode)) r.dupOf = first.get(kode) + 1; else first.set(kode, i);
+    });
+    rows.forEach(r => {
+      const ev = evaluate(r);
+      r.checked = !!(ev.savable && !ev.risky && r.matchType === 'exact');
+    });
+  }
+
+  async function matchAll(mySeq) {
+    let done = 0, idx = 0;
+    const progress = () => { countEl.textContent = rows.length + ' baris · mencocokkan ' + done + '/' + rows.length; };
+    progress();
+    const worker = async () => {
+      while (idx < rows.length && mySeq === runSeq) {
+        const r = rows[idx++];
+        try { r.cands = await searchCands(r.desc); } catch (e) { r.matchErr = e.message; }
+        done++; progress();
+      }
+    };
+    await Promise.all(Array.from({ length: 4 }, worker)); // 4 RPC paralel, gak ngebanjirin backend
+    if (mySeq !== runSeq) return;
+
+    try {
+      await Promise.resolve(S.verifiedReady);
+      const kodes = rows.flatMap(r => r.cands.map(c => c.p.kode_produk));
+      if (kodes.length) {
+        const info = await fetchProdukInfo(kodes);
+        rows.forEach(r => r.cands.forEach(c => { const full = info.get(c.p.kode_produk); if (full) c.p = Object.assign({}, c.p, full); }));
+      }
+    } catch (e) {
+      S.showToast('Detail produk gagal dimuat: ' + e.message, 'error'); // baris tetap tampil, tapi gak bisa di-attach (tanpa id)
+    }
+    if (mySeq !== runSeq) return;
+    rows.forEach(r => { r.matching = false; if (!r.matchErr) classify(r); });
+    applyDefaults();
+    render();
+  }
+
+  /* ---------- render ---------- */
+
+  const TONE = { ok: 'var(--success-text, #2e7d32)', warn: 'var(--warn-text, #b26a00)', danger: 'var(--danger-text, #c62828)', muted: 'var(--text-muted)' };
+  const TH = 'text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase';
+  const TD = 'padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top';
+
+  function matchBadge(r) {
+    if (r.matching || r.matchErr) return '';
+    const c = r.sel >= 0 ? r.cands[r.sel] : null;
+    if (!c) return '';
+    const t = r.matchType === 'exact' ? 'Cocok persis' : r.matchType === 'ambigu' ? 'Nama kembar — pilih manual' : 'Mirip ' + Math.round(c.score * 100) + '%';
+    return '<div style="font-size:10.5px;color:' + (r.matchType === 'exact' ? TONE.ok : TONE.warn) + ';margin-top:2px">' + esc(t) + '</div>';
+  }
+
+  function produkCell(r, i) {
+    if (r.matching) return '<span style="color:var(--text-muted)">…</span>';
+    if (!r.cands.length) return '<span style="color:var(--text-muted)">—</span>';
+    const short = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+    if (r.cands.length === 1) {
+      const p = r.cands[0].p;
+      return '<div style="font-family:var(--mono);font-size:11.5px">' + esc(p.kode_produk) + '</div><div style="font-size:11.5px;color:var(--text-muted)">' + esc(short(p.nama_produk, 60)) + '</div>' + matchBadge(r);
+    }
+    let h = '<select class="lg-sel" data-i="' + i + '" style="max-width:260px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;background:var(--surface);color:var(--text)">';
+    r.cands.forEach((c, k) => {
+      h += '<option value="' + k + '"' + (k === r.sel ? ' selected' : '') + '>' + esc(c.p.kode_produk + ' — ' + short(c.p.nama_produk, 55)) + (c.exact ? ' ✓' : '') + '</option>';
+    });
+    h += '<option value="-1"' + (r.sel < 0 ? ' selected' : '') + '>— jangan attach —</option></select>' + matchBadge(r);
+    return h;
+  }
+
+  function render() {
     if (!rows.length) {
       outputEl.innerHTML = '<div style="color:var(--text-muted);font-size:12.5px;padding:12px 0;text-align:center">Belum ada hasil.</div>';
       countEl.textContent = '';
+      updateAttachBtn();
       return;
     }
-
-    countEl.textContent = rows.length + ' baris';
-
-    let html = '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'
-      + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase">Deskripsi</th>'
-      + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase">Link</th></tr></thead><tbody>';
-    rows.forEach(r => {
-      html += '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + esc(r.desc) + '</td>'
-        + '<td style="padding:6px 8px;border-bottom:1px solid var(--border);word-break:break-all"><a href="' + esc(r.link) + '" target="_blank" rel="noopener noreferrer" style="color:var(--accent-text)">' + esc(r.link) + '</a></td></tr>';
+    const matching = rows.some(r => r.matching);
+    if (!matching) {
+      const exact = rows.filter(r => r.matchType === 'exact').length;
+      countEl.textContent = rows.length + ' baris · ' + exact + ' cocok persis';
+    }
+    let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'
+      + '<th style="' + TH + ';width:26px"></th><th style="' + TH + '">Deskripsi</th><th style="' + TH + '">Produk terkait</th>'
+      + '<th style="' + TH + '">Link</th><th style="' + TH + '">Status</th></tr></thead><tbody>';
+    rows.forEach((r, i) => {
+      const ev = evaluate(r);
+      const linkHtml = S.isSafeHttpUrl(r.link)
+        ? '<a href="' + esc(r.link) + '" target="_blank" rel="noopener noreferrer" style="color:var(--accent-text)">' + esc(r.link) + '</a>'
+        : esc(r.link);
+      html += '<tr>'
+        + '<td style="' + TD + '"><input type="checkbox" class="lg-chk" data-i="' + i + '"' + (r.checked && ev.savable ? ' checked' : '') + (ev.savable ? '' : ' disabled') + '></td>'
+        + '<td style="' + TD + '">' + esc(r.desc) + '</td>'
+        + '<td style="' + TD + '">' + produkCell(r, i) + '</td>'
+        + '<td style="' + TD + ';word-break:break-all;font-size:11.5px">' + linkHtml + '</td>'
+        + '<td style="' + TD + ';font-size:11.5px;color:' + TONE[ev.tone] + '">' + esc(ev.label) + '</td></tr>';
     });
-    html += '</tbody></table>';
-    outputEl.innerHTML = html;
+    outputEl.innerHTML = html + '</tbody></table></div>';
+    updateAttachBtn();
   }
 
+  function savableRows() { return rows.filter(r => r.checked && evaluate(r).savable); }
+  function updateAttachBtn() {
+    const n = savableRows().length;
+    attachBtn.textContent = n ? 'Attach ke produk (' + n + ')' : 'Attach ke produk';
+    attachBtn.disabled = !n;
+    attachBtn.style.opacity = n ? '1' : '.5';
+  }
+
+  /* ---------- aksi ---------- */
+
+  function buildRows() {
+    runSeq++;
+    const base = baseInput.value.trim();
+    const prefix = prefixInput.value;
+    const lines = textInput.value.split('\n').map(l => l.trim()).filter(Boolean);
+    rows = lines.map(desc => ({ desc, link: base + slugify(desc, prefix), cands: [], sel: -1, matchType: 'none', checked: false, matching: true, matchErr: null, save: null, saveMsg: '' }));
+    render();
+    return runSeq;
+  }
+
+  async function generate() {
+    const mySeq = buildRows();
+    if (!rows.length) return;
+    await matchAll(mySeq);
+  }
+
+  // Habis simpan, link lama yang masih nyangkut di cache sesi ini harus dibuang —
+  // kalau enggak, Converter/Clipboard/hasil search masih nunjukin "tanpa link".
+  function syncCaches(kode, link) {
+    try { if (S.linkCache) S.linkCache.delete(kode); } catch (_) { /* best-effort */ }
+    try { if (S.kodeExactCache) S.kodeExactCache.delete(String(kode).toLowerCase()); } catch (_) { /* best-effort */ }
+    try {
+      [S.lastResults, S.clipboard].forEach(arr => {
+        if (!Array.isArray(arr)) return;
+        arr.forEach(x => {
+          if (!x || (x.kode_produk !== kode && x.kode !== kode)) return;
+          x.link_v6 = link;
+          if (Object.prototype.hasOwnProperty.call(x, 'link')) { x.link = undefined; delete x.linkNote; } // biar attachLinks() ambil ulang
+        });
+      });
+      if (typeof S.updateClipboard === 'function') S.updateClipboard();
+    } catch (_) { /* best-effort */ }
+  }
+
+  async function attachSelected() {
+    const todo = savableRows();
+    if (!todo.length) { S.showToast('Belum ada baris tercentang yang bisa di-attach', 'error'); return; }
+    const overwrites = todo.filter(r => evaluate(r).overwrite).length;
+    const ok = await S.showConfirmModal({
+      title: 'Attach link ke produk?',
+      text: todo.length + ' produk akan diisi Link V6-nya' + (overwrites ? ' (' + overwrites + ' di antaranya MENIMPA isi lama)' : '')
+        + '. Link ini langsung dipakai di label e-Katalog, SPH, dan export.',
+      okText: 'Ya, attach',
+      danger: overwrites > 0
+    });
+    if (!ok) return;
+
+    attachBtn.disabled = true;
+    let done = 0, fail = 0;
+    for (const r of todo) {
+      const p = r.cands[r.sel].p;
+      try {
+        const prev = p.link_v6;
+        // Guard: hanya update kalau isi link_v6 masih sama kayak pas dibaca tadi.
+        const guard = prev == null ? 'link_v6=is.null' : 'link_v6=eq.' + encodeURIComponent(prev);
+        const res = await S.sesiFetch('produk?id=eq.' + encodeURIComponent(p.id) + '&' + guard, {
+          method: 'PATCH',
+          headers: { Prefer: 'return=representation' },
+          body: JSON.stringify({ link_v6: r.link })
+        });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          throw new Error(e.message || ('HTTP ' + res.status));
+        }
+        const out = await res.json().catch(() => []);
+        if (!Array.isArray(out) || out.length !== 1) {
+          throw new Error('Gak ada baris yang berubah — akun ini mungkin gak punya izin edit produk, atau Link V6-nya baru diubah orang lain. Generate ulang lalu coba lagi.');
+        }
+        p.link_v6 = r.link;
+        r.save = 'ok'; r.checked = false; r.saveMsg = '';
+        syncCaches(p.kode_produk, r.link);
+        done++;
+      } catch (e) {
+        r.save = 'err'; r.saveMsg = e.message; fail++;
+      }
+    }
+    render();
+    if (done) S.showToast(done + ' produk berhasil di-attach' + (fail ? ', ' + fail + ' gagal — lihat kolom Status' : ' ✓'), fail ? 'error' : 'success');
+    else S.showToast('Gagal attach: ' + (todo.find(r => r.save === 'err') || {}).saveMsg, 'error');
+  }
+
+  /* ---------- event ---------- */
+
   genBtn.addEventListener('click', generate);
+  attachBtn.addEventListener('click', attachSelected);
+
+  outputEl.addEventListener('change', (e) => {
+    const t = e.target;
+    const r = rows[Number(t.dataset && t.dataset.i)];
+    if (!r) return;
+    if (t.classList.contains('lg-chk')) { r.checked = t.checked; updateAttachBtn(); }
+    else if (t.classList.contains('lg-sel')) { r.sel = Number(t.value); r.checked = false; r.save = null; r.dupOf = null; render(); } // ganti pilihan = harus dicentang ulang dengan sadar
+  });
 
   copyBtn.addEventListener('click', () => {
-    if (!rows.length) generate();
+    if (!rows.length) buildRows();
     if (!rows.length) return;
-    const tsv = rows.map(r => r.desc + '\t' + r.link).join('\n');
+    // Kolom 1-2 (deskripsi, link) SAMA kayak versi lama; kode produk ditambah di kolom 3.
+    const tsv = rows.map(r => {
+      const c = r.sel >= 0 ? r.cands[r.sel] : null;
+      const kode = (c && (r.matchType === 'exact' || r.checked || r.save === 'ok')) ? c.p.kode_produk : '';
+      return r.desc + '\t' + r.link + (kode ? '\t' + kode : '');
+    }).join('\n');
     navigator.clipboard.writeText(tsv).then(() => {
       const old = copyBtn.textContent;
       copyBtn.textContent = 'Tersalin!';
@@ -1754,9 +2063,12 @@ S.normalizeMatchedItems = normalizeMatchedItems;
   });
 
   window.openLinkGenModal = function () {
+    runSeq++; // batalin pencocokan sisa sesi sebelumnya
+    rows = [];
     modal.classList.add('show');
     outputEl.innerHTML = '';
     countEl.textContent = '';
+    updateAttachBtn();
     setTimeout(() => textInput.focus(), 50);
   };
 })();

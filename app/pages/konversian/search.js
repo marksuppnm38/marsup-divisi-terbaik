@@ -64,6 +64,7 @@ S.switchDoor = switchDoor;
 // berikutnya tetap nembak RPC baru, bukan keulang errornya dari cache. — Claude
 // ══════════════════════════════════════════
 const kodeExactCache = new Map(); // kode (lowercase) -> { produk: row|null } — cuma hasil sukses
+S.kodeExactCache = kodeExactCache; // dibersihin Generator Link Katalog (/linkpalsugas) habis attach link_v6
 
 async function findProdukByKodeExact(kode) {
   const cacheKey = kode.toLowerCase();
