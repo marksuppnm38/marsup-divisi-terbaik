@@ -152,6 +152,17 @@
 
   function cacheKey(bucket, path) { return bucket + '\u0000' + path; }
 
+  // Versi file per path: diisi pas file ditimpa (lihat pnmInvalidateSignedUrl di bawah).
+  // Dipasang sebagai query '_v' di signed URL supaya URL-nya PASTI beda dari yang
+  // pernah dilihat browser/Excel/Sheets -> gak ada lagi gambar lama yang nyangkut di
+  // HTTP cache walau path file-nya sama.
+  const fileVersion = new Map(); // key -> timestamp
+  function withVersion(key, url) {
+    const v = fileVersion.get(key);
+    if (!v || !url) return url;
+    return url + (url.includes('?') ? '&' : '?') + '_v=' + v;
+  }
+
   // Satu file. Lempar Error kalau gagal (path gak ada / gak ada akses) --
   // caller yang mutusin fallback-nya (tampilin placeholder, biarin
   // <img onerror>, dst), sama kayak dulu kalau URL public 404.
@@ -161,8 +172,9 @@
     if (cached && cached.expiresAtMs > Date.now()) return cached.url;
     const { data, error } = await pnmSupabase.storage.from(bucket).createSignedUrl(path, expiresInSeconds);
     if (error) throw error;
-    signedUrlCache.set(key, { url: data.signedUrl, expiresAtMs: Date.now() + expiresInSeconds * 1000 - SIGNED_URL_CACHE_MARGIN_MS });
-    return data.signedUrl;
+    const finalUrl = withVersion(key, data.signedUrl);
+    signedUrlCache.set(key, { url: finalUrl, expiresAtMs: Date.now() + expiresInSeconds * 1000 - SIGNED_URL_CACHE_MARGIN_MS });
+    return finalUrl;
   }
 
   // Banyak file sekaligus (satu request Storage API, bukan N request) --
@@ -187,14 +199,26 @@
       (data || []).forEach((row) => {
         // signed URLs (path yang ditemukan, gak error per-item) -- SDK balikin satu
         // entri per path yg diminta, urut sama, tiap entri punya .path/.signedUrl/.error.
-        const url = (!row.error && row.signedUrl) ? row.signedUrl : '';
-        if (url) signedUrlCache.set(cacheKey(bucket, row.path), { url, expiresAtMs: Date.now() + expiresInSeconds * 1000 - SIGNED_URL_CACHE_MARGIN_MS });
+        const rowKey = cacheKey(bucket, row.path);
+        const url = (!row.error && row.signedUrl) ? withVersion(rowKey, row.signedUrl) : '';
+        if (url) signedUrlCache.set(rowKey, { url, expiresAtMs: Date.now() + expiresInSeconds * 1000 - SIGNED_URL_CACHE_MARGIN_MS });
         result.set(row.path, url);
       });
     }
     return result;
   }
 
+  // WAJIB dipanggil setelah file di bucket DITIMPA (upload x-upsert, path sama).
+  // Tanpa ini cache terus ngasih signed URL lama selama TTL (1 jam) -> user ganti
+  // gambar tapi yang muncul tetap gambar lama. Efek: cache entri dibuang + versi
+  // baru ditempel ke semua URL berikutnya buat path ini.
+  function pnmInvalidateSignedUrl(bucket, path) {
+    const key = cacheKey(bucket, path);
+    signedUrlCache.delete(key);
+    fileVersion.set(key, Date.now());
+  }
+
   window.PNM_getSignedUrl = pnmGetSignedUrl;
   window.PNM_getSignedUrls = pnmGetSignedUrls;
+  window.PNM_invalidateSignedUrl = pnmInvalidateSignedUrl;
 })();

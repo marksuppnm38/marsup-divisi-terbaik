@@ -1059,6 +1059,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
         <div class="dropzone-sub">Foto dari WA, HP, atau folder — atau tinggal copy gambar terus paste (Ctrl+V) di sini, langsung diunggah jadi gambar produk ini.</div>
       </div>
     </div>
+    <button id="gambar-batal-btn" class="modal-ganti-btn" style="display:none;margin-top:10px">← Batal, pakai gambar saat ini</button>
     <div id="gambar-upload-status" class="dropzone-status" style="display:none"></div>
   </div>
 </div>

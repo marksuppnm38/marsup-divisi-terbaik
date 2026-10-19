@@ -1917,6 +1917,9 @@ document.getElementById('gambarInstrumenFileInput').addEventListener('change', a
   badge.textContent = 'Mengupload...';
   const { error } = await sb.storage.from(GAMBAR_BUCKET).upload(filename, file, { upsert: true, contentType: 'image/png' });
   if (error) { showToast('Gagal upload: ' + error.message, true); await checkGambarInstrumen(); return; }
+  // File ditimpa di path yang sama -> buang signed URL yang ke-cache, kalau enggak preview
+  // (dan semua halaman lain) tetap nampilin gambar lama sampai TTL 1 jam habis.
+  if (typeof window.PNM_invalidateSignedUrl === 'function') window.PNM_invalidateSignedUrl(GAMBAR_BUCKET, filename);
   showToast('Gambar instrumen berhasil diupload');
   await checkGambarInstrumen();
 });

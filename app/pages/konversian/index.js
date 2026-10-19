@@ -1412,16 +1412,22 @@ function setupDropzone(zoneEl, inputEl, onFile) {
 
 // convert file gambar apapun (jpg/webp/screenshot dll) jadi PNG blob,
 // biar konsisten sama konvensi penamaan thumbnail (kode_produk.png)
+// HEMAT STORAGE: sisi terpanjang dibatasi THUMB_UPLOAD_MAX_PX (gak pernah di-upscale).
+// Gambar cuma ditampilin kecil (sheet ±80x65px, thumbnail Excel 240px, modal max 70vh),
+// tapi foto HP/screenshot mentah bisa belasan MB sebagai PNG -- itu yang bikin bucket
+// gratisan cepat penuh, BUKAN file lama (upload selalu nimpa kode.png yang sama).
+const THUMB_UPLOAD_MAX_PX = 900;
 function imageFileToPngBlob(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
+        const scale = Math.min(1, THUMB_UPLOAD_MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
         const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        canvas.getContext('2d').drawImage(img, 0, 0);
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Gagal memproses gambar')), 'image/png');
       };
       img.onerror = () => reject(new Error('File gambar tidak valid'));
@@ -1467,6 +1473,7 @@ const gambarGantiBtn = document.getElementById('gambar-ganti-btn');
 const gambarDropzone = document.getElementById('gambar-dropzone');
 const gambarFileInput = document.getElementById('gambar-file-input');
 const gambarUploadStatus = document.getElementById('gambar-upload-status');
+const gambarBatalBtn = document.getElementById('gambar-batal-btn');
 document.getElementById('gambar-close').addEventListener('click', () => gambarModal.classList.remove('show'));
 gambarModal.addEventListener('click', (e) => { if (e.target === gambarModal) gambarModal.classList.remove('show'); });
 
@@ -1558,6 +1565,12 @@ let gambarCurrentKodeForUrl = null;
 // signed URL) -- kalau user buka produk A lalu langsung buka produk B sebelum
 // signed URL punya A kelar, respons telat punya A gak boleh nimpa modal B.
 let gambarModalReqId = 0;
+let gambarHasImage = false;   // modal lagi punya gambar yang valid buat ditampilkan (dipakai tombol Batal)
+let gambarBusy = false;       // lagi upload -> abaikan paste/drop/klik berikutnya (cegah upload dobel)
+let gambarPreviewObjUrl = null; // object URL preview lokal gambar yang baru diunggah
+function revokeGambarPreview() {
+  if (gambarPreviewObjUrl) { URL.revokeObjectURL(gambarPreviewObjUrl); gambarPreviewObjUrl = null; }
+}
 
 // SECURITY FIX: dulu sync (URL public deterministik langsung ditaruh di
 // img.src, 404 ditangani img.onerror). Sekarang perlu minta signed URL dulu
@@ -1571,18 +1584,24 @@ async function openGambarModal(kode_asli, kode_produk, nama_produk) {
   gambarCurrentKodeForUrl = kodeForUrl;
   const myReq = ++gambarModalReqId;
   gambarTitle.textContent = nama_produk || 'Gambar Produk';
+  revokeGambarPreview();
+  gambarHasImage = false;
+  gambarBusy = false;
+  gambarImg.style.opacity = '1';
   gambarImg.style.display = 'none';
   gambarDropzone.style.display = 'none';
   gambarUploadStatus.style.display = 'none';
   gambarGantiBtn.style.display = 'none';
+  gambarBatalBtn.style.display = 'none';
   gambarStatus.style.display = 'block';
   gambarStatus.style.color = 'var(--text-muted)';
   gambarStatus.textContent = 'Memuat gambar…';
   gambarModal.classList.add('show');
 
-  gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarImg.style.display = 'block'; gambarDropzone.style.display = 'none'; gambarGantiBtn.style.display = 'inline-block'; };
+  gambarImg.onload = () => { gambarHasImage = true; gambarStatus.style.display = 'none'; gambarImg.style.display = 'block'; gambarDropzone.style.display = 'none'; gambarBatalBtn.style.display = 'none'; gambarGantiBtn.style.display = 'inline-block'; };
   gambarImg.onerror = () => {
     if (myReq !== gambarModalReqId) return;
+    gambarHasImage = false;
     gambarStatus.style.display = 'none';
     gambarGantiBtn.style.display = 'none';
     showGambarDropzone();
@@ -1608,8 +1627,20 @@ function showGambarDropzone() {
   gambarStatus.style.display = 'none';
   gambarUploadStatus.style.display = 'none';
   gambarDropzone.style.display = 'flex';
+  // Kalau masih ada gambar lama yang valid, kasih jalan balik (Batal) -- dulu klik
+  // "Ganti Gambar" langsung nyembunyiin gambar lama tanpa opsi kembali.
+  gambarBatalBtn.style.display = gambarHasImage ? 'inline-block' : 'none';
+  gambarGantiBtn.style.display = 'none';
 }
-gambarGantiBtn.addEventListener('click', showGambarDropzone);
+gambarGantiBtn.addEventListener('click', () => { if (!gambarBusy) showGambarDropzone(); });
+gambarBatalBtn.addEventListener('click', () => {
+  if (gambarBusy || !gambarHasImage) return;
+  gambarDropzone.style.display = 'none';
+  gambarBatalBtn.style.display = 'none';
+  gambarUploadStatus.style.display = 'none';
+  gambarImg.style.display = 'block';
+  gambarGantiBtn.style.display = 'inline-block';
+});
 
 setupDropzone(gambarDropzone, gambarFileInput, handleGambarFileDropped);
 
@@ -1648,7 +1679,7 @@ S.onGlobal(document, 'paste', (e) => {
 });
 
 async function handleGambarFileDropped(file) {
-  if (!gambarCurrentKodeForUrl) return;
+  if (!gambarCurrentKodeForUrl || gambarBusy) return;
   const keyError = thumbnailKeyError(gambarCurrentKodeForUrl);
   if (keyError) {
     S.showToast(keyError, 'error');
@@ -1662,52 +1693,76 @@ async function handleGambarFileDropped(file) {
     S.showToast(`File terlalu besar (${formatFileSizeMb(file.size)}). Maksimal ${formatFileSizeMb(MAX_UPLOAD_SIZE_BYTES)}.`, 'error');
     return;
   }
-  // Catatan: validasi isi file "beneran gambar" sudah otomatis terjadi di
-  // imageFileToPngBlob() di bawah — file didekode lewat <img>/<canvas> dan
-  // di-re-encode jadi PNG asli, jadi file non-gambar yang cuma diganti nama
-  // ekstensinya akan gagal di sini (img.onerror) dan ditolak.
-  const finalFilename = gambarCurrentKodeForUrl + '.png'; // nama final di Storage, dipakai di pesan sukses/gagal biar user yakin ini nyimpen ke barang yang bener
+  // Validasi isi file "beneran gambar" terjadi otomatis di imageFileToPngBlob()
+  // (didekode via <img>/<canvas>, di-re-encode jadi PNG asli).
+  const kode = gambarCurrentKodeForUrl;          // snapshot: modal bisa pindah produk selagi upload jalan
+  const myReq = gambarModalReqId;
+  const stillHere = () => myReq === gambarModalReqId && gambarCurrentKodeForUrl === kode;
+  const finalFilename = kode + '.png';
+  const prevSrc = (gambarHasImage && gambarImg.src && !gambarImg.src.startsWith('blob:')) ? gambarImg.src : ''; // buat rollback kalau upload gagal
+  gambarBusy = true;
   gambarDropzone.style.display = 'none';
-  // Kalau lagi paste/drop nimpa gambar yang UDAH ketampil (bukan dari dropzone
-  // kosong), gambarImg gak ke-hide sampe gambar baru selesai di-load ulang di
-  // bawah — dari sisi user keliatannya gambar lama diam aja "gak ngapa-ngapain"
-  // selama proses upload. Redupin sementara biar ada sinyal visual "lagi
-  // proses", dikembaliin lagi pas selesai (baik sukses maupun gagal).
-  const wasShowingOldImg = gambarImg.style.display === 'block';
-  if (wasShowingOldImg) gambarImg.style.opacity = '0.4';
+  gambarBatalBtn.style.display = 'none';
+  gambarGantiBtn.style.display = 'none';
+  gambarStatus.style.display = 'none';
   gambarUploadStatus.style.display = 'block';
   gambarUploadStatus.textContent = `Mengunggah "${file.name}"…`;
   try {
     const pngBlob = await imageFileToPngBlob(file);
-    await uploadToSupabaseStorage('thumbnails', finalFilename, pngBlob, 'image/png');
-    gambarUploadStatus.textContent = 'Berhasil diunggah ✓';
-    gambarStatus.style.display = 'block';
-    gambarStatus.style.color = 'var(--text-muted)';
-    gambarStatus.textContent = 'Memuat gambar…';
-    gambarImg.onload = () => { gambarStatus.style.display = 'none'; gambarUploadStatus.style.display = 'none'; gambarImg.style.opacity = '1'; gambarImg.style.display = 'block'; gambarGantiBtn.style.display = 'inline-block'; };
-    gambarImg.onerror = () => { gambarImg.style.opacity = '1'; gambarUploadStatus.textContent = 'Gambar sudah diunggah, tapi gagal dimuat ulang — coba buka lagi.'; };
-    // SECURITY FIX: bucket privat -- signed URL, bukan URL public + cache-busting
-    // '?t='. File baru diupload barusan (upsert:true), jadi createSignedUrl-nya
-    // pasti nemu objectnya -- cache-busting lama gak relevan lagi (signed URL-nya
-    // sendiri sudah unik/fresh tiap kali diminta).
-    try {
-      gambarImg.src = await window.PNM_getSignedUrl('thumbnails', gambarCurrentKodeForUrl + '.png');
-    } catch (e) {
-      gambarImg.style.opacity = '1';
-      gambarUploadStatus.textContent = 'Gambar tersimpan, tapi gagal membuat URL preview: ' + (e.message || e);
+
+    // Preview LANGSUNG dari file lokal yang barusan dipilih -- user langsung lihat gambar
+    // barunya tanpa nunggu server/signed URL, dan gak mungkin kebalik ke gambar lama.
+    if (stillHere()) {
+      revokeGambarPreview();
+      gambarPreviewObjUrl = URL.createObjectURL(pngBlob);
+      gambarImg.onload = () => { gambarHasImage = true; gambarImg.style.display = 'block'; gambarImg.style.opacity = '0.45'; };
+      gambarImg.onerror = null;
+      gambarImg.src = gambarPreviewObjUrl;
+      gambarImg.style.display = 'block';
+      gambarImg.style.opacity = '0.45'; // diredupin = "lagi nyimpen"
     }
-    // Toast eksplisit di luar modal (gak cuma teks kecil di dalam modal) —
-    // supaya user yang matanya udah pindah dari modal (mis. abis paste
-    // langsung mau lanjut kerjaan lain) tetap kelihatan konfirmasi tegas
-    // "kesimpen, dan ini nama filenya" — bukan cuma nebak-nebak dari
-    // gambar yang (kalau lagi nimpa gambar lama) gak keliatan berubah.
+
+    await uploadToSupabaseStorage('thumbnails', finalFilename, pngBlob, 'image/png');
+
+    // ROOT CAUSE bug "ganti gambar balik ke gambar lama": file ditimpa di path yang SAMA,
+    // sementara PNM_getSignedUrl nge-cache signed URL 1 jam, dan lampiranThumbCache nyimpen
+    // thumbnail rincian set yang sudah diproses. Dua-duanya harus dibuang, kalau enggak,
+    // semua tempat (modal ini, Copy+Gambar, export Excel, rincian set) tetap ngambil yang lama.
+    if (typeof window.PNM_invalidateSignedUrl === 'function') window.PNM_invalidateSignedUrl('thumbnails', finalFilename);
+    lampiranThumbCache.delete(finalFilename);
+
+    if (stillHere()) {
+      gambarImg.style.opacity = '1';
+      gambarImg.style.display = 'block';
+      gambarHasImage = true;
+      gambarUploadStatus.style.display = 'none';
+      gambarGantiBtn.style.display = 'inline-block';
+    }
     S.showToast(`Gambar produk tersimpan sebagai "${finalFilename}" ✓`, 'success');
   } catch (e) {
-    gambarImg.style.opacity = '1';
     const errMsg = 'Gagal mengunggah "' + finalFilename + '": ' + (e.message || e);
-    gambarUploadStatus.textContent = errMsg;
     S.showToast(errMsg, 'error');
-    gambarDropzone.style.display = 'flex';
+    if (stillHere()) {
+      revokeGambarPreview();
+      gambarImg.style.opacity = '1';
+      gambarUploadStatus.style.display = 'block';
+      gambarUploadStatus.textContent = errMsg;
+      if (prevSrc) {
+        // Rollback: gambar lama balik ditampilkan (preview lokal yang gagal disimpan dibuang),
+        // tombol Ganti Gambar tersedia lagi buat coba ulang.
+        gambarImg.onload = () => { gambarHasImage = true; gambarImg.style.display = 'block'; gambarGantiBtn.style.display = 'inline-block'; };
+        gambarImg.src = prevSrc;
+        gambarImg.style.display = 'block';
+        gambarDropzone.style.display = 'none';
+        gambarGantiBtn.style.display = 'inline-block';
+      } else {
+        gambarHasImage = false;
+        gambarImg.style.display = 'none';
+        gambarDropzone.style.display = 'flex';
+      }
+    }
+  } finally {
+    if (myReq === gambarModalReqId) gambarBusy = false;
   }
 }
 
