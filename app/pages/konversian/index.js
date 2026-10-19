@@ -109,6 +109,7 @@ import { KONVERSIAN_MARKUP } from './markup.js';
 import { installRealtime } from './realtime.js';
 import { installClipboard } from './clipboard.js';
 import { installSearch } from './search.js';
+import { installConverterBulk } from './converter-bulk.js';
 import { installDictionary } from './dictionary.js';
 import { installSetMendekati } from './set-mendekati.js';
 import { installProject } from './project.js';
@@ -2877,6 +2878,7 @@ S.convRows = [];
 
   installClipboard(S);
   installSearch(S);
+  installConverterBulk(S); // resolver bulk + pemilih varian + Copy Tabel (butuh S.matchOneKode dari search.js)
 // ══════════════════════════════════════════
 // NAVIGATION LAYER — konversian.html <-> crud-produk.html
 // Murni URL query param, gak pakai sessionStorage sama sekali — ternyata
@@ -5030,6 +5032,7 @@ function convStatusMeta(r) {
   if (r.status === 'exact') return { badge: '✅ Cocok', color: 'var(--success)' };
   if (r.status === 'manual_matched') return { badge: '✅ Dipilih manual', color: 'var(--success)' };
   if (r.status === 'code_found_name_diff') return { badge: '⚠️ Kode ketemu, nama beda', color: 'var(--warning)' };
+  if (r.status === 'ambiguous') return { badge: `🟠 ${r.alternatives.length} kode produk untuk kode ini — pilih satu`, color: 'var(--warning)' };
   if (r.status === 'error') return { badge: '🔄 Error / timeout — belum sempat dicek', color: 'var(--warning)' };
   if (r.notFirm) return { badge: '⛔ Belum firm (link V6 ada catatan) — tidak dipakai', color: 'var(--danger)' };
   return { badge: '❌ Tidak ditemukan', color: 'var(--danger)' };
@@ -5077,12 +5080,21 @@ function convRowHtml(r, i) {
     const sub = r.status === 'code_found_name_diff'
       ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Input: "${S.escapeHtmlAttr(r.nama_input)}" · Katalog: "${S.escapeHtmlAttr(r.produk.nama_produk)}"</div>`
       : '';
+    // converter-bulk.js: kode_asli yang dobel di produk -> auto-pick + chip untuk menukar varian.
+    const nAlt = (r.alternatives || []).length;
+    const altOpen = S.convAltOpen && S.convAltOpen.has(i);
+    const altChip = nAlt
+      ? `<button type="button" class="conv-alt-toggle" data-idx="${i}"><i class="ti ti-arrows-exchange" style="font-size:12px"></i> ${nAlt} varian lain${r.konflik ? ' · deskripsi beda' : ''}<i class="ti ti-chevron-${altOpen ? 'up' : 'down'}" style="font-size:11px"></i></button>`
+      : '';
+    const altList = (nAlt && altOpen && S.convAltListHtml) ? S.convAltListHtml(i, r) : '';
     return `<div class="clip-item" style="align-items:flex-start" data-idx="${i}">
       <input type="checkbox" class="conv-check" data-idx="${i}" checked style="margin-top:4px"/>
       <div class="clip-item-info" style="margin-left:8px">
         <div class="clip-item-name">${S.escapeHtmlAttr(nama)}</div>
         ${metaLine}
         ${sub}
+        ${altChip}
+        ${altList}
       </div>
     </div>`;
   }
@@ -5100,6 +5112,7 @@ function convRowHtml(r, i) {
   </div>`;
   const detailHtml = isExpanded ? `<div class="kb-item-detail">
     ${errSub}
+    ${(r.status === 'ambiguous' && S.convAltListHtml) ? S.convAltListHtml(i, r) : ''}
     <div class="conv-manual-search">
       <input type="text" class="conv-manual-input" data-idx="${i}" placeholder="Cari produk yang benar di katalog…" value="${S.escapeHtmlAttr(S.convManualQuery[i] || '')}" autocomplete="off"/>
       <div class="conv-manual-results" data-idx="${i}">${convManualResultsHtml(i)}</div>
@@ -5143,6 +5156,8 @@ function updateConvSummary() {
   const nManual = rows.filter(r => r.status === 'manual_matched').length;
   const nErr = rows.filter(r => r.status === 'error').length;
   const nNotFound = rows.filter(r => r.status === 'not_found').length;
+  const nAmbig = rows.filter(r => r.status === 'ambiguous').length;
+  const nVarian = rows.filter(r => r.produk && (r.alternatives || []).length).length;
   // Ringkasan stok, biar "paste daftar kode → langsung kelihatan mana yang
   // Ready/Indent" (cek stok bulk) gak perlu scroll baca badge satu-satu.
   // Cuma ngitung baris yang udah cocok (foundProduk) — baris not_found/error
@@ -5154,10 +5169,12 @@ function updateConvSummary() {
     : '';
   convStatus.textContent = `Selesai — ${nExact} cocok penuh, ${nDiff} kode ketemu (nama beda)`
     + (nManual ? `, ${nManual} dipilih manual` : '')
+    + (nAmbig ? `, ${nAmbig} perlu dipilih (kode produk ganda)` : '')
+    + (nVarian ? `, ${nVarian} punya varian lain` : '')
     + `, ${nNotFound} tidak ditemukan`
     + (nErr ? `, ${nErr} error/timeout (klik "Proses Ulang yang Error").` : '.')
     + stokSummary;
-  convActions.style.display = foundProduk.length ? 'block' : 'none';
+  convActions.style.display = rows.length ? 'block' : 'none'; // Copy Tabel berguna juga kalau sebagian/semua gak ketemu (baris tetap sejajar input)
   btnConvRetryErr.style.display = nErr ? 'inline-flex' : 'none';
 }
 S.updateConvSummary = updateConvSummary;

@@ -226,12 +226,17 @@ export const KONVERSIAN_MARKUP = `
     </div>
     <div class="panel-body" id="panel-body-converter" style="display:none">
       <div class="sesi-toolbar">
-        <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center">Paste kode + nama produk (dipisah tab, 1 baris = 1 produk) — dicocokkan exact ke katalog, langsung masuk clipboard</span>
+        <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center">Paste kode produk ATAU kode asli (+ nama opsional, dipisah tab; 1 baris = 1 produk) — dicocokkan exact ke katalog</span>
       </div>
       <div style="padding:10px 12px 0">
         <textarea id="conv-input" placeholder="RB999-KE921-B99-U238&#9;WSD S.
 RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;font-family:var(--mono);font-size:12px;line-height:1.5;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text);resize:vertical"></textarea>
-        <div style="display:flex;gap:8px;margin-top:8px">
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+          <select id="conv-kunci" class="conv-select" title="Kode yang dipaste itu kode apa? 'Otomatis' mencoba kode produk dulu, lalu kode asli.">
+            <option value="auto">Otomatis (kode produk / kode asli)</option>
+            <option value="kode_produk">Kode produk</option>
+            <option value="kode_asli">Kode asli</option>
+          </select>
           <button class="pr-add-clip-btn" id="btn-conv-proses" type="button"><i class="ti ti-list-search"></i> Proses &amp; Cocokkan</button>
           <button class="toggle-btn" id="btn-conv-retry-err" type="button" style="display:none"><i class="ti ti-refresh"></i> Proses Ulang yang Error</button>
           <button class="toggle-btn" id="btn-conv-clear" type="button"><i class="ti ti-eraser"></i> Bersihkan</button>
@@ -247,6 +252,14 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
                dari sini — TANPA lewat Clipboard, jadi TANPA bikin sesi
                konversi di server. Beda sama tombol sebelah yang emang commit
                ke sesi. Detail: copyConvWithImages() di search.js. -->
+          <!-- COPY TABEL (converter-bulk.js): urutan & jumlah baris = input, jadi bisa ditempel
+               di sebelah kolom asli di Sheet. Baris yang gak ketemu tetap ada & ditandai. -->
+          <select id="conv-preset" class="conv-select" title="Kolom yang disalin">
+            <option value="kdhl">Kode · Deskripsi · Harga · Link</option>
+            <option value="peta">Peta: Kode Input → Kode Produk / Kode Asli</option>
+            <option value="lengkap">Lengkap (+ AKD, stok, catatan)</option>
+          </select>
+          <button class="toggle-btn" id="btn-conv-copy-tabel" type="button" title="Salin semua baris sebagai tabel (bukan cuma yang dicentang), siap paste ke Excel/Sheet"><i class="ti ti-table-export"></i> Copy Tabel</button>
           <button class="toggle-btn" id="btn-conv-copy-gambar" type="button" title="Salin yang dicentang sebagai tabel (kode, deskripsi, qty, gambar) — siap paste ke Excel, gak bikin sesi konversi. Di Google Sheet, paste pakai Ctrl+Shift+V."><i class="ti ti-photo"></i> Copy + Gambar (buat Sheet)</button>
         </div>
       </div>

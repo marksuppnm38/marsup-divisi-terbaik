@@ -119,6 +119,8 @@ async function matchOneKode(kode, nama_input) {
   return row;
 }
 
+S.matchOneKode = matchOneKode; // jalur lama (1 RPC/baris) — dipakai converter-bulk.js sebagai fallback
+
 async function finishConvBatch(rows) {
   const foundProduk = rows.filter(r => r.produk).map(r => r.produk);
   if (foundProduk.length) {
@@ -144,10 +146,17 @@ async function processConverter() {
   S.convActions.style.display = 'none';
   S.convResultsEl.innerHTML = '';
   const parsed = lines.map(S.parseConverterLine);
-  const rows = [];
-  for (let i = 0; i < parsed.length; i++) {
-    S.convStatus.textContent = `Mencocokkan ${i + 1} / ${parsed.length} — ${parsed[i].kode}`;
-    rows.push(await matchOneKode(parsed[i].kode, parsed[i].nama_input));
+  let rows;
+  try {
+    // converter-bulk.js: 1 RPC per chunk (bukan per baris), kunci kode_produk/kode_asli,
+    // pemilih otomatis buat kode_asli dobel. Fallback ke jalur lama kalau RPC belum ada.
+    rows = await S.resolveConvRows(parsed, (done, total) => {
+      S.convStatus.textContent = `Mencocokkan ${done} / ${total}…`;
+    });
+  } catch (e) {
+    S.convStatus.textContent = 'Gagal memproses: ' + (e.message || e);
+    S.btnConvProses.disabled = false;
+    return;
   }
   await finishConvBatch(rows);
   S.btnConvProses.disabled = false;
@@ -158,10 +167,14 @@ S.btnConvRetryErr.addEventListener('click', async () => {
   const errIdxs = S.convRows.map((r, i) => r.status === 'error' ? i : -1).filter(i => i >= 0);
   if (!errIdxs.length) return;
   S.btnConvRetryErr.disabled = true;
-  for (let n = 0; n < errIdxs.length; n++) {
-    const i = errIdxs[n];
-    S.convStatus.textContent = `Mengulang ${n + 1} / ${errIdxs.length} — ${S.convRows[i].kode}`;
-    S.convRows[i] = await matchOneKode(S.convRows[i].kode, S.convRows[i].nama_input);
+  S.convStatus.textContent = `Mengulang ${errIdxs.length} baris…`;
+  try {
+    const retried = await S.resolveConvRows(errIdxs.map(i => ({ kode: S.convRows[i].kode, nama_input: S.convRows[i].nama_input })));
+    errIdxs.forEach((i, n) => { S.convRows[i] = retried[n]; });
+  } catch (e) {
+    S.convStatus.textContent = 'Gagal mengulang: ' + (e.message || e);
+    S.btnConvRetryErr.disabled = false;
+    return;
   }
   await finishConvBatch(S.convRows);
   S.btnConvRetryErr.disabled = false;
