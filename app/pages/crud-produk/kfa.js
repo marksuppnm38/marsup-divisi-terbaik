@@ -329,6 +329,20 @@ async function confirmSetKomposisi(row){
   return crudConfirm(lines.join('\n'), { title: 'Komposisi belum lengkap', okLabel: 'Tetap Tambah Set' });
 }
 
+// Ringkasan data dari sheet (payload) di bawah deskripsi baris sync: tipe, kode asli,
+// merk (UNIT), AKD, KFA -- biar jelas apa yang akan terisi otomatis setelah produk dibuat.
+function syncPayloadHtml(row){
+  const p = row.payload || {};
+  const bits = [];
+  if (row.tipe_hint) bits.push(row.tipe_hint);
+  if (p.kode_asli) bits.push('Kode asli ' + p.kode_asli);
+  if (p.unit && p.unit.merk) bits.push('Merk ' + p.unit.merk);
+  if (Array.isArray(p.akd) && p.akd.length) bits.push('AKD ' + p.akd.slice(0, 2).map(a => a.no_akd).join(', ') + (p.akd.length > 2 ? ' …' : ''));
+  if (p.kfa && p.kfa.kode) bits.push('KFA ' + p.kfa.kode);
+  if (!bits.length) return '';
+  return `<div style="margin-top:4px;font-size:11.5px;color:var(--text-muted);"><i class="ti ti-database-import"></i> Dari sheet: ${S.escapeHtml(bits.join(' · '))}</div>`;
+}
+
 async function renderSyncPage(){
   const tbody = document.getElementById('syncTableBody');
   if (!tbody) return; // user udah pindah halaman selagi query jalan
@@ -376,7 +390,7 @@ async function renderSyncPage(){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="kode-cell">${S.escapeHtml(row.kode_produk)}</td>
-      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}${syncNoteHtml(row, nameByKode, komposisiInfo)}</td>
+      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:360px;white-space:normal;">${S.escapeHtml(row.deskripsi || '—')}${syncNoteHtml(row, nameByKode, komposisiInfo)}${syncPayloadHtml(row)}</td>
       <td>${row.link ? `<a href="${S.escapeHtml(row.link)}" target="_blank" rel="noopener">${S.escapeHtml(row.link)}</a>` : '—'}</td>
       <td>${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '—'}</td>
       <td>${S.escapeHtml(row.source_sheet || '—')}</td>
@@ -396,7 +410,9 @@ async function renderSyncPage(){
         kode_produk: row.kode_produk,
         link_v6: row.link,
         nama_produk: row.deskripsi,
-        tipe: isSet ? 'SET' : undefined,
+        tipe: isSet ? 'SET' : (row.tipe_hint || undefined),
+        kode_asli: (row.payload && row.payload.kode_asli) || undefined,
+        spesifikasi: (row.payload && row.payload.spesifikasi) || undefined,
       });
     });
     tbody.appendChild(tr);

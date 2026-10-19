@@ -1651,7 +1651,7 @@ function resetForm(){
   document.getElementById('gambarInstrumenPreviewWrap').style.display = 'none';
 }
 
-// `prefill` (opsional): { kode_produk, link_v6 } -- dipakai tab "Sync dari
+// `prefill` (opsional): { kode_produk, link_v6, nama_produk, tipe, kode_asli, spesifikasi } -- dipakai tab "Sync dari
 // Sheet" buat langsung ngisi kode & link pas buka form dari baris
 // unmatched, biar gak perlu copy-paste manual. Aman dipanggil tanpa
 // argumen kayak sebelumnya (addBtn/addSetBtn's listener manggil
@@ -1676,6 +1676,15 @@ function openAdd(prefill){
   if (prefill?.kode_produk) document.getElementById('f_kode_produk').value = prefill.kode_produk;
   if (prefill?.link_v6) document.getElementById('f_link_v6').value = prefill.link_v6;
   if (prefill?.nama_produk) document.getElementById('f_nama_produk').value = prefill.nama_produk;
+  if (prefill?.spesifikasi) document.getElementById('f_spesifikasi').value = prefill.spesifikasi;
+  if (prefill?.kode_asli) {
+    document.getElementById('f_kode_asli').value = prefill.kode_asli;
+    // cekMaster() mengisi field master dari DB; kalau master belum ada, deskripsi vendor diisi dari spek sheet.
+    cekMaster(prefill.kode_asli, true).then(() => {
+      const d = document.getElementById('m_deskripsi_vendor');
+      if (prefill.spesifikasi && d && !d.value) d.value = prefill.spesifikasi;
+    });
+  }
   if (prefill?.tipe) { const ft = document.getElementById('f_tipe'); ft.value = prefill.tipe; ft.dispatchEvent(new Event('change')); }
   renderLinkV6Hint();
   document.getElementById('verifiedRow').style.display = 'none';
