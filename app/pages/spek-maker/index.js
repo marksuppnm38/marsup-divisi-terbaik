@@ -1,6 +1,7 @@
 // spek-maker page module (tampil sebagai "Document Maker"): mount(container) / unmount().
-// Tiga tab: Spesifikasi (file ini), Struktur Harga (struktur-ui.js), dan SPP --
-// Surat Permohonan Presentasi (spp-ui.js, layout PDF di spp-pdf.js).
+// Empat tab: Spesifikasi (file ini), Struktur Harga (struktur-ui.js), SPP --
+// Surat Permohonan Presentasi (spp-ui.js, layout PDF di spp-pdf.js), dan
+// Lampiran Set (lampiran-ui.js, layout PDF di lampiran-pdf.js).
 //
 // Input: kode produk (satu per baris). Per kode, halaman ini mengambil:
 //   - Kode        -> produk.kode_produk
@@ -20,6 +21,7 @@ import { SPEK_MAKER_MARKUP } from './markup.js';
 import { buildSpekPdf, loadSpekFonts, fileSafeName } from './pdf.js';
 import { mountStruktur } from './struktur-ui.js';
 import { mountSpp } from './spp-ui.js';
+import { mountLampiran } from './lampiran-ui.js';
 
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 // anon key publik, sama dengan yang sudah ada di konversian/index.js
@@ -143,6 +145,7 @@ let logosPromise = null;
 let handlers = [];
 let unmountStruktur = null;
 let unmountSpp = null;
+let unmountLampiran = null;
 
 function toast(msg, type = 'success') {
   const host = document.getElementById('smToastRoot');
@@ -481,8 +484,8 @@ function listen(target, type, fn) {
   handlers.push(() => target.removeEventListener(type, fn));
 }
 
-// ---- tab Spesifikasi / Struktur Harga / SPP ------------------------------
-const TAB_PANELS = { spek: 'smPanelSpek', struktur: 'smPanelStruktur', spp: 'smPanelSpp' };
+// ---- tab Spesifikasi / Struktur Harga / SPP / Lampiran Set ---------------
+const TAB_PANELS = { spek: 'smPanelSpek', struktur: 'smPanelStruktur', spp: 'smPanelSpp', lampiran: 'smPanelLampiran' };
 
 function switchTab(name) {
   const active = TAB_PANELS[name] ? name : 'spek';
@@ -515,6 +518,14 @@ export async function mount(container) {
   unmountSpp = mountSpp(container.querySelector('#smPanelSpp'), {
     toast, loadScript, triggerDownload,
     cfg: { JSPDF_SRC, JSPDF_SRI },
+  });
+
+  // tab Lampiran Set: daftar isi set (kode, deskripsi, qty, gambar) per SET.
+  // Loader gambar bucket, konversi PNG, dan logo dipakai bersama tab Spesifikasi.
+  unmountLampiran = mountLampiran(container.querySelector('#smPanelLampiran'), {
+    toast, loadScript, getToken, el, triggerDownload,
+    loadBucketImage, blobToPngImage, ensureLogos,
+    cfg: { SUPABASE_URL, ANON_KEY, JSPDF_SRC, JSPDF_SRI, JSZIP_SRC, JSZIP_SRI },
   });
 
   listen(container, 'click', (e) => {
@@ -565,6 +576,7 @@ export async function mount(container) {
 export function unmount() {
   if (unmountStruktur) { unmountStruktur(); unmountStruktur = null; }
   if (unmountSpp) { unmountSpp(); unmountSpp = null; }
+  if (unmountLampiran) { unmountLampiran(); unmountLampiran = null; }
   alive = false;
   runId++;
   handlers.forEach((off) => off());

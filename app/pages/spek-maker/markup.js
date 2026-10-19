@@ -12,13 +12,14 @@ export const SPEK_MAKER_MARKUP = `
     <div class="sm-col">
       <div class="page-head">
         <h1>Document Maker</h1>
-        <p>Buat dokumen PDF: lembar spesifikasi dan struktur harga dari kode produk, serta surat permohonan presentasi (SPP).</p>
+        <p>Buat dokumen PDF: lembar spesifikasi dan struktur harga dari kode produk, lampiran isi set, serta surat permohonan presentasi (SPP).</p>
       </div>
 
       <div class="sm-tabs" role="tablist" aria-label="Jenis dokumen">
         <button type="button" class="sm-tab active" role="tab" aria-selected="true" data-action="tab" data-tab="spek"><i class="ti ti-file-description" aria-hidden="true"></i> Spesifikasi</button>
         <button type="button" class="sm-tab" role="tab" aria-selected="false" data-action="tab" data-tab="struktur"><i class="ti ti-receipt-2" aria-hidden="true"></i> Struktur Harga</button>
         <button type="button" class="sm-tab" role="tab" aria-selected="false" data-action="tab" data-tab="spp"><i class="ti ti-presentation" aria-hidden="true"></i> SPP</button>
+        <button type="button" class="sm-tab" role="tab" aria-selected="false" data-action="tab" data-tab="lampiran"><i class="ti ti-list-details" aria-hidden="true"></i> Lampiran Set</button>
       </div>
 
       <div id="smPanelSpek" role="tabpanel">
@@ -72,6 +73,8 @@ export const SPEK_MAKER_MARKUP = `
       <div id="smPanelStruktur" role="tabpanel" style="display:none;"></div>
 
       <div id="smPanelSpp" role="tabpanel" style="display:none;"></div>
+
+      <div id="smPanelLampiran" role="tabpanel" style="display:none;"></div>
     </div>
   </main>
 

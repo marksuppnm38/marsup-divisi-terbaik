@@ -136,6 +136,39 @@
 }
 .sm-status { margin-right: auto; align-self: center; font-size: 12px; color: var(--text-muted); }
 
+/* Tab Lampiran Set: kartu per SET (kepala + daftar item) */
+.sm-set + .sm-set { margin-top: 20px; }
+.sm-set-head {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px; margin-bottom: -1px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--surface-2);
+}
+.sm-set-head .sm-set-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sm-set-head .sm-set-title > i { color: var(--text-muted); font-size: 16px; }
+.sm-set-head .sm-kode { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--text); }
+.sm-set-head .sm-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
+.sm-set-head .sm-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+.sm-set-head .sm-tag.ok .dot { background: var(--success-dot, var(--success)); }
+.sm-set-head .sm-tag.warn .dot { background: var(--danger-dot, var(--danger)); }
+.sm-set-head .lp-status { display: inline-flex; }
+.sm-set-head .sm-lp-controls { display: grid; grid-template-columns: 1fr 190px; gap: 8px 12px; }
+.sm-set-head .sm-row-tools { display: flex; gap: 12px; flex-wrap: wrap; }
+.sm-set-head .sm-link-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: none; background: none; padding: 2px 0;
+  font-size: 12px; font-weight: 500; font-family: inherit;
+  color: var(--text-secondary); cursor: pointer;
+}
+.sm-set-head .sm-link-btn:hover { color: var(--accent); }
+.sm-set-head .sm-link-btn.danger:hover { color: var(--danger); }
+.sm-set .sm-list { border-top-left-radius: 0; border-top-right-radius: 0; }
+.sm-set .sm-list .sm-lp-fields { display: grid; grid-template-columns: 1fr 84px; gap: 8px 12px; }
+.sm-set .sm-list .sm-link-btn:disabled { opacity: .35; cursor: not-allowed; }
+.sm-set .sm-list .sm-link-btn:disabled:hover { color: var(--text-secondary); }
+.sm-lp-empty { padding: 16px 12px; font-size: 12.5px; color: var(--text-muted); text-align: center; }
+
 /* Grid isian (Struktur Harga) */
 .sm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 12px; }
 .sm-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -145,4 +178,5 @@
   .sm-page main { padding: 24px 12px 48px; }
   .sm-preview { height: 520px; }
   .sm-actions .btn { flex: 1; justify-content: center; }
+  .sm-set-head .sm-lp-controls { grid-template-columns: 1fr; }
 }
