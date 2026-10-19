@@ -181,3 +181,110 @@ td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle
 #syncStatusBar .filter-chip.active,#syncTipeBar .filter-chip.active{background:var(--accent);border-color:var(--accent);color:#fff}
 #syncStatusBar .filter-chip.active .fc-count,#syncTipeBar .filter-chip.active .fc-count{color:#fff;opacity:.85}
 #syncStatusBar .filter-chip.active i,#syncTipeBar .filter-chip.active i{color:#fff!important}
+/* ============================================================
+   Orphan / Drift -- dipoles senada tab Sync dari Sheet
+   (hanya token tema yang sudah ada: otomatis ikut light/dark)
+   ============================================================ */
+#viewOrphan .orph-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#viewOrphan .orph-btn-group{display:inline-flex}
+#viewOrphan .orph-btn-group .btn:first-child{border-top-right-radius:0;border-bottom-right-radius:0}
+#viewOrphan .orph-btn-group .btn:last-child{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-1px}
+
+/* peringatan snapshot */
+.orph-alert{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;margin:0 0 14px;background:var(--warn-soft,#fffbeb);border:1px solid var(--warning-border,#fcd34d);border-radius:var(--radius-md);color:var(--warn-text,#92400e);font-size:12.5px;line-height:1.5}
+.orph-alert .ti{font-size:16px;margin-top:1px}
+.orph-alert code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;font-family:var(--font-mono);font-size:11px}
+
+/* kartu statistik */
+.orph-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 14px}
+.orph-stat{appearance:none;text-align:left;font:inherit;color:inherit;display:flex;flex-direction:column;gap:2px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);position:relative;overflow:hidden}
+.orph-stat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--border-strong)}
+button.orph-stat{cursor:pointer;transition:border-color .15s var(--ease),box-shadow .15s var(--ease),transform .15s var(--ease)}
+button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+.orph-stat.is-rust::before{background:var(--rust)}
+.orph-stat.is-confirmed::before{background:var(--danger,#b91c1c)}
+.orph-stat.is-pending::before{background:var(--amber)}
+.orph-stat.is-snap.is-ok::before{background:var(--teal-ok)}
+.orph-stat.is-snap.is-warn::before{background:var(--amber)}
+.orph-stat.is-snap.is-bad::before{background:var(--danger,#b91c1c)}
+.orph-stat-top{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}
+.orph-stat-top .ti{font-size:14px}
+.orph-stat-val{font-size:24px;font-weight:700;line-height:1.2;color:var(--text);font-variant-numeric:tabular-nums}
+.orph-stat-time{font-size:17px;font-weight:700}
+.orph-stat-sub{font-size:11.5px;color:var(--text-muted)}
+.orph-health{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10.5px;font-weight:700}
+.orph-health.is-ok{background:var(--teal-ok-bg);color:var(--teal-ok-text)}
+.orph-health.is-warn{background:var(--amber-bg);color:var(--amber-text)}
+.orph-health.is-bad{background:var(--danger-bg);color:var(--danger-text)}
+
+/* info yang bisa dilipat */
+.orph-info{margin:0 0 14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
+.orph-info summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)}
+.orph-info summary::-webkit-details-marker{display:none}
+.orph-info summary::after{content:'\ea61';font-family:'tabler-icons';margin-left:auto;color:var(--text-muted);transition:transform .15s var(--ease)}
+.orph-info[open] summary::after{transform:rotate(180deg)}
+.orph-info-body{padding:0 12px 12px;font-size:12.5px;line-height:1.6;color:var(--text-muted)}
+
+/* tab section (garis bawah) */
+.orph-tabs{display:flex;gap:2px;flex-wrap:wrap;margin:0 0 14px;border-bottom:1px solid var(--border)}
+.orph-tab{appearance:none;display:inline-flex;align-items:center;gap:6px;padding:9px 12px;margin-bottom:-1px;background:none;border:0;border-bottom:2px solid transparent;color:var(--text-muted);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;transition:color .12s,border-color .12s}
+.orph-tab:hover{color:var(--text)}
+.orph-tab.active{color:var(--accent-text);border-bottom-color:var(--accent);font-weight:600}
+.orph-tab-count{font-family:var(--font-mono);font-size:10px;padding:1px 7px;border-radius:20px;background:var(--surface-3);color:var(--text-secondary)}
+.orph-tab.active .orph-tab-count{background:var(--accent-soft);color:var(--accent-text)}
+.orph-tab-count.zero{opacity:.55}
+
+/* filter segmented */
+.orph-filters{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 12px}
+.orph-fgroup{display:flex;align-items:center;gap:8px}
+.orph-flabel{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted)}
+.orph-seg{display:inline-flex;padding:2px;background:var(--surface-3);border-radius:var(--radius);gap:2px}
+.orph-seg button{appearance:none;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:0;background:none;border-radius:6px;color:var(--text-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s}
+.orph-seg button:hover{color:var(--text)}
+.orph-seg button.active{background:var(--surface);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.orph-seg .fc-count{font-family:var(--font-mono);font-size:10px;opacity:.7}
+
+/* bar aksi massal */
+.orph-bulk{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;margin:0 0 12px;background:var(--accent-soft);border:1px solid var(--accent-ring);border-radius:var(--radius-md);font-size:12.5px;color:var(--accent-text)}
+.orph-bulk-actions{margin-left:auto;display:flex;gap:8px}
+
+/* tabel */
+.orph-scroll{max-height:calc(100vh - 360px);min-height:220px;overflow:auto}
+.orph-table thead th{position:sticky;top:0;z-index:2}
+.orph-table tbody tr{transition:background .1s}
+.orph-table tbody tr:hover{background:var(--surface-2)}
+.orph-table td{vertical-align:top}
+.orph-chk{width:34px;text-align:center!important}
+.orph-kode{white-space:normal;word-break:break-word;max-width:240px}
+.orph-kode-row{display:flex;align-items:center;gap:6px;margin-bottom:4px;color:var(--text)}
+.orph-copy{appearance:none;border:0;background:none;padding:2px 4px;border-radius:4px;color:var(--text-muted);cursor:pointer;opacity:0;transition:opacity .12s,background .12s}
+.orph-table tbody tr:hover .orph-copy,.orph-copy:focus-visible{opacity:1}
+.orph-copy:hover{background:var(--surface-3);color:var(--accent-text)}
+.orph-nama{max-width:440px;white-space:normal}
+.orph-nama-main{font-weight:500;line-height:1.4}
+.orph-note{font-size:11px;color:var(--text-muted);margin-top:2px}
+.orph-muted{color:var(--text-muted)}
+.orph-rename{font-size:11px;color:var(--accent);margin-top:3px}
+.orph-asal-cell{white-space:nowrap}
+.orph-asal{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted)}
+.orph-asal.is-deleted{padding:2px 9px;border-radius:20px;background:var(--rust-bg);color:var(--rust-text);font-weight:600;font-size:11px}
+.orph-when{white-space:nowrap;font-size:12px}
+
+/* indikator progres konfirmasi */
+.orph-status{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.orph-status.is-pending{color:var(--amber-text)}
+.orph-status.is-confirmed{color:var(--rust-text)}
+.orph-dots{display:inline-flex;gap:3px;vertical-align:middle}
+.orph-dots i{width:8px;height:8px;border-radius:50%;background:var(--border-strong);display:block}
+.orph-dots i.on{background:var(--amber)}
+.orph-dots.is-confirmed i.on{background:var(--rust)}
+
+/* skeleton + empty */
+.orph-skel-row{display:flex;gap:16px;align-items:center;padding:16px 14px;border-bottom:1px solid var(--border)}
+.orph-skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--surface-3) 25%,var(--surface-2) 50%,var(--surface-3) 75%);background-size:200% 100%;animation:orphShimmer 1.2s linear infinite}
+@keyframes orphShimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+.orph-empty{display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--text-muted)}
+.orph-empty .ti{font-size:30px;color:var(--teal-ok)}
+
+@media (max-width:900px){.orph-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.orph-stats{grid-template-columns:1fr}.orph-fgroup{flex-wrap:wrap}}
