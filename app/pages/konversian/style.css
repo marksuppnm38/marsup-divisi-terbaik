@@ -1516,7 +1516,7 @@
 #app-root #results .rcard-top{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:0;padding:0}
 #app-root #results .rcard-name{
   flex:1 1 200px;min-width:0;font-size:13px;font-weight:600;line-height:1.35;color:var(--text);
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;
 }
 #app-root #results .rcard-top .tipe-badge{align-self:center}
 #app-root #results .rcard-price{
