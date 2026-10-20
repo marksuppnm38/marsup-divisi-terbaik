@@ -69,8 +69,10 @@ const AUTH_CHAIN_SCRIPTS = [
 // di-set eksplisit di kode. Baru ketauan kalau file jadinya dibuka di Excel,
 // bukan dari error apapun -- exportPricelistSales() di bawah butuh header
 // bold+background biar "siap konsumsi sales" beneran, bukan cuma klaim.
+const XLSX_SRC = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+// PERF: xlsx-js-style (bundle besar) cuma dibutuhkan pas klik Download Excel /
+// Export Pricelist -> dimuat lazy lewat ensureXlsx(), TIDAK lagi nahan mount().
 const INDEPENDENT_SCRIPTS = [
-  'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js',
   '/shared/toast.js',
 ];
 
@@ -85,9 +87,16 @@ function loadScript(src) {
   });
 }
 
+let xlsxReady = null;
+function ensureXlsx() {
+  if (window.XLSX) return Promise.resolve();
+  if (!xlsxReady) xlsxReady = loadScript(XLSX_SRC).catch((e) => { xlsxReady = null; throw e; });
+  return xlsxReady;
+}
+
 let vendorReady = null;
 function ensureVendorScripts() {
-  if (window.PNMAuth && window.pnmSupabase && window.XLSX && window.PNMToast) return Promise.resolve();
+  if (window.PNMAuth && window.pnmSupabase && window.PNMToast) return Promise.resolve();
   if (!vendorReady) {
     const chain = AUTH_CHAIN_SCRIPTS.reduce(
       (p, src) => p.then(() => loadScript(src)),
@@ -127,8 +136,12 @@ function loadLink(id, href) {
 }
 
 function ensureStyle() {
+  // PERF: Google Fonts (JetBrains Mono) cuma kosmetik -> fire-and-forget,
+  // jangan nahan mount() kalau CDN-nya lambat. Sisanya tetap ditunggu.
+  const blocking = SHARED_LINKS.filter(l => l.id !== 'shared-jetbrains-mono-crud');
+  SHARED_LINKS.filter(l => l.id === 'shared-jetbrains-mono-crud').forEach(({ id, href }) => { loadLink(id, href); });
   return Promise.all([
-    ...SHARED_LINKS.map(({ id, href }) => loadLink(id, href)),
+    ...blocking.map(({ id, href }) => loadLink(id, href)),
     loadLink('page-crud-produk-style', new URL('./style.css', import.meta.url).href),
   ]);
 }
@@ -322,6 +335,7 @@ function switchView(view){
   if (crumbEl && CRUD_VIEW_LABELS[view]) crumbEl.textContent = CRUD_VIEW_LABELS[view];
   document.getElementById('addBtn').style.display = (view === 'produk') ? '' : 'none';
   document.querySelector('.view-toggle').style.display = (view === 'produk') ? '' : 'none';
+  if (view === 'produk' && !produkLoadedOnce) { produkLoadedOnce = true; loadProduk(''); refreshProdukFilterCounts(); }
   if (view === 'akd' && !akdLoadedOnce) { akdLoadedOnce = true; S.loadAkdDistinctValues(); S.loadAkd(); }
   if (view === 'kfa' && !kfaLoadedOnce) { kfaLoadedOnce = true; S.loadKfa(); S.refreshKfaFilterCounts(); }
   // 'sync' RELOAD tiap kali masuk (bukan sekali doang kayak akd/kfa) --
@@ -340,6 +354,7 @@ function switchView(view){
     loadSetList();
   }
 }
+let produkLoadedOnce = false;
 let akdLoadedOnce = false;
 let kfaLoadedOnce = false;
 _switchView = switchView; // expose to the real top-level setSubroute() far below
@@ -645,6 +660,18 @@ async function ensureProdukHargaSet(){
   }
   produkHargaIdSet = new Set(data || []);
 }
+// PERF: dulu loadProduk()/loadSetList() nunggu SELURUH set produk_id berharga
+// (ribuan UUID) diunduh dulu sebelum tabel bisa tampil. Sekarang cukup tanya
+// DB untuk ID yang ada di halaman (<= 30) lewat RPC get_produk_harga_exist.
+// Kalau RPC belum dimigrasi -> fallback ke cara lama (set global).
+async function fetchHargaExistForIds(ids){
+  if (!ids.length) return new Set();
+  const { data, error } = await sb.rpc('get_produk_harga_exist', { p_ids: ids });
+  if (!error && Array.isArray(data)) return new Set(data);
+  console.warn('get_produk_harga_exist gagal, fallback ke set global:', error && error.message);
+  await ensureProdukHargaSet();
+  return produkHargaIdSet;
+}
 async function ensureVerifiedSet(){
   if (produkVerifiedIdSet) return;
   const { data, error } = await sb.rpc('get_verified_produk_ids');
@@ -876,8 +903,7 @@ async function loadProduk(q, page){
   // case (see ensureProdukHargaSet()'s comment above, get_produk_harga_ids
   // RPC) -- just never applied here. Reusing that same cached, RPC-backed
   // Set instead of a fresh row-limited query fixes it the same way.
-  await ensureProdukHargaSet();
-  const hargaExistIds = produkHargaIdSet;
+  const hargaExistIds = await fetchHargaExistForIds(rows.map(r => r.id));
   const ONE_DAY = 24 * 60 * 60 * 1000;
   function attentionMeta(p){
     const noHarga = !hargaExistIds.has(p.id);
@@ -1191,6 +1217,8 @@ async function fetchAkdNoMap(produkIds){
 // freeze header, autofilter, status berwarna). Semua pakai xlsx-js-style yang sama
 // dengan exportPricelistSales.
 async function exportProdukToExcel(){
+  try { await ensureXlsx(); } catch (e) { showToast('Gagal memuat library Excel: ' + e.message, true); return; }
+  await ensureVerifiedSet(); // kolom "Verified" di Excel baca produkVerifiedIdSet
   const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
   if (needsHarga) await ensureProdukHargaSet();
 
@@ -1338,6 +1366,7 @@ document.getElementById('produkExportBtn').addEventListener('click', exportProdu
 // - Header bold+warna & kolom harga format Rp (lihat komentar xlsx-js-style di atas
 //   file -- 'xlsx' community biasa DIAM-DIAM buang style ini pas nulis file).
 async function exportPricelistSales(){
+  try { await ensureXlsx(); } catch (e) { showToast('Gagal memuat library Excel: ' + e.message, true); return; }
   const rowsToExport = await getRowsToExport();
   if (rowsToExport === null) return;
   if (!rowsToExport.length) { showToast('Tidak ada data untuk diexport', true); return; }
@@ -1450,6 +1479,15 @@ document.getElementById('produkExportPricelistBtn').addEventListener('click', ex
 
 // ---- Angka di tiap chip (total per kategori, independen dari search/pagination) ----
 async function refreshProdukFilterCounts(){
+  // PERF: 1 RPC (1 scan) gantiin 6x count:'exact'. Fallback ke versi lama kalau RPC belum ada.
+  const { data, error } = await sb.rpc('get_produk_filter_counts');
+  if (error || !data) { console.warn('get_produk_filter_counts gagal, fallback:', error && error.message); return refreshProdukFilterCountsLegacy(); }
+  ['all','belum_diajukan','belum_firm','di_luar_cakupan','terhubung','disetujui_tanpa_link','verified'].forEach(key => {
+    const el = document.getElementById('fc-' + key);
+    if (el) el.textContent = data[key] == null ? '' : ` · ${data[key]}`;
+  });
+}
+async function refreshProdukFilterCountsLegacy(){
   const defs = [
     ['all', q => q],
     ['belum_diajukan', q => q.eq('status_akd', 'belum_diajukan')],
@@ -1473,9 +1511,8 @@ async function refreshProdukFilterCounts(){
 
 // debounce search dari topbar? -> topbar sekarang cuma trigger command palette,
 // browsing halaman utama pakai default list (tanpa query) + refresh tiap buka.
-loadProduk('');
-refreshProdukFilterCounts();
-loadProdukDistinctValues();
+// PERF: load awal Produk DIPINDAH ke switchView() (sekali per mount, hanya
+// kalau tab Produk yang dibuka) -- dulu dipanggil 2x (di sini & di akhir mount()).
 
 // ================================================================
 // COMMAND PALETTE (⌘K) — search pakai RPC yang sama
@@ -1730,10 +1767,12 @@ async function openEdit(produkId){
   document.getElementById('akdSealHolder').innerHTML = sealHtml(p.status_akd);
   modalSub.textContent = 'Kode: ' + (p.kode_produk || '—');
 
-  if (p.kode_asli) await cekMaster(p.kode_asli, true);
-  await loadHarga(produkId);
-  await loadMedia(produkId);
-  await loadAkdLinks(produkId, p.tipe);
+  await Promise.all([
+    p.kode_asli ? cekMaster(p.kode_asli, true) : null,
+    loadHarga(produkId),
+    loadMedia(produkId),
+    loadAkdLinks(produkId, p.tipe),
+  ]);
 }
 
 // ---- Info KFA read-only di Info Dasar (source of truth = produk_kfa) ----
@@ -2367,8 +2406,7 @@ async function loadSetList(page){
   // vulnerable to PostgREST's default ~1000-row cap once enough sets on a
   // page have real price history. Switched to the same cached, RPC-backed
   // produkHargaIdSet.
-  await ensureProdukHargaSet();
-  const hargaExistIds = produkHargaIdSet;
+  const hargaExistIds = await fetchHargaExistForIds(data.map(s => s.set_id));
   const ONE_DAY = 24 * 60 * 60 * 1000;
 
   wrap.innerHTML = '';
@@ -2401,29 +2439,28 @@ async function openSetDetail(setId, kodeProduk){
   document.getElementById('setListWrap').style.display = 'none';
   document.getElementById('setDetailWrap').style.display = 'block';
   switchSetTab('composition');
-  await refreshSetHeader();
-  await loadComposition();
-  await loadSetHarga();
-  await loadSetAkd();
-  await loadSetHistory();
+  await Promise.all([refreshSetHeader(), loadComposition(), loadSetHarga(), loadSetAkd(), loadSetHistory()]);
 }
 
 async function refreshSetHeader(){
-  const { data: p } = await sb.from('produk').select('*').eq('id', currentSetId).single();
+  // PERF: 3 query ini saling independen -> jalan paralel.
+  const [{ data: p }, { data: ring }, { data: hargaRow }] = await Promise.all([
+    sb.from('produk').select('*').eq('id', currentSetId).single(),
+    sb.from('produk_set_ringkasan').select('*').eq('set_id', currentSetId).maybeSingle(),
+    sb.from('produk_harga').select('harga, jenis, tahun').eq('produk_id', currentSetId)
+      .eq('jenis', 'EKATALOG').order('tahun', { ascending: false }).limit(1).maybeSingle(),
+  ]);
   if (!p) return;
   document.getElementById('setDetailNama').textContent = p.nama_produk || p.kode_produk;
   document.getElementById('setDetailKode').textContent = p.kode_produk;
   document.getElementById('setDetailSeal').innerHTML = sealHtml(p.status_akd);
 
-  const { data: ring } = await sb.from('produk_set_ringkasan').select('*').eq('set_id', currentSetId).maybeSingle();
   document.getElementById('setDetailJumlahItem').textContent = ring?.jumlah_jenis_item || 0;
   document.getElementById('setDetailQty').textContent = ring?.total_qty || 0;
 
   // EKATALOG adalah source of truth harga -- SWASTA & UPLOAD cuma hasil rumus turunan
   // (lihat upsertHargaDariEkat), jadi subtitle set harus selalu ambil baris EKATALOG,
   // bukan baris pertama apa pun yang kebetulan muncul duluan di urutan tahun.
-  const { data: hargaRow } = await sb.from('produk_harga').select('harga, jenis, tahun').eq('produk_id', currentSetId)
-    .eq('jenis', 'EKATALOG').order('tahun', { ascending: false }).limit(1).maybeSingle();
   document.getElementById('setDetailHarga').textContent = hargaRow ? `Rp ${Number(hargaRow.harga).toLocaleString('id-ID')} (${hargaRow.jenis} ${hargaRow.tahun})` : 'Belum ada harga';
 }
 
@@ -3105,8 +3142,7 @@ deleteBtn.addEventListener('click', async () => {
   // specifically to land after every `let`/`const` this depends on has
   // executed. Still fires synchronously within this same mount() call,
   // same as before.
-  loadProduk();
-  refreshProdukFilterCounts();
+  loadProdukDistinctValues(); // 1 RPC kecil, aman dipanggil dari tab manapun
   handleNavParamsIfAny();
 
   // Initial view: whatever sub-route the URL had when this page first
