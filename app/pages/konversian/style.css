@@ -488,6 +488,15 @@
 }
 #app-root .kb-picker-bridge:hover{background:var(--surface)}
 
+/* Picker: aksi massal (Centang yang tampil) + petunjuk shift-klik */
+#app-root .kb-picker-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:6px}
+#app-root .kb-picker-tool{
+  padding:4px 9px;font-size:11px;font-weight:600;color:var(--accent);background:transparent;
+  border:1px solid var(--border-strong);border-radius:6px;cursor:pointer;font-family:inherit;
+}
+#app-root .kb-picker-tool:hover{background:var(--surface)}
+#app-root .kb-picker-tip{font-size:10.5px;color:var(--text-muted);margin-left:auto}
+
 /* Footer: Export/Drive/Record/Selesaikan. This is where hierarchy matters
    most — Primary (Record) > Secondary (Export/Drive) > Tertiary
    (Selesaikan Sesi, Hapus semua). Remove the boxed border-top and give it

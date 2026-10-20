@@ -112,6 +112,7 @@ import { installSearch } from './search.js';
 import { installConverterBulk } from './converter-bulk.js';
 import { installDictionary } from './dictionary.js';
 import { installSetMendekati } from './set-mendekati.js';
+import { installShiftSelect } from './shift-select.js';
 import { installProject } from './project.js';
 import { installAutoRecord } from './auto-record.js';
 import { installPermintaanRs } from './permintaan-rs.js';
@@ -985,6 +986,7 @@ export async function mount(container, initialSub) {
   // sph-module.js — sph-module.js baca fungsi/variabel dari konversian.js
   // lewat shared scope, lihat komentar di kepala sph-module.js sendiri). ──
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-10-20: SHIFT-SELECT (shift-select.js baru): Shift+klik pilih rentang di .conv-check / picker Kebutuhan RS / .ek-cb Riwayat, + tombol "Centang yang tampil" di picker (dictionary.js: clipboardPickerHtml). Di file ini cuma: import+installShiftSelect(S) dan S.setKlikEkatMany (jalur batch buat ek-cb, karena toggleKlikEkat nge-refresh semua checkbox tiap panggilan). Logic centang lama TIDAK diubah — Claude
 // 2026-10-13: AUTO-RECORD + "Perlu tindakan" (auto-record.js): Record tahap database dibuat otomatis saat Export / Record SPH / sesi mandek ditutup sweep (cuma kalau sesi belum punya Record; sumber='auto_*'), Sheet tetap 1 ketukan manual. Sweep sekarang juga jalan saat app dibuka (sweepOnOpen). "Selesaikan Sesi" SENGAJA tidak auto-record. Perlu migration-auto-record.sql — Claude
 // 2026-10-12: FITUR BARU tab "Project" (project.js) — ngelompokin beberapa konversi satu instansi + catat item yang di-klik di e-Kat di level project, asal klik ditebak dari bukti (tanpa primary key). Perubahan di file ini cuma: import+installProject(S), subtab 'project' di switchSubTab/SUBTAB_LABELS, ref S.subtabProject/S.panelBodyProject. Perlu migration-project-konversi.sql dulu (tabel konversi_project, konversi_project_klik, kolom sesi_konversi.project_id) — Claude
 // 2026-09-25: AUDIT — badge jumlah sesi aktif (S.sesiBadge) diganti dari poll setInterval 30 detik ke channel Realtime (realtime.js: initSesiCountLive/handleSesiCountChange, channel 'konv-sesi-count', TIDAK difilter per sesi karena butuh total lintas tim) + resync REST tiap 5 menit sebagai fallback. Aman dari bug DELETE postgres_changes yang sudah didokumentasikan di file ini karena sesi 'berjalan' cuma pernah di-UPDATE (bukan di-DELETE) sampai statusnya 'selesai'. Bridge unmount() ikut berubah: heartbeatTimer -> sesiCountCleanup — Claude
@@ -3795,6 +3797,14 @@ function setKlikEkatAll(sesiId, kodes, card) {
   refreshEkatUI(card); renderRiwayatSummary(S.riwayatDataCache);
   persistKlikEkat(sesiId, card);
 }
+// Tambah/cabut banyak kode sekaligus (dipakai shift-select.js) — lewat setKlikEkatAll biar
+// bersih-bersih qty override + autosave-nya tetap satu jalur.
+function setKlikEkatMany(sesiId, kodes, on, card) {
+  const cur = ekatSelected(sesiId);
+  kodes.forEach(k => { if (on) cur.add(k); else cur.delete(k); });
+  setKlikEkatAll(sesiId, [...cur], card);
+}
+S.setKlikEkatMany = setKlikEkatMany;
 // Edit qty yang di-klik untuk satu item (event 'change' = Enter/blur). Angka kosong/<1
 // dianggap batal -> balik ke nilai sebelumnya. Sama dengan qty konversi -> override dihapus.
 function setKlikEkatQty(sesiId, kode, raw, card) {
@@ -5308,6 +5318,7 @@ S.convManualSearch = convManualSearch;
   installPermintaanRs(S);
   installDictionary(S);
   installSetMendekati(S);
+  installShiftSelect(S); // Shift+klik rentang + Centang yang tampil (conv-check, picker Kebutuhan RS, ek-cb Riwayat)
   installProject(S);
   installAutoRecord(S);
   installSphLazyStub(S);

@@ -170,6 +170,11 @@ function clipboardPickerHtml(itemId, matchedItems) {
     <div class="kb-alloc-hint${hint.cls}" data-alloc-hint="${itemId}" style="${hint.text ? '' : 'display:none'}">${S.escapeHtmlAttr(hint.text)}</div>
     <input type="text" class="kb-picker-filter" data-filter-for="${itemId}"
       placeholder="Saring dari ${S.clipboard.length} produk yang udah kepake di sesi ini…" ${S.clipboard.length ? '' : 'disabled'}>
+    <div class="kb-picker-tools" style="${S.clipboard.length ? '' : 'display:none'}">
+      <button type="button" class="kb-picker-tool" data-picker-selvis="${itemId}" data-mode="on" title="Centang semua baris yang lagi kelihatan (ikut hasil saring)"><i class="ti ti-checks"></i> Centang yang tampil</button>
+      <button type="button" class="kb-picker-tool" data-picker-selvis="${itemId}" data-mode="off" title="Hapus centang baris yang lagi kelihatan">Kosongkan yang tampil</button>
+      <span class="kb-picker-tip">Shift+klik = pilih rentang</span>
+    </div>
     <div class="kb-picker-list" data-picker-list="${itemId}">${rows}</div>
     <div class="kb-picker-empty" data-picker-empty="${itemId}" style="${S.clipboard.length ? 'display:none' : ''}">
       ${S.clipboard.length ? 'Gak ada yang cocok di pool sesi ini.' : 'Belum ada produk yang kepake di sesi ini.'}
