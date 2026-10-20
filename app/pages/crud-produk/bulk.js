@@ -8,6 +8,19 @@
 import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6 } from './ui-utils.js';
 
 export function installBulk(S) {
+// Ambil produk by kode_produk, di-chunk 200 + paralel: .in() dengan ribuan kode di
+// satu request bikin URL kepanjangan (gagal), dan ditambah batas 1000 baris PostgREST.
+async function selectProdukByKodes(cols, kodes){
+  const jobs = [];
+  for (let i = 0; i < kodes.length; i += 200) {
+    jobs.push(S.sb.from('produk').select(cols).in('kode_produk', kodes.slice(i, i + 200)));
+  }
+  const res = await Promise.all(jobs);
+  const bad = res.find(r => r.error);
+  if (bad) return { data: null, error: bad.error };
+  return { data: res.flatMap(r => r.data || []), error: null };
+}
+
 // ================================================================
 // BULK EDIT
 // ================================================================
@@ -95,7 +108,7 @@ document.getElementById('bulkHargaPreviewBtn').addEventListener('click', async (
   btn.innerHTML = `<span class="spinner"></span> Memeriksa ${lines.length} baris...`;
   try {
     const kodeSet = [...new Set(lines.map(l => l[0]).filter(Boolean))];
-    const { data: produkRows, error } = await S.sb.from('produk').select('id, kode_produk, nama_produk').in('kode_produk', kodeSet);
+    const { data: produkRows, error } = await selectProdukByKodes('id, kode_produk, nama_produk', kodeSet);
     if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
     const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
 
@@ -192,7 +205,7 @@ document.getElementById('bulkLinkPreviewBtn').addEventListener('click', async ()
   btn.innerHTML = `<span class="spinner"></span> Memeriksa ${lines.length} baris...`;
   try {
     const kodeSet = [...new Set(lines.map(l => l[0]).filter(Boolean))];
-    const { data: produkRows, error } = await S.sb.from('produk').select('id, kode_produk, nama_produk, link_v6').in('kode_produk', kodeSet);
+    const { data: produkRows, error } = await selectProdukByKodes('id, kode_produk, nama_produk, link_v6', kodeSet);
     if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
     const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
 

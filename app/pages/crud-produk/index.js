@@ -1551,17 +1551,23 @@ cmdkKeydownHandler = e => {
 };
 document.addEventListener('keydown', cmdkKeydownHandler);
 
+let cmdkSeq = 0;
 cmdkInput.addEventListener('input', () => {
   clearTimeout(cmdkTimer);
   const q = cmdkInput.value.trim();
+  cmdkSeq++; // bikin respons RPC yang lebih lama (lebih lambat) gak nimpa hasil yang lebih baru
   if (!q) { cmdkList.innerHTML = '<div class="cmdk-empty">Ketik untuk mencari produk...</div>'; cmdkResults = []; return; }
+  // PERF: RPC mengabaikan token < 2 karakter tapi tetap kerja keras (800 kandidat) lalu balikin kosong.
+  if (q.length < 2) { cmdkList.innerHTML = '<div class="cmdk-empty">Ketik minimal 2 karakter...</div>'; cmdkResults = []; return; }
+  const mySeq = cmdkSeq;
   cmdkTimer = setTimeout(async () => {
     const { data, error } = await sb.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
+    if (mySeq !== cmdkSeq) return;
     if (error) { cmdkList.innerHTML = `<div class="cmdk-empty">Gagal mencari: ${escapeHtml(error.message)}</div>`; return; }
     cmdkResults = (data || []).slice(0, 10);
     cmdkActiveIdx = cmdkResults.length ? 0 : -1;
     renderCmdkList();
-  }, 220);
+  }, 300);
 });
 
 function renderCmdkList(){
@@ -2396,10 +2402,31 @@ async function loadSetList(page){
   wrap.innerHTML = '<div style="color:var(--text-muted);padding:14px;">Memuat...</div>';
   const from = (setListPage - 1) * SET_LIST_PAGE_SIZE;
   const to = from + SET_LIST_PAGE_SIZE - 1;
-  const { data, error, count } = await sb.from('produk_set_ringkasan')
-    .select('*', { count: 'exact' })
-    .order('kode_produk')
-    .range(from, to);
+  // PERF: view produk_set_ringkasan menghitung agregat SEMUA set dulu (~1,3 dtk, ~14 rb lookup
+  // ke produk) baru di-LIMIT 30. Sekarang: ambil 30 id set halaman ini dari tabel produk (indeks
+  // tipe), lalu minta view HANYA untuk id itu (filter set_id di-push ke dalam agregat). Kalau
+  // jalur cepat gagal, jatuh ke query lama.
+  let data = null, error = null, count = 0;
+  const idRes = await sb.from('produk').select('id', { count: 'exact' })
+    .eq('tipe', 'SET').order('kode_produk').range(from, to);
+  if (!idRes.error) {
+    const ids = (idRes.data || []).map(r => r.id);
+    if (!ids.length) { data = []; count = idRes.count || 0; }
+    else {
+      const sumRes = await sb.from('produk_set_ringkasan').select('*').in('set_id', ids);
+      if (!sumRes.error) {
+        const byId = new Map((sumRes.data || []).map(r => [r.set_id, r]));
+        data = ids.map(id => byId.get(id)).filter(Boolean);
+        count = idRes.count || 0;
+      }
+    }
+  }
+  if (data === null) {
+    ({ data, error, count } = await sb.from('produk_set_ringkasan')
+      .select('*', { count: 'exact' })
+      .order('kode_produk')
+      .range(from, to));
+  }
   if (error) { wrap.innerHTML = `<div style="color:var(--rust);padding:14px;">Gagal memuat: ${escapeHtml(error.message)}</div>`; return; }
   const total = count || 0;
   document.getElementById('setListCount').textContent = total + ' set produk';

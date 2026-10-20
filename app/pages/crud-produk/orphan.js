@@ -40,10 +40,15 @@ export function installOrphan(S) {
     return { data: all };
   }
 
-  async function load() {
+  // PERF: tiap view di sini ~1,4 dtk per eksekusi (produk di-seq-scan + subplan per baris) dan
+  // fetchAll() mengeksekusinya ulang untuk SETIAP halaman 1000 baris. Data ini cuma berubah saat
+  // manifest sync baru masuk (run_id baru) -> kalau run_id sama dengan yang sudah dimuat, pakai
+  // data di memori. Tombol Refresh (force=true) selalu muat ulang.
+  async function load(force) {
     const body = $('orphanBody');
     if (!body) return;
     st.sel.clear();
+    const cachedRunId = st.loadedRunId;
     body.innerHTML = '<div class="table-card">' + Array.from({ length: 8 }, () =>
       '<div class="orph-skel-row"><span class="orph-skel" style="width:110px"></span><span class="orph-skel" style="flex:1"></span><span class="orph-skel" style="width:90px"></span></div>').join('') + '</div>';
     const runRes = await S.sb.from('sync_manifest_run').select('run_id, finished_at, status, note')
@@ -56,11 +61,13 @@ export function installOrphan(S) {
     }
     st.missingBackend = false;
     st.run = (runRes.data || [])[0] || null;
+    if (force !== true && cachedRunId != null && st.run && st.run.run_id === cachedRunId) { render(); return; }
     const keys = Object.keys(SOURCES);
     const results = await Promise.all(keys.map((k) => fetchAll(SOURCES[k])));
     keys.forEach((k, i) => { st.data[k] = results[i].error ? [] : results[i].data; });
     const firstErr = results.find((r) => r.error);
     if (firstErr) showToast('Sebagian data gagal dimuat: ' + firstErr.error.message, true);
+    st.loadedRunId = (!firstErr && st.run) ? st.run.run_id : null; // jangan di-cache kalau ada yang gagal
     render();
   }
 
@@ -310,7 +317,7 @@ export function installOrphan(S) {
     });
     let deb = null;
     $('orphanSearchInput').addEventListener('input', (e) => { clearTimeout(deb); deb = setTimeout(() => { st.q = e.target.value; st.page = 1; render(); }, 250); });
-    $('orphanRefreshBtn').addEventListener('click', load);
+    $('orphanRefreshBtn').addEventListener('click', () => load(true));
     $('orphanCopyBtn').addEventListener('click', () => copyKodes(false));
     $('orphanCsvBtn').addEventListener('click', () => downloadCsv(false));
     $('orphanBulkCopy').addEventListener('click', () => copyKodes(true));
@@ -318,5 +325,5 @@ export function installOrphan(S) {
     $('orphanBulkClear').addEventListener('click', () => { st.sel.clear(); render(); });
   })();
 
-  S.loadOrphan = load;
+  S.loadOrphan = () => load(false);
 }

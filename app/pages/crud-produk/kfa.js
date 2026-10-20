@@ -271,15 +271,22 @@ if (syncSearchEl) {
 // Ambil semua baris tabel dengan paging 1000-an (PostgREST default max 1000 baris/request,
 // tanpa ini daftar sync yang >1000 kepotong diam-diam).
 async function fetchAllSyncRows(){
-  const all = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await S.sb.from('sync_unmatched_produk').select('*')
-      .order('last_seen_at', { ascending: false }).order('kode_produk').range(from, from + 999);
-    if (error) return { error };
-    all.push(...(data || []));
-    if (!data || data.length < 1000) break;
-  }
-  return { data: all };
+  // PERF: halaman pertama minta count exact, sisa halaman (kalau ada) diambil PARALEL
+  // -- dulu 1 halaman per round trip, berurutan.
+  const PAGE = 1000;
+  const base = () => S.sb.from('sync_unmatched_produk').select('*', { count: 'exact' })
+    .order('last_seen_at', { ascending: false }).order('kode_produk');
+  const first = await base().range(0, PAGE - 1);
+  if (first.error) return { error: first.error };
+  const firstRows = first.data || [];
+  const total = first.count ?? firstRows.length;
+  if (firstRows.length < PAGE || total <= PAGE) return { data: firstRows };
+  const jobs = [];
+  for (let from = PAGE; from < total; from += PAGE) jobs.push(base().range(from, from + PAGE - 1));
+  const rest = await Promise.all(jobs);
+  const bad = rest.find(r => r.error);
+  if (bad) return { error: bad.error };
+  return { data: firstRows.concat(...rest.map(r => r.data || [])) };
 }
 
 // Map kode_produk -> tipe untuk kode yang SUDAH ada di tabel produk (di-chunk biar URL .in() gak kepanjangan).
@@ -287,11 +294,14 @@ async function fetchAllSyncRows(){
 async function fetchProdukTipeMap(kodes){
   const map = new Map();
   const uniq = [...new Set(kodes.filter(Boolean))];
+  // PERF: chunk dijalankan paralel (dulu berurutan, 1 round trip per 200 kode).
+  const jobs = [];
   for (let i = 0; i < uniq.length; i += 200) {
-    const { data, error } = await S.sb.from('produk').select('kode_produk, tipe').in('kode_produk', uniq.slice(i, i + 200));
-    if (error) return null;
-    (data || []).forEach(p => map.set(p.kode_produk, p.tipe));
+    jobs.push(S.sb.from('produk').select('kode_produk, tipe').in('kode_produk', uniq.slice(i, i + 200)));
   }
+  const res = await Promise.all(jobs);
+  if (res.some(r => r.error)) return null;
+  res.forEach(r => (r.data || []).forEach(p => map.set(p.kode_produk, p.tipe)));
   return map;
 }
 
@@ -802,13 +812,15 @@ async function loadSyncUnmatched(){
   let data = rawData || [];
   if (data.length) {
     const sudahAdaSet = new Set();
-    let cekOk = true;
+    // PERF: cek keberadaan per-chunk dijalankan paralel (dulu berurutan).
+    const cekJobs = [];
     for (let i = 0; i < data.length; i += 200) {
       const chunk = data.slice(i, i + 200).map(r => r.kode_produk);
-      const { data: sudahAda, error: cekErr } = await S.sb.from('produk').select('kode_produk').in('kode_produk', chunk);
-      if (cekErr) { cekOk = false; break; }
-      (sudahAda || []).forEach(p => sudahAdaSet.add(p.kode_produk));
+      cekJobs.push(S.sb.from('produk').select('kode_produk').in('kode_produk', chunk));
     }
+    const cekRes = await Promise.all(cekJobs);
+    const cekOk = !cekRes.some(r => r.error);
+    if (cekOk) cekRes.forEach(r => (r.data || []).forEach(p => sudahAdaSet.add(p.kode_produk)));
     if (cekOk && sudahAdaSet.size) {
       data = data.filter(r => !sudahAdaSet.has(r.kode_produk));
       const del = Array.from(sudahAdaSet);
