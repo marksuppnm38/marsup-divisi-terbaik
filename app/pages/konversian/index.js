@@ -2648,61 +2648,156 @@ const clipBudget = document.getElementById('clip-budget');
 S.clipBudget = clipBudget;
 
 // ══════════════════════════════════════════
-// RESIZE PANEL CLIPBOARD: drag manual lewat handle (pointer events, mouse+touch),
-// dobel klik buat reset cepat ke lebar Normal. Lebar disimpan di localStorage
-// per browser, jadi tiap orang bisa atur sesuai layar masing-masing dan gak
-// ke-reset tiap refresh.
+// RESIZE PANEL CLIPBOARD — responsif terhadap layar, bukan angka tetap.
+//
+// Prinsip:
+//  1. "Lebar yang DIMAU user" (clipPreferred, disimpan) dipisah dari "lebar yang
+//     DIPAKAI sekarang" (hasil clamp ke ruang yang ada). Jendela dikecilin lalu
+//     dibesarin lagi → preferensi user balik sendiri, gak ke-overwrite clamp.
+//  2. Panel pencarian dijaga minimal CLIP_SEARCH_MIN px — clipboard gak boleh
+//     melebar sampai area cari (alur utama) kepepet. Laptop 1366px ngerasain ini.
+//  3. Default mengikuti viewport (28%, 360–460px), bukan 340px fixed.
+//  4. Tiap perubahan lebar menulis data-clip-size (sm/md/lg) di #app-root, supaya
+//     CSS bisa ngatur isi panel berdasarkan LEBAR PANEL, bukan lebar layar
+//     (media query layar gak tau panelnya lagi diseret kecil/besar).
+//  5. Selama drag: transisi width dimatiin (kalau nggak, panel "ngejar" kursor
+//     250ms) + kelas clip-resizing buat cursor/user-select.
+//  6. Keyboard: handle bisa difokus, ←/→ geser 16px, Home = reset (a11y + WCAG 2.1.1).
+//  Dobel klik handle = reset ke default responsif (hapus preferensi tersimpan).
 // ══════════════════════════════════════════
 const CLIP_WIDTH_KEY = 'pnm_clip_width';
-const CLIP_WIDTH_MIN = 300;
-const CLIP_WIDTH_MAX = 640;
-const CLIP_WIDTH_DEFAULT = 340;
+const CLIP_WIDTH_MIN = 320;
+const CLIP_WIDTH_HARD_MAX = 720;
+const CLIP_SEARCH_MIN = 520;
+const CLIP_KEY_STEP = 16;
 const clipResizeHandle = document.getElementById('clip-resize-handle');
+const clipWorkspaceEl = document.getElementById('workspace');
+const clipRootEl = document.getElementById('app-root');
 
-function setClipWidth(px, persist = true) {
-  const clamped = Math.min(CLIP_WIDTH_MAX, Math.max(CLIP_WIDTH_MIN, Math.round(px)));
-  document.documentElement.style.setProperty('--clip-width', clamped + 'px');
-  if (persist) localStorage.setItem(CLIP_WIDTH_KEY, String(clamped));
-  return clamped;
-}
-
-(function initClipWidth() {
-  const saved = parseInt(localStorage.getItem(CLIP_WIDTH_KEY), 10);
-  setClipWidth(!isNaN(saved) ? saved : CLIP_WIDTH_DEFAULT, false);
+let clipPreferred = (() => {
+  const v = parseInt(localStorage.getItem(CLIP_WIDTH_KEY), 10);
+  return Number.isFinite(v) ? v : null;
 })();
 
-// Drag manual lewat resize handle. Panel clipboard ada di sisi kanan, jadi
-// menyeret handle ke kiri (dx negatif) memperlebar panel — width baru dihitung
-// dari jarak kursor ke tepi kanan layar (bukan cuma delta X saja), supaya tetap
-// akurat walau resize dimulai/dilepas di titik mana pun.
-let clipDragPointerId = null;
+function clipDefaultWidth() {
+  return Math.round(Math.min(460, Math.max(360, window.innerWidth * 0.28)));
+}
+function clipWorkspaceWidth() {
+  const w = clipWorkspaceEl ? clipWorkspaceEl.getBoundingClientRect().width : 0;
+  return w || window.innerWidth;
+}
+function clipMaxWidth() {
+  return Math.max(CLIP_WIDTH_MIN, Math.min(CLIP_WIDTH_HARD_MAX, clipWorkspaceWidth() - CLIP_SEARCH_MIN));
+}
+function clampClipWidth(px) {
+  return Math.min(clipMaxWidth(), Math.max(CLIP_WIDTH_MIN, Math.round(px)));
+}
+function clipSizeBucket(w) { return w < 380 ? 'sm' : w < 480 ? 'md' : 'lg'; }
+
+// Tulis lebar ke CSS var + atribut turunan. TIDAK menyentuh preferensi tersimpan.
+function paintClipWidth(px) {
+  const w = clampClipWidth(px);
+  document.documentElement.style.setProperty('--clip-width', w + 'px');
+  if (clipRootEl) clipRootEl.dataset.clipSize = clipSizeBucket(w);
+  if (clipResizeHandle) {
+    clipResizeHandle.setAttribute('aria-valuenow', String(w));
+    clipResizeHandle.setAttribute('aria-valuemin', String(CLIP_WIDTH_MIN));
+    clipResizeHandle.setAttribute('aria-valuemax', String(clipMaxWidth()));
+  }
+  return w;
+}
+// Terapkan preferensi user (atau default responsif) ke ruang yang ada sekarang.
+function applyClipLayout() { return paintClipWidth(clipPreferred ?? clipDefaultWidth()); }
+// Dipakai drag/keyboard: ini yang MENGUBAH preferensi (persist=true di akhir gesture).
+function setClipWidth(px, persist = true) {
+  const w = paintClipWidth(px);
+  if (persist) { clipPreferred = w; localStorage.setItem(CLIP_WIDTH_KEY, String(w)); }
+  return w;
+}
+function resetClipWidth() {
+  clipPreferred = null;
+  localStorage.removeItem(CLIP_WIDTH_KEY);
+  applyClipLayout();
+}
+
+if (clipResizeHandle) {
+  clipResizeHandle.setAttribute('role', 'separator');
+  clipResizeHandle.setAttribute('aria-orientation', 'vertical');
+  clipResizeHandle.setAttribute('aria-label', 'Ubah lebar clipboard');
+  clipResizeHandle.setAttribute('tabindex', '0');
+}
+applyClipLayout();
+
+let clipDragPointerId = null; // dideklarasi sebelum dipakai scheduleClipLayout (hindari TDZ)
+// Re-clamp tiap ruang berubah: resize jendela DAN sidebar ciut/buka (yang gak
+// memicu window resize). rAF-throttled; dilepas di unmount() lewat _globalOffs.
+let clipLayoutRaf = 0;
+const scheduleClipLayout = () => {
+  if (clipLayoutRaf) return;
+  clipLayoutRaf = requestAnimationFrame(() => { clipLayoutRaf = 0; if (clipDragPointerId === null) applyClipLayout(); });
+};
+S.onGlobal(window, 'resize', scheduleClipLayout);
+if (clipWorkspaceEl && typeof ResizeObserver === 'function') {
+  const clipRo = new ResizeObserver(scheduleClipLayout);
+  clipRo.observe(clipWorkspaceEl);
+  _globalOffs.push(() => { try { clipRo.disconnect(); } catch {} if (clipLayoutRaf) cancelAnimationFrame(clipLayoutRaf); });
+}
+
+// Drag: panel di sisi kanan → lebar baru = jarak kursor ke tepi kanan WORKSPACE
+// (bukan window.innerWidth, supaya akurat walau ada scrollbar/sidebar).
+let clipDragRaf = 0;
+let clipDragX = 0;
 function onClipResizeMove(e) {
-  if (clipDragPointerId === null) return;
-  const newWidth = window.innerWidth - e.clientX;
-  setClipWidth(newWidth, false);
+  if (clipDragPointerId === null || e.pointerId !== clipDragPointerId) return;
+  clipDragX = e.clientX;
+  if (clipDragRaf) return;
+  clipDragRaf = requestAnimationFrame(() => {
+    clipDragRaf = 0;
+    const right = clipWorkspaceEl ? clipWorkspaceEl.getBoundingClientRect().right : window.innerWidth;
+    paintClipWidth(right - clipDragX);
+  });
 }
 function endClipResize(e) {
   if (clipDragPointerId === null) return;
-  clipResizeHandle.classList.remove('dragging');
-  document.body.style.userSelect = '';
-  try { clipResizeHandle.releasePointerCapture(clipDragPointerId); } catch {}
+  if (e && e.pointerId !== undefined && e.pointerId !== clipDragPointerId) return;
+  const id = clipDragPointerId;
   clipDragPointerId = null;
-  // baru persist ke localStorage di akhir drag, biar gak nulis tiap pixel gerak
-  const current = getComputedStyle(document.documentElement).getPropertyValue('--clip-width');
-  setClipWidth(parseInt(current, 10) || CLIP_WIDTH_DEFAULT, true);
+  if (clipDragRaf) { cancelAnimationFrame(clipDragRaf); clipDragRaf = 0; }
+  clipResizeHandle.classList.remove('dragging');
+  clipRootEl?.classList.remove('clip-resizing');
+  document.body.style.userSelect = '';
+  try { clipResizeHandle.releasePointerCapture(id); } catch {}
   document.removeEventListener('pointermove', onClipResizeMove);
   document.removeEventListener('pointerup', endClipResize);
+  document.removeEventListener('pointercancel', endClipResize);
+  // persist SEKALI di akhir gesture (bukan tiap pixel). Kalau gesture dibatalin
+  // (pointercancel), tetap simpan lebar terakhir yang kelihatan — bukan lompat balik.
+  const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--clip-width'), 10);
+  setClipWidth(Number.isFinite(current) ? current : clipDefaultWidth(), true);
 }
-clipResizeHandle.addEventListener('pointerdown', (e) => {
-  clipDragPointerId = e.pointerId;
-  clipResizeHandle.classList.add('dragging');
-  document.body.style.userSelect = 'none';
-  try { clipResizeHandle.setPointerCapture(e.pointerId); } catch {}
-  document.addEventListener('pointermove', onClipResizeMove);
-  document.addEventListener('pointerup', endClipResize);
-});
-// Dobel klik handle = reset cepat ke lebar Normal, buat yang kepencet kejauhan pas drag.
-clipResizeHandle.addEventListener('dblclick', () => setClipWidth(CLIP_WIDTH_DEFAULT));
+if (clipResizeHandle) {
+  clipResizeHandle.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return; // klik kanan/tengah bukan resize
+    e.preventDefault();
+    clipDragPointerId = e.pointerId;
+    clipResizeHandle.classList.add('dragging');
+    clipRootEl?.classList.add('clip-resizing');
+    document.body.style.userSelect = 'none';
+    try { clipResizeHandle.setPointerCapture(e.pointerId); } catch {}
+    document.addEventListener('pointermove', onClipResizeMove);
+    document.addEventListener('pointerup', endClipResize);
+    document.addEventListener('pointercancel', endClipResize);
+  });
+  clipResizeHandle.addEventListener('lostpointercapture', endClipResize);
+  clipResizeHandle.addEventListener('dblclick', resetClipWidth);
+  clipResizeHandle.addEventListener('keydown', (e) => {
+    const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--clip-width'), 10) || clipDefaultWidth();
+    // panel di kanan: ← melebarkan, → menyempitkan (arah sama dengan drag)
+    if (e.key === 'ArrowLeft') { e.preventDefault(); setClipWidth(cur + CLIP_KEY_STEP * (e.shiftKey ? 4 : 1)); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); setClipWidth(cur - CLIP_KEY_STEP * (e.shiftKey ? 4 : 1)); }
+    else if (e.key === 'Home') { e.preventDefault(); resetClipWidth(); }
+  });
+}
 
 // ══════════════════════════════════════════
 // COLLAPSE PANEL PENCARIAN: kalau lagi fokus nyocokin clipboard, panel kiri

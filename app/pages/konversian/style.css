@@ -1420,3 +1420,231 @@
 
 /* Baris status autosave: sembunyi total kalau kosong */
 #app-root .kb-footer:has(.kb-record-status:empty){display:none}
+/* ══════════════════════════════════════════════════════════════════════
+   2026-10-19 — POLISH: alur "cari → cocokkan" (Claude)
+   Blok ini sengaja PALING AKHIR dan semua selektornya #app-root-scoped —
+   hapus dari banner ini sampai akhir file = balik ke tampilan sebelumnya.
+
+   Prinsip yang dipakai (biar tiap keputusan bisa ditelusuri, bukan selera):
+   • Fitts's law        — aksi utama kartu (Tambah) SELALU di posisi & lebar yang sama
+                          (min-width tetap, gak lompat antar state); target >= 24-28px.
+   • Hick's law         — 5 tombol sejajar per kartu → 1 aksi utama + 4 aksi sekunder
+                          ikon-saja (tooltip) yang diam sampai di-hover.
+   • Signal-to-noise    — peringatan stok yang muncul di SETIAP kartu = noise. Dipadatkan
+                          jadi chip "Stok 13/14"; detail tetap di hover (handler lama).
+   • Proximity/Gestalt  — nama+harga+aksi satu baris; kode/AKD/KFA+alat satu baris.
+   • Recognition > recall (Nielsen) — hint keyboard tampil di baris hasil, bukan dihafal.
+   • Efisiensi ahli     — ↑↓ + Enter di kolom cari (lihat clipboard.js).
+   • Panel responsif thd LEBAR PANEL — data-clip-size (sm <380 / md <480 / lg) ditulis
+     index.js; media query layar gak tau panelnya lagi diseret kecil/besar.
+   ══════════════════════════════════════════════════════════════════════ */
+
+#app-root{
+  --focus-ring:0 0 0 2px var(--surface),0 0 0 4px var(--accent);
+}
+
+/* ── 0. Akar masalah "ikon mengecil": item flex boleh menyusut (flex-shrink:1) dan
+      kotak ikon/badge angka 18x18 jadi lonjong waktu panel dikecilin. Ikon & badge
+      TIDAK BOLEH menyusut; yang boleh menyusut cuma teks (ellipsis). ── */
+#app-root i.ti{flex:0 0 auto;line-height:1}
+#app-root .conv-step-num,
+#app-root .conv-step-check,
+#app-root .conv-step-icon,
+#app-root .clip-tab-badge,
+#app-root .subtab-badge,
+#app-root .kb-filter-count,
+#app-root .tipe-badge,
+#app-root .clip-header-icon-btn,
+#app-root .clip-more-btn,
+#app-root .conv-step-open{flex:0 0 auto}
+#app-root .clip-header-icon-btn,
+#app-root .clip-more-btn{min-width:28px}
+#app-root .conv-step-num,
+#app-root .conv-step-check{aspect-ratio:1/1}
+#app-root .conv-step-body{min-width:0}
+#app-root .conv-step-label{overflow:hidden;text-overflow:ellipsis}
+#app-root .clip-tab-btn{min-width:0;gap:6px}
+#app-root .clip-tab-badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center}
+
+/* ── 1. Handle resize: area klik lebih lebar, bisa difokus keyboard, drag tanpa lag ── */
+#app-root .clip-resize-handle{z-index:5}
+#app-root .clip-resize-handle::before{content:'';position:absolute;top:0;bottom:0;left:-4px;right:-4px}
+#app-root .clip-resize-handle:focus-visible{outline:none}
+#app-root .clip-resize-handle:focus-visible::after{left:2px;width:3px;border-radius:2px;background:var(--accent)}
+#app-root .clip-resize-handle:focus-visible .clip-resize-grip{opacity:1}
+#app-root.clip-resizing,
+#app-root.clip-resizing *{cursor:col-resize !important}
+#app-root.clip-resizing .panel-clip,
+#app-root.clip-resizing .panel-search{transition:none !important;pointer-events:none}
+
+/* ── 2. Header pencarian: 3 baris → padat. Input tetap kontrol TERBESAR di layar
+      (target utama), tapi tumpukan input+chip+meta jauh lebih rendah. ── */
+#app-root .panel-header{padding:12px 16px 8px}
+#app-root #cari-controls{display:flex;flex-direction:column;gap:8px}
+#app-root .search-wrap{margin-bottom:0}
+#app-root #search-input{height:40px;font-size:14px;border-radius:8px;padding:0 38px}
+#app-root .search-wrap .ti-search{font-size:16px;left:13px}
+#app-root .clear-btn{right:10px}
+#app-root .filters{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px}
+#app-root .filters::-webkit-scrollbar{display:none}
+#app-root .filters .toggle-btn{flex:0 0 auto;height:26px;padding:0 10px;font-size:11.5px;white-space:nowrap;border-radius:999px;gap:5px}
+#app-root .filters .toggle-btn i{font-size:13px}
+
+/* Area hasil: hitungan + urutan nempel di atas saat di-scroll (konteks gak hilang) */
+#app-root #panel-body-cari{padding:0 16px 16px;scrollbar-gutter:stable}
+#app-root #panel-body-cari .meta-row{
+  position:sticky;top:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin:0 -16px 8px;padding:8px 16px;background:var(--surface);min-height:40px;
+}
+#app-root #meta{font-size:11.5px;color:var(--text-muted);min-width:0}
+#app-root #meta[data-nav]:not(:empty)::after{content:"  ·  ↑↓ pilih  ·  Enter tambah";color:var(--text-muted);opacity:.75}
+#app-root #sort-select{height:26px;font-size:11.5px;padding:0 24px 0 8px;border-radius:6px;flex:0 0 auto}
+#app-root #results{display:flex;flex-direction:column;gap:6px}
+
+/* ── 3. Kartu hasil: 2 baris (dulu 3 baris tinggi). ── */
+#app-root .rcard{
+  display:flex;flex-direction:column;gap:5px;padding:9px 12px;border-radius:8px;
+  transform:none;transition:border-color .12s,background-color .12s,box-shadow .12s;
+}
+#app-root .rcard:hover{transform:none;border-color:var(--border-strong);box-shadow:0 1px 0 rgba(0,0,0,.03)}
+#app-root .rcard.selected{border-color:var(--accent);background:var(--accent-bg)}
+#app-root .rcard.selected::after{content:none}            /* "Di Konversi" di tombol sudah jadi penanda */
+#app-root .rcard.kbd-active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+
+#app-root .rcard-top{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:0;padding:0}
+#app-root .rcard-name{
+  flex:1 1 200px;min-width:0;font-size:13px;font-weight:600;line-height:1.35;color:var(--text);
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;
+}
+#app-root .rcard-top .tipe-badge{align-self:center}
+#app-root .rcard-price{
+  flex:0 0 auto;display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap;
+  font:600 12.5px/1.2 var(--font-mono,var(--mono,ui-monospace,monospace));
+  font-variant-numeric:tabular-nums;color:var(--success);
+}
+#app-root .rcard-price small{font-size:10px;font-weight:500;color:var(--text-muted)}
+#app-root .rcard-price.is-empty{font-family:inherit;font-weight:500;font-size:11.5px;line-height:1.2;color:var(--text-muted)}
+
+/* Aksi utama: lebar tetap → posisi harga & tombol gak bergeser antar state (Fitts) */
+#app-root .rcard-top .btn-clip-toggle{
+  flex:0 0 auto;min-width:96px;height:28px;min-height:28px;padding:0 12px;justify-content:center;gap:5px;
+  border-radius:6px;font-size:11.5px;font-weight:600;white-space:nowrap;
+  transition:background-color .12s,color .12s,border-color .12s;
+}
+#app-root .rcard-top .btn-clip-toggle i{font-size:14px}
+#app-root .rcard-top .btn-clip-toggle:not(.in-clip):hover{background:var(--accent);border-color:var(--accent);color:#fff;filter:none}
+#app-root .rcard-top .btn-clip-toggle.in-clip:hover{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger);filter:none}
+#app-root .rcard-top .btn-clip-toggle.in-clip:hover span{font-size:0}
+#app-root .rcard-top .btn-clip-toggle.in-clip:hover span::after{content:"Keluarkan";font-size:11.5px}
+#app-root .btn-clip-toggle:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+
+#app-root .rcard-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;min-height:24px}
+#app-root .rcard-meta{display:flex;align-items:center;flex-wrap:wrap;gap:2px 12px;min-width:0;flex:1 1 240px}
+#app-root .rcard-meta .mi{white-space:nowrap}
+#app-root .rcard-meta .mi-kode span{color:var(--text);user-select:all}   /* dobel-klik = pilih seluruh kode */
+#app-root .rcard-meta .mi.stok-warn{
+  padding:1px 7px;border-radius:999px;background:var(--warning-bg);border:1px solid var(--warning-border);
+}
+#app-root .rcard-meta .mi.stok-warn i{color:var(--warning)}
+#app-root .rcard-meta .mi.stok-warn span{font-size:10.5px}
+
+/* Alat sekunder: ikon-saja, redup sampai di-hover/fokus; tetap kelihatan (bukan hover-only) */
+#app-root .rcard-tools{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px;min-width:0;margin-left:auto}
+#app-root .rc-tool{
+  flex:0 0 auto;height:24px;min-width:24px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  border:1px solid transparent;border-radius:6px;background:transparent;color:var(--text-muted);
+  font-family:inherit;font-weight:500;font-size:11px;line-height:1;cursor:pointer;transition:background-color .12s,color .12s;
+}
+#app-root .rc-tool i{font-size:14px}
+#app-root .rc-tool span{font-family:inherit;font-size:11px}
+#app-root .rc-tool:hover{background:var(--surface-3);color:var(--text)}
+#app-root .rc-tool:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+#app-root .rc-tool-text{color:var(--accent-text)}
+#app-root .rc-tool-text:hover{background:var(--accent-bg);color:var(--accent-text)}
+#app-root .rcard-tools .badge-katalog-yes,
+#app-root .rcard-tools .badge-katalog-no{
+  height:22px;padding:0 8px;font-size:10.5px;white-space:nowrap;max-width:260px;min-width:0;overflow:hidden;text-overflow:ellipsis;
+}
+#app-root .rcard-tools .badge-katalog-yes i,
+#app-root .rcard-tools .badge-katalog-no i{font-size:12px}
+
+/* ── 4. Panel clipboard: isi mengikuti LEBAR PANEL ── */
+#app-root .panel-clip{min-width:0}
+#app-root .clip-title-row{display:flex;align-items:center;gap:8px;min-width:0}
+#app-root .clip-id-line{flex:1 1 0;min-width:0}
+#app-root .clip-header .clip-header-compact{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#app-root .clip-strip-actions{flex:0 0 auto}
+/* label tombol strip: cuma di panel lebar; di sempit tinggal ikon (title tetap jadi tooltip) */
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-strip-actions .btn-end-sesi{font-size:0;gap:0;padding:0 6px;min-width:24px;justify-content:center}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-strip-actions .btn-end-sesi i{font-size:13px}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-header-edit-btn{font-size:0;min-width:24px;padding:0 6px}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-header-edit-btn::before{content:"🙋";font-size:13px;line-height:1}
+#app-root[data-clip-size="sm"] .sesi-save-status{display:none}
+/* label tab ditentukan lebar PANEL (bukan lebar layar seperti media query lama) */
+#app-root[data-clip-size="sm"] .clip-tab-label{display:none}
+#app-root:not([data-clip-size="sm"]) .clip-tab-label{display:inline}
+#app-root[data-clip-size="sm"] .clip-tab-btn i{font-size:16px}
+/* footer: label langkah boleh dipotong, angka/ikon tidak */
+#app-root .clip-foot-actions .conv-step{min-width:0}
+#app-root .clip-foot-actions .btn-record{flex:1 1 140px;min-width:0;white-space:nowrap}
+
+/* Kebutuhan RS: baris lebih terbaca, status = warna + bentuk ikon + bilah kiri (bukan warna saja) */
+#app-root .kb-filter-bar{flex-wrap:wrap}
+#app-root .kb-filter-chip{flex:0 0 auto;height:26px;white-space:nowrap}
+#app-root .kb-item{border-radius:8px}
+#app-root .kb-item.terpenuhi{box-shadow:inset 3px 0 0 var(--success)}
+#app-root .kb-item.tidak-terpenuhi{box-shadow:inset 3px 0 0 var(--danger)}
+#app-root .kb-item-header{min-height:36px;align-items:center}
+#app-root .kb-item-header:hover{background:var(--surface-2)}
+#app-root .kb-item-status-icon,
+#app-root .kb-item-chevron{width:18px;display:inline-flex;align-items:center;justify-content:center;margin-top:0}
+#app-root .kb-item-text{font-size:12.5px;line-height:1.4;overflow-wrap:anywhere}
+#app-root .kb-item-compact-matched{font-size:11px;color:var(--text-secondary)}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .kb-item.terpenuhi.collapsed .kb-item-header-text{flex-direction:column;align-items:stretch;gap:1px}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .kb-item.terpenuhi.collapsed .kb-item-text,
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .kb-item.terpenuhi.collapsed .kb-item-compact-matched{flex:0 0 auto}
+#app-root .kb-item.terpenuhi.collapsed .kb-item-header{min-height:32px}
+
+/* ── 5. Aksesibilitas dasar ── */
+#app-root :is(button,a,[role="button"],[tabindex="0"]):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app-root .rc-tool:focus-visible,
+#app-root .btn-clip-toggle:focus-visible,
+#app-root .clip-resize-handle:focus-visible{outline:none}
+@media (prefers-reduced-motion:reduce){
+  #app-root *,#app-root *::before,#app-root *::after{transition-duration:.01ms !important;animation-duration:.01ms !important}
+}
+
+/* Header pencarian: tombol ciutkan (satu-satunya sisa .subtab-row, tombol tab-nya sudah pindah ke
+   sidebar) jangan makan satu baris sendiri (~44px mati di atas kolom cari). Jadikan kolom kedua
+   di baris yang sama dengan input. */
+@media (min-width:769px){
+  #app-root .panel-header{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;align-items:start}
+  #app-root .subtab-row{display:contents}
+  #app-root #cari-controls{grid-column:1;grid-row:1;min-width:0}
+  #app-root .panel-collapse-btn{grid-column:2;grid-row:1;align-self:start;width:32px;height:40px;margin:0;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:8px}
+  #app-root .panel-collapse-btn:hover{background:var(--surface-2)}
+}
+
+/* Kartu hasil — pengetatan kedua (hasil ukur di layar 1366px, panel clipboard 382px):
+   baris 2 (kode · AKD · KFA · stok  |  e-Kat · alat) butuh ~694px, tersedia ~649px → stok jatuh ke baris
+   ke-3. Hemat ~50px tanpa membuang informasi: padding samping, gap meta, alat 28→24px, badge e-Kat lebih ramping. */
+#app-root #panel-body-cari{padding:0 12px 16px}
+#app-root #panel-body-cari .meta-row{margin:0 -12px 6px;padding:8px 12px}
+#app-root .rcard{padding:8px 10px;gap:4px}
+#app-root .rcard-foot{gap:2px 10px;min-height:22px}
+#app-root .rcard-meta{gap:2px 10px}
+#app-root .rc-tool{height:22px;min-width:24px;padding:0 4px}
+#app-root .rc-tool-text{padding:0 6px}
+#app-root .rcard-tools{gap:2px}
+#app-root .rcard-tools .badge-katalog-yes,
+#app-root .rcard-tools .badge-katalog-no{padding:0 6px;margin-right:2px}
+
+/* Panel pencarian sempit (clipboard dilebarkan): CTA tetap sebaris dengan nama (nama yang mengalah,
+   maks 2 baris), dan chip filter turun baris — bukan terpotong di tepi. */
+#app-root .rcard-top{flex-wrap:nowrap}
+#app-root .rcard-name{flex:1 1 0}
+#app-root .filters{flex-wrap:wrap;overflow:visible}
+
+/* Toggle mode harga: label tidak boleh pecah jadi 2 baris ("e-" / "Katalog") di panel sempit */
+#app-root .clip-output-mode-toggle .com-btn{white-space:nowrap}
+#app-root .clip-output-mode-toggle{width:auto;min-width:150px}

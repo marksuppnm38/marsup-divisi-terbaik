@@ -773,7 +773,7 @@ function stokBadgeHtml(r, isSet) {
         ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · bisa rakit ${r.stok_qty} set</span></span>`
         : r.stok_status === 'INDENT'
           ? `<span class="mi stok-indent"><i class="ti ti-clock"></i><span>Indent${r.stok_qty ? ' · bisa rakit '+r.stok_qty+' set' : ''}</span></span>`
-          : `<span class="mi stok-warn" data-set-kode="${S.escapeHtmlAttr(r.kode_produk || '')}" data-terdata="${r.stok_komponen_terdata||0}" data-total="${r.stok_komponen_total||''}" style="cursor:help"><i class="ti ti-alert-circle"></i><span>Data stok komponen blm lengkap</span></span>`)
+          : `<span class="mi stok-warn" data-set-kode="${S.escapeHtmlAttr(r.kode_produk || '')}" data-terdata="${r.stok_komponen_terdata||0}" data-total="${r.stok_komponen_total||''}" style="cursor:help"><i class="ti ti-alert-triangle"></i><span>${r.stok_komponen_total ? 'Stok ' + (r.stok_komponen_terdata||0) + '/' + r.stok_komponen_total : 'Stok blm lengkap'}</span></span>`)
     : (r.stok_status === 'READY'
         ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · ${r.stok_qty} pcs</span></span>`
         : r.stok_status === 'INDENT'
@@ -931,13 +931,15 @@ async function runSearch() {
     }
     return;
   }
-  if (!data || !data.length) { S.emptyEl.style.display='block'; S.metaEl.textContent='Tidak ada hasil untuk "'+q+'"'+hiddenNote; S.acBox.style.display='none'; return; }
+  if (!data || !data.length) { S.emptyEl.style.display='block'; S.metaEl.textContent='Tidak ada hasil untuk "'+q+'"'+hiddenNote; delete S.metaEl.dataset.nav; S.acBox.style.display='none'; return; }
   S.lastResults = data;
   await S.enrichResultsWithStok(S.lastResults);
   S.sortSelect.style.display = 'inline-block';
   applySort();
   S.currentPage = 1;
-  S.metaEl.textContent = data.length + ' produk ditemukan — klik untuk tambah ke clipboard' + hiddenNote;
+  S.metaEl.textContent = data.length + ' produk ditemukan' + hiddenNote;
+  S.metaEl.dataset.nav = '1';
+  S.kbdCardIdx = -1;
   renderResults(S.lastResults);
   if (S.pnmSettings.autoComplete) {
     renderAutocomplete(S.lastResults);
@@ -1003,7 +1005,7 @@ function katalogBadgeHtml(r) {
   const verified = S.isVerified(r);
   const vIcon = verified ? ' <i class="ti ti-rosette-discount-check-filled" style="font-size:13px;color:#1d9bf0" title="Verified Product — tayang di INAPROC"></i>' : '';
   if (L.state === 'bersih') {
-    return `<a href="${S.escapeHtmlAttr(L.url)}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog"><i class="ti ti-circle-check" style="font-size:12px"></i> Ada di e-Katalog v6${vIcon}</a>`;
+    return `<a href="${S.escapeHtmlAttr(L.url)}" target="_blank" rel="noopener" class="badge-katalog-yes" data-role="link-katalog" title="Ada di e-Katalog v6 — klik untuk membuka"><i class="ti ti-circle-check" style="font-size:12px"></i> e-Kat v6${vIcon}</a>`;
   }
   if (verified && L.state !== 'catatan') {
     // tayang & verified di INAPROC, tapi Link V6 belum diisi di database kita
@@ -1017,8 +1019,12 @@ function katalogBadgeHtml(r) {
   if (r.status_inaproc === 'Disetujui') {
     return `<span class="badge-katalog-no" style="color:var(--rust-text,#8F3620);border-color:var(--rust,#B8492F);background:var(--rust-bg,#FBE8E2)"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Disetujui INAPROC — siap dibuatkan Link V6!</span>`;
   }
-  return `<span class="badge-katalog-no"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum ada di e-Katalog</span>`;
+  return `<span class="badge-katalog-no" title="Belum ada di e-Katalog"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum di e-Kat</span>`;
 }
+
+// Label tombol lampiran di KARTU hasil: ringkas (ikon + jumlah item). Dialog/Dictionary tetap pakai
+// setLampiranLabelText ("Lihat Lampiran · N item") — jangan disatukan, ruangnya beda.
+function lampiranCardLabel(n) { return n != null ? n + ' item' : 'Lampiran'; }
 
 function renderResults(data) {
   // clamp currentPage kalau data berubah (misal abis filter) jadi lebih pendek dari halaman aktif
@@ -1050,31 +1056,33 @@ function renderResults(data) {
     const noAkdEsc = S.escapeHtmlAttr(r.no_akd||'');
     const kodeKfaEsc = S.escapeHtmlAttr(r.kode_kfa||'');
     const tipeEsc = S.escapeHtmlAttr(r.tipe||'');
+    const tahunEsc = S.escapeHtmlAttr(String(tahunTampil || ''));
+    const priceHtml = hargaTampil
+      ? `<span class="rcard-price" title="${S.modeSwasta ? 'Harga swasta' : 'Harga e-Katalog'}${tahunEsc ? ' ' + tahunEsc : ''}">${rupiah(hargaTampil)}${tahunEsc ? `<small>${tahunEsc}</small>` : ''}</span>`
+      : `<span class="rcard-price is-empty">${S.modeSwasta ? 'Harga swasta belum ada' : 'Harga belum ada'}</span>`;
+    const ctaHtml = inClip
+      ? `<button type="button" class="btn-clip-toggle in-clip" data-kode="${kode}" data-action="remove" title="Sudah di Konversi — klik untuk keluarkan"><i class="ti ti-circle-check"></i><span>Di Konversi</span></button>`
+      : `<button type="button" class="btn-clip-toggle" data-kode="${kode}" data-action="add" title="Tambahkan ke Konversi"><i class="ti ti-plus"></i><span>Tambah</span></button>`;
     return `<div class="rcard${inClip?' selected':''}" data-kode="${kode}">
       <div class="rcard-top">
-        <span class="rcard-name">${namaEsc||'—'}</span>
+        <span class="rcard-name" title="${namaEsc}">${namaEsc||'—'}</span>
         ${r.tipe?`<span class="tipe-badge ${tipeClass}">${tipeEsc}</span>`:''}
+        ${priceHtml}
+        ${ctaHtml}
       </div>
-      <div class="rcard-meta">
-        <span class="mi"><i class="ti ti-barcode"></i><span>${kode||'—'}</span></span>
-        ${r.no_akd?`<span class="mi"><i class="ti ti-certificate"></i><span>${noAkdEsc}</span></span>`:''}
-        ${r.kode_kfa?`<span class="mi"><i class="ti ti-tag"></i><span>${kodeKfaEsc}</span></span>`:''}
-        ${hargaTampil?`<span class="mi harga"><i class="ti ti-coin-rupee"></i><span>${rupiah(hargaTampil)}${tahunTampil?' · '+tahunTampil:''}</span></span>`:`<span class="mi"><i class="ti ti-coin-rupee"></i><span style="color:var(--text-muted)">${S.modeSwasta?'Harga swasta belum ada':'Harga belum ada'}</span></span>`}
-        ${stokBadge}
-      </div>
-      <div style="margin-top:6px;display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:8px">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          ${S.modeSwasta ? '' : katalogBadgeHtml(r)}
-          <button class="btn-preview-gambar btn-lihat-gambar" data-kode="${kode}" data-kode-asli="${kodeAsli}" data-nama="${namaEsc}"><i class="ti ti-eye" style="font-size:12px"></i> Lihat Gambar</button>
-          <button class="btn-preview-gambar btn-copy-produk" data-kode="${kode}"><i class="ti ti-copy" style="font-size:12px"></i> Copy</button>
+      <div class="rcard-foot">
+        <div class="rcard-meta">
+          <span class="mi mi-kode" title="Kode produk"><i class="ti ti-barcode"></i><span>${kode||'—'}</span></span>
+          ${r.no_akd?`<span class="mi" title="No. AKD"><i class="ti ti-certificate"></i><span>${noAkdEsc}</span></span>`:''}
+          ${r.kode_kfa?`<span class="mi" title="Kode KFA"><i class="ti ti-tag"></i><span>${kodeKfaEsc}</span></span>`:''}
+          ${stokBadge}
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          ${isSet?`<span style="font-size:11px;color:var(--success);display:flex;align-items:center;gap:3px"><i class="ti ti-packages" style="font-size:12px"></i> Set</span>`:''}
-          <button class="btn-lampiran" data-kode="${kode}" data-is-set="${isSet}" style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-file-text" style="font-size:12px"></i> <span data-lampiran-label="${kode}">${isSet ? setLampiranLabelText(cachedSetItemCount(r)) : 'Lihat Lampiran'}</span></button>
-          <button class="btn-edit-produk" data-kode="${kode}" title="Edit produk ini" style="font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:flex;align-items:center;gap:4px;cursor:pointer"><i class="ti ti-settings" style="font-size:12px"></i></button>
-          ${inClip
-            ? `<button class="btn-clip-toggle in-clip" data-kode="${kode}" data-action="remove"><i class="ti ti-circle-check" style="font-size:12px"></i> Di Konversi</button>`
-            : `<button class="btn-clip-toggle" data-kode="${kode}" data-action="add"><i class="ti ti-circle-plus" style="font-size:12px"></i> Tambahkan ke Konversi</button>`}
+        <div class="rcard-tools">
+          ${S.modeSwasta ? '' : katalogBadgeHtml(r)}
+          <button type="button" class="rc-tool btn-lihat-gambar" data-kode="${kode}" data-kode-asli="${kodeAsli}" data-nama="${namaEsc}" title="Lihat gambar" aria-label="Lihat gambar"><i class="ti ti-eye"></i></button>
+          <button type="button" class="rc-tool btn-copy-produk" data-kode="${kode}" title="Copy info produk" aria-label="Copy info produk"><i class="ti ti-copy"></i></button>
+          <button type="button" class="rc-tool rc-tool-text btn-lampiran" data-kode="${kode}" data-is-set="${isSet}" title="Lihat lampiran${isSet ? ' (isi set)' : ''}" aria-label="Lihat lampiran"><i class="ti ti-file-text"></i>${isSet ? `<span data-lampiran-label="${kode}">${lampiranCardLabel(cachedSetItemCount(r))}</span>` : ''}</button>
+          <button type="button" class="rc-tool btn-edit-produk" data-kode="${kode}" title="Edit produk ini" aria-label="Edit produk ini"><i class="ti ti-settings"></i></button>
         </div>
       </div>
     </div>`;
@@ -1104,7 +1112,7 @@ function renderResults(data) {
   // SET yang belum ada angka item-nya → ambil lazy, label tombol nyusul.
   hydrateSetCounts(S.resultsEl, pageData
     .filter(r => r.tipe && r.tipe.toUpperCase() === 'SET' && cachedSetItemCount(r) == null)
-    .map(r => r.kode_produk));
+    .map(r => r.kode_produk), lampiranCardLabel);
   S.resultsEl.querySelectorAll('[data-role="link-katalog"]').forEach(a => {
     a.addEventListener('click', (e) => { e.stopPropagation(); });
   });
@@ -1121,8 +1129,27 @@ function renderResults(data) {
     });
   });
   renderPagination(data.length);
+  if (S._kbdLastPage !== S.currentPage) { S.kbdCardIdx = -1; S._kbdLastPage = S.currentPage; }
+  if ((S.kbdCardIdx ?? -1) >= 0) setKbdCard(S.kbdCardIdx);
 }
 S.renderResults = renderResults;
+
+// ── NAVIGASI KEYBOARD HASIL PENCARIAN ──────────────────────────────────────
+// Alur kerja inti = ketik → pilih → tambah → ketik lagi. Tanpa ini tiap produk
+// butuh pindah ke mouse (Fitts). Saat dropdown autocomplete TERTUTUP:
+//   ↓ / ↑  pindah sorotan antar kartu     Enter  tambah/keluarkan dari Konversi
+//   Esc    hapus sorotan                  (ketik lagi = pencarian baru, sorotan reset)
+// Saat autocomplete terbuka, perilaku lama (↓/↑/Enter pilih saran) tidak berubah.
+S.kbdCardIdx = -1;
+function setKbdCard(idx) {
+  const cards = Array.from(S.resultsEl.querySelectorAll('.rcard'));
+  cards.forEach(c => c.classList.remove('kbd-active'));
+  if (!cards.length || idx < 0) { S.kbdCardIdx = -1; return; }
+  S.kbdCardIdx = Math.min(idx, cards.length - 1);
+  const c = cards[S.kbdCardIdx];
+  c.classList.add('kbd-active');
+  c.scrollIntoView({ block: 'nearest' });
+}
 
 // COPY SATU PRODUK: kode, deskripsi, harga, link — siap paste ke WA.
 // Link e-Katalog cuma relevan di mode e-Katalog — di mode Swasta link_v6
@@ -1548,11 +1575,11 @@ async function fetchSetItemCount(kode) {
 }
 S.fetchSetItemCount = fetchSetItemCount;
 // Lengkapi label tombol yang belum punya angka (dipanggil abis render).
-function hydrateSetCounts(root, kodes) {
+function hydrateSetCounts(root, kodes, fmt = setLampiranLabelText) {
   kodes.forEach(async (kode) => {
     const n = await fetchSetItemCount(kode);
     if (n == null) return;
-    root.querySelectorAll(`[data-lampiran-label="${CSS.escape(kode)}"]`).forEach(el => { el.textContent = setLampiranLabelText(n); });
+    root.querySelectorAll(`[data-lampiran-label="${CSS.escape(kode)}"]`).forEach(el => { el.textContent = fmt(n); });
   });
 }
 S.hydrateSetCounts = hydrateSetCounts;
@@ -2479,16 +2506,31 @@ S.searchInput.addEventListener('input', () => {
     return;
   }
   S.clearBtn.style.display = S.searchInput.value ? 'block' : 'none';
+  if ((S.kbdCardIdx ?? -1) >= 0) setKbdCard(-1);
   clearTimeout(S.acTimer);
   S.acTimer = setTimeout(() => runSearch(), 150);
 });
 
 S.searchInput.addEventListener('keydown', e => {
   const items = S.acBox.querySelectorAll('.ac-item');
-  if (e.key==='ArrowDown'){e.preventDefault();S.acIndex=Math.min(S.acIndex+1,items.length-1);items.forEach((el,i)=>el.classList.toggle('active',i===S.acIndex));}
-  else if(e.key==='ArrowUp'){e.preventDefault();S.acIndex=Math.max(S.acIndex-1,-1);items.forEach((el,i)=>el.classList.toggle('active',i===S.acIndex));}
-  else if(e.key==='Enter'){if(S.acIndex>=0&&items[S.acIndex])S.searchInput.value=S.acItems[S.acIndex].nama_produk;S.acBox.style.display='none';runSearch();}
-  else if(e.key==='Escape')S.acBox.style.display='none';
+  const acOpen = S.acBox.style.display === 'block' && items.length > 0;
+  if (acOpen) {
+    if (e.key==='ArrowDown'){e.preventDefault();S.acIndex=Math.min(S.acIndex+1,items.length-1);items.forEach((el,i)=>el.classList.toggle('active',i===S.acIndex));}
+    else if(e.key==='ArrowUp'){e.preventDefault();S.acIndex=Math.max(S.acIndex-1,-1);items.forEach((el,i)=>el.classList.toggle('active',i===S.acIndex));}
+    else if(e.key==='Enter'){if(S.acIndex>=0&&items[S.acIndex])S.searchInput.value=S.acItems[S.acIndex].nama_produk;S.acBox.style.display='none';runSearch();}
+    else if(e.key==='Escape')S.acBox.style.display='none';
+    return;
+  }
+  // autocomplete tertutup → keyboard dipakai buat jalan di hasil pencarian
+  const cur = S.kbdCardIdx ?? -1;
+  if (e.key === 'ArrowDown' && S.resultsEl.querySelector('.rcard')) { e.preventDefault(); setKbdCard(cur + 1); }
+  else if (e.key === 'ArrowUp' && cur >= 0) { e.preventDefault(); setKbdCard(cur - 1); }
+  else if (e.key === 'Escape') { if (cur >= 0) setKbdCard(-1); S.acBox.style.display='none'; }
+  else if (e.key === 'Enter') {
+    const card = cur >= 0 ? S.resultsEl.querySelectorAll('.rcard')[cur] : null;
+    if (card) { e.preventDefault(); card.querySelector('.btn-clip-toggle')?.click(); }
+    else { S.acBox.style.display='none'; runSearch(); }
+  }
 });
 
 function __konvDismissAcOnOutsideClick(e) { if(!document.querySelector('.search-wrap').contains(e.target)) S.acBox.style.display='none'; }
