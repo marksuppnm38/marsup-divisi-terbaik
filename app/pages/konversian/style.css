@@ -1422,6 +1422,8 @@
 #app-root .kb-footer:has(.kb-record-status:empty){display:none}
 /* ══════════════════════════════════════════════════════════════════════
    2026-10-19 — POLISH: alur "cari → cocokkan" (Claude)
+   Aturan kartu (.rcard*) di bawah di-scope ke #results: kelas .rcard dipakai ulang oleh kartu
+   Konversi Berjalan / Riwayat / Project, yang TIDAK boleh ikut berubah.
    Blok ini sengaja PALING AKHIR dan semua selektornya #app-root-scoped —
    hapus dari banner ini sampai akhir file = balik ke tampilan sebelumnya.
 
@@ -1481,10 +1483,10 @@
       (target utama), tapi tumpukan input+chip+meta jauh lebih rendah. ── */
 #app-root .panel-header{padding:12px 16px 8px}
 #app-root #cari-controls{display:flex;flex-direction:column;gap:8px}
-#app-root .search-wrap{margin-bottom:0}
+#app-root #cari-controls .search-wrap{margin-bottom:0}
 #app-root #search-input{height:40px;font-size:14px;border-radius:8px;padding:0 38px}
-#app-root .search-wrap .ti-search{font-size:16px;left:13px}
-#app-root .clear-btn{right:10px}
+#app-root #cari-controls .search-wrap .ti-search{font-size:16px;left:13px}
+#app-root #cari-controls .clear-btn{right:10px}
 #app-root .filters{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px}
 #app-root .filters::-webkit-scrollbar{display:none}
 #app-root .filters .toggle-btn{flex:0 0 auto;height:26px;padding:0 10px;font-size:11.5px;white-space:nowrap;border-radius:999px;gap:5px}
@@ -1502,54 +1504,54 @@
 #app-root #results{display:flex;flex-direction:column;gap:6px}
 
 /* ── 3. Kartu hasil: 2 baris (dulu 3 baris tinggi). ── */
-#app-root .rcard{
+#app-root #results .rcard{
   display:flex;flex-direction:column;gap:5px;padding:9px 12px;border-radius:8px;
   transform:none;transition:border-color .12s,background-color .12s,box-shadow .12s;
 }
-#app-root .rcard:hover{transform:none;border-color:var(--border-strong);box-shadow:0 1px 0 rgba(0,0,0,.03)}
-#app-root .rcard.selected{border-color:var(--accent);background:var(--accent-bg)}
-#app-root .rcard.selected::after{content:none}            /* "Di Konversi" di tombol sudah jadi penanda */
-#app-root .rcard.kbd-active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+#app-root #results .rcard:hover{transform:none;border-color:var(--border-strong);box-shadow:0 1px 0 rgba(0,0,0,.03)}
+#app-root #results .rcard.selected{border-color:var(--accent);background:var(--accent-bg)}
+#app-root #results .rcard.selected::after{content:none}            /* "Di Konversi" di tombol sudah jadi penanda */
+#app-root #results .rcard.kbd-active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
 
-#app-root .rcard-top{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:0;padding:0}
-#app-root .rcard-name{
+#app-root #results .rcard-top{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:0;padding:0}
+#app-root #results .rcard-name{
   flex:1 1 200px;min-width:0;font-size:13px;font-weight:600;line-height:1.35;color:var(--text);
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;
 }
-#app-root .rcard-top .tipe-badge{align-self:center}
-#app-root .rcard-price{
+#app-root #results .rcard-top .tipe-badge{align-self:center}
+#app-root #results .rcard-price{
   flex:0 0 auto;display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap;
   font:600 12.5px/1.2 var(--font-mono,var(--mono,ui-monospace,monospace));
   font-variant-numeric:tabular-nums;color:var(--success);
 }
-#app-root .rcard-price small{font-size:10px;font-weight:500;color:var(--text-muted)}
-#app-root .rcard-price.is-empty{font-family:inherit;font-weight:500;font-size:11.5px;line-height:1.2;color:var(--text-muted)}
+#app-root #results .rcard-price small{font-size:10px;font-weight:500;color:var(--text-muted)}
+#app-root #results .rcard-price.is-empty{font-family:inherit;font-weight:500;font-size:11.5px;line-height:1.2;color:var(--text-muted)}
 
 /* Aksi utama: lebar tetap → posisi harga & tombol gak bergeser antar state (Fitts) */
-#app-root .rcard-top .btn-clip-toggle{
+#app-root #results .rcard-top .btn-clip-toggle{
   flex:0 0 auto;min-width:96px;height:28px;min-height:28px;padding:0 12px;justify-content:center;gap:5px;
   border-radius:6px;font-size:11.5px;font-weight:600;white-space:nowrap;
   transition:background-color .12s,color .12s,border-color .12s;
 }
-#app-root .rcard-top .btn-clip-toggle i{font-size:14px}
-#app-root .rcard-top .btn-clip-toggle:not(.in-clip):hover{background:var(--accent);border-color:var(--accent);color:#fff;filter:none}
-#app-root .rcard-top .btn-clip-toggle.in-clip:hover{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger);filter:none}
-#app-root .rcard-top .btn-clip-toggle.in-clip:hover span{font-size:0}
-#app-root .rcard-top .btn-clip-toggle.in-clip:hover span::after{content:"Keluarkan";font-size:11.5px}
+#app-root #results .rcard-top .btn-clip-toggle i{font-size:14px}
+#app-root #results .rcard-top .btn-clip-toggle:not(.in-clip):hover{background:var(--accent);border-color:var(--accent);color:#fff;filter:none}
+#app-root #results .rcard-top .btn-clip-toggle.in-clip:hover{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger);filter:none}
+#app-root #results .rcard-top .btn-clip-toggle.in-clip:hover span{font-size:0}
+#app-root #results .rcard-top .btn-clip-toggle.in-clip:hover span::after{content:"Keluarkan";font-size:11.5px}
 #app-root .btn-clip-toggle:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 
-#app-root .rcard-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;min-height:24px}
-#app-root .rcard-meta{display:flex;align-items:center;flex-wrap:wrap;gap:2px 12px;min-width:0;flex:1 1 240px}
-#app-root .rcard-meta .mi{white-space:nowrap}
-#app-root .rcard-meta .mi-kode span{color:var(--text);user-select:all}   /* dobel-klik = pilih seluruh kode */
-#app-root .rcard-meta .mi.stok-warn{
+#app-root #results .rcard-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;min-height:24px}
+#app-root #results .rcard-meta{display:flex;align-items:center;flex-wrap:wrap;gap:2px 12px;min-width:0;flex:1 1 240px}
+#app-root #results .rcard-meta .mi{white-space:nowrap}
+#app-root #results .rcard-meta .mi-kode span{color:var(--text);user-select:all}   /* dobel-klik = pilih seluruh kode */
+#app-root #results .rcard-meta .mi.stok-warn{
   padding:1px 7px;border-radius:999px;background:var(--warning-bg);border:1px solid var(--warning-border);
 }
-#app-root .rcard-meta .mi.stok-warn i{color:var(--warning)}
-#app-root .rcard-meta .mi.stok-warn span{font-size:10.5px}
+#app-root #results .rcard-meta .mi.stok-warn i{color:var(--warning)}
+#app-root #results .rcard-meta .mi.stok-warn span{font-size:10.5px}
 
 /* Alat sekunder: ikon-saja, redup sampai di-hover/fokus; tetap kelihatan (bukan hover-only) */
-#app-root .rcard-tools{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px;min-width:0;margin-left:auto}
+#app-root #results .rcard-tools{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px;min-width:0;margin-left:auto}
 #app-root .rc-tool{
   flex:0 0 auto;height:24px;min-width:24px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;gap:4px;
   border:1px solid transparent;border-radius:6px;background:transparent;color:var(--text-muted);
@@ -1561,12 +1563,12 @@
 #app-root .rc-tool:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 #app-root .rc-tool-text{color:var(--accent-text)}
 #app-root .rc-tool-text:hover{background:var(--accent-bg);color:var(--accent-text)}
-#app-root .rcard-tools .badge-katalog-yes,
-#app-root .rcard-tools .badge-katalog-no{
+#app-root #results .rcard-tools .badge-katalog-yes,
+#app-root #results .rcard-tools .badge-katalog-no{
   height:22px;padding:0 8px;font-size:10.5px;white-space:nowrap;max-width:260px;min-width:0;overflow:hidden;text-overflow:ellipsis;
 }
-#app-root .rcard-tools .badge-katalog-yes i,
-#app-root .rcard-tools .badge-katalog-no i{font-size:12px}
+#app-root #results .rcard-tools .badge-katalog-yes i,
+#app-root #results .rcard-tools .badge-katalog-no i{font-size:12px}
 
 /* ── 4. Panel clipboard: isi mengikuti LEBAR PANEL ── */
 #app-root .panel-clip{min-width:0}
@@ -1630,21 +1632,81 @@
    ke-3. Hemat ~50px tanpa membuang informasi: padding samping, gap meta, alat 28→24px, badge e-Kat lebih ramping. */
 #app-root #panel-body-cari{padding:0 12px 16px}
 #app-root #panel-body-cari .meta-row{margin:0 -12px 6px;padding:8px 12px}
-#app-root .rcard{padding:8px 10px;gap:4px}
-#app-root .rcard-foot{gap:2px 10px;min-height:22px}
-#app-root .rcard-meta{gap:2px 10px}
+#app-root #results .rcard{padding:8px 10px;gap:4px}
+#app-root #results .rcard-foot{gap:2px 10px;min-height:22px}
+#app-root #results .rcard-meta{gap:2px 10px}
 #app-root .rc-tool{height:22px;min-width:24px;padding:0 4px}
 #app-root .rc-tool-text{padding:0 6px}
-#app-root .rcard-tools{gap:2px}
-#app-root .rcard-tools .badge-katalog-yes,
-#app-root .rcard-tools .badge-katalog-no{padding:0 6px;margin-right:2px}
+#app-root #results .rcard-tools{gap:2px}
+#app-root #results .rcard-tools .badge-katalog-yes,
+#app-root #results .rcard-tools .badge-katalog-no{padding:0 6px;margin-right:2px}
 
 /* Panel pencarian sempit (clipboard dilebarkan): CTA tetap sebaris dengan nama (nama yang mengalah,
    maks 2 baris), dan chip filter turun baris — bukan terpotong di tepi. */
-#app-root .rcard-top{flex-wrap:nowrap}
-#app-root .rcard-name{flex:1 1 0}
+/* nama minimal 150px: kalau ruang sempit, harga+tombol turun ke baris sendiri — nama tidak boleh dipeperat jadi 1 huruf */
+#app-root #results .rcard-top{flex-wrap:wrap}
+#app-root #results .rcard-name{flex:1 1 150px;min-width:150px}
 #app-root .filters{flex-wrap:wrap;overflow:visible}
 
 /* Toggle mode harga: label tidak boleh pecah jadi 2 baris ("e-" / "Katalog") di panel sempit */
 #app-root .clip-output-mode-toggle .com-btn{white-space:nowrap}
 #app-root .clip-output-mode-toggle{width:auto;min-width:150px}
+
+/* ══════════════════════════════════════════════════════════════════════
+   2026-10-20 — SPLIT-SCREEN sebagai layout utama (bukan trik zoom 75%)
+   Akar masalah yang ditemukan dari screenshot:
+   1. Chip filter nempel ke input: index.js men-set INLINE display:block di #cari-controls
+      (switchSubtab), jadi `display:flex; gap` di atas tidak pernah berlaku. Pakai margin biasa.
+   2. Panel clipboard "terpotong" + scrollbar horizontal: grid tab "Semua" memaksa kolom >=360px,
+      padahal panel di split-screen cuma ±300–350px. minmax(min(100%,360px),1fr).
+   3. Di 100% zoom layar setengah (±768px CSS) jatuh ke layout mobile (stack) — padahal dua panel
+      muat kalau sidebar jadi rail. Dua-panel dipertahankan sampai 641px; di bawah itu baru mobile.
+   ══════════════════════════════════════════════════════════════════════ */
+#app-root #cari-controls .filters{margin-top:8px}
+
+#app-root .panel-clip.tab-kb-active .kb-list:has(> .kb-section-group){
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));
+}
+#app-root .kb-list,
+#app-root .kb-section-group,
+#app-root .kb-section-items,
+#app-root .kb-item,
+#app-root .kb-item-header-text,
+#app-root .kb-item-text{min-width:0}
+
+/* 641–768px: tetap dua panel berdampingan (aturan mobile pnm-universal menumpuk & menyembunyikan salah satu) */
+@media (min-width:641px) and (max-width:768px){
+  #app-root .workspace{flex-direction:row}
+  #app-root .panel-search:not(.collapsed){display:flex !important;flex:1 1 0;min-width:0;border-right:1px solid var(--border)}
+  #app-root .panel-search.collapsed{display:flex !important}
+  #app-root .panel-clip{display:flex !important;width:var(--clip-width) !important;flex:0 0 auto;overflow-y:auto;overflow-x:hidden}
+  #app-root .panel-search.collapsed ~ .panel-clip{flex:1 1 auto;width:auto !important}
+  #app-root .clip-resize-handle{display:block}
+  #app-root .mobile-tabs{display:none}
+  #app-root.clip-closed .panel-clip,
+  #app-root.clip-closed .clip-resize-handle{display:none !important}
+  #app-root.clip-closed .panel-search{border-right:none}
+}
+
+/* <=1100px: sidebar otomatis jadi rail (nav.css) → sub-menu Konversian (Cari Produk, Konversi Berjalan,
+   Riwayat, Project, Converter, Cari SET, Dictionary) hilang dari sidebar. Tampilkan sebagai strip ikon
+   di header panel supaya tetap bisa pindah tab tanpa zoom-out. Tombol-tombol ini sudah terpasang
+   (hanya disembunyikan global), jadi cukup ditampilkan. */
+@media (min-width:641px) and (max-width:1100px){
+  #app-root .panel-header{display:block;padding:8px 12px 8px}
+  #app-root .subtab-row{display:flex;align-items:center;gap:2px;margin:0 0 8px}
+  #app-root .subtab-row .subtab-btn{
+    display:inline-flex !important;align-items:center;justify-content:center;position:relative;flex:0 0 auto;
+    height:30px;min-width:32px;padding:0 6px;border:0;border-radius:8px;background:transparent;
+    color:var(--text-muted);font-size:0;cursor:pointer;transition:background-color .12s,color .12s;
+  }
+  #app-root .subtab-row .subtab-btn i{font-size:16px}
+  #app-root .subtab-row .subtab-btn:hover{background:var(--surface-2);color:var(--text)}
+  #app-root .subtab-row .subtab-btn.active{background:var(--accent-bg);color:var(--accent-text)}
+  #app-root .subtab-row .subtab-badge{
+    position:absolute;top:1px;right:-1px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;
+    font-size:9.5px;line-height:14px;text-align:center;
+  }
+  #app-root .panel-collapse-btn{margin-left:auto;flex:0 0 auto;width:30px;height:30px}
+  #app-root #cari-controls{display:block}
+}

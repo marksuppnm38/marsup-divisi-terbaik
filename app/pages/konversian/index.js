@@ -2679,15 +2679,23 @@ let clipPreferred = (() => {
   return Number.isFinite(v) ? v : null;
 })();
 
+// Default = 36% dari lebar WORKSPACE (bukan layar): split-screen (±720–1000px) dapet panel kecil
+// (>=320), monitor penuh dapet panel lega (maks 460). Sebelumnya 28% layar → di split-screen
+// clipboard 360px+ menelan hampir separuh area kerja.
 function clipDefaultWidth() {
-  return Math.round(Math.min(460, Math.max(360, window.innerWidth * 0.28)));
+  return Math.round(Math.min(460, Math.max(CLIP_WIDTH_MIN, clipWorkspaceWidth() * 0.36)));
+}
+// Ruang minimum panel cari: 520px di layar lega, tapi maksimal separuh workspace di layar sempit
+// (kalau tidak, di split-screen batas ini lebih besar dari ruang yang ada).
+function clipSearchMin() {
+  return Math.min(CLIP_SEARCH_MIN, Math.round(clipWorkspaceWidth() * 0.5));
 }
 function clipWorkspaceWidth() {
   const w = clipWorkspaceEl ? clipWorkspaceEl.getBoundingClientRect().width : 0;
   return w || window.innerWidth;
 }
 function clipMaxWidth() {
-  return Math.max(CLIP_WIDTH_MIN, Math.min(CLIP_WIDTH_HARD_MAX, clipWorkspaceWidth() - CLIP_SEARCH_MIN));
+  return Math.max(CLIP_WIDTH_MIN, Math.min(CLIP_WIDTH_HARD_MAX, clipWorkspaceWidth() - clipSearchMin()));
 }
 function clampClipWidth(px) {
   return Math.min(clipMaxWidth(), Math.max(CLIP_WIDTH_MIN, Math.round(px)));
@@ -2727,6 +2735,12 @@ if (clipResizeHandle) {
   clipResizeHandle.setAttribute('tabindex', '0');
 }
 applyClipLayout();
+
+// Mode ringkas (split-screen, <=1100px): tab Cari/Berjalan/Riwayat/… tampil sebagai strip ikon di header
+// panel (sidebar jadi rail). Ikon butuh tooltip — ambil dari teks tombolnya.
+document.querySelectorAll('#app-root .subtab-btn').forEach(b => {
+  if (!b.title) b.title = (b.textContent || '').replace(/\s+\d+\s*$/, '').replace(/\s+/g, ' ').trim();
+});
 
 let clipDragPointerId = null; // dideklarasi sebelum dipakai scheduleClipLayout (hindari TDZ)
 // Re-clamp tiap ruang berubah: resize jendela DAN sidebar ciut/buka (yang gak

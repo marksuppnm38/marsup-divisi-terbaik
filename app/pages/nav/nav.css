@@ -582,3 +582,24 @@
 .pw-status-dot.success { background: var(--success-dot); }
 .pw-status-dot.warning { background: var(--warning-dot); }
 .pw-status-dot.danger  { background: var(--danger-dot); }
+/* ---- 3rd trigger: auto-rail untuk layar menengah (split-screen / jendela setengah layar) ----
+   768–1100px CSS: sidebar 224px menelan ±25–30% lebar, sisanya tidak cukup untuk dua panel kerja
+   (cari + clipboard). Rule dicerminkan dari `.pw-nav.collapsed` di atas (sengaja, bukan digabung —
+   lihat komentar "Collapsed rail"). Tombol collapse manual disembunyikan di rentang ini karena
+   rail-nya tidak bisa dibuka (sama seperti <768px). Sub-menu Konversian pindah jadi strip ikon di
+   header panel (konversian/style.css). Kalau satu diubah, ubah yang lain. */
+@media (min-width: 768px) and (max-width: 1100px) {
+  .pw-nav { width: 56px; }
+  .pw-nav .pw-nav-brand span,
+  .pw-nav .pw-nav-search-wrap,
+  .pw-nav .pw-nav-eyebrow,
+  .pw-nav .pw-nav-item span,
+  .pw-nav .pw-nav-item-chevron,
+  .pw-nav .pw-nav-subitems,
+  .pw-nav .pw-nav-user-name { display: none; }
+  .pw-nav .pw-nav-brand { justify-content: center; padding: 0; }
+  .pw-nav .pw-nav-item { justify-content: center; padding: 0; }
+  .pw-nav .pw-nav-user-avatar { display: none; }
+  .pw-nav .pw-nav-user { flex-direction: column; gap: 6px; padding: 10px 0; }
+  .pw-nav-collapse-btn { display: none; }
+}
