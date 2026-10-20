@@ -802,6 +802,13 @@ async function loadProduk(q, page){
     // filter status tambahan), jadi paging DAN filter status dilakukan di client dari
     // produkSearchRawRows — bukan query ulang tiap ganti halaman/filter.
     if (searchChanged) {
+      // PERF: search_produk_list = pembungkus RPC search (ranking sama) yang langsung
+      // balikin kolom list -> 1 round trip, bukan 2. Fallback ke jalur lama kalau belum ada.
+      const { data: listData, error: listErr } = await sb.rpc('search_produk_list', { q: qq });
+      const fastSearchOk = !listErr && Array.isArray(listData);
+      if (fastSearchOk) produkSearchRawRows = listData;
+      if (!fastSearchOk) {
+      if (listErr) console.warn('search_produk_list gagal, fallback ke 2 langkah:', listErr.message);
       const { data: rpcData, error: rpcErr } = await sb.rpc('search_produk_dengan_harga', { q: qq, p_tipe: null, only_akd: false, only_kfa: false });
       if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
       const kodeList = (rpcData || []).map(r => r.kode_produk);
@@ -814,6 +821,7 @@ async function loadProduk(q, page){
         const byKode = Object.fromEntries((fullRows || []).map(r => [r.kode_produk, r]));
         produkSearchRawRows = kodeList.map(k => byKode[k]).filter(Boolean);
       }
+      } // end if (!fastSearchOk)
     }
     const matcher = PRODUK_FILTERS[produkActiveFilter];
     let filtered = matcher ? produkSearchRawRows.filter(matcher) : produkSearchRawRows;
