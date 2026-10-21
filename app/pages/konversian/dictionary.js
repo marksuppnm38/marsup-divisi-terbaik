@@ -14,40 +14,179 @@ export function installDictionary(S) {
 // 20-50 item sekaligus) — di-cache per item.id biar gak nembak ulang tiap
 // buka-tutup baris yang sama.
 // ══════════════════════════════════════════
-const dictSuggestionCache = {}; // item.id -> {loading, istilah, status, produk} | null (null = udah dicek, gak ada saran)
+// <<DICT-SUGG-V2 BEGIN>>
+// Bentuk cache sekarang: { loading:false, groups:[{istilah, tier, skor, utama:[row], lain:[row]}] } | null
+// row = { kode_produk, nama_produk, freq, ukuran, src:'riwayat'|'katalog'|'varian' }
+// Sumber data: RPC suggest_dictionary (lihat migration_suggest_dictionary.sql). Kalau RPC itu
+// belum ada / error, jatuh balik ke jalur lama (get_dictionary_summary + _detail) biar UI tetap jalan.
+const dictSuggestionCache = {}; // item.id -> {loading, groups} | null (null = udah dicek, gak ada saran)
 S.dictSuggestionCache = dictSuggestionCache;
+
+// CSS tambahan khusus elemen baru (label ukuran, chip, catatan). Class lama (kb-dict-sugg-row,
+// -use, -attach, dst.) tetap pakai CSS yang sudah ada. Fallback warna dipakai kalau variabel tema gak ada.
+(function ensureDictSuggStyles() {
+  if (document.getElementById('kb-dict-sugg-v2-style')) return;
+  const st = document.createElement('style');
+  st.id = 'kb-dict-sugg-v2-style';
+  st.textContent = `
+    .kb-dict-sugg-group + .kb-dict-sugg-group { margin-top:8px; padding-top:8px; border-top:1px dashed var(--border,#ddd); }
+    .kb-dict-sugg-group.lemah .kb-dict-suggestion-label { color: var(--text-muted,#888); }
+    .kb-dict-sugg-hint { font-size:11px; color: var(--text-muted,#888); margin:2px 0 4px; }
+    .kb-dict-sugg-uk { font-size:10px; padding:1px 6px; border-radius:8px; margin-left:6px; white-space:nowrap; }
+    .kb-dict-sugg-uk.cocok { background: var(--success-bg,#e6f4ea); color: var(--success,#1e7e34); }
+    .kb-dict-sugg-uk.dekat { background: var(--surface-3,#eee); color: var(--text-secondary,#555); }
+    .kb-dict-sugg-uk.beda  { background: #fff4e0; color: var(--warning,#b26a00); }
+    .kb-dict-sugg-chips { display:flex; flex-wrap:wrap; gap:4px; align-items:center; margin-top:6px; font-size:11px; color: var(--text-muted,#888); }
+    .kb-dict-sugg-chip { font-size:11px; padding:2px 8px; border:1px solid var(--border,#ddd); border-radius:10px;
+      background: var(--surface,#fff); color: var(--text,#222); cursor:pointer; }
+    .kb-dict-sugg-chip:hover { border-color: var(--accent,#2563eb); }
+    .kb-dict-sugg-chip:disabled { opacity:.6; cursor:default; }
+  `;
+  document.head.appendChild(st);
+})();
+
+// Label ukuran pendek dari nama produk, buat chip ("16.5 cm"). null kalau gak ada.
+function dictSizeLabel(nama) {
+  const m = /(\d+(?:[.,]\d+)?)\s*(cm|mm)(?![a-z])/i.exec(nama || '');
+  return m ? m[1].replace(',', '.') + ' ' + m[2].toLowerCase() : null;
+}
+
+// Baris datar dari RPC -> grup per istilah. Aturan penempatan baris:
+//   tier 'varian'                       -> lain  (ukuran lain yang tersedia, cuma kalau ukuran gak diminta)
+//   tier 'katalog'                      -> utama (SKU ukuran yang diminta, dari katalog)
+//   baris istilah dgn ukuran 'beda'     -> lain, KECUALI semua baris grup itu 'beda' (maka tetap utama + diberi peringatan)
+//   sisanya (cocok/dekat/tidak_*)       -> utama
+function groupSuggestionRows(rows) {
+  const groups = [];
+  const byIstilah = new Map();
+  (rows || []).forEach(r => {
+    let g = byIstilah.get(r.istilah);
+    if (!g) {
+      g = { istilah: r.istilah, tier: null, skor: Number(r.skor), utama: [], lain: [], _beda: [] };
+      byIstilah.set(r.istilah, g); groups.push(g);
+    }
+    const row = {
+      kode_produk: r.kode_produk, nama_produk: r.nama_produk,
+      freq: Number(r.freq) || 0, ukuran: r.ukuran,
+      src: r.tier === 'katalog' ? 'katalog' : (r.tier === 'varian' ? 'varian' : 'riwayat')
+    };
+    if (r.tier !== 'katalog' && r.tier !== 'varian' && !g.tier) g.tier = r.tier;
+    if (r.tier === 'varian') g.lain.push(row);
+    else if (r.tier === 'katalog') g.utama.push(row);
+    else if (r.ukuran === 'beda') g._beda.push(row);
+    else g.utama.push(row);
+  });
+  groups.forEach(g => {
+    if (g.utama.length === 0 && g._beda.length) g.utama = g._beda;   // cuma ada ukuran beda: tetap tampilkan, tapi berperingatan
+    else g.lain = g._beda.concat(g.lain);
+    delete g._beda;
+    if (!g.tier) g.tier = 'exact';
+  });
+  return groups.filter(g => g.utama.length || g.lain.length);
+}
+
+// Jalur lama (get_dictionary_summary + get_dictionary_detail) dibungkus ke bentuk grup yang sama.
+async function fetchLegacySuggestion(item) {
+  const { data: summaryRows, error: summaryErr } = await S.rpc('get_dictionary_summary', {
+    p_search: item.raw_text, p_filter: 'semua', p_sort: 'frekuensi', p_limit: 1, p_offset: 0
+  });
+  if (summaryErr) throw new Error(summaryErr.message || summaryErr.hint || 'get_dictionary_summary gagal');
+  const top = summaryRows && summaryRows[0];
+  if (!top) return null;
+  const { data: detailRows, error: detailErr } = await S.rpc('get_dictionary_detail', { p_istilah: top.istilah_customer });
+  if (detailErr) throw new Error(detailErr.message || detailErr.hint || 'get_dictionary_detail gagal');
+  return { loading: false, groups: [{
+    istilah: top.istilah_customer, tier: 'legacy', skor: null,
+    utama: (detailRows || []).slice(0, 3).map(p => ({
+      kode_produk: p.kode_produk, nama_produk: p.nama_produk,
+      freq: Number(p.jumlah_pemakaian) || 0, ukuran: 'tidak_diminta', src: 'riwayat'
+    })), lain: []
+  }] };
+}
+
 async function fetchDictSuggestionFor(item) {
   if (dictSuggestionCache[item.id] !== undefined) return; // udah pernah dicek (ada hasil ATAU emang null)
   dictSuggestionCache[item.id] = { loading: true };
   try {
-    const { data: summaryRows, error: summaryErr } = await S.rpc('get_dictionary_summary', {
-      // Value parameter ini HARUS sama persis kayak yang dipake tab Dictionary
-      // asli (lihat #dict-filter-select/#dict-sort-select) — 'semua'/'frekuensi',
-      // bukan 'all'/'freq_desc'. Nilai enum yang salah bikin RPC gagal, dan
-      // gagalnya gak keliatan kalau cuma ngecek `data` doang tanpa cek `error`.
-      p_search: item.raw_text, p_filter: 'semua', p_sort: 'frekuensi', p_limit: 1, p_offset: 0
-    });
-    if (summaryErr) throw new Error(summaryErr.message || summaryErr.hint || 'get_dictionary_summary gagal');
-    const top = summaryRows && summaryRows[0];
-    if (!top) { dictSuggestionCache[item.id] = null; }
-    else {
-      const { data: detailRows, error: detailErr } = await S.rpc('get_dictionary_detail', { p_istilah: top.istilah_customer });
-      if (detailErr) throw new Error(detailErr.message || detailErr.hint || 'get_dictionary_detail gagal');
-      dictSuggestionCache[item.id] = {
-        loading: false,
-        istilah: top.istilah_customer,
-        status: top.status,
-        produk: (detailRows || []).slice(0, 3) // paling banyak 3 baris teratas, ini sinyal kontekstual bukan halaman browse penuh
-      };
-    }
+    const { data, error } = await S.rpc('suggest_dictionary', { p_text: item.raw_text, p_limit: 3 });
+    if (error) throw new Error(error.message || error.hint || 'suggest_dictionary gagal');
+    const groups = groupSuggestionRows(data);
+    dictSuggestionCache[item.id] = groups.length ? { loading: false, groups } : null;
   } catch (err) {
-    console.error('Gagal ambil saran Dictionary buat "' + item.raw_text + '":', err);
-    dictSuggestionCache[item.id] = null; // gagal fetch = anggap gak ada saran, jangan block UI checklist-nya — tapi errornya sekarang keliatan di console
+    console.warn('suggest_dictionary gagal, pakai jalur lama buat "' + item.raw_text + '":', err);
+    try {
+      dictSuggestionCache[item.id] = await fetchLegacySuggestion(item);
+    } catch (err2) {
+      console.error('Gagal ambil saran Dictionary buat "' + item.raw_text + '":', err2);
+      dictSuggestionCache[item.id] = null; // jangan block UI checklist-nya
+    }
   }
   // Item ini mungkin masih expanded pas fetch selesai — patch biar sarannya muncul.
   // Kalau user udah pindah ke item lain, patchChecklistItem no-op aman aja.
   if (S.checklistExpandedId === item.id) patchChecklistItem(item.id, {});
 }
+
+// Label per tier. kuat = pernah dipakai persis; sedang = produk sama beda ukuran; lemah = tebakan mirip.
+const DICT_TIER_UI = {
+  exact:    { cls: 'kuat',   icon: 'ti-history', pre: 'Pernah dipakai buat', post: '' },
+  urutan:   { cls: 'kuat',   icon: 'ti-history', pre: 'Pernah dipakai buat', post: ' (urutan kata beda)' },
+  keluarga: { cls: 'sedang', icon: 'ti-history', pre: 'Produk sama, ukuran lain — dari', post: '' },
+  umum:     { cls: 'lemah',  icon: 'ti-bulb',    pre: 'Istilah lebih umum:', post: '', hint: 'Permintaan ini lebih spesifik dari istilah di riwayat — pilih varian yang sesuai.' },
+  sempit:   { cls: 'lemah',  icon: 'ti-bulb',    pre: 'Istilah lebih spesifik:', post: '', hint: 'Permintaan ini lebih umum dari istilah di riwayat — cek dulu sebelum dipakai.' },
+  fuzzy:    { cls: 'lemah',  icon: 'ti-bulb',    pre: 'Mirip dengan', post: '', hint: 'Kecocokan perkiraan — cek dulu sebelum dipakai.' },
+  legacy:   { cls: 'sedang', icon: 'ti-history', pre: 'Biasa dipakai buat', post: '' }
+};
+const DICT_UKURAN_LABEL = {
+  cocok: ['cocok', 'ukuran cocok'],
+  dekat: ['dekat', 'ukuran dekat'],
+  beda:  ['beda',  'ukuran beda']
+};
+
+function renderDictSuggestionHtml(item, sugg) {
+  if (sugg === undefined || sugg === null) return '';
+  if (sugg.loading) return `<div class="kb-dict-suggestion loading">Ngecek riwayat pemakaian…</div>`;
+  const groups = (sugg.groups || []).slice(0, 2);
+  if (!groups.length) return '';
+  const esc = S.escapeHtmlAttr;
+  const inClip = kode => S.clipboard.some(c => c.kode_produk === kode);
+
+  const groupsHtml = groups.map(g => {
+    const ui = DICT_TIER_UI[g.tier] || DICT_TIER_UI.fuzzy;
+    const rows = g.utama.slice(0, 5).map(p => {
+      const uk = DICT_UKURAN_LABEL[p.ukuran];
+      const ukBadge = uk ? `<span class="kb-dict-sugg-uk ${uk[0]}" title="${p.ukuran === 'dekat' ? 'Selisih ≤ 0,5 cm dari ukuran yang diminta (pembulatan umum, mis. 14 cm vs 14,5 cm)' : p.ukuran === 'beda' ? 'Ukuran produk ini beda dari yang diminta' : ''}">${uk[1]}</span>` : '';
+      const freqTxt = p.src === 'katalog' ? 'SKU ukuran yang diminta (dari katalog)' : `${p.freq.toLocaleString('id-ID')}× dipakai`;
+      const btn = inClip(p.kode_produk)
+        ? `<button class="kb-dict-sugg-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${esc(p.kode_produk)}">Pakai</button>`
+        : `<button class="kb-dict-sugg-attach" data-action="attach-suggestion" data-id="${item.id}" data-kode="${esc(p.kode_produk)}" title="Belum ada di Clipboard sesi ini — tambahin dulu">+ Tambah & Pakai</button>`;
+      return `<div class="kb-dict-sugg-row">
+        <div class="kb-dict-sugg-info">
+          <span class="kb-dict-sugg-nama">${esc(p.nama_produk || p.kode_produk)}${ukBadge}</span>
+          <span class="kb-dict-sugg-freq">${freqTxt}</span>
+        </div>
+        ${btn}
+      </div>`;
+    }).join('');
+
+    // Istilah kuat yang punya >1 produk berbeda = ambigu (bukan bug): jangan pura-pura yakin.
+    const ambigu = (g.tier === 'exact' || g.tier === 'urutan') && g.utama.filter(p => p.src === 'riwayat').length > 1
+      ? `<div class="kb-dict-sugg-hint">Istilah ini pernah dipenuhi ${g.utama.filter(p => p.src === 'riwayat').length} produk berbeda — pilih yang sesuai.</div>` : '';
+    const hint = ui.hint ? `<div class="kb-dict-sugg-hint">${ui.hint}</div>` : '';
+
+    const chips = g.lain.length ? `<div class="kb-dict-sugg-chips"><span>Ukuran lain:</span>${g.lain.slice(0, 12).map(p => {
+      const lbl = dictSizeLabel(p.nama_produk) || (p.nama_produk || p.kode_produk).slice(0, 24);
+      const act = inClip(p.kode_produk) ? 'use-suggestion' : 'attach-suggestion';
+      return `<button class="kb-dict-sugg-chip" type="button" data-action="${act}" data-id="${item.id}" data-kode="${esc(p.kode_produk)}" title="${esc(p.nama_produk || p.kode_produk)}">${esc(lbl)}</button>`;
+    }).join('')}</div>` : '';
+
+    return `<div class="kb-dict-sugg-group ${ui.cls}">
+      <div class="kb-dict-suggestion-label"><i class="ti ${ui.icon}"></i> ${ui.pre} "${esc(g.istilah)}"${ui.post}</div>
+      ${hint}${ambigu}${rows}${chips}
+    </div>`;
+  }).join('');
+  return `<div class="kb-dict-suggestion">${groupsHtml}</div>`;
+}
+// <<DICT-SUGG-V2 END>>
 // Dipanggil abis checklistExpandedId ganti (toggle manual, auto-advance, atau
 // default pas checklist pertama kali dimuat) — satu titik konsisten biar gak
 // keulang nulis pengecekan yang sama di banyak tempat.
@@ -86,7 +225,7 @@ function startChecklistSession(submitResult, namaRs, picSales, pagu, tanggal) {
   S.setClipHeaderCollapsed(true);
 
   S.kbSection.classList.remove('kb-collapsed');
-  S.kbRecordStatus.textContent = '';
+  S.kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
   S.kbRefreshStatus.textContent = '';
   renderChecklist();
   maybeFetchSuggestionForExpanded();
@@ -104,49 +243,16 @@ S.startChecklistSession = startChecklistSession;
 // "All Set Mata" -> Set Pacho + Cataract Minor Set), makanya checkbox bukan
 // dropdown single-select lagi. Qty per-SKU opsional, dipakai kalau kebutuhan
 // dipenuhi campuran beberapa varian dengan porsi qty berbeda.
-// Qty default mengikuti Permintaan RS (qty_diminta) — SUMBER qty konversi.
-// Aturan (sengaja sederhana & bisa ditebak):
-//  - 1 produk dipilih  → qty produk = qty_diminta (bisa diubah, itu dianggap override manual)
-//  - 2+ produk dipilih → TIDAK ada auto-split & TIDAK ada copy qty ke tiap produk
-//    (bakal ngelipatin qty diam-diam). Isi manual per produk; hint nunjukin
-//    "teralokasi X dari Y". Qty dikosongin = qty clipboard produk itu TIDAK diubah.
-function rsQtyDiminta(item) {
-  const q = item ? Number(item.qty_diminta) : NaN;
-  return (!isNaN(q) && q >= 1) ? q : null;
-}
-function allocHintText(diminta, qtys) {
-  // qtys: array qty (number|null) untuk tiap produk yang dicentang
-  if (diminta == null) return { text: '', cls: '' };
-  if (qtys.length === 0) return { text: `Diminta RS: ${diminta}`, cls: '' };
-  if (qtys.length === 1) return { text: `Diminta RS: ${diminta} · qty produk mengikuti permintaan (boleh diubah)`, cls: '' };
-  const filled = qtys.filter(q => q != null && !isNaN(q));
-  const sum = filled.reduce((a, b) => a + b, 0);
-  const blank = qtys.length - filled.length;
-  let text = `Diminta RS: ${diminta} · teralokasi ${sum}`;
-  let cls = '';
-  if (sum > diminta) { text += ' — melebihi permintaan'; cls = ' over'; }
-  else if (sum < diminta && blank === 0) { text += ` — kurang ${diminta - sum}`; cls = ' warn'; }
-  if (blank > 0) text += ` · ${blank} produk tanpa qty (qty clipboard-nya tidak diubah)`;
-  return { text, cls };
-}
-S.allocHintText = allocHintText;
-
 function clipboardPickerHtml(itemId, matchedItems) {
-  const pickItem = S.checklistItems.find(i => i.id === itemId);
-  const diminta = rsQtyDiminta(pickItem);
-  const singleLink = (matchedItems || []).length === 1;
   const rows = S.clipboard.map(c => {
     const link = (matchedItems || []).find(l => l.kode_produk === c.kode_produk);
     const checked = link ? ' checked' : '';
-    // Link lama yang qty_alokasi-nya belum pernah diisi (data sebelum fitur ini) dan
-    // cuma 1 produk → tampilkan qty_diminta sebagai default, bukan kolom kosong.
-    const qtyVal = (link && link.qty_alokasi != null) ? link.qty_alokasi
-      : (link && singleLink && diminta != null ? diminta : '');
+    const qtyVal = (link && link.qty_alokasi != null) ? link.qty_alokasi : '';
     // data-search dipake filter client-side di bawah — cocokin ke kode ATAU nama,
     // biar ketik "scalpel" nemu meski yang diinget cuma sebagian nama produknya.
     const haystack = `${c.kode_produk} ${c.nama_produk}`.toLowerCase();
     return `<label class="kb-picker-row" data-search="${S.escapeHtmlAttr(haystack)}">
-      <input type="checkbox" data-picker-check="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}" data-produk-id="${S.escapeHtmlAttr(c.produk_id||'')}"${checked}>
+      <input type="checkbox" data-picker-check="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}" data-produk-id="${c.produk_id||''}"${checked}>
       <span class="kb-picker-name">${S.escapeHtmlAttr(c.kode_produk)} — ${S.escapeHtmlAttr(c.nama_produk)}</span>
       <input type="number" min="0" class="kb-picker-qty" data-picker-qty="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}"
         placeholder="qty" value="${qtyVal}" style="${checked ? '' : 'display:none'}">
@@ -161,20 +267,9 @@ function clipboardPickerHtml(itemId, matchedItems) {
   // katalog" jadi jalan pintas ke search utama (bukan search kedua yang
   // duplikat) — biar gak ada 2 search engine keliatan beda tapi
   // sebenernya nyari hal yang sama.
-  const initQtys = (matchedItems || []).map(l => {
-    if (l.qty_alokasi != null) return Number(l.qty_alokasi);
-    return (singleLink && diminta != null) ? diminta : null;
-  });
-  const hint = allocHintText(diminta, initQtys);
-  return `<div class="kb-picker-wrap" data-diminta="${diminta != null ? diminta : ''}">
-    <div class="kb-alloc-hint${hint.cls}" data-alloc-hint="${itemId}" style="${hint.text ? '' : 'display:none'}">${S.escapeHtmlAttr(hint.text)}</div>
+  return `<div class="kb-picker-wrap">
     <input type="text" class="kb-picker-filter" data-filter-for="${itemId}"
       placeholder="Saring dari ${S.clipboard.length} produk yang udah kepake di sesi ini…" ${S.clipboard.length ? '' : 'disabled'}>
-    <div class="kb-picker-tools" style="${S.clipboard.length ? '' : 'display:none'}">
-      <button type="button" class="kb-picker-tool" data-picker-selvis="${itemId}" data-mode="on" title="Centang semua baris yang lagi kelihatan (ikut hasil saring)"><i class="ti ti-checks"></i> Centang yang tampil</button>
-      <button type="button" class="kb-picker-tool" data-picker-selvis="${itemId}" data-mode="off" title="Hapus centang baris yang lagi kelihatan">Kosongkan yang tampil</button>
-      <span class="kb-picker-tip">Shift+klik = pilih rentang</span>
-    </div>
     <div class="kb-picker-list" data-picker-list="${itemId}">${rows}</div>
     <div class="kb-picker-empty" data-picker-empty="${itemId}" style="${S.clipboard.length ? 'display:none' : ''}">
       ${S.clipboard.length ? 'Gak ada yang cocok di pool sesi ini.' : 'Belum ada produk yang kepake di sesi ini.'}
@@ -241,64 +336,6 @@ function updateKbCounts() {
 
 // Template satu baris Kebutuhan RS — dipakai render awal (renderChecklist) MAUPUN
 // patch realtime (patchChecklistItem), biar markup-nya gak dobel definisi.
-// ---- Filter status daftar Kebutuhan RS (buat workflow item banyak) ----
-// Chip di atas daftar: Semua / Belum / Tidak bisa / Terpenuhi. Hitungannya
-// ngikutin "scope" tab yang lagi aktif (Semua = seluruh item, tab section = isi
-// section itu). Rollup/progress tetap dihitung dari SEMUA item, filter cuma
-// ngatur baris mana yang digambar — jadi angka 36/41 gak ikut berubah.
-S.kbStatusFilter = S.kbStatusFilter || 'semua';
-const KB_FILTERS = [
-  { key: 'semua',     label: 'Semua',      test: () => true },
-  { key: 'belum',     label: 'Belum',      test: i => i.status === 'PENDING' },
-  { key: 'tidak',     label: 'Tidak bisa', test: i => i.status === 'TIDAK_TERPENUHI' },
-  { key: 'terpenuhi', label: 'Terpenuhi',  test: i => i.status === 'TERPENUHI' }
-];
-function kbFilterDef() { return KB_FILTERS.find(f => f.key === S.kbStatusFilter) || KB_FILTERS[0]; }
-function kbItemMatchesFilter(it) { return kbFilterDef().test(it); }
-
-function kbScopeItems() {
-  if (S.activeSectionTab === null || !S.checklistSections.length) return S.checklistItems;
-  const ids = new Set(S.checklistSections.map(s => s.id));
-  if (S.activeSectionTab === 'orphan') return S.checklistItems.filter(i => !ids.has(i.section_id));
-  return S.checklistItems.filter(i => i.section_id === S.activeSectionTab);
-}
-
-// Bar cuma muncul kalau item-nya lumayan banyak (atau filter lagi aktif, biar
-// selalu ada jalan keluar). Item sedikit = gak perlu nambah elemen.
-function kbFilterBarHtml() {
-  if (S.checklistItems.length <= 8 && S.kbStatusFilter === 'semua') return '';
-  const scope = kbScopeItems();
-  const chips = KB_FILTERS.map(f => {
-    const n = f.key === 'semua' ? scope.length : scope.filter(f.test).length;
-    const active = S.kbStatusFilter === f.key;
-    return `<button type="button" class="kb-filter-chip kb-filter-${f.key}${active ? ' active' : ''}${n === 0 && !active ? ' zero' : ''}" data-kb-filter="${f.key}" aria-pressed="${active ? 'true' : 'false'}">${f.label}<span class="kb-filter-count">${n}</span></button>`;
-  }).join('');
-  return `<div class="kb-filter-bar" role="group" aria-label="Filter status kebutuhan">${chips}</div>`;
-}
-
-// Update angka/aktif chip di tempat (tanpa re-render daftar) — dipakai patch realtime.
-function refreshKbFilterBar() {
-  const bar = S.kbList.querySelector('.kb-filter-bar');
-  if (!bar) return;
-  const temp = document.createElement('div');
-  temp.innerHTML = kbFilterBarHtml();
-  if (temp.firstElementChild) bar.replaceWith(temp.firstElementChild);
-}
-
-function kbFilterEmptyHtml() {
-  return `<div class="kb-section-empty">Gak ada item "${kbFilterDef().label}" di sini. <button type="button" class="kb-filter-reset" data-kb-filter="semua">Tampilkan semua</button></div>`;
-}
-
-S.kbList.addEventListener('click', e => {
-  const chip = e.target.closest('[data-kb-filter]');
-  if (!chip) return;
-  const key = chip.dataset.kbFilter;
-  if (!KB_FILTERS.some(f => f.key === key) || key === S.kbStatusFilter) return;
-  S.kbStatusFilter = key;
-  renderChecklist();
-  S.kbList.scrollTop = 0;
-});
-
 function renderChecklistItemHtml(item) {
   const isPending = item.status === 'PENDING';
   const isDone = item.status === 'TERPENUHI';
@@ -330,7 +367,7 @@ function renderChecklistItemHtml(item) {
   const headerHtml = `<div class="kb-item-header" data-action="toggle-expand" data-id="${item.id}">
     <span class="kb-item-status-icon">${statusIcon}</span>
     <div class="kb-item-header-text">
-      <div class="kb-item-text" title="${S.escapeHtmlAttr(item.raw_text)}${qtyTxt}">${S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
+      <div class="kb-item-text">${S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
       ${!isExpanded ? compactMatchedTxt : ''}
     </div>
     <i class="ti ti-chevron-down kb-item-chevron"></i>
@@ -348,7 +385,7 @@ function renderChecklistItemHtml(item) {
       matchedHtml = `<div class="kb-item-matched">${item.matched_items.map(l => {
         const nama = namaProdukByKode(l.kode_produk);
         const qtyLineTxt = l.qty_alokasi != null ? ` · qty ${l.qty_alokasi}` : '';
-        return `<span class="kb-matched-row">→ ${S.escapeHtmlAttr(l.kode_produk)}${nama ? ' — ' + S.escapeHtmlAttr(nama) : ''}${qtyLineTxt}</span>`;
+        return `<span class="kb-matched-row">→ ${l.kode_produk}${nama ? ' — ' + nama : ''}${qtyLineTxt}</span>`;
       }).join('')}</div>`;
     }
 
@@ -369,30 +406,7 @@ function renderChecklistItemHtml(item) {
         </div>`;
     } else if (isPending) {
       const sugg = dictSuggestionCache[item.id];
-      let suggHtml = '';
-      if (sugg === undefined) {
-        suggHtml = ''; // belum sempat di-fetch (harusnya sebentar doang, di-trigger bareng expand)
-      } else if (sugg && sugg.loading) {
-        suggHtml = `<div class="kb-dict-suggestion loading">Ngecek riwayat pemakaian…</div>`;
-      } else if (sugg && sugg.produk && sugg.produk.length) {
-        const badgeCls = sugg.status === 'MULTIPLE' ? 'multiple' : 'consistent';
-        const rows = sugg.produk.map(p => {
-          const inClip = S.clipboard.some(c => c.kode_produk === p.kode_produk);
-          return `<div class="kb-dict-sugg-row">
-            <div class="kb-dict-sugg-info">
-              <span class="kb-dict-sugg-nama">${S.escapeHtmlAttr(p.nama_produk || p.kode_produk)}</span>
-              <span class="kb-dict-sugg-freq">${Number(p.jumlah_pemakaian).toLocaleString('id-ID')}× dipakai${p.persentase != null ? ' · ' + p.persentase + '%' : ''}</span>
-            </div>
-            ${inClip
-              ? `<button class="kb-dict-sugg-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${S.escapeHtmlAttr(p.kode_produk)}">Pakai</button>`
-              : `<button class="kb-dict-sugg-attach" data-action="attach-suggestion" data-id="${item.id}" data-kode="${S.escapeHtmlAttr(p.kode_produk)}" title="Belum ada di Clipboard sesi ini — tambahin dulu">+ Tambah & Pakai</button>`}
-          </div>`;
-        }).join('');
-        suggHtml = `<div class="kb-dict-suggestion">
-          <div class="kb-dict-suggestion-label"><i class="ti ti-history"></i> Biasa dipakai buat "${S.escapeHtmlAttr(sugg.istilah)}" <span class="dict-badge ${badgeCls}" style="font-size:9px;padding:1px 5px">${sugg.status}</span></div>
-          ${rows}
-        </div>`;
-      }
+      const suggHtml = renderDictSuggestionHtml(item, sugg);
       bodyHtml = `
         ${suggHtml}
         <div class="kb-item-actions">
@@ -476,29 +490,12 @@ function kbRollupHtml(r, size) {
 // sekali, fallback lama tetap jalan).
 S.activeSectionTab = null; // null = "Semua"; angka = id permintaan_section
 
-const kbAddSectionBtn = document.getElementById('kb-add-section-btn');
-
 function renderSectionTabs() {
   // Dulu: kalau belum ada section sama sekali, tab bar (termasuk tombol "+")
   // ikut disembunyiin — bug, bikin gak ada cara mulai bikin section pertama
   // dari UI. Sekarang: selalu tampil begitu ada Permintaan RS aktif ("Semua"
   // + "+" minimal selalu ada), biar bisa bootstrap section pertama kapan pun.
-  if (!S.checklistPermintaanId) {
-    S.kbSectionTabs.style.display = 'none';
-    if (kbAddSectionBtn) kbAddSectionBtn.style.display = 'none';
-    return;
-  }
-  // Belum ada section sama sekali: tab "Semua" + "Tanpa section" isinya persis sama, jadi satu baris
-  // tab dibuang — diganti tombol kecil "+ Section" di baris atas (kb-head). Begitu section pertama
-  // dibuat, tab bar muncul lagi seperti biasa.
-  if (!S.checklistSections.length) {
-    S.activeSectionTab = null;
-    S.kbSectionTabs.style.display = 'none';
-    S.kbSectionTabs.innerHTML = '';
-    if (kbAddSectionBtn) kbAddSectionBtn.style.display = '';
-    return;
-  }
-  if (kbAddSectionBtn) kbAddSectionBtn.style.display = 'none';
+  if (!S.checklistPermintaanId) { S.kbSectionTabs.style.display = 'none'; return; }
   S.kbSectionTabs.style.display = 'flex';
   const countBySection = new Map(S.checklistSections.map(s => [s.id, 0]));
   countBySection.set(null, 0);
@@ -518,21 +515,6 @@ function renderSectionTabs() {
   tabs.push(`<button type="button" class="kb-tab kb-tab-add" data-tab="add" title="Tambah section"><i class="ti ti-plus"></i></button>`);
   S.kbSectionTabs.innerHTML = tabs.join('');
 }
-
-async function addSectionFlow() {
-  const nama = await showSectionNameModal({
-    mode: 'add',
-    existingNames: S.checklistSections.map(s => s.nama_section)
-  });
-  if (!nama) return;
-  const { data, error } = await S.rpc('add_permintaan_section', { p_permintaan_id: S.checklistPermintaanId, p_nama_section: nama });
-  if (error) { PNMToast.error('Gagal nambah section: ' + (error.message || 'error')); return; }
-  const row = Array.isArray(data) ? data[0] : data;
-  S.checklistSections.push(row);
-  S.activeSectionTab = row.id;
-  renderChecklist();
-}
-if (kbAddSectionBtn) kbAddSectionBtn.addEventListener('click', addSectionFlow);
 
 S.kbSectionTabs.addEventListener('click', async e => {
   const deleteBtn = e.target.closest('.kb-tab-delete');
@@ -561,7 +543,20 @@ S.kbSectionTabs.addEventListener('click', async e => {
   const btn = e.target.closest('.kb-tab');
   if (!btn) return;
   const tab = btn.dataset.tab;
-  if (tab === 'add') { await addSectionFlow(); return; }
+  if (tab === 'add') {
+    const nama = await showSectionNameModal({
+      mode: 'add',
+      existingNames: S.checklistSections.map(s => s.nama_section)
+    });
+    if (!nama) return;
+    const { data, error } = await S.rpc('add_permintaan_section', { p_permintaan_id: S.checklistPermintaanId, p_nama_section: nama });
+    if (error) { PNMToast.error('Gagal nambah section: ' + (error.message || 'error')); return; }
+    const row = Array.isArray(data) ? data[0] : data;
+    S.checklistSections.push(row);
+    S.activeSectionTab = row.id;
+    renderChecklist();
+    return;
+  }
   S.activeSectionTab = tab === 'semua' ? null : (tab === 'orphan' ? 'orphan' : Number(tab));
   renderChecklist();
 });
@@ -650,20 +645,7 @@ S.kbList.addEventListener('dragstart', e => {
   dragPayload = { type: 'item', id: Number(itemEl.dataset.id) };
 });
 
-// Bungkus render: jaga posisi scroll daftar biar gak loncat ke atas tiap re-render
-// (buka/tutup baris, konfirmasi, ganti filter dll).
 function renderChecklist() {
-  const prevScroll = S.kbList.scrollTop;
-  renderChecklistInner();
-  S.kbList.scrollTop = prevScroll;
-}
-
-function renderChecklistInner() {
-  // Filter status itu per Permintaan RS — ganti permintaan/sesi, balik ke "Semua".
-  if (S._kbFilterPid !== S.checklistPermintaanId) {
-    S._kbFilterPid = S.checklistPermintaanId;
-    S.kbStatusFilter = 'semua';
-  }
   updateKbCounts();
   renderSectionTabs();
 
@@ -681,9 +663,7 @@ function renderChecklistInner() {
   if (!S.checklistSections.length) {
     // Belum ada section (Permintaan RS single-sheet, atau RPC belum di-update
     // buat ngirim field sections) — tampilin flat kayak sebelumnya, gak ada regresi.
-    const visFlat = S.checklistItems.filter(kbItemMatchesFilter);
-    S.kbList.innerHTML = kbFilterBarHtml()
-      + (visFlat.length ? visFlat.map(renderChecklistItemHtml).join('') : (S.checklistItems.length ? kbFilterEmptyHtml() : ''));
+    S.kbList.innerHTML = S.checklistItems.map(renderChecklistItemHtml).join('');
     return;
   }
 
@@ -699,24 +679,18 @@ function renderChecklistInner() {
     // sheet sekilas — buat overview, bukan tempat kerja detail (itu di tab masing-masing).
     const groups = S.checklistSections.map(s => ({ section: s, items: bySection.get(s.id) }));
     if (bySection.get(null).length) groups.push({ section: null, items: bySection.get(null) });
-    let anyVisible = false;
-    const groupsHtml = groups.map(g => {
+    S.kbList.innerHTML = groups.map(g => {
       if (!g.items.length) return '';
-      const visItems = g.items.filter(kbItemMatchesFilter);
-      if (!visItems.length) return ''; // grup tanpa baris yang lolos filter disembunyiin
-      anyVisible = true;
-      const rollup = computeSectionRollup(g.items, g.section ? g.section.pagu : null); // rollup tetap dari SEMUA baris
+      const rollup = computeSectionRollup(g.items, g.section ? g.section.pagu : null);
       const title = g.section ? S.escapeHtmlAttr(g.section.nama_section) : 'Tanpa section';
       return `<div class="kb-section-group" data-section-id="${g.section ? g.section.id : 'null'}">
         <div class="kb-section-header">
           <span class="kb-section-title">${title}</span>
           ${kbRollupHtml(rollup, 'sm')}
         </div>
-        <div class="kb-section-items">${visItems.map(renderChecklistItemHtml).join('')}</div>
+        <div class="kb-section-items">${g.items.map(renderChecklistItemHtml).join('')}</div>
       </div>`;
     }).join('');
-    S.kbList.innerHTML = kbFilterBarHtml()
-      + (anyVisible || S.kbStatusFilter === 'semua' ? groupsHtml : kbFilterEmptyHtml());
     return;
   }
 
@@ -732,17 +706,11 @@ function renderChecklistInner() {
     ? `<div class="kb-section-pagu-row">Pagu section: <input type="text" inputmode="numeric" id="kb-section-pagu-input" data-section-id="${section.id}"
          value="${section.pagu != null ? formatRibuan(section.pagu) : ''}" placeholder="belum diisi"></div>`
     : '';
-  const visItems = items.filter(kbItemMatchesFilter);
-  const bodyHtml = visItems.length
-    ? visItems.map(renderChecklistItemHtml).join('')
-    : (items.length
-      ? kbFilterEmptyHtml()
-      : '<div class="kb-section-empty">Belum ada baris di section ini. Drag baris dari tab lain ke sini, atau tambah lewat Permintaan RS.</div>');
-  S.kbList.innerHTML = `${kbFilterBarHtml()}<div class="kb-active-section-head">
+  S.kbList.innerHTML = `<div class="kb-active-section-head">
       ${kbRollupHtml(rollup, 'sm')}
       ${paguRow}
     </div>
-    ${bodyHtml}`;
+    ${items.length ? items.map(renderChecklistItemHtml).join('') : '<div class="kb-section-empty">Belum ada baris di section ini. Drag baris dari tab lain ke sini, atau tambah lewat Permintaan RS.</div>'}`;
 }
 S.renderChecklist = renderChecklist;
 
@@ -786,14 +754,6 @@ function patchChecklistItem(id, changes) {
   Object.assign(item, changes);
   updateKbCounts();
   const node = S.kbList.querySelector(`.kb-item[data-id="${CSS.escape(String(id))}"]`);
-  // Filter aktif: status berubah bisa bikin baris ini keluar/masuk filter.
-  const visible = kbItemMatchesFilter(item);
-  if (!!node !== visible) { renderChecklist(); return; }
-  if (!node) { // baris ini memang lagi disembunyiin filter — cukup update angka
-    refreshRollupHeadersOnly();
-    refreshKbFilterBar();
-    return;
-  }
   if (node) {
     const temp = document.createElement('div');
     temp.innerHTML = renderChecklistItemHtml(item);
@@ -804,7 +764,6 @@ function patchChecklistItem(id, changes) {
     // global di kbSummary) kemungkinan besar ikut geser. Re-render header aja
     // (bukan renderChecklist() penuh) biar gak ngerender ulang semua baris.
     refreshRollupHeadersOnly();
-    refreshKbFilterBar();
   } else {
     renderChecklist(); // fallback aman kalau node-nya gak ketemu (harusnya jarang)
   }
@@ -865,9 +824,8 @@ S.refreshRollupHeadersOnly = refreshRollupHeadersOnly;
 // (by produk_id kalau ada, fallback ke kode_produk) — dipake buat sinkronin qty
 // clipboard biar akurat kalau >1 item Permintaan RS dipenuhi dari produk yang
 // sama persis (harus DIJUMLAH, bukan ketimpa sama yang terakhir dikonfirm).
-// `override` opsional: {itemId, links} — ganti daftar link item itu (dipakai buat
-// ngitung "total sebelum" vs "total sesudah" sebuah perubahan tanpa peduli
-// item.matched_items-nya udah/belum dimutasi).
+// `override` opsional: {itemId, links} — dipake pas lagi proses konfirmasi
+// picker, sebelum item.matched_items-nya sendiri kesimpen.
 function sumQtyAlokasiForProduk(produkId, kode, override) {
   let total = 0;
   let hasAny = false;
@@ -883,55 +841,20 @@ function sumQtyAlokasiForProduk(produkId, kode, override) {
   });
   return hasAny ? total : null;
 }
-S.sumQtyAlokasiForProduk = sumQtyAlokasiForProduk;
 
-// Qty "sesuai Permintaan RS" untuk satu item clipboard (null = gak ada alokasi RS).
-function rsQtyForClipItem(clipItem) {
-  if (!clipItem || !S.checklistPermintaanId) return null;
-  return sumQtyAlokasiForProduk(clipItem.produk_id != null ? clipItem.produk_id : null, clipItem.kode_produk);
-}
-S.rsQtyForClipItem = rsQtyForClipItem;
-
-// SATU titik yang nyambungin perubahan alokasi RS → qty clipboard. Dipakai semua
-// jalur (konfirmasi picker, Pakai/Tambah&Pakai, Tidak Bisa, Batal, edit qty RS).
-// Dipanggil SETELAH server sukses, dengan link SEBELUM & SESUDAH untuk item itu.
-//
-// Aturan qty clipboard (source of truth = Permintaan RS, override manual dihormati):
-//  - total RS baru ada, dan qty clipboard MASIH mengikuti RS (== total lama, atau
-//    belum pernah ada alokasi) → qty clipboard diset ke total RS baru.
-//  - qty clipboard BEDA dari total RS lama → itu override manual user: JANGAN
-//    ditimpa. Badge "manual · RS n" di baris clipboard yang nunjukin selisihnya.
-//  - total RS baru gak ada (alokasi dicabut) → qty clipboard dibiarkan, gak di-reset.
-function reconcileClipboardQty(itemId, oldLinks, newLinks) {
-  const seen = new Set();
-  const notes = [];
-  let changed = false;
-  [...(oldLinks || []), ...(newLinks || [])].forEach(l => {
-    const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
-    if (seen.has(key)) return;
-    seen.add(key);
-    const clipItem = S.clipboard.find(c => c.kode_produk === l.kode_produk);
-    if (!clipItem) return;
-    const prev = sumQtyAlokasiForProduk(l.produk_id, l.kode_produk, { itemId, links: oldLinks || [] });
-    const next = sumQtyAlokasiForProduk(l.produk_id, l.kode_produk, { itemId, links: newLinks || [] });
-    if (next == null || clipItem.qty === next) return;
-    const followsRs = prev == null || clipItem.qty === prev;
-    if (!followsRs) {
-      notes.push(`Qty ${l.kode_produk} tetap ${clipItem.qty} (diubah manual) — Permintaan RS: ${next}`);
-      return;
-    }
-    const before = clipItem.qty;
-    clipItem.qty = next;
-    if (clipItem._sesiItemId) S.markLocalWrite(S.SESI_ITEM_TABLE, clipItem._sesiItemId, 'qty', clipItem.qty);
+// Sinkronin qty item clipboard ke total qty_alokasi teragregasi (lihat fungsi
+// di atas). Balikin true kalau qty-nya berubah (biar caller tau perlu re-render).
+function syncClipboardQtyForProduk(produkId, kode, override) {
+  const clipItem = S.clipboard.find(c => c.kode_produk === kode);
+  if (!clipItem) return false;
+  const total = sumQtyAlokasiForProduk(produkId, kode, override);
+  if (total != null && clipItem.qty !== total) {
+    clipItem.qty = total;
     S.persistUpdateQty(clipItem);
-    changed = true;
-    if (before !== 1 && prev == null) notes.push(`Qty ${l.kode_produk}: ${before} → ${next} (mengikuti Permintaan RS)`);
-  });
-  S.updateClipboard(); // selalu: badge "RS n" di baris clipboard harus ikut segar
-  if (notes.length) PNMToast.show(notes.join(' · '), 'presence', { duration: 6000 });
-  return changed;
+    return true;
+  }
+  return false;
 }
-S.reconcileClipboardQty = reconcileClipboardQty;
 
 S.kbList.addEventListener('click', async (e) => {
   const link = e.target.closest('a[data-action]');
@@ -1009,10 +932,22 @@ S.kbList.addEventListener('click', async (e) => {
       return { produk_id: produkId, kode_produk: kode, qty_alokasi: qtyVal };
     });
 
-    // Qty clipboard TIDAK lagi diubah di sini sebelum server konfirmasi (dulu: kalau
-    // update gagal, qty clipboard udah keburu berubah tanpa link-nya). Sekarang
-    // reconcileClipboardQty() dipanggil SETELAH sukses — lihat di bawah.
-    const oldLinks = item.matched_items || [];
+    // Kalau qty_alokasi diisi di picker Kebutuhan RS, ikutin ke qty item clipboard
+    // yang sama — biar user gak perlu isi qty dua kali (di clipboard & di sini).
+    // Kalau ada >1 item Permintaan RS yang dipenuhi dari produk yang sama, qty-nya
+    // DIJUMLAH (bukan ketimpa sama yang terakhir dikonfirm) — agregasi per produk
+    // (produk_id kalau ada, fallback kode_produk), lewat sumQtyAlokasiForProduk().
+    // Kalau qty_alokasi dikosongin, qty clipboard dibiarin apa adanya (gak di-reset).
+    let clipQtyChanged = false;
+    const touchedProduk = new Set();
+    links.forEach(l => {
+      if (l.qty_alokasi == null || isNaN(l.qty_alokasi) || l.qty_alokasi < 1) return;
+      const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+      if (touchedProduk.has(key)) return; // 2 checkbox beda tapi produk sama (jarang) — cukup dihitung sekali
+      touchedProduk.add(key);
+      if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk, { itemId, links })) clipQtyChanged = true;
+    });
+    if (clipQtyChanged) S.updateClipboard();
 
     btn.disabled = true;
     try {
@@ -1020,7 +955,6 @@ S.kbList.addEventListener('click', async (e) => {
       await callUpdatePermintaanItemMulti(itemId, 'TERPENUHI', links);
       item.status = 'TERPENUHI';
       item.matched_items = links;
-      reconcileClipboardQty(itemId, oldLinks, links);
       S.checklistPickingId = null;
       S.checklistExpandedId = S.advanceToNextPending(itemId); // langsung buka yang PENDING berikutnya
       renderChecklist();
@@ -1043,9 +977,16 @@ S.kbList.addEventListener('click', async (e) => {
       item.status = 'TIDAK_TERPENUHI';
       item.matched_items = [];
       // Produk yang tadinya kepakai item ini kehilangan kontribusinya ke total —
-      // reconcile: kalau masih ada alokasi lain, total dikalkulasi ulang; kalau
-      // udah gak ada sama sekali, qty clipboard dibiarkan (gak di-reset).
-      reconcileClipboardQty(itemId, prevMatched, []);
+      // kalkulasi ulang qty clipboard biar gak nyangkut kelebihan dari sebelumnya.
+      let clipQtyChanged = false;
+      const touchedProduk = new Set();
+      prevMatched.forEach(l => {
+        const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+        if (touchedProduk.has(key)) return;
+        touchedProduk.add(key);
+        if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk)) clipQtyChanged = true;
+      });
+      if (clipQtyChanged) S.updateClipboard();
       S.checklistExpandedId = S.advanceToNextPending(itemId);
       renderChecklist();
       maybeFetchSuggestionForExpanded();
@@ -1065,7 +1006,17 @@ S.kbList.addEventListener('click', async (e) => {
       await callUpdatePermintaanItemMulti(itemId, 'PENDING', []);
       item.status = 'PENDING';
       item.matched_items = [];
-      reconcileClipboardQty(itemId, prevMatched, []);
+      // Sama kayak 'tidak': produk yang kepakai item ini kehilangan kontribusinya,
+      // jadi total qty clipboard dihitung ulang biar tetap akurat.
+      let clipQtyChanged = false;
+      const touchedProduk = new Set();
+      prevMatched.forEach(l => {
+        const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+        if (touchedProduk.has(key)) return;
+        touchedProduk.add(key);
+        if (syncClipboardQtyForProduk(l.produk_id, l.kode_produk)) clipQtyChanged = true;
+      });
+      if (clipQtyChanged) S.updateClipboard();
       S.checklistPickingId = null;
       renderChecklist();
       S.broadcastChecklistItemUpdated(item);
@@ -1080,29 +1031,6 @@ S.kbList.addEventListener('click', async (e) => {
 
 // Centang/uncentang checkbox produk di picker -> qty input muncul/hilang
 // ngikutin, dan pesan error "pilih minimal 1" ilang begitu ada yang dicentang.
-// Default qty picker: kalau CUMA 1 produk yang dicentang dan qty-nya masih kosong,
-// isi dengan qty_diminta (qty Permintaan RS) — user gak perlu ngetik qty dua kali.
-// 2+ produk dicentang: gak ada auto-isi (lihat komentar di rsQtyDiminta).
-function refreshPickerAlloc(itemId) {
-  const wrap = S.kbList.querySelector(`.kb-picker-wrap [data-alloc-hint="${CSS.escape(String(itemId))}"]`)?.closest('.kb-picker-wrap');
-  if (!wrap) return;
-  const diminta = wrap.dataset.diminta ? Number(wrap.dataset.diminta) : null;
-  const checks = Array.from(S.kbList.querySelectorAll(`input[data-picker-check="${CSS.escape(String(itemId))}"]:checked`));
-  const qtyInputOf = (chk) => S.kbList.querySelector(`input[data-picker-qty="${CSS.escape(String(itemId))}"][data-kode="${CSS.escape(chk.dataset.kode)}"]`);
-  if (checks.length === 1 && diminta != null) {
-    const qi = qtyInputOf(checks[0]);
-    if (qi && qi.value.trim() === '') qi.value = diminta;
-  }
-  const qtys = checks.map(chk => {
-    const qi = qtyInputOf(chk);
-    return qi && qi.value.trim() !== '' ? Number(qi.value) : null;
-  });
-  const hint = allocHintText(diminta, qtys);
-  const hintEl = wrap.querySelector('.kb-alloc-hint');
-  hintEl.textContent = hint.text;
-  hintEl.className = 'kb-alloc-hint' + hint.cls;
-  hintEl.style.display = hint.text ? '' : 'none';
-}
 S.kbList.addEventListener('change', (e) => {
   const chk = e.target.closest('input[data-picker-check]');
   if (!chk) return;
@@ -1111,11 +1039,6 @@ S.kbList.addEventListener('change', (e) => {
   if (qtyInput) qtyInput.style.display = chk.checked ? '' : 'none';
   const errEl = S.kbList.querySelector(`[data-picker-error="${chk.dataset.pickerCheck}"]`);
   if (errEl && chk.checked) errEl.style.display = 'none';
-  refreshPickerAlloc(chk.dataset.pickerCheck);
-});
-S.kbList.addEventListener('input', (e) => {
-  const qi = e.target.closest('input[data-picker-qty]');
-  if (qi) refreshPickerAlloc(qi.dataset.pickerQty);
 });
 
 const KB_COLLAPSE_KEY = 'pnm_kb_collapsed';
@@ -1370,22 +1293,13 @@ btnDictRefresh.addEventListener('click', () => { dictStatsLoaded = false; loadDi
 // tombol hapus/kembalikan biar tau mesti update pair yang mana.
 let dictModalCurrentIstilah = null;
 
-// SECURITY FIX: `thumbUrl` dulu dibangun sync dari S.THUMB_BASE (URL public
-// deterministik). Bucket 'thumbnails' sekarang privat, jadi signed URL-nya
-// harus SUDAH diminta lebih dulu (batch, lihat openDictionaryDetail() yang
-// manggil S.resolveThumbUrls() sebelum .map() ke fungsi ini) -- makanya
-// signature-nya nambah parameter `thumbUrl` (bukan dihitung sendiri di sini).
-// 1x1 transparent GIF -- dipakai sebagai src kalau signed URL gagal dibuat
-// (kode ini belum ada gambarnya di bucket). Sengaja bukan string kosong (""):
-// <img src=""> di beberapa browser diam-diam nge-request ULANG halaman ini
-// sendiri, bukan cuma gagal diam-diam kayak yang diharapkan.
-const DICT_BLANK_THUMB = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
-
-function dictDetailRowHtml(d, isManual, thumbUrl) {
+function dictDetailRowHtml(d, isManual) {
+  const kodeForUrl = (d.kode_asli && d.kode_asli.trim()) ? d.kode_asli.trim() : d.kode_produk;
+  const thumbUrl = S.THUMB_BASE + kodeForUrl + '.png';
   return `
     <div class="dict-detail-row" style="display:block" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}">
       <div style="display:flex;align-items:flex-start;gap:10px">
-        <img src="${S.escapeHtmlAttr(thumbUrl || DICT_BLANK_THUMB)}" class="dict-detail-thumb" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}"
+        <img src="${thumbUrl}" class="dict-detail-thumb" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}"
           data-kode-asli="${S.escapeHtmlAttr(d.kode_asli || '')}" data-nama="${S.escapeHtmlAttr(d.nama_produk || '')}"
           style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);flex-shrink:0;cursor:pointer"/>
         <div style="flex:1;min-width:0">
@@ -1416,7 +1330,7 @@ function dictDetailRowHtml(d, isManual, thumbUrl) {
             </button>
             <button type="button" class="dict-detail-lampiran-btn" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}" data-is-set="${!!d.is_set}"
               style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-family:inherit">
-              <i class="ti ti-file-text" style="font-size:12px"></i> <span data-lampiran-label="${S.escapeHtmlAttr(d.kode_produk || '')}">${d.is_set ? S.setLampiranLabelText(S.cachedSetItemCount(d)) : 'Lihat Lampiran'}</span>
+              <i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran
             </button>
           </div>
         </div>
@@ -1455,21 +1369,9 @@ async function openDictionaryDetail(istilah) {
     if (!data.length) {
       dictModalList.innerHTML = '<div style="padding:16px 0;text-align:center;color:var(--text-muted);font-size:13px">Belum ada produk yang dihubungkan ke istilah ini — tambah lewat kolom di bawah.</div>';
     } else {
-      // SECURITY FIX: bucket 'thumbnails' privat -- signed URL buat SEMUA baris
-      // diminta SEKALIGUS (satu request createSignedUrls, lihat S.resolveThumbUrls
-      // di index.js) SEBELUM dictDetailRowHtml() dipanggil, karena fungsi itu sendiri
-      // sekarang murni sync (cuma nyusun HTML dari thumbUrl yang udah jadi).
-      let urlMap;
-      try {
-        urlMap = await S.resolveThumbUrls(data);
-      } catch (e) {
-        urlMap = new Map(); // gagal minta signed URL (mis. network) -- tampilin baris tanpa gambar drpd gagal total
-      }
       // Sudah terurut dari server berdasarkan frekuensi terbesar (JANGAN diurutkan ulang —
       // satu istilah customer memang wajar punya beberapa produk Robust, ini bukan error).
-      dictModalList.innerHTML = data.map(d => dictDetailRowHtml(d, manualAddedKodes.has(d.kode_produk), urlMap.get(S.thumbKeyForItem(d)))).join('');
-      // SET yang belum ada angka item-nya di cache -> ambil lazy, label nyusul (sama pola dengan hasil pencarian).
-      S.hydrateSetCounts(dictModalList, data.filter(d => d.is_set && S.cachedSetItemCount(d) == null).map(d => d.kode_produk));
+      dictModalList.innerHTML = data.map(d => dictDetailRowHtml(d, manualAddedKodes.has(d.kode_produk))).join('');
     }
 
     if (hiddenRows.length) {
@@ -1593,8 +1495,7 @@ dictModalAddInput.addEventListener('input', () => {
     try {
       // RPC yang sama dipakai search utama Konversian — biar konsisten hasilnya
       // (harga/status/dsb sekalian ada kalau nanti mau ditampilin juga).
-      const { data: dataRaw, error } = await S.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
-      const data = dataRaw ? S.filterFirm(dataRaw, S.modeSwastaOutput) : dataRaw;
+      const { data, error } = await S.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
       if (error || !data || !data.length) {
         dictModalAddResults.style.display = 'block';
         dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--text-muted)">Gak ketemu.</div>`;
@@ -1602,7 +1503,7 @@ dictModalAddInput.addEventListener('input', () => {
       }
       dictModalAddResults.style.display = 'block';
       dictModalAddResults.innerHTML = data.slice(0, 8).map(p => `
-        <div class="dict-add-result-row" data-kode="${S.escapeHtmlAttr(p.kode_produk)}" data-produk-id="${S.escapeHtmlAttr(p.id || '')}"
+        <div class="dict-add-result-row" data-kode="${S.escapeHtmlAttr(p.kode_produk)}" data-produk-id="${p.id || ''}"
           style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--border)">
           <span>${S.escapeHtmlAttr(p.kode_produk)} — ${S.escapeHtmlAttr(p.nama_produk || '')}</span>
           <i class="ti ti-plus" style="flex-shrink:0"></i>
@@ -1610,7 +1511,7 @@ dictModalAddInput.addEventListener('input', () => {
       `).join('');
     } catch (err) {
       dictModalAddResults.style.display = 'block';
-      dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--danger)">${S.escapeHtmlAttr(err.message)}</div>`;
+      dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--danger)">${err.message}</div>`;
     }
   }, 300);
 });
@@ -1705,21 +1606,6 @@ S.normalizeMatchedItems = normalizeMatchedItems;
    HIDDEN FEATURE: Generator Link Katalog
    Munculnya cuma kalau di search-input diketik "/linkpalsugas".
    Tidak ada tombol/menu yang mengarah ke sini secara terlihat.
-
-   Versi "pinter": selain bikin link dari deskripsi, tiap baris otomatis
-   dicocokkan ke produk di katalog (RPC search_produk_dengan_harga yang
-   sama dengan search utama), lalu link-nya bisa langsung di-attach ke
-   kolom produk.link_v6 lewat tombol "Attach ke produk" — jadi pas
-   konversian, link e-Katalog produk itu langsung kebawa.
-
-   Aturan keamanan data (produk.link_v6 dipakai di label e-Katalog, SPH,
-   export, dst — salah isi = salah tampil ke customer):
-   - Yang tercentang otomatis HANYA: nama cocok persis + link lama kosong
-     + status INAPROC Disetujui/Verified. Sisanya harus dicentang sadar.
-   - Link lama yang sudah bersih / ada catatan tim TIDAK ditimpa diam-diam.
-   - Simpan lewat konfirmasi, dengan guard "link_v6 masih sama kayak pas
-     dibaca" (gak nimpa edit orang lain) dan dicek beneran ada baris yang
-     berubah (PATCH yang ditolak RLS balik 200 + array kosong, bukan error).
    ================================================================== */
 (function () {
   const modal = document.getElementById('linkgen-modal');
@@ -1731,14 +1617,9 @@ S.normalizeMatchedItems = normalizeMatchedItems;
   const textInput = document.getElementById('linkgen-input');
   const genBtn = document.getElementById('linkgen-generate-btn');
   const copyBtn = document.getElementById('linkgen-copy-btn');
-  const attachBtn = document.getElementById('linkgen-attach-btn');
   const countEl = document.getElementById('linkgen-count');
   const outputEl = document.getElementById('linkgen-output');
   let rows = [];
-  let runSeq = 0;               // generate baru membatalkan pencocokan yang lagi jalan
-  const rpcCache = new Map();   // deskripsi ternormalisasi -> kandidat (baris duplikat gak nembak RPC lagi)
-
-  const esc = (s) => S.escapeHtmlAttr(s);
 
   function slugify(text, prefix) {
     return prefix + text
@@ -1747,332 +1628,43 @@ S.normalizeMatchedItems = normalizeMatchedItems;
       .replace(/^-+|-+$/g, '');
   }
 
-  /* ---------- pencocokan deskripsi -> produk ---------- */
-
-  // "15.5" dan "15,5" dianggap sama; prefix "ROBUST" (nama di e-Katalog) dibuang.
-  function tokensOf(s) {
-    const t = String(s == null ? '' : s).toUpperCase()
-      .replace(/(\d)[.,](\d)/g, '$1_$2')
-      .replace(/[^A-Z0-9_]+/g, ' ').trim().split(' ').filter(Boolean);
-    if (t[0] === 'ROBUST') t.shift();
-    return t;
-  }
-  function dice(a, b) {
-    if (!a.length || !b.length) return 0;
-    const sa = new Set(a), sb = new Set(b);
-    let inter = 0;
-    sa.forEach(x => { if (sb.has(x)) inter++; });
-    return 2 * inter / (sa.size + sb.size);
-  }
-  // Angka/ukuran (15_5, 17_5, 3, dst) harus sama persis — beda ukuran = beda produk.
-  const numSig = (t) => t.filter(x => /\d/.test(x)).sort().join('|');
-
-  function rankCandidates(desc, data) {
-    const dt = tokensOf(desc);
-    if (!dt.length) return [];
-    const key = dt.join(' ');
-    return (Array.isArray(data) ? data : []).filter(p => p && p.kode_produk).map(p => {
-      const pt = tokensOf(p.nama_produk);
-      return { p, exact: pt.join(' ') === key, score: dice(dt, pt), numDiff: numSig(dt) !== numSig(pt) };
-    }).filter(c => c.exact || c.score >= 0.4)
-      .sort((a, b) => (b.exact - a.exact) || (b.score - a.score))
-      .slice(0, 6);
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
   }
 
-  async function searchCands(desc) {
-    const key = tokensOf(desc).join(' ');
-    if (rpcCache.has(key)) return rpcCache.get(key);
-    let data = null, lastErr = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const { data: d, error } = await S.rpc('search_produk_dengan_harga', { q: desc, p_tipe: null, only_akd: false, only_kfa: false });
-      if (!error) { data = d; lastErr = null; break; }
-      lastErr = error.message || JSON.stringify(error);
-      if (!(/timeout|canceling/i.test(lastErr)) ) break; // cuma timeout yang di-retry
-    }
-    if (lastErr) throw new Error(lastErr);
-    const c = rankCandidates(desc, data);
-    rpcCache.set(key, c);
-    return c;
-  }
-
-  // Detail langsung dari tabel produk (id buat PATCH + status_inaproc buat gating).
-  // Kalau status_inaproc gak bisa di-select, ulang tanpa dia (pola sama kayak attachLinks).
-  async function fetchProdukInfo(kodes) {
-    const out = new Map();
-    const uniq = [...new Set(kodes)];
-    for (let n = 0; n < uniq.length; n += 80) {
-      const inList = uniq.slice(n, n + 80).map(k => `"${String(k).replace(/"/g, '')}"`).join(',');
-      const base = `produk?kode_produk=in.(${encodeURIComponent(inList)})&select=id,kode_produk,nama_produk,link_v6`;
-      let res = await S.sesiFetch(base + ',status_inaproc');
-      if (!res.ok) res = await S.sesiFetch(base);
-      if (!res.ok) throw new Error('Gagal memuat detail produk (' + res.status + ')');
-      (await res.json()).forEach(p => out.set(p.kode_produk, p));
-    }
-    return out;
-  }
-
-  const sameUrl = (a, b) => String(a || '').trim().replace(/\/+$/, '').toLowerCase() === String(b || '').trim().replace(/\/+$/, '').toLowerCase();
-
-  // Status baris = turunan dari (produk terpilih, link_v6 sekarang, link baru). Dihitung
-  // ulang tiap render, jadi ganti dropdown / habis simpan otomatis konsisten.
-  function evaluate(r) {
-    if (r.matching) return { label: 'Mencocokkan…', tone: 'muted', savable: false };
-    if (r.matchErr) return { label: 'Gagal mencocokkan: ' + r.matchErr, tone: 'danger', savable: false };
-    const c = r.sel >= 0 ? r.cands[r.sel] : null;
-    if (!c) return { label: r.cands.length ? 'Gak ada produk dipilih' : 'Produk gak ketemu di katalog', tone: 'muted', savable: false };
-    const p = c.p;
-    if (r.save === 'ok') return { label: 'Tersimpan ✓', tone: 'ok', savable: false };
-    if (p.id == null) return { label: 'Detail produk gagal dimuat — Generate ulang', tone: 'danger', savable: false };
-
-    const cur = S.parseLinkV6(p.link_v6);
-    if (cur.state === 'bersih' && sameUrl(cur.url, r.link)) return { label: 'Sudah terpasang', tone: 'ok', savable: false };
-
-    const notes = [];
-    let overwrite = false;
-    if (cur.state === 'bersih') { notes.push('Menimpa link lain yang sudah tersimpan'); overwrite = true; }
-    else if (cur.state === 'catatan') { notes.push('Link lama ada catatan tim ("' + cur.catatan.slice(0, 40) + '") — ikut terhapus'); overwrite = true; }
-    else if (cur.state === 'invalid') notes.push('Isi lama bukan URL, diganti');
-    if (Object.prototype.hasOwnProperty.call(p, 'status_inaproc')) {
-      const approved = p.status_inaproc === 'Disetujui' || (S.verifiedKode && S.verifiedKode.has(p.kode_produk));
-      if (!approved) notes.push('Status INAPROC: ' + (p.status_inaproc || 'belum ada') + ' — link bisa belum aktif');
-    }
-    if (c.numDiff) notes.push('Angka/ukuran beda dari deskripsi');
-    if (r.dupOf) notes.push('Produk yang sama dengan baris ' + r.dupOf);
-    const risky = notes.some(n => !n.startsWith('Isi lama bukan URL'));
-    const ev = { label: notes.length ? notes.join(' · ') : 'Siap di-attach', tone: risky ? 'warn' : 'ok', savable: true, overwrite, risky };
-    if (r.save === 'err') { ev.label = 'Gagal simpan: ' + r.saveMsg; ev.tone = 'danger'; }
-    return ev;
-  }
-
-  function classify(r) {
-    const ex = r.cands.filter(c => c.exact);
-    if (!r.cands.length) { r.matchType = 'none'; r.sel = -1; }
-    else if (ex.length === 1) { r.matchType = 'exact'; r.sel = r.cands.indexOf(ex[0]); }
-    else if (ex.length > 1) { r.matchType = 'ambigu'; r.sel = r.cands.indexOf(ex[0]); }
-    else { r.matchType = 'mirip'; r.sel = 0; }
-  }
-
-  // Default centang = pilihan paling aman aja; sisanya user yang mutusin.
-  function applyDefaults() {
-    // Pass 1: baris yang nunjuk produk sama (mis. "15.5" & "15,5") — yang kedua dst dikasih
-    // catatan + gak ikut tercentang, biar 1 produk gak di-PATCH dua kali.
-    const first = new Map();
-    rows.forEach((r, i) => {
-      r.dupOf = null;
-      if (r.matchType !== 'exact' || r.sel < 0) return;
-      const kode = r.cands[r.sel].p.kode_produk;
-      if (first.has(kode)) r.dupOf = first.get(kode) + 1; else first.set(kode, i);
-    });
-    rows.forEach(r => {
-      const ev = evaluate(r);
-      r.checked = !!(ev.savable && !ev.risky && r.matchType === 'exact');
-    });
-  }
-
-  async function matchAll(mySeq) {
-    let done = 0, idx = 0;
-    const progress = () => { countEl.textContent = rows.length + ' baris · mencocokkan ' + done + '/' + rows.length; };
-    progress();
-    const worker = async () => {
-      while (idx < rows.length && mySeq === runSeq) {
-        const r = rows[idx++];
-        try { r.cands = await searchCands(r.desc); } catch (e) { r.matchErr = e.message; }
-        done++; progress();
-      }
-    };
-    await Promise.all(Array.from({ length: 4 }, worker)); // 4 RPC paralel, gak ngebanjirin backend
-    if (mySeq !== runSeq) return;
-
-    try {
-      await Promise.resolve(S.verifiedReady);
-      const kodes = rows.flatMap(r => r.cands.map(c => c.p.kode_produk));
-      if (kodes.length) {
-        const info = await fetchProdukInfo(kodes);
-        rows.forEach(r => r.cands.forEach(c => { const full = info.get(c.p.kode_produk); if (full) c.p = Object.assign({}, c.p, full); }));
-      }
-    } catch (e) {
-      S.showToast('Detail produk gagal dimuat: ' + e.message, 'error'); // baris tetap tampil, tapi gak bisa di-attach (tanpa id)
-    }
-    if (mySeq !== runSeq) return;
-    rows.forEach(r => { r.matching = false; if (!r.matchErr) classify(r); });
-    applyDefaults();
-    render();
-  }
-
-  /* ---------- render ---------- */
-
-  const TONE = { ok: 'var(--success-text, #2e7d32)', warn: 'var(--warn-text, #b26a00)', danger: 'var(--danger-text, #c62828)', muted: 'var(--text-muted)' };
-  const TH = 'text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase';
-  const TD = 'padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top';
-
-  function matchBadge(r) {
-    if (r.matching || r.matchErr) return '';
-    const c = r.sel >= 0 ? r.cands[r.sel] : null;
-    if (!c) return '';
-    const t = r.matchType === 'exact' ? 'Cocok persis' : r.matchType === 'ambigu' ? 'Nama kembar — pilih manual' : 'Mirip ' + Math.round(c.score * 100) + '%';
-    return '<div style="font-size:10.5px;color:' + (r.matchType === 'exact' ? TONE.ok : TONE.warn) + ';margin-top:2px">' + esc(t) + '</div>';
-  }
-
-  function produkCell(r, i) {
-    if (r.matching) return '<span style="color:var(--text-muted)">…</span>';
-    if (!r.cands.length) return '<span style="color:var(--text-muted)">—</span>';
-    const short = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
-    if (r.cands.length === 1) {
-      const p = r.cands[0].p;
-      return '<div style="font-family:var(--mono);font-size:11.5px">' + esc(p.kode_produk) + '</div><div style="font-size:11.5px;color:var(--text-muted)">' + esc(short(p.nama_produk, 60)) + '</div>' + matchBadge(r);
-    }
-    let h = '<select class="lg-sel" data-i="' + i + '" style="max-width:260px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;background:var(--surface);color:var(--text)">';
-    r.cands.forEach((c, k) => {
-      h += '<option value="' + k + '"' + (k === r.sel ? ' selected' : '') + '>' + esc(c.p.kode_produk + ' — ' + short(c.p.nama_produk, 55)) + (c.exact ? ' ✓' : '') + '</option>';
-    });
-    h += '<option value="-1"' + (r.sel < 0 ? ' selected' : '') + '>— jangan attach —</option></select>' + matchBadge(r);
-    return h;
-  }
-
-  function render() {
-    if (!rows.length) {
-      outputEl.innerHTML = '<div style="color:var(--text-muted);font-size:12.5px;padding:12px 0;text-align:center">Belum ada hasil.</div>';
-      countEl.textContent = '';
-      updateAttachBtn();
-      return;
-    }
-    const matching = rows.some(r => r.matching);
-    if (!matching) {
-      const exact = rows.filter(r => r.matchType === 'exact').length;
-      countEl.textContent = rows.length + ' baris · ' + exact + ' cocok persis';
-    }
-    let html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'
-      + '<th style="' + TH + ';width:26px"></th><th style="' + TH + '">Deskripsi</th><th style="' + TH + '">Produk terkait</th>'
-      + '<th style="' + TH + '">Link</th><th style="' + TH + '">Status</th></tr></thead><tbody>';
-    rows.forEach((r, i) => {
-      const ev = evaluate(r);
-      const linkHtml = S.isSafeHttpUrl(r.link)
-        ? '<a href="' + esc(r.link) + '" target="_blank" rel="noopener noreferrer" style="color:var(--accent-text)">' + esc(r.link) + '</a>'
-        : esc(r.link);
-      html += '<tr>'
-        + '<td style="' + TD + '"><input type="checkbox" class="lg-chk" data-i="' + i + '"' + (r.checked && ev.savable ? ' checked' : '') + (ev.savable ? '' : ' disabled') + '></td>'
-        + '<td style="' + TD + '">' + esc(r.desc) + '</td>'
-        + '<td style="' + TD + '">' + produkCell(r, i) + '</td>'
-        + '<td style="' + TD + ';word-break:break-all;font-size:11.5px">' + linkHtml + '</td>'
-        + '<td style="' + TD + ';font-size:11.5px;color:' + TONE[ev.tone] + '">' + esc(ev.label) + '</td></tr>';
-    });
-    outputEl.innerHTML = html + '</tbody></table></div>';
-    updateAttachBtn();
-  }
-
-  function savableRows() { return rows.filter(r => r.checked && evaluate(r).savable); }
-  function updateAttachBtn() {
-    const n = savableRows().length;
-    attachBtn.textContent = n ? 'Attach ke produk (' + n + ')' : 'Attach ke produk';
-    attachBtn.disabled = !n;
-    attachBtn.style.opacity = n ? '1' : '.5';
-  }
-
-  /* ---------- aksi ---------- */
-
-  function buildRows() {
-    runSeq++;
+  function generate() {
     const base = baseInput.value.trim();
     const prefix = prefixInput.value;
     const lines = textInput.value.split('\n').map(l => l.trim()).filter(Boolean);
-    rows = lines.map(desc => ({ desc, link: base + slugify(desc, prefix), cands: [], sel: -1, matchType: 'none', checked: false, matching: true, matchErr: null, save: null, saveMsg: '' }));
-    render();
-    return runSeq;
-  }
+    rows = lines.map(desc => ({ desc, link: base + slugify(desc, prefix) }));
 
-  async function generate() {
-    const mySeq = buildRows();
-    if (!rows.length) return;
-    await matchAll(mySeq);
-  }
-
-  // Habis simpan, link lama yang masih nyangkut di cache sesi ini harus dibuang —
-  // kalau enggak, Converter/Clipboard/hasil search masih nunjukin "tanpa link".
-  function syncCaches(kode, link) {
-    try { if (S.linkCache) S.linkCache.delete(kode); } catch (_) { /* best-effort */ }
-    try { if (S.kodeExactCache) S.kodeExactCache.delete(String(kode).toLowerCase()); } catch (_) { /* best-effort */ }
-    try {
-      [S.lastResults, S.clipboard].forEach(arr => {
-        if (!Array.isArray(arr)) return;
-        arr.forEach(x => {
-          if (!x || (x.kode_produk !== kode && x.kode !== kode)) return;
-          x.link_v6 = link;
-          if (Object.prototype.hasOwnProperty.call(x, 'link')) { x.link = undefined; delete x.linkNote; } // biar attachLinks() ambil ulang
-        });
-      });
-      if (typeof S.updateClipboard === 'function') S.updateClipboard();
-    } catch (_) { /* best-effort */ }
-  }
-
-  async function attachSelected() {
-    const todo = savableRows();
-    if (!todo.length) { S.showToast('Belum ada baris tercentang yang bisa di-attach', 'error'); return; }
-    const overwrites = todo.filter(r => evaluate(r).overwrite).length;
-    const ok = await S.showConfirmModal({
-      title: 'Attach link ke produk?',
-      text: todo.length + ' produk akan diisi Link V6-nya' + (overwrites ? ' (' + overwrites + ' di antaranya MENIMPA isi lama)' : '')
-        + '. Link ini langsung dipakai di label e-Katalog, SPH, dan export.',
-      okText: 'Ya, attach',
-      danger: overwrites > 0
-    });
-    if (!ok) return;
-
-    attachBtn.disabled = true;
-    let done = 0, fail = 0;
-    for (const r of todo) {
-      const p = r.cands[r.sel].p;
-      try {
-        const prev = p.link_v6;
-        // Guard: hanya update kalau isi link_v6 masih sama kayak pas dibaca tadi.
-        const guard = prev == null ? 'link_v6=is.null' : 'link_v6=eq.' + encodeURIComponent(prev);
-        const res = await S.sesiFetch('produk?id=eq.' + encodeURIComponent(p.id) + '&' + guard, {
-          method: 'PATCH',
-          headers: { Prefer: 'return=representation' },
-          body: JSON.stringify({ link_v6: r.link })
-        });
-        if (!res.ok) {
-          const e = await res.json().catch(() => ({}));
-          throw new Error(e.message || ('HTTP ' + res.status));
-        }
-        const out = await res.json().catch(() => []);
-        if (!Array.isArray(out) || out.length !== 1) {
-          throw new Error('Gak ada baris yang berubah — akun ini mungkin gak punya izin edit produk, atau Link V6-nya baru diubah orang lain. Generate ulang lalu coba lagi.');
-        }
-        p.link_v6 = r.link;
-        r.save = 'ok'; r.checked = false; r.saveMsg = '';
-        syncCaches(p.kode_produk, r.link);
-        done++;
-      } catch (e) {
-        r.save = 'err'; r.saveMsg = e.message; fail++;
-      }
+    if (!rows.length) {
+      outputEl.innerHTML = '<div style="color:var(--text-muted);font-size:12.5px;padding:12px 0;text-align:center">Belum ada hasil.</div>';
+      countEl.textContent = '';
+      return;
     }
-    render();
-    if (done) S.showToast(done + ' produk berhasil di-attach' + (fail ? ', ' + fail + ' gagal — lihat kolom Status' : ' ✓'), fail ? 'error' : 'success');
-    else S.showToast('Gagal attach: ' + (todo.find(r => r.save === 'err') || {}).saveMsg, 'error');
-  }
 
-  /* ---------- event ---------- */
+    countEl.textContent = rows.length + ' baris';
+
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'
+      + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase">Deskripsi</th>'
+      + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase">Link</th></tr></thead><tbody>';
+    rows.forEach(r => {
+      html += '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--border)">' + esc(r.desc) + '</td>'
+        + '<td style="padding:6px 8px;border-bottom:1px solid var(--border);word-break:break-all"><a href="' + esc(r.link) + '" target="_blank" rel="noopener noreferrer" style="color:var(--accent-text)">' + esc(r.link) + '</a></td></tr>';
+    });
+    html += '</tbody></table>';
+    outputEl.innerHTML = html;
+  }
 
   genBtn.addEventListener('click', generate);
-  attachBtn.addEventListener('click', attachSelected);
-
-  outputEl.addEventListener('change', (e) => {
-    const t = e.target;
-    const r = rows[Number(t.dataset && t.dataset.i)];
-    if (!r) return;
-    if (t.classList.contains('lg-chk')) { r.checked = t.checked; updateAttachBtn(); }
-    else if (t.classList.contains('lg-sel')) { r.sel = Number(t.value); r.checked = false; r.save = null; r.dupOf = null; render(); } // ganti pilihan = harus dicentang ulang dengan sadar
-  });
 
   copyBtn.addEventListener('click', () => {
-    if (!rows.length) buildRows();
+    if (!rows.length) generate();
     if (!rows.length) return;
-    // Kolom 1-2 (deskripsi, link) SAMA kayak versi lama; kode produk ditambah di kolom 3.
-    const tsv = rows.map(r => {
-      const c = r.sel >= 0 ? r.cands[r.sel] : null;
-      const kode = (c && (r.matchType === 'exact' || r.checked || r.save === 'ok')) ? c.p.kode_produk : '';
-      return r.desc + '\t' + r.link + (kode ? '\t' + kode : '');
-    }).join('\n');
+    const tsv = rows.map(r => r.desc + '\t' + r.link).join('\n');
     navigator.clipboard.writeText(tsv).then(() => {
       const old = copyBtn.textContent;
       copyBtn.textContent = 'Tersalin!';
@@ -2082,17 +1674,14 @@ S.normalizeMatchedItems = normalizeMatchedItems;
 
   closeBtn.addEventListener('click', () => modal.classList.remove('show'));
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
-  S.onGlobal(document, 'keydown', e => {
+  document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && modal.classList.contains('show')) modal.classList.remove('show');
   });
 
   window.openLinkGenModal = function () {
-    runSeq++; // batalin pencocokan sisa sesi sebelumnya
-    rows = [];
     modal.classList.add('show');
     outputEl.innerHTML = '';
     countEl.textContent = '';
-    updateAttachBtn();
     setTimeout(() => textInput.focus(), 50);
   };
 })();
@@ -2315,7 +1904,7 @@ async function openSphRiwayatModal(sesiId, namaRs) {
       });
     });
   } catch (err) {
-    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${S.escapeHtmlAttr(err.message)}</div>`;
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${err.message}</div>`;
   }
 }
 S.openSphRiwayatModal = openSphRiwayatModal;
@@ -2346,7 +1935,7 @@ S.openSphRiwayatModal = openSphRiwayatModal;
         <div class="modal-title" style="margin:0" id="konversi-riwayat-title"><i class="ti ti-versions"></i> Riwayat Konversi</div>
         <button id="konversi-riwayat-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
       </div>
-      <div class="modal-sub" style="margin-bottom:12px;font-family:inherit;line-height:1.5">Semua revisi Record Konversi yang pernah disimpan dari sesi ini, urut dari revisi terbaru.</div>
+      <div class="modal-sub" style="margin-bottom:12px">Semua revisi Record Konversi yang pernah disimpan dari sesi ini, urut dari revisi terbaru.</div>
       <div id="konversi-riwayat-list"></div>
     </div>`;
   document.body.appendChild(modal);
@@ -2404,22 +1993,19 @@ function konversiRiwayatRowHtml(r, idx) {
   // insert konversi_item gagal partial dulu). Taruh di luar tombol toggle
   // (bukan di dalam <button> toggle) + stopPropagation di listener-nya, biar
   // klik tombol ini gak ikut expand/collapse baris.
-  // Copy ke Sheet — TSV (Kode/Produk/Qty/Harga/Subtotal) dari item revisi ini, harga persis
-  // yang direkam. Logika copy-nya satu tempat: S.copyItemsToSheet (index.js).
-  const actBase = 'display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;font-size:12px;font-weight:600;font-family:inherit;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text)';
-  const actOn = items.length ? 'cursor:pointer' : 'cursor:not-allowed;opacity:.5';
-  const copyBtn = `<button type="button" class="konversi-riwayat-copy-btn" data-idx="${idx}" ${items.length ? '' : 'disabled'} title="Copy ke clipboard, tinggal paste di Google Sheets" style="${actBase};${actOn}"><i class="ti ti-table-export"></i><span>Copy ke Sheet</span></button>`;
-  const loadBtn = `<button type="button" class="konversi-riwayat-load-btn" data-idx="${idx}" ${items.length ? '' : 'disabled'} style="${actBase};${actOn}"><i class="ti ti-clipboard-copy"></i><span>Muat ke Clipboard</span></button>`;
-  return `<div class="rcard" style="margin-bottom:10px;padding:12px 14px;border-radius:12px">
-    <button type="button" class="konversi-riwayat-toggle" data-target="${rowId}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit;text-align:left">
-      <div style="min-width:0">
-        <div style="font-weight:600;font-size:13px">${revLabel} · ${kategoriSafe}</div>
-        <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${tgl} · ${total} · ${items.length} produk</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Sales: ${salesSafe} · Marsup: ${marsupSafe}</div>
-      </div>
-      <i class="ti ti-chevron-down" style="flex-shrink:0"></i>
-    </button>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">${copyBtn}${loadBtn}</div>
+  const loadBtn = `<button type="button" class="konversi-riwayat-load-btn" data-idx="${idx}" ${items.length ? '' : 'disabled'} style="flex-shrink:0;display:flex;align-items:center;gap:5px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:600;cursor:${items.length ? 'pointer' : 'not-allowed'};font-family:inherit;opacity:${items.length ? '1' : '.5'}"><i class="ti ti-clipboard-copy"></i>Muat ke Clipboard</button>`;
+  return `<div class="rcard" style="margin-bottom:8px;padding:10px 12px">
+    <div style="display:flex;align-items:flex-start;gap:8px">
+      <button type="button" class="konversi-riwayat-toggle" data-target="${rowId}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex:1;min-width:0;border:none;background:none;cursor:pointer;padding:0;color:inherit;font:inherit;text-align:left">
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:12.5px">${revLabel} · ${kategoriSafe}</div>
+          <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${tgl} · ${total} · ${items.length} produk</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Sales: ${salesSafe} · Marsup: ${marsupSafe}</div>
+        </div>
+        <i class="ti ti-chevron-down" style="flex-shrink:0"></i>
+      </button>
+      ${loadBtn}
+    </div>
     ${expandBody}
   </div>`;
 }
@@ -2456,18 +2042,6 @@ async function openKonversiRiwayatModal(sesiId, namaRs) {
         if (icon) icon.className = isOpen ? 'ti ti-chevron-down' : 'ti ti-chevron-up';
       });
     });
-    // Prefetch link semua revisi sekali jalan (hasilnya masuk S.linkCache) supaya klik Copy gak nunggu jaringan.
-    S.attachLinks(rows.flatMap(r => (r.konversi_item || []).map(it => ({ kode: it.kode_produk })))).catch(() => {});
-    list.querySelectorAll('.konversi-riwayat-copy-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const row = konversiRiwayatRowsCache[parseInt(btn.dataset.idx, 10)];
-        const its = ((row && row.konversi_item) || []).map(it => ({ kode: it.kode_produk, nama: it.nama_produk, qty: it.qty, harga: it.harga }));
-        // Link e-Katalog ikut di-copy (diambil dari katalog; udah di-prefetch di bawah).
-        try { await S.attachLinks(its); } catch (_) { S.showToast('Link e-Katalog gagal dimuat — di-copy tanpa kolom Link', 'error'); }
-        S.copyItemsToSheet(its, btn);
-      });
-    });
     list.querySelectorAll('.konversi-riwayat-load-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -2475,7 +2049,7 @@ async function openKonversiRiwayatModal(sesiId, namaRs) {
       });
     });
   } catch (err) {
-    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${S.escapeHtmlAttr(err.message)}</div>`;
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${err.message}</div>`;
   }
 }
 S.openKonversiRiwayatModal = openKonversiRiwayatModal;
@@ -2611,7 +2185,7 @@ async function muatRevisiKeClipboard(idx, btnEl) {
 // ini jalan, karena baris ini ada di paling akhir eksekusi top-level).
 window.__konvBridge = {
   authUnsub: S.__konvAuthUnsub,
-  sesiCountCleanup: S.__konvSesiCountCleanup, // ganti heartbeatTimer (setInterval) — sekarang channel Realtime + resync timer, lihat realtime.js
+  heartbeatTimer: S.__konvHeartbeatTimer,
   dismissAcOnOutsideClick: S.__konvDismissAcOnOutsideClick,
   updateOnlineStatus: S.updateOnlineStatus,
   switchTab: S.switchTab,
