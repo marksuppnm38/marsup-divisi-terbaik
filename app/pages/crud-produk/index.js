@@ -631,19 +631,46 @@ const PRODUK_FILTER_DIMS = [
   ]},
 ];
 
+// ---- Cache kecil di sessionStorage (hemat IO DB free tier) ----
+// Opsi filter (tipe/golongan/status) hampir tidak pernah berubah, jadi tidak perlu
+// di-scan ulang tiap load halaman. Angka chip lebih dinamis -> TTL pendek + bisa dipaksa.
+const PW_CACHE_PREFIX = 'pnm_crud_cache:';
+function pwCacheGet(key, maxAgeMs){
+  try {
+    const raw = sessionStorage.getItem(PW_CACHE_PREFIX + key);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (!o || typeof o.t !== 'number') return null;
+    return { data: o.d, fresh: (Date.now() - o.t) <= maxAgeMs };
+  } catch (e) { return null; }
+}
+function pwCacheSet(key, data){
+  try { sessionStorage.setItem(PW_CACHE_PREFIX + key, JSON.stringify({ t: Date.now(), d: data })); } catch (e) {}
+}
+
+let _distinctInflight = null;
 async function loadProdukDistinctValues(){
-  // Dulu: 3x sb.from('produk').select(...).limit(3000) lalu di-Set() di JS --
-  // rawan motong diam-diam kalau salah satu tipe/golongan jumlahnya jauh lebih
-  // banyak dari yang lain (ini penyebab "Tipe" cuma nongol INSTRUMENT, SET & UNIT
-  // ilang). Sekarang DISTINCT dihitung penuh di Postgres, gak ada limit baris.
-  const { data, error } = await sb.rpc('get_produk_distinct_filters');
-  if (error) {
-    showToast('Gagal memuat opsi filter: ' + error.message, true);
-    return;
-  }
-  produkDistinct.tipe = data?.tipe || [];
-  produkDistinct.golongan = data?.golongan || [];
-  produkDistinct.status_inaproc = data?.status_inaproc || [];
+  // DISTINCT dihitung penuh di Postgres (tanpa limit baris). Hasilnya di-cache 30 menit
+  // di sessionStorage supaya tidak scan tabel produk tiap halaman dibuka.
+  const applyData = data => {
+    produkDistinct.tipe = data?.tipe || [];
+    produkDistinct.golongan = data?.golongan || [];
+    produkDistinct.status_inaproc = data?.status_inaproc || [];
+  };
+  const cached = pwCacheGet('distinct_filters', 30 * 60 * 1000);
+  if (cached) { applyData(cached.data); if (cached.fresh) return; }
+  if (_distinctInflight) return _distinctInflight;
+  _distinctInflight = (async () => {
+    const { data, error } = await sb.rpc('get_produk_distinct_filters');
+    if (error) {
+      // masih punya cache (walau basi) -> pakai saja, jangan ganggu user dengan toast
+      if (!cached) showToast('Gagal memuat opsi filter: ' + error.message, true);
+      return;
+    }
+    applyData(data);
+    pwCacheSet('distinct_filters', data);
+  })();
+  try { await _distinctInflight; } finally { _distinctInflight = null; }
 }
 
 async function ensureProdukHargaSet(){
@@ -744,7 +771,7 @@ document.getElementById('f_verified').addEventListener('change', async (e) => {
   renderInaprocIndikator(modalInaprocCtx.status, modalInaprocCtx.link, want);
   await refreshVerifiedRow();
   loadProduk(lastQuery, produkPage);
-  refreshProdukFilterCounts();
+  refreshProdukFilterCounts(true);
 });
 
 function produkRowMatchesFilter(row, filt){
@@ -1486,14 +1513,46 @@ async function exportPricelistSales(){
 document.getElementById('produkExportPricelistBtn').addEventListener('click', exportPricelistSales);
 
 // ---- Angka di tiap chip (total per kategori, independen dari search/pagination) ----
-async function refreshProdukFilterCounts(){
-  // PERF: 1 RPC (1 scan) gantiin 6x count:'exact'. Fallback ke versi lama kalau RPC belum ada.
-  const { data, error } = await sb.rpc('get_produk_filter_counts');
-  if (error || !data) { console.warn('get_produk_filter_counts gagal, fallback:', error && error.message); return refreshProdukFilterCountsLegacy(); }
-  ['all','belum_diajukan','belum_firm','di_luar_cakupan','terhubung','disetujui_tanpa_link','verified'].forEach(key => {
+const FILTER_COUNT_KEYS = ['all','belum_diajukan','belum_firm','di_luar_cakupan','terhubung','disetujui_tanpa_link','verified'];
+let _fcInflight = null;
+let _fcBackoffUntil = 0;
+let _fcTimer = null;
+function paintProdukFilterCounts(data){
+  FILTER_COUNT_KEYS.forEach(key => {
     const el = document.getElementById('fc-' + key);
     if (el) el.textContent = data[key] == null ? '' : ` · ${data[key]}`;
   });
+}
+// force=true dipakai setelah simpan/hapus produk (angka memang berubah). Tanpa force:
+// pakai cache <= 2 menit. Panggilan beruntun digabung (debounce 1,5 dtk) dan kalau RPC
+// timeout, tidak dicoba lagi selama 60 dtk -- supaya DB yang sedang lambat tidak
+// dihajar ulang dengan query yang sama.
+function refreshProdukFilterCounts(force){
+  if (force !== true) {
+    const c = pwCacheGet('filter_counts', 2 * 60 * 1000);
+    if (c) { paintProdukFilterCounts(c.data); if (c.fresh) return Promise.resolve(); }
+  }
+  return new Promise(resolve => {
+    clearTimeout(_fcTimer);
+    _fcTimer = setTimeout(() => { doRefreshProdukFilterCounts().then(resolve, resolve); }, force === true ? 1500 : 0);
+  });
+}
+async function doRefreshProdukFilterCounts(){
+  if (_fcInflight) return _fcInflight;
+  if (Date.now() < _fcBackoffUntil) return;
+  _fcInflight = (async () => {
+    const { data, error } = await sb.rpc('get_produk_filter_counts');
+    if (error || !data) {
+      console.warn('get_produk_filter_counts gagal:', error && error.message);
+      const missing = error && (error.code === '42883' || error.code === 'PGRST202');
+      if (missing) return refreshProdukFilterCountsLegacy(); // RPC belum dimigrasi
+      _fcBackoffUntil = Date.now() + 60 * 1000;               // timeout/500: JANGAN fallback ke 6 query lain
+      return;
+    }
+    paintProdukFilterCounts(data);
+    pwCacheSet('filter_counts', data);
+  })();
+  try { await _fcInflight; } finally { _fcInflight = null; }
 }
 async function refreshProdukFilterCountsLegacy(){
   const defs = [
@@ -2344,7 +2403,7 @@ async function saveProdukInner(){
     closeModal();
     invalidateProdukStackCache();
     loadProduk();
-    refreshProdukFilterCounts();
+    refreshProdukFilterCounts(true);
     goToSetDetail(currentProdukId);
     return true;
   }
@@ -2362,7 +2421,7 @@ async function saveProdukInner(){
   await loadAkdLinks(currentProdukId, tipe);
   invalidateProdukStackCache();
   loadProduk();
-  refreshProdukFilterCounts();
+  refreshProdukFilterCounts(true);
   refreshVerifiedRow();
   return true;
 }
@@ -3153,7 +3212,7 @@ deleteBtn.addEventListener('click', async () => {
   closeModal();
   invalidateProdukStackCache();
   loadProduk();
-  refreshProdukFilterCounts();
+  refreshProdukFilterCounts(true);
 });
 
   // ---- AKD MANAGEMENT ----
