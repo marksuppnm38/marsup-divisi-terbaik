@@ -112,6 +112,7 @@ export function installAutoRecord(S) {
   // Return { revisi, adopt }: adopt = Record auto yang harus ditimpa (atau null).
   async function nextRevisi(sesiId) {
     if (!sesiId || !idOk(sesiId)) return { revisi: 0, adopt: null };
+    await settleAutoRecord(sesiId); // jangan hitung revisi selagi auto-record sesi ini masih di tengah jalan
     let rows;
     try {
       rows = await api(`konversi_record?sesi_id=eq.${enc(sesiId)}&select=id,revisi,sumber,synced_to_sheet&order=revisi.desc,created_at.desc&limit=1`);
@@ -124,7 +125,7 @@ export function installAutoRecord(S) {
     if (!last) return { revisi: 0, adopt: null };
     const isAuto = String(last.sumber || '').startsWith('auto');
     if (isAuto && !last.synced_to_sheet) return { revisi: Number(last.revisi) || 0, adopt: last };
-    return { revisi: (Number(last.revisi) || 0) + 1, adopt: null };
+    return { revisi: (Number(last.revisi) || 0) + 1, adopt: null, last };
   }
 
   // Bikin Record REV0 + item-itemnya. Item gagal -> record dibatalkan (gak ninggalin Record kosong).
@@ -161,6 +162,15 @@ export function installAutoRecord(S) {
     inflight.set(key, p);
     return p;
   };
+
+  // Tunggu Record otomatis (Export / SPH / mandek) yang MASIH BERJALAN untuk sesi ini. Export memanggil
+  // autoRecordCurrent fire-and-forget; kalau Record manual / Export berikutnya dipencet sebelum POST-nya
+  // selesai, nextRevisi() belum melihat baris itu -> Record manual bikin baris sendiri dan auto-record
+  // bikin baris kedua (dobel, nomor revisi dan "Perlu tindakan" jadi kacau). Selalu resolve, gak pernah throw.
+  function settleAutoRecord(sesiId) {
+    const ps = ['cur:' + sesiId, 'id:' + sesiId].map(k => inflight.get(k)).filter(Boolean);
+    return ps.length ? Promise.allSettled(ps) : Promise.resolve();
+  }
 
   // Sesi yang LAGI DIBUKA: pakai state layar (clipboard di memori) — lebih baru daripada yang sempat ke-autosave.
   // Dipanggil dari Export dan Record SPH. Null kalau sesi kosong / sudah punya Record.
@@ -274,6 +284,7 @@ export function installAutoRecord(S) {
 
   S.btnBusy = btnBusy;
   S.nextRevisi = nextRevisi;
+  S.settleAutoRecord = settleAutoRecord;
   S.autoRecordCurrent = autoRecordCurrent;
   S.autoRecordSesiById = autoRecordSesiById;
   S.sendRecordToSheet = sendRecordToSheet;

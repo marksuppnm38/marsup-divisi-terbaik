@@ -4845,6 +4845,7 @@ S.recordSubmitBtn.addEventListener('click', async () => {
   // Tahap 1 di-SKIP total — reuse ID lama, langsung lanjut Tahap 2 aja. ──
   const retryRecordId = S.recordSubmitBtn.dataset.retryRecordId || '';
   let newRecordId = retryRecordId || null;
+  let reuseRec = null; // Record terakhir yang isinya IDENTIK dengan clipboard sekarang -> dipakai ulang, bukan REV+1
 
   if (!retryRecordId) {
   // ---- Tahap 1: Supabase (fondasi, wajib sukses) ----
@@ -4852,12 +4853,29 @@ S.recordSubmitBtn.addEventListener('click', async () => {
     // Revisi dihitung S.nextRevisi (auto-record.js): Record OTOMATIS yang belum ke Sheet (dibuat saat
     // Export / SPH / sesi mandek) diambil alih — tetap REV0, bukan REV1. REV baru cuma kalau Record
     // terakhir sudah keputusan manusia atau sudah ada barisnya di Sheet. Item/ header lama ditimpa.
-    let revisiKe = 0, adoptRec = null;
+    let revisiKe = 0, adoptRec = null, lastRec = null;
+    if (S.currentSesiId && S.settleAutoRecord) await S.settleAutoRecord(S.currentSesiId); // auto-record dari Export yang masih jalan harus selesai dulu
     if (S.currentSesiId && S.nextRevisi) {
       try {
         const nr = await S.nextRevisi(S.currentSesiId);
-        revisiKe = nr.revisi; adoptRec = nr.adopt;
+        revisiKe = nr.revisi; adoptRec = nr.adopt; lastRec = nr.last || null;
       } catch { /* gagal cek → anggap revisi 0, fallback aman (bukan blocking) */ }
+    }
+
+    // IDEMPOTENT: Record terakhir sesi ini isinya sama persis (produk, qty, harga) dengan clipboard sekarang
+    // -> ini kirim ulang yang sama (klik dobel, modal dibuka lagi setelah Sheet error, sudah dikirim lewat
+    // "Perlu tindakan"/Riwayat), BUKAN revisi baru. Pakai ulang record itu (record_id sama -> Apps Script
+    // juga dedupe), jangan bikin REV+1 + baris Sheet kedua.
+    if (lastRec && !adoptRec) {
+      try {
+        const r = await S.sesiFetch(`konversi_item?konversi_record_id=eq.${encodeURIComponent(lastRec.id)}&select=kode_produk,qty,harga`);
+        if (r.ok) {
+          const sig = (x) => `${x.kode_produk}|${Number(x.qty) || 1}|${Number(x.harga) || 0}`;
+          const saved = (await r.json()).map(sig).sort().join(';');
+          const now = S.clipboard.map(it => sig({ kode_produk: it.kode_produk, qty: it.qty, harga: S.modeSwastaOutput ? (it.harga_swasta || 0) : (it.harga_ekat || 0) })).sort().join(';');
+          if (saved && saved === now) { reuseRec = lastRec; revisiKe = Number(lastRec.revisi) || 0; }
+        }
+      } catch { /* gagal cek -> perilaku lama (REV baru), bukan blocking */ }
     }
 
     const recordBody = {
@@ -4894,7 +4912,9 @@ S.recordSubmitBtn.addEventListener('click', async () => {
       return errData.message || errData.hint || fallback;
     };
 
-    if (adoptRec) {
+    if (reuseRec) {
+      newRecordId = reuseRec.id; // gak ada insert/patch: record sudah ada & identik
+    } else if (adoptRec) {
       // Ambil alih Record otomatis: item baru dimasukkan DULU, baru header ditimpa, baru item lama dibuang —
       // kalau ada langkah gagal, Record lama gak pernah jadi kosong.
       newRecordId = adoptRec.id;
@@ -4967,6 +4987,17 @@ S.recordSubmitBtn.addEventListener('click', async () => {
     // lompat ke Tahap 2 tanpa insert apa pun lagi.
     S.recordStatus.textContent = 'Menyinkronkan ulang ke Sheet…';
     S.recordStatus.style.color = 'var(--success)';
+  }
+
+  // Record identik yang SUDAH ada di Sheet -> gak ada yang perlu dikirim lagi.
+  if (reuseRec && reuseRec.synced_to_sheet) {
+    S.recordStatus.textContent = `Record ini sudah tercatat (REV${Number(reuseRec.revisi) || 0}) & sudah di Sheet — isinya sama, tidak dibuat ulang ✓`;
+    S.recordStatus.style.color = 'var(--success)';
+    S.recordSubmitBtn.dataset.retryRecordId = '';
+    S.recordSubmitBtn.disabled = false;
+    S.recordSubmitBtn.textContent = 'Kirim ke Sheet';
+    setTimeout(() => S.recordModal.classList.remove('show'), 1800);
+    return;
   }
 
   // ---- Tahap 2: Google Sheet (mirror, format tetap sama persis) ----
