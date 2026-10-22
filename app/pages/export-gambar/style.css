@@ -219,3 +219,45 @@
 .eg-toast-root .toast .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--text-muted); }
 .eg-toast-root .toast.success .dot { background: var(--success-dot, var(--success)); }
 .eg-toast-root .toast.error .dot { background: var(--danger-dot, var(--danger)); }
+
+/* Tab Satuan / Bulk */
+.eg-page .eg-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.eg-page .eg-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; margin-bottom: -1px;
+  border: none; border-bottom: 2px solid transparent; background: none;
+  font-family: inherit; font-size: 13px; font-weight: 500;
+  color: var(--text-secondary); cursor: pointer;
+}
+.eg-page .eg-tab:hover { color: var(--text); }
+.eg-page .eg-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* Tab Bulk */
+.eg-page .eg-bulk-types { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 4px; }
+.eg-page .eg-bulk-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
+.eg-page .eg-bulk-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; align-items: center; }
+.eg-page .eg-bulk-status { margin-right: auto; font-size: 12px; color: var(--text-muted); }
+.eg-page .eg-bulk-progress { display: block; width: 100%; height: 6px; margin-top: 12px; accent-color: var(--accent); }
+.eg-page .eg-bulk-filters { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.eg-page .eg-bulk-chip {
+  padding: 4px 10px; font-family: inherit; font-size: 12px; font-weight: 500;
+  color: var(--text-secondary); background: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 999px;
+}
+.eg-page .eg-bulk-chip b { font-weight: 600; margin-left: 2px; }
+.eg-page .eg-bulk-chip.active { color: var(--text); border-color: var(--accent); }
+.eg-page .eg-bulk-list { max-height: 480px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.eg-page .eg-bulk-row { padding: 8px 12px; border-bottom: 0.5px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.eg-page .eg-bulk-row[hidden] { display: none; }
+.eg-page .eg-bulk-row:last-child { border-bottom: none; }
+.eg-page .eg-bulk-kode { font-family: var(--mono); font-size: 12.5px; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
+.eg-page .eg-bulk-tags { display: flex; gap: 14px; flex-wrap: wrap; }
+.eg-page .eg-bk-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
+.eg-page .eg-bk-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+.eg-page .eg-bk-tag.ok .dot { background: var(--success-dot, var(--success)); }
+.eg-page .eg-bk-tag.warn .dot { background: var(--danger-dot, var(--danger)); }
+.eg-page .eg-bk-tag.warn { color: var(--danger-text, var(--danger)); }
+.eg-page .eg-bulk-run { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding-top: 16px; border-top: 1px solid var(--border); }
+.eg-page .eg-bulk-field { display: flex; flex-direction: column; gap: 3px; }
+.eg-page .eg-bulk-field > span { font-size: 11px; color: var(--text-muted); }
+.eg-page .eg-bulk-field select { min-width: 130px; }

@@ -17,6 +17,7 @@
 //   decision, not part of this pass either.
 
 import { EXPORT_GAMBAR_MARKUP } from './markup.js';
+import { mountBulkThumb } from './bulk-thumb.js';
 
 // SECURITY FIX: renderFileList() below renders `f.name` (from File.name,
 // the name of a file the user picked/dropped) straight into innerHTML.
@@ -129,6 +130,7 @@ let docPasteHandler = null;     // listener paste di document (paste jatuh ke el
 // titik yang nyambung DOM manipulation abis `await` sebelum benar-benar
 // nulis apa pun.
 let isMounted = false;
+let unmountBulkThumbFn = null;  // tab Bulk (bulk-thumb.js)
 
 export async function mount(container) {
   mountedContainer = container;
@@ -272,19 +274,26 @@ export async function mount(container) {
               const session = await PNMAuth.getSession(); // dulu: sb.auth.getSession() langsung
               if (!isMounted) return; // sama alasan (lihat isMounted's komentar) -- await pertama di fungsi ini
               if (!session) { window.PNMAuth.logout(); return; } // trigger shared gate via router.js's onLoggedOut, bukan showGateMsg() lokal (sudah dihapus)
-              let response = await fetch(url, {
-                  method: "POST",
-                  headers: {
-                      "Content-Type": "application/json",
-                      "apikey": window.PNM_SUPABASE_ANON_KEY,
-                      "Authorization": `Bearer ${session.access_token}`,
-                  },
-                  // limit 1000 per page, paginasi via offset kalau bucket-nya makin gede
-                  // prefix wajib diisi walau kosong (artinya: list semua file di root bucket)
-                  body: JSON.stringify({ prefix: "", limit: 1000, offset: 0, sortBy: { column: "name", order: "asc" } }),
-              });
-              if (!response.ok) throw new Error(`HTTP ${response.status}`);
-              let data = await response.json();
+              // Paginasi: bucket bisa > 1000 file. Tanpa ini, file ke-1001 dst dianggap
+              // "tidak ada" (fatal buat overview Bulk). sortBy name asc = urutan stabil.
+              let data = [];
+              for (let offset = 0; ; offset += 1000) {
+                  const response = await fetch(url, {
+                      method: "POST",
+                      headers: {
+                          "Content-Type": "application/json",
+                          "apikey": window.PNM_SUPABASE_ANON_KEY,
+                          "Authorization": `Bearer ${session.access_token}`,
+                      },
+                      // prefix wajib diisi walau kosong (artinya: list semua file di root bucket)
+                      body: JSON.stringify({ prefix: "", limit: 1000, offset, sortBy: { column: "name", order: "asc" } }),
+                  });
+                  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                  const page = await response.json();
+                  if (!Array.isArray(page)) { data = page; break; }
+                  data = data.concat(page);
+                  if (page.length < 1000) break;
+              }
               if (!isMounted) return; // user udah pindah halaman sebelum fetch ini kelar -- lihat isMounted's komentar di atas
               console.log("[DATA] Data dari Supabase Storage:", data);
               if (!Array.isArray(data) || !data.length) {
@@ -298,10 +307,12 @@ export async function mount(container) {
                       return { id: kode, name: kode };
                   });
               renderFileList();
+              return true;
           } catch (error) {
               console.error("[ERROR] Gagal mengambil daftar file dari Supabase Storage!", error);
               if (!isMounted) return; // sama alasan -- jangan toast() ke halaman yang udah bukan ini lagi
               toast("Gagal memuat daftar file. Coba muat ulang halaman.", "error");
+              return false;
           }
       }
   
@@ -464,8 +475,9 @@ export async function mount(container) {
       // Menyusun 1–4 overlay dalam grid, DI DALAM kotak putih template (koordinat
       // diukur langsung dari template: x 16.6%–86.2%, y 22%–65.2% dari kanvas).
       // Zona ini tetap sama untuk semua jumlah gambar — hanya grid di dalamnya yang berubah.
-      function drawMergedCanvas(templateImg, overlayCanvases, BOX) {
-          let canvas = container.querySelector('#' + "finalCanvas");
+      function drawMergedCanvas(templateImg, overlayCanvases, BOX, targetCanvas) {
+          // targetCanvas dipakai tab Bulk (render di luar layar); default = kanvas preview.
+          let canvas = targetCanvas || container.querySelector('#' + "finalCanvas");
           let ctx = canvas.getContext("2d");
           canvas.width = templateImg.width;
           canvas.height = templateImg.height;
@@ -672,7 +684,19 @@ export async function mount(container) {
   // dan satu 'input' di container, di-lepas di unmount() lewat
   // containerHandlers. Gak ada lagi handler inline di markup, gak ada lagi
   // fungsi nongol di window.* — CSP script-src gak butuh 'unsafe-inline'.
+  function switchTab(name) {
+    const bulk = name === 'bulk';
+    container.querySelector('#egPanelSingle').style.display = bulk ? 'none' : '';
+    container.querySelector('#egPanelBulk').style.display = bulk ? '' : 'none';
+    container.querySelectorAll('.eg-tab').forEach((t) => {
+      const on = t.dataset.tab === (bulk ? 'bulk' : 'single');
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', String(on));
+    });
+  }
+
   const ACTIONS = {
+    'tab':                (el) => switchTab(el.dataset.tab),
     'apply-bulk-input':   () => applyBulkInput(),
     'merge-and-preview':  () => mergeAndPreview(),
     'export-canvas-png':  () => exportCanvasAsPNG(),
@@ -721,10 +745,23 @@ export async function mount(container) {
     addImageFiles(files);
   };
   document.addEventListener('paste', docPasteHandler);
+
+  // Tab Bulk: logic di bulk-thumb.js, helper render/gambar dipakai ulang dari sini
+  // supaya hasilnya identik dengan mode satuan.
+  unmountBulkThumbFn = mountBulkThumb(container.querySelector('#egPanelBulk'), {
+    toast, TEMPLATES, getTemplateImage, loadImageWithRetry, removeBackgroundHighQuality,
+    getImageUrl: getSupabaseImageUrl, drawMergedCanvas,
+    getFiles: () => allFiles,
+    reloadFiles: () => loadFileList(),
+    getSession: () => PNMAuth.getSession(),
+    supabaseUrl: SUPABASE_URL, anonKey: window.PNM_SUPABASE_ANON_KEY,
+    isMounted: () => isMounted, maxImages: MAX_IMAGES,
+  });
 }
 
 export function unmount() {
   isMounted = false;
+  if (unmountBulkThumbFn) { unmountBulkThumbFn(); unmountBulkThumbFn = null; }
   activeObserver?.disconnect();
   activeObserver = null;
   if (containerHandlers && mountedContainer) {

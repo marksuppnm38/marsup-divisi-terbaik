@@ -58,6 +58,13 @@ export const EXPORT_GAMBAR_MARKUP = `
         <p>Gabungkan sampai 4 gambar produk jadi satu file PNG.</p>
       </div>
 
+      <div class="eg-tabs" role="tablist" aria-label="Mode">
+        <button type="button" class="eg-tab active" role="tab" aria-selected="true" data-action="tab" data-tab="single"><i class="ti ti-layout-grid" aria-hidden="true"></i> Satuan</button>
+        <button type="button" class="eg-tab" role="tab" aria-selected="false" data-action="tab" data-tab="bulk"><i class="ti ti-stack-2" aria-hidden="true"></i> Bulk</button>
+      </div>
+
+      <div id="egPanelSingle" role="tabpanel">
+
       <!-- SELECTION -->
       <div class="card">
         <div class="card-head">
@@ -110,6 +117,9 @@ export const EXPORT_GAMBAR_MARKUP = `
           <i class="ti ti-download" aria-hidden="true"></i> Unduh PNG
         </button>
       </div>
+      </div>
+
+      <div id="egPanelBulk" role="tabpanel" style="display:none;"></div>
     </div>
   </main>
 </div>
