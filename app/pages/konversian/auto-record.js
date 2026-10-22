@@ -128,32 +128,30 @@ export function installAutoRecord(S) {
     return { revisi: (Number(last.revisi) || 0) + 1, adopt: null, last };
   }
 
-  // Bikin Record REV0 + item-itemnya. Item gagal -> record dibatalkan (gak ninggalin Record kosong).
+  // Bikin Record REV0 + item-itemnya lewat RPC record_konversi (atomik: header+item satu transaksi, diserialkan
+  // per sesi, unique(sesi_id, revisi)). Sesi yang sudah punya Record -> RPC mengembalikan yang ada (mode 'exists').
   async function createRecord(o) {
     const { kategori, grandTotal } = summarizeItems(o.items, o.swasta);
-    const body = {
-      sesi_id: o.sesiId || null, permintaan_id: o.permintaanId || null,
-      tanggal: new Date().toISOString().slice(0, 10),
-      nama_rs: o.namaRs || 'RS', pic_sales: o.namaSales || 'Sales', pic_marsup: o.picMarsup || '-',
-      pagu_total: o.pagu != null ? o.pagu : null,
-      kategori, grand_total: grandTotal, revisi: 0,
-      notes: o.notes || '', link: o.link || '', synced_to_sheet: false, sumber: o.sumber
-    };
-    const made = await api('konversi_record', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(body) });
-    const rec = made && made[0];
-    if (!rec) throw new Error('Gagal membuat record.');
-    try {
-      const rows = (o.items || []).map(item => ({
-        konversi_record_id: rec.id, produk_id: item.produk_id || null,
+    const { data, error } = await S.rpc('record_konversi', {
+      p_sesi_id: o.sesiId || null, p_permintaan_id: o.permintaanId || null,
+      p_tanggal: new Date().toISOString().slice(0, 10),
+      p_nama_rs: o.namaRs || 'RS', p_pic_sales: o.namaSales || 'Sales', p_pic_marsup: o.picMarsup || '-',
+      p_pagu_total: o.pagu != null ? o.pagu : null,
+      p_kategori: kategori, p_grand_total: grandTotal,
+      p_notes: o.notes || '', p_link: o.link || '',
+      p_items: (o.items || []).map(item => ({
+        produk_id: item.produk_id || null,
         kode_produk: item.kode_produk, nama_produk: item.nama_produk, qty: item.qty || 1,
-        harga: o.swasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0)
-      }));
-      if (rows.length) await api('konversi_item', { method: 'POST', body: JSON.stringify(rows) });
-    } catch (err) {
-      await api(`konversi_record?id=eq.${enc(rec.id)}`, { method: 'DELETE' }).catch(() => {});
-      throw err;
+        harga: Number(o.swasta ? (item.harga_swasta || 0) : (item.harga_ekat || 0))
+      })),
+      p_sumber: o.sumber, p_close_sesi: false
+    });
+    if (error || !data || data.record_id == null) {
+      throw new Error((error && (error.message || error.hint)) || 'Gagal membuat record (cek RPC record_konversi sudah dijalankan).');
     }
-    return rec;
+    const rows = await api(`konversi_record?id=eq.${enc(data.record_id)}&select=*`);
+    if (!rows || !rows[0]) throw new Error('Gagal membuat record.');
+    return rows[0];
   }
 
   const once = (key, fn) => {

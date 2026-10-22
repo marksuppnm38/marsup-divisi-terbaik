@@ -4845,120 +4845,50 @@ S.recordSubmitBtn.addEventListener('click', async () => {
   // Tahap 1 di-SKIP total — reuse ID lama, langsung lanjut Tahap 2 aja. ──
   const retryRecordId = S.recordSubmitBtn.dataset.retryRecordId || '';
   let newRecordId = retryRecordId || null;
-  let reuseRec = null; // Record terakhir yang isinya IDENTIK dengan clipboard sekarang -> dipakai ulang, bukan REV+1
+  let reuseSynced = false; // RPC bilang: isi identik dgn Record terakhir yang SUDAH di Sheet -> gak ada yang dikirim
 
   if (!retryRecordId) {
   // ---- Tahap 1: Supabase (fondasi, wajib sukses) ----
   try {
-    // Revisi dihitung S.nextRevisi (auto-record.js): Record OTOMATIS yang belum ke Sheet (dibuat saat
-    // Export / SPH / sesi mandek) diambil alih — tetap REV0, bukan REV1. REV baru cuma kalau Record
-    // terakhir sudah keputusan manusia atau sudah ada barisnya di Sheet. Item/ header lama ditimpa.
-    let revisiKe = 0, adoptRec = null, lastRec = null;
-    if (S.currentSesiId && S.settleAutoRecord) await S.settleAutoRecord(S.currentSesiId); // auto-record dari Export yang masih jalan harus selesai dulu
-    if (S.currentSesiId && S.nextRevisi) {
-      try {
-        const nr = await S.nextRevisi(S.currentSesiId);
-        revisiKe = nr.revisi; adoptRec = nr.adopt; lastRec = nr.last || null;
-      } catch { /* gagal cek → anggap revisi 0, fallback aman (bukan blocking) */ }
-    }
-
-    // IDEMPOTENT: Record terakhir sesi ini isinya sama persis (produk, qty, harga) dengan clipboard sekarang
-    // -> ini kirim ulang yang sama (klik dobel, modal dibuka lagi setelah Sheet error, sudah dikirim lewat
-    // "Perlu tindakan"/Riwayat), BUKAN revisi baru. Pakai ulang record itu (record_id sama -> Apps Script
-    // juga dedupe), jangan bikin REV+1 + baris Sheet kedua.
-    if (lastRec && !adoptRec) {
-      try {
-        const r = await S.sesiFetch(`konversi_item?konversi_record_id=eq.${encodeURIComponent(lastRec.id)}&select=kode_produk,qty,harga`);
-        if (r.ok) {
-          const sig = (x) => `${x.kode_produk}|${Number(x.qty) || 1}|${Number(x.harga) || 0}`;
-          const saved = (await r.json()).map(sig).sort().join(';');
-          const now = S.clipboard.map(it => sig({ kode_produk: it.kode_produk, qty: it.qty, harga: S.modeSwastaOutput ? (it.harga_swasta || 0) : (it.harga_ekat || 0) })).sort().join(';');
-          if (saved && saved === now) { reuseRec = lastRec; revisiKe = Number(lastRec.revisi) || 0; }
-        }
-      } catch { /* gagal cek -> perilaku lama (REV baru), bukan blocking */ }
-    }
-
-    const recordBody = {
-      sesi_id: S.currentSesiId || null,
-      permintaan_id: S.checklistPermintaanId || null,
-      tanggal: tanggalIso,
-      nama_rs: namaRs,
-      pic_sales: namaSales,
-      pic_marsup: inpMarsup.value.trim(),
-      pagu_total: (typeof S.checklistPagu !== 'undefined' ? S.checklistPagu : null),
-      kategori: kategori,
-      grand_total: grandTotal,
-      revisi: revisiKe,
-      notes: S.recNotes.value.trim(),
-      link: S.recLink.value.trim(),
-      synced_to_sheet: false
-    };
-
-    // Detail per item — ini yang bikin data granular buat insight nanti
-    // (produk apa yang sering INDENT, revenue per kategori/produk, dst).
-    const buildItemRows = (recId) => S.clipboard.map(item => {
-      const hargaPakai = S.modeSwastaOutput ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
-      return {
-        konversi_record_id: recId,
+    // SATU RPC transaksional (record_konversi, lihat record_konversi_migration.sql): server yang memutuskan
+    // created / adopted (ambil alih Record auto) / reused (isi identik -> gak dibuat ulang) / revision (REV+1),
+    // diserialkan per sesi + unique(sesi_id, revisi). Gak ada lagi insert header -> insert item -> patch status
+    // dari browser, jadi gak ada race/duplikat walau diklik dobel atau bareng auto-record Export.
+    if (S.currentSesiId && S.settleAutoRecord) await S.settleAutoRecord(S.currentSesiId); // auto-record Export yang masih jalan: tunggu dulu
+    const { data: rec, error: recErr } = await S.rpc('record_konversi', {
+      p_sesi_id: S.currentSesiId || null,
+      p_permintaan_id: S.checklistPermintaanId || null,
+      p_tanggal: tanggalIso,
+      p_nama_rs: namaRs,
+      p_pic_sales: namaSales,
+      p_pic_marsup: inpMarsup.value.trim(),
+      p_pagu_total: (typeof S.checklistPagu !== 'undefined' ? S.checklistPagu : null),
+      p_kategori: kategori,
+      p_grand_total: grandTotal,
+      p_notes: S.recNotes.value.trim(),
+      p_link: S.recLink.value.trim(),
+      p_items: S.clipboard.map(item => ({
         produk_id: item.produk_id || null,
         kode_produk: item.kode_produk,
         nama_produk: item.nama_produk,
         qty: item.qty || 1,
-        harga: hargaPakai
-      };
+        harga: Number(S.modeSwastaOutput ? (item.harga_swasta || 0) : (item.harga_ekat || 0))
+      })),
+      p_sumber: 'manual',
+      p_close_sesi: true
     });
-    const failMsg = async (res, fallback) => {
-      const errData = await res.json().catch(() => ({}));
-      return errData.message || errData.hint || fallback;
-    };
-
-    if (reuseRec) {
-      newRecordId = reuseRec.id; // gak ada insert/patch: record sudah ada & identik
-    } else if (adoptRec) {
-      // Ambil alih Record otomatis: item baru dimasukkan DULU, baru header ditimpa, baru item lama dibuang —
-      // kalau ada langkah gagal, Record lama gak pernah jadi kosong.
-      newRecordId = adoptRec.id;
-      const oldRes = await S.sesiFetch(`konversi_item?konversi_record_id=eq.${newRecordId}&select=id`);
-      const oldIds = oldRes.ok ? (await oldRes.json()).map(r => r.id).filter(x => /^[\w-]+$/.test(String(x))) : [];
-      const itemRows = buildItemRows(newRecordId);
-      if (itemRows.length) {
-        const itemRes = await S.sesiFetch('konversi_item', { method: 'POST', body: JSON.stringify(itemRows) });
-        if (!itemRes.ok) throw new Error(await failMsg(itemRes, 'Gagal menyimpan detail item (cek konversi_item)'));
-      }
-      const { sesi_id: _s, revisi: _r, ...patchBody } = recordBody;
-      const patchRes = await S.sesiFetch(`konversi_record?id=eq.${newRecordId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ ...patchBody, sumber: 'manual', tanggal: tanggalIso })
-      });
-      if (!patchRes.ok) throw new Error(await failMsg(patchRes, 'Gagal memperbarui record'));
-      if (oldIds.length) {
-        await S.sesiFetch(`konversi_item?id=in.(${oldIds.join(',')})`, { method: 'DELETE' }).catch(() => {});
-      }
-    } else {
-      const recRes = await S.sesiFetch('konversi_record', {
-        method: 'POST',
-        headers: { 'Prefer': 'return=representation' },
-        body: JSON.stringify(recordBody)
-      });
-      if (!recRes.ok) throw new Error(await failMsg(recRes, 'Gagal menyimpan header konversi_record'));
-      const recRows = await recRes.json();
-      newRecordId = recRows[0].id;
-
-      const itemRows = buildItemRows(newRecordId);
-      if (itemRows.length) {
-        const itemRes = await S.sesiFetch('konversi_item', { method: 'POST', body: JSON.stringify(itemRows) });
-        if (!itemRes.ok) throw new Error(await failMsg(itemRes, 'Record tersimpan, tapi detail item gagal (cek konversi_item)'));
-      }
+    if (recErr || !rec || rec.record_id == null) {
+      throw new Error((recErr && (recErr.message || recErr.hint)) || 'Gagal menyimpan record (cek RPC record_konversi sudah dijalankan)');
     }
+    newRecordId = rec.record_id;
+    const revisiKe = Number(rec.revisi) || 0;
+    reuseSynced = rec.mode === 'reused' && !!rec.synced_to_sheet;
 
     // Sesi ini selesai → keluar dari daftar "Konversi Berjalan". Kalau ada
     // checklist Permintaan RS yang nempel, rekap pemenuhannya ikut
     // dipastikan tersimpan di langkah yang sama.
     if (S.currentSesiId) {
-      S.sesiFetch(`${S.SESI_TABLE}?id=eq.${S.currentSesiId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
-      }).catch(() => {});
+      // (status sesi -> 'selesai' sudah dikerjakan RPC record_konversi lewat p_close_sesi)
       // currentSesiId SENGAJA tetap dipertahankan (bukan di-null-in) — kalau
       // langsung di-null, Export yang diklik tepat setelah Record kehilangan
       // pegangan buat ngecek nomor revisi (jadi filename-nya balik polos tanpa
@@ -4990,8 +4920,8 @@ S.recordSubmitBtn.addEventListener('click', async () => {
   }
 
   // Record identik yang SUDAH ada di Sheet -> gak ada yang perlu dikirim lagi.
-  if (reuseRec && reuseRec.synced_to_sheet) {
-    S.recordStatus.textContent = `Record ini sudah tercatat (REV${Number(reuseRec.revisi) || 0}) & sudah di Sheet — isinya sama, tidak dibuat ulang ✓`;
+  if (reuseSynced) {
+    S.recordStatus.textContent = 'Record ini sudah tercatat & sudah di Sheet — isinya sama, tidak dibuat ulang ✓';
     S.recordStatus.style.color = 'var(--success)';
     S.recordSubmitBtn.dataset.retryRecordId = '';
     S.recordSubmitBtn.disabled = false;
