@@ -22,6 +22,7 @@ import { buildSpekPdf, loadSpekFonts, fileSafeName } from './pdf.js';
 import { mountStruktur } from './struktur-ui.js';
 import { mountSpp } from './spp-ui.js';
 import { mountLampiran } from './lampiran-ui.js';
+import { mountBulk } from './bulk-ui.js';
 
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 // anon key publik, sama dengan yang sudah ada di konversian/index.js
@@ -146,6 +147,7 @@ let handlers = [];
 let unmountStruktur = null;
 let unmountSpp = null;
 let unmountLampiran = null;
+let unmountBulk = null;
 
 function toast(msg, type = 'success') {
   const host = document.getElementById('smToastRoot');
@@ -485,7 +487,7 @@ function listen(target, type, fn) {
 }
 
 // ---- tab Spesifikasi / Struktur Harga / SPP / Lampiran Set ---------------
-const TAB_PANELS = { spek: 'smPanelSpek', struktur: 'smPanelStruktur', spp: 'smPanelSpp', lampiran: 'smPanelLampiran' };
+const TAB_PANELS = { spek: 'smPanelSpek', struktur: 'smPanelStruktur', spp: 'smPanelSpp', lampiran: 'smPanelLampiran', bulk: 'smPanelBulk' };
 
 function switchTab(name) {
   const active = TAB_PANELS[name] ? name : 'spek';
@@ -525,6 +527,13 @@ export async function mount(container) {
   unmountLampiran = mountLampiran(container.querySelector('#smPanelLampiran'), {
     toast, loadScript, getToken, el, triggerDownload,
     loadBucketImage, blobToPngImage, ensureLogos,
+    cfg: { SUPABASE_URL, ANON_KEY, JSPDF_SRC, JSPDF_SRI, JSZIP_SRC, JSZIP_SRI },
+  });
+
+  // tab Bulk: periksa ratusan kode (data + gambar) lalu proses yang siap saja
+  unmountBulk = mountBulk(container.querySelector('#smPanelBulk'), {
+    toast, loadScript, getToken, el, triggerDownload,
+    loadBucketImage, ensureLogos,
     cfg: { SUPABASE_URL, ANON_KEY, JSPDF_SRC, JSPDF_SRI, JSZIP_SRC, JSZIP_SRI },
   });
 
@@ -577,6 +586,7 @@ export function unmount() {
   if (unmountStruktur) { unmountStruktur(); unmountStruktur = null; }
   if (unmountSpp) { unmountSpp(); unmountSpp = null; }
   if (unmountLampiran) { unmountLampiran(); unmountLampiran = null; }
+  if (unmountBulk) { unmountBulk(); unmountBulk = null; }
   alive = false;
   runId++;
   handlers.forEach((off) => off());

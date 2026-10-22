@@ -20,6 +20,7 @@ export const SPEK_MAKER_MARKUP = `
         <button type="button" class="sm-tab" role="tab" aria-selected="false" data-action="tab" data-tab="struktur"><i class="ti ti-receipt-2" aria-hidden="true"></i> Struktur Harga</button>
         <button type="button" class="sm-tab" role="tab" aria-selected="false" data-action="tab" data-tab="spp"><i class="ti ti-presentation" aria-hidden="true"></i> SPP</button>
         <button type="button" class="sm-tab" role="tab" aria-selected="false" data-action="tab" data-tab="lampiran"><i class="ti ti-list-details" aria-hidden="true"></i> Lampiran Set</button>
+        <button type="button" class="sm-tab" role="tab" aria-selected="false" data-action="tab" data-tab="bulk"><i class="ti ti-stack-2" aria-hidden="true"></i> Bulk</button>
       </div>
 
       <div id="smPanelSpek" role="tabpanel">
@@ -75,6 +76,8 @@ export const SPEK_MAKER_MARKUP = `
       <div id="smPanelSpp" role="tabpanel" style="display:none;"></div>
 
       <div id="smPanelLampiran" role="tabpanel" style="display:none;"></div>
+
+      <div id="smPanelBulk" role="tabpanel" style="display:none;"></div>
     </div>
   </main>
 
