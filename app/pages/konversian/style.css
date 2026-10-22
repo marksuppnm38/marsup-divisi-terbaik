@@ -726,13 +726,20 @@
 .pr-active-status.no{background:var(--danger-bg);color:var(--danger-text)}
 .pr-active-note{font-size:11px;color:var(--text-muted);line-height:1.5;margin-top:10px}
 
+.pr-edit-pagu{margin-bottom:10px}
+.pr-edit-pagu-sec{display:grid;grid-template-columns:1fr 150px;gap:8px;align-items:center;padding:4px 2px;font-size:12.5px}
+.pr-edit-pagu-sec input{
+  width:100%;height:30px;padding:0 8px;font-size:12.5px;font-family:inherit;text-align:right;
+  border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);
+}
+.pr-edit-pagu-sec input:focus{border-color:var(--accent)}
 .pr-edit-head{
-  display:grid;grid-template-columns:1fr 70px;gap:8px;
+  display:grid;grid-template-columns:1fr 70px 110px;gap:8px;
   font-size:11px;color:var(--text-muted);padding:0 4px 6px;
 }
 .pr-edit-list{max-height:320px;overflow-y:auto;margin:0 -2px}
 .pr-edit-row{
-  display:grid;grid-template-columns:1fr 70px;gap:8px;align-items:center;
+  display:grid;grid-template-columns:1fr 70px 110px;gap:8px;align-items:center;
   padding:6px 2px;border-top:0.5px solid var(--border);
 }
 .pr-edit-row:first-child{border-top:none}
@@ -742,6 +749,7 @@
 }
 .pr-edit-row input:focus{border-color:var(--accent)}
 .pr-ed-qty{text-align:center;font-variant-numeric:tabular-nums}
+.pr-ed-pagusat{text-align:right;font-variant-numeric:tabular-nums}
 
 /* ══════════════════════════════════════════════════════════════════
    QTY MENGIKUTI PERMINTAAN RS — hint alokasi & badge di clipboard

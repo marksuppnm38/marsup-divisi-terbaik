@@ -862,7 +862,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
     <div id="pr-active-wrap" style="display:none">
       <div class="pr-active-meta" id="pr-active-meta"></div>
       <div class="pr-active-list" id="pr-active-list"></div>
-      <div class="pr-active-note">Satu sesi = satu Permintaan RS. <b>Tambah item</b> menambahkan ke daftar ini (yang lama tidak berubah). <b>Edit item</b> mengoreksi nama/qty item yang sudah ada.</div>
+      <div class="pr-active-note">Satu sesi = satu Permintaan RS. <b>Tambah item</b> menambahkan ke daftar ini (yang lama tidak berubah). <b>Edit item</b> mengoreksi nama/qty/pagu item yang sudah ada, plus pagu total.</div>
       <div class="pr-actions">
         <button class="pr-cancel" id="pr-active-close-btn" type="button">Tutup</button>
         <button class="pr-cancel" id="pr-active-edit-btn" type="button"><i class="ti ti-pencil"></i> Edit item</button>
@@ -873,9 +873,17 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
     <!-- MODE EDIT: koreksi nama/qty item yang sudah tersimpan. Cuma baris yang
          berubah yang ditulis ke server. -->
     <div id="pr-edit-wrap" style="display:none">
+      <div class="pr-edit-pagu">
+        <div class="pr-field">
+          <label>Pagu total (Rp)</label>
+          <input type="text" inputmode="numeric" id="pr-ed-pagu-total" placeholder="belum diisi"/>
+        </div>
+        <!-- Cuma muncul kalau Permintaan RS ini sudah dipecah jadi section: 1 input per section -->
+        <div id="pr-ed-pagu-sections"></div>
+      </div>
       <div class="pr-review-box">
-        <div class="pr-review-info">Koreksi nama atau qty. Hanya baris yang kamu ubah yang disimpan. Status pencocokan item tidak berubah.</div>
-        <div class="pr-edit-head"><span>Item diminta</span><span>Qty</span></div>
+        <div class="pr-review-info">Koreksi nama, qty, atau pagu satuan. Hanya yang kamu ubah yang disimpan. Status pencocokan item tidak berubah.</div>
+        <div class="pr-edit-head"><span>Item diminta</span><span>Qty</span><span>Pagu satuan</span></div>
         <div class="pr-edit-list" id="pr-edit-rows"></div>
       </div>
       <div class="pr-actions">

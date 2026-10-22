@@ -15,7 +15,7 @@ export function installPermintaanRs(S) {
 //   create : sesi BELUM punya Permintaan RS  → form "Catat Permintaan RS" (perilaku lama)
 //   active : sesi SUDAH punya               → ringkasan isi yang tersimpan + tombol Tambah / Edit
 //   add    : nambah item ke yang sudah ada  → form input, header RS dikunci, yang lama TIDAK berubah
-//   edit   : koreksi nama/qty item tersimpan → hanya baris yang berubah yang ditulis
+//   edit   : koreksi nama/qty/pagu satuan item tersimpan + pagu total/section → hanya yang berubah yang ditulis
 // Model produk: 1 sesi = 1 Permintaan RS (server: get_permintaan_by_sesi ngembaliin satu objek;
 // section/finalize/Drive semua keyed ke permintaan_id). Jadi "buka lagi" TIDAK pernah bikin
 // Permintaan RS kedua di sesi yang sama.
@@ -60,7 +60,7 @@ function prSetMode(mode, keepReview) {
     prSubEl.textContent = `Ini BUKAN Permintaan RS baru — item di bawah ditambahkan ke daftar sesi ini (${n} item sudah ada). Yang sudah ada tidak diubah atau ditimpa.`;
   } else if (mode === 'edit') {
     prTitleEl.textContent = 'Edit Permintaan RS';
-    prSubEl.textContent = 'Koreksi nama atau qty item yang sudah tersimpan.';
+    prSubEl.textContent = 'Koreksi nama, qty, atau pagu (total, per section, per item) yang sudah tersimpan.';
   }
   S.prReviewSaveBtn.textContent = prSaveLabel();
 }
@@ -525,6 +525,28 @@ async function apiUpdatePermintaanItem(itemId, fields) {
   return data;
 }
 
+// Pagu satuan per item — RPC terpisah (update_permintaan_item_fields cuma nerima nama+qty).
+// Lihat edit_pagu_permintaan_migration.sql.
+async function apiUpdatePermintaanItemPaguSatuan(itemId, paguSatuan) {
+  const { data, error } = await S.rpc('update_permintaan_item_pagu_satuan', {
+    p_item_id: itemId,
+    p_pagu_satuan: paguSatuan
+  });
+  if (error) throw new Error(error.message || error.hint || 'Gagal mengubah pagu satuan (cek RPC update_permintaan_item_pagu_satuan)');
+  return data;
+}
+
+// Pagu total Permintaan RS — satu RPC yang nulis permintaan_rs.pagu DAN sesi_konversi.pagu
+// sekaligus (dua-duanya dibaca UI: get_permintaan_by_sesi vs baris sesi), biar gak saling timpa.
+async function apiUpdatePermintaanPagu(permintaanId, pagu) {
+  const { data, error } = await S.rpc('update_permintaan_pagu', {
+    p_permintaan_id: permintaanId,
+    p_pagu: pagu
+  });
+  if (error) throw new Error(error.message || error.hint || 'Gagal mengubah pagu total (cek RPC update_permintaan_pagu)');
+  return data;
+}
+
 // Kabari kolaborator yang lagi buka sesi yang sama: daftar item berubah (tambah/edit),
 // mereka tinggal muat ulang dari server. Pola sama kayak checklist_item_updated.
 function broadcastChecklistReload() {
@@ -664,16 +686,39 @@ S.prReviewSaveBtn.addEventListener('click', async () => {
 });
 
 // ---- Mode EDIT: koreksi nama/qty item yang sudah tersimpan ----
-let prEditOriginal = new Map(); // id -> {raw_text, qty_diminta} saat editor dibuka
+let prEditOriginal = new Map(); // id -> {raw_text, qty_diminta, pagu_satuan} saat editor dibuka
+let prEditOriginalPagu = { total: null, sections: new Map() }; // pagu total + pagu per section saat editor dibuka
+const prEdPaguTotal = document.getElementById('pr-ed-pagu-total');
+const prEdPaguSections = document.getElementById('pr-ed-pagu-sections');
+const normPagu = v => (v == null || v === '' || isNaN(Number(v))) ? null : Number(v);
+const fmtPagu = v => v != null ? Number(v).toLocaleString('id-ID') : '';
 
 function renderPrEditRows() {
-  prEditOriginal = new Map(S.checklistItems.map(it => [it.id, { raw_text: it.raw_text, qty_diminta: it.qty_diminta ?? null }]));
+  prEditOriginal = new Map(S.checklistItems.map(it => [it.id, { raw_text: it.raw_text, qty_diminta: it.qty_diminta ?? null, pagu_satuan: normPagu(it.pagu_satuan) }]));
   prEditRows.innerHTML = S.checklistItems.length ? S.checklistItems.map(it => `
     <div class="pr-edit-row" data-id="${it.id}">
       <input class="pr-ed-nama" value="${escapeHtmlAttr(it.raw_text)}" placeholder="Nama item"/>
       <input class="pr-ed-qty" inputmode="numeric" value="${it.qty_diminta != null ? it.qty_diminta : ''}" placeholder="Qty"/>
+      <input class="pr-ed-pagusat" inputmode="numeric" value="${fmtPagu(normPagu(it.pagu_satuan))}" placeholder="opsional"/>
     </div>`).join('') : '<div class="pr-review-empty">Belum ada item.</div>';
+
+  // Pagu total + (kalau ada) pagu per section
+  prEditOriginalPagu = { total: normPagu(S.checklistPagu), sections: new Map(S.checklistSections.map(s => [s.id, normPagu(s.pagu)])) };
+  prEdPaguTotal.value = fmtPagu(prEditOriginalPagu.total);
+  prEdPaguSections.innerHTML = S.checklistSections.length ? S.checklistSections.map(s => `
+    <div class="pr-edit-pagu-sec">
+      <span>Pagu section: <b>${escapeHtmlAttr(s.nama_section)}</b></span>
+      <input class="pr-ed-pagu-sec" data-section-id="${s.id}" inputmode="numeric" value="${fmtPagu(normPagu(s.pagu))}" placeholder="belum diisi"/>
+    </div>`).join('') : '';
 }
+
+// Format ribuan sambil ngetik (pagu total, pagu section, pagu satuan per item)
+prEditWrap.addEventListener('input', e => {
+  const t = e.target;
+  if (!t.matches('#pr-ed-pagu-total, .pr-ed-pagu-sec, .pr-ed-pagusat')) return;
+  const digits = t.value.replace(/\D/g, '');
+  t.value = digits ? Number(digits).toLocaleString('id-ID') : '';
+});
 
 document.getElementById('pr-edit-back-btn').addEventListener('click', () => { S.prStatusMsg.textContent = ''; prSetMode('active'); renderPrActiveView(); });
 
@@ -688,28 +733,69 @@ document.getElementById('pr-edit-save-btn').addEventListener('click', async () =
     const nama = row.querySelector('.pr-ed-nama').value.trim();
     const qtyRaw = row.querySelector('.pr-ed-qty').value.trim();
     const qty = qtyRaw === '' ? null : parseInt(qtyRaw, 10);
+    const paguSat = S.parsePaguValue(row.querySelector('.pr-ed-pagusat').value);
     if (!nama) { invalid = 'Nama item tidak boleh kosong.'; return; }
     if (qty !== null && (isNaN(qty) || qty < 1)) { invalid = `Qty "${orig.raw_text}" harus angka 1 atau lebih (atau kosongkan).`; return; }
-    if (nama !== orig.raw_text || qty !== (orig.qty_diminta ?? null)) changes.push({ id, nama, qty, orig });
+    const fieldsChanged = nama !== orig.raw_text || qty !== (orig.qty_diminta ?? null);
+    const paguSatChanged = paguSat !== orig.pagu_satuan;
+    if (fieldsChanged || paguSatChanged) changes.push({ id, nama, qty, paguSat, fieldsChanged, paguSatChanged, orig });
   });
   if (invalid) { S.prStatusMsg.style.color = 'var(--danger)'; S.prStatusMsg.textContent = invalid; return; }
-  if (!changes.length) { S.prStatusMsg.style.color = 'var(--text-muted)'; S.prStatusMsg.textContent = 'Tidak ada perubahan.'; return; }
+
+  // Pagu total & pagu per section
+  const newTotal = S.parsePaguValue(prEdPaguTotal.value);
+  const totalChanged = newTotal !== prEditOriginalPagu.total;
+  const secChanges = [];
+  prEdPaguSections.querySelectorAll('.pr-ed-pagu-sec').forEach(inp => {
+    const id = parseInt(inp.dataset.sectionId, 10);
+    const v = S.parsePaguValue(inp.value);
+    if (prEditOriginalPagu.sections.has(id) && v !== prEditOriginalPagu.sections.get(id)) secChanges.push({ id, v });
+  });
+
+  if (!changes.length && !totalChanged && !secChanges.length) { S.prStatusMsg.style.color = 'var(--text-muted)'; S.prStatusMsg.textContent = 'Tidak ada perubahan.'; return; }
 
   const btn = document.getElementById('pr-edit-save-btn');
   btn.disabled = true; btn.textContent = 'Menyimpan…';
   const failed = [];
   const notes = [];
   let ok = 0;
+  let paguOk = 0;
+
+  // 1) Pagu total (permintaan_rs + sesi_konversi sekaligus, 1 RPC)
+  if (totalChanged) {
+    try {
+      if (S.checklistPermintaanId == null) throw new Error('Permintaan RS belum termuat');
+      if (S.currentSesiId) S.markLocalWrite(S.SESI_TABLE, S.currentSesiId, 'pagu', newTotal);
+      await apiUpdatePermintaanPagu(S.checklistPermintaanId, newTotal);
+      paguOk++;
+    } catch (err) { failed.push(`Pagu total: ${err.message}`); }
+  }
+  // 2) Pagu per section (RPC yang sama dengan edit inline di tab Kebutuhan RS)
+  for (const ch of secChanges) {
+    const sec = S.checklistSections.find(s => s.id === ch.id);
+    try {
+      const { error } = await S.rpc('update_permintaan_section_pagu', { p_section_id: ch.id, p_pagu: ch.v });
+      if (error) throw new Error(error.message || error.hint || 'error');
+      paguOk++;
+    } catch (err) { failed.push(`Pagu section ${sec ? sec.nama_section : ch.id}: ${err.message}`); }
+  }
+  // 3) Item: nama/qty (RPC lama) dan pagu satuan (RPC baru) — terpisah, jadi gagal salah satu gak nge-blok yang lain
   for (const ch of changes) {
     try {
-      await apiUpdatePermintaanItem(ch.id, { raw_text: ch.nama, qty_diminta: ch.qty });
       const item = S.checklistItems.find(i => i.id === ch.id);
-      if (item) {
-        item.raw_text = ch.nama;
-        item.qty_diminta = ch.qty;
-        delete S.dictSuggestionCache[item.id]; // istilah berubah → saran Dictionary lama gak relevan
-        const note = await cascadeQtyChange(item, ch.orig.qty_diminta, ch.qty);
-        if (note) notes.push(note);
+      if (ch.fieldsChanged) {
+        await apiUpdatePermintaanItem(ch.id, { raw_text: ch.nama, qty_diminta: ch.qty });
+        if (item) {
+          item.raw_text = ch.nama;
+          item.qty_diminta = ch.qty;
+          delete S.dictSuggestionCache[item.id]; // istilah berubah → saran Dictionary lama gak relevan
+          const note = await cascadeQtyChange(item, ch.orig.qty_diminta, ch.qty);
+          if (note) notes.push(note);
+        }
+      }
+      if (ch.paguSatChanged) {
+        await apiUpdatePermintaanItemPaguSatuan(ch.id, ch.paguSat);
+        if (item) item.pagu_satuan = ch.paguSat;
       }
       ok++;
     } catch (err) {
@@ -719,14 +805,24 @@ document.getElementById('pr-edit-save-btn').addEventListener('click', async () =
   btn.disabled = false; btn.textContent = 'Simpan perubahan';
 
   await S.loadChecklistForSesi(S.currentSesiId, { quiet: true }); // segarkan dari server (sumber kebenaran)
-  if (ok) broadcastChecklistReload();
+  // loadChecklistForSesi cuma menimpa checklistPagu kalau dari server != null, jadi pagu yang
+  // sengaja dikosongkan perlu diset manual biar UI gak nyangkut di angka lama.
+  if (totalChanged && !failed.some(m => m.startsWith('Pagu total'))) {
+    S.checklistPagu = newTotal;
+    if (typeof S.updateClipAggregates === 'function') S.updateClipAggregates();
+    if (typeof S.renderChecklist === 'function') S.renderChecklist();
+  }
+  if (ok || paguOk) broadcastChecklistReload();
   if (failed.length) {
     S.prStatusMsg.style.color = 'var(--danger)';
-    S.prStatusMsg.textContent = `${ok} tersimpan, ${failed.length} gagal — ${failed.slice(0, 2).join('; ')}`;
+    S.prStatusMsg.textContent = `${ok + paguOk} tersimpan, ${failed.length} gagal — ${failed.slice(0, 2).join('; ')}`;
     renderPrEditRows();
     return;
   }
-  S.showToast(`${ok} item diperbarui`);
+  const parts = [];
+  if (ok) parts.push(`${ok} item`);
+  if (paguOk) parts.push(`${paguOk} pagu`);
+  S.showToast(`${parts.join(' + ')} diperbarui`);
   if (notes.length) PNMToast.show(notes.join(' · '), 'presence', { duration: 6500 });
   prSetMode('active');
   renderPrActiveView();
