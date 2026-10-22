@@ -105,6 +105,28 @@ export function installAutoRecord(S) {
     return rows && rows[0] ? rows[0] : null;
   }
 
+  // Nomor revisi BERIKUTNYA untuk sesi ini — satu-satunya sumber kebenaran (Record manual + nama file Export).
+  // Record OTOMATIS (auto_export/auto_sph/auto_mandek) yang belum ke Sheet itu cuma draft sistem, bukan
+  // keputusan manusia, jadi Record manual MENGAMBIL ALIH draft itu (tetap REV0) alih-alih bikin REV+1.
+  // REV baru cuma kalau Record terakhir hasil keputusan manusia (manual) atau sudah ada barisnya di Sheet.
+  // Return { revisi, adopt }: adopt = Record auto yang harus ditimpa (atau null).
+  async function nextRevisi(sesiId) {
+    if (!sesiId || !idOk(sesiId)) return { revisi: 0, adopt: null };
+    let rows;
+    try {
+      rows = await api(`konversi_record?sesi_id=eq.${enc(sesiId)}&select=id,revisi,sumber,synced_to_sheet&order=revisi.desc,created_at.desc&limit=1`);
+    } catch (err) {
+      // kolom sumber belum ada (migration belum jalan) => belum mungkin ada Record auto, pakai aturan lama
+      if (!/sumber/i.test(err.message)) throw err;
+      rows = await api(`konversi_record?sesi_id=eq.${enc(sesiId)}&select=id,revisi,synced_to_sheet&order=revisi.desc,created_at.desc&limit=1`);
+    }
+    const last = rows && rows[0];
+    if (!last) return { revisi: 0, adopt: null };
+    const isAuto = String(last.sumber || '').startsWith('auto');
+    if (isAuto && !last.synced_to_sheet) return { revisi: Number(last.revisi) || 0, adopt: last };
+    return { revisi: (Number(last.revisi) || 0) + 1, adopt: null };
+  }
+
   // Bikin Record REV0 + item-itemnya. Item gagal -> record dibatalkan (gak ninggalin Record kosong).
   async function createRecord(o) {
     const { kategori, grandTotal } = summarizeItems(o.items, o.swasta);
@@ -251,6 +273,7 @@ export function installAutoRecord(S) {
   }
 
   S.btnBusy = btnBusy;
+  S.nextRevisi = nextRevisi;
   S.autoRecordCurrent = autoRecordCurrent;
   S.autoRecordSesiById = autoRecordSesiById;
   S.sendRecordToSheet = sendRecordToSheet;

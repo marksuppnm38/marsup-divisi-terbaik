@@ -4849,19 +4849,14 @@ S.recordSubmitBtn.addEventListener('click', async () => {
   if (!retryRecordId) {
   // ---- Tahap 1: Supabase (fondasi, wajib sukses) ----
   try {
-    // Cek dulu apakah sesi ini udah pernah kerekam sebelumnya (mis. sesi lama
-    // yang di-reopen dari tab Riwayat lalu diubah lagi). Kalau iya, ini
-    // dianggap REVISI: record baru tetap di-INSERT (bukan nimpa yang lama —
-    // biar histori tiap versi kesimpen lengkap), tapi dikasih nomor revisi
-    // yang naik dari yang terakhir.
-    let revisiKe = 0;
-    if (S.currentSesiId) {
+    // Revisi dihitung S.nextRevisi (auto-record.js): Record OTOMATIS yang belum ke Sheet (dibuat saat
+    // Export / SPH / sesi mandek) diambil alih — tetap REV0, bukan REV1. REV baru cuma kalau Record
+    // terakhir sudah keputusan manusia atau sudah ada barisnya di Sheet. Item/ header lama ditimpa.
+    let revisiKe = 0, adoptRec = null;
+    if (S.currentSesiId && S.nextRevisi) {
       try {
-        const cekRes = await S.sesiFetch(`konversi_record?sesi_id=eq.${S.currentSesiId}&select=revisi&order=revisi.desc&limit=1`);
-        if (cekRes.ok) {
-          const cekRows = await cekRes.json();
-          if (cekRows.length) revisiKe = (cekRows[0].revisi || 0) + 1;
-        }
+        const nr = await S.nextRevisi(S.currentSesiId);
+        revisiKe = nr.revisi; adoptRec = nr.adopt;
       } catch { /* gagal cek → anggap revisi 0, fallback aman (bukan blocking) */ }
     }
 
@@ -4881,24 +4876,12 @@ S.recordSubmitBtn.addEventListener('click', async () => {
       synced_to_sheet: false
     };
 
-    const recRes = await S.sesiFetch('konversi_record', {
-      method: 'POST',
-      headers: { 'Prefer': 'return=representation' },
-      body: JSON.stringify(recordBody)
-    });
-    if (!recRes.ok) {
-      const errData = await recRes.json().catch(() => ({}));
-      throw new Error(errData.message || errData.hint || 'Gagal menyimpan header konversi_record');
-    }
-    const recRows = await recRes.json();
-    newRecordId = recRows[0].id;
-
     // Detail per item — ini yang bikin data granular buat insight nanti
     // (produk apa yang sering INDENT, revenue per kategori/produk, dst).
-    const itemRows = S.clipboard.map(item => {
+    const buildItemRows = (recId) => S.clipboard.map(item => {
       const hargaPakai = S.modeSwastaOutput ? (item.harga_swasta || 0) : (item.harga_ekat || 0);
       return {
-        konversi_record_id: newRecordId,
+        konversi_record_id: recId,
         produk_id: item.produk_id || null,
         kode_produk: item.kode_produk,
         nama_produk: item.nama_produk,
@@ -4906,15 +4889,45 @@ S.recordSubmitBtn.addEventListener('click', async () => {
         harga: hargaPakai
       };
     });
+    const failMsg = async (res, fallback) => {
+      const errData = await res.json().catch(() => ({}));
+      return errData.message || errData.hint || fallback;
+    };
 
-    if (itemRows.length) {
-      const itemRes = await S.sesiFetch('konversi_item', {
-        method: 'POST',
-        body: JSON.stringify(itemRows)
+    if (adoptRec) {
+      // Ambil alih Record otomatis: item baru dimasukkan DULU, baru header ditimpa, baru item lama dibuang —
+      // kalau ada langkah gagal, Record lama gak pernah jadi kosong.
+      newRecordId = adoptRec.id;
+      const oldRes = await S.sesiFetch(`konversi_item?konversi_record_id=eq.${newRecordId}&select=id`);
+      const oldIds = oldRes.ok ? (await oldRes.json()).map(r => r.id).filter(x => /^[\w-]+$/.test(String(x))) : [];
+      const itemRows = buildItemRows(newRecordId);
+      if (itemRows.length) {
+        const itemRes = await S.sesiFetch('konversi_item', { method: 'POST', body: JSON.stringify(itemRows) });
+        if (!itemRes.ok) throw new Error(await failMsg(itemRes, 'Gagal menyimpan detail item (cek konversi_item)'));
+      }
+      const { sesi_id: _s, revisi: _r, ...patchBody } = recordBody;
+      const patchRes = await S.sesiFetch(`konversi_record?id=eq.${newRecordId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ...patchBody, sumber: 'manual', tanggal: tanggalIso })
       });
-      if (!itemRes.ok) {
-        const errData = await itemRes.json().catch(() => ({}));
-        throw new Error(errData.message || errData.hint || 'Record tersimpan, tapi detail item gagal (cek konversi_item)');
+      if (!patchRes.ok) throw new Error(await failMsg(patchRes, 'Gagal memperbarui record'));
+      if (oldIds.length) {
+        await S.sesiFetch(`konversi_item?id=in.(${oldIds.join(',')})`, { method: 'DELETE' }).catch(() => {});
+      }
+    } else {
+      const recRes = await S.sesiFetch('konversi_record', {
+        method: 'POST',
+        headers: { 'Prefer': 'return=representation' },
+        body: JSON.stringify(recordBody)
+      });
+      if (!recRes.ok) throw new Error(await failMsg(recRes, 'Gagal menyimpan header konversi_record'));
+      const recRows = await recRes.json();
+      newRecordId = recRows[0].id;
+
+      const itemRows = buildItemRows(newRecordId);
+      if (itemRows.length) {
+        const itemRes = await S.sesiFetch('konversi_item', { method: 'POST', body: JSON.stringify(itemRows) });
+        if (!itemRes.ok) throw new Error(await failMsg(itemRes, 'Record tersimpan, tapi detail item gagal (cek konversi_item)'));
       }
     }
 

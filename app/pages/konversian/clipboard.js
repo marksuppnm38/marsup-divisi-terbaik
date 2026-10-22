@@ -1840,23 +1840,14 @@ S.btnExport.addEventListener('click', async () => {
   const namaSales = S.inpSales.value.trim() || 'Sales';
   const tanggal = new Date().toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'});
 
-  // Sesi ini udah pernah di-Record sebelumnya? Kalau iya, file export dikasih
-  // suffix -REV{n} ngikutin nomor revisi yang BAKAL kepake kalau kamu Record
-  // sekarang (revisi terakhir + 1) — bukan revisi lama yang udah tersimpan.
-  // Ini disamain sama cara Record ngitung nomornya, biar nama file yang kamu
-  // export duluan (sebelum sempet Record) tetep konsisten sama yang bakal
-  // kesimpen nanti, bukan ketinggalan satu angka.
+  // Suffix -REV{n} ngikutin nomor revisi yang BAKAL kepake kalau kamu Record sekarang — dihitung oleh
+  // S.nextRevisi (sama persis dengan Record manual). Record otomatis yang belum ke Sheet gak dihitung
+  // sebagai revisi (nanti diambil alih Record manual, tetap REV0), jadi nama file gak loncat ke -REV1.
   let revSuffix = '';
-  if (S.currentSesiId) {
+  if (S.currentSesiId && S.nextRevisi) {
     try {
-      const revRes = await sesiFetch(`konversi_record?sesi_id=eq.${S.currentSesiId}&select=revisi&order=revisi.desc&limit=1`);
-      if (revRes.ok) {
-        const revRows = await revRes.json();
-        if (revRows.length) {
-          const revisiBerikutnya = (revRows[0].revisi || 0) + 1;
-          revSuffix = `-REV${revisiBerikutnya}`;
-        }
-      }
+      const { revisi } = await S.nextRevisi(S.currentSesiId);
+      if (revisi > 0) revSuffix = `-REV${revisi}`;
     } catch { /* gagal cek revisi → export tetap jalan tanpa suffix, bukan blocking */ }
   }
 
