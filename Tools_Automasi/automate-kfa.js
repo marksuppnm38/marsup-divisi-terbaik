@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         KFA Alkes Automation - Pionir Group
 // @namespace    pionir-marsup
-// @version      1.30
+// @version      1.31
 // @description  Bantu automasi masukin SKU ke cangkang + validasi KFA di kamus-alkes.kemkes.go.id (v1.29: bisa pindah-pindah cangkang via kode KFA PV)
 // @match        https://kamus-alkes.kemkes.go.id/*
 // @grant        none
@@ -2289,9 +2289,11 @@
   // dari Excel.
   function resultsToTSV() {
     const results = loadResults();
-    const header = ['KODE_PRODUK', 'KODE_KFA', 'TIMESTAMP', 'KODE_CANGKANG'];
-    const rows = [header, ...results.map((r) => [r.kodeProduk, r.kfaCode, r.timestamp, r.cangkang || ''])];
-    return rows.map((r) => r.join('\t')).join('\n');
+    // v1.31: TANPA header -- langsung data, biar tinggal paste ke Sheets.
+    // Kolom: KODE_PRODUK, KODE_KFA, TIMESTAMP, KODE_CANGKANG
+    return results
+      .map((r) => [r.kodeProduk, r.kfaCode, r.timestamp, r.cangkang || ''].join('\t'))
+      .join('\n');
   }
   function showTsvPreview(text) {
     let box = document.getElementById('kfa-tsv-preview');
@@ -2334,13 +2336,15 @@
       document.body.removeChild(tmp);
     }
     if (copied) {
-      log(`📋 ${results.length} baris hasil ke-copy ke clipboard (format TSV) -- tinggal paste (Ctrl+V) ke Google Sheets.`);
+      // v1.31: langsung masuk clipboard, preview nggak dimunculin.
+      const box = document.getElementById('kfa-tsv-preview');
+      if (box) box.style.display = 'none';
+      log(`📋 ${results.length} baris ke-copy ke clipboard (tanpa header) -- tinggal Ctrl+V di Google Sheets.`);
     } else {
-      log('⚠️ Copy otomatis ke clipboard gagal (browser mungkin ngeblok). Textarea "Preview hasil" di panel udah ke-select otomatis -- tekan Ctrl+C (atau Cmd+C) manual dari situ.');
+      // Cuma kalau browser bener2 nolak copy otomatis, baru muncul preview.
+      log('⚠️ Copy otomatis ke clipboard gagal (browser ngeblok). Preview muncul di panel & udah ke-select -- tekan Ctrl+C manual.');
+      showTsvPreview(text);
     }
-    // Selalu tampilin preview-nya juga, biar ada jalan manual kalau copy
-    // otomatis gagal / user mau ngecek dulu isinya sebelum paste.
-    showTsvPreview(text);
   }
   // ---------- Panel UI ----------
   let panelPos = { top: 70, left: null, right: 10 };
