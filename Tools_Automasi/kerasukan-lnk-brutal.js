@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         INAPROC Upload Produk V6 (v0.8.6 - dokumen, lampiran, simpan, batch, skip SKU)
+// @name         INAPROC Upload Produk V6 (v0.8.7 - dokumen, lampiran, simpan, batch, skip SKU)
 // @namespace    inaproc-upload-produk-v6
-// @version      0.8.6
-// @description  v0.8.6 (+KBKI: scroll bertahap sampai dasar menu, fuzzy "... general use" ala kategori, fallback 999/lainnya; +harga & deskripsi yang diupload dicatat di log & Export Hasil). v0.8.5 (+rerun pintar: pesan "Data produk sudah digunakan"/"Nama Produk tidak boleh sama" = link sudah terupload -> skip & geser antrian, dicatat confirmed; cek nama produk setelah diisi). v0.8.4 (+fallback KBKI, scroll menu KBKI, kategori toleran, mode ulang dari awal). v0.8.3 (+Lihat Dokumen=OK, slug katalog, minimize panel). v0.8.2 (+centang dialog konfirmasi Simpan, verifikasi harga). v0.8.1 (+skip SKU). v0.8.0: baca MASTER.xlsx, folder dokumen lokal, dropdown Spesifikasi, upload foto + 7 lampiran PDF, Simpan, loop batch dengan resume.
+// @version      0.8.7
+// @description  v0.8.7 (+link katalog AKTUAL: setelah Simpan, cari nama produk di Daftar Produk lalu baca href tautan produk; slugify ° -> deg sebagai estimasi; tombol Cari Link Aktual utk SKU lama). v0.8.6 (+KBKI: scroll bertahap sampai dasar menu, fuzzy "... general use" ala kategori, fallback 999/lainnya; +harga & deskripsi yang diupload dicatat di log & Export Hasil). v0.8.5 (+rerun pintar: pesan "Data produk sudah digunakan"/"Nama Produk tidak boleh sama" = link sudah terupload -> skip & geser antrian, dicatat confirmed; cek nama produk setelah diisi). v0.8.4 (+fallback KBKI, scroll menu KBKI, kategori toleran, mode ulang dari awal). v0.8.3 (+Lihat Dokumen=OK, slug katalog, minimize panel). v0.8.2 (+centang dialog konfirmasi Simpan, verifikasi harga). v0.8.1 (+skip SKU). v0.8.0: baca MASTER.xlsx, folder dokumen lokal, dropdown Spesifikasi, upload foto + 7 lampiran PDF, Simpan, loop batch dengan resume.
 // @author       you
 // @match        https://penyedia.inaproc.id/*
 // @run-at       document-idle
@@ -22,7 +22,7 @@
   // #region CONFIG
   // =====================================================================
   const CONFIG = {
-    version: '0.8.6',
+    version: '0.8.7',
     debug: true,
 
     // DRY RUN (default TRUE = aman): semua field diisi & semua file diupload
@@ -59,6 +59,9 @@
 
     // Pantau fetch/XHR supaya script tahu kapan upload file selesai.
     trackNetwork: true,
+
+    // Link katalog AKTUAL: baca href produk dari halaman Daftar Produk (cari by nama). Kalau gagal -> pakai estimasi slug.
+    linkLookup: { enabled: true },
 
     retryLimit: 3,
     waitTimeout: 10000,       // ms
@@ -254,7 +257,7 @@
     lower(s) { return this.oneLine(s).normalize('NFC').toLowerCase(); },
     // "ROBUST URETHRAL BOUGIE GUYON 29 CH 26.5 CM" -> "robust-urethral-bougie-guyon-29-ch-26-5-cm"
     slugify(s) {
-      return String(s == null ? '' : s).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      return String(s == null ? '' : s).replace(/\u00b0/g, 'deg').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
         .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     },
     stripEndPunct(s) { return this.oneLine(s).replace(/[\s.,;:]+$/, ''); },
@@ -741,6 +744,15 @@
     isConfirmed(r) {
       return !!r && (r.status === 'SAVED' || r.confirmed === true);
     },
+    setLink(kode, url, source) {
+      const r = this.get(kode);
+      if (!r) return;
+      r.url = url;
+      r.slug = String(url).replace(/\/+$/, '').split('/').pop();
+      r.urlSource = source || 'aktual';
+      this.save();
+      UIPanel.refresh();
+    },
     // confirmed = true kalau ada bukti di layar bahwa produk sudah ada (pesan duplikat dari form).
     record(kode, status, note, opts) {
       const confirmedNow = !!(opts && opts.confirmed);
@@ -755,7 +767,7 @@
         return;
       }
       if (!r) { r = { kode, status, note: '', attempts: 0, ts: null, confirmed: false }; STATE.results.push(r); }
-      const sl = this.slugFor(kode); r.slug = sl.slug; r.url = sl.url;   // slug dicatat utk SEMUA status
+      if (r.urlSource !== 'aktual') { const sl = this.slugFor(kode); r.slug = sl.slug; r.url = sl.url; r.urlSource = 'estimasi'; }   // estimasi slug; link aktual (dari Daftar Produk) tidak ditimpa
       // v0.8.6: catat nama, harga MASTER, deskripsi, dan nilai yang benar-benar terbaca di form.
       const qi = (STATE.queue || []).find((i) => i.kodeProduk === kode);
       if (qi) { r.nama = qi.namaProduk; r.hargaMaster = qi.harga; r.deskripsi = qi.deskripsi; }
@@ -797,9 +809,9 @@
     clear() { STATE.results = []; this.save(); UIPanel.refresh(); },
     exportCsv() {
       const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-      const lines = ['kode,status,terkonfirmasi,attempts,waktu,catatan,slug,url_katalog,nama_produk,harga_master,harga_form,deskripsi'];
+      const lines = ['kode,status,terkonfirmasi,attempts,waktu,catatan,slug,url_katalog,sumber_url,nama_produk,harga_master,harga_form,deskripsi'];
       STATE.results.forEach((r) => lines.push([
-        r.kode, r.status, this.isConfirmed(r) ? 'YA' : '', r.attempts, r.ts, r.note, r.slug, r.url,
+        r.kode, r.status, this.isConfirmed(r) ? 'YA' : '', r.attempts, r.ts, r.note, r.slug, r.url, r.urlSource || '',
         r.nama || '', r.hargaMaster != null ? r.hargaMaster : '', r.hargaForm != null ? r.hargaForm : '',
         r.deskripsiForm || r.deskripsi || '',
       ].map(esc).join(',')));
@@ -2391,6 +2403,81 @@
   // #endregion FORM FILLER
 
   // =====================================================================
+  // #region LINK FINDER (link katalog aktual dari Daftar Produk)
+  // =====================================================================
+  // Slugify tidak akurat (mis. "90°" -> "90deg", simbol lain bisa beda). Link yang benar sudah ada
+  // di halaman Daftar Produk (tautan produk -> katalog.inaproc.id/...). Cari by nama, baca href-nya.
+  const LinkFinder = {
+    _norm(s) { return Txt.lower(s).replace(/[^a-z0-9]+/g, ''); },
+    _searchInput() {
+      return Array.from(document.querySelectorAll('input'))
+        .find((i) => /cari\s*nama\s*produk/i.test(i.getAttribute('placeholder') || '') && DomHelper.isVisible(i)) || null;
+    },
+    async _gotoList() {
+      const waitInput = (t) => DomHelper.pollUntil(() => this._searchInput(), { timeout: t }).catch(() => null);
+      if (await waitInput(6000)) return true;
+      if (Navigation.isProductForm()) return false;   // jangan tinggalkan form yang sedang dipakai
+      const a = document.querySelector('a[href="/products"]');
+      if (a) { DomHelper.dispatchClick(a); return !!(await waitInput(8000)); }
+      return false;
+    },
+    // Kumpulkan tautan katalog yang teksnya cocok dengan nama produk. tier 1 = persis, tier 2 = baris memuat nama.
+    _candidates(name) {
+      const want = this._norm(name);
+      const brand = this._norm(CONFIG.catalog.brandWord || '');
+      const wants = new Set([want, brand + want]);
+      const out = new Map();
+      document.querySelectorAll('a[href*="katalog.inaproc.id"]').forEach((a) => {
+        if (a.closest('#inaproc-v6-panel') || !a.href) return;
+        let tier = 0;
+        if (wants.has(this._norm(a.textContent))) tier = 1;
+        else {
+          let node = a;
+          let row = a;
+          for (let i = 0; i < 6 && node.parentElement; i += 1) {
+            node = node.parentElement;
+            if (node.querySelectorAll('a[href*="katalog.inaproc.id"]').length > 2) break;
+            row = node;
+          }
+          const t = this._norm(row.textContent);
+          if (t.includes(want)) tier = 2;
+        }
+        if (tier && (!out.has(a.href) || out.get(a.href) > tier)) out.set(a.href, tier);
+      });
+      return Array.from(out.entries()).map(([href, tier]) => ({ href, tier })).sort((x, y) => x.tier - y.tier);
+    },
+    async find(item) {
+      if (!CONFIG.linkLookup || !CONFIG.linkLookup.enabled) return null;
+      if (!(await this._gotoList())) {
+        Logger.warning('Cari link: halaman Daftar Produk / kotak "Cari Nama Produk" tidak ditemukan.');
+        return null;
+      }
+      const name = Txt.oneLine(item.namaProduk);
+      const queries = Array.from(new Set([name, Txt.oneLine(name.replace(/[^A-Za-z0-9 ]+/g, ' '))]));
+      for (const q of queries) {
+        const input = this._searchInput();
+        if (!input) return null;
+        input.focus();
+        DomHelper.setNativeValue(input, q);
+        DomHelper.dispatchInput(input);
+        ['keydown', 'keyup'].forEach((t) => input.dispatchEvent(new KeyboardEvent(t, { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true })));
+        await DomHelper.sleep(600);
+        await NetIdle.waitIdle({ quiet: 700, timeout: 10000 });
+        const cands = await DomHelper.pollUntil(() => { const c = this._candidates(name); return c.length ? c : null; }, { timeout: 6000, interval: 300 }).catch(() => null);
+        if (cands) {
+          const best = cands.filter((c) => c.tier === cands[0].tier);
+          if (best.length > 1) Logger.warning(`Cari link: ${best.length} produk bernama sama untuk "${name}" -> ambil yang teratas. Kandidat: ${best.map((c) => c.href).join(' | ')}`);
+          if (cands[0].tier === 2) Logger.warning(`Cari link: tidak ada kecocokan nama persis, memakai baris yang memuat nama: ${cands[0].href}`);
+          return cands[0].href;
+        }
+      }
+      Logger.warning(`Cari link: tidak ada tautan katalog cocok untuk "${name}" (tautan katalog di halaman: ${document.querySelectorAll('a[href*="katalog.inaproc.id"]').length}).`);
+      return null;
+    },
+  };
+  // #endregion LINK FINDER
+
+  // =====================================================================
   // #region DIAGNOSTICS (cek form tanpa mengubah apa pun)
   // =====================================================================
   const Diagnostics = {
@@ -2523,6 +2610,7 @@
               <button id="iv6-btn-export">Export Log</button>
               <button id="iv6-btn-export-results">Export Hasil</button>
             </div>
+            <button class="iv6-wide" id="iv6-btn-links" title="Buka Daftar Produk dulu. Cari nama tiap SKU terkonfirmasi, baca link katalog aslinya.">Cari Link Aktual (SKU terkonfirmasi)</button>
             <button class="iv6-wide" id="iv6-btn-skip" title="Saat berjalan: lewati SKU yang sedang diproses (dicatat SKIPPED_MANUAL). Saat idle: tandai SKU berikutnya sebagai skip.">Skip SKU</button>
             <button class="iv6-wide" id="iv6-btn-reset-results">Reset Hasil (ulang dari awal)</button>
             <div class="iv6-log" id="iv6-log"></div>
@@ -2557,6 +2645,7 @@
         btnExportResults: root.querySelector('#iv6-btn-export-results'),
         btnResetResults: root.querySelector('#iv6-btn-reset-results'),
         btnSkip: root.querySelector('#iv6-btn-skip'),
+        btnLinks: root.querySelector('#iv6-btn-links'),
         btnMin: root.querySelector('#iv6-btn-min'),
         mini: root.querySelector('#iv6-mini'),
         log: root.querySelector('#iv6-log'),
@@ -2575,6 +2664,7 @@
       });
       e.btnMin.addEventListener('click', () => this.setCollapsed(!this._root.classList.contains('iv6-collapsed')));
       e.btnSkip.addEventListener('click', () => Main.skipCurrent());
+      e.btnLinks.addEventListener('click', () => Main.backfillLinks());
       e.btnPause.addEventListener('click', () => Main.pause());
       e.btnResume.addEventListener('click', () => Main.resume());
       e.btnStop.addEventListener('click', () => Main.stop());
@@ -2821,7 +2911,46 @@
       const harga = r.hargaForm != null ? r.hargaForm : r.hargaMaster;
       Logger.info(`[${kode}] Harga diupload: Rp ${Number(harga).toLocaleString('id-ID')} (form: "${r.hargaFormText || '-'}", MASTER: ${r.hargaMaster})`);
       Logger.info(`[${kode}] Nama: ${r.nama || '-'}`);
+      Logger.info(`[${kode}] Link (${r.urlSource || '-'}): ${r.url || '-'}`);
       Logger.info(`[${kode}] Deskripsi: ${r.deskripsiForm || r.deskripsi || '-'}`);
+    },
+
+    async _resolveLink(item) {
+      const kode = item.kodeProduk;
+      try {
+        const url = await LinkFinder.find(item);
+        if (url) {
+          Results.setLink(kode, url, 'aktual');
+          Logger.success(`[${kode}] Link aktual: ${url}`);
+        } else {
+          const r = Results.get(kode) || {};
+          Logger.warning(`[${kode}] Link aktual tidak ketemu -> pakai ESTIMASI slug: ${r.url || '-'} (cek manual / klik "Cari Link Aktual").`);
+        }
+      } catch (e) {
+        Logger.warning(`[${kode}] Cari link error: ${e && e.message}`);
+      }
+    },
+
+    // Isi link aktual utk SKU terkonfirmasi yang belum punya (hasil run lama). Jalankan di halaman Daftar Produk.
+    async backfillLinks() {
+      if (STATE.isRunning) { Logger.warning('Hentikan proses dulu sebelum mencari link.'); return; }
+      if (this._linkBusy) { Logger.warning('Pencarian link sedang berjalan.'); return; }
+      const todo = STATE.queue.filter((it) => { const r = Results.get(it.kodeProduk); return Results.isConfirmed(r) && r.urlSource !== 'aktual'; });
+      if (!todo.length) { Logger.info('Semua SKU terkonfirmasi sudah punya link aktual.'); return; }
+      this._linkBusy = true;
+      Logger.info(`Mencari link aktual untuk ${todo.length} SKU (buka halaman Daftar Produk dulu)...`);
+      let ok = 0;
+      try {
+        for (const it of todo) {
+          await this._resolveLink(it);
+          const r = Results.get(it.kodeProduk);
+          if (r && r.urlSource === 'aktual') ok += 1;
+          await DomHelper.sleep(500);
+        }
+      } finally {
+        this._linkBusy = false;
+      }
+      Logger.success(`Selesai cari link: ${ok}/${todo.length} dapat link aktual. Klik Export Hasil untuk CSV.`);
     },
 
     // Proses SATU produk dari awal sampai (simulasi) simpan. Mengembalikan kode status.
@@ -2925,6 +3054,7 @@
         return sv;
       }
       Results.record(kode, 'SAVED', '');
+      await this._resolveLink(item);   // sekarang di Daftar Produk -> ambil link katalog aktual
       this._logUploaded(kode);
       Logger.success(`SKU ${kode} TERSIMPAN.`);
       return 'SAVED';
@@ -2999,6 +3129,7 @@
           if (status.indexOf('SKIPPED') === 0) {
             Logger.warning(`SKU ${item.kodeProduk} DI-SKIP (${status}) dan dicatat di hasil. Geser ke produk berikutnya.`);
             await Navigation.leaveForm();
+            if (/_USED$/.test(status)) await this._resolveLink(item);   // produk sudah ada -> ambil link aktualnya
             await DomHelper.sleep(CONFIG.delayBetweenItems);
             continue;
           }
@@ -3088,6 +3219,7 @@
     Kbki,
     Navigation,
     DocStore,
+    LinkFinder,
     Lampiran,
     FormFiller,
     Diagnostics,
