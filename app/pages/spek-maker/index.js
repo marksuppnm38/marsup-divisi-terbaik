@@ -598,3 +598,12 @@ export function unmount() {
   pendingReplaceId = null;
   root = null;
 }
+
+// Dipakai modul uploader-wiki supaya paket upload memakai generator PDF/gambar yang SAMA dengan tab Bulk
+// (tanpa menyalin kode). Semua helper di atas stateless -- aman dipanggil tanpa mount() halaman ini.
+export function getBulkDeps() {
+  return {
+    loadScript, getToken, el, triggerDownload, loadBucketImage, blobToPngImage, ensureLogos,
+    cfg: { SUPABASE_URL, ANON_KEY, JSPDF_SRC, JSPDF_SRI, JSZIP_SRC, JSZIP_SRI },
+  };
+}

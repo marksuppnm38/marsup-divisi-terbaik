@@ -1,0 +1,156 @@
+{
+ "headers": [
+  "KODE",
+  "KODE_ASLI",
+  "KATEGORI_1",
+  "KATEGORI_2",
+  "KATEGORI_3",
+  "Merek",
+  "Daftar_Produk_Sektoral",
+  "Nama_Produk",
+  "Upload_Foto_Produk",
+  "Deskripsi",
+  "Kode_Kbki",
+  "If_Kode_KBKI_Not_Found",
+  "Sertifikat TKDN(%)",
+  "Daftar_Distributor_yang_Ditunjuk",
+  "Izin_Distribusi_Alat_Kesehatan",
+  "Sertifikat_Cara_Pembuatan_Alat_Kesehatan_yang_Baik_Yang_Masih_Berlaku",
+  "Pemberitahuan_Import_Barang_(PIB)",
+  "Garansi",
+  "Surat_Ketersediaan_Layanan_Purna_Jual_dan_Spare_Part",
+  "Struktur_Harga",
+  "Harga_Produk",
+  "Jumlah_Stok",
+  "Satuan_Produk",
+  "Berat_Produk",
+  "Spesifikasi_Produk_Filename",
+  "Nomor_Izin_Edar_(NIE)_Filename",
+  "Daftar_Distributor_yang_Ditunjuk_Filename",
+  "Sertifikat_Cara_Pembuatan_Alat_Kesehatan_yang_Baik_Yang_Masih_Berlaku",
+  "Garansi_Filename",
+  "Surat_Ketersediaan_Layanan_Purna_Jual_dan_Spare_Part_Filename",
+  "Struktur_Harga_Filename"
+ ],
+ "constants": {
+  "2": "Alat Kesehatan",
+  "5": "DID2023107469",
+  "11": "Select Anything With ...999 Number",
+  "12": "6722/TKDN/IK/VII/2024",
+  "13": "Menunjuk",
+  "14": "Tidak Tersedia",
+  "15": "Tersedia",
+  "16": "Tidak Ada",
+  "17": "1 Tahun",
+  "18": "1 Tahun",
+  "19": "Tersedia",
+  "22": "Pcs",
+  "23": "275.0",
+  "26": "Distributor Tertunjuk IDAK-CDAKB - JUL 2026-Compressed - PNM.pdf",
+  "27": "Sertifikat CPAKB PNM KBLI 32509 K1.pdf",
+  "28": "Surat Jaminan Garansi 1 - INAPROC.pdf",
+  "29": "Surat Jaminan Ketersediaan Sparepart 1 - INAPROC.pdf"
+ },
+ "akdMap": {
+  "10603420320": {
+   "kat2": "Peralatan Gigi",
+   "kat3": "Peralatan Gigi Bedah",
+   "kbki": "Dental hand instrument."
+  },
+  "10603520117": {
+   "kat2": "Peralatan Gigi",
+   "kat3": "Peralatan Gigi Bedah",
+   "kbki": "Dental hand instrument"
+  },
+  "10703420105": {
+   "kat2": "Peralatan Telinga, Hidung dan Tenggorokan",
+   "kat3": "Peralatan Telinga, Hidung dan Tenggorokan Bedah",
+   "kbki": "Ear, nose, and throat manual surgical instrument."
+  },
+  "10703420109": {
+   "kat2": "Peralatan Telinga, Hidung dan Tenggorokan",
+   "kat3": "Peralatan Telinga, Hidung dan Tenggorokan Bedah",
+   "kbki": "Ear, nose, and throat manual surgical instrument."
+  },
+  "10703520036": {
+   "kat2": "Peralatan Telinga, Hidung dan Tenggorokan",
+   "kat3": "Peralatan Telinga, Hidung dan Tenggorokan Bedah",
+   "kbki": "Ear, nose, and throat manual surgical instrument (reusable)"
+  },
+  "10804420098": {
+   "kat2": "Peralatan Gastroenterologi-Urologi",
+   "kat3": "Peralatan Gastroenterologi-Urologi Bedah",
+   "kbki": "Manual gastroenterology-urology surgical instrument and accessories."
+  },
+  "11002420074": {
+   "kat2": "Peralatan Neurologi",
+   "kat3": "Peralatan Neurologi Bedah",
+   "kbki": "Nonpowered neurosurgical instrument."
+  },
+  "11002420075": {
+   "kat2": "Peralatan Neurologi",
+   "kat3": "Peralatan Neurologi Bedah",
+   "kbki": "Nonpowered neurosurgical instrument."
+  },
+  "11002420076": {
+   "kat2": "Peralatan Neurologi",
+   "kat3": "Peralatan Neurologi Bedah",
+   "kbki": "Nonpowered neurosurgical instrument."
+  },
+  "11002520025": {
+   "kat2": "Peralatan Neurologi",
+   "kat3": "Peralatan Neurologi Bedah",
+   "kbki": "Nonpowered neurosurgical instrument"
+  },
+  "11103420243": {
+   "kat2": "Peralatan Obstetrik dan Ginekologi",
+   "kat3": "Peralatan Obstetrik dan Ginekologi Bedah",
+   "kbki": "Obstetric-gynecologic general manual instrument."
+  },
+  "11103420271": {
+   "kat2": "Peralatan Obstetrik dan Ginekologi",
+   "kat3": "Peralatan Obstetrik dan Ginekologi Bedah",
+   "kbki": "Obstetric-gynecologic general manual instrument."
+  },
+  "11203420182": {
+   "kat2": "Peralatan Mata",
+   "kat3": "Peralatan Mata Bedah",
+   "kbki": "Manual ophthalmic surgical instrument"
+  },
+  "11303520072": {
+   "kat2": "Peralatan Ortopedi",
+   "kat3": "Peralatan Ortopedi Bedah",
+   "kbki": "Orthopedic manual surgical instrument."
+  },
+  "11603422116": {
+   "kat2": "Peralatan Bedah Umum dan Bedah Plastik",
+   "kat3": "Peralatan Bedah",
+   "kbki": "Manual surgical instrument for general use."
+  },
+  "11603422374": {
+   "kat2": "Peralatan Bedah Umum dan Bedah Plastik",
+   "kat3": "Peralatan Bedah",
+   "kbki": "Manual surgical instrument for general use."
+  },
+  "11603422600": {
+   "kat2": "Peralatan Bedah Umum dan Bedah Plastik",
+   "kat3": "Peralatan Bedah",
+   "kbki": "Manual surgical instrument for general use."
+  },
+  "11603520531": {
+   "kat2": "Peralatan Bedah Umum dan Bedah Plastik",
+   "kat3": "Peralatan Bedah",
+   "kbki": "Manual surgical instrument for general use."
+  },
+  "11603520532": {
+   "kat2": "Peralatan Bedah Umum dan Bedah Plastik",
+   "kat3": "Peralatan Bedah",
+   "kbki": "Manual surgical instrument for general use."
+  },
+  "11603522876": {
+   "kat2": "Peralatan Bedah Umum dan Bedah Plastik",
+   "kat3": "Peralatan Bedah",
+   "kbki": "Manual surgical instrument for general use"
+  }
+ }
+}
