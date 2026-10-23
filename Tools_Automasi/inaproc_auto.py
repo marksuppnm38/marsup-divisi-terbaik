@@ -37,11 +37,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-SUPABASE_BASE_URL = "https://ptkkbsemihcyndisjoor.supabase.co/storage/v1/object/public/perizinan"
+SUPABASE_BASE_URL = "https://ptkzbsemihcyndidjoor.supabase.co/storage/v1/object/public/perizinan"
 SUPABASE_ANON_KEY = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2ti"
-    "c2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5"
-    "ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo"
+    "c2VtaWhjzW5kaXNqb29yIMwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5"
+    "ODAzMzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo"
 )
 CPAKB_PATH = "Sertifikat CPAKB PNM KBLI 32509 K1.pdf"
 KATEGORI_LABEL = "Kategori Alkes: Kode Unik KFA"
@@ -185,7 +185,7 @@ def kembali_dan_daftarkan_lagi(page) -> None:
 
 
 def run(queue_path: str, results_path: str, dry_run: bool, profile_dir: str, headless: bool) -> None:
-    from playwright.sync_api import sync_playwright  # import here so --selftest needs no browser
+    from playwright.sync_api import sync_playwright  # type: ignore # import here so --selftest needs no browser
 
     items = read_queue(queue_path)
     if not items:
