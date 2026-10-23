@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         INAPROC Upload Produk V6 (v0.8.5 - dokumen, lampiran, simpan, batch, skip SKU)
+// @name         INAPROC Upload Produk V6 (v0.8.6 - dokumen, lampiran, simpan, batch, skip SKU)
 // @namespace    inaproc-upload-produk-v6
-// @version      0.8.5
-// @description  v0.8.5 (+rerun pintar: pesan "Data produk sudah digunakan"/"Nama Produk tidak boleh sama" = link sudah terupload -> skip & geser antrian, dicatat confirmed; cek nama produk setelah diisi). v0.8.4 (+fallback KBKI, scroll menu KBKI, kategori toleran, mode ulang dari awal). v0.8.3 (+Lihat Dokumen=OK, slug katalog, minimize panel). v0.8.2 (+centang dialog konfirmasi Simpan, verifikasi harga). v0.8.1 (+skip SKU). v0.8.0: baca MASTER.xlsx, folder dokumen lokal, dropdown Spesifikasi, upload foto + 7 lampiran PDF, Simpan, loop batch dengan resume.
+// @version      0.8.6
+// @description  v0.8.6 (+KBKI: scroll bertahap sampai dasar menu, fuzzy "... general use" ala kategori, fallback 999/lainnya; +harga & deskripsi yang diupload dicatat di log & Export Hasil). v0.8.5 (+rerun pintar: pesan "Data produk sudah digunakan"/"Nama Produk tidak boleh sama" = link sudah terupload -> skip & geser antrian, dicatat confirmed; cek nama produk setelah diisi). v0.8.4 (+fallback KBKI, scroll menu KBKI, kategori toleran, mode ulang dari awal). v0.8.3 (+Lihat Dokumen=OK, slug katalog, minimize panel). v0.8.2 (+centang dialog konfirmasi Simpan, verifikasi harga). v0.8.1 (+skip SKU). v0.8.0: baca MASTER.xlsx, folder dokumen lokal, dropdown Spesifikasi, upload foto + 7 lampiran PDF, Simpan, loop batch dengan resume.
 // @author       you
 // @match        https://penyedia.inaproc.id/*
 // @run-at       document-idle
@@ -22,7 +22,7 @@
   // #region CONFIG
   // =====================================================================
   const CONFIG = {
-    version: '0.8.5',
+    version: '0.8.6',
     debug: true,
 
     // DRY RUN (default TRUE = aman): semua field diisi & semua file diupload
@@ -242,6 +242,7 @@
     flags: {},
     statusText: null,
     runDone: new Set(),   // SKU yang sudah diproses di mode "ulang dari awal"
+    formSnap: {},         // snapshot nilai form (harga/deskripsi) per SKU saat verifikasi sebelum Simpan
   };
   // #endregion STATE
 
@@ -755,6 +756,11 @@
       }
       if (!r) { r = { kode, status, note: '', attempts: 0, ts: null, confirmed: false }; STATE.results.push(r); }
       const sl = this.slugFor(kode); r.slug = sl.slug; r.url = sl.url;   // slug dicatat utk SEMUA status
+      // v0.8.6: catat nama, harga MASTER, deskripsi, dan nilai yang benar-benar terbaca di form.
+      const qi = (STATE.queue || []).find((i) => i.kodeProduk === kode);
+      if (qi) { r.nama = qi.namaProduk; r.hargaMaster = qi.harga; r.deskripsi = qi.deskripsi; }
+      const snap = STATE.formSnap && STATE.formSnap[kode];
+      if (snap) { r.hargaForm = snap.harga; r.hargaFormText = snap.hargaText; r.deskripsiForm = snap.deskripsi; }
       r.status = status;
       r.note = Txt.oneLine(note || '').slice(0, 500);
       r.ts = new Date().toISOString();
@@ -791,9 +797,13 @@
     clear() { STATE.results = []; this.save(); UIPanel.refresh(); },
     exportCsv() {
       const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-      const lines = ['kode,status,terkonfirmasi,attempts,waktu,catatan,slug,url_katalog'];
-      STATE.results.forEach((r) => lines.push([r.kode, r.status, this.isConfirmed(r) ? 'YA' : '', r.attempts, r.ts, r.note, r.slug, r.url].map(esc).join(',')));
-      return lines.join('\n');
+      const lines = ['kode,status,terkonfirmasi,attempts,waktu,catatan,slug,url_katalog,nama_produk,harga_master,harga_form,deskripsi'];
+      STATE.results.forEach((r) => lines.push([
+        r.kode, r.status, this.isConfirmed(r) ? 'YA' : '', r.attempts, r.ts, r.note, r.slug, r.url,
+        r.nama || '', r.hargaMaster != null ? r.hargaMaster : '', r.hargaForm != null ? r.hargaForm : '',
+        r.deskripsiForm || r.deskripsi || '',
+      ].map(esc).join(',')));
+      return '\uFEFF' + lines.join('\n');   // BOM supaya Excel baca UTF-8 dengan benar
     },
   };
   // #endregion RESULTS
@@ -1159,6 +1169,34 @@
       if (by999) return { opt: by999, how: 'fallback999' };
       const byLainnya = parsed.find((p) => p.code && /\blainnya\b|\bothers?\b/i.test(p.label));
       return byLainnya ? { opt: byLainnya, how: 'fallbackLainnya' } : null;
+    },
+    _STOP: new Set(['for', 'of', 'the', 'and', 'dan', 'with', 'to', 'in', 'a', 'an']),
+    _tokens(s) {
+      return Txt.lower(s).replace(/[^a-z0-9]+/g, ' ').split(' ')
+        .filter((w) => w.length > 1 && !this._STOP.has(w))
+        .map((w) => (w.length > 3 && /s$/.test(w) && !/ss$/.test(w) ? w.slice(0, -1) : w));
+    },
+    // Fuzzy ala kategori: 2 kata TERAKHIR deskripsi MASTER wajib ada ("... ... general use"),
+    // kata di depan boleh beda. Skor = kemiripan token; yang tertinggi menang.
+    pickFuzzy(options, target) {
+      const want = this._tokens(target.desc);
+      if (want.length < 2) return null;
+      const tail = want.slice(-2);
+      const wantSet = new Set(want);
+      let best = null;
+      options.forEach((o) => {
+        const p = this.parseOption(o.text);
+        const toks = this._tokens(p.label);
+        if (!toks.length) return;
+        const tset = new Set(toks);
+        if (!tail.every((w) => tset.has(w))) return;               // ekor wajib
+        const common = want.filter((w) => tset.has(w)).length;
+        const tailSeq = (' ' + toks.join(' ') + ' ').includes(' ' + tail.join(' ') + ' ');
+        const jacc = common / (wantSet.size + tset.size - common);
+        const score = (tailSeq ? 1 : 0) + jacc + common / want.length;
+        if (!best || score > best.score) best = { opt: Object.assign({}, o, p), score };
+      });
+      return best ? { opt: best.opt, how: 'fuzzy', score: best.score } : null;
     },
   };
   // #endregion KBKI PICKER
@@ -1531,8 +1569,9 @@
       return 'OK';
     },
 
-    // Kode KBKI: MASTER hanya punya DESKRIPSI (bukan kode). Menu berisi "kode - deskripsi".
-    // Urutan: cocok persis -> cocok sebagian -> fallback "lainnya"/kode berakhiran 999 (selalu dicoba).
+    // Kode KBKI: MASTER hanya punya DESKRIPSI (bukan kode). Menu berisi "kode - deskripsi" dan lazy-load saat di-scroll.
+    // Tahap: (1) kode/exact (+partial) -> (2) fuzzy ekor "... general use" -> (3) fallback "lainnya"/kode 999.
+    // Setiap tahap men-scroll menu bertahap sampai dasar (dan menunggu lazy-load) sebelum menyerah.
     async fillKbki(item) {
       const target = QueueManager.kbkiTarget(item);
       if (!target.code && !target.desc) {
@@ -1555,59 +1594,120 @@
         return document.querySelector('.select__input');
       };
       await DomHelper.waitForElement('.select__input', { timeout: 5000 }).catch(() => null);
-      const input = findInput();
       const readOpts = () => Array.from(document.querySelectorAll('.select__option'))
         .map((el) => ({ el, text: Txt.oneLine(el.textContent) }));
-      const typeAndRead = async (value) => {
+
+      const typeText = async (value) => {
+        const input = findInput();
         if (input) {
           DomHelper.setNativeValue(input, value);
           DomHelper.dispatchInput(input);
         }
-        await DomHelper.sleep(500);
-        let opts = readOpts();
-        if (opts.length === 0) {
-          await DomHelper.sleep(700);
-          opts = readOpts();
-        }
-        return opts;
-      };
-      // Menu bisa lazy-load: scroll ke bawah sampai jumlah opsi tidak bertambah lagi.
-      const loadAll = async () => {
-        const list = document.querySelector('.select__menu-list');
-        if (!list) return readOpts();
-        let prev = -1;
-        for (let i = 0; i < 15; i += 1) {
-          const n = list.querySelectorAll('.select__option').length;
-          if (n === prev) break;
-          prev = n;
-          list.scrollTop = list.scrollHeight;
-          await DomHelper.sleep(400);
-        }
-        return readOpts();
+        await DomHelper.sleep(600);
+        await DomHelper.pollUntil(() => !document.querySelector('.select__loading-message'), { timeout: 3000, interval: 150 }).catch(() => null);
+        await DomHelper.sleep(200);
       };
 
-      let opts = await typeAndRead(target.code || Txt.stripEndPunct(target.desc));
-      let pick = Kbki.pick(opts, target);
-      if (!pick) {
-        await typeAndRead('');            // daftar penuh
-        opts = await loadAll();
-        pick = Kbki.pick(opts, target);
+      // Scroll menu bertahap dari atas sampai dasar; di tiap langkah jalankan finder(opts).
+      // Di dasar: tunggu sampai 2.5 dtk untuk lazy-load; berhenti kalau 2x berturut-turut tidak bertambah.
+      // Finder dicoba di setiap langkah, jadi aman juga kalau list-nya virtualized.
+      const scan = async (finder) => {
+        let list = document.querySelector('.select__menu-list');
+        if (!list) return finder(readOpts());
+        list.scrollTop = 0;
+        await DomHelper.sleep(200);
+        let stable = 0;
+        for (let i = 0; i < 120; i += 1) {
+          list = document.querySelector('.select__menu-list') || list;
+          const hit = finder(readOpts());
+          if (hit) return hit;
+          const sig = () => {
+            const o = readOpts();
+            return `${o.length}|${o.length ? o[o.length - 1].text : ''}|${list.scrollHeight}`;
+          };
+          const before = sig();
+          const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
+          list.scrollTop += Math.max(60, Math.floor(list.clientHeight * 0.8));
+          list.dispatchEvent(new Event('scroll', { bubbles: true }));
+          list.dispatchEvent(new WheelEvent('wheel', { deltaY: 300, bubbles: true }));
+          await DomHelper.sleep(250);
+          if (atBottom) {
+            const grew = await DomHelper.pollUntil(() => sig() !== before, { timeout: 2500, interval: 150 }).then(() => true).catch(() => false);
+            if (grew) stable = 0; else { stable += 1; if (stable >= 2) break; }
+          }
+        }
+        return null;
+      };
+
+      const descClean = Txt.stripEndPunct(target.desc);
+      const words = descClean.split(' ').filter(Boolean);
+      const queries = [target.code || descClean];
+      if (words.length > 2) queries.push(words.slice(1).join(' '));
+      if (words.length > 3) queries.push(words.slice(-3).join(' '));
+      if (words.length > 2) queries.push(words.slice(-2).join(' '));
+      queries.push('');
+      const uniq = Array.from(new Set(queries));
+
+      // Tahap 1: kode / exact (partial hanya dipakai kalau exact tidak ketemu di seluruh scroll)
+      let pick = null;
+      for (const q of uniq) {
+        await typeText(q);
+        let partial = null;
+        pick = await scan((opts) => {
+          const p = Kbki.pick(opts, target);
+          if (p && p.how !== 'partial') return p;
+          if (p && !partial) partial = p.opt.text;
+          return null;
+        });
+        if (!pick && partial) {
+          pick = await scan((opts) => {
+            const o = opts.find((x) => x.text === partial);
+            return o ? { opt: o, how: 'partial' } : null;
+          });
+        }
+        if (pick) break;
       }
-      if (!pick) {                        // fallback SELALU dicoba (tidak tergantung kolom MASTER)
+
+      // Tahap 2: fuzzy -- "... ... general use"
+      if (!pick && descClean) {
+        for (const q of uniq) {
+          await typeText(q);
+          let best = null;
+          await scan((opts) => {
+            const f = Kbki.pickFuzzy(opts, target);
+            if (f && (!best || f.score > best.score)) best = { text: f.opt.text, score: f.score };
+            return null;
+          });
+          if (best) {
+            pick = await scan((opts) => {
+              const o = opts.find((x) => x.text === best.text);
+              return o ? { opt: o, how: `fuzzy skor ${best.score.toFixed(2)}` } : null;
+            });
+            if (pick) {
+              Logger.warning(`KBKI "${descClean}" tidak ada persis -> fuzzy cocok ke "${pick.opt.text}".`);
+              break;
+            }
+          }
+        }
+      }
+
+      // Tahap 3: fallback "...lainnya" / kode berakhiran 999
+      if (!pick) {
         for (const q of ['lainnya', '999', '']) {
-          opts = await typeAndRead(q);
-          if (q === '') opts = await loadAll();
-          pick = Kbki.pickFallback(opts);
+          await typeText(q);
+          pick = await scan((opts) => Kbki.pickFallback(opts));
           if (pick) break;
         }
-        if (pick) Logger.warning(`KBKI "${target.desc || target.code}" tidak ada di menu -> fallback ke "${pick.opt.text}".`);
+        if (pick) Logger.warning(`KBKI "${descClean || target.code}" tidak ada -> fallback ke "${pick.opt.text}".`);
       }
+
       if (!pick) {
         const all = readOpts();
-        Logger.error(`fillKbki: KBKI "${target.desc || target.code}" tidak ditemukan & fallback "lainnya"/999 juga tidak ada. Opsi terlihat (${all.length}): ${all.slice(0, 30).map((o) => `"${o.text}"`).join(', ')}`);
-        DomHelper.dispatchEscape(input || btn);
+        Logger.error(`fillKbki: KBKI "${descClean || target.code}" tidak ditemukan (exact, fuzzy, maupun fallback). Opsi terlihat terakhir (${all.length}): ${all.slice(0, 30).map((o) => `"${o.text}"`).join(', ')}`);
+        DomHelper.dispatchEscape(findInput() || btn);
         return 'NEEDS_MANUAL_REVIEW';
       }
+      if (pick.opt.el.scrollIntoView) pick.opt.el.scrollIntoView({ block: 'nearest' });
       DomHelper.dispatchClick(pick.opt.el);
       await DomHelper.sleep(250);
       Logger.success(`Kode KBKI terisi (${pick.how}): ${pick.opt.text}`);
@@ -2116,6 +2216,14 @@
       const nama = document.querySelector(fs.namaProdukInput);
       if (!nama) problems.push('Nama Produk: input tidak ditemukan');
       else if (Txt.oneLine(nama.value) !== Txt.oneLine(item.namaProduk)) problems.push(`Nama: form="${Txt.oneLine(nama.value)}", MASTER="${Txt.oneLine(item.namaProduk)}"`);
+      // v0.8.6: simpan snapshot harga & deskripsi yang benar-benar ada di form (untuk log & Export Hasil).
+      const hEl = document.querySelector(fs.hargaInput);
+      const dEl = document.querySelector(fs.deskripsiTextarea);
+      STATE.formSnap[item.kodeProduk] = {
+        harga: hEl ? this._displayedNumber(hEl.value) : null,
+        hargaText: hEl ? hEl.value : '',
+        deskripsi: dEl ? String(dEl.value || '').trim() : '',
+      };
       if (problems.length) {
         Logger.error(`Verifikasi sebelum Simpan GAGAL untuk ${item.kodeProduk}: ${problems.join(' | ')}`);
         return false;
@@ -2707,6 +2815,15 @@
 
     _stopAfter(stage) { return CONFIG.stopAfterStage === stage; },
 
+    // v0.8.6: tulis ke log harga, nama, dan deskripsi yang diupload.
+    _logUploaded(kode) {
+      const r = Results.get(kode) || {};
+      const harga = r.hargaForm != null ? r.hargaForm : r.hargaMaster;
+      Logger.info(`[${kode}] Harga diupload: Rp ${Number(harga).toLocaleString('id-ID')} (form: "${r.hargaFormText || '-'}", MASTER: ${r.hargaMaster})`);
+      Logger.info(`[${kode}] Nama: ${r.nama || '-'}`);
+      Logger.info(`[${kode}] Deskripsi: ${r.deskripsiForm || r.deskripsi || '-'}`);
+    },
+
     // Proses SATU produk dari awal sampai (simulasi) simpan. Mengembalikan kode status.
     async processItem(item) {
       const kode = item.kodeProduk;
@@ -2798,6 +2915,7 @@
       if (CONFIG.dryRun) {
         Logger.success(`DRY RUN: semua field & file untuk ${kode} sudah terisi. Tombol "Simpan" TIDAK diklik. Periksa form secara manual.`);
         Results.record(kode, 'DRYRUN_DONE', 'dry run');
+        this._logUploaded(kode);
         return 'DRYRUN_DONE';
       }
       const sv = await FormFiller.simpan(item);
@@ -2807,6 +2925,7 @@
         return sv;
       }
       Results.record(kode, 'SAVED', '');
+      this._logUploaded(kode);
       Logger.success(`SKU ${kode} TERSIMPAN.`);
       return 'SAVED';
     },
