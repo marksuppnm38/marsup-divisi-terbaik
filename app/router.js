@@ -75,6 +75,7 @@ import { KONVERSIAN_SUBNAV } from './pages/konversian/subnav.js';
 const ROUTES = {
   'kompres-pdf': () => import('./pages/kompres-pdf/index.js'),
   'export-gambar': () => import('./pages/export-gambar/index.js'),
+  'uploader-wiki': () => import('./pages/uploader-wiki/index.js'),
   'spek-maker': () => import('./pages/spek-maker/index.js'),
   'rekon-meeting': () => import('./pages/rekon-meeting/index.js'),
   'konversian': () => import('./pages/konversian/index.js'),

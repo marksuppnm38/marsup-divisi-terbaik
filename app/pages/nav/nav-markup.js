@@ -18,6 +18,7 @@ const NAV_ICONS = {
   'dashboard':     'ti-layout-dashboard',
   'kompres-pdf':   'ti-file-zip',
   'export-gambar': 'ti-photo',
+  'uploader-wiki': 'ti-table-export',
   'spek-maker':    'ti-file-description',
   'rekon-meeting': 'ti-scale',
 };

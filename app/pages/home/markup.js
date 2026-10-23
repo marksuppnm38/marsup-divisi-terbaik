@@ -77,6 +77,15 @@ export const MODULES = [
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
   },
   {
+    id: 'uploader-wiki',
+    title: 'Uploader Wiki',
+    desc: 'Bangun MASTER.xlsx untuk script upload INAPROC V6, dibagi per operator.',
+    url: '/uploader-wiki',
+    migrated: true,
+    color: '#6366F1',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg>',
+  },
+  {
     id: 'spek-maker',
     title: 'Document Maker',
     desc: 'Spesifikasi, struktur harga & surat permohonan presentasi (SPP) PDF.',

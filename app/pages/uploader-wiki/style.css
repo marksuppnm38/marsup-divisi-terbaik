@@ -1,0 +1,16 @@
+/* uploader-wiki -- semua selector di-scope di bawah .uw-page (nol bare selector). */
+.uw-page { max-width: 880px; margin: 0 auto; padding: 24px 20px 64px; }
+.uw-page .uw-card { padding: 18px 20px; margin-top: 16px; }
+.uw-page .uw-step { font-weight: 600; margin-bottom: 12px; }
+.uw-page .uw-check { display: flex; gap: 8px; align-items: center; margin: 6px 0; cursor: pointer; }
+.uw-page .uw-actions { display: flex; gap: 12px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+.uw-page .uw-muted { color: var(--text-secondary); font-size: 12px; }
+.uw-page .uw-group { margin-top: 14px; }
+.uw-page .uw-row { display: grid; grid-template-columns: 180px 1fr; gap: 14px; }
+.uw-page .uw-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.uw-page .uw-chip { border: 1px solid var(--border-strong); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; user-select: none; }
+.uw-page .uw-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.uw-page .uw-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.uw-page .uw-issues { margin-top: 10px; max-height: 260px; overflow: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; white-space: pre-wrap; }
+.uw-page .uw-issues-title { font-weight: 600; margin-top: 12px; font-size: 12px; }
+@media (max-width: 560px) { .uw-page .uw-row { grid-template-columns: 1fr; } }
