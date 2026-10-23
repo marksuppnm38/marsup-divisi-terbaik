@@ -14,20 +14,22 @@ export const UPLOADER_WIKI_MARKUP = `
   </div>
 
   <div class="card uw-card">
-    <div class="uw-step">1. Pilih produk</div>
-    <label class="uw-check"><input type="checkbox" id="uwActive" checked> Hanya produk aktif (is_active)</label>
-    <label class="uw-check"><input type="checkbox" id="uwNoLink" checked> Hanya yang belum punya link_v6</label>
-    <div class="uw-actions"><button class="btn btn-accent" id="uwLoad">Muat Produk</button><span class="uw-muted" id="uwLoadInfo"></span></div>
-    <div id="uwFilters" hidden>
-      <div class="uw-group"><span class="field-label">status_inaproc (kosong = semua)</span><div id="uwStatusInaproc" class="uw-chips"></div></div>
-      <div class="uw-group"><span class="field-label">status_v6 (kosong = semua)</span><div id="uwStatusV6" class="uw-chips"></div></div>
-      <div class="uw-group"><span class="field-label">Cari kode / nama</span><input class="field-input" id="uwSearch" placeholder="mis. RBB- atau FORCEPS"></div>
+    <div class="uw-step">1. Cari &amp; pilih produk</div>
+    <label class="field-label" for="uwQuery">Kode atau nama produk <span class="uw-muted">satu baris = pencarian biasa; beberapa baris = cari semuanya sekaligus (Ctrl+Enter)</span></label>
+    <textarea class="field-input uw-query" id="uwQuery" rows="3" placeholder="mis. SCALPEL HANDLE, LANDOLT, BAY., 21 CM&#10;atau tempel banyak kode / nama, satu per baris"></textarea>
+    <label class="uw-check"><input type="checkbox" id="uwHideLinked" checked> Sembunyikan yang sudah punya link_v6</label>
+    <div class="uw-actions"><button class="btn btn-accent" id="uwSearch">Cari</button><span class="uw-muted" id="uwSearchInfo"></span></div>
+    <div id="uwHits" hidden>
       <div class="uw-actions">
-        <button class="btn btn-ghost" id="uwSelAll">Pilih semua hasil filter</button>
-        <button class="btn btn-ghost" id="uwSelNone">Kosongkan pilihan</button>
-        <span class="uw-muted" id="uwSelInfo"></span>
+        <button class="btn btn-ghost" id="uwPickAll">Pilih semua hasil</button>
+        <span class="uw-muted" id="uwHitInfo"></span>
       </div>
       <div id="uwList" class="uw-list"></div>
+    </div>
+    <div id="uwMiss"></div>
+    <div class="uw-group">
+      <div class="uw-actions" style="margin-top:0"><span class="field-label" style="margin:0">Terpilih</span><span class="uw-muted" id="uwSelInfo"></span><button class="btn btn-ghost" id="uwSelNone">Kosongkan</button></div>
+      <div id="uwSelList" class="uw-chips" style="margin-top:8px"></div>
     </div>
   </div>
 

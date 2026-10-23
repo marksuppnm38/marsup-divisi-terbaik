@@ -1,5 +1,5 @@
 // uploader-wiki page module: mount(container) / unmount().
-// Alur: pilih produk -> (opsional) atur konstanta & pemetaan AKD -> Periksa -> Bangun paket zip per operator.
+// Alur: cari & pilih produk (RPC search_produk_dengan_harga) -> (opsional) atur konstanta & pemetaan AKD -> Periksa -> Bangun paket zip per operator.
 // Logika baris MASTER ada di build.js (murni, dites di tests/uploader-wiki.test.mjs); pembuatan zip di bundle.js
 // (memakai generator PDF/gambar yang sama dengan tab Bulk di Document Maker).
 
@@ -57,22 +57,10 @@ const LS_AKD = 'uw_akdmap_v1';
 const lsGet = (k, fb) => { try { const v = localStorage.getItem(k); return v == null ? fb : JSON.parse(v); } catch { return fb; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* penuh / diblokir: abaikan */ } };
 const MAX_ROWS = 500;
-const PAGE = 1000;
 
 let isMounted = false;
 let mountedContainer = null;
 let handlers = [];
-
-async function fetchAll(makeQuery) {
-  const out = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await makeQuery().range(from, from + PAGE - 1);
-    if (error) throw new Error(error.message);
-    out.push(...data);
-    if (data.length < PAGE) break;
-  }
-  return out;
-}
 
 export async function mount(container) {
   isMounted = true;
@@ -91,11 +79,11 @@ export async function mount(container) {
     akdMap: Object.assign({}, seed.akdMap, lsGet(LS_AKD, {})),
     akdHints: new Map(),
     needAkd: new Set(),
-    produk: [],
-    filtered: [],
-    selected: new Set(),
-    pickInaproc: new Set(),
-    pickV6: new Set(),
+    selected: new Map(),     // KODE_UPPER -> baris hasil pencarian (tetap terkumpul antar pencarian)
+    hits: [],                // hasil pencarian terakhir (yang tampil di daftar)
+    prodCache: new Map(),    // KODE_UPPER -> baris tabel produk (kode_asli, nama_produk, berat_gram, ...)
+    searchSeq: 0,
+    searchTimer: null,
     rpcCache: new Map(),
     imgCache: new Map(),
     result: null,
@@ -104,7 +92,6 @@ export async function mount(container) {
     scriptText: null,
   };
   const keyOf = (p) => String(p.kode_produk).toUpperCase();
-  const valOf = (v) => (v == null || v === '' ? '(kosong)' : String(v));
 
   // ---------- pengaturan ----------
   function renderFields() {
@@ -135,63 +122,90 @@ export async function mount(container) {
   const saveSettings = () => lsSet(LS_SETTINGS, S.settings);
   const saveAkd = () => lsSet(LS_AKD, S.akdMap);
 
-  // ---------- daftar produk ----------
-  function counts(values) {
-    const m = new Map();
-    values.forEach((v) => { const k = valOf(v); m.set(k, (m.get(k) || 0) + 1); });
-    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+  // ---------- cari & pilih produk (RPC search_produk_dengan_harga) ----------
+  // Sama dengan yang dipakai Converter / CRUD Produk: ranking token + trigram di server, jadi cepat dan toleran
+  // terhadap beda koma/titik/spasi. Pilihan disimpan di S.selected sehingga bisa dikumpulkan dari beberapa pencarian.
+  const norm = (x) => String(x == null ? '' : x).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  async function rpcSearch(q) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const { data, error } = await sb().rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
+      if (!error) return data || [];
+      const msg = error.message || '';
+      if (attempt === 0 && /timeout|canceling/i.test(msg)) continue;   // retry sekali, seperti Converter
+      throw new Error(/timeout|canceling/i.test(msg) ? 'pencarian timeout -- coba kata kunci lebih spesifik' : msg);
+    }
+    return [];
   }
-  function renderChips(el, entries, picked, group) {
-    el.innerHTML = entries.map(([v, n]) =>
-      `<span class="uw-chip${picked.has(v) ? ' on' : ''}" data-group="${group}" data-val="${escapeHtml(v)}">${escapeHtml(v)} · ${n}</span>`).join('');
+  const hideLinked = () => $('uwHideLinked').checked;
+  const isLinked = (r) => !!collapse(r.link_v6);
+
+  function renderHits() {
+    const rows = S.hits.filter((r) => !(hideLinked() && isLinked(r)));
+    const hidden = S.hits.length - rows.length;
+    $('uwHits').hidden = S.hits.length === 0;
+    $('uwHitInfo').textContent = `${rows.length} hasil${hidden ? ` · ${hidden} disembunyikan (sudah punya link_v6)` : ''}`;
+    $('uwList').innerHTML = rows.slice(0, MAX_ROWS).map((r) => {
+      const k = keyOf(r);
+      const tags = [r.status_inaproc ? `<span class="uw-tag">${escapeHtml(r.status_inaproc)}</span>` : '', isLinked(r) ? '<span class="uw-tag warn">link_v6</span>' : ''].join('');
+      return `<label class="uw-item"><input type="checkbox" data-sel="${escapeHtml(k)}"${S.selected.has(k) ? ' checked' : ''}><code>${escapeHtml(r.kode_produk)}</code><span>${escapeHtml(collapse(r.nama_produk))}${tags}</span></label>`;
+    }).join('') + (rows.length > MAX_ROWS ? `<div class="uw-item"><span></span><span class="uw-muted" style="grid-column:2/-1">Menampilkan ${MAX_ROWS} dari ${rows.length}. Persempit kata kunci.</span></div>` : '');
   }
-  function applyFilters() {
-    const q = collapse($('uwSearch').value).toLowerCase();
-    S.filtered = S.produk.filter((p) => {
-      if (S.pickInaproc.size && !S.pickInaproc.has(valOf(p.status_inaproc))) return false;
-      if (S.pickV6.size && !S.pickV6.has(valOf(p.status_v6))) return false;
-      if (q && !`${p.kode_produk} ${p.nama_produk}`.toLowerCase().includes(q)) return false;
-      return true;
-    });
-    renderList();
-  }
-  function renderList() {
-    const shown = S.filtered.slice(0, MAX_ROWS);
-    $('uwList').innerHTML = shown.map((p) => {
-      const k = keyOf(p);
-      return `<label class="uw-item"><input type="checkbox" data-sel="${escapeHtml(k)}"${S.selected.has(k) ? ' checked' : ''}><code>${escapeHtml(p.kode_produk)}</code><span>${escapeHtml(collapse(p.nama_produk))}</span></label>`;
-    }).join('') + (S.filtered.length > MAX_ROWS ? `<div class="uw-item"><span></span><span class="uw-muted" style="grid-column:2/-1">Menampilkan ${MAX_ROWS} dari ${S.filtered.length}. Gunakan filter / "Pilih semua hasil filter" untuk sisanya.</span></div>` : '');
-    updateSelInfo();
-  }
-  function updateSelInfo() {
-    $('uwSelInfo').textContent = `${S.selected.size} dipilih · ${S.filtered.length} lolos filter dari ${S.produk.length}`;
+  function renderSelected() {
+    $('uwSelInfo').textContent = `${S.selected.size} produk`;
+    $('uwSelList').innerHTML = Array.from(S.selected.entries()).slice(0, 300).map(([k, r]) =>
+      `<span class="uw-sel" title="${escapeHtml(collapse(r.nama_produk))}">${escapeHtml(r.kode_produk)}<button data-unsel="${escapeHtml(k)}" aria-label="Hapus">&times;</button></span>`).join('')
+      + (S.selected.size > 300 ? `<span class="uw-muted">...dan ${S.selected.size - 300} lagi</span>` : '');
     $('uwCheckCard').hidden = S.selected.size === 0;
+    if (S.selected.size === 0) { $('uwBuildCard').hidden = true; $('uwResult').hidden = true; }
   }
 
-  async function onLoad() {
-    const btn = $('uwLoad'); btn.disabled = true; $('uwLoadInfo').textContent = 'Memuat...';
+  async function onSearch() {
+    const lines = String($('uwQuery').value || '').split(/\r?\n/).map((x) => collapse(x)).filter(Boolean);
+    if (!lines.length) return;
+    const my = ++S.searchSeq;
+    $('uwSearch').disabled = true; $('uwMiss').innerHTML = '';
     try {
-      const onlyActive = $('uwActive').checked;
-      const noLink = $('uwNoLink').checked;
-      let rows = await fetchAll(() => {
-        let q = sb().from('produk')
-          .select('id,kode_produk,kode_asli,nama_produk,berat_gram,status_inaproc,status_v6,link_v6,is_active')
-          .order('kode_produk');
-        if (onlyActive) q = q.eq('is_active', true);
-        return q;
-      });
-      if (noLink) rows = rows.filter((p) => !collapse(p.link_v6));
-      if (!isMounted) return;
-      S.produk = rows;
-      S.selected.clear(); S.pickInaproc.clear(); S.pickV6.clear(); S.result = null;
-      renderChips($('uwStatusInaproc'), counts(rows.map((p) => p.status_inaproc)), S.pickInaproc, 'inaproc');
-      renderChips($('uwStatusV6'), counts(rows.map((p) => p.status_v6)), S.pickV6, 'v6');
-      $('uwFilters').hidden = false;
-      $('uwLoadInfo').textContent = `${rows.length} produk dimuat.`;
-      applyFilters();
+      if (lines.length === 1) {
+        $('uwSearchInfo').textContent = 'Mencari...';
+        const rows = await rpcSearch(lines[0]);
+        if (my !== S.searchSeq) return;
+        S.hits = rows;
+        renderHits();
+        $('uwSearchInfo').textContent = rows.length ? '' : `Tidak ada hasil untuk "${lines[0]}".`;
+        return;
+      }
+      // Banyak baris: cari tiap baris, otomatis pilih yang cocok persis (kode / nama); kalau tak ada yang persis, ambil teratas dan tandai.
+      const miss = []; const approx = []; const all = [];
+      let done = 0;
+      const queue = lines.slice();
+      await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
+        while (queue.length) {
+          const line = queue.shift();
+          try {
+            const rows = await rpcSearch(line);
+            const n = norm(line);
+            const exact = rows.filter((r) => norm(r.kode_produk) === n || norm(r.nama_produk) === n);
+            const contain = exact.length ? exact : rows.filter((r) => norm(r.nama_produk).includes(n));
+            const pick = contain.length ? contain : rows.slice(0, 1);
+            if (!pick.length) miss.push(`${line}: tidak ada hasil`);
+            else {
+              if (!contain.length) approx.push(`${line}  ->  ${pick[0].kode_produk} (${collapse(pick[0].nama_produk)})`);
+              pick.forEach((r) => { S.selected.set(keyOf(r), r); all.push(r); });
+            }
+          } catch (e) { miss.push(`${line}: ${e.message}`); }
+          done += 1;
+          $('uwSearchInfo').textContent = `Mencari ${done}/${lines.length}...`;
+        }
+      }, ));
+      if (my !== S.searchSeq) return;
+      S.hits = all;
+      renderHits(); renderSelected();
+      $('uwSearchInfo').textContent = `${lines.length} baris dicari, ${new Set(all.map(keyOf)).size} produk unik dipilih.`;
+      const blk = (t, a) => (a.length ? `<div class="uw-issues-title">${escapeHtml(t)} (${a.length})</div><div class="uw-issues">${a.map(escapeHtml).join('\n')}</div>` : '');
+      $('uwMiss').innerHTML = blk('Tidak ketemu', miss) + blk('Hanya mirip (tidak ada yang persis) -- cek kembali', approx);
     } catch (e) {
-      $('uwLoadInfo').textContent = 'Gagal: ' + e.message;
-    } finally { btn.disabled = false; }
+      $('uwSearchInfo').textContent = 'Gagal: ' + e.message;
+    } finally { if (my === S.searchSeq) $('uwSearch').disabled = false; }
   }
 
   // ---------- periksa ----------
@@ -201,8 +215,9 @@ export async function mount(container) {
   function evaluate() {
     const ctx = { seed: S.seed, settings: S.settings, akdMap: S.akdMap };
     const ready = []; const skipped = []; const warn = []; const needAkd = new Set();
-    S.produk.filter((p) => S.selected.has(keyOf(p))).forEach((p) => {
-      const rpc = S.rpcCache.get(keyOf(p)) || null;
+    Array.from(S.selected.entries()).forEach(([k, hit]) => {
+      const p = S.prodCache.get(k) || hit;
+      const rpc = S.rpcCache.get(k) || null;
       const r = buildRow(p, rpc, ctx);
       const reasons = r.skip.slice();
       if (!r.row) {
@@ -260,7 +275,16 @@ export async function mount(container) {
     if (S.busy) return;
     S.busy = true; S.cancel = false; $('uwCheck').disabled = true;
     try {
-      const sel = S.produk.filter((p) => S.selected.has(keyOf(p)));
+      const needProd = Array.from(S.selected.entries()).filter(([k]) => !S.prodCache.has(k)).map(([, r]) => r.kode_produk);
+      if (needProd.length) {
+        $('uwCheckInfo').textContent = 'Mengambil data produk...';
+        for (let i = 0; i < needProd.length; i += 100) {
+          const { data, error } = await sb().from('produk').select('kode_produk,kode_asli,nama_produk,berat_gram,status_inaproc,link_v6').in('kode_produk', needProd.slice(i, i + 100));
+          if (error) throw new Error(error.message);
+          (data || []).forEach((r) => S.prodCache.set(keyOf(r), r));
+        }
+      }
+      const sel = Array.from(S.selected.keys()).map((k) => S.prodCache.get(k)).filter(Boolean);
       const needRpc = sel.filter((p) => !S.rpcCache.has(keyOf(p))).map((p) => p.kode_produk);
       if (needRpc.length) {
         $('uwCheckInfo').textContent = 'Mengambil harga & AKD dari database...';
@@ -324,19 +348,14 @@ export async function mount(container) {
   const on = (t, type, fn) => { t.addEventListener(type, fn); handlers.push(() => t.removeEventListener(type, fn)); };
 
   on(container, 'click', (ev) => {
-    const chip = ev.target.closest('.uw-chip');
-    if (chip) {
-      const set = chip.dataset.group === 'v6' ? S.pickV6 : S.pickInaproc;
-      const v = chip.dataset.val;
-      if (set.has(v)) set.delete(v); else set.add(v);
-      chip.classList.toggle('on'); applyFilters(); return;
-    }
+    const un = ev.target.closest('[data-unsel]');
+    if (un) { S.selected.delete(un.dataset.unsel); renderSelected(); renderHits(); return; }
     const btn = ev.target.closest('button'); if (!btn) return;
     const row = btn.closest('[data-akd]');
     switch (btn.id) {
-      case 'uwLoad': onLoad(); break;
-      case 'uwSelAll': S.filtered.forEach((p) => S.selected.add(keyOf(p))); renderList(); break;
-      case 'uwSelNone': S.selected.clear(); renderList(); break;
+      case 'uwSearch': onSearch(); break;
+      case 'uwPickAll': S.hits.filter((r) => !(hideLinked() && isLinked(r))).forEach((r) => S.selected.set(keyOf(r), r)); renderHits(); renderSelected(); break;
+      case 'uwSelNone': S.selected.clear(); renderSelected(); renderHits(); break;
       case 'uwCheck': onCheck(); break;
       case 'uwBuild': onBuild(); break;
       case 'uwCancel': S.cancel = true; break;
@@ -371,21 +390,32 @@ export async function mount(container) {
   });
   on(container, 'change', (ev) => {
     const t = ev.target;
-    if (t.dataset && t.dataset.sel) { if (t.checked) S.selected.add(t.dataset.sel); else S.selected.delete(t.dataset.sel); updateSelInfo(); }
+    if (t.dataset && t.dataset.sel) {
+      const hit = S.hits.find((r) => keyOf(r) === t.dataset.sel);
+      if (hit) { if (t.checked) S.selected.set(t.dataset.sel, hit); else S.selected.delete(t.dataset.sel); renderSelected(); }
+    }
     if (t.id === 'uwOps') renderResult();
+    if (t.id === 'uwHideLinked') renderHits();
   });
   on(container, 'input', (ev) => {
     const t = ev.target;
-    if (t.id === 'uwSearch') applyFilters();
-    else if (t.dataset && t.dataset.set) { S.settings[t.dataset.set] = t.value; saveSettings(); }
+    if (t.id === 'uwQuery') {
+      // satu baris -> cari otomatis setelah berhenti mengetik; banyak baris -> tunggu klik Cari / Ctrl+Enter
+      clearTimeout(S.searchTimer);
+      if (!/[\r\n]/.test(t.value.trim()) && collapse(t.value).length >= 3) S.searchTimer = setTimeout(onSearch, 450);
+    } else if (t.dataset && t.dataset.set) { S.settings[t.dataset.set] = t.value; saveSettings(); }
     else if (t.dataset && t.dataset.f) {
       const row = t.closest('[data-akd]');
       if (row) { const m = S.akdMap[row.dataset.akd] || (S.akdMap[row.dataset.akd] = {}); m[t.dataset.f] = t.value; saveAkd(); }
     }
   });
+  on(container, 'keydown', (ev) => {
+    if (ev.target.id === 'uwQuery' && ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); clearTimeout(S.searchTimer); onSearch(); }
+  });
 
   renderFields();
   renderAkd();
+  renderSelected();
   fetchScriptText().then((t) => { S.scriptText = t; if (isMounted && S.result) renderResult(); });
 }
 
