@@ -4,11 +4,12 @@
 // (memakai generator PDF/gambar yang sama dengan tab Bulk di Document Maker).
 
 import { UPLOADER_WIKI_MARKUP } from './markup.js';
+import SEED from './seed.js';
 import {
   buildRow, defaultSettings, SETTINGS_FIELDS, collapse, splitBatches, akdDigits, deriveKat3,
 } from './build.js';
 import {
-  getDeps, fetchRpcMap, checkThumbs, fetchScriptText, prepareRenderer, buildOperatorZip, SCRIPT_FILE,
+  getDeps, fetchRpcMap, checkThumbs, fetchScriptText, prepareRenderer, buildOperatorZip, SCRIPT_ASSET,
 } from './bundle.js';
 
 function escapeHtml(s) {
@@ -82,8 +83,7 @@ export async function mount(container) {
 
   const $ = (id) => container.querySelector(`#${id}`);
   const sb = () => window.pnmSupabase;
-  const seed = await (await fetch(new URL('./seed.json', import.meta.url))).json();
-  if (!isMounted) return;
+  const seed = SEED;
 
   const S = {
     seed,
@@ -241,8 +241,8 @@ export async function mount(container) {
     $('uwIssues').innerHTML = needMsg + block('Dilewati (tidak masuk paket)', r.skipped) + block('Catatan', r.warn);
     $('uwBuildCard').hidden = r.ready.length === 0;
     $('uwScriptInfo').textContent = S.scriptText
-      ? `Script Tampermonkey (${SCRIPT_FILE}) ditemukan dan akan ikut di setiap paket.`
-      : `${SCRIPT_FILE} tidak ditemukan di folder halaman ini, jadi tidak ikut paket. Taruh file itu di app/pages/uploader-wiki/ supaya otomatis masuk paket.`;
+      ? `Script Tampermonkey ditemukan dan akan ikut di setiap paket.`
+      : `Script Tampermonkey belum ada di server, jadi tidak ikut paket. Taruh file script sebagai assets/${SCRIPT_ASSET} di repo supaya otomatis masuk setiap paket.`;
     if (S.needAkd.size) { $('uwSettings').open = true; renderAkd(); }
   }
 

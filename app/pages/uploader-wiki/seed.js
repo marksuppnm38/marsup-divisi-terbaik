@@ -1,4 +1,6 @@
-{
+// Data bawaan MASTER (header, konstanta, pemetaan AKD). Berupa modul JS (bukan .json) supaya ikut di-bundle esbuild:
+// build produksi tidak menyalin file non-JS dari app/pages/**. Digenerate dari MASTER.xlsx yang terbukti jalan.
+export default {
  "headers": [
   "KODE",
   "KODE_ASLI",
@@ -153,4 +155,4 @@
    "kbki": "Manual surgical instrument for general use"
   }
  }
-}
+};

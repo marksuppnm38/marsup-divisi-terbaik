@@ -3,7 +3,7 @@
 // "peta" yang dibaca script Tampermonkey INAPROC Upload V6 (kolom dicocokkan lewat NAMA header).
 // Dites di Node: tests/uploader-wiki.test.mjs.
 //
-// Sumber tiap kolom MASTER (31 kolom; urutan & ejaan header = seed.json, disalin dari MASTER.xlsx yang terbukti jalan):
+// Sumber tiap kolom MASTER (31 kolom; urutan & ejaan header = seed.js, disalin dari MASTER.xlsx yang terbukti jalan):
 //   KODE / Daftar_Produk_Sektoral .... produk.kode_produk
 //   KODE_ASLI ........................ produk.kode_asli
 //   Nama_Produk / Deskripsi .......... produk.nama_produk (spasi & newline dirapikan)
@@ -20,7 +20,7 @@
 
 import { FAKTOR_PPN } from '../spek-maker/struktur-harga.js';
 
-// Indeks kolom MASTER (urutan header di seed.json).
+// Indeks kolom MASTER (urutan header di seed.js).
 export const COL = {
   kode: 0, kodeAsli: 1, kat1: 2, kat2: 3, kat3: 4, merek: 5, sektoral: 6, nama: 7, foto: 8, deskripsi: 9,
   kbki: 10, kbkiFallback: 11, tkdn: 12, harga: 20, stok: 21, satuan: 22, berat: 23,

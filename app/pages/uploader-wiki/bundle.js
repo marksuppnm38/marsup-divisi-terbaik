@@ -17,7 +17,10 @@ const RPC_CONCURRENCY = 3;
 const IMG_CHECK_CONCURRENCY = 6;
 const PDF_CONCURRENCY = 3;
 const SHEETJS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+// Nama file di dalam paket (yang dipasang user) vs nama file di server. Di server memakai .txt dan ditaruh di assets/ (root repo):
+// build produksi menyalin assets/ apa adanya, tapi TIDAK menyalin file non-JS dari app/pages/** dan bisa mengutak-atik file .js.
 export const SCRIPT_FILE = 'inaproc-upload-v6.user.js';
+export const SCRIPT_ASSET = 'inaproc-upload-v6.user.txt';
 
 export async function getDeps() {
   const mod = await import('../spek-maker/index.js');
@@ -86,7 +89,7 @@ export async function checkThumbs(deps, kodeAsliList, { onProgress, stop } = {})
 
 export async function fetchScriptText() {
   try {
-    const res = await fetch(new URL('./' + SCRIPT_FILE, import.meta.url));
+    const res = await fetch('/assets/' + SCRIPT_ASSET);
     if (!res.ok) return null;
     const t = await res.text();
     return /==UserScript==/.test(t) ? t : null;
