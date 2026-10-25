@@ -101,8 +101,9 @@ export async function mount(container) {
       ['stokDefault', 'Stok default'], ['stokBesar', 'Stok besar (keranjang sterilisasi)'],
       ['stokBesarRegex', 'Nama produk berpola (regex) -> stok besar'], ['stokBesarPrefix', 'Atau kode berawalan -> stok besar'],
     ].map(([k, l]) => `<label>${escapeHtml(l)}<input class="field-input" data-set="${k}" value="${escapeHtml(S.settings[k])}"></label>`);
+    const tpl = `<label>Template thumbnail (Export Gambar)<select class="field-input" data-set="thumbTemplate">${['robust', 'adler'].map((k) => `<option value="${k}"${S.settings.thumbTemplate === k ? ' selected' : ''}>${k === 'robust' ? 'Robust' : 'Adler'}</option>`).join('')}</select></label>`;
     const ov = `<label style="grid-column:1/-1">Override stok per kode (satu per baris, format KODE=jumlah)<textarea class="field-input" data-set="stokOverride" style="min-height:60px">${escapeHtml(S.settings.stokOverride)}</textarea></label>`;
-    $('uwFields').innerHTML = inputs.concat(stok, [ov]).join('');
+    $('uwFields').innerHTML = inputs.concat([tpl], stok, [ov]).join('');
   }
   function renderAkd() {
     const rows = Object.keys(S.akdMap).sort().map((d) => {
@@ -317,7 +318,7 @@ export async function mount(container) {
     try {
       const deps = await getDeps();
       $('uwBuildInfo').textContent = 'Menyiapkan font, logo, dan library...';
-      const rend = await prepareRenderer(deps);
+      const rend = await prepareRenderer(deps, S.settings);
       const n = Math.max(1, Math.min(20, parseInt($('uwOps').value, 10) || 1));
       const names = $('uwNames').value.split(',').map((x) => collapse(x)).filter(Boolean);
       const d = new Date(); const pad = (x) => String(x).padStart(2, '0');
@@ -394,6 +395,7 @@ export async function mount(container) {
       const hit = S.hits.find((r) => keyOf(r) === t.dataset.sel);
       if (hit) { if (t.checked) S.selected.set(t.dataset.sel, hit); else S.selected.delete(t.dataset.sel); renderSelected(); }
     }
+    if (t.dataset && t.dataset.set && t.tagName === 'SELECT') { S.settings[t.dataset.set] = t.value; saveSettings(); }
     if (t.id === 'uwOps') renderResult();
     if (t.id === 'uwHideLinked') renderHits();
   });

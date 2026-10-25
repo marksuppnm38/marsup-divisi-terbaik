@@ -1,7 +1,8 @@
 // uploader-wiki / bundle.js
 // Membuat PAKET UPLOAD per operator (zip) dengan generator yang SAMA dengan tab Bulk di Document Maker:
 //   SPEK/<KODE>.pdf, STRUKTUR_HARGA/<KODE>.pdf  (spek-maker/pdf.js, struktur-pdf.js, struktur-harga.js)
-//   THUMBNAILS/<kode_asli>.png                   (bucket "thumbnails", sama dengan sumber gambar PDF Spesifikasi)
+//   THUMBNAILS/<kode_asli>.png                   thumbnail GABUNGAN (template + gambar produk) -- dirender dengan
+//                                                export-gambar/render-core.js, identik dengan hasil Export Gambar
 //   MASTER.xlsx                                  (build.js)  + AKD_DIBUTUHKAN.txt + BACA_DULU.txt + (opsional) script Tampermonkey
 // AKD/ dan STATIC_DOC/ TIDAK bisa dibuat web app -> user mengunduhnya dari Drive (dijelaskan di BACA_DULU.txt).
 //
@@ -11,6 +12,7 @@ import { buildSpekPdf, loadSpekFonts } from '../spek-maker/pdf.js';
 import { buildStrukturPdf, loadStrukturFonts } from '../spek-maker/struktur-pdf.js';
 import { buatItem } from '../spek-maker/struktur-harga.js';
 import { toAoa, akdNeeded, staticFilesNeeded, readmeText } from './build.js';
+import { TEMPLATES, THUMBNAILS_BUCKET, loadImageWithRetry, renderThumbnailBlob } from '../export-gambar/render-core.js';
 
 const RPC_CHUNK = 50;
 const RPC_CONCURRENCY = 3;
@@ -96,13 +98,20 @@ export async function fetchScriptText() {
   } catch { return null; }
 }
 
-// Siapkan jsPDF + font + logo SEKALI untuk seluruh paket.
-export async function prepareRenderer(deps) {
+// Siapkan jsPDF + font + logo + gambar template thumbnail SEKALI untuk seluruh paket.
+export async function prepareRenderer(deps, settings = {}) {
   await deps.loadScript(deps.cfg.JSPDF_SRC, deps.cfg.JSPDF_SRI);
   await deps.loadScript(deps.cfg.JSZIP_SRC, deps.cfg.JSZIP_SRI);
   await loadPlainScript(SHEETJS_SRC);
   const [spekFonts, strukturFonts, logos] = await Promise.all([loadSpekFonts(), loadStrukturFonts(), deps.ensureLogos()]);
-  return { jsPDF: window.jspdf.jsPDF, spekFonts, strukturFonts, logos };
+  const tpl = TEMPLATES[settings.thumbTemplate] || TEMPLATES.robust;
+  let templateImg;
+  try {
+    templateImg = await loadImageWithRetry(await window.PNM_getSignedUrl(THUMBNAILS_BUCKET, tpl.file));
+  } catch (e) {
+    throw new Error(`Template thumbnail ${tpl.label} (${tpl.file}) tidak bisa dimuat dari bucket "${THUMBNAILS_BUCKET}".`);
+  }
+  return { jsPDF: window.jspdf.jsPDF, spekFonts, strukturFonts, logos, tpl, templateImg };
 }
 
 // records: [{ p, rpc, row }]  (hanya yang lolos pemeriksaan). Return { blob, name, ok: [...row], gagal: [...teks] }.
@@ -120,7 +129,12 @@ export async function buildOperatorZip(deps, rend, { label, batchId, records, se
       const res = await fetch(url);
       if (!res.ok) throw new Error('thumbnail tidak bisa diunduh (HTTP ' + res.status + ')');
       const blob = await res.blob();
-      const image = await deps.blobToPngImage(blob);
+      const image = await deps.blobToPngImage(blob);   // untuk PDF Spesifikasi (sama dengan tab Bulk Spesifikasi)
+
+      // THUMBNAILS/: render gabungan template + gambar produk dengan fungsi yang SAMA dengan Export Gambar.
+      const objUrl = URL.createObjectURL(blob);
+      let thumb;
+      try { thumb = await renderThumbnailBlob(rend.templateImg, await loadImageWithRetry(objUrl), rend.tpl.box); } finally { URL.revokeObjectURL(objUrl); }
 
       const spek = buildSpekPdf(rend.jsPDF, { kode, deskripsi: String(rec.p.nama_produk || '').trim(), image, logos: rend.logos, fonts: rend.spekFonts });
       const item = buatItem(rec.rpc, kode, idSeq++);
@@ -128,7 +142,7 @@ export async function buildOperatorZip(deps, rend, { label, batchId, records, se
 
       zip.file('SPEK/' + rec.row[24], spek.output('arraybuffer'));
       zip.file('STRUKTUR_HARGA/' + rec.row[30], struktur.output('arraybuffer'));
-      zip.file('THUMBNAILS/' + rec.row[8], blob);
+      zip.file('THUMBNAILS/' + rec.row[8], thumb);
       okRows.push(rec.row);
     } catch (err) {
       gagal.push(`${kode}: ${err.message || 'gagal'}`);

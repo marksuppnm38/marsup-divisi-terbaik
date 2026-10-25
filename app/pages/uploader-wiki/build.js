@@ -7,7 +7,8 @@
 //   KODE / Daftar_Produk_Sektoral .... produk.kode_produk
 //   KODE_ASLI ........................ produk.kode_asli
 //   Nama_Produk / Deskripsi .......... produk.nama_produk (spasi & newline dirapikan)
-//   Upload_Foto_Produk ............... <kode_asli>.png   -> THUMBNAILS/ (bucket "thumbnails")
+//   Upload_Foto_Produk ............... <kode_asli>.png   -> THUMBNAILS/ = thumbnail GABUNGAN (template brand + gambar produk),
+//                                      dirender oleh export-gambar/render-core.js -- sama persis dengan hasil Export Gambar
 //   Spesifikasi_Produk_Filename ...... <KODE>.pdf        -> SPEK/            (dibuat modul bulk Spesifikasi)
 //   Struktur_Harga_Filename .......... <KODE>.pdf        -> STRUKTUR_HARGA/  (dibuat modul bulk Struktur Harga)
 //   Nomor_Izin_Edar_(NIE)_Filename ... AKD <no_akd>.pdf  -> AKD/             (TIDAK bisa dibuat web app: unduh dari Drive)
@@ -19,6 +20,7 @@
 //   sisanya (merek, TKDN, dropdown spesifikasi, nama file dokumen statis) = pengaturan (default dari seed.constants).
 
 import { FAKTOR_PPN } from '../spek-maker/struktur-harga.js';
+import { thumbFileName } from '../export-gambar/render-core.js';
 
 // Indeks kolom MASTER (urutan header di seed.js).
 export const COL = {
@@ -54,6 +56,7 @@ export const STOK_DEFAULTS = {
   stokBesarRegex: 'STERILIZATION|\\bCONTAINERS?\\b',   // nama produk (tanpa beda huruf besar/kecil)
   stokBesarPrefix: 'RBA-',                              // atau kode berawalan ini
   stokOverride: '',                                     // "KODE=jumlah" per baris; mengalahkan aturan di atas
+  thumbTemplate: 'robust',                              // template thumbnail gabungan: 'robust' | 'adler' (TEMPLATES di export-gambar/render-core.js)
 };
 
 export function defaultSettings(seed) {
@@ -140,7 +143,7 @@ export function buildRow(p, rpc, ctx) {
   row[COL.kat3] = collapse(map.kat3) || deriveKat3(map.kat2);
   row[COL.sektoral] = kode;
   row[COL.nama] = nama;
-  row[COL.foto] = `${kodeAsli}.png`;
+  row[COL.foto] = thumbFileName(kodeAsli);
   row[COL.deskripsi] = nama;
   row[COL.kbki] = collapse(map.kbki);
   row[COL.harga] = harga;
@@ -195,7 +198,7 @@ export function readmeText({ operator, batchId, count, staticFiles, hasScript })
     '  MASTER.xlsx         peta data untuk script Tampermonkey',
     '  SPEK/               PDF Spesifikasi, satu per SKU',
     '  STRUKTUR_HARGA/     PDF Struktur Harga, satu per SKU',
-    '  THUMBNAILS/         foto produk (PNG), satu per SKU',
+    '  THUMBNAILS/         thumbnail produk (PNG gabungan template, sama dengan hasil Export Gambar), satu per SKU',
     '  AKD_DIBUTUHKAN.txt  daftar file AKD yang harus kamu ambil dari Drive',
     hasScript
       ? '  inaproc-upload-v6.user.js   script Tampermonkey (Tampermonkey > Create a new script > tempel isinya)'
