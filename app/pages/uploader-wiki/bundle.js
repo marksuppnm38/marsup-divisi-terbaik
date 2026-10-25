@@ -24,6 +24,8 @@ const SHEETJS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.ful
 export const SCRIPT_FILE = 'inaproc-upload-v6.user.js';
 export const SCRIPT_ASSET = 'inaproc-upload-v6.user.txt';
 
+export const loadSheetJs = () => loadPlainScript(SHEETJS_SRC);
+
 export async function getDeps() {
   const mod = await import('../spek-maker/index.js');
   return mod.getBulkDeps();
@@ -114,6 +116,27 @@ export async function prepareRenderer(deps, settings = {}) {
   return { jsPDF: window.jspdf.jsPDF, spekFonts, strukturFonts, logos, tpl, templateImg };
 }
 
+// Satu-satunya tempat MASTER.xlsx dibuat: dipakai paket lengkap DAN mode "hanya MASTER" supaya isinya identik.
+export function masterXlsxBytes(seed, rows, { label, batchId }) {
+  const wb = window.XLSX.utils.book_new();
+  const ws = window.XLSX.utils.aoa_to_sheet(toAoa(seed, rows, { operator: label, batchId }));
+  ws['!cols'] = seed.headers.concat(['OPERATOR', 'BATCH_ID']).map((h) => ({ wch: Math.min(40, Math.max(12, h.length)) }));
+  window.XLSX.utils.book_append_sheet(wb, ws, 'MASTER');   // nama sheet WAJIB "MASTER"
+  return window.XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+}
+
+// Mode "hanya MASTER": tanpa PDF/thumbnail/zip. Operator sudah memegang SPEK/STRUKTUR_HARGA/THUMBNAILS/AKD/STATIC_DOC
+// (nama file deterministik dari KODE, lihat build.js), jadi yang dinamis cukup peta MASTER.xlsx.
+// records: [{ p, rpc, row }]. Return { blob, name, ok: [...row] }.
+export async function buildMasterOnly({ label, batchId, records, seed }) {
+  await loadSheetJs();
+  const rows = records.map((r) => r.row);   // urutan input dipertahankan
+  const bytes = masterXlsxBytes(seed, rows, { label, batchId });
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const safe = String(label).replace(/[^A-Za-z0-9_-]+/g, '_');
+  return { blob, name: `MASTER-${safe}-${batchId}.xlsx`, ok: rows };
+}
+
 // records: [{ p, rpc, row }]  (hanya yang lolos pemeriksaan). Return { blob, name, ok: [...row], gagal: [...teks] }.
 export async function buildOperatorZip(deps, rend, { label, batchId, records, seed, settings, scriptText, onProgress, stop }) {
   const zip = new window.JSZip();
@@ -156,11 +179,7 @@ export async function buildOperatorZip(deps, rend, { label, batchId, records, se
   const order = new Map(records.map((r, i) => [r.row[0], i]));
   okRows.sort((a, b) => order.get(a[0]) - order.get(b[0]));
 
-  const wb = window.XLSX.utils.book_new();
-  const ws = window.XLSX.utils.aoa_to_sheet(toAoa(seed, okRows, { operator: label, batchId }));
-  ws['!cols'] = seed.headers.concat(['OPERATOR', 'BATCH_ID']).map((h) => ({ wch: Math.min(40, Math.max(12, h.length)) }));
-  window.XLSX.utils.book_append_sheet(wb, ws, 'MASTER');   // nama sheet WAJIB "MASTER"
-  zip.file('MASTER.xlsx', window.XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+  zip.file('MASTER.xlsx', masterXlsxBytes(seed, okRows, { label, batchId }));
 
   const akd = akdNeeded(okRows);
   zip.file('AKD_DIBUTUHKAN.txt', akd.join('\r\n') + '\r\n');

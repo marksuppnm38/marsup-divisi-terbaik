@@ -9,7 +9,7 @@ import {
   buildRow, defaultSettings, SETTINGS_FIELDS, collapse, splitBatches, akdDigits, deriveKat3,
 } from './build.js';
 import {
-  getDeps, fetchRpcMap, checkThumbs, fetchScriptText, prepareRenderer, buildOperatorZip, SCRIPT_ASSET,
+  getDeps, fetchRpcMap, checkThumbs, fetchScriptText, prepareRenderer, buildOperatorZip, buildMasterOnly, SCRIPT_ASSET,
 } from './bundle.js';
 
 function escapeHtml(s) {
@@ -479,8 +479,12 @@ export async function mount(container) {
     $('uwBuild').disabled = true; $('uwCancel').hidden = false;
     try {
       const deps = await getDeps();
-      $('uwBuildInfo').textContent = 'Menyiapkan font, logo, dan library...';
-      const rend = await prepareRenderer(deps, S.settings);
+      const masterOnly = (container.querySelector('input[name="uwMode"]:checked') || {}).value === 'master';
+      let rend = null;
+      if (!masterOnly) {
+        $('uwBuildInfo').textContent = 'Menyiapkan font, logo, dan library...';
+        rend = await prepareRenderer(deps, S.settings);
+      }
       const n = Math.max(1, Math.min(20, parseInt($('uwOps').value, 10) || 1));
       const names = $('uwNames').value.split(',').map((x) => collapse(x)).filter(Boolean);
       const d = new Date(); const pad = (x) => String(x).padStart(2, '0');
@@ -490,13 +494,15 @@ export async function mount(container) {
       const report = [];
       for (let i = 0; i < parts.length && !stop(); i += 1) {
         const label = names[i] || `OP${i + 1}`;
-        const out = await buildOperatorZip(deps, rend, {
-          label, batchId, records: parts[i], seed: S.seed, settings: S.settings, scriptText: S.scriptText, stop,
-          onProgress: (done, total) => { setProg('uwBuildProg', done, total); $('uwBuildInfo').textContent = `Paket ${i + 1}/${parts.length} (${label}): ${done}/${total} SKU`; },
-        });
+        const out = masterOnly
+          ? await buildMasterOnly({ label, batchId, records: parts[i], seed: S.seed })
+          : await buildOperatorZip(deps, rend, {
+            label, batchId, records: parts[i], seed: S.seed, settings: S.settings, scriptText: S.scriptText, stop,
+            onProgress: (done, total) => { setProg('uwBuildProg', done, total); $('uwBuildInfo').textContent = `Paket ${i + 1}/${parts.length} (${label}): ${done}/${total} SKU`; },
+          });
         if (!out) break;
         deps.triggerDownload(out.blob, out.name);
-        report.push(`${out.name}: ${out.ok.length} SKU${out.gagal.length ? `, ${out.gagal.length} gagal dibuat (lihat GAGAL_DIBUAT.txt)` : ''}`);
+        report.push(`${out.name}: ${out.ok.length} SKU${out.gagal && out.gagal.length ? `, ${out.gagal.length} gagal dibuat (lihat GAGAL_DIBUAT.txt)` : ''}`);
         await new Promise((r) => setTimeout(r, 900));   // jeda supaya browser tidak memblokir unduhan beruntun
       }
       setProg('uwBuildProg', 0, 0);

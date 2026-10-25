@@ -99,8 +99,12 @@ export const UPLOADER_WIKI_MARKUP = `
   <div class="card uw-card" id="uwBuildCard" hidden>
     <div class="uw-step">4. Bangun &amp; unduh paket</div>
     <div class="uw-muted" id="uwScriptInfo"></div>
+    <div class="uw-modes" role="radiogroup" aria-label="Isi unduhan">
+      <label class="uw-check"><input type="radio" name="uwMode" value="full" checked> <span><b>Bundle lengkap</b> &mdash; MASTER.xlsx + SPEK + STRUKTUR_HARGA + THUMBNAILS (zip)</span></label>
+      <label class="uw-check"><input type="radio" name="uwMode" value="master"> <span><b>Hanya MASTER</b> &mdash; satu file .xlsx per operator, tanpa membuat PDF/thumbnail (cepat). Operator harus sudah memegang berkas dokumennya.</span></label>
+    </div>
     <div class="uw-actions">
-      <button class="btn btn-accent" id="uwBuild">Bangun &amp; unduh paket</button>
+      <button class="btn btn-accent" id="uwBuild">Bangun &amp; unduh</button>
       <button class="btn btn-ghost" id="uwCancel" hidden>Batal</button>
       <span class="uw-muted" id="uwBuildInfo"></span>
     </div>

@@ -104,3 +104,5 @@
 }
 .uw-page .uw-bar-msg { font-size: 12px; color: var(--danger); }
 .uw-page .uw-bar .field-input { width: 230px; }
+.uw-page .uw-modes { margin: 10px 0 2px; }
+.uw-page .uw-modes .uw-check { align-items: flex-start; }
