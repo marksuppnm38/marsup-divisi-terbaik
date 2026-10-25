@@ -78,6 +78,8 @@ export async function mount(container) {
     settings: Object.assign(defaultSettings(seed), lsGet(LS_SETTINGS, {})),
     akdMap: Object.assign({}, seed.akdMap, lsGet(LS_AKD, {})),
     akdHints: new Map(),
+    // Pemetaan AKD dibagi ke seluruh tim lewat kolom upload_* di tabel akd (lihat sql/uploader-wiki-akd-mapping.sql).
+    akdDb: { ok: null, err: '', info: '', ids: new Map(), saved: new Map(), status: new Map(), pending: new Set() },
     needAkd: new Set(),
     selected: new Map(),     // KODE_UPPER -> baris hasil pencarian (tetap terkumpul antar pencarian)
     hits: [],                // hasil pencarian terakhir (yang tampil di daftar)
@@ -112,7 +114,7 @@ export async function mount(container) {
       const hint = h ? [h.nama_akd, h.kategori_set].filter(Boolean).join(' | ') : '';
       const need = S.needAkd.has(d) && (!collapse(m.kat2) || !collapse(m.kbki));
       return `<div class="uw-akd-row${need ? ' need' : ''}" data-akd="${d}">
-        <span class="uw-akd-no" title="${escapeHtml(hint)}">${d}</span>
+        <span class="uw-akd-no" title="${escapeHtml(hint)}">${d}<small class="uw-akd-st">${escapeHtml(akdStatus(d))}</small></span>
         <input class="field-input" data-f="kat2" placeholder="${escapeHtml(hint || 'Kategori 2')}" value="${escapeHtml(m.kat2 || '')}">
         <input class="field-input" data-f="kat3" placeholder="${escapeHtml(m.kat2 ? deriveKat3(m.kat2) : 'Kategori 3 (otomatis)')}" value="${escapeHtml(m.kat3 || '')}">
         <input class="field-input" data-f="kbki" placeholder="KBKI" value="${escapeHtml(m.kbki || '')}">
@@ -122,6 +124,102 @@ export async function mount(container) {
   }
   const saveSettings = () => lsSet(LS_SETTINGS, S.settings);
   const saveAkd = () => lsSet(LS_AKD, S.akdMap);
+
+  // ---------- pemetaan AKD di database (dibagi ke seluruh tim) ----------
+  const sig = (m) => `${collapse(m && m.kat2)}|${collapse(m && m.kat3)}|${collapse(m && m.kbki)}`;
+  const complete = (m) => !!(m && collapse(m.kat2) && collapse(m.kbki));
+  function akdStatus(d) {
+    const m = S.akdMap[d] || {};
+    const st = S.akdDb.status.get(d);
+    if (st) return st;
+    if (!complete(m)) return '';
+    if (S.akdDb.saved.get(d) === sig(m)) return 'tersimpan di DB';
+    if (S.seed.akdMap[d] && sig(S.seed.akdMap[d]) === sig(m)) return 'bawaan';
+    return S.akdDb.ok === false ? 'lokal saja' : 'belum tersimpan';
+  }
+  function setAkdStatus(d, text) {
+    if (text == null) S.akdDb.status.delete(d); else S.akdDb.status.set(d, text);
+    const el = container.querySelector(`[data-akd="${d}"] .uw-akd-st`);
+    if (el) el.textContent = akdStatus(d);
+  }
+  function renderAkdDbInfo() {
+    $('uwAkdDb').textContent = S.akdDb.err || S.akdDb.info || (S.akdDb.ok ? `Tersambung ke database: ${S.akdDb.saved.size} AKD sudah dipetakan dan dibagi ke seluruh tim. Isian baru otomatis tersimpan.` : '');
+  }
+  async function loadAkdFromDb() {
+    try {
+      const rows = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await sb().from('akd').select('id,no_akd,upload_kategori2,upload_kategori3,upload_kbki').not('upload_kbki', 'is', null).range(from, from + 999);
+        if (error) throw error;
+        rows.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+      const dbMap = {};
+      S.akdDb.saved.clear();
+      rows.forEach((r) => {
+        const d = akdDigits(r.no_akd);
+        if (!d || !collapse(r.upload_kategori2) || !collapse(r.upload_kbki)) return;
+        dbMap[d] = { kat2: collapse(r.upload_kategori2), kat3: collapse(r.upload_kategori3), kbki: collapse(r.upload_kbki) };
+        S.akdDb.ids.set(d, r.id);
+        S.akdDb.saved.set(d, sig(dbMap[d]));
+      });
+      S.akdDb.ok = true; S.akdDb.err = '';
+      // prioritas: database (hasil kerja seluruh tim) > isian lokal browser ini > bawaan seed
+      S.akdMap = Object.assign({}, S.seed.akdMap, lsGet(LS_AKD, {}), dbMap);
+    } catch (e) {
+      S.akdDb.ok = false;
+      const msg = (e && (e.message || e.details)) || String(e);
+      S.akdDb.err = (e && e.code === '42703') || /upload_|column/i.test(msg)
+        ? 'Kolom pemetaan belum ada di tabel akd -- jalankan sql/uploader-wiki-akd-mapping.sql di Supabase. Sementara itu pemetaan hanya tersimpan di browser ini.'
+        : `Tidak bisa membaca pemetaan dari database (${msg}). Memakai data di browser ini.`;
+    }
+    renderAkdDbInfo();
+  }
+  // Simpan SATU pemetaan ke baris akd yang nomornya cocok. Return teks status.
+  async function saveAkdToDb(d) {
+    const m = S.akdMap[d];
+    if (!complete(m)) return '';
+    if (S.akdDb.ok === false) return 'lokal saja';
+    setAkdStatus(d, 'menyimpan...');
+    try {
+      let id = S.akdDb.ids.get(d);
+      if (!id) {
+        const { data, error } = await sb().from('akd').select('id,no_akd').ilike('no_akd', `%${d}%`).limit(20);
+        if (error) throw error;
+        const hit = (data || []).find((r) => akdDigits(r.no_akd) === d);
+        if (!hit) return 'AKD ini belum ada di tabel akd (tambahkan di CRUD Produk > AKD Master)';
+        id = hit.id; S.akdDb.ids.set(d, id);
+      }
+      let by = null;
+      try { const ses = window.PNMAuth && (await window.PNMAuth.getSession()); by = ses && ses.user && ses.user.email; } catch { /* opsional */ }
+      const { error } = await sb().from('akd').update({
+        upload_kategori2: collapse(m.kat2), upload_kategori3: collapse(m.kat3) || null, upload_kbki: collapse(m.kbki),
+        upload_map_by: by || null, upload_map_at: new Date().toISOString(),
+      }).eq('id', id);
+      if (error) throw error;
+      S.akdDb.saved.set(d, sig(m));
+      renderAkdDbInfo();
+      return null;   // null = hapus override status -> tampil "tersimpan di DB"
+    } catch (e) {
+      return 'gagal menyimpan: ' + ((e && e.message) || e);
+    }
+  }
+  function queueAkdSave(d) {
+    const p = saveAkdToDb(d).then((st) => setAkdStatus(d, st === '' ? null : st)).finally(() => S.akdDb.pending.delete(p));
+    S.akdDb.pending.add(p);
+    return p;
+  }
+  const flushAkdSaves = () => Promise.allSettled(Array.from(S.akdDb.pending));
+  // Isian lokal (browser ini) yang belum ada di DB ikut disalin ke DB sekali, supaya hasil kerja lama tidak hilang.
+  async function pushLocalMissing() {
+    if (!S.akdDb.ok) return;
+    const local = lsGet(LS_AKD, {});
+    const todo = Object.keys(local).filter((d) => complete(local[d]) && S.akdDb.saved.get(d) !== sig(local[d])
+      && !(S.seed.akdMap[d] && sig(S.seed.akdMap[d]) === sig(local[d])) && sig(S.akdMap[d]) === sig(local[d]));
+    let n = 0;
+    for (const d of todo.slice(0, 100)) { const st = await saveAkdToDb(d); if (st === null) n += 1; setAkdStatus(d, st === '' ? null : st); }
+    if (n) { S.akdDb.info = `${n} pemetaan dari browser ini disalin ke database.`; renderAkdDbInfo(); }
+  }
 
   // ---------- cari & pilih produk (RPC search_produk_dengan_harga) ----------
   // Sama dengan yang dipakai Converter / CRUD Produk: ranking token + trigram di server, jadi cepat dan toleran
@@ -235,6 +333,10 @@ export async function mount(container) {
       ready.push({ p, rpc, row: r.row });
     });
     S.needAkd = needAkd;
+    // AKD yang belum dipetakan langsung dibuatkan baris kosong di bagian Pengaturan (tinggal diisi); baris kosong tetap membuat SKU dilewati.
+    let added = false;
+    needAkd.forEach((d) => { if (!S.akdMap[d]) { S.akdMap[d] = { kat2: '', kat3: '', kbki: '' }; added = true; } });
+    if (added) saveAkd();
     S.result = { ready, skipped, warn };
     renderResult();
   }
@@ -276,6 +378,9 @@ export async function mount(container) {
     if (S.busy) return;
     S.busy = true; S.cancel = false; $('uwCheck').disabled = true;
     try {
+      await flushAkdSaves();
+      await loadAkdFromDb();   // ambil pemetaan terbaru yang diisi operator lain
+      renderAkd();
       const needProd = Array.from(S.selected.entries()).filter(([k]) => !S.prodCache.has(k)).map(([, r]) => r.kode_produk);
       if (needProd.length) {
         $('uwCheckInfo').textContent = 'Mengambil data produk...';
@@ -376,17 +481,28 @@ export async function mount(container) {
           const obj = JSON.parse(ta.value);
           Object.keys(obj).forEach((k) => { const d = akdDigits(k); if (d && obj[k] && typeof obj[k] === 'object') S.akdMap[d] = { kat2: obj[k].kat2 || '', kat3: obj[k].kat3 || '', kbki: obj[k].kbki || '' }; });
           saveAkd(); renderAkd(); ta.hidden = true; ta.value = ''; btn.textContent = 'Muat dari JSON';
+          Object.keys(obj).map(akdDigits).filter(Boolean).forEach((d) => queueAkdSave(d));
         } catch { btn.textContent = 'JSON tidak valid'; setTimeout(() => { btn.textContent = 'Terapkan JSON'; }, 1500); }
         break;
       }
       case 'uwReset':
-        if (window.confirm('Kembalikan semua konstanta & pemetaan AKD ke default bawaan?')) {
-          S.settings = defaultSettings(S.seed); S.akdMap = Object.assign({}, S.seed.akdMap);
-          saveSettings(); saveAkd(); renderFields(); renderAkd();
+        if (window.confirm('Kembalikan konstanta & isian lokal ke default bawaan? (Pemetaan AKD yang sudah tersimpan di database TIDAK dihapus.)')) {
+          S.settings = defaultSettings(S.seed); lsSet(LS_AKD, {}); S.akdMap = Object.assign({}, S.seed.akdMap);
+          saveSettings(); renderFields();
+          loadAkdFromDb().then(renderAkd);
         }
         break;
       default:
-        if (btn.dataset.act === 'akd-del' && row) { delete S.akdMap[row.dataset.akd]; saveAkd(); renderAkd(); }
+        if (btn.dataset.act === 'akd-del' && row) {
+          const d = row.dataset.akd;
+          if (S.akdDb.saved.has(d)) {
+            if (!window.confirm('Pemetaan ini tersimpan di database dan dipakai semua operator. Hapus juga dari database?')) break;
+            sb().from('akd').update({ upload_kategori2: null, upload_kategori3: null, upload_kbki: null, upload_map_by: null, upload_map_at: null }).eq('id', S.akdDb.ids.get(d))
+              .then(({ error }) => { if (error) { S.akdDb.err = 'Gagal menghapus dari database: ' + error.message; renderAkdDbInfo(); } });
+            S.akdDb.saved.delete(d);
+          }
+          delete S.akdMap[d]; const loc = lsGet(LS_AKD, {}); delete loc[d]; lsSet(LS_AKD, loc); S.akdDb.status.delete(d); renderAkd(); renderAkdDbInfo();
+        }
     }
   });
   on(container, 'change', (ev) => {
@@ -396,6 +512,7 @@ export async function mount(container) {
       if (hit) { if (t.checked) S.selected.set(t.dataset.sel, hit); else S.selected.delete(t.dataset.sel); renderSelected(); }
     }
     if (t.dataset && t.dataset.set && t.tagName === 'SELECT') { S.settings[t.dataset.set] = t.value; saveSettings(); }
+    if (t.dataset && t.dataset.f) { const r = t.closest('[data-akd]'); if (r) queueAkdSave(r.dataset.akd); }   // simpan ke DB saat selesai mengedit (blur)
     if (t.id === 'uwOps') renderResult();
     if (t.id === 'uwHideLinked') renderHits();
   });
@@ -408,7 +525,7 @@ export async function mount(container) {
     } else if (t.dataset && t.dataset.set) { S.settings[t.dataset.set] = t.value; saveSettings(); }
     else if (t.dataset && t.dataset.f) {
       const row = t.closest('[data-akd]');
-      if (row) { const m = S.akdMap[row.dataset.akd] || (S.akdMap[row.dataset.akd] = {}); m[t.dataset.f] = t.value; saveAkd(); }
+      if (row) { const m = S.akdMap[row.dataset.akd] || (S.akdMap[row.dataset.akd] = {}); m[t.dataset.f] = t.value; saveAkd(); setAkdStatus(row.dataset.akd, null); }
     }
   });
   on(container, 'keydown', (ev) => {
@@ -418,6 +535,7 @@ export async function mount(container) {
   renderFields();
   renderAkd();
   renderSelected();
+  loadAkdFromDb().then(() => { if (!isMounted) return; renderAkd(); return pushLocalMissing(); });
   fetchScriptText().then((t) => { S.scriptText = t; if (isMounted && S.result) renderResult(); });
 }
 

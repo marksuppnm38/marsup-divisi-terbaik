@@ -39,6 +39,7 @@ export const UPLOADER_WIKI_MARKUP = `
     <div class="uw-group">
       <span class="field-label">Pemetaan AKD &rarr; Kategori &amp; KBKI</span>
       <div class="uw-muted">Kategori 2, Kategori 3, dan KBKI diturunkan dari nomor AKD. Script Tampermonkey mencocokkannya secara toleran, jadi tidak harus sama persis dengan menu INAPROC. AKD yang belum dipetakan akan dilewati, bukan ditebak.</div>
+      <div class="uw-muted" id="uwAkdDb"></div>
       <div id="uwAkd" class="uw-akd"></div>
       <div class="uw-actions">
         <input class="field-input" id="uwAkdNew" placeholder="nomor AKD baru (angka)" style="max-width:220px">

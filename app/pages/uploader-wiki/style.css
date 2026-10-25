@@ -37,3 +37,4 @@
 .uw-page .uw-tag.warn { border-color: #d97706; color: #d97706; }
 .uw-page .uw-sel { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--border-strong); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 11px; font-family: 'JetBrains Mono', monospace; }
 .uw-page .uw-sel button { border: 0; background: none; cursor: pointer; color: inherit; font-size: 14px; line-height: 1; }
+.uw-page .uw-akd-st { display: block; font-family: inherit; font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
