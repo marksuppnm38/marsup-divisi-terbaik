@@ -107,20 +107,83 @@ export async function mount(container) {
     const ov = `<label style="grid-column:1/-1">Override stok per kode (satu per baris, format KODE=jumlah)<textarea class="field-input" data-set="stokOverride" style="min-height:60px">${escapeHtml(S.settings.stokOverride)}</textarea></label>`;
     $('uwFields').innerHTML = inputs.concat([tpl], stok, [ov]).join('');
   }
+  // ---------- pemetaan AKD: tampilan ----------
+  // Baris yang perlu perhatian (belum lengkap / belum disimpan / gagal) selalu tampil; yang sudah rapi dilipat di "Sudah dipetakan".
+  const ATTN = new Set(['empty', 'dirty', 'err', 'saving']);
+  function rowHtml(d) {
+    const m = S.akdMap[d] || {};
+    const h = S.akdHints.get(d);
+    const hint = h ? [h.nama_akd, h.kategori_set].filter(Boolean).join(' \u00b7 ') : '';
+    const f = (key, label, ph) => `<label class="uw-akd-f"><span>${label}</span><input class="field-input" data-f="${key}" placeholder="${escapeHtml(ph)}" value="${escapeHtml(m[key] || '')}"></label>`;
+    return `<div class="uw-akd-row" data-akd="${d}">
+      <div class="uw-akd-id">
+        <span class="uw-akd-no">${d}</span>
+        <span class="uw-akd-st"></span>
+        ${hint ? `<small class="uw-akd-hint" title="${escapeHtml(hint)}">${escapeHtml(hint)}</small>` : ''}
+      </div>
+      ${f('kat2', 'Kategori 2', '')}${f('kat3', 'Kategori 3', 'otomatis')}${f('kbki', 'KBKI', '')}
+      <div class="uw-akd-act">
+        <button class="btn uw-save" data-act="akd-save">Simpan</button>
+        <button class="btn btn-ghost uw-del" data-act="akd-del" title="Hapus" aria-label="Hapus AKD ${d}">&times;</button>
+      </div>
+      <div class="uw-akd-msg" hidden></div>
+    </div>`;
+  }
   function renderAkd() {
-    const rows = Object.keys(S.akdMap).sort().map((d) => {
-      const m = S.akdMap[d] || {};
-      const h = S.akdHints.get(d);
-      const hint = h ? [h.nama_akd, h.kategori_set].filter(Boolean).join(' | ') : '';
-      const need = S.needAkd.has(d) && (!collapse(m.kat2) || !collapse(m.kbki));
-      return `<div class="uw-akd-row${need ? ' need' : ''}" data-akd="${d}">
-        <span class="uw-akd-no" title="${escapeHtml(hint)}">${d}<small class="uw-akd-st">${escapeHtml(akdStatus(d))}</small></span>
-        <input class="field-input" data-f="kat2" placeholder="${escapeHtml(hint || 'Kategori 2')}" value="${escapeHtml(m.kat2 || '')}">
-        <input class="field-input" data-f="kat3" placeholder="${escapeHtml(m.kat2 ? deriveKat3(m.kat2) : 'Kategori 3 (otomatis)')}" value="${escapeHtml(m.kat3 || '')}">
-        <input class="field-input" data-f="kbki" placeholder="KBKI" value="${escapeHtml(m.kbki || '')}">
-        <button class="btn btn-ghost" data-act="akd-del" title="Hapus">&times;</button></div>`;
-    });
-    $('uwAkd').innerHTML = rows.join('') || '<span class="uw-muted">Belum ada pemetaan.</span>';
+    const keys = Object.keys(S.akdMap).sort();
+    const attn = keys.filter((d) => ATTN.has(akdState(d).key));
+    const done = keys.filter((d) => !ATTN.has(akdState(d).key));
+    $('uwAkd').innerHTML = attn.map(rowHtml).join('')
+      || `<div class="uw-empty">${done.length ? 'Semua AKD sudah lengkap.' : 'Belum ada pemetaan. Tambahkan nomor AKD di atas.'}</div>`;
+    const box = $('uwAkdDone');
+    box.hidden = !done.length;
+    $('uwAkdDoneN').textContent = done.length ? String(done.length) : '';
+    if (box.open) renderAkdDone(done);
+    container.querySelectorAll('#uwAkd [data-akd]').forEach((row) => paintRow(row.dataset.akd));
+    paintSummary();
+  }
+  function renderAkdDone(done) {
+    const q = collapse($('uwAkdFind').value).toLowerCase();
+    const list = (done || Object.keys(S.akdMap).sort().filter((d) => !ATTN.has(akdState(d).key)))
+      .filter((d) => {
+        if (!q) return true;
+        const m = S.akdMap[d] || {}; const h = S.akdHints.get(d) || {};
+        return `${d} ${m.kat2 || ''} ${m.kat3 || ''} ${m.kbki || ''} ${h.nama_akd || ''}`.toLowerCase().includes(q);
+      });
+    const SHOW = 60;
+    $('uwAkdDoneList').innerHTML = list.slice(0, SHOW).map(rowHtml).join('')
+      + (list.length > SHOW ? `<div class="uw-empty">Menampilkan ${SHOW} dari ${list.length}. Ketik di kolom cari untuk mempersempit.</div>` : '')
+      || '<div class="uw-empty">Tidak ada yang cocok.</div>';
+    container.querySelectorAll('#uwAkdDoneList [data-akd]').forEach((row) => paintRow(row.dataset.akd));
+  }
+  // Status & tombol Simpan satu baris diperbarui di tempat (tanpa render ulang) supaya kursor tidak lompat saat mengetik.
+  function paintRow(d) {
+    const row = container.querySelector(`[data-akd="${d}"]`);
+    if (!row) return;
+    const s = akdState(d);
+    row.dataset.state = s.key;
+    const st = row.querySelector('.uw-akd-st'); st.textContent = s.label; st.dataset.tone = s.tone;
+    const btn = row.querySelector('[data-act="akd-save"]');
+    btn.disabled = !s.canSave;
+    btn.classList.toggle('btn-accent', s.canSave); btn.classList.toggle('btn-ghost', !s.canSave);
+    btn.textContent = s.key === 'saving' ? 'Menyimpan...' : 'Simpan';
+    const msg = row.querySelector('.uw-akd-msg'); msg.hidden = !s.msg; msg.textContent = s.msg || '';
+    const m = S.akdMap[d] || {};
+    row.querySelector('[data-f="kat3"]').placeholder = m.kat2 ? deriveKat3(m.kat2) : 'otomatis';
+    paintSummary();
+  }
+  function paintSummary() {
+    const states = Object.keys(S.akdMap).map((d) => akdState(d).key);
+    const dirty = states.filter((k) => k === 'dirty').length;
+    const need = states.filter((k) => k === 'empty' || k === 'err').length;
+    const all = $('uwAkdSaveAll');
+    all.hidden = dirty < 2; all.textContent = `Simpan semua (${dirty})`;
+    const note = $('uwSumNote');
+    const parts = [];
+    if (need) parts.push(`${need} perlu dilengkapi`);
+    if (dirty) parts.push(`${dirty} belum disimpan`);
+    note.textContent = parts.length ? parts.join(' \u00b7 ') : 'Default sudah benar. Buka kalau perlu mengubah.';
+    note.dataset.tone = parts.length ? 'warn' : '';
   }
   const saveSettings = () => lsSet(LS_SETTINGS, S.settings);
   const saveAkd = () => lsSet(LS_AKD, S.akdMap);
@@ -128,22 +191,23 @@ export async function mount(container) {
   // ---------- pemetaan AKD di database (dibagi ke seluruh tim) ----------
   const sig = (m) => `${collapse(m && m.kat2)}|${collapse(m && m.kat3)}|${collapse(m && m.kbki)}`;
   const complete = (m) => !!(m && collapse(m.kat2) && collapse(m.kbki));
-  function akdStatus(d) {
+  // Keadaan satu baris pemetaan. canSave = tombol Simpan aktif.
+  function akdState(d) {
     const m = S.akdMap[d] || {};
     const st = S.akdDb.status.get(d);
-    if (st) return st;
-    if (!complete(m)) return '';
-    if (S.akdDb.saved.get(d) === sig(m)) return 'tersimpan di DB';
-    if (S.seed.akdMap[d] && sig(S.seed.akdMap[d]) === sig(m)) return 'bawaan';
-    return S.akdDb.ok === false ? 'lokal saja' : 'belum tersimpan';
-  }
-  function setAkdStatus(d, text) {
-    if (text == null) S.akdDb.status.delete(d); else S.akdDb.status.set(d, text);
-    const el = container.querySelector(`[data-akd="${d}"] .uw-akd-st`);
-    if (el) el.textContent = akdStatus(d);
+    if (st && st.t === 'saving') return { key: 'saving', tone: 'info', label: 'Menyimpan...', canSave: false };
+    if (!complete(m)) return { key: 'empty', tone: 'warn', label: 'Belum lengkap', canSave: false };
+    if (st && st.t === 'err') return { key: 'err', tone: 'err', label: 'Gagal menyimpan', msg: st.text, canSave: S.akdDb.ok !== false };
+    if (S.akdDb.saved.get(d) === sig(m)) return { key: 'saved', tone: 'ok', label: 'Tersimpan', canSave: false };
+    if (S.seed.akdMap[d] && sig(S.seed.akdMap[d]) === sig(m)) return { key: 'seed', tone: 'muted', label: 'Bawaan', canSave: false };
+    if (S.akdDb.ok === false) return { key: 'local', tone: 'muted', label: 'Hanya di browser ini', canSave: false };
+    return { key: 'dirty', tone: 'warn', label: 'Belum disimpan', canSave: true };
   }
   function renderAkdDbInfo() {
-    $('uwAkdDb').textContent = S.akdDb.err || S.akdDb.info || (S.akdDb.ok ? `Tersambung ke database: ${S.akdDb.saved.size} AKD sudah dipetakan dan dibagi ke seluruh tim. Isian baru otomatis tersimpan.` : '');
+    const el = $('uwAkdDb');
+    const text = S.akdDb.err || S.akdDb.info || (S.akdDb.ok ? `Tersambung ke database \u00b7 ${S.akdDb.saved.size} AKD dibagi ke tim` : '');
+    el.textContent = text;
+    el.dataset.tone = S.akdDb.err ? 'err' : (S.akdDb.ok ? 'ok' : '');
   }
   async function loadAkdFromDb() {
     try {
@@ -179,15 +243,14 @@ export async function mount(container) {
   async function saveAkdToDb(d) {
     const m = S.akdMap[d];
     if (!complete(m)) return '';
-    if (S.akdDb.ok === false) return 'lokal saja';
-    setAkdStatus(d, 'menyimpan...');
+    if (S.akdDb.ok === false) return 'Database tidak tersambung, pemetaan hanya tersimpan di browser ini.';
     try {
       let id = S.akdDb.ids.get(d);
       if (!id) {
         const { data, error } = await sb().from('akd').select('id,no_akd').ilike('no_akd', `%${d}%`).limit(20);
         if (error) throw error;
         const hit = (data || []).find((r) => akdDigits(r.no_akd) === d);
-        if (!hit) return 'AKD ini belum ada di tabel akd (tambahkan di CRUD Produk > AKD Master)';
+        if (!hit) return 'AKD ini belum ada di tabel akd. Tambahkan dulu di CRUD Produk > AKD Master.';
         id = hit.id; S.akdDb.ids.set(d, id);
       }
       let by = null;
@@ -199,28 +262,22 @@ export async function mount(container) {
       if (error) throw error;
       S.akdDb.saved.set(d, sig(m));
       renderAkdDbInfo();
-      return null;   // null = hapus override status -> tampil "tersimpan di DB"
+      return null;   // null = sukses
     } catch (e) {
-      return 'gagal menyimpan: ' + ((e && e.message) || e);
+      return (e && e.message) || String(e);
     }
   }
   function queueAkdSave(d) {
-    const p = saveAkdToDb(d).then((st) => setAkdStatus(d, st === '' ? null : st)).finally(() => S.akdDb.pending.delete(p));
+    if (S.akdDb.status.get(d) && S.akdDb.status.get(d).t === 'saving') return Promise.resolve();
+    S.akdDb.status.set(d, { t: 'saving' }); paintRow(d);
+    const p = saveAkdToDb(d)
+      .then((err) => { if (err) S.akdDb.status.set(d, { t: 'err', text: err }); else S.akdDb.status.delete(d); })
+      .catch((e) => S.akdDb.status.set(d, { t: 'err', text: (e && e.message) || String(e) }))
+      .finally(() => { S.akdDb.pending.delete(p); paintRow(d); renderAkdDbInfo(); });
     S.akdDb.pending.add(p);
     return p;
   }
   const flushAkdSaves = () => Promise.allSettled(Array.from(S.akdDb.pending));
-  // Isian lokal (browser ini) yang belum ada di DB ikut disalin ke DB sekali, supaya hasil kerja lama tidak hilang.
-  async function pushLocalMissing() {
-    if (!S.akdDb.ok) return;
-    const local = lsGet(LS_AKD, {});
-    const todo = Object.keys(local).filter((d) => complete(local[d]) && S.akdDb.saved.get(d) !== sig(local[d])
-      && !(S.seed.akdMap[d] && sig(S.seed.akdMap[d]) === sig(local[d])) && sig(S.akdMap[d]) === sig(local[d]));
-    let n = 0;
-    for (const d of todo.slice(0, 100)) { const st = await saveAkdToDb(d); if (st === null) n += 1; setAkdStatus(d, st === '' ? null : st); }
-    if (n) { S.akdDb.info = `${n} pemetaan dari browser ini disalin ke database.`; renderAkdDbInfo(); }
-  }
-
   // ---------- cari & pilih produk (RPC search_produk_dengan_harga) ----------
   // Sama dengan yang dipakai Converter / CRUD Produk: ranking token + trigram di server, jadi cepat dan toleran
   // terhadap beda koma/titik/spasi. Pilihan disimpan di S.selected sehingga bisa dikumpulkan dari beberapa pencarian.
@@ -466,11 +523,12 @@ export async function mount(container) {
       case 'uwBuild': onBuild(); break;
       case 'uwCancel': S.cancel = true; break;
       case 'uwAkdAdd': {
-        const d = akdDigits($('uwAkdNew').value);
-        if (!d) break;
-        if (!S.akdMap[d]) S.akdMap[d] = { kat2: '', kat3: '', kbki: '' };
-        S.needAkd.add(d); saveAkd(); renderAkd(); $('uwAkdNew').value = ''; break;
+        addAkd();
+        break;
       }
+      case 'uwAkdSaveAll':
+        (async () => { for (const d of Object.keys(S.akdMap)) { if (akdState(d).key === 'dirty') await queueAkdSave(d); } })();
+        break;
       case 'uwAkdCopy':
         navigator.clipboard.writeText(JSON.stringify(S.akdMap, null, 1)).then(() => { btn.textContent = 'Tersalin'; setTimeout(() => { btn.textContent = 'Salin JSON'; }, 1500); }).catch(() => {});
         break;
@@ -481,7 +539,6 @@ export async function mount(container) {
           const obj = JSON.parse(ta.value);
           Object.keys(obj).forEach((k) => { const d = akdDigits(k); if (d && obj[k] && typeof obj[k] === 'object') S.akdMap[d] = { kat2: obj[k].kat2 || '', kat3: obj[k].kat3 || '', kbki: obj[k].kbki || '' }; });
           saveAkd(); renderAkd(); ta.hidden = true; ta.value = ''; btn.textContent = 'Muat dari JSON';
-          Object.keys(obj).map(akdDigits).filter(Boolean).forEach((d) => queueAkdSave(d));
         } catch { btn.textContent = 'JSON tidak valid'; setTimeout(() => { btn.textContent = 'Terapkan JSON'; }, 1500); }
         break;
       }
@@ -493,6 +550,7 @@ export async function mount(container) {
         }
         break;
       default:
+        if (btn.dataset.act === 'akd-save' && row) { queueAkdSave(row.dataset.akd); break; }
         if (btn.dataset.act === 'akd-del' && row) {
           const d = row.dataset.akd;
           if (S.akdDb.saved.has(d)) {
@@ -512,7 +570,6 @@ export async function mount(container) {
       if (hit) { if (t.checked) S.selected.set(t.dataset.sel, hit); else S.selected.delete(t.dataset.sel); renderSelected(); }
     }
     if (t.dataset && t.dataset.set && t.tagName === 'SELECT') { S.settings[t.dataset.set] = t.value; saveSettings(); }
-    if (t.dataset && t.dataset.f) { const r = t.closest('[data-akd]'); if (r) queueAkdSave(r.dataset.akd); }   // simpan ke DB saat selesai mengedit (blur)
     if (t.id === 'uwOps') renderResult();
     if (t.id === 'uwHideLinked') renderHits();
   });
@@ -522,20 +579,44 @@ export async function mount(container) {
       // satu baris -> cari otomatis setelah berhenti mengetik; banyak baris -> tunggu klik Cari / Ctrl+Enter
       clearTimeout(S.searchTimer);
       if (!/[\r\n]/.test(t.value.trim()) && collapse(t.value).length >= 3) S.searchTimer = setTimeout(onSearch, 450);
-    } else if (t.dataset && t.dataset.set) { S.settings[t.dataset.set] = t.value; saveSettings(); }
+    } else if (t.id === 'uwAkdFind') { renderAkdDone(); }
+    else if (t.id === 'uwAkdNew') { $('uwAkdAddMsg').textContent = ''; }
+    else if (t.dataset && t.dataset.set) { S.settings[t.dataset.set] = t.value; saveSettings(); }
     else if (t.dataset && t.dataset.f) {
       const row = t.closest('[data-akd]');
-      if (row) { const m = S.akdMap[row.dataset.akd] || (S.akdMap[row.dataset.akd] = {}); m[t.dataset.f] = t.value; saveAkd(); setAkdStatus(row.dataset.akd, null); }
+      if (row) { const m = S.akdMap[row.dataset.akd] || (S.akdMap[row.dataset.akd] = {}); m[t.dataset.f] = t.value; saveAkd(); const stt = S.akdDb.status.get(row.dataset.akd); if (!stt || stt.t !== 'saving') S.akdDb.status.delete(row.dataset.akd); paintRow(row.dataset.akd); }
     }
   });
   on(container, 'keydown', (ev) => {
+    if (ev.target.id === 'uwAkdNew' && ev.key === 'Enter') { ev.preventDefault(); addAkd(); return; }
     if (ev.target.id === 'uwQuery' && ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); clearTimeout(S.searchTimer); onSearch(); }
   });
+
+  // Tambah nomor AKD baru (atau tunjukkan barisnya kalau sudah ada), lalu fokus ke kolom Kategori 2.
+  function addAkd() {
+    const inp = $('uwAkdNew');
+    const d = akdDigits(inp.value);
+    $('uwAkdAddMsg').textContent = '';
+    if (!d) { $('uwAkdAddMsg').textContent = inp.value.trim() ? 'Nomor AKD harus berupa angka, minimal 8 digit.' : ''; inp.focus(); return; }
+    const exists = !!S.akdMap[d];
+    if (!exists) S.akdMap[d] = { kat2: '', kat3: '', kbki: '' };
+    S.needAkd.add(d); saveAkd();
+    inp.value = '';
+    if (exists && !ATTN.has(akdState(d).key)) { $('uwAkdFind').value = d; $('uwAkdDone').open = true; }
+    renderAkd();
+    if (exists && !ATTN.has(akdState(d).key)) renderAkdDone();
+    const f = container.querySelector(`[data-akd="${d}"] [data-f="kat2"]`);
+    if (f) { f.focus(); f.scrollIntoView({ block: 'nearest' }); }
+  }
+  const doneBox = $('uwAkdDone');
+  const onToggle = () => { if (doneBox.open) renderAkdDone(); };
+  doneBox.addEventListener('toggle', onToggle);
+  handlers.push(() => doneBox.removeEventListener('toggle', onToggle));
 
   renderFields();
   renderAkd();
   renderSelected();
-  loadAkdFromDb().then(() => { if (!isMounted) return; renderAkd(); return pushLocalMissing(); });
+  loadAkdFromDb().then(() => { if (isMounted) renderAkd(); });
   fetchScriptText().then((t) => { S.scriptText = t; if (isMounted && S.result) renderResult(); });
 }
 

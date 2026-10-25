@@ -34,22 +34,52 @@ export const UPLOADER_WIKI_MARKUP = `
   </div>
 
   <details class="card uw-card" id="uwSettings">
-    <summary class="uw-step">2. Pengaturan &amp; pemetaan AKD <span class="uw-muted">(default sudah benar; buka kalau perlu mengubah)</span></summary>
-    <div class="uw-group"><span class="field-label">Konstanta MASTER</span><div id="uwFields" class="uw-fields"></div></div>
-    <div class="uw-group">
-      <span class="field-label">Pemetaan AKD &rarr; Kategori &amp; KBKI</span>
-      <div class="uw-muted">Kategori 2, Kategori 3, dan KBKI diturunkan dari nomor AKD. Script Tampermonkey mencocokkannya secara toleran, jadi tidak harus sama persis dengan menu INAPROC. AKD yang belum dipetakan akan dilewati, bukan ditebak.</div>
-      <div class="uw-muted" id="uwAkdDb"></div>
-      <div id="uwAkd" class="uw-akd"></div>
-      <div class="uw-actions">
-        <input class="field-input" id="uwAkdNew" placeholder="nomor AKD baru (angka)" style="max-width:220px">
+    <summary class="uw-step uw-sum">
+      <span>2. Pengaturan &amp; pemetaan AKD</span>
+      <span class="uw-sum-note" id="uwSumNote">Default sudah benar. Buka kalau perlu mengubah.</span>
+    </summary>
+
+    <section class="uw-sec">
+      <div class="uw-sec-head">
+        <div>
+          <h3 class="uw-h3">Pemetaan AKD</h3>
+          <p class="uw-muted">Kategori 2, Kategori 3, dan KBKI diturunkan dari nomor AKD. AKD yang belum dipetakan dilewati, tidak ditebak.</p>
+        </div>
+        <span class="uw-db" id="uwAkdDb"></span>
+      </div>
+
+      <div class="uw-bar">
+        <input class="field-input" id="uwAkdNew" inputmode="numeric" placeholder="Nomor AKD baru (min. 8 digit)" aria-label="Nomor AKD baru">
         <button class="btn btn-ghost" id="uwAkdAdd">Tambah</button>
+        <span class="uw-bar-msg" id="uwAkdAddMsg" role="status"></span>
+        <span class="uw-spacer"></span>
+        <button class="btn btn-accent" id="uwAkdSaveAll" hidden>Simpan semua</button>
+      </div>
+
+      <div class="uw-akd-head" aria-hidden="true"><span>AKD</span><span>Kategori 2</span><span>Kategori 3</span><span>KBKI</span><span></span></div>
+      <div id="uwAkd" class="uw-akd"></div>
+
+      <details class="uw-sub" id="uwAkdDone" hidden>
+        <summary>Sudah dipetakan <span class="uw-count" id="uwAkdDoneN"></span></summary>
+        <input class="field-input uw-find" id="uwAkdFind" placeholder="Cari nomor AKD, kategori, atau KBKI" aria-label="Cari pemetaan AKD">
+        <div id="uwAkdDoneList" class="uw-akd"></div>
+      </details>
+    </section>
+
+    <details class="uw-sub">
+      <summary>Konstanta MASTER</summary>
+      <div id="uwFields" class="uw-fields"></div>
+    </details>
+
+    <details class="uw-sub">
+      <summary>Lanjutan</summary>
+      <div class="uw-actions">
         <button class="btn btn-ghost" id="uwAkdCopy">Salin JSON</button>
         <button class="btn btn-ghost" id="uwAkdImport">Muat dari JSON</button>
-        <button class="btn btn-ghost" id="uwReset">Reset semua ke default</button>
+        <button class="btn btn-ghost" id="uwReset">Reset ke default</button>
       </div>
-      <textarea class="field-input uw-json" id="uwAkdJson" placeholder="Tempel JSON pemetaan AKD di sini lalu klik Muat dari JSON" hidden></textarea>
-    </div>
+      <textarea class="field-input uw-json" id="uwAkdJson" placeholder="Tempel JSON pemetaan AKD di sini lalu klik Terapkan JSON" hidden></textarea>
+    </details>
   </details>
 
   <div class="card uw-card" id="uwCheckCard" hidden>
