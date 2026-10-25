@@ -103,6 +103,7 @@ export const UPLOADER_WIKI_MARKUP = `
       <label class="uw-check"><input type="radio" name="uwMode" value="full" checked> <span><b>Bundle lengkap</b> &mdash; MASTER.xlsx + SPEK + STRUKTUR_HARGA + THUMBNAILS (zip)</span></label>
       <label class="uw-check"><input type="radio" name="uwMode" value="master"> <span><b>Hanya MASTER</b> &mdash; satu file .xlsx per operator, tanpa membuat PDF/thumbnail (cepat). Operator harus sudah memegang berkas dokumennya.</span></label>
     </div>
+    <div id="uwNeeds" class="uw-needs" hidden></div>
     <div class="uw-actions">
       <button class="btn btn-accent" id="uwBuild">Bangun &amp; unduh</button>
       <button class="btn btn-ghost" id="uwCancel" hidden>Batal</button>

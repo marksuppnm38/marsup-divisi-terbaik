@@ -106,3 +106,8 @@
 .uw-page .uw-bar .field-input { width: 230px; }
 .uw-page .uw-modes { margin: 10px 0 2px; }
 .uw-page .uw-modes .uw-check { align-items: flex-start; }
+.uw-page .uw-needs { margin: 12px 0 4px; }
+.uw-page .uw-need { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; margin-top: 8px; }
+.uw-page .uw-need > summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.uw-page .uw-need .uw-actions { margin-top: 8px; }
+.uw-page .uw-need .uw-issues { max-height: 200px; }

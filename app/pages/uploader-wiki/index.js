@@ -6,7 +6,7 @@
 import { UPLOADER_WIKI_MARKUP } from './markup.js';
 import SEED from './seed.js';
 import {
-  buildRow, defaultSettings, SETTINGS_FIELDS, collapse, splitBatches, akdDigits, deriveKat3,
+  buildRow, defaultSettings, SETTINGS_FIELDS, collapse, splitBatches, akdDigits, deriveKat3, filesChecklist, checklistText, staticFilesNeeded,
 } from './build.js';
 import {
   getDeps, fetchRpcMap, checkThumbs, fetchScriptText, prepareRenderer, buildOperatorZip, buildMasterOnly, SCRIPT_ASSET,
@@ -419,6 +419,35 @@ export async function mount(container) {
       ? `Script Tampermonkey ditemukan dan akan ikut di setiap paket.`
       : `Script Tampermonkey belum ada di server, jadi tidak ikut paket. Taruh file script sebagai assets/${SCRIPT_ASSET} di repo supaya otomatis masuk setiap paket.`;
     if (S.needAkd.size) { $('uwSettings').open = true; renderAkd(); }
+    renderNeeds();
+  }
+
+  // ---------- daftar berkas yang harus dipegang operator (mode "hanya MASTER") ----------
+  const isMasterOnly = () => (container.querySelector('input[name="uwMode"]:checked') || {}).value === 'master';
+  const opCount = () => Math.max(1, Math.min(20, parseInt($('uwOps').value, 10) || 1));
+  const opNames = () => $('uwNames').value.split(',').map((x) => collapse(x)).filter(Boolean);
+  const opParts = () => splitBatches(S.result.ready, opCount()).map((recs, i) => ({ label: opNames()[i] || `OP${i + 1}`, rows: recs.map((r) => r.row) }));
+  const needsText = (part) => {
+    const d = new Date(); const pad = (x) => String(x).padStart(2, '0');
+    const batchId = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+    return checklistText({ operator: part.label, batchId, rows: part.rows, staticFiles: staticFilesNeeded(S.settings) });
+  };
+
+  function renderNeeds() {
+    const box = $('uwNeeds');
+    if (!S.result || !S.result.ready.length || !isMasterOnly()) { box.hidden = true; box.innerHTML = ''; return; }
+    const parts = opParts();
+    box.hidden = false;
+    box.innerHTML = '<div class="uw-muted">Pastikan berkas ini sudah ada di folder tiap operator (AKD, SPEK, STRUKTUR_HARGA, THUMBNAILS). Verifikasi akhir tetap lewat Cek Berkas di script.</div>' + parts.map((pt, i) => {
+      const c = filesChecklist(pt.rows);
+      return `<details class="uw-need"${i === 0 ? ' open' : ''}>
+        <summary>${escapeHtml(pt.label)} &middot; ${pt.rows.length} SKU &middot; ${c.akd.length} AKD</summary>
+        <div class="uw-actions"><button class="btn btn-ghost" data-act="needs-copy" data-op="${i}">Salin daftar</button><button class="btn btn-ghost" data-act="needs-dl" data-op="${i}">Unduh .txt</button></div>
+        <div class="uw-issues-title">AKD yang dibutuhkan (${c.akd.length})</div>
+        <div class="uw-issues">${escapeHtml(c.akd.join('\n') || '(tidak ada)')}</div>
+        <div class="uw-muted" style="margin-top:6px">Per SKU: ${c.spek.length} SPEK, ${c.struktur.length} STRUKTUR_HARGA, ${c.thumbs.length} THUMBNAILS (nama lengkap ada di file .txt).</div>
+      </details>`;
+    }).join('');
   }
 
   async function loadAkdHints(digitsList) {
@@ -556,6 +585,19 @@ export async function mount(container) {
         }
         break;
       default:
+        if (btn.dataset.act === 'needs-copy' || btn.dataset.act === 'needs-dl') {
+          const part = S.result && opParts()[Number(btn.dataset.op)]; if (!part) break;
+          const txt = needsText(part);
+          if (btn.dataset.act === 'needs-copy') {
+            navigator.clipboard.writeText(txt).then(() => { btn.textContent = 'Tersalin'; setTimeout(() => { btn.textContent = 'Salin daftar'; }, 1500); }).catch(() => {});
+          } else {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain;charset=utf-8' }));
+            a.download = `DAFTAR-BERKAS-${String(part.label).replace(/[^A-Za-z0-9_-]+/g, '_')}.txt`;
+            document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+          }
+          break;
+        }
         if (btn.dataset.act === 'akd-save' && row) { queueAkdSave(row.dataset.akd); break; }
         if (btn.dataset.act === 'akd-del' && row) {
           const d = row.dataset.akd;
@@ -577,6 +619,7 @@ export async function mount(container) {
     }
     if (t.dataset && t.dataset.set && t.tagName === 'SELECT') { S.settings[t.dataset.set] = t.value; saveSettings(); }
     if (t.id === 'uwOps') renderResult();
+    if (t.name === 'uwMode') renderNeeds();
     if (t.id === 'uwHideLinked') renderHits();
   });
   on(container, 'input', (ev) => {
@@ -585,7 +628,8 @@ export async function mount(container) {
       // satu baris -> cari otomatis setelah berhenti mengetik; banyak baris -> tunggu klik Cari / Ctrl+Enter
       clearTimeout(S.searchTimer);
       if (!/[\r\n]/.test(t.value.trim()) && collapse(t.value).length >= 3) S.searchTimer = setTimeout(onSearch, 450);
-    } else if (t.id === 'uwAkdFind') { renderAkdDone(); }
+    } else if (t.id === 'uwNames') { renderNeeds(); }
+    else if (t.id === 'uwAkdFind') { renderAkdDone(); }
     else if (t.id === 'uwAkdNew') { $('uwAkdAddMsg').textContent = ''; }
     else if (t.dataset && t.dataset.set) { S.settings[t.dataset.set] = t.value; saveSettings(); }
     else if (t.dataset && t.dataset.f) {

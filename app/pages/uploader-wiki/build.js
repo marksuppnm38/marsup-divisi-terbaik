@@ -182,6 +182,27 @@ export function akdNeeded(rows) {
   return Array.from(new Set(rows.map((r) => r[COL.fNie]).filter(Boolean))).sort();
 }
 
+// Daftar berkas per folder yang harus sudah dipegang operator untuk sekumpulan baris MASTER (mode "hanya MASTER").
+// AKD: unik & terurut. SPEK/STRUKTUR_HARGA/THUMBNAILS: satu per SKU, urutan input.
+export function filesChecklist(rows) {
+  const col = (i) => rows.map((r) => r[i]).filter(Boolean);
+  return { akd: akdNeeded(rows), spek: col(COL.fSpek), struktur: col(COL.fStruktur), thumbs: col(COL.foto) };
+}
+
+export function checklistText({ operator, batchId, rows, staticFiles = [] }) {
+  const c = filesChecklist(rows);
+  const sec = (title, list) => [`[${title}] ${list.length} berkas`].concat(list.map((x) => '  ' + x), ['']);
+  return [
+    `DAFTAR BERKAS - operator ${operator} - batch ${batchId}`,
+    `Jumlah SKU di MASTER: ${rows.length}`,
+    'Pastikan semua berkas di bawah ada di folder masing-masing sebelum menjalankan script (lalu klik Cek Berkas).',
+    '',
+  ].concat(
+    sec('AKD', c.akd), sec('SPEK', c.spek), sec('STRUKTUR_HARGA', c.struktur), sec('THUMBNAILS', c.thumbs),
+    staticFiles.length ? sec('STATIC_DOC', staticFiles) : [],
+  ).join('\r\n');
+}
+
 export function staticFilesNeeded(settings) {
   return [settings.fDistributor, settings.fCpakb, settings.fGaransi, settings.fSparepart].filter(Boolean);
 }
