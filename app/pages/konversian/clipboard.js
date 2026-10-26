@@ -1,4 +1,4 @@
-=// AUTO-EXTRACTED dari konversian/index.js (breakup sesuai map.md bagian 3) — Claude, 2026-09-15.
+// AUTO-EXTRACTED dari konversian/index.js (breakup sesuai map.md bagian 3) — Claude, 2026-09-15.
 // Region asli: lihat map.md bagian 2. Semua state lintas-file diakses lewat
 // objek 'S' yang dioper dari index.js (S = window.__konvBridge-style shared
 // state, TAPI bukan window global — cuma dioper sebagai parameter, lihat
