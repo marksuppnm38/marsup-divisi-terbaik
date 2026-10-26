@@ -899,7 +899,26 @@ function renderSkeletons(count) {
 
 // SEARCH
 let searchSeq = 0;
-async function runSearch() {
+// Baris meta di atas hasil: "N produk ditemukan (M produk belum firm disembunyikan) [Tampilkan]".
+// Opsi tampilkan cuma berlaku untuk query yang sama (S.showNotFirmQ) — cari kata lain, balik
+// disembunyikan lagi, biar produk belum firm gak nyangkut tampil terus tanpa disadari.
+function setSearchMeta(base, notFirmCount, showingNotFirm, extraNote) {
+  S.metaEl.textContent = base;
+  if (notFirmCount) {
+    S.metaEl.append(showingNotFirm ? ` (termasuk ${notFirmCount} belum firm) ` : ` (${notFirmCount} produk belum firm disembunyikan) `);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = showingNotFirm ? 'Sembunyikan' : 'Tampilkan';
+    b.style.cssText = 'background:none;border:none;padding:0;font:inherit;color:var(--accent,#1D5BD4);text-decoration:underline;cursor:pointer';
+    b.addEventListener('click', () => {
+      S.showNotFirmQ = showingNotFirm ? null : (S.rawCache && S.rawCache.q);
+      runSearch({ reuse: true }); // pakai hasil RPC yang sama, gak fetch ulang
+    });
+    S.metaEl.append(b);
+  }
+  if (extraNote) S.metaEl.append(extraNote);
+}
+async function runSearch(opts) {
   const q = S.searchInput.value.trim();
   if (!q) { reset(); return; }
   const mySeq = ++searchSeq; // request lama yang telat balik nanti diabaikan, bukan nimpa hasil yang lebih baru
@@ -910,14 +929,23 @@ async function runSearch() {
   S.resultsEl.innerHTML = '';
   S.emptyEl.style.display = 'none';
   S.metaEl.textContent = '';
-  const {data: dataRaw, error} = await rpc('search_produk_dengan_harga', {
-    q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false
-  });
-  // Produk belum firm (link_v6 ada catatan) disembunyikan dari hasil — lihat S.filterFirm.
+  let dataRaw, error;
+  if (opts && opts.reuse && S.rawCache && S.rawCache.q === q) {
+    dataRaw = S.rawCache.data; error = null; // toggle "Tampilkan belum firm": hasil RPC yang sama
+  } else {
+    ({data: dataRaw, error} = await rpc('search_produk_dengan_harga', {
+      q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false
+    }));
+    if (!error) S.rawCache = { q, data: dataRaw };
+    if (S.showNotFirmQ !== q) S.showNotFirmQ = null; // kata kunci baru -> belum firm disembunyikan lagi
+  }
+  // Produk belum firm (link_v6 ada catatan) disembunyikan dari hasil — lihat S.filterFirm —
+  // kecuali user milih "Tampilkan" untuk query ini.
   await S.verifiedReady;
-  let data = dataRaw ? S.filterFirm(dataRaw, S.modeSwasta) : dataRaw;
-  const hiddenNotFirm = (dataRaw && data) ? dataRaw.length - data.length : 0;
-  let hiddenNote = hiddenNotFirm ? ` (${hiddenNotFirm} produk belum firm disembunyikan)` : '';
+  const showingNotFirm = !S.modeSwasta && S.showNotFirmQ === q;
+  let data = dataRaw ? (showingNotFirm ? dataRaw : S.filterFirm(dataRaw, S.modeSwasta)) : dataRaw;
+  const notFirmCount = (dataRaw && !S.modeSwasta) ? dataRaw.filter(r => !S.isProdukFirm(r)).length : 0;
+  let hiddenNote = '';
   if (S.onlyVerified && data) {
     const sebelum = data.length;
     data = data.filter(S.isVerified);
@@ -942,7 +970,7 @@ async function runSearch() {
     }
     return;
   }
-  if (!data || !data.length) { S.emptyEl.style.display='block'; S.metaEl.textContent='Tidak ada hasil untuk "'+q+'"'+hiddenNote; delete S.metaEl.dataset.nav; S.acBox.style.display='none'; return; }
+  if (!data || !data.length) { S.emptyEl.style.display='block'; setSearchMeta('Tidak ada hasil untuk "'+q+'"', notFirmCount, showingNotFirm, hiddenNote); delete S.metaEl.dataset.nav; S.acBox.style.display='none'; return; }
   S.lastResults = data;
   // PERF: dulu di sini `await enrichResultsWithStok()` DULU baru render, jadi tiap pencarian
   // nunggu 1 round trip tambahan cuma buat badge stok. Sekarang hasil langsung tampil dengan
@@ -951,7 +979,7 @@ async function runSearch() {
   S.sortSelect.style.display = 'inline-block';
   applySort();
   S.currentPage = 1;
-  S.metaEl.textContent = data.length + ' produk ditemukan' + hiddenNote;
+  setSearchMeta(data.length + ' produk ditemukan', notFirmCount, showingNotFirm, hiddenNote);
   S.metaEl.dataset.nav = '1';
   S.kbdCardIdx = -1;
   renderResults(S.lastResults);
@@ -1100,6 +1128,7 @@ function renderResults(data) {
       <div class="rcard-top">
         <span class="rcard-name" title="${namaEsc}">${namaEsc||'—'}</span>
         ${r.tipe?`<span class="tipe-badge ${tipeClass}">${tipeEsc}</span>`:''}
+        ${(!S.modeSwasta && !S.isProdukFirm(r)) ? `<span class="tipe-badge tipe-other" title="Link V6 masih ada catatan — tidak dipakai buat konversi">Belum firm</span>` : ''}
         ${priceHtml}
         ${ctaHtml}
       </div>
@@ -1302,6 +1331,7 @@ function addToClip(kode) {
   // Status stok masih di-fetch di belakang (lihat runSearch) — item ini bakal ke-snapshot dengan
   // stok kosong dan ikut ke-persist ke sesi + Export. Tolak sementara; pending otomatis lepas
   // begitu stok datang atau timeout (jadi gak bisa nyangkut selamanya di koneksi jelek).
+  if (!S.modeSwasta && !S.isProdukFirm(r)) { if (S.showToast) S.showToast('Produk belum firm (link V6 masih ada catatan) — tidak dipakai buat konversi.', 'error'); return; }
   if (r.stok_pending) { if (S.showToast) S.showToast('Stok masih dicek, coba lagi sebentar'); return; }
   const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
   const newItem = {
