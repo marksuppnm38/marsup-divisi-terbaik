@@ -558,42 +558,54 @@
       return { n: i + 1, input, container: best };
     });
   }
-  function snapSlot(container) {
-    const text = container.textContent || '';
-    return {
-      text,
-      dropzone: text.includes('Pilih atau tarik dokumen'),
-      links: Array.from(container.querySelectorAll('a')).filter((a) => a.textContent.trim() === 'Lihat Dokumen').map((a) => a.getAttribute('href') || ''),
-    };
+  // Bukti upload SUKSES = tulisan "Lihat Dokumen" muncul (terlihat) di dalam slot-nya.
+  // Tanpa itu, proses TIDAK boleh lanjut.
+  function lihatDokumenEls(container) {
+    return Array.from(container.querySelectorAll('a, button, span, p, div'))
+      .filter((el) => el.children.length === 0 && el.textContent.replace(/\s+/g, ' ').trim().toLowerCase() === 'lihat dokumen' && isVisible(el));
   }
+  const hrefsOf = (els) => els.map((el) => el.getAttribute('href') || '').filter(Boolean);
   async function uploadKeSlot(slot, file, label) {
-    const before = snapSlot(slot.container);
+    const beforeEls = lihatDokumenEls(slot.container);
+    const beforeHrefs = hrefsOf(beforeEls);
     const dt = new DataTransfer();
     dt.items.add(file);
     slot.input.files = dt.files;
     slot.input.dispatchEvent(new Event('input', { bubbles: true }));
     slot.input.dispatchEvent(new Event('change', { bubbles: true }));
-    log(`⏳ Upload ${label}: ${file.name}`);
+    log(`⏳ Upload ${label}: ${file.name} -- menunggu tulisan "Lihat Dokumen"...`);
     await pollUntil(() => {
       if (cekServerError()) throw new Error('SERVER_ERROR');
-      const now = snapSlot(slot.container);
-      return (before.dropzone && !now.dropzone) || now.links.some((h) => !before.links.includes(h)) || now.text.includes(file.name) ? true : null;
+      const els = lihatDokumenEls(slot.container);
+      if (!els.length) return null;
+      if (beforeEls.length) return hrefsOf(els).some((h) => !beforeHrefs.includes(h)) ? true : null; // sudah ada sebelumnya -> butuh link baru
+      return true;
     }, { timeout: 30000, interval: 300 }).catch((e) => {
       if (e instanceof AbortError || e.message === 'SERVER_ERROR') throw e;
-      throw new Error(`Upload ${label} tidak selesai dalam 30 detik`);
+      throw new Error(`Upload ${label} BELUM terkonfirmasi: tulisan "Lihat Dokumen" tidak muncul dalam 30 detik (proses dihentikan untuk SKU ini)`);
     });
-    log(`✅ Upload ${label} selesai`);
+    log(`✅ Upload ${label} terkonfirmasi ("Lihat Dokumen" muncul)`);
     await sleep(300);
   }
   async function unggahDokumen(files) {
     const slots = await pollUntil(() => { const s = getSlots(); return s.length ? s : null; }, { timeout: 12000 });
     log(`Slot dokumen di form: ${slots.length}`);
+    const diupload = [];
     for (const slot of slots) {
       const f = files[slot.n];
       if (!f) { log(`ℹ️ Dokumen ${slot.n}: tidak ada file dikonfigurasi, slot DILEWATI`); continue; }
       const file = await f.handle.getFile();
       await uploadKeSlot(slot, file, `Dokumen ${slot.n}`);
+      diupload.push(slot);
     }
+    for (const n of Object.keys(files)) {
+      if (!slots.some((sl) => String(sl.n) === String(n))) throw new Error(`Slot Dokumen ${n} tidak ada di form padahal file-nya dikonfigurasi`);
+    }
+    // Verifikasi akhir: semua slot yang diupload HARUS masih menampilkan "Lihat Dokumen".
+    await sleep(500);
+    const belum = diupload.filter((sl) => !lihatDokumenEls(sl.container).length).map((sl) => `Dokumen ${sl.n}`);
+    if (belum.length) throw new Error(`Verifikasi akhir gagal: "Lihat Dokumen" tidak terlihat di ${belum.join(', ')}`);
+    log(`✅ Semua dokumen terverifikasi ("Lihat Dokumen" ada di ${diupload.length} slot)`);
   }
 
   async function kirimForm(baseline) {
