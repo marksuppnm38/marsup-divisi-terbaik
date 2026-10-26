@@ -1,4 +1,4 @@
-// AUTO-EXTRACTED dari konversian/index.js (breakup sesuai map.md bagian 3) — Claude, 2026-09-15.
+=// AUTO-EXTRACTED dari konversian/index.js (breakup sesuai map.md bagian 3) — Claude, 2026-09-15.
 // Region asli: lihat map.md bagian 2. Semua state lintas-file diakses lewat
 // objek 'S' yang dioper dari index.js (S = window.__konvBridge-style shared
 // state, TAPI bukan window global — cuma dioper sebagai parameter, lihat
@@ -768,6 +768,8 @@ S.rupiah = rupiah;
 // diisi enrichResultsWithStok(), dipanggil abis runSearch() DAN abis
 // finishConvBatch() di Converter.
 function stokBadgeHtml(r, isSet) {
+  // Hasil search sudah tampil, status stok masih di-fetch di belakang (lihat runSearch).
+  if (r.stok_pending) return `<span class="mi stok-unknown"><i class="ti ti-loader-2"></i><span>Cek stok…</span></span>`;
   return isSet
     ? (r.stok_status === 'READY'
         ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · bisa rakit ${r.stok_qty} set</span></span>`
@@ -942,7 +944,10 @@ async function runSearch() {
   }
   if (!data || !data.length) { S.emptyEl.style.display='block'; S.metaEl.textContent='Tidak ada hasil untuk "'+q+'"'+hiddenNote; delete S.metaEl.dataset.nav; S.acBox.style.display='none'; return; }
   S.lastResults = data;
-  await S.enrichResultsWithStok(S.lastResults);
+  // PERF: dulu di sini `await enrichResultsWithStok()` DULU baru render, jadi tiap pencarian
+  // nunggu 1 round trip tambahan cuma buat badge stok. Sekarang hasil langsung tampil dengan
+  // badge "Cek stok…", stok di-fetch di belakang, lalu kartu di-render ulang.
+  data.forEach(r => { r.stok_pending = true; });
   S.sortSelect.style.display = 'inline-block';
   applySort();
   S.currentPage = 1;
@@ -957,6 +962,25 @@ async function runSearch() {
     S.acBox.innerHTML = '';
     S.acItems = []; S.acIndex = -1;
   }
+
+  // Batas tunggu stok: di koneksi jelek fetch bisa macet lama. Lewat batas ini badge jatuh ke
+  // "Stok: -" (sama kayak dulu kalau fetch stok gagal) dan tombol Tambah dibuka lagi — gak nyangkut.
+  const STOK_TIMEOUT_MS = 5000;
+  let timedOut = false;
+  const enrich = Promise.resolve(S.enrichResultsWithStok(data)).catch(() => { /* stok cuma nice-to-have */ });
+  const timer = new Promise(res => setTimeout(() => { timedOut = true; res(); }, STOK_TIMEOUT_MS));
+  const refreshAfterStok = () => {
+    const kbdIdx = S.kbdCardIdx ?? -1;
+    applySort(); // perlu kalau mode sort berbasis stok (READY/INDENT dulu); idempotent di mode lain
+    renderResults(S.lastResults);
+    if (kbdIdx >= 0) setKbdCard(kbdIdx); // jaga highlight keyboard biar gak hilang pas re-render
+  };
+  await Promise.race([enrich, timer]);
+  data.forEach(r => { delete r.stok_pending; });
+  if (mySeq !== searchSeq) return; // sudah ada pencarian lebih baru selama stok di-fetch — jangan timpa
+  refreshAfterStok();
+  // Stok telat (lewat batas) tapi akhirnya datang: render ulang sekali supaya badge-nya ikut benar.
+  if (timedOut) enrich.then(() => { if (mySeq === searchSeq) refreshAfterStok(); });
 }
 
 // SORT
@@ -1275,6 +1299,10 @@ function addToClip(kode) {
   const r = S.lastResults.find(x => x.kode_produk === kode);
   if (!r) return;
   if (S.clipboard.some(c => c.kode_produk === r.kode_produk)) { removeFromClip(r.kode_produk); return; }
+  // Status stok masih di-fetch di belakang (lihat runSearch) — item ini bakal ke-snapshot dengan
+  // stok kosong dan ikut ke-persist ke sesi + Export. Tolak sementara; pending otomatis lepas
+  // begitu stok datang atau timeout (jadi gak bisa nyangkut selamanya di koneksi jelek).
+  if (r.stok_pending) { if (S.showToast) S.showToast('Stok masih dicek, coba lagi sebentar'); return; }
   const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
   const newItem = {
     kode_produk: r.kode_produk,
