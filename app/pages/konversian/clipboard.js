@@ -782,6 +782,15 @@ function stokBadgeHtml(r, isSet) {
 }
 S.stokBadgeHtml = stokBadgeHtml;
 
+// Status stok untuk OUTPUT yang dilihat sales (Export Excel, Copy tabel Converter).
+// Biner: cuma READY / INDENT. DATA_TIDAK_LENGKAP (komponen SET belum ada di DB)
+// cukup urusan marketing support, jadi di output ditampilkan sebagai INDENT.
+// Badge di UI internal TIDAK lewat sini — tetap nunjukin "Stok x/y" dst.
+// Return null kalau memang gak ada data stok sama sekali (caller yang nentuin placeholder).
+S.stokStatusOutput = (status) => status === 'READY' ? 'READY'
+  : (status === 'INDENT' || status === 'DATA_TIDAK_LENGKAP') ? 'INDENT'
+  : null;
+
 // MAX_THUMB_PX: dimensi maksimum sisi terpanjang thumbnail sebelum di-embed ke Excel.
 // Gambar di sheet cuma ditampilkan ±80x65px, jadi resolusi sumber (kadang 800px+/gambar
 // dari server) jauh lebih besar dari kebutuhan tampilan. Downscale di sini adalah
@@ -1978,15 +1987,15 @@ S.btnExport.addEventListener('click', async () => {
         row.getCell(7).value = {text: S.linkLabelOutput(item.kode_produk), hyperlink: linkBersih};
         row.getCell(7).font = {color:{argb:'FF1D4ED8'}, underline:true};
       }
-      const stokLabel = item.stok_status === 'READY' ? 'Ready'
-        : item.stok_status === 'INDENT' ? 'Indent'
-        : item.stok_status === 'DATA_TIDAK_LENGKAP' ? 'Data blm lengkap'
+      // DATA_TIDAK_LENGKAP ikut tampil "Indent" — sales cuma perlu tau Ready/Indent (lihat S.stokStatusOutput)
+      const stokOut = S.stokStatusOutput(item.stok_status);
+      const stokLabel = stokOut === 'READY' ? 'Ready'
+        : stokOut === 'INDENT' ? 'Indent'
         : '-';
       row.getCell(stokColIdx).value = stokLabel;
       row.getCell(stokColIdx).alignment = {horizontal:'center', vertical:'middle'};
       if (stokLabel === 'Ready') row.getCell(stokColIdx).font = {color:{argb:'FF15803D'}, bold:true};
       else if (stokLabel === 'Indent') row.getCell(stokColIdx).font = {color:{argb:'FFB91C1C'}, bold:true};
-      else if (stokLabel === 'Data blm lengkap') row.getCell(stokColIdx).font = {color:{argb:'FFB45309'}, bold:true};
       // zebra + border + center alignment buat semua kolom di baris ini
       const zebraCount = S.modeSwastaOutput ? 7 : 8;
       Array.from({length: zebraCount}, (_,c)=>c+1).forEach(c => {

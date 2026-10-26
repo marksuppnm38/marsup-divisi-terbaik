@@ -269,7 +269,7 @@ export function installConverterBulk(S) {
       case 'link':      return (p && !swasta) ? (S.cleanLinkV6(p.link_v6) || '') : '';
       case 'akd':       return p ? (p.no_akd || '') : '';
       case 'berlaku':   return p ? (p.masa_berlaku || '') : '';
-      case 'stok':      return p ? (p.stok_status || '') : '';
+      case 'stok':      return p ? (S.stokStatusOutput(p.stok_status) || '') : '';   // DATA_TIDAK_LENGKAP -> INDENT
       case 'catatan':   return catatanOf(r);
       default:          return '';
     }
