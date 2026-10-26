@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         INAPROC Master Produk Sectoral KFA v4 (file lokal, tanpa Supabase)
+// @name         INAPROC Master Produk Sectoral KFA v4.2 (file lokal, tanpa Supabase, tanpa jeda)
 // @namespace    inaproc-master-produk-v4
-// @version      4.0.0
-// @description  Auto isi pengajuan Pemilik Master Produk (Sectoral > Kategori Alkes: Kode Unik KFA) di penyedia.inaproc.id. Paste "AKD[TAB]KFA", dokumen diambil dari FOLDER LOKAL (File System Access API, bukan Supabase), hasil tinggal di-copy ke Sheet.
+// @version      4.2.0
+// @description  Auto isi pengajuan Pemilik Master Produk (Sectoral > Kategori Alkes: Kode Unik KFA) di penyedia.inaproc.id. Paste "AKD[TAB]KFA", dokumen dari FOLDER LOKAL. v4.2: "Periksa" jalan paralel dengan isi form, verdict dibaca langsung dari pesan "Nomor produk masih berlaku" / "tidak ditemukan" + kolom Nama Produk (hasil capture), nama produk ikut ke kolom KETERANGAN, navigasi antar SKU tanpa reload.
 // @match        https://penyedia.inaproc.id/*
 // @run-at       document-start
 // @grant        none
@@ -24,11 +24,15 @@
     tipePenyedia: ['Pemilik Merek', 'Produsen'], // Distributor sengaja TIDAK dicentang (sesuai capture)
     // Nama file default Dokumen 2 / Dokumen 3 (tanpa .pdf juga boleh). Bisa diubah dari panel.
     defaultDocs: { 2: 'Sertifikat CPAKB PNM KBLI 32509 K1', 3: '' },
-    stepDelay: 500,
-    maxRetry: 2,            // SKU bermasalah di-requeue maks segini kali sebelum GAGAL permanen
-    maxServerRestart: 6,    // restart beruntun karena server error sebelum run dihentikan
+    stepDelay: 150,
+    maxRetry: 2,             // SKU bermasalah di-requeue maks segini kali sebelum GAGAL permanen
+    maxServerRestart: 6,     // restart beruntun karena server error sebelum run dihentikan
     maxConsecutiveErrors: 3, // error teknis beruntun sebelum run dihentikan
-    scanDepth: 4,           // kedalaman subfolder yang discan di folder dokumen
+    scanDepth: 4,            // kedalaman subfolder yang discan di folder dokumen
+    // --- v4.1: verdict "Periksa" ---
+    verdictTimeout: 20000,   // batas tunggu hasil Periksa (ms); lewat ini dianggap server tidak merespons (restart, bukan salah SKU)
+    // --- v4.1: navigasi antar SKU ---
+    hardReloadEvery: 15,     // tiap N SKU sukses tetap reload penuh (bersihin memori/state)
   };
 
   const PANEL_ID = 'inaproc-mp4-panel';
@@ -42,6 +46,7 @@
     log: 'inaproc_mp4_log',
     counters: 'inaproc_mp4_counters',
   };
+  const KFA_INPUT_SEL = 'input[name="kfa.input"], input[placeholder="Nomor Produk"]';
 
   // =====================================================================
   // STORAGE
@@ -50,7 +55,7 @@
     try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; }
   }
   function jset(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* penuh/diblokir */ } }
-  function getFlags() { return Object.assign({ dryRun: true }, jget(K.flags, {})); }
+  function getFlags() { return Object.assign({ dryRun: true, softNav: true }, jget(K.flags, {})); }
   function getDocs() { return Object.assign({}, CONFIG.defaultDocs, jget(K.docs, {})); }
   const isRunFlag = () => localStorage.getItem(K.run) === '1';
 
@@ -119,21 +124,50 @@
   }
 
   // =====================================================================
-  // ABORT / TIMING HELPERS
+  // ABORT / TIMING HELPERS (v4.1: event-driven, bukan sleep buta)
   // =====================================================================
   class AbortError extends Error {}
   let loopActive = false;
   function guard() { if (loopActive && !isRunFlag()) throw new AbortError('stop'); }
   const sleep = async (ms) => { await new Promise((r) => setTimeout(r, ms)); guard(); };
-  async function pollUntil(fn, { timeout = 8000, interval = 200 } = {}) {
-    const start = Date.now();
-    for (;;) {
-      guard();
-      const r = fn();
-      if (r) return r;
-      if (Date.now() - start > timeout) throw new Error('pollUntil timeout');
-      await new Promise((res) => setTimeout(res, interval));
-    }
+
+  // Resolve pas ada perubahan DOM berikutnya ATAU setelah maxMs (mana duluan).
+  function nextChange(maxMs = 120) {
+    return new Promise((resolve) => {
+      let mo = null;
+      const t = setTimeout(done, maxMs);
+      function done() { clearTimeout(t); if (mo) mo.disconnect(); resolve(); }
+      if (document.body) {
+        mo = new MutationObserver(done);
+        mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+      }
+    });
+  }
+
+  // Tunggu sampai fn() truthy. Dicek tiap ada mutasi DOM (di-coalesce 20ms) + interval pengaman.
+  function pollUntil(fn, { timeout = 8000, interval = 150 } = {}) {
+    return new Promise((resolve, reject) => {
+      let done = false, mo = null, sched = 0;
+      const finish = (err, val) => {
+        if (done) return;
+        done = true;
+        if (mo) mo.disconnect();
+        clearTimeout(sched); clearTimeout(timer); clearInterval(tick);
+        if (err) reject(err); else resolve(val);
+      };
+      const check = () => {
+        if (done) return;
+        try { guard(); const r = fn(); if (r) finish(null, r); } catch (e) { finish(e); }
+      };
+      const schedule = () => { if (done || sched) return; sched = setTimeout(() => { sched = 0; check(); }, 20); };
+      const timer = setTimeout(() => finish(new Error('pollUntil timeout')), timeout);
+      const tick = setInterval(check, interval);
+      if (document.body) {
+        mo = new MutationObserver(schedule);
+        mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+      }
+      check();
+    });
   }
   async function tryPoll(fn, opts) {
     try { return await pollUntil(fn, opts); } catch (e) { if (e instanceof AbortError) throw e; return null; }
@@ -181,6 +215,29 @@
     window.location.assign(url);
     return new Promise(() => {}); // halaman bakal unload; script boot ulang & lanjut otomatis
   }
+  // Pindah ke halaman daftar TANPA reload (router Next.js kalau ada, atau tombol "Go back").
+  // Return true kalau halaman daftar benar-benar siap; false -> caller fallback ke hardNavigate.
+  async function softReset() {
+    try {
+      const nx = window.next && window.next.router;
+      if (nx && typeof nx.push === 'function') {
+        Promise.resolve(nx.push(CONFIG.listPath + '?tab=ALL&p=1')).catch(() => {});
+      } else {
+        const b = document.querySelector('#back-to-list');
+        if (!b) return false;
+        clickElement(b);
+      }
+      const ok = await tryPoll(() => {
+        if (location.pathname.replace(/\/+$/, '') !== CONFIG.listPath) return null;
+        const b = document.querySelector('#register-brand-button');
+        return b && isVisible(b) && !isBtnDisabled(b) ? b : null;
+      }, { timeout: 8000 });
+      return !!ok;
+    } catch (e) {
+      if (e instanceof AbortError) throw e;
+      return false;
+    }
+  }
 
   // =====================================================================
   // NETWORK WATCH (bungkus fetch GraphQL, buat baca hasil tombol "Periksa")
@@ -219,7 +276,12 @@
       wrapped.__mp4 = true;
       window.fetch = wrapped;
     },
-    findFor(t0, code) { return this.entries.find((e) => e.t0 >= t0 && e.body.includes(code)) || null; },
+    // Utamakan request yang membawa kode KFA; fallback: operasi GraphQL yang namanya mengandung "kfa".
+    findFor(t0, code) {
+      return this.entries.find((e) => e.t0 >= t0 && e.body.includes(code))
+        || this.entries.find((e) => e.t0 >= t0 && /kfa/i.test(e.op))
+        || null;
+    },
   };
   NetWatch.install();
 
@@ -236,6 +298,9 @@
     'service unavailable', '500 error', 'error 500', 'error 502', 'error 503', 'gateway timeout',
     'sesi anda telah berakhir', 'sesi telah berakhir', 'sesi berakhir', 'muat ulang halaman',
   ];
+  const LOADING_RE = /memeriksa|memuat|loading|mohon tunggu|sedang (memproses|memeriksa|mencari)|mencari/i;
+  const normTxt = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+
   // Peta teks bermasalah yang terlihat: teks -> 'kw' (kata kunci) | 'cls' (cuma dari nama class error/warning)
   function scanMasalah() {
     const map = new Map();
@@ -268,6 +333,131 @@
       const t = el.textContent.replace(/\s+/g, ' ').trim().toLowerCase();
       return !!t && t.length <= 200 && SERVER_ERROR_KEYWORDS.some((k) => t.includes(k));
     });
+  }
+
+  // =====================================================================
+  // v4.1: BACA HASIL "PERIKSA" -- warna (hijau/merah) + pesan baru + network
+  // =====================================================================
+  function parseRgb(s) {
+    const m = String(s || '').match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+    return m ? [+m[1], +m[2], +m[3]] : null;
+  }
+  const isGreenRgb = (v) => !!v && v[1] >= 100 && v[1] > v[0] + 25 && v[1] > v[2] + 25;
+  const isRedRgb = (v) => !!v && v[0] >= 150 && v[0] > v[1] + 60 && v[0] > v[2] + 60;
+  const GREEN_CLS = /(^|[\s_-])(success|green|verified|valid)([\s_-]|$)/i; // "invalid" tidak ikut (butuh pemisah)
+  const RED_CLS = /(^|[\s_-])(error|invalid|danger|red)([\s_-]|$)/i;
+  function looksGreen(el) {
+    const cs = window.getComputedStyle(el);
+    if (isGreenRgb(parseRgb(cs.color))) return true;
+    return GREEN_CLS.test(typeof el.className === 'string' ? el.className : '');
+  }
+  function looksRed(el) {
+    const cs = window.getComputedStyle(el);
+    if (isRedRgb(parseRgb(cs.color))) return true;
+    return RED_CLS.test(typeof el.className === 'string' ? el.className : '');
+  }
+  // Zona hasil Periksa = pembungkus input KFA setinggi mungkin yang belum memuat input file/checkbox.
+  function kfaZone() {
+    const input = document.querySelector(KFA_INPUT_SEL);
+    if (!input) return null;
+    let zone = input.parentElement;
+    let node = input.parentElement;
+    for (let i = 0; i < 7 && node; i++, node = node.parentElement) {
+      if (node.querySelector('input[type="file"], input[type="checkbox"]')) break;
+      zone = node;
+    }
+    return zone;
+  }
+  const TOAST_SEL = '[role="alert"], [role="status"], [class*="toast" i], [class*="Toastify"], [class*="snackbar" i], [class*="notif" i]';
+  function verdictCandidates() {
+    const set = new Set();
+    const zone = kfaZone();
+    if (zone) zone.querySelectorAll('*').forEach((e) => set.add(e));
+    document.querySelectorAll(TOAST_SEL).forEach((e) => { set.add(e); e.querySelectorAll('*').forEach((c) => set.add(c)); });
+    return Array.from(set).filter((el) => {
+      if (['INPUT', 'SCRIPT', 'STYLE', 'SVG', 'PATH'].includes(el.tagName.toUpperCase())) return false;
+      if (ignorable(el) || el.id === 'find-kfa-button' || el.closest('#find-kfa-button')) return false;
+      return el.children.length <= 2 && isVisible(el);
+    });
+  }
+  function snapshotVerdictBaseline() {
+    const s = new Set();
+    verdictCandidates().forEach((el) => { const t = normTxt(el.textContent); if (t) s.add(t); });
+    return s;
+  }
+  // Dari capture: valid -> label field berubah jadi "Nomor produk masih berlaku." (hijau) + kolom
+  // "Nama Produk" (input kfa.name, disabled) muncul terisi. Invalid -> "Nomor produk tidak ditemukan.".
+  const OK_RE = /masih berlaku/i;
+  function bacaNamaProduk() {
+    const el = document.querySelector('input[name="kfa.name"]');
+    return el ? normTxt(el.value) : '';
+  }
+  // null = belum ada putusan | {type:'ok'|'invalid'|'duplicate'}
+  function readVerdict(baseline) {
+    let good = null;
+    for (const el of verdictCandidates()) {
+      const raw = normTxt(el.textContent);
+      if (!raw || raw.length > 200 || baseline.has(raw)) continue;
+      if (LOADING_RE.test(raw)) continue; // teks "sedang memeriksa..." bukan hasil
+      const t = raw.toLowerCase();
+      if (DUP_KEYWORDS.some((k) => t.includes(k))) return { type: 'duplicate', msg: raw };
+      if (OK_RE.test(raw)) { good = good || raw; continue; }
+      if (ERROR_KEYWORDS.some((k) => t.includes(k)) || looksRed(el)) return { type: 'invalid', msg: raw };
+      if (looksGreen(el)) good = good || raw;
+    }
+    return good ? { type: 'ok', via: `pesan "${good.slice(0, 60)}"` } : null;
+  }
+  function teksBaru(baseline) {
+    const out = [];
+    for (const el of verdictCandidates()) {
+      const raw = normTxt(el.textContent);
+      if (raw && raw.length <= 120 && !baseline.has(raw) && !out.includes(raw)) out.push(raw);
+      if (out.length >= 3) break;
+    }
+    return out;
+  }
+
+  // Klik "Periksa" lalu LANGSUNG balik (tidak menunggu hasil). Hasil ditunggu terpisah.
+  async function mulaiPeriksa(kfa) {
+    const input = await pollUntil(() => document.querySelector(KFA_INPUT_SEL), { timeout: 10000 });
+    setNativeValue(input, kfa);
+    const btn = await pollUntil(() => document.querySelector('#find-kfa-button'), { timeout: 8000 });
+    await tryPoll(() => !isBtnDisabled(btn), { timeout: 4000 });
+    const baseline = snapshotVerdictBaseline();
+    const hadName = !!bacaNamaProduk(); // kolom Nama Produk bisa basi dari Periksa sebelumnya
+    const t0 = Date.now();
+    clickElement(btn);
+    return { kfa, t0, baseline, hadName };
+  }
+
+  // Putusan pertama menang. Tidak ada jeda "buat mastiin": pesan hijau / Nama Produk terisi = lolos seketika,
+  // pesan "tidak ditemukan"/merah/duplikat = tolak seketika. (Network tidak dipakai sebagai syarat: di capture
+  // request Periksa tidak lewat fetch/XHR yang bisa dibungkus.)
+  async function tungguVerdictKfa({ kfa, t0, baseline, hadName }) {
+    const deadline = t0 + CONFIG.verdictTimeout;
+    let entry = null, lastSrv = 0;
+    while (Date.now() < deadline) {
+      guard();
+      const now = Date.now();
+      if (now - lastSrv > 500) {
+        lastSrv = now;
+        if (cekServerError()) return { type: 'server', msg: 'Server error saat Periksa' };
+      }
+      const v = readVerdict(baseline);
+      if (v) return v;
+      if (!hadName && bacaNamaProduk()) return { type: 'ok', via: 'kolom Nama Produk terisi' };
+      if (!entry) entry = NetWatch.findFor(t0, kfa);
+      if (entry && entry.done) {
+        if (entry.status >= 500 || entry.failed) return { type: 'server', msg: `Respons server ${entry.status || 'gagal'} saat Periksa` };
+        if (entry.errors) return classify(entry.errors);
+      }
+      await nextChange(100);
+    }
+    const v = readVerdict(baseline);
+    if (v) return v;
+    const lihat = teksBaru(baseline);
+    log(`⚠️ Hasil Periksa tidak muncul dalam ${CONFIG.verdictTimeout / 1000}s.${lihat.length ? ` Teks baru yang terlihat: ${lihat.map((x) => `"${x}"`).join(' | ')}` : ''}`);
+    return { type: 'server', msg: `Hasil Periksa tidak muncul dalam ${CONFIG.verdictTimeout / 1000}s (server lambat/tidak merespons)` };
   }
 
   // =====================================================================
@@ -403,7 +593,7 @@
     jset(K.lines, lines);
     jset(K.queue, queue);
     jset(K.results, results);
-    jset(K.counters, { server: 0, err: 0 });
+    jset(K.counters, { server: 0, err: 0, soft: 0 });
     return { total: lines.length, queued: queue.length, invalid: lines.filter((l) => !l.valid).length, dup: Object.values(results).filter((r) => r.status === 'DUPLIKAT-DI-INPUT').length };
   }
   // Output urut sesuai baris input -> tinggal paste ke Sheet di sebelah data asli.
@@ -436,8 +626,12 @@
   async function pilihSectoral() {
     const radio = await pollUntil(() => document.querySelector('#sectoral'), { timeout: 15000 });
     if (!radio.checked) clickElement(radio);
-    await sleep(CONFIG.stepDelay);
-    if (!radio.checked) { clickElement(radio.closest('label') || radio); await sleep(CONFIG.stepDelay); }
+    let ok = await tryPoll(() => radio.checked, { timeout: 1500 });
+    if (!ok) {
+      clickElement(radio.closest('label') || radio);
+      ok = await tryPoll(() => radio.checked, { timeout: 1500 });
+    }
+    if (!ok) log('⚠️ Radio Sectoral belum terlihat tercentang, lanjut (dropdown kategori jadi penentu).');
   }
 
   async function pilihKategori() {
@@ -460,7 +654,6 @@
       if (!control) { log(`⚠️ Dropdown kategori belum muncul (percobaan ${a}/${MAX})`); continue; }
       if (/alkes/i.test(control.textContent)) { log('Kategori sudah terpilih: Alkes'); return; }
       simulasiKlikLengkap(control); // react-select membuka menu lewat mousedown
-      await sleep(350);
       let opsi = await tryPoll(cariOpsi, { timeout: 4000 });
       if (!opsi) {
         const inp = control.querySelector('input');
@@ -474,49 +667,11 @@
         continue;
       }
       simulasiKlikLengkap(opsi);
-      await sleep(CONFIG.stepDelay);
       const terpilih = await tryPoll(() => { const c = cariControl(); return c && /alkes/i.test(c.textContent); }, { timeout: 4000 });
       if (terpilih) { log(`Kategori terpilih: ${CONFIG.kategoriLabel}`); return; }
       log(`⚠️ Kategori belum berubah setelah opsi diklik (percobaan ${a}/${MAX})`);
     }
     throw new Error(`Gagal memilih kategori "${CONFIG.kategoriLabel}" setelah ${MAX}x percobaan`);
-  }
-
-  // Hasil tombol "Periksa". Di form sekarang blok tipe penyedia & lampiran sudah tampil
-  // SEBELUM Periksa, jadi "checkbox muncul" tidak bisa dipakai sebagai tanda sukses.
-  // Tanda yang dipakai: respons GraphQL yang membawa kode KFA tsb + pesan baru di layar.
-  async function periksaKfa(kfa, baseline) {
-    const input = await pollUntil(() => document.querySelector('input[name="kfa.input"], input[placeholder="Nomor Produk"]'), { timeout: 10000 });
-    setNativeValue(input, kfa);
-    await sleep(CONFIG.stepDelay);
-    const btn = await pollUntil(() => document.querySelector('#find-kfa-button'), { timeout: 8000 });
-    await tryPoll(() => !isBtnDisabled(btn), { timeout: 4000 });
-    baseline = new Map([...baseline, ...scanMasalah()]);
-    const t0 = Date.now();
-    clickElement(btn);
-    let entry = null;
-    while (Date.now() - t0 < 14000) {
-      guard();
-      if (cekServerError()) return { type: 'server', msg: 'Server error saat Periksa' };
-      if (!entry) entry = NetWatch.findFor(t0, kfa);
-      if (entry && entry.done) {
-        if (entry.status >= 500 || entry.failed) return { type: 'server', msg: `Respons server ${entry.status || 'gagal'} saat Periksa` };
-        if (entry.errors) return classify(entry.errors);
-        await sleep(700); // kasih waktu React render pesan hasil
-        const m = masalahBaru(baseline, true);
-        if (m) return classify(m);
-        return { type: 'ok', via: `${entry.op || 'graphql'} ${entry.status}`, baseline: new Map([...baseline, ...scanMasalah()]) };
-      }
-      if (!entry && Date.now() - t0 > 2500) {
-        const m = masalahBaru(baseline, false);
-        if (m) return classify(m);
-      }
-      await new Promise((r) => setTimeout(r, 250));
-    }
-    const m = masalahBaru(baseline, false);
-    if (m) return classify(m);
-    log('⚠️ Respons "Periksa" tidak terdeteksi lewat network & tidak ada pesan error -- lanjut dengan asumsi valid (divalidasi lagi saat Kirim).');
-    return { type: 'ok', via: 'timeout', baseline: new Map([...baseline, ...scanMasalah()]) };
   }
 
   function cariCheckbox(nama, idx) {
@@ -535,13 +690,12 @@
       const cb = await pollUntil(() => cariCheckbox(nama, i), { timeout: 10000 });
       if (!cb.checked) {
         clickElement(cb);
-        await sleep(300);
-        if (!cb.checked) { clickElement(cb.closest('label') || cb); await sleep(300); }
+        let ok = await tryPoll(() => cb.checked, { timeout: 1200 });
+        if (!ok) { clickElement(cb.closest('label') || cb); ok = await tryPoll(() => cb.checked, { timeout: 1200 }); }
       }
       if (!cb.checked) throw new Error(`Checkbox tipe penyedia "${nama}" gagal dicentang`);
     }
     log(`Tipe penyedia dicentang: ${CONFIG.tipePenyedia.join(', ')}`);
-    await sleep(CONFIG.stepDelay);
   }
 
   function getSlots() {
@@ -580,20 +734,21 @@
       if (!els.length) return null;
       if (beforeEls.length) return hrefsOf(els).some((h) => !beforeHrefs.includes(h)) ? true : null; // sudah ada sebelumnya -> butuh link baru
       return true;
-    }, { timeout: 30000, interval: 300 }).catch((e) => {
+    }, { timeout: 30000, interval: 200 }).catch((e) => {
       if (e instanceof AbortError || e.message === 'SERVER_ERROR') throw e;
       throw new Error(`Upload ${label} BELUM terkonfirmasi: tulisan "Lihat Dokumen" tidak muncul dalam 30 detik (proses dihentikan untuk SKU ini)`);
     });
     log(`✅ Upload ${label} terkonfirmasi ("Lihat Dokumen" muncul)`);
-    await sleep(300);
   }
-  async function unggahDokumen(files) {
+  // onlyMissing=true: slot yang sudah menampilkan "Lihat Dokumen" dilewati (dipakai saat isi ulang).
+  async function unggahDokumen(files, onlyMissing) {
     const slots = await pollUntil(() => { const s = getSlots(); return s.length ? s : null; }, { timeout: 12000 });
     log(`Slot dokumen di form: ${slots.length}`);
     const diupload = [];
     for (const slot of slots) {
       const f = files[slot.n];
       if (!f) { log(`ℹ️ Dokumen ${slot.n}: tidak ada file dikonfigurasi, slot DILEWATI`); continue; }
+      if (onlyMissing && lihatDokumenEls(slot.container).length) { diupload.push(slot); continue; }
       const file = await f.handle.getFile();
       await uploadKeSlot(slot, file, `Dokumen ${slot.n}`);
       diupload.push(slot);
@@ -602,16 +757,36 @@
       if (!slots.some((sl) => String(sl.n) === String(n))) throw new Error(`Slot Dokumen ${n} tidak ada di form padahal file-nya dikonfigurasi`);
     }
     // Verifikasi akhir: semua slot yang diupload HARUS masih menampilkan "Lihat Dokumen".
-    await sleep(500);
+    await nextChange(150);
+    guard();
     const belum = diupload.filter((sl) => !lihatDokumenEls(sl.container).length).map((sl) => `Dokumen ${sl.n}`);
     if (belum.length) throw new Error(`Verifikasi akhir gagal: "Lihat Dokumen" tidak terlihat di ${belum.join(', ')}`);
     log(`✅ Semua dokumen terverifikasi ("Lihat Dokumen" ada di ${diupload.length} slot)`);
   }
 
+  // Setelah Periksa lolos: pastikan checkbox & dokumen TIDAK ikut ter-reset oleh form.
+  // Kalau ada yang hilang, isi ulang bagian yang hilang saja.
+  async function pastikanFormUtuh(files) {
+    const rusak = [];
+    CONFIG.tipePenyedia.forEach((nama, i) => {
+      const cb = cariCheckbox(nama, i);
+      if (!cb || !cb.checked) rusak.push(`tipe "${nama}"`);
+    });
+    const slots = getSlots();
+    Object.keys(files).forEach((n) => {
+      const sl = slots.find((s) => String(s.n) === String(n));
+      if (!sl || !lihatDokumenEls(sl.container).length) rusak.push(`Dokumen ${n}`);
+    });
+    if (!rusak.length) return;
+    log(`♻️ Form ter-reset setelah Periksa (${rusak.join(', ')}) -- isi ulang bagian yang hilang`);
+    await centangTipePenyedia();
+    await unggahDokumen(files, true);
+  }
+
   async function kirimForm(baseline) {
     const cb = await pollUntil(() => document.querySelector('#checkbox-data-validity-confirmation'), { timeout: 8000 });
-    if (!cb.checked) { clickElement(cb); await sleep(300); }
-    if (!cb.checked) { clickElement(cb.closest('label') || cb); await sleep(300); }
+    if (!cb.checked) { clickElement(cb); await tryPoll(() => cb.checked, { timeout: 1200 }); }
+    if (!cb.checked) { clickElement(cb.closest('label') || cb); await tryPoll(() => cb.checked, { timeout: 1200 }); }
     const btn = await tryPoll(() => {
       const b = document.querySelector('#button-submit-principal-application');
       return b && isVisible(b) && !isBtnDisabled(b) ? b : null;
@@ -631,7 +806,8 @@
       if (kembaliTerlihat()) return { type: 'ok', msg: 'Terkirim' };
       const b = document.querySelector('#button-submit-principal-application');
       if (!b || !isVisible(b)) {
-        await sleep(1000);
+        await sleep(500);
+        if (kembaliTerlihat()) return { type: 'ok', msg: 'Terkirim' };
         const m = masalahBaru(baseline, true);
         if (m) return classify(m);
         return { type: 'ok', msg: 'Terkirim' };
@@ -640,7 +816,7 @@
         const m = masalahBaru(baseline, true);
         if (m) return classify(m);
       }
-      await new Promise((r) => setTimeout(r, 300));
+      await nextChange(150);
     }
     return { type: 'error', msg: 'Tombol Kirim masih terlihat setelah 30 detik (submit kemungkinan nyangkut)' };
   }
@@ -650,22 +826,43 @@
       log(`▶ AKD "${item.akd}" | KFA ${item.kfa}`);
       await pilihSectoral();
       await pilihKategori();
-      const kfaInput = await pollUntil(() => document.querySelector('input[name="kfa.input"], input[placeholder="Nomor Produk"]'), { timeout: 10000 });
-      const baseline0 = scanMasalah();
+      const kfaInput = await pollUntil(() => document.querySelector(KFA_INPUT_SEL), { timeout: 10000 });
       setNativeValue(kfaInput, '');
-      await sleep(200);
-      const cek = await periksaKfa(item.kfa, baseline0);
+
+      // 1) Klik Periksa, lalu JANGAN diam menunggu: hasilnya dibaca di background.
+      const ctx = await mulaiPeriksa(item.kfa);
+      log(`🔎 Periksa KFA ${item.kfa} dikirim -- isi form lanjut paralel sambil nunggu hasil`);
+      const verdictP = tungguVerdictKfa(ctx);
+      verdictP.catch(() => {}); // cegah unhandled rejection kalau langkah di bawah error/abort duluan
+
+      // 2) Sambil nunggu server, centang tipe penyedia + upload dokumen (blok ini sudah tampil sebelum Periksa).
+      let formErr = null;
+      try {
+        await centangTipePenyedia();
+        await unggahDokumen(files);
+      } catch (e) {
+        if (e instanceof AbortError) throw e;
+        formErr = e;
+      }
+
+      // 3) Kumpulkan putusan. Penolakan KFA/duplikat/server lebih prioritas daripada error form.
+      const cek = await verdictP;
       if (cek.type !== 'ok') return cek;
-      log(`✅ Periksa KFA ${item.kfa} lolos (${cek.via})`);
-      const baseline = cek.baseline;
-      await centangTipePenyedia();
-      await unggahDokumen(files);
-      await sleep(800);
+      const nama = bacaNamaProduk();
+      log(`✅ Periksa KFA ${item.kfa} lolos (${cek.via})${nama ? ` -> ${nama}` : ''}`);
+      if (formErr) {
+        if (formErr.message === 'SERVER_ERROR') return { type: 'server', msg: 'Server error saat isi form' };
+        throw formErr;
+      }
+
+      // 4) Pastikan hasil Periksa tidak me-reset isian, lalu submit.
+      await pastikanFormUtuh(files);
       if (cekServerError()) return { type: 'server', msg: 'Server error sebelum submit' };
-      const m = masalahBaru(baseline, false);
-      if (m) return classify(m);
       if (getFlags().dryRun) return { type: 'dry' };
-      return await kirimForm(baseline);
+      const baseline = new Map(scanMasalah());
+      const hasil = await kirimForm(baseline);
+      if (hasil.type === 'ok' && nama) hasil.msg = `Terkirim | ${nama}`;
+      return hasil;
     } catch (e) {
       if (e instanceof AbortError) throw e;
       if (e.message === 'SERVER_ERROR' || cekServerError()) return { type: 'server', msg: e.message };
@@ -702,7 +899,7 @@
   }
 
   async function handleOutcome(item, out) {
-    const C = Object.assign({ server: 0, err: 0 }, jget(K.counters, {}));
+    const C = Object.assign({ server: 0, err: 0, soft: 0 }, jget(K.counters, {}));
     switch (out.type) {
       case 'ok':
         setResult(item, 'BERHASIL', out.msg || '');
@@ -745,7 +942,21 @@
     }
     jset(K.counters, C);
     refreshPanel();
-    await sleep(300);
+
+    // Navigasi cepat (tanpa reload) hanya setelah hasil "bersih"; error/server selalu reload penuh.
+    const cepat = getFlags().softNav && out.type !== 'server' && out.type !== 'error' && C.soft < CONFIG.hardReloadEvery;
+    if (cepat) {
+      if (await softReset()) {
+        C.soft += 1;
+        jset(K.counters, C);
+        log(`⚡ Lanjut SKU berikutnya tanpa reload (${C.soft}/${CONFIG.hardReloadEvery} sebelum reload penuh)`);
+        return 'next';
+      }
+      log('⚠️ Navigasi cepat gagal -- pakai reload biasa.');
+    }
+    C.soft = 0;
+    jset(K.counters, C);
+    await sleep(150);
     return hardNavigate(); // fresh start untuk SKU berikutnya
   }
 
@@ -952,7 +1163,7 @@
     const fl = getFlags();
     const esc = (v) => String(v || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     panel.innerHTML = `
-      <div class="hd" id="mp4-header"><b>INAPROC Master Produk v4 · file lokal</b><button id="mp4-collapse" title="Ciutkan / buka">—</button></div>
+      <div class="hd" id="mp4-header"><b>INAPROC Master Produk v4.2 · file lokal</b><button id="mp4-collapse" title="Ciutkan / buka">—</button></div>
       <div class="bd" id="mp4-body">
         <div class="card"><div id="mp4-status"></div></div>
         <div class="card">
@@ -972,6 +1183,7 @@
         <div class="card">
           <div class="ttl">3 · Jalankan</div>
           <label class="chk"><input type="checkbox" id="mp4-dry" ${fl.dryRun ? 'checked' : ''}><span>Dry run: isi form & berhenti setelah 1 SKU, <b>jangan kirim</b></span></label>
+          <label class="chk"><input type="checkbox" id="mp4-soft" ${fl.softNav ? 'checked' : ''}><span>Navigasi cepat antar SKU (tanpa reload; auto-reload kalau gagal/error)</span></label>
           <div class="warn">⚠️ Data masuk ke INAPROC sungguhan. Tes 1 SKU dengan dry run dulu.</div>
           <div class="row"><button class="b pri" id="mp4-start" style="flex:2">▶ Mulai / Lanjutkan</button><button class="b dng" id="mp4-stop">⏹ Stop</button></div>
         </div>
@@ -1052,6 +1264,7 @@
     panel.querySelector('#mp4-doc2').onchange = (e) => { const d = getDocs(); d[2] = e.target.value.trim(); jset(K.docs, d); };
     panel.querySelector('#mp4-doc3').onchange = (e) => { const d = getDocs(); d[3] = e.target.value.trim(); jset(K.docs, d); };
     panel.querySelector('#mp4-dry').onchange = (e) => { const f = getFlags(); f.dryRun = e.target.checked; jset(K.flags, f); log(f.dryRun ? 'Dry run ON' : '⚠️ Dry run OFF -- run berikutnya akan SUBMIT sungguhan'); };
+    panel.querySelector('#mp4-soft').onchange = (e) => { const f = getFlags(); f.softNav = e.target.checked; jset(K.flags, f); log(f.softNav ? 'Navigasi cepat ON (tanpa reload antar SKU)' : 'Navigasi cepat OFF (reload penuh tiap SKU)'); };
     panel.querySelector('#mp4-folder').onclick = pilihFolder;
     panel.querySelector('#mp4-folder-change').onclick = (e) => { e.preventDefault(); gantiFolder(); };
     panel.querySelector('#mp4-check').onclick = cekBerkas;
@@ -1083,7 +1296,7 @@
     DocStore.restore().then(refreshPanel);
     if (isRunFlag()) {
       log('↻ Halaman dimuat, melanjutkan run...');
-      setTimeout(runLoop, 1500);
+      setTimeout(runLoop, 700);
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
