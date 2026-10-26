@@ -856,6 +856,60 @@ function syncClipboardQtyForProduk(produkId, kode, override) {
   return false;
 }
 
+// DIPULIHKAN 2026-10-26: dua fungsi ini ikut kehapus waktu dictionary.js ditulis ulang di commit
+// c4cfe6a ("inline dictionary yang lebih baik"), padahal masih dipanggil dari permintaan-rs.js
+// (markItemTerpenuhiWithSingleProduk / cascadeQtyChange) dan clipboard.js (badge "RS n").
+// Akibatnya "Pakai"/"Tambah & Pakai" dari saran Dictionary gagal di S.reconcileClipboardQty
+// (undefined) SETELAH server sukses -> qty clipboard gak ikut qty permintaan + toast "Gagal update".
+S.sumQtyAlokasiForProduk = sumQtyAlokasiForProduk;
+// Qty "sesuai Permintaan RS" untuk satu item clipboard (null = gak ada alokasi RS).
+function rsQtyForClipItem(clipItem) {
+  if (!clipItem || !S.checklistPermintaanId) return null;
+  return sumQtyAlokasiForProduk(clipItem.produk_id != null ? clipItem.produk_id : null, clipItem.kode_produk);
+}
+S.rsQtyForClipItem = rsQtyForClipItem;
+
+// SATU titik yang nyambungin perubahan alokasi RS → qty clipboard. Dipakai semua
+// jalur (konfirmasi picker, Pakai/Tambah&Pakai, Tidak Bisa, Batal, edit qty RS).
+// Dipanggil SETELAH server sukses, dengan link SEBELUM & SESUDAH untuk item itu.
+//
+// Aturan qty clipboard (source of truth = Permintaan RS, override manual dihormati):
+//  - total RS baru ada, dan qty clipboard MASIH mengikuti RS (== total lama, atau
+//    belum pernah ada alokasi) → qty clipboard diset ke total RS baru.
+//  - qty clipboard BEDA dari total RS lama → itu override manual user: JANGAN
+//    ditimpa. Badge "manual · RS n" di baris clipboard yang nunjukin selisihnya.
+//  - total RS baru gak ada (alokasi dicabut) → qty clipboard dibiarkan, gak di-reset.
+function reconcileClipboardQty(itemId, oldLinks, newLinks) {
+  const seen = new Set();
+  const notes = [];
+  let changed = false;
+  [...(oldLinks || []), ...(newLinks || [])].forEach(l => {
+    const key = l.produk_id != null ? 'id:' + l.produk_id : 'kode:' + l.kode_produk;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const clipItem = S.clipboard.find(c => c.kode_produk === l.kode_produk);
+    if (!clipItem) return;
+    const prev = sumQtyAlokasiForProduk(l.produk_id, l.kode_produk, { itemId, links: oldLinks || [] });
+    const next = sumQtyAlokasiForProduk(l.produk_id, l.kode_produk, { itemId, links: newLinks || [] });
+    if (next == null || clipItem.qty === next) return;
+    const followsRs = prev == null || clipItem.qty === prev;
+    if (!followsRs) {
+      notes.push(`Qty ${l.kode_produk} tetap ${clipItem.qty} (diubah manual) — Permintaan RS: ${next}`);
+      return;
+    }
+    const before = clipItem.qty;
+    clipItem.qty = next;
+    if (clipItem._sesiItemId) S.markLocalWrite(S.SESI_ITEM_TABLE, clipItem._sesiItemId, 'qty', clipItem.qty);
+    S.persistUpdateQty(clipItem);
+    changed = true;
+    if (before !== 1 && prev == null) notes.push(`Qty ${l.kode_produk}: ${before} → ${next} (mengikuti Permintaan RS)`);
+  });
+  S.updateClipboard(); // selalu: badge "RS n" di baris clipboard harus ikut segar
+  if (notes.length) PNMToast.show(notes.join(' · '), 'presence', { duration: 6000 });
+  return changed;
+}
+S.reconcileClipboardQty = reconcileClipboardQty;
+
 S.kbList.addEventListener('click', async (e) => {
   const link = e.target.closest('a[data-action]');
   const btn = e.target.closest('button[data-action]');
