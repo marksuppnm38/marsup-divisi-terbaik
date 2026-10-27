@@ -918,9 +918,94 @@ function setSearchMeta(base, notFirmCount, showingNotFirm, extraNote) {
   }
   if (extraNote) S.metaEl.append(extraNote);
 }
+// ---- Dictionary (hemat resource) ----
+// RPC search_dictionary_hits relatif mahal (~0,5 dtk: hitung ulang istilah dari riwayat permintaan). Jadi:
+//  1. dipanggil SETELAH hasil biasa tampil, dan cuma kalau user berhenti mengetik (jeda DICT_DELAY_MS —
+//     seluruh ketikan yang keburu diganti dibuang lewat searchSeq, gak sampai ke database);
+//  2. dilewati untuk query yang jelas gak butuh: <3 huruf, kode produk (satu kata + angka), atau
+//     pencarian biasa sudah dapat kecocokan persis (score 1000);
+//  3. di-cache di browser 5 menit per query (istilah yang sama berulang gak nembak DB lagi).
+const DICT_DELAY_MS = 450;
+const DICT_CACHE_TTL = 5 * 60 * 1000;
+const dictHitsCache = new Map(); // key -> { t, rows }
+function dictPerluDicek(q, dataRaw) {
+  const t = (q || '').trim();
+  if (t.length < 3) return false;
+  if (!/\s/.test(t) && /\d/.test(t)) return false;           // kemungkinan kode produk
+  if (dataRaw && dataRaw.some(r => r.score >= 1000)) return false; // sudah ada kecocokan persis
+  return true;
+}
+async function getDictHits(q, args) {
+  const key = [q.trim().toLowerCase(), args.p_tipe || '', args.only_akd ? 1 : 0, args.only_kfa ? 1 : 0].join('|');
+  const hit = dictHitsCache.get(key);
+  if (hit && Date.now() - hit.t < DICT_CACHE_TTL) return hit.rows;
+  let rows = [];
+  try {
+    const { data, error } = await rpc('search_dictionary_hits', args);
+    if (!error && Array.isArray(data)) rows = data;
+  } catch (e) { /* fungsi belum di-deploy / error: abaikan, pencarian biasa tetap jalan */ }
+  if (dictHitsCache.size > 100) dictHitsCache.delete(dictHitsCache.keys().next().value);
+  dictHitsCache.set(key, { t: Date.now(), rows });
+  return rows;
+}
+S.getDictHits = getDictHits;
+// Gabungkan hasil Dictionary ke daftar yang sudah tampil: yang sudah ada cuma diberi label & dinaikkan,
+// yang belum ada ditambahkan di atas. Patuh filter yang sama dengan hasil biasa (firm / Verified).
+async function mergeDictHits(q, args, dataRaw, mySeq) {
+  if (!dictPerluDicek(q, dataRaw)) return;
+  await new Promise(r => setTimeout(r, DICT_DELAY_MS));
+  if (mySeq !== searchSeq) return; // user sudah mengetik lagi / pencarian lain jalan: gak usah nembak DB
+  const hits = await getDictHits(q, args);
+  if (!hits.length || mySeq !== searchSeq) return;
+  const byKode = new Map(S.lastResults.map(r => [r.kode_produk, r]));
+  const flagged = [], fresh = [];
+  for (const h of hits) {
+    const ex = byKode.get(h.kode_produk);
+    if (ex) { ex.dict_istilah = h.dict_istilah; ex.dict_skor = h.dict_skor; flagged.push(ex); }
+    else fresh.push(h);
+  }
+  let freshOk = S.filterFirm(fresh, S.modeSwasta);
+  if (S.onlyVerified) freshOk = freshOk.filter(S.isVerified);
+  if (!flagged.length && !freshOk.length) return;
+  freshOk.forEach(r => { r.stok_pending = true; });
+  if (S.rawCache && S.rawCache.q === q) S.rawCache.data = [...fresh, ...S.rawCache.data.filter(r => !hits.some(h => h.kode_produk === r.kode_produk))];
+  const top = new Set([...freshOk, ...flagged]);
+  S.lastResults = [...freshOk, ...flagged, ...S.lastResults.filter(r => !top.has(r))];
+  applySort();
+  S.currentPage = 1;
+  renderResults(S.lastResults);
+  const first = S.metaEl.firstChild; // teks "N produk ditemukan" -> perbarui angkanya saja
+  if (first && first.nodeType === 3) first.nodeValue = first.nodeValue.replace(/^\d+/, String(S.lastResults.length));
+  if (freshOk.length) {
+    await Promise.race([Promise.resolve(S.enrichResultsWithStok(freshOk)).catch(() => {}), new Promise(r => setTimeout(r, 5000))]);
+    freshOk.forEach(r => { delete r.stok_pending; });
+    if (mySeq === searchSeq) { applySort(); renderResults(S.lastResults); }
+  }
+}
+
+// ---- Typo: koreksi kata lewat RPC suggest_koreksi_query (kamus kata katalog + pg_trgm) ----
+// Cuma dipanggil kalau hasil kosong/sedikit. Gagal/belum di-deploy -> null (diam-diam, pencarian tetap jalan).
+const koreksiCache = new Map(); // q -> koreksi | null
+async function cariKoreksi(q) {
+  if (koreksiCache.has(q)) return koreksiCache.get(q);
+  let fix = null;
+  try {
+    const { data, error } = await rpc('suggest_koreksi_query', { q });
+    const row = !error && data ? (Array.isArray(data) ? data[0] : data) : null;
+    if (row && row.berubah && row.koreksi && row.koreksi.trim() && row.koreksi.trim() !== q.trim().toLowerCase()) fix = row.koreksi.trim();
+  } catch (e) { /* abaikan */ }
+  koreksiCache.set(q, fix);
+  return fix;
+}
 async function runSearch(opts) {
-  const q = S.searchInput.value.trim();
-  if (!q) { reset(); return; }
+  const qInput = S.searchInput.value.trim();
+  if (!qInput) { S.corrected = null; reset(); return; }
+  // q = kata yang benar-benar dicari. Biasanya = ketikan; kalau tadi sudah dikoreksi otomatis, tetap pakai koreksinya
+  // (mis. toggle "Tampilkan belum firm" memanggil runSearch({reuse:true})).
+  let q = qInput;
+  if (opts && opts.qOverride) q = opts.qOverride;
+  else if (opts && opts.reuse && S.corrected && S.corrected.from === qInput) q = S.corrected.to;
+  else S.corrected = null;
   const mySeq = ++searchSeq; // request lama yang telat balik nanti diabaikan, bukan nimpa hasil yang lebih baru
   S.errEl.style.display = 'none';
   S.hintEl.style.display = 'none';
@@ -933,14 +1018,11 @@ async function runSearch(opts) {
   if (opts && opts.reuse && S.rawCache && S.rawCache.q === q) {
     dataRaw = S.rawCache.data; error = null; // toggle "Tampilkan belum firm": hasil RPC yang sama
   } else {
-    // Pencarian + Dictionary: produk yang cocok dgn istilah customer di Dictionary dinaikkan ke atas
-    // (r.dict_istilah terisi). Kalau fungsi barunya belum di-deploy / error, jatuh balik ke pencarian lama.
-    const searchArgs = { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false };
-    ({data: dataRaw, error} = await rpc('search_produk_dengan_dictionary', searchArgs));
-    if (error) {
-      console.warn('search_produk_dengan_dictionary gagal, pakai pencarian biasa:', error.message || error);
-      ({data: dataRaw, error} = await rpc('search_produk_dengan_harga', searchArgs));
-    }
+    // Jalur utama = pencarian lama (cepat). Dictionary TIDAK ditunggu: ditambahkan belakangan oleh
+    // mergeDictHits() (lihat bawah) — hemat resource & hasil biasa tetap instan.
+    ({data: dataRaw, error} = await rpc('search_produk_dengan_harga', {
+      q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false
+    }));
     if (!error) S.rawCache = { q, data: dataRaw };
     if (S.showNotFirmQ !== q) S.showNotFirmQ = null; // kata kunci baru -> belum firm disembunyikan lagi
   }
@@ -975,7 +1057,12 @@ async function runSearch(opts) {
     }
     return;
   }
-  if (!data || !data.length) { S.emptyEl.style.display='block'; setSearchMeta('Tidak ada hasil untuk "'+q+'"', notFirmCount, showingNotFirm, hiddenNote); delete S.metaEl.dataset.nav; S.acBox.style.display='none'; return; }
+  if ((!data || !data.length) && !S.corrected && !(opts && opts.noCorrect)) {
+    const fix = await cariKoreksi(q);
+    if (mySeq !== searchSeq) return;
+    if (fix) { S.corrected = { from: qInput, to: fix }; return runSearch({ qOverride: fix }); }
+  }
+  if (!data || !data.length) { S.emptyEl.style.display='block'; setSearchMeta('Tidak ada hasil untuk "'+qInput+'"', notFirmCount, showingNotFirm, hiddenNote); delete S.metaEl.dataset.nav; S.acBox.style.display='none'; return; }
   S.lastResults = data;
   // PERF: dulu di sini `await enrichResultsWithStok()` DULU baru render, jadi tiap pencarian
   // nunggu 1 round trip tambahan cuma buat badge stok. Sekarang hasil langsung tampil dengan
@@ -984,10 +1071,35 @@ async function runSearch(opts) {
   S.sortSelect.style.display = 'inline-block';
   applySort();
   S.currentPage = 1;
-  setSearchMeta(data.length + ' produk ditemukan', notFirmCount, showingNotFirm, hiddenNote);
+  let metaExtra = hiddenNote;
+  if (S.corrected && S.corrected.to === q) {
+    // Hasil dari koreksi otomatis: kasih tau + jalan balik ke pencarian persis
+    const frag = document.createDocumentFragment();
+    frag.append(hiddenNote || '', ` — menampilkan hasil untuk "${q}". `);
+    const bk = document.createElement('button');
+    bk.type = 'button'; bk.textContent = `Cari "${qInput}" saja`;
+    bk.style.cssText = 'background:none;border:none;padding:0;font:inherit;color:var(--accent,#1D5BD4);text-decoration:underline;cursor:pointer';
+    bk.addEventListener('click', () => { S.corrected = null; runSearch({ noCorrect: true }); });
+    frag.append(bk);
+    metaExtra = frag;
+  }
+  setSearchMeta(data.length + ' produk ditemukan', notFirmCount, showingNotFirm, metaExtra);
   S.metaEl.dataset.nav = '1';
+  // Hasil sedikit & belum dikoreksi: tawarkan "Maksud kamu…?" (async, gak menahan render)
+  if (!S.corrected && data.length <= 2 && !(opts && opts.noCorrect)) {
+    cariKoreksi(q).then(fix => {
+      if (!fix || mySeq !== searchSeq || S.corrected) return;
+      S.metaEl.append(' Maksud kamu: ');
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = fix;
+      b.style.cssText = 'background:none;border:none;padding:0;font:inherit;font-weight:600;color:var(--accent,#1D5BD4);text-decoration:underline;cursor:pointer';
+      b.addEventListener('click', () => { S.corrected = { from: qInput, to: fix }; runSearch({ qOverride: fix }); });
+      S.metaEl.append(b, '?');
+    });
+  }
   S.kbdCardIdx = -1;
   renderResults(S.lastResults);
+  mergeDictHits(q, { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false }, dataRaw, mySeq); // non-blocking
   if (S.pnmSettings.autoComplete) {
     renderAutocomplete(S.lastResults);
   } else {

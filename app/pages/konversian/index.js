@@ -5280,11 +5280,13 @@ async function convManualSearch(i, qRaw) {
   const mySeq = (S.convManualSeq[i] = (S.convManualSeq[i] || 0) + 1);
   S.convManualResults[i] = { loading: true };
   patchConvRow(i, { keepFocus: true });
-  // Sama kayak search utama: produk yang cocok dgn istilah di Dictionary naik ke atas; kalau fungsi
-  // barunya belum di-deploy / error, jatuh balik ke pencarian lama.
   const manualArgs = { q, p_tipe: null, only_akd: false, only_kfa: false };
-  let { data, error } = await S.rpc('search_produk_dengan_dictionary', manualArgs);
-  if (error) ({ data, error } = await S.rpc('search_produk_dengan_harga', manualArgs));
+  let { data, error } = await S.rpc('search_produk_dengan_harga', manualArgs);
+  // Dictionary: produk yang cocok istilah naik ke atas (di-cache & dilewati untuk query yang gak perlu — lihat clipboard.js)
+  if (!error && data && S.getDictHits && q.length >= 3 && !(!/\s/.test(q) && /\d/.test(q)) && !data.some(r => r.score >= 1000)) {
+    const hits = await S.getDictHits(q, manualArgs);
+    if (hits.length) data = [...hits, ...data.filter(r => !hits.some(h => h.kode_produk === r.kode_produk))];
+  }
   if (mySeq !== S.convManualSeq[i]) return; // udah ada ketikan baru nyusul, buang hasil basi ini
   S.convManualResults[i] = error
     ? { error: error.message || JSON.stringify(error) }
