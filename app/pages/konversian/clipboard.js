@@ -1031,7 +1031,7 @@ async function runSearch(opts) {
   await S.verifiedReady;
   const showingNotFirm = !S.modeSwasta && S.showNotFirmQ === q;
   let data = dataRaw ? (showingNotFirm ? dataRaw : S.filterFirm(dataRaw, S.modeSwasta)) : dataRaw;
-  const notFirmCount = (dataRaw && !S.modeSwasta) ? dataRaw.filter(r => !S.isProdukFirm(r)).length : 0;
+  let notFirmCount = (dataRaw && !S.modeSwasta) ? dataRaw.filter(r => !S.isProdukFirm(r)).length : 0;
   let hiddenNote = '';
   if (S.onlyVerified && data) {
     const sebelum = data.length;
@@ -1056,6 +1056,29 @@ async function runSearch(opts) {
       if (retryBtn) retryBtn.addEventListener('click', () => { S.errEl.style.display='none'; runSearch(); });
     }
     return;
+  }
+  // Katalog kosong ≠ pasti tidak ada. Istilah customer ("korentang") sering beda dari nama katalog
+  // ("Forceps …"), jadi pencarian utama kosong, padahal riwayat TERPENUHI pernah memasangkannya.
+  // Dulu Dictionary cuma dipanggil kalau hasil utama TIDAK kosong (mergeDictHits), jadi kasus ini lolos.
+  // Sekarang dicek di sini, SEBELUM koreksi typo: riwayat nyata lebih bisa dipercaya daripada tebakan
+  // trigram, dan koreksi diam-diam bisa membelokkan query ke kata lain. Satu RPC, di-cache, dan hanya
+  // jalan kalau hasil kosong (query normal tidak membayar apa-apa).
+  let dictRescued = false;
+  if ((!data || !data.length) && dictPerluDicek(q, null)) {
+    const hits = await getDictHits(q, { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false });
+    if (mySeq !== searchSeq) return;
+    let fromDict = showingNotFirm ? hits : S.filterFirm(hits, S.modeSwasta);
+    if (!S.modeSwasta) notFirmCount = hits.filter(r => !S.isProdukFirm(r)).length;
+    if (S.onlyVerified) {
+      const sebelum = fromDict.length;
+      fromDict = fromDict.filter(S.isVerified);
+      if (sebelum > fromDict.length) hiddenNote += ` (${sebelum - fromDict.length} non-Verified disembunyikan)`;
+    }
+    if (fromDict.length) {
+      data = fromDict;
+      dictRescued = true;
+      hiddenNote += ' — cocok dengan riwayat istilah customer';
+    }
   }
   if ((!data || !data.length) && !S.corrected && !(opts && opts.noCorrect)) {
     const fix = await cariKoreksi(q);
@@ -1099,7 +1122,7 @@ async function runSearch(opts) {
   }
   S.kbdCardIdx = -1;
   renderResults(S.lastResults);
-  mergeDictHits(q, { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false }, dataRaw, mySeq); // non-blocking
+  if (!dictRescued) mergeDictHits(q, { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false }, dataRaw, mySeq); // non-blocking (kalau sudah rescue, hasilnya sudah dari Dictionary)
   if (S.pnmSettings.autoComplete) {
     renderAutocomplete(S.lastResults);
   } else {
