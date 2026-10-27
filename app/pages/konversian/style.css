@@ -1644,6 +1644,17 @@
   #app-root .panel-collapse-btn:hover{background:var(--surface-2)}
 }
 
+/* FIX tampilan aneh pas panel pencarian diciutkan (mis. tab "Buat SPH" auto-collapse):
+   aturan `#app-root .panel-header{display:grid}` di atas (specificity id+class) mengalahkan
+   `.panel-search.collapsed > .panel-header{display:none}` di pnm-universal.css (3 class), jadi
+   input cari + chip filter ikut ke-render DESAK-DESAKAN di dalam rail 46px (strip ikon acak di
+   kiri bawah). Di sini kita menangin lagi: panel yang collapsed cuma nampilin rail-nya. */
+@media (min-width:769px){
+  #app-root .panel-search.collapsed > .panel-header,
+  #app-root .panel-search.collapsed > .panel-body{display:none !important}
+  #app-root .panel-search.collapsed{overflow:hidden}
+}
+
 /* Kartu hasil — pengetatan kedua (hasil ukur di layar 1366px, panel clipboard 382px):
    baris 2 (kode · AKD · KFA · stok  |  e-Kat · alat) butuh ~694px, tersedia ~649px → stok jatuh ke baris
    ke-3. Hemat ~50px tanpa membuang informasi: padding samping, gap meta, alat 28→24px, badge e-Kat lebih ramping. */
