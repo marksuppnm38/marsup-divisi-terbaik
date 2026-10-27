@@ -1,4 +1,4 @@
-// CONVERTER BULK (2026-10-19) — modul baru, dipisah dari index.js/search.js.
+// CONVERTER BULK (2026-10-19) — modul baru, dipisah dari index.js/converter.js (dulu search.js).
 //
 // Isi:
 //   1. S.resolveConvRows(parsed, onProgress): cocokkan BANYAK kode sekaligus lewat RPC

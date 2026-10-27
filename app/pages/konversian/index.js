@@ -109,6 +109,7 @@ import { KONVERSIAN_MARKUP } from './markup.js';
 import { installRealtime } from './realtime.js';
 import { installClipboard } from './clipboard.js';
 import { installSearch } from './search.js';
+import { installConverter } from './converter.js';
 import { installConverterBulk } from './converter-bulk.js';
 import { installDictionary } from './dictionary.js';
 import { installSetMendekati } from './set-mendekati.js';
@@ -986,6 +987,8 @@ export async function mount(container, initialSub) {
   // sph-module.js — sph-module.js baca fungsi/variabel dari konversian.js
   // lewat shared scope, lihat komentar di kepala sph-module.js sendiri). ──
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-10-27: REORG checklist Kebutuhan RS — ±1000 baris (renderChecklist, tab section, rollup, picker produk, reconcileClipboardQty, autoFinalizePermintaan, callUpdatePermintaanItemMulti, normalizeMatchedItems) dipindah dari dictionary.js ke permintaan-rs.js. dictionary.js sekarang cuma Dictionary (saran inline + tab Dictionary) + modal generik + Riwayat SPH/Konversi (itu menyusul di langkah berikutnya). Tambahan ekspor: S.renderDictSuggestionHtml. Urutan install tidak berubah.
+// 2026-10-27: REORG search — mesin pencarian produk (runSearch/renderResults/applySort/paginasi/autocomplete + wiring input & filter) dipindah dari clipboard.js ke search.js (installSearch); search.js LAMA (switchDoor, exact-by-kode, proses Converter) diganti nama jadi converter.js (installConverter). Urutan install: Clipboard -> Search -> Converter -> ConverterBulk. Plus fix: Dictionary dicek saat hasil katalog kosong (kasus "korentang").
 // 2026-10-20: SHIFT-SELECT (shift-select.js baru): Shift+klik pilih rentang di .conv-check / picker Kebutuhan RS / .ek-cb Riwayat, + tombol "Centang yang tampil" di picker (dictionary.js: clipboardPickerHtml). Di file ini cuma: import+installShiftSelect(S) dan S.setKlikEkatMany (jalur batch buat ek-cb, karena toggleKlikEkat nge-refresh semua checkbox tiap panggilan). Logic centang lama TIDAK diubah — Claude
 // 2026-10-13: AUTO-RECORD + "Perlu tindakan" (auto-record.js): Record tahap database dibuat otomatis saat Export / Record SPH / sesi mandek ditutup sweep (cuma kalau sesi belum punya Record; sumber='auto_*'), Sheet tetap 1 ketukan manual. Sweep sekarang juga jalan saat app dibuka (sweepOnOpen). "Selesaikan Sesi" SENGAJA tidak auto-record. Perlu migration-auto-record.sql — Claude
 // 2026-10-12: FITUR BARU tab "Project" (project.js) — ngelompokin beberapa konversi satu instansi + catat item yang di-klik di e-Kat di level project, asal klik ditebak dari bukti (tanpa primary key). Perubahan di file ini cuma: import+installProject(S), subtab 'project' di switchSubTab/SUBTAB_LABELS, ref S.subtabProject/S.panelBodyProject. Perlu migration-project-konversi.sql dulu (tabel konversi_project, konversi_project_klik, kolom sesi_konversi.project_id) — Claude
@@ -1251,7 +1254,7 @@ initAuth();
 // sekarang lewat window.PNM_getSignedUrl()/window.PNM_getSignedUrls() (shared/
 // supabase-client.js) -- lihat openGambarModal(), handleGambarFileDropped(),
 // thumbKeyForItem()/resolveThumbUrls() di bawah, dan pemakainya di dictionary.js/
-// search.js/clipboard.js (S.thumbKeyForItem/S.resolveThumbUrls, dulu S.THUMB_BASE).
+// converter.js (S.thumbKeyForItem/S.resolveThumbUrls, dulu S.THUMB_BASE).
 //
 // SECURITY FIX (bucket 'lampiran-unit' jadi private, sama kayak 'thumbnails'):
 // LAMPIRAN_BASE di bawah SEKARANG CUMA PENANDA/PREFIX, BUKAN URL yang boleh
@@ -2172,7 +2175,7 @@ function thumbKeyForItem(it) {
 // resolveThumbUrls() di bawah minta signed URL buat SEMUA item sekaligus
 // (satu request createSignedUrls, bukan N request createSignedUrl) SEBELUM
 // baris-baris HTML/TSV dibangun -- lihat copySetRincianWithImages() & pemakai
-// lain (search.js's Copy+Gambar) yang sekarang await ini duluan.
+// lain (converter.js: Copy+Gambar) yang sekarang await ini duluan.
 async function resolveThumbUrls(items) {
   return window.PNM_getSignedUrls('thumbnails', items.map(thumbKeyForItem));
 }
@@ -2962,9 +2965,9 @@ updateOnlineStatus();
 
 // BUGFIX 2026-09-15: blok elemen Converter (convInput..btnConvAddAll) di bawah
 // ini tadinya ke-taruh jauh di bawah (dekat komentar "MODUL CONVERTER" aslinya,
-// setelah installRealtime(S)) — dipindah ke sini karena installSearch(S) (baris
+// setelah installRealtime(S)) — dipindah ke sini karena installConverter(S) (dulu bernama installSearch, baris
 // di bawah ini) langsung manggil S.btnConvProses.addEventListener(...) dkk SAAT
-// installSearch(S) jalan, padahal deklarasi constnya baru muncul ratusan baris
+// installConverter(S) jalan, padahal deklarasi constnya baru muncul ratusan baris
 // kemudian di file yang sama. Sama kelas bug persis kayak clipTabBtnKb/
 // kbEmptyCta yang sempat kena fix serupa di clipboard.js/realtime.js. — Claude
 const convInput = document.getElementById('conv-input');
@@ -2988,8 +2991,9 @@ S.btnConvCopyGambar = btnConvCopyGambar;
 S.convRows = [];
 
   installClipboard(S);
-  installSearch(S);
-  installConverterBulk(S); // resolver bulk + pemilih varian + Copy Tabel (butuh S.matchOneKode dari search.js)
+  installSearch(S); // mesin pencarian produk (dulu numpang di clipboard.js) — cuma definisi + wiring, gak ada kerja saat install
+  installConverter(S); // pintu Cari Cepat/Konversi + exact-by-kode + proses Converter (dulu search.js)
+  installConverterBulk(S); // resolver bulk + pemilih varian + Copy Tabel (butuh S.matchOneKode dari converter.js)
 // ══════════════════════════════════════════
 // NAVIGATION LAYER — konversian.html <-> crud-produk.html
 // Murni URL query param, gak pakai sessionStorage sama sekali — ternyata
@@ -5084,8 +5088,8 @@ async function enrichSetStok(results) {
 // cocok langsung bisa ditambahkan ke clipboard sesi aktif seperti klik hasil
 // pencarian biasa. Ujungnya tetap pakai alur Export/Record yang sudah ada.
 // (Elemen convInput..btnConvAddAll & S.convRows dideklarasikan lebih awal,
-// sebelum installSearch(S) — lihat BUGFIX 2026-09-15 di atas dekat
-// installClipboard(S)/installSearch(S).)
+// sebelum installConverter(S) (dulu installSearch) — lihat BUGFIX 2026-09-15 di atas dekat
+// installClipboard(S)/installConverter(S).)
 // ══════════════════════════════════════════
 
 // ══════════════════════════════════════════
@@ -5155,7 +5159,7 @@ function convRowHtml(r, i) {
   const nama = r.produk ? r.produk.nama_produk : (r.nama_input || '(tanpa nama)');
   // Badge stok cuma relevan buat baris yang udah cocok ke katalog (r.produk
   // keisi) — datanya sendiri udah ADA sejak finishConvBatch() manggil
-  // enrichResultsWithStok() abis batch selesai diproses (lihat search.js),
+  // enrichResultsWithStok() abis batch selesai diproses (lihat converter.js),
   // cuma belum ditampilin di sini. stokBadgeHtml() sama persis yang dipakai
   // Cari Cepat (lihat clipboard.js), biar Converter bisa dipakai serbaguna:
   // sekalian compile-gambar (Copy + Gambar) MAUPUN cek stok bulk dari satu

@@ -251,7 +251,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
                (unit/instrumen): paste kode di atas, cocokkan, copy langsung
                dari sini — TANPA lewat Clipboard, jadi TANPA bikin sesi
                konversi di server. Beda sama tombol sebelah yang emang commit
-               ke sesi. Detail: copyConvWithImages() di search.js. -->
+               ke sesi. Detail: copyConvWithImages() di converter.js. -->
           <!-- COPY TABEL (converter-bulk.js): urutan & jumlah baris = input, jadi bisa ditempel
                di sebelah kolom asli di Sheet. Baris yang gak ketemu tetap ada & ditandai. -->
           <select id="conv-preset" class="conv-select" title="Kolom yang disalin">
