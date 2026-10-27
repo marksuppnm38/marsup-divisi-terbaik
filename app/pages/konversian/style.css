@@ -1720,7 +1720,7 @@
    Riwayat, Project, Converter, Cari SET, Dictionary) hilang dari sidebar. Tampilkan sebagai strip ikon
    di header panel supaya tetap bisa pindah tab tanpa zoom-out. Tombol-tombol ini sudah terpasang
    (hanya disembunyikan global), jadi cukup ditampilkan. */
-@media (min-width:641px) and (max-width:1100px){
+@media (min-width:641px) and (max-width:767px){
   #app-root .panel-header{display:block;padding:8px 12px 8px}
   #app-root .subtab-row{display:flex;align-items:center;gap:2px;margin:0 0 8px}
   #app-root .subtab-row .subtab-btn{
