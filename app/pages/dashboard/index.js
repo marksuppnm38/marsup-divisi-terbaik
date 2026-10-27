@@ -1,24 +1,10 @@
 // dashboard page module: mount(container) / unmount().
-// Per map.md bagian 4 urutan #5 (dashboard duluan dari 2 sisa halaman --
-// stok.html masih ada di sesi berikutnya -- karena dashboard.js udah
-// terpisah dari HTML-nya sejak awal, satu langkah restrukturisasi lebih
-// sedikit dibanding stok.html yang masih inline <script>).
-//
-// INI HALAMAN PERTAMA YANG DIBANGUN LANGSUNG PAKAI design.md's shared nav +
-// topbar (app/pages/nav/) -- bukan gaya lama dulu direskin belakangan.
-// design.md's migration checklist taruh langkah desain SEBELUM wire-up
-// logic; sesi kelima belas ngerjain langkah 1 (structural: shared topbar
-// ganti <header> lama) + langkah 7 (wire-up logic) sekaligus, TAPI BUKAN
-// langkah 2-6 (token warna/spacing/icon/status-dot per design.md) --
-// ditunda sengaja waktu itu (scope sesi itu udah besar: auth rewrite + 24
-// fungsi window-exposed + wiring nav buat pertama kali).
-//
-// UPDATE (sesi retrofit design.md): langkah 2-6 sekarang DIKERJAKAN --
-// lihat style.css baru di folder ini buat detail lengkap tiap langkah
-// (stat-card/stat-icon color-per-item dihapus, chip/days-pill jadi dot+
-// label, badge jadi neutral bordered pill, spacing 18px->16px, mono gap
-// terakhir). Charts (SVG trend/line/donut/wordtree/forecast, semua di file
-// ini) SENGAJA belum disentuh -- lihat catatan di style.css kenapa.
+// Halaman pertama yang dibangun langsung memakai shared nav + topbar
+// (app/pages/nav/), lalu diretrofit style-nya (lihat style.css di folder ini: warna
+// stat-card/stat-icon tidak lagi per-item, chip/days-pill berbentuk dot+label, badge
+// jadi neutral bordered pill, spacing 16px, mono). Charts (SVG trend/line/donut/
+// wordtree/forecast, semua di file ini) SENGAJA belum diretrofit -- lihat catatan
+// di style.css kenapa.
 //
 // AUTH: file asli (dashboard.js) SAMA SEKALI GAK PAKAI SDK Supabase --
 // murni raw fetch() manual ke endpoint /auth/v1/token, token disimpan
@@ -82,13 +68,10 @@ function ensureVendorScripts() {
   return vendorReady;
 }
 
-// shared-google-fonts: id+href SAMA PERSIS kayak yang dipakai konversian/
-// index.js -- dashboard.html asli kebetulan makai resource IDENTIK (dicek
-// dulu sebelum nulis ini, bukan asumsi), jadi beneran share satu <link>
-// kalau dua-duanya kebetulan aktif bareng.
-// pnm-universal.css: pola sama kayak konversian/crud-produk (load di
-// mount(), lepas di unmount(), bukan "shared selamanya" -- lihat map-
-// history.md sesi kesembilan buat kenapa).
+// shared-google-fonts: id+href SAMA PERSIS kayak yang dipakai konversian/index.js,
+// jadi halaman yang aktif bareng share satu <link>.
+// pnm-universal.css: dimuat di mount() tapi TIDAK dilepas di unmount() (permanent
+// <link>, lihat komentar di unmount()).
 // shared-phosphor-icons DIHAPUS (icon-library convergence pass, sesi ini):
 // semua glyph dashboard (ph-*) di-remap ke Tabler yang ekuivalen, jadi
 // konsisten sama konversian/stok/crud-produk/nav yang sudah lama pindah --
@@ -113,14 +96,11 @@ function loadLink(id, href) {
   });
 }
 
-// SPA migration note: dashboard.html asli TIDAK punya stylesheet sendiri --
-// itu berubah sesi ini (design.md steps 2-6 retrofit, lihat style.css baru
-// di folder ini) -- sekarang page-specific style.css DI-LOAD, pola sama
-// kayak konversian/crud-produk/kompres-pdf/export-gambar: di mount(),
-// dilepas di unmount(). .pw-topbar/.pw-content yang dipakai markup.js udah
-// otomatis kesedia dari app/pages/nav/nav.css (dimuat router.js lewat
-// navMount() SEBELUM mount() halaman manapun dipanggil -- lihat
-// router.js's render()), gak perlu di-load ulang di sini.
+// Stylesheet halaman ini (style.css di folder ini) di-load di mount() dan dilepas di
+// unmount(), pola sama kayak konversian/crud-produk/kompres-pdf/export-gambar.
+// .pw-topbar/.pw-content yang dipakai markup.js udah otomatis kesedia dari
+// app/pages/nav/nav.css (dimuat router.js lewat navMount() SEBELUM mount() halaman
+// manapun dipanggil -- lihat router.js's render()), gak perlu di-load ulang di sini.
 function ensureStyle() {
   return Promise.all([
     ...SHARED_LINKS.map(({ id, href }) => loadLink(id, href)),
@@ -354,8 +334,8 @@ function copyKode(e, kode){
 function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`; }
 
 // THEME
-// SPA migration (design.md structural step 1): dashboard's OWN theme
-// toggle button/logic REMOVED entirely (not just fixed) -- design.md's
+// SPA migration (the design spec structural step 1): dashboard's OWN theme
+// toggle button/logic REMOVED entirely (not just fixed) -- the design spec's
 // shared nav (app/pages/nav/) now owns theming globally for every page
 // that adopts it, so a second per-page toggle would just be redundant UI
 // fighting over the same <html data-theme> attribute. File asli juga
@@ -1894,8 +1874,8 @@ export function unmount() {
   dashClickHandler = null;
 
   // shared-pnm-universal-css NO LONGER removed here (jank fix, see the
-  // shared-pnm-universal-css comment in app/shell.html) -- it's now a
-  // permanent <link> loaded once by shell.html/index.html, same treatment
+  // shared-pnm-universal-css comment in index.html) -- it's now a
+  // permanent <link> loaded once by index.html, same treatment
   // Google Fonts already got. Tearing it down on every unmount() was
   // causing a brief unstyled flash on every module navigation (read as a
   // slight "zoom" jump) while the next module's mount() reloaded it.

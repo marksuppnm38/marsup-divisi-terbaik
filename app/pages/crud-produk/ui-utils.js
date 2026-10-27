@@ -1,5 +1,5 @@
 // AUTO-EXTRACTED dari crud-produk/index.js (breakup, pola sama kayak
-// konversian/dictionary.js dkk — lihat map.md). BEDA dari modul konversian:
+// konversian/dictionary.js dkk). BEDA dari modul konversian:
 // keempat fungsi di sini TIDAK butuh shared state 'S' sama sekali (murni
 // terima parameter + document.getElementById + window.PNMToast global),
 // jadi diekspor langsung sebagai named export, bukan lewat installXxx(S).

@@ -1,34 +1,18 @@
 // shared/auth-gate.js
 // ══════════════════════════════════════════
-// THE single login gate for the whole app. Mounted ONCE by router.js,
-// BEFORE any page module is ever mount()ed — replaces the 5 separate
-// per-module gates that used to live in dashboard/stok/konversian (the
-// `.auth-gate`/`.auth-gate-box` pattern) and crud-produk/export-gambar
-// (the bespoke `.gate-wrap`/`.gate-card` pattern). Those are all REMOVED
-// from their respective markup.js/index.js as of this session (sesi
-// kesembilan belas) — see map-history.md for the per-page removal notes.
-// kompres-pdf never had a gate (no auth at all). konversian WAS deferred
-// (too large/delicate to touch blind without browser access to verify —
-// see map-history.md "sesi kesembilan belas") but has since been migrated
-// onto this gate too (see konversian/index.js's mount() — its own
-// #auth-gate/checkWhitelist()/showGate() are gone, konversian/markup.js's
-// #app-root is no longer hidden-until-login). Every routed module now goes
-// through exactly this one gate.
+// THE single login gate for the whole app. Mounted ONCE by router.js, BEFORE any
+// page module is ever mount()ed. No page module has its own login form or
+// whitelist check; every routed module goes through exactly this one gate.
 //
-// BEHAVIOR CHANGE worth flagging explicitly (per map-history.md sesi
-// kelima belas's own note: "kalau mau disamain [whitelist check], itu
-// perubahan behavior yang perlu diminta eksplisit, bukan diam-diam
-// ditambahin"): dashboard.html's ORIGINAL auth had NO allowed_users
-// whitelist check at all (anyone with valid Supabase credentials got
-// in). Now that dashboard sits behind this ONE shared gate, it inherits
-// the whitelist check like every other gated module. This is an
-// intentional side effect of "one gate for everyone" — a single shared
-// gate can't have a different policy per destination module.
+// POLICY NOTE: one shared gate can't have a different policy per destination
+// module. The allowed_users whitelist check therefore applies to every module,
+// including dashboard (whose original standalone page had no whitelist check at
+// all -- anyone with valid Supabase credentials got in). A different rule for a
+// single module would be a behavior change to request explicitly, not something
+// to add silently here.
 //
-// Whitelist check unified to `select('email')` only (dropped the extra
-// `role` column crud-produk's old per-page check used to fetch — grepped
-// crud-produk/index.js first, confirmed `.role`/`data.role` was never
-// actually read anywhere after the fetch, so nothing observable changes).
+// The whitelist check is `select('email')` only (crud-produk's old per-page
+// check also fetched `role`, but it was never read afterwards).
 // ══════════════════════════════════════════
 
 const VENDOR_CHAIN = [

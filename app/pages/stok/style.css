@@ -1,5 +1,5 @@
 /* app/pages/stok/style.css
-   design.md steps 2-6 retrofit for Stock Inventory (steps 1/7 -- topbar +
+   the design spec steps 2-6 retrofit for Stock Inventory (steps 1/7 -- topbar +
    route wiring -- already done, same session as dashboard's step 1; this
    closes the same deferred gap dashboard's style.css closed there).
 
@@ -8,7 +8,7 @@
    scoped OVERRIDE of pnm-universal.css's stok-only classes, zero bare
    selectors, loaded/removed in mount()/unmount() alongside it.
 
-   Uses design.md's EXACT token names for the status dots
+   Uses the design spec's EXACT token names for the status dots
    (--success-dot/--warning-dot/--danger-dot), not pnm-universal.css's
    existing --success/--warning/--danger -- same correction applied to
    dashboard's style.css after that file's first pass got this wrong, see
@@ -43,7 +43,7 @@
 }
 
 /* ---- Step 2/3: icon squares -- neutral, no per-instance tint, resized to
-   design.md's 32px/7px-radius spec (.icon-box was 42px/11px, oversized
+   the design spec's 32px/7px-radius spec (.icon-box was 42px/11px, oversized
    relative to that spec; .metric-icon was already 32px, just needed the
    radius + color fix). ---- */
 #app-root .icon-box,
@@ -57,10 +57,10 @@
 }
 
 /* .dropzone-icon is a large hero/call-to-action graphic, not the module
-   icon-square component design.md's Iconography section targets -- left
+   icon-square component the design spec's Iconography section targets -- left
    at its existing 52px size. Only its per-instance color tint is in
    scope: neutral at rest, keeping the existing accent highlight ONLY on
-   the active drag state (design.md's "one accent... for a single primary
+   the active drag state (the design spec's "one accent... for a single primary
    button/focus" extends naturally to "the one thing you're about to drop
    a file onto being highlighted while you're doing it" -- judgment call,
    flagged here rather than silently decided). */
@@ -172,7 +172,7 @@
 /* ---- Step 5: spacing -- 8pt scale + no shadow ---- */
 #app-root .card{
   padding: 16px;      /* was 22px 24px */
-  box-shadow: none;   /* design.md: flat surfaces + hairline borders only, no shadow */
+  box-shadow: none;   /* the design spec: flat surfaces + hairline borders only, no shadow */
 }
 #app-root .card-head{ margin-bottom: 16px; }     /* was 18px */
 #app-root .stat-row{ gap: 12px; }                /* was 10px */

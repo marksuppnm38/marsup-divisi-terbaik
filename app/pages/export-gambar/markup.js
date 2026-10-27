@@ -1,50 +1,21 @@
 // Static markup for the export-gambar page.
 //
-// Sesi kesembilan belas: REWRITTEN dari nol, dua alasan sekaligus:
-//   1. Per-page auth-gate (gateWrap/appWrap/loginFormWrap) DIHAPUS -- lihat
-//      map-history.md. router.js gak mount() halaman ini kecuali
-//      shared/auth-gate.js sudah lolos.
-//   2. Visual "dark glass" bespoke (gradient mesh glow, film grain, blur
-//      bezel, custom Clash Display/General Sans font) DIBUANG SELURUHNYA
-//      per design.md ("Vercel-flat, not AI app flat" -- no shadows, no
-//      blur, no gradients, no glass, satu accent color doang). Halaman ini
-//      sekarang pakai pola yang SAMA seperti dashboard/stok: struktur
-//      pw-topbar + komponen dari pnm-universal.css yang udah ada
-//      (.page-head, .card, .field-label/.field-input, .btn-accent/
-//      .btn-ghost/.btn-primary, .stat-pill) -- BUKAN token/warna baru.
-//      Sisa CSS yang bener-bener spesifik halaman ini (list file yang bisa
-//      dipilih, chip dengan tombol hapus, frame canvas preview, toast)
-//      pindah ke style.css yang baru, dan SEMUANYA di-scope di bawah
-//      `.eg-page` (belajar dari bug yang baru difix -- style.css lama
-//      punya bare `:root`/`body`/`h1`/`select` yang bocor ke modul lain;
-//      kali ini nggak ada satu pun bare selector, jadi remove()-di-
-//      unmount() di index.js jadi lapis pertahanan kedua, bukan satu-
-//      satunya).
+// Struktur: pw-topbar + komponen shared pnm-universal.css (.page-head, .card,
+// .field-label/.field-input, .btn-accent/.btn-ghost/.btn-primary, .stat-pill), sama
+// seperti dashboard/stok. CSS khusus halaman (list file, chip dengan tombol hapus,
+// frame canvas preview, toast) ada di style.css dan SEMUANYA di-scope di bawah
+// `.eg-page` (nol bare selector supaya tidak bocor ke modul lain; remove() di
+// unmount() index.js hanya lapis pertahanan kedua).
 //
-// UPDATE (visual polish pass -- "too spread out / too many words / CTA
-// overload" feedback): copy trimmed everywhere (card-head intro
-// paragraphs removed, field labels shortened, button labels down to 1-2
-// words), the "Terapkan kode" button demoted from a bordered .btn-ghost to
-// a quiet inline text link (.eg-link-btn in style.css) since it was
-// visually competing with the page's one real call-to-action (Preview),
-// and the 3-box PNG/Alpha/Count .stat-pill grid under the result canvas
-// collapsed into a single muted meta line (.eg-meta) -- three bordered
-// boxes for three words of static info was the clearest over-decoration
-// on this page. Content column also capped at 640px (.eg-col) instead of
-// stretching full viewport width -- see the FULLBLEED comment on
-// `.eg-page main` in style.css for why that doesn't undo the earlier
-// edge-to-edge request.
+// Tidak ada login gate di markup ini; router.js baru mount() setelah
+// shared/auth-gate.js lolos.
 //
-// UPDATE (card-head consistency pass): this page's two cards were the only
-// ones in the app with no .card-head/.icon-box header (a bare field-label
-// straight at the top of card 1, a plain .eg-card-title text node in card
-// 2) -- every other module (dashboard/stok/crud-produk) uses icon-box +
-// h2 + short p for every card. Added that here too (blue icon-box for the
-// input card, green for the result card, matching the accent/success
-// color convention used elsewhere), removed the now-unused .eg-card-title
-// rule from style.css. Kept subtitles to one short line / omitted where
-// redundant with the .eg-meta line below, so this doesn't reverse the
-// earlier "too many words" trim pass above.
+// Catatan desain: copy sengaja ringkas (label pendek, tombol 1-2 kata). Tombol
+// "Terapkan kode" adalah inline text link (.eg-link-btn) supaya tidak bersaing dengan
+// CTA utama (Preview); metadata hasil satu baris (.eg-meta), bukan 3 kotak; kolom
+// konten dibatasi 640px (.eg-col) -- lihat komentar FULLBLEED pada `.eg-page main` di
+// style.css. Tiap card punya .card-head/.icon-box (biru untuk input, hijau untuk
+// hasil), subtitle satu baris atau dihilangkan bila redundan dengan .eg-meta.
 export const EXPORT_GAMBAR_MARKUP = `
 <div class="eg-page">
   <div class="pw-topbar">

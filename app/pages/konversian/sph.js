@@ -1,49 +1,33 @@
-// AUTO-EXTRACTED dari konversian/index.js (breakup sesuai map.md bagian 3) — Claude, 2026-09-15.
-// Region asli: lihat map.md bagian 2. Semua state lintas-file diakses lewat
-// objek 'S' yang dioper dari index.js (S = window.__konvBridge-style shared
-// state, TAPI bukan window global — cuma dioper sebagai parameter, lihat
-// index.js: const S = {}; lalu install*(S) dipanggil berurutan).
-// Logic di dalam TIDAK diubah — cuma referensi ke variabel/fungsi yang
-// didefinisikan di file LAIN diganti jadi S.nama (lihat COORD LOG index.js).
+// Modul hasil pecahan dari konversian/index.js. State lintas-file diakses lewat objek
+// 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
+// lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
+// di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
 export function installSph(S) {
 // ══════════════════════════════════════════
-// sph-module.js — Generate Surat Penawaran Harga (SPH) langsung dari item yang
-// ada di Clipboard Konversian. Gak perlu Export ke Excel dulu terus upload ulang
-// ke tool SPH Generator terpisah — data (dan gambar produknya di versi
-// berikutnya) diambil langsung dari memory sesi yang lagi jalan.
-//
-// File ini di-load lewat <script src="sph-module.js"> SETELAH konversian.js,
-// sebagai script classic biasa (bukan type="module") — jadi dia berbagi scope
-// global yang sama dan bisa langsung pakai variabel/fungsi yang udah ada di
-// konversian.js: `clipboard`, `modeSwastaOutput`, `rupiah()`, `showToast()`,
-// `inpRs`, `inpSales`. Dipisah ke file sendiri biar konversian.js (udah 4000+
-// baris) gak makin susah dibaca — tapi tetap satu halaman/satu app buat user.
+// SPH — Generate Surat Penawaran Harga langsung dari item yang ada di Clipboard
+// Konversian, tanpa Export ke Excel dulu. Dirender langsung ke jsPDF; data (dan gambar
+// produk) diambil dari memory sesi yang lagi jalan. Di-lazy-load lewat
+// installSphLazyStub() di index.js.
 //
 // CATATAN mode harga: pakai `modeSwastaOutput` (toggle "Mode harga output" di
-// clip-output-mode-row), BUKAN `modeSwasta` (itu toggle "Harga Swasta" di
-// panel pencarian, cuma buat quick lookup pas browsing). Dulu modul ini
-// (keliru) ikutan `modeSwasta`, dan lebih parah lagi kolom link e-Katalog
-// selalu ditampilin apa pun mode-nya — padahal SPH mode swasta harusnya SAMA
-// SEKALI gak nunjukin link e-katalog ke customer, sama kayak Export Excel.
-// Sudah diperbaiki: link & kolom "E-Katalog v6" sekarang cuma muncul kalau
-// !modeSwastaOutput, konsisten sama logic di Export ke Excel (konversian.js).
+// clip-output-mode-row), BUKAN `modeSwasta` (itu toggle "Harga Swasta" di panel
+// pencarian, cuma buat quick lookup pas browsing). SPH mode swasta TIDAK boleh
+// nunjukin link e-Katalog ke customer, sama kayak Export Excel: link & kolom
+// "E-Katalog v6" cuma muncul kalau !modeSwastaOutput.
 //
-// CATATAN CAKUPAN (v2):
-// - Yang di-generate: surat pengantar + tabel ringkasan produk + blok tanda
-//   tangan + 3 jenis lampiran, SAMA PERSIS logic-nya kayak generatesph.html /
-//   Export ke Excel (konversian.js), tapi dirender langsung ke jsPDF tanpa
-//   file Excel perantara:
-//     1. LAMPIRAN <NAMA SET> — tiap item di clipboard bertipe SET dipecah
-//        jadi tabel rincian instrumen satuan di dalamnya (via getSetItems),
-//        satu tabel per set (kode, deskripsi, qty, thumbnail kecil).
-//     2. LAMPIRAN — ITEM SATUAN — satu tabel gabungan utk semua item
-//        instrumen satuan (bukan set, bukan unit) yang ada di clipboard.
-//     3. LAMPIRAN — <NAMA PRODUK> (full-page) — utk item apa pun (set,
-//        satuan, atau unit) yang punya brosur PDF ter-upload/ter-set lewat
-//        modal "Lampiran Produk"; tiap halaman PDF ditempel 1 halaman = 1
-//        gambar penuh, bukan baris tabel (via getLampiranPagesForKode).
-// - Yang BELUM dipindahin: "Record SPH" ke Supabase. Bisa nyusul di
-//   iterasi berikutnya.
+// CAKUPAN: surat pengantar + tabel ringkasan produk + blok tanda tangan + 3 jenis
+// lampiran (logic sama dengan Export ke Excel di clipboard.js, tapi dirender langsung
+// ke jsPDF tanpa file Excel perantara):
+//   1. LAMPIRAN <NAMA SET> — tiap item di clipboard bertipe SET dipecah jadi tabel
+//      rincian instrumen satuan di dalamnya (via getSetItems), satu tabel per set
+//      (kode, deskripsi, qty, thumbnail kecil).
+//   2. LAMPIRAN — ITEM SATUAN — satu tabel gabungan utk semua item instrumen satuan
+//      (bukan set, bukan unit) yang ada di clipboard.
+//   3. LAMPIRAN — <NAMA PRODUK> (full-page) — utk item apa pun (set, satuan, atau
+//      unit) yang punya brosur PDF ter-upload/ter-set lewat modal "Lampiran Produk";
+//      tiap halaman PDF ditempel 1 halaman = 1 gambar penuh, bukan baris tabel (via
+//      getLampiranPagesForKode).
+// Record SPH ke Supabase (sph_records + sph_record_items) ada di bagian RECORD SPH di bawah.
 // ══════════════════════════════════════════
 
 const MONTH_NAMES_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];

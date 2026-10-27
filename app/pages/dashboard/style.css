@@ -1,46 +1,24 @@
 /* app/pages/dashboard/style.css
-   design.md steps 2-6 retrofit for Dashboard Produk (steps 1/7 -- topbar +
-   route wiring -- were already done in sesi kelima belas; this is the
-   deferred "content still uses old color-coded classes" follow-up that
-   comment explicitly flagged, see index.js's header comment).
+   Page-scoped OVERRIDE dari class dashboard-only di pnm-universal.css
+   (.stat-card.blue dst, .chip-yes/no, .badge-instrument/set/unit,
+   .days-kritis/warn/aman) -- bukan edit pnm-universal.css itu sendiri.
+   Semua selector diawali #app-root (mount root halaman ini), sehingga:
+     (a) specificity (1 id + 1 class) menang lawan rule 2-class un-prefixed di
+         pnm-universal.css (mis. `.stat-card.blue::before`) tanpa !important;
+     (b) nol selector bare/unscoped (disiplin yang sama dengan konversian/style.css);
+     (c) tidak ada yang di luar halaman ini terpengaruh.
+   Di-load di mount() / dilepas di unmount() lewat ensureStyle(), pola sama seperti
+   style.css halaman lain -- lihat index.js.
 
-   Approach: page-scoped OVERRIDE of pnm-universal.css's dashboard-only
-   classes (.stat-card.blue etc, .chip-yes/no, .badge-instrument/set/unit,
-   .days-kritis/warn/aman) -- not an edit to pnm-universal.css itself.
-   Every selector here is prefixed #app-root (this page's mount root), so:
-     (a) specificity (1 id + 1 class) beats pnm-universal.css's un-prefixed
-         2-class rules (e.g. `.stat-card.blue::before`) regardless of link
-         load order -- no !important needed for that part;
-     (b) zero bare/unscoped selectors, same discipline established for
-         konversian's style.css (map-history.md sesi kesembilan belas) --
-         safe to leave this link mounted, and per this page's own established
-         pattern it's still removed in unmount() anyway (belt and suspenders).
-     (c) nothing outside this page is affected -- pnm-universal.css's
-         original rules stay intact for any other consumer (real repo may
-         still have a legacy dashboard.html standalone reading them as-is).
-   Loaded in mount() / removed in unmount() via ensureStyle(), same pattern
-   as every other page's style.css -- see index.js.
+   BELUM diretrofit: chart (trend bar / line / donut / wordtree / forecast bars)
+   menggambar SVG mentah dengan fill var(--accent)/var(--success)/var(--warning)/
+   var(--purple) di index.js. Itu warna per-series/semantik, bukan pola "hex beda
+   tiap card", jadi dibiarkan.
 
-   NOT retrofitted this session (out of scope, flagged for later): the
-   charts (trend bar / line chart / donut / wordtree / forecast bars) draw
-   raw SVG with hardcoded var(--accent)/var(--success)/var(--warning)/
-   var(--purple) fills in index.js -- those are per-series/semantic chart
-   colors, not the "different hex per card" anti-pattern design.md singles
-   out, so left as-is rather than guessing at a retrofit with no visual
-   verification available in this sandbox (see map-history.md's running
-   "no browser access" caveat -- applies here too).
-
-   CORRECTION (sesi lanjutan): first cut of this file reused
-   pnm-universal.css's existing --success/--warning/--danger for the status
-   dots below. design.md's own Color tokens section is explicit that any
-   edited page must use its EXACT token set, including --success-dot/
-   --warning-dot/--danger-dot (distinct names/values from the old
-   --success/--warning/--danger), precisely so pages converge cleanly once
-   pnm-universal.css's :root and design.md's token block eventually merge.
-   Defined locally here (scoped under #app-root, not touching
-   pnm-universal.css's :root) rather than hardcoding the hex inline, so the
-   intent is self-documenting and this block deletes cleanly once that
-   future merge happens. */
+   TOKEN STATUS: --success-dot/--warning-dot/--danger-dot (nama/nilai berbeda dari
+   --success/--warning/--danger lama) didefinisikan lokal di bawah, ter-scope
+   #app-root, tanpa menyentuh :root pnm-universal.css, supaya blok ini mudah
+   dihapus kalau token kedua file itu disatukan. */
 
 #app-root{
   --success-dot: #3BA55D;
@@ -94,7 +72,7 @@
    .chip (Ada/Belum -- harga/link_v6/no_akd presence) and .days-pill (stok
    risk level) are genuine status, so they get the dot. .badge
    (Tipe/Entitas/Channel) is a plain category label, not a status, so it
-   gets design.md's neutral hairline-bordered pill instead -- no dot
+   gets the design spec's neutral hairline-bordered pill instead -- no dot
    (a dot would wrongly imply a good/bad axis these values don't have). */
 #app-root .badge{
   background: transparent !important;
@@ -131,7 +109,7 @@
 #app-root .days-warn::before{ background: var(--warning-dot); }
 /* the icons inside .chip (originally ph-x / ph-arrow-square-out, now
    ti-x / ti-external-link after the icon-library convergence pass) are
-   redundant with the dot (design.md: status conveyed by the dot, not an
+   redundant with the dot (the design spec: status conveyed by the dot, not an
    icon) */
 #app-root .chip i{ display: none; }
 
@@ -149,14 +127,14 @@
    for one column) rather than here. */
 
 /* Kartu statistik yang bisa diklik (Belum Ada Harga / Belum di e-Katalog -> filter tabel produk).
-   Sengaja cuma border+outline, gak nambah warna baru (lihat catatan design.md di atas). */
+   Sengaja cuma border+outline, gak nambah warna baru (lihat catatan the design spec di atas). */
 #app-root .stat-card[data-goto]{cursor:pointer}
 #app-root .stat-card[data-goto]:hover{border-color:var(--accent)}
 #app-root .stat-card[data-goto]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ── Navigasi dari dashboard (round 2) ──
    Semua elemen [data-nav]/[data-action]/[data-open-kode] itu pintu ke tempat lain. Cuma cursor,
-   hover border, dan focus ring -- tanpa warna baru (lihat catatan design.md di atas). */
+   hover border, dan focus ring -- tanpa warna baru (lihat catatan the design spec di atas). */
 #app-root [data-nav], #app-root [data-action], #app-root [data-open-kode]{cursor:pointer}
 #app-root .stat-card[data-nav]:hover, #app-root .stat-card[data-action]:hover{border-color:var(--accent)}
 #app-root [role="button"]:focus-visible, #app-root tr[data-open-kode]:focus-visible, #app-root tr[data-action]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

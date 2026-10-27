@@ -6,18 +6,13 @@
 export const KONVERSIAN_MARKUP = `
 
 <!-- AUTH: this module used to have its own login gate here (#auth-gate/
-     #gate-email/#gate-password/#gate-login-btn/#gate-status), kept separate
-     from router.js's shared/auth-gate.js because konversian was the
-     largest/most delicate file in the app and there was no browser access
-     to verify a change to its auth-critical path (see map-history.md
-     "sesi kesembilan belas"). It's consolidated now, same as dashboard/
-     stok/crud-produk/export-gambar: router.js never mount()s this module
-     until the ONE shared gate confirms a session that is both
-     authenticated AND allowed_users-whitelisted -- so by the time this
-     markup is ever inserted into the DOM, login is already done. See
-     index.js's mount() for what replaced the old initAuth()/
-     checkWhitelist()/showGate() trio. #app-root therefore no longer needs
-     to start hidden. -->
+     #gate-email/#gate-password/#gate-login-btn/#gate-status). It's consolidated
+     into shared/auth-gate.js now: router.js never mount()s this module until
+     the ONE shared gate confirms a session that is both authenticated AND
+     allowed_users-whitelisted -- so by the time this markup is ever inserted
+     into the DOM, login is already done. See index.js's mount() for what
+     replaced the old initAuth()/checkWhitelist()/showGate() trio. #app-root
+     therefore no longer needs to start hidden. -->
 <div id="app-root" class="door-cari" style="display:flex;flex-direction:column;height:100vh;overflow:hidden">
 <!-- SPA integration fix: this used to be a hand-styled <header> that only
      LOOKED similar to the shared topbar after enough CSS tweaks -- it was

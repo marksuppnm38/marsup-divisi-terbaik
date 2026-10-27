@@ -1,20 +1,18 @@
 // export-gambar page module: mount(container) / unmount().
-// Originally the export-gambar-gabungan.html script, transformed per
-// map.md's per-page checklist (DOM lookups scoped to `container`, manual
-// sb.auth.* calls replaced with PNMAuth.*, sb.from('allowed_users') kept as
-// direct pnmSupabase call on purpose — see shared/auth-session.js's header).
+// DOM lookups scoped to `container`; auth via PNMAuth.* (sb.from('allowed_users')
+// tetap dipanggil langsung lewat pnmSupabase dengan sengaja -- lihat header
+// shared/auth-session.js).
 //
-// Sesi kesembilan belas: two more changes on top of that —
-//   1. Per-page auth-gate removed entirely (see AUTH comment in mount()
-//      below and shared/auth-gate.js).
-//   2. Visual rewrite per design.md — markup.js and style.css both
-//      REWRITTEN from scratch, dark-glass theme gone, now reuses
-//      pnm-universal.css's shared components like dashboard/stok.
-//   This page's own local toast()/#toastRoot function is STILL NOT the
-//   same as shared/toast.js (PNMToast) — kept as its own lightweight
-//   implementation (now with flat styling matching design.md instead of
-//   the old glass theme). Unifying it with PNMToast is still a separate
-//   decision, not part of this pass either.
+// AUTH: tidak ada login gate di halaman ini; router.js baru mount() setelah
+// shared/auth-gate.js lolos.
+//
+// STYLE: markup.js/style.css memakai komponen shared pnm-universal.css seperti
+// dashboard/stok; style.css hanya berisi bagian spesifik halaman, semuanya di-scope
+// di bawah `.eg-page`.
+//
+// toast()/#toastRoot lokal di file ini TIDAK sama dengan shared/toast.js (PNMToast):
+// implementasi ringan sendiri dengan styling flat. Menyatukannya dengan PNMToast
+// adalah keputusan terpisah.
 
 import { EXPORT_GAMBAR_MARKUP } from './markup.js';
 import { mountBulkThumb } from './bulk-thumb.js';
@@ -651,11 +649,10 @@ export function unmount() {
   if (docPasteHandler) document.removeEventListener('paste', docPasteHandler);
   docPasteHandler = null;
 
-  // Sesi kesembilan belas: sebelum rewrite ini, style.css halaman ini TIDAK
-  // PERNAH dilepas di sini -- itu bug-nya (lihat map-history.md untuk root
-  // cause lengkap: bare :root/body/h1 yang bocor ke modul lain). Sekarang
-  // style.css-nya sendiri sudah di-scope penuh di bawah `.eg-page` (nol
-  // bare selector), jadi baris remove() ini murni lapis pertahanan kedua.
+  // style.css halaman ini harus dilepas di sini: versi lamanya punya bare
+  // :root/body/h1 yang bocor ke modul lain. Sekarang style.css di-scope penuh di
+  // bawah `.eg-page` (nol bare selector), jadi baris remove() ini murni lapis
+  // pertahanan kedua.
   // UPDATE (jank fix): shared-pnm-universal-css and shared-google-fonts are
   // NO LONGER removed here. The "remove tiap unmount()" pattern this
   // comment used to describe -- copied from dashboard/stok/crud-produk/
@@ -665,7 +662,7 @@ export function unmount() {
   // still on screen (during the async gap before the next mount() reloads
   // it) made the still-visible old content visibly lose its styling and
   // snap back once the new page took over. Both are now permanent <link>s
-  // loaded once by shell.html/index.html instead -- see the
+  // loaded once by index.html instead -- see the
   // shared-pnm-universal-css comment there.
   document.getElementById('page-export-gambar-style')?.remove();
 

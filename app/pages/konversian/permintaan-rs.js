@@ -1,10 +1,7 @@
-// AUTO-EXTRACTED dari konversian/index.js (breakup sesuai map.md bagian 3) — Claude, 2026-09-15.
-// Region asli: lihat map.md bagian 2. Semua state lintas-file diakses lewat
-// objek 'S' yang dioper dari index.js (S = window.__konvBridge-style shared
-// state, TAPI bukan window global — cuma dioper sebagai parameter, lihat
-// index.js: const S = {}; lalu install*(S) dipanggil berurutan).
-// Logic di dalam TIDAK diubah — cuma referensi ke variabel/fungsi yang
-// didefinisikan di file LAIN diganti jadi S.nama (lihat COORD LOG index.js).
+// Modul hasil pecahan dari konversian/index.js. State lintas-file diakses lewat objek
+// 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
+// lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
+// di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
 export function installPermintaanRs(S) {
 // ══════════════════════════════════════════
 // MODUL PERMINTAAN RS: catat permintaan (teks/Excel), cocokkan ke katalog,
@@ -920,8 +917,8 @@ S.markItemTerpenuhiWithSingleProduk = markItemTerpenuhiWithSingleProduk;
 // CHECKLIST KEBUTUHAN RS (daftar item permintaan yang dicocokkan satu-satu ke produk):
 // render checklist + tab section + rollup, picker produk, sinkron qty ke clipboard,
 // auto-finalize permintaan. DIPINDAH dari dictionary.js (2026-10-27) — dulu numpang di sana karena
-// waktu konversian.js dipecah, region ini gak punya file sendiri (map.md bagian 3 menaruhnya di
-// permintaan-rs.js: section 18-19). Logic TIDAK diubah; cuma referensi ke hal yang masih tinggal di
+// waktu index.js dipecah, region ini belum punya file sendiri. Logic TIDAK diubah; cuma referensi ke
+// hal yang masih tinggal di
 // dictionary.js diganti jadi S.nama (S.dictSuggestionCache, S.renderDictSuggestionHtml,
 // S.maybeFetchSuggestionForExpanded) + S.showConfirmModal/S.showSectionNameModal (modal generik).
 // ══════════════════════════════════════════════════════════════════════════

@@ -2,7 +2,7 @@ import { MODULES } from '../home/markup.js';
 import { CRUD_PRODUK_SUBNAV } from '../crud-produk/subnav.js';
 import { KONVERSIAN_SUBNAV } from '../konversian/subnav.js';
 
-// design.md explicitly calls MODULES[].color + the hand-drawn per-module
+// the design spec explicitly calls MODULES[].color + the hand-drawn per-module
 // <svg> icons the PRIMARY anti-pattern to remove ("Icons are one neutral
 // color in a bordered square. The glyph differentiates modules, not the
 // color."). Rather than duplicate a whole second module list here (which
@@ -100,7 +100,7 @@ export function navMarkup(activeId, activeSub) {
     </div>`;
 }
 
-// design.md's "Top bar" component — meant to be rendered BY EACH PAGE inside
+// the design spec's "Top bar" component — meant to be rendered BY EACH PAGE inside
 // its own .pw-content area (not by the nav itself, since the breadcrumb/
 // actions are page-specific). Exported here since it's part of the same
 // shared visual language and pages porting to it shouldn't have to

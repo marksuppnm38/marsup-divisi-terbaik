@@ -1,13 +1,13 @@
 // dashboard page markup: the original dashboard.html body content
 // (auth-gate through detail-modal-overlay), ported with the structural
-// change from design.md's migration checklist step 1 (old per-page
-// <header> replaced by the shared pw-topbar) in sesi kelima belas.
+// change of swapping the old per-page <header> for the shared
+// pw-topbar.
 //
-// UPDATE (sesi retrofit design.md): steps 2-6 (color/spacing/icon/status
-// tokens) done this session -- see style.css in this folder for the full
+// UPDATE (style retrofit): color/spacing/icon/status tokens done --
+// see style.css in this folder for the full
 // rationale. The only markup.js change needed for that was stripping the
 // per-instance inline `style="color:var(--success/accent/warning/purple)"`
-// on prog-card-title/insight-card-title icons (design.md: icon color
+// on prog-card-title/insight-card-title icons (icon color
 // shouldn't carry per-card meaning) -- everything else (stat-card/chip/
 // badge/days-pill color removal) is handled purely via CSS specificity in
 // style.css, no other markup change needed.

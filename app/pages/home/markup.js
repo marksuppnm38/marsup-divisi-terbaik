@@ -1,25 +1,8 @@
-// Home page markup (gerbang / landing). Ported from root index.html per
-// visi-pionir-workspaces.md bagian 3.1 + 5 (langkah 1: port dulu, link masih
-// apa adanya, belum hash-nav). Perubahan yang SENGAJA dilakukan di langkah
-// ini (di luar sekadar "port"): kubus 3D + aurora blobs + cursor-glow
-// dibuang, diganti grid kartu modul flat — ini permintaan eksplisit user
-// ("lose the cube gimmick, simplified... minimal modern flat design"), bukan
-// bagian dari rencana port verbatim di map.md/visi-pionir-workspaces.md.
-//
-// MODULES adalah satu-satunya tempat data modul didefinisikan untuk halaman
-// ini (judul, warna, ikon, link, deskripsi) — belum sepenuhnya jadi
-// `app/pages.js` registry lintas-file yang disebut di visi bagian 3.3, itu
-// langkah terpisah nanti (langkah 4).
-//
-// Langkah 3 (visi bagian 5) DIKERJAKAN DI SINI: modul yang sudah
-// `migrated: true` sekarang link ke `/<id>` (real clean path). Ini file
-// itu sendiri sekarang UNREACHABLE (lihat router.js's RETIRED_REDIRECTS —
-// 'home' route diretire sesi keenam belas), jadi klik di sini gak akan
-// pernah beneran kejadian, tapi MODULES tetap dipakai sebagai satu-satunya
-// sumber data modul oleh nav-markup.js (lihat file itu), jadi url di sini
-// harus tetap sinkron sama path asli. Modul yang masih `migrated: false`
-// TETAP full-page `.html` link, sengaja belum disentuh — mereka belum
-// eksis sebagai route SPA sampai gilirannya (map.md bagian 4, urutan #4/#5).
+// Home page markup (gerbang / landing). Halaman ini sudah TIDAK terjangkau: 'home'
+// ada di RETIRED_REDIRECTS router.js (redirect ke dashboard). MODULES di bawah tetap
+// dipakai sebagai satu-satunya sumber data modul (judul, warna, ikon, link,
+// deskripsi) oleh nav-markup.js, jadi url di sini harus tetap sinkron dengan route
+// di router.js. Semua modul sudah `migrated: true` (link ke `/<id>`).
 
 export const MODULES = [
   {

@@ -1,6 +1,6 @@
 // crud-produk page markup: the original crud-produk.html body content
 // (gateWrap through kfaModalOverlay), ported verbatim as a template string.
-// See index.js for the migration notes (map.md bagian 4 urutan #4).
+// See index.js for the migration notes .
 // Theme-init <script> and vendor <script src> tags from the original <head>/
 // top-of-<body> are NOT here -- <script> elements inside HTML assigned via
 // innerHTML don't execute (DOM quirk), so that logic moved into index.js's
@@ -16,16 +16,14 @@
 // just dropped, not relocated anywhere. Log Aktivitas is the one item
 // that's a real page ACTION (opens a modal), not navigation -- moved into
 // `.topbar-actions` instead (see below, next to Tambah Produk), same spot
-// the design.md topbar pattern already uses for per-page actions.
+// the shared topbar pattern already uses for per-page actions.
 // `.main{flex:1}` in pnm-universal.css already sizes `<main>` to fill
 // 100% of `.shell` on its own with no sibling `.sidebar` present -- no
-// layout CSS changed, confirmed before editing (see map-history.md sesi
-// lanjutan for the full before/after).
+// layout CSS changed, confirmed before editing.
 
 export const CRUD_PRODUK_MARKUP = `
-<!-- Sesi kesembilan belas: per-page auth-gate (gateWrap/loginFormWrap/gateMsg)
-     DIHAPUS -- router.js gak mount() halaman ini kecuali shared/auth-gate.js
-     sudah lolos, lihat map-history.md. -->
+<!-- AUTH: tidak ada gate per-halaman; router.js gak mount() halaman ini kecuali
+     shared/auth-gate.js sudah lolos. -->
 
 <!-- APP SHELL -->
 <div class="shell" id="appWrap">

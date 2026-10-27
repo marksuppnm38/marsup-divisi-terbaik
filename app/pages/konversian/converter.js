@@ -2,13 +2,10 @@
 // pintu Cari Cepat vs Konversi (switchDoor), pencarian exact-by-kode (findProdukByKodeExact/matchOneKode,
 // dipakai Converter + Cari SET Mendekati) dan proses Converter. Mesin pencarian produk yang sebenarnya
 // sekarang ada di search.js (installSearch). Fungsi di sini: installConverter(S).
-// AUTO-EXTRACTED dari konversian/index.js (breakup sesuai map.md bagian 3) — Claude, 2026-09-15.
-// Region asli: lihat map.md bagian 2. Semua state lintas-file diakses lewat
-// objek 'S' yang dioper dari index.js (S = window.__konvBridge-style shared
-// state, TAPI bukan window global — cuma dioper sebagai parameter, lihat
-// index.js: const S = {}; lalu install*(S) dipanggil berurutan).
-// Logic di dalam TIDAK diubah — cuma referensi ke variabel/fungsi yang
-// didefinisikan di file LAIN diganti jadi S.nama (lihat COORD LOG index.js).
+// Modul hasil pecahan dari konversian/index.js. State lintas-file diakses lewat objek
+// 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
+// lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
+// di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
 export function installConverter(S) {
 // ══════════════════════════════════════════
 // DUA PINTU: Cari Cepat (murni lookup, nol tulisan ke database) vs Konversi

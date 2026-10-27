@@ -1,34 +1,17 @@
-// Shared sidebar nav (design.md spec) — mount(navEl) once, call setActive(id)
-// on every route change. Deliberately a SEPARATE lifecycle from the
-// per-page mount()/unmount() pattern in app/pages/<name>/index.js — the nav
-// survives across route changes (design.md: "Lives in app/shell.html...
-// not per-page"), mounted ONCE by router.js, not remounted on every
-// hashchange like a regular page.
+// Shared sidebar nav — mount(navEl) sekali, panggil setActive(id) di tiap perubahan
+// route. Lifecycle-nya SENGAJA terpisah dari pola mount()/unmount() per halaman
+// (app/pages/<name>/index.js): nav bertahan lintas route, dipasang SEKALI oleh
+// router.js (navMount/navSetActive dipanggil di render()), bukan di-remount tiap
+// navigasi. Wrapper-nya ada di index.html (.pw-shell berisi #app-nav + #app.pw-content
+// sebagai sibling).
 //
-// WIRED IN as of sesi kelima belas — see app/router.js (imports navMount/
-// navSetActive, calls them in render()) and app/shell.html (.pw-shell
-// wrapper containing #app-nav + #app.pw-content as siblings). dashboard is
-// the first page built to actually use it; the 5 already-migrated pages
-// (home/konversian/crud-produk/kompres-pdf/export-gambar) still render
-// full-width inside .pw-content — they get visually narrower now (sidebar
-// eats 200px) but are NOT recolored or otherwise broken; see nav.css's
-// header comment for the token-scoping bug that was caught and fixed
-// before this went live. Retrofitting those 5 pages to design.md for real
-// is separate, later work (map.md).
-//
-// UPDATE (sesi lanjutan -- "double nav" + real search): two real features
-// added this session, both driven by nav-markup.js's new exports:
-//   1. Sub-navigation accordion -- crud-produk's own duplicate sidebar is
-//      gone (see that module's markup.js/index.js), its 5 views now live
-//      here instead, expanding under crud-produk's item whenever it's the
-//      active route. konversian's subnav also renders here (in ADDITION
-//      to its own existing in-page subtab row, not replacing it yet — see
-//      konversian/subnav.js's header comment for why).
-//   2. A real search box (was a decorative, non-interactive <div> before —
-//      "/" focused nothing because there was nothing focusable). Now
-//      indexes every module + every module's sub-items (buildSearchIndex())
-//      and navigates on click/Enter, exactly like a tiny command palette.
-// setSubroute() is the other half of this — see router.js.
+// FITUR:
+//   1. Sub-navigation accordion -- view tiap modul yang punya sub-route
+//      (crud-produk, konversian) tampil di bawah item modulnya saat route itu aktif.
+//      Registry-nya ada di <modul>/subnav.js (lihat konversian/subnav.js).
+//   2. Search box -- mengindeks setiap modul + sub-itemnya (buildSearchIndex()),
+//      navigasi lewat klik/Enter, seperti command palette kecil.
+// setSubroute() adalah separuh lainnya -- lihat router.js.
 
 import { navMarkup, buildSearchIndex } from './nav-markup.js';
 
@@ -341,7 +324,7 @@ export async function navMount(container, activeId, activeSub) {
   wireSearch();
   wireInternalNav(); // event delegation on navEl itself, so this survives navSetActive()'s innerHTML re-renders — no need to re-call it there
 
-  // "/" focuses the search input, same shortcut design.md's mono "/" hint
+  // "/" focuses the search input, same shortcut the design spec's mono "/" hint
   // implies — now actually does something, see wireSearch() above.
   const input = document.getElementById('pwNavSearchInput');
   document.addEventListener('keydown', (e) => {

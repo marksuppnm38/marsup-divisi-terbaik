@@ -4,7 +4,7 @@
 // "Cari Produk") memunculkan popup "sign in as ..." dari password manager
 // browser -- walaupun beberapa input SUDAH dikasih autocomplete="off"
 // manual (lihat app/pages/konversian/markup.js #search-input). Itu bukan
-// bug di masing-masing field: shell.html adalah SATU halaman (SPA), dan
+// bug di masing-masing field: index.html adalah SATU halaman (SPA), dan
 // #pw-gate (shared/auth-gate.js) yang berisi <input type="password">
 // SELALU ada di <body>, bukan di dalam <form> apa pun. Chromium (dan
 // browser Chromium lain) mengelompokkan semua input yang tidak

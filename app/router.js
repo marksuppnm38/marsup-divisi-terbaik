@@ -1,59 +1,36 @@
 // Minimal path router. Zero-build: native <script type="module">, native import().
-// Each route lazily imports a page module exposing mount(container) / unmount().
-// Add a page here only once it's actually migrated (see map.md bagian 4).
+// Each route lazily imports a page module exposing mount(container) / unmount()
+// (and optionally setSubroute(sub)). To add a page, register it in ROUTES below.
 //
-// AUTH (sesi kesembilan belas): router.js now gates ALL routing behind ONE
-// shared login (shared/auth-gate.js) -- popstate/DOMContentLoaded listeners
-// aren't even attached, and no page module is ever mount()ed, until
-// initAuthGate()'s onReady() fires. Individual pages (dashboard/stok/
-// crud-produk/export-gambar) used to each show their own login gate inside
-// mount() and only reveal their content after a whitelist check passed --
-// that's gone now, moved up here so it happens exactly ONCE per app session,
-// not once per module visited. konversian was deferred from this at first
-// (largest/most delicate file, no browser access to verify a change to its
-// auth-critical path that session -- see map-history.md sesi kesembilan
-// belas) but has since been migrated too: it no longer has any gate of its
-// own, same as every other route here.
+// AUTH: router.js gates ALL routing behind ONE shared login (shared/auth-gate.js) --
+// popstate/DOMContentLoaded listeners aren't even attached, and no page module is
+// ever mount()ed, until initAuthGate()'s onReady() fires. Page modules have no
+// login gate of their own, and the allowed_users whitelist check also lives only
+// in the shared gate.
 //
-// SUB-ROUTES (sesi lanjutan -- "double nav" fix): route format is
-// `/module` OR `/module/sub` (e.g. `/crud-produk/kfa`). This exists so the
-// new sidebar accordion (app/pages/nav/) can link straight to a module's
-// sub-page/view with a real, bookmarkable, back-button-safe URL -- before
-// this, a "view" like crud-produk's KFA Management was pure in-page JS
-// state, invisible to the URL entirely. A page opts into this by exporting
-// an optional `setSubroute(sub)` alongside its usual mount()/unmount() --
-// see crud-produk/index.js and konversian/index.js for the two that do.
-// Pages that don't export it (dashboard/stok/kompres-pdf/export-gambar,
-// none of which have sub-pages) are entirely unaffected -- render() below
-// only ever calls setSubroute when it exists, sub is simply ignored
-// otherwise, same as before this change for them.
+// SUB-ROUTES: route format is `/module` OR `/module/sub` (e.g. `/crud-produk/kfa`),
+// so the sidebar accordion (app/pages/nav/) can link straight to a module's
+// sub-view with a real, bookmarkable, back-button-safe URL. A page opts in by
+// exporting an optional `setSubroute(sub)` alongside mount()/unmount() (see
+// crud-produk/index.js and konversian/index.js). render() only calls it when it
+// exists; for pages without it (dashboard/stok/kompres-pdf/export-gambar) the sub
+// segment is simply ignored.
 //
-// CLEAN URLS (sesi lanjutan -- "/#konversian/cari" -> "/konversian/cari"):
-// switched off hash routing entirely (location.hash / hashchange) in favor
-// of the real path (location.pathname) + the History API (pushState/
-// popstate). Two things had to move together for this to keep working
-// exactly as before, no full reloads on every nav click:
-//   1. Deep links / refreshes now hit the server for a path that has no
-//      real file behind it (e.g. GET /konversian/cari) -- vercel.json now
-//      has a catch-all rewrite back to /index.html so that still resolves
-//      to this same app shell (see vercel.json's own comment). serve.json
-//      got the equivalent for local `serve` testing.
-//   2. In-app navigation (sidebar + sub-nav + the nav search box) used to
-//      be plain <a href="#module"> links -- the browser handles hash
-//      links itself, no JS needed. A real <a href="/module"> link, left
-//      alone, triggers an actual full-page navigation. So nav.js now
-//      intercepts clicks on its own links (only its own -- this file does
-//      NOT install a blanket document-wide click listener, deliberately,
-//      same "don't touch what you can't verify in a browser" caution as
-//      the rest of this codebase) and dispatches a `pnm:navigate` CustomEvent
-//      instead of following the href natively. This file listens for that
-//      event and does the pushState + render() itself. Genuine cross-module
-//      full-page navigations (konversian's navigateToEditProduk(),
-//      crud-produk's "Kembali ke Konversi" button) are UNCHANGED -- they
-//      were already real window.location.href navigations on purpose (need
-//      a fresh load so the target page's mount() sees window.location.search
-//      cleanly), just the '#module' suffix they used to tack on is now a
-//      real '/module' path instead.
+// CLEAN URLS: real path (location.pathname) + History API (pushState/popstate),
+// no hash routing. Two things work together so nav clicks don't cause full reloads:
+//   1. Deep links / refreshes hit the server for a path that has no real file
+//      behind it (e.g. GET /konversian/cari), so vercel.json has a catch-all
+//      rewrite back to /index.html (see its own comment); serve.json has the
+//      equivalent for local `serve` testing.
+//   2. In-app navigation (sidebar + sub-nav + nav search box) uses real
+//      <a href="/module"> links. nav.js intercepts clicks on its own links only
+//      (this file deliberately does NOT install a blanket document-wide click
+//      listener) and dispatches a `pnm:navigate` CustomEvent; this file listens
+//      for it and does the pushState + render() itself. Genuine cross-module
+//      full-page navigations (konversian's navigateToEditProduk(), crud-produk's
+//      "Kembali ke Konversi" button) are real window.location.href navigations on
+//      purpose: they need a fresh load so the target page's mount() sees
+//      window.location.search cleanly.
 
 import { navMount, navSetActive } from './pages/nav/nav.js';
 import { initAuthGate } from '../shared/auth-gate.js';
@@ -238,7 +215,7 @@ async function render() {
 
   // Nav is mounted ONCE (idempotent — navMount() no-ops on repeat calls with
   // the same container, see nav.js), not per-route like page modules — it's
-  // meant to survive across navigations (design.md: "not per-page"). Active-
+  // meant to survive across navigations (not per-page). Active-
   // item highlight still updates every render() via navSetActive().
   if (navContainer) {
     await navMount(navContainer, module, sub);

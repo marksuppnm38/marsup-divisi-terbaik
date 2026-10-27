@@ -1,10 +1,7 @@
-// AUTO-EXTRACTED dari konversian/index.js (breakup sesuai map.md bagian 3) — Claude, 2026-09-15.
-// Region asli: lihat map.md bagian 2. Semua state lintas-file diakses lewat
-// objek 'S' yang dioper dari index.js (S = window.__konvBridge-style shared
-// state, TAPI bukan window global — cuma dioper sebagai parameter, lihat
-// index.js: const S = {}; lalu install*(S) dipanggil berurutan).
-// Logic di dalam TIDAK diubah — cuma referensi ke variabel/fungsi yang
-// didefinisikan di file LAIN diganti jadi S.nama (lihat COORD LOG index.js).
+// Modul hasil pecahan dari konversian/index.js. State lintas-file diakses lewat objek
+// 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
+// lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
+// di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
 export function installClipboard(S) {
 // ══════════════════════════════════════════
 // SESI KONVERSI: bikin "clipboard" jadi objek yang tersimpan di server,

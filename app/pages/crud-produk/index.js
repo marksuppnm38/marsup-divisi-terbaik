@@ -1,7 +1,6 @@
 // crud-produk page module: mount(container) / unmount().
-// Per map.md bagian 4 urutan #4 (auth swap + SPA wrap sekaligus, sesi
-// kesebelas). Pendekatan sama kayak konversian's index.js (lihat komentar
-// di file itu): body ASLI crud-produk.js TIDAK di-rescope dari
+// Pendekatan sama kayak konversian's index.js (lihat komentar di file
+// itu): body ASLI crud-produk.js TIDAK di-rescope dari
 // document.getElementById(...) ke container.querySelector(...) di ratusan
 // titik pemanggilan -- itu berisiko tinggi buat file sebesar ini tanpa test
 // browser end-to-end. Aman karena document.getElementById tetap nemu elemen
@@ -409,10 +408,8 @@ async function handleNavParamsIfAny() {
     const btn = document.getElementById('btnKembaliKonversi');
     btn.style.display = 'inline-flex';
     btn.addEventListener('click', () => {
-      // SPA migration (sesi kesebelas): '/app/shell.html' -> '/' (root
-      // sudah jadi shell sejak sesi ketujuh; /app/shell.html masih hidup
-      // sebagai alias tapi gak ada alasan lagi buat dipakai eksplisit di
-      // sini). CLEAN URLS (sesi lanjutan): target sekarang '/konversian'
+      // SPA migration: '/index.html' -> '/' (root jadi shell; /app/shell.html
+      // sudah dihapus). CLEAN URLS: target sekarang '/konversian'
       // langsung (real path), bukan '/' + '#konversian' lagi. Ini genuine
       // full-page navigation (bukan in-place SPA nav) — sama persis pola
       // yang dipakai navigateToEditProduk() di konversian/index.js buat
@@ -3276,8 +3273,8 @@ export function unmount() {
   beforeUnloadHandler = null;
 
   // UPDATE (jank fix): pnm-universal.css NO LONGER removed here. It's now
-  // a permanent <link> loaded once by shell.html/index.html -- see the
-  // shared-pnm-universal-css comment in app/shell.html for why (removing
+  // a permanent <link> loaded once by index.html -- see the
+  // shared-pnm-universal-css comment in index.html for why (removing
   // and reloading it on every navigation caused a brief unstyled flash
   // that read as a slight "zoom" jump). Same treatment font/tabler-icons
   // already had, noted in the line above.

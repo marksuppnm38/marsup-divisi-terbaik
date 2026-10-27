@@ -1,52 +1,20 @@
-/* Shared sidebar nav — see design.md at repo root for the full spec this
-   implements. WIRED IN as of sesi kelima belas (dashboard is the first page
-   built to actually use it) — see router.js/shell.html for the activation,
-   and map-history.md sesi kelima belas for the full story including a real
-   token-leak bug caught before shipping (see below).
+/* Shared sidebar nav. Dipasang SEKALI oleh router.js (bukan per halaman).
 
-   TOKEN SCOPING — READ THIS BEFORE ADDING A NEW SELECTOR HERE: design.md's
-   token block uses exact unprefixed names (--bg, --surface, --accent, etc.)
-   meant to eventually be the single global :root set. pnm-universal.css
-   ALREADY defines --bg/--accent at :root with DIFFERENT values (its
-   --accent is #007AFF Apple-blue vs this doc's #0070F3 Vercel-blue).
-   Scoping these to .pw-shell (the outer wrapper in app/shell.html, ancestor
-   of EVERY page's content via #app/.pw-content) was tried first and was a
-   real bug: CSS custom properties cascade to all descendants, so it silently
-   recolored konversian/crud-produk/export-gambar (which all use
-   var(--accent) etc from pnm-universal.css extensively) the moment
-   .pw-shell became their ancestor — without their own files being touched
-   at all. Caught and fixed before shipping. Tokens are now scoped to
-   .pw-nav and .pw-topbar SPECIFICALLY — both are siblings of a page's own
-   content (not ancestors of it), so the tokens apply to the nav/topbar
-   chrome only and do not leak into whatever a page renders next to them.
-   .pw-shell/.pw-content themselves carry ZERO color tokens, pure layout —
-   keep it that way. When a page is eventually retrofitted to design.md for
-   real (steps 2-6 of the checklist, not yet done for any page), that
-   page's OWN stylesheet should define these tokens for itself (e.g. scoped
-   to that page's own wrapper class), not inherit them by nesting accident. */
-
-/* SPA migration BUGFIX (caught before shipping, sesi kelima belas): tokens
-   awalnya di-scope ke .pw-shell (wrapper terluar di app/shell.html, jadi
-   ANCESTOR dari #app/.pw-content juga). pnm-universal.css's :root pakai
-   NAMA VARIABEL YANG SAMA PERSIS (--bg, --accent, --border, --text, dst)
-   dengan NILAI BEDA -- karena CSS custom property cascade turun ke semua
-   descendant, scoping ke .pw-shell berarti KONVERSIAN/CRUD-PRODUK/EXPORT-
-   GAMBAR (yang semua load pnm-universal.css dan pakai var(--accent) dkk
-   secara ekstensif) diam-diam kewarisan nilai token BARU ini -- padahal
-   ketiganya belum di-retrofit ke design.md sama sekali (steps 2-6 checklist
-   masih pending, disengaja). Fix: token SEKARANG di-scope ke .pw-nav dan
-   .pw-topbar SAJA (komponen baru yang beneran perlu), bukan .pw-shell yang
-   jadi ancestor semua konten halaman. .pw-nav dan .pw-topbar adalah SIBLING
-   dari sisa konten halaman (bukan ancestor-nya) -- lihat struktur markup di
-   app/pages/dashboard/markup.js: <div id="app-root"><div class="pw-topbar">
-   ...</div><main>...</main></div> -- jadi token di .pw-topbar TIDAK bocor
-   ke <main> di sebelahnya. .pw-shell sendiri sekarang PURE LAYOUT (flex/
-   sizing doang), zero asumsi warna -- warna tetap sepenuhnya tanggung jawab
-   halaman yang di-mount di dalamnya, sampai masing-masing di-retrofit nanti. */
+   TOKEN SCOPING — BACA INI SEBELUM MENAMBAH SELECTOR DI SINI: pnm-universal.css
+   sudah mendefinisikan --bg/--accent/--border/--text dst di :root dengan NILAI
+   BEDA (mis. --accent #007AFF di sana vs #0070F3 di sini). Token nav ini di-scope
+   ke .pw-nav dan .pw-topbar SAJA -- keduanya SIBLING dari konten halaman (bukan
+   ancestor). Jangan scope ke .pw-shell (ancestor #app/.pw-content): custom
+   property cascade ke semua descendant, jadi halaman lain yang memakai
+   var(--accent) dkk dari pnm-universal.css diam-diam akan mewarisi nilai token
+   baru. Ini pernah terjadi dan tertangkap sebelum rilis. .pw-shell/.pw-content
+   membawa NOL token warna, murni layout -- pertahankan begitu. Halaman yang ingin
+   memakai token ini sebaiknya mendefinisikannya sendiri, ter-scope ke wrapper
+   halaman itu, bukan mewarisi karena nesting. */
 
 /* Values below are pnm-universal.css's ACTUAL :root/[data-theme=dark]
-   numbers, not design.md's spec numbers -- those two were never fully
-   reconciled (design.md says so itself), and using the spec numbers here
+   numbers, not the design spec's spec numbers -- those two were never fully
+   reconciled (the design spec says so itself), and using the spec numbers here
    caused a visible drift between the sidebar/topbar (this scope) and every
    page's own content (styled from pnm-universal.css) -- same root cause
    already found and fixed in kompres-pdf/style.css. Since .pw-nav and
@@ -74,7 +42,7 @@
   --radius:         8px;
   --radius-lg:      12px;
   /* FONT (polish pass): was 'Geist'/'Geist Mono' -- neither is ever loaded
-     (shell.html only loads Inter + JetBrains Mono), so these silently fell
+     (index.html only loads Inter + JetBrains Mono), so these silently fell
      back to Inter for text and JetBrains Mono for code. Every page's own
      content (styled from pnm-universal.css's --font-body/--mono) uses the
      OS system font stack instead, NOT Inter -- so the topbar breadcrumb and
@@ -115,7 +83,7 @@
 /* ---- Sidebar ---- */
 
 .pw-nav {
-  /* 200px -> 224px: design.md's original 200px spec predates the brand
+  /* 200px -> 224px: the design spec's original 200px spec predates the brand
      logo mark (added later, see .pw-nav-brand img below) -- at 200px the
      24px logo + gap left too little room for "Pionir Workspaces" and it
      hard-clipped mid-word ("Pionir Workspac"). 224px is the smallest bump
@@ -340,7 +308,7 @@
 }
 .pw-nav-item-chevron.open { transform: rotate(0deg); }
 
-/* ---- Sub-navigation accordion (design.md "double nav" fix) ----
+/* ---- Sub-navigation accordion (the design spec "double nav" fix) ----
    Only rendered (in the DOM at all -- see nav-markup.js's navItemHtml)
    while the parent module is the active route, so there's no separate
    expand/collapse click state to track here -- CSS is pure presentation. */
@@ -575,7 +543,7 @@
 }
 .pw-icon-square i { font-size: 18px; }
 
-/* ---- Status dot (design.md "Status" component pattern) ---- */
+/* ---- Status dot (the design spec "Status" component pattern) ---- */
 
 .pw-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); }
 .pw-status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }

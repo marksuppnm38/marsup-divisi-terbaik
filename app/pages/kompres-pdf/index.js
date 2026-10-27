@@ -1,9 +1,8 @@
 // kompres-pdf page module: mount(container) / unmount().
 // Logic below is the original kompres-pdf.html script, verbatim except that
-// every DOM lookup is now scoped to `container` instead of `document`
-// (see map.md checklist: "Bungkus kode setup jadi mount(container) + unmount()").
+// every DOM lookup is now scoped to `container` instead of `document`.
 //
-// UPDATE (sesi lanjutan, design.md full rewrite): sebelum sesi ini halaman
+// UPDATE (style.css full rewrite): sebelum rewrite ini halaman
 // ini gak muat pnm-universal.css ATAU Google Fonts sama sekali (alat
 // client-side murni, gak pernah butuh auth/Supabase) -- style.css-nya
 // sendiri yang isi semua token/reset. Sekarang ikut pola SHARED_LINKS yang
@@ -1254,32 +1253,20 @@ export async function mount(container) {
 }
 
 export function unmount() {
-  // No document/window-level listeners were attached (see map.md notes on
-  // this page) — everything lived inside `container`, so the router's
+  // No document/window-level listeners were attached — everything lived inside `container`, so the router's
   // container.innerHTML = '' already tears it all down. Only undo what we
   // set on the container itself:
   mountedContainer?.classList.remove('kp-page');
   mountedContainer = null;
 
-  // Fix (sesi kedua puluh dua, 28 Agustus 2026): style.css halaman ini
-  // TIDAK PERNAH dilepas di sini sebelumnya — root cause SAMA PERSIS
-  // dengan bug export-gambar yang difix sesi kedelapan belas. style.css
-  // halaman ini (versi LAMA, sebelum sesi lanjutan rewrite ini) punya bare
-  // selector asli (`*`, `html,body`, `body`, `h1`) yang gak pernah bocor
-  // sebelumnya cuma karena gak ada yang pernah nge-remove()-nya — begitu
-  // user pindah dari #kompres-pdf ke modul lain, background/font/padding
-  // tema halaman ini nempel selamanya di <head> dan bocor ke halaman
-  // berikutnya. User konfirmasi ini kejadian beneran di browser waktu itu
-  // (bukan cuma dugaan statis).
-  //
-  // UPDATE (sesi lanjutan): style.css yang BARU (full rewrite) udah NOL
-  // bare selector (semua di bawah `.kp-page`, lihat file itu) -- jadi kelas
-  // bug di atas gak lagi mungkin kejadian dari sumbernya. remove() di sini
-  // tetap dipertahankan sebagai lapis kedua (sama disiplin kayak dashboard/
-  // stok/export-gambar), bukan lagi satu-satunya pertahanan.
+  // style.css halaman ini harus dilepas di sini: versi lamanya punya selector bare
+  // (`*`, `html,body`, `body`, `h1`) yang menempel di <head> dan bocor ke halaman
+  // berikutnya begitu user pindah modul (bug yang sama dengan export-gambar).
+  // style.css yang sekarang nol bare selector (semua di bawah `.kp-page`), jadi
+  // remove() ini lapis pertahanan kedua.
   document.getElementById('page-kompres-pdf-style')?.remove();
   // shared-pnm-universal-css NO LONGER removed here (jank fix, see the
-  // shared-pnm-universal-css comment in app/shell.html) -- now a permanent
+  // shared-pnm-universal-css comment in index.html) -- now a permanent
   // <link>, same treatment shared-google-fonts below already had.
   // shared-google-fonts SENGAJA TETAP nempel -- pola sama kayak semua
   // halaman lain yang sudah dimigrasi (harmless, kemungkinan besar dipakai

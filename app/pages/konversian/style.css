@@ -29,7 +29,7 @@
    override) -- carried over as one explicit rule now that this row is a
    <div>, not a <header>, so it no longer inherits that generic selector.
    Height math: item height ~32px + 10px*2 padding = 52px, same as
-   .pw-topbar above it (design.md's 48-52px shared row-height target) --
+   .pw-topbar above it (the design spec's 48-52px shared row-height target) --
    so this module is two stacked 52px rows, not one row of mismatched
    height sitting next to the shared topbar. */
 #app-root .konv-toolbar{
@@ -119,8 +119,7 @@
    nav moved into the sidebar — .subtab-row itself was never hidden along
    with them (it can't be, .panel-collapse-btn/"Ciutkan panel pencarian"
    lives in the same row and still needs to render outside door-cari mode).
-   An earlier pass already cut this from the old full-tab-bar's ~50px (see
-   map-history.md) down to a single 10px-padded row -- but on any tab
+   An earlier pass already cut this from the old full-tab-bar's ~50px down to a single 10px-padded row -- but on any tab
    OTHER than Cari Produk, that row is STILL a full-width flex line with
    nothing in it but the collapse chevron pushed to the far right
    (margin-left:auto, pnm-universal.css) -- directly under .konv-toolbar,
@@ -608,7 +607,7 @@
    sini aja: turunin z-index autocomplete ke bawah 60, gak sentuh
    pnm-universal.css biar gak ganggu modul lain yang mungkin masih
    gantung ke z-index:999 aslinya.
-   Fix akhir: JS (lihat renderAutocomplete di konversian.js) udah
+   Fix akhir: JS (lihat renderAutocomplete di search.js) udah
    dikunci render PALING BANYAK 4 item. max-height di sini di-set
    PAS muat 4 item penuh (4 × ~36px + buffer) — TAPI ini cuma
    valid kalau tinggi tiap item konsisten, makanya .ac-name juga

@@ -116,8 +116,6 @@ const EXCLUDE_DIRS = new Set([
 ]);
 
 const EXCLUDE_FILES = new Set([
-  'map.md',
-  'map history.md',
   'design.md',
   'visi-pionir-workspaces.md',
   'serve.json',

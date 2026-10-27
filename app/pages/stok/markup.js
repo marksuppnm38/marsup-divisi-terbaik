@@ -1,33 +1,14 @@
-// stok page markup: the original stok.html body content (auth-gate through
-// the Recent Activity card), ported with the SAME structural change dashboard
-// got (design.md migration checklist step 1, see index.js's header comment
-// for full rationale): the old per-page <div class="topbar"> (back-link +
-// brand text + theme-toggle + logout) is replaced by design.md's shared
-// pw-topbar, and BOTH of stok's own theme-toggle buttons (#theme-toggle-gate,
-// #theme-toggle-app) are removed entirely -- shared nav now owns theming
-// globally, same as dashboard. Everything else (cards, dropzone, precheck
-// panel, activity table) is ported as-is, still using the old
-// pnm-universal.css classes.
+// stok page markup (template string). Memakai pw-topbar dari shared nav; tombol
+// theme-toggle halaman ini dihapus karena tema diatur global oleh shared nav.
+// Card, dropzone, precheck panel, dan activity table memakai class pnm-universal.css;
+// override page-scoped ada di style.css (.stat-pill .num, .metric .num, .act-num, dst).
 //
-// UPDATE (sesi retrofit design.md): steps 2-6 done -- see style.css in this
-// folder. No markup change was needed at all for that pass -- color/shadow/
-// spacing/mono are all handled via CSS override targeting existing classes
-// already in this file (`.stat-pill .num`, `.metric .num`, `.act-num`, etc.),
-// same trick as dashboard's retrofit.
-//
-// All of it (.auth-gate, .topbar-era classes replaced by .pw-topbar, .card,
-// .dropzone, .stat-pill, .skip-panel, .activity-table, etc.) already lives in
-// pnm-universal.css -- checked class-by-class before writing this, none of
-// it needed a page-specific style.css for the STRUCTURAL/step-1 pass (the
-// design.md steps 2-6 pass above is what finally added one).
-//
-// No inline onclick/onchange/oninput anywhere in the original markup (all
-// wiring was addEventListener in the script) -- unlike crud-produk/dashboard,
-// so no functions need exposing to window.* here.
+// Tidak ada inline onclick/onchange/oninput (semua wiring addEventListener di
+// index.js), jadi tidak ada fungsi yang perlu diekspos ke window.*.
 
 export const STOK_MARKUP = `
-<!-- Sesi kesembilan belas: per-page auth-gate DIHAPUS, lihat map-history.md --
-     router.js gak mount() halaman ini kecuali shared/auth-gate.js sudah lolos. -->
+<!-- AUTH: tidak ada login gate di halaman ini; router.js gak mount() halaman ini
+     kecuali shared/auth-gate.js sudah lolos. -->
 <div id="app-root">
 <div class="pw-topbar">
   <div class="pw-topbar-crumb"><strong>Stock Inventory</strong></div>

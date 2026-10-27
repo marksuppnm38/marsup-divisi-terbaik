@@ -2,8 +2,8 @@
 // koreksi typo, urutan/sort, kartu hasil, paginasi, autocomplete, navigasi keyboard, dan wiring
 // input/filter/tombol pencarian.
 //
-// DIPINDAH dari clipboard.js (2026-10-27) — dulu numpang di sana karena waktu konversian.js dipecah,
-// region "pencarian" gak punya nomor section sendiri di map.md (search.js lama cuma kebagian pintu
+// DIPINDAH dari clipboard.js (2026-10-27) — dulu numpang di sana karena waktu index.js dipecah,
+// region "pencarian" belum punya file sendiri (search.js lama cuma kebagian pintu
 // Cari Cepat + exact-by-kode, yang sekarang ada di converter.js). Logic TIDAK diubah; cuma referensi ke
 // hal-hal yang masih tinggal di clipboard.js diganti jadi S.nama (S.rpc, S.rupiah, S.showToast,
 // S.handleClipToggleClick, S.cachedSetItemCount, S.hydrateSetCounts, S.panelBodyCari).
@@ -13,8 +13,8 @@ export function installSearch(S) {
 // Dikurangin dari 6 ke 4 item: dropdown ini ngambang di atas list produk yang
 // sebenarnya udah kelihatan di bawahnya, jadi makin sedikit & padat makin gak
 // berasa nutup-nutupin — 4 quick-pick tercepat udah cukup, sisanya toh masih
-// kebaca lewat scroll di list produk itu sendiri. (lihat juga max-height di
-// pnm-konversian-rebase.css yang dikunci senada sama jumlah ini)
+// kebaca lewat scroll di list produk itu sendiri. (lihat juga max-height #autocomplete di
+// style.css yang dikunci senada sama jumlah ini)
 function renderAutocomplete(data) {
   if (!S.searchInput.value.trim() || !data || !data.length) {
     S.acBox.style.display = 'none'; S.acItems = []; S.acIndex = -1; return;

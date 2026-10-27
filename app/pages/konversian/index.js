@@ -1,109 +1,36 @@
-// konversian page module: mount(container) / unmount().
+// konversian page module: mount(container, initialSub) / unmount() / setSubroute(sub).
 //
-// Per map.md bagian 4 urutan #3: halaman ini paling gede (6998+1351 baris)
-// tapi paling siap secara auth (satu-satunya yang udah PNMAuth penuh sebelum
-// migrasi ini) — jadi kerjaan migrasi di sini murni "bungkus jadi mount/
-// unmount", BUKAN benerin auth kayak export-gambar.
+// STRUKTUR: mount() adalah satu closure besar. Logic-nya dipecah ke modul-modul
+// terpisah (realtime, clipboard, search, converter, converter-bulk, dictionary,
+// set-mendekati, shift-select, project, auto-record, permintaan-rs; sph di-lazy-load)
+// yang masing-masing mengekspor install*(S). Karena state-nya saling silang antar
+// section (clipboard, showToast, sesiFetch, rpc, checklistItems, rt, dst), file-file
+// itu TIDAK dipecah pakai import/export per-fungsi (bakal circular). Gantinya satu
+// objek `S` (dideklarasi di baris pertama mount(), baru tiap mount()) dioper ke tiap
+// install*(S); referensi ke nama yang didefinisikan di file LAIN ditulis S.nama.
+// index.js memanggil install*(S) sesuai urutan section aslinya, jadi urutan eksekusi
+// runtime sama dengan sebelum dipecah. Bagian yang belum dipecah masih ada langsung
+// di file ini.
 //
-// PENDEKATAN BEDA dari export-gambar/kompres-pdf: file ini SENGAJA TIDAK
-// di-rescope dari document.getElementById(...) ke container.querySelector(...)
-// di ribuan titik pemanggilan. Itu berisiko tinggi buat file sebesar ini
-// tanpa test browser end-to-end (lihat catatan verifikasi di map.md). Yang
-// bikin ini tetap AMAN: konversian.js/sph-module.js sudah menangkap semua
-// referensi elemen di awal, SETELAH markup di-inject ke container (container
-// sendiri adalah child dari <div id="app"> yang notabene bagian dari
-// `document`) — jadi document.getElementById tetap nemu elemen yang benar
-// selama cuma SATU halaman yang termount di satu waktu (dijamin router.js:
-// unmount() halaman lama dipanggil + container.innerHTML dikosongin SEBELUM
-// halaman baru di-mount).
+// SCOPING: document.getElementById(...) SENGAJA tidak di-rescope ke container. Aman
+// selama cuma SATU halaman yang termount di satu waktu: router.js memanggil unmount()
+// halaman lama dan mengosongkan container.innerHTML sebelum mount() halaman baru.
 //
-// Body konversian.js + sph-module.js ASLI (isi fungsi/logic) TIDAK diubah,
-// kecuali 5 patch bedah kecil (semua ditandai komentar "SPA migration" di
-// titik masing-masing) buat nangkep handle yang dibutuhin unmount():
-//   1. konversian.js: PNMAuth.onAuthStateChange(...) return value ditangkep
-//      ke __konvAuthUnsub (dulu: dibuang, sesi lama gapapa krn cuma load
-//      sekali seumur hidup tab; SPA bisa mount-unmount-mount ulang).
-//   2. konversian.js: refresh badge sesi ditangkep ke __konvSesiCountCleanup
-//      (awalnya setInterval 30 detik biasa; sejak audit 2026-09-25 sudah
-//      diganti channel Realtime + resync timer 5 menit, lihat COORD LOG di
-//      bawah dan realtime.js — nama handle-nya ikut berubah tapi titik
-//      tangkapan buat unmount() ini masih sama).
-//   3. konversian.js: listener document click buat nutup autocomplete
-//      di-nama-in (__konvDismissAcOnOutsideClick) biar bisa di-removeEventListener.
-//   4. konversian.js: baris paling akhir nambahin window.__konvBridge = {...}
-//      yang ngumpulin semua handle di atas + fungsi yang udah ADA di file asli
-//      (updateOnlineStatus, switchTab, unsubscribeFromSesiRealtime) — dipakai
-//      unmount() di bawah.
-//   5. Inline script "conv-flow-ux" (dulu <script> ke-2 di konversian.html):
-//      nambahin window.convFlow._cleanup() (disconnect 2 MutationObserver +
-//      lepas keydown listener + clear 2 timer) — sebelumnya cuma expose
-//      showSuccess/showError/reset, gak ada cara bersih-bersih dari luar.
+// UNMOUNT: handle yang dibutuhkan unmount() dikumpulkan di window.__konvBridge
+// (authUnsub, sesiCountCleanup, dismissAcOnOutsideClick, updateOnlineStatus,
+// unsubscribeFromSesiRealtime). Selain itu unmount() memanggil
+// window.convFlow._cleanup() (MutationObserver, keydown listener, timer) dan melepas
+// listener global yang didaftarkan lewat S.onGlobal (_globalOffs). Listener
+// document/window baru WAJIB lewat S.onGlobal supaya ikut terlepas.
 //
-// ═══════════════════════════════════════════════════════════════════════════
-// SESI BREAKUP (Claude, susulan) — file ini SEKARANG SUDAH dipecah jadi
-// search.js/clipboard.js/sph.js/dictionary.js/set-mendekati.js/
-// permintaan-rs.js/realtime.js sesuai target struktur bagian 3 map.md.
-// index.js masih pegang mount()/unmount() + bagian yang BELUM dipecah
-// (auth, dropzone/lampiran/gambar modal, resize/collapse panel, preferensi,
-// status koneksi, navigasi, record-ke-sheets, dual write, modul stok,
-// modul converter+resolve manual) — semua bagian ini SENGAJA belum disentuh
-// sesi ini (di luar 7 target file map.md), didokumentasikan di sini biar
-// sesi berikutnya tau batasnya, bukan kelupaan.
+// AUTH: modul ini tidak punya login gate sendiri. router.js baru memanggil mount()
+// setelah shared/auth-gate.js lolos (authenticated + whitelisted).
 //
-// PENDEKATAN: mount() = 9385 baris SATU closure raksasa, 630 variabel/fungsi
-// top-level di dalamnya, 276 di antaranya (45%) dipakai LINTAS lebih dari
-// satu "section" — bukan modul yang kebetulan nempel 1 file, tapi state
-// yang genuinely saling silang (clipboard, showToast, sesiFetch, rpc,
-// checklistItems, rt, dst dipanggil dari mana-mana). Jadi TIDAK dipecah
-// pakai `import`/`export` per-fungsi (bakal circular & mustahil rapi) —
-// dipakai satu objek `S` (dideklarasi di baris pertama mount(), fresh tiap
-// mount() dipanggil) yang dioper ke tiap install*(S), sama persis pola
-// window.__konvBridge yang udah ada di file ini buat unmount(). Tiap
-// install*(S) fungsi isinya statement ASLI dari section terkait (LOGIC TIDAK
-// DIUBAH sama sekali), cuma referensi ke nama yang didefinisikan di file
-// LAIN diganti jadi S.nama. index.js manggil install*(S) di titik yang
-// PERSIS SAMA (urutan baris asli) dengan posisi section itu dulu, jadi
-// urutan eksekusi runtime gak berubah.
-//
-// GIMANA DIVERIFIKASI (sandbox ini gak ada akses browser/Supabase beneran,
-// lihat catatan verifikasi map.md yang sama berlakunya di sini):
-//   1. Setiap 630 top-level binding di-klasifikasi otomatis pakai AST scope
-//      analysis (eslint-scope) — bukan tebak-tebak regex/indentasi.
-//   2. Isi 8 file (index.js + 7 modul) diverifikasi ESM-parse valid (espree).
-//   3. Tiap file di-scan ulang pakai scope analysis buat cari referensi
-//      "orphan" (nama yang ke-tinggal, resolve ke undefined) — NOL orphan
-//      ditemukan setelah 1 bug shorthand-property ({ foo } yang harusnya
-//      { foo: S.foo }) ketemu & diperbaiki.
-//   4. Urutan eksekusi divalidasi terpisah: dicek gak ada referensi lintas-
-//      region yang butuh nilai SEBELUM titik itu benar-benar sempat
-//      dijalankan di urutan install*(S) yang baru — NOL kasus berisiko.
-//   5. Isi 8 file di-diff balik ke isi mount() asli (per baris) — 100%
-//      cocok, gak ada baris logic yang hilang/berubah/duplikat.
-//   BELUM/GAK BISA diverifikasi di sini: perilaku runtime beneran (auth
-//   flow, realtime channel, RPC Supabase, render DOM) — WAJIB smoke-test
-//   manual di browser (buka semua tab: Cari Cepat, Konversi, Kebutuhan RS,
-//   Clipboard, Buat SPH, Cari SET Mendekati, Dictionary) sebelum di-deploy
-//   ke production. index.js.PRE-BREAKUP.bak disimpan di folder ini kalau
-//   perlu rollback cepat.
-//
-// UPDATE (bug ditemukan lewat testing browser BENERAN, langsung dari user):
-// versi PERTAMA breakup ini punya bug — 32 titik deklarasi (variabel yang
-// di-reassign, mis. `stokAccessToken`) ke-rename DOBEL jadi `S.S.nama`
-// (VALID secara syntax — makanya lolos semua pengecekan otomatis awal,
-// TypeError-nya baru muncul pas runtime beneran manggil `S.S.stokAccessToken`
-// yang objeknya undefined). Root cause: generator nge-rename SEMUA reference
-// eslint-scope buat variabel yang direname, padahal salah satu "reference"
-// itu adalah posisi deklarasi itu sendiri (`r.init === true`, node identifier
-// SAMA PERSIS dengan node yang udah kena edit terpisah buat hapus keyword
-// let/var + tambah prefix S.). Sudah diperbaiki di generator (skip reference
-// yang `r.init` buat variabel mode full-rename) + ditambahin guard baru:
-// build SEKARANG gagal keras (throw) kalau ada dua edit di posisi/baris yang
-// overlap, jadi kelas bug ini gak akan lolos diam-diam lagi di masa depan.
-// Semua 8 file di-generate ulang dari nol pakai generator yang sudah diperbaiki.
-// Pelajaran buat sesi berikutnya: "lolos parse + scope-analysis" TIDAK CUKUP
-// buat breakup gaya ini — `S.S.nama` valid secara AST/scope (cuma property
-// access berantai), jadi WAJIB browser-test beneran sebelum percaya hasilnya.
-// ═══════════════════════════════════════════════════════════════════════════
+// GOTCHA saat memindah/mengubah variabel lintas file: jangan asal rename ke S.nama.
+// Pernah ada bug `S.S.nama` (deklarasi ke-rename dobel) yang VALID secara syntax dan
+// scope-analysis, jadi lolos semua cek otomatis dan baru meledak (TypeError) di browser.
+// Setelah mengubah wiring S, WAJIB smoke-test manual di browser: Cari Cepat, Konversi,
+// Kebutuhan RS, Clipboard, Buat SPH, Cari SET Mendekati, Dictionary.
 
 import { KONVERSIAN_MARKUP } from './markup.js';
 import { installRealtime } from './realtime.js';
@@ -322,8 +249,8 @@ function ensureSphExportLibs() {
 // halaman lain yang migrasi belakangan nge-skip re-load) — tapi itu yang
 // bikin bug "tema kacau"/"blink aneh" pas balik ke #home atau modul lain:
 // begitu di-load sekali, dia gak pernah lepas dari <head> sepanjang sesi
-// SPA, dan berisi selector bare/unscoped (header{}, .stat-val, dst — lihat
-// map.md sesi keenam) yang bocor ke halaman manapun yang kebetulan mount
+// SPA, dan berisi selector bare/unscoped (header{}, .stat-val, dst) yang
+// bocor ke halaman manapun yang kebetulan mount
 // setelahnya. Fix: sekarang di-treat sama kayak stylesheet page-scoped
 // lainnya (page-konversian-style, kompres-pdf/style.css, dst) — di-load pas
 // mount(), DILEPAS pas unmount() (lihat unmount() di bawah). Browser HTTP
@@ -420,7 +347,7 @@ let _switchSubTab = null;
 let _globalOffs = [];
 
 export async function mount(container, initialSub) {
-  const S = {}; // shared cross-module state (breakup konversian/index.js — lihat map.md bagian 3)
+  const S = {}; // shared cross-module state (hasil pecahan konversian/index.js)
   // Pasang listener ke document/window DAN daftarkan pelepasnya buat unmount().
   // Pakai ini (bukan addEventListener langsung) buat semua listener global baru.
   // Mengembalikan fungsi off() kalau mau dilepas lebih awal.
@@ -1029,8 +956,8 @@ S.DRIVE_PROXY_URL = DRIVE_PROXY_URL;
 // checkWhitelist() query, own onAuthStateChange handling for logout) —
 // kept separate from router.js's shared/auth-gate.js because this was the
 // largest/most delicate file in the app and there was no browser access to
-// verify a change to its auth-critical path at the time (see
-// map-history.md "sesi kesembilan belas"). Consolidated now, same pattern
+// verify a change to its auth-critical path at the time .
+// Consolidated now, same pattern
 // crud-produk/dashboard/stok/export-gambar already use: router.js never
 // mount()s this module until the ONE shared gate confirms a session that
 // is both authenticated AND allowed_users-whitelisted — so by the time
@@ -3004,17 +2931,13 @@ S.convRows = [];
 // ══════════════════════════════════════════
 
 function navigateToEditProduk(kode) {
-  // SPA migration (sesi kesebelas): crud-produk sekarang juga sudah SPA
-  // (map.md bagian 4 urutan #4 selesai) — target berubah dari
-  // '/crud-produk.html' (file standalone) ke '/crud-produk' (clean-URL
-  // route, sesi lanjutan — sebelumnya '/' + '#crud-produk', root = shell
-  // sejak sesi ketujuh, hash sejak sesi lanjutan berikutnya). Query string
-  // sama pola yang dipakai crud-produk/index.js's handleNavParamsIfAny()
-  // (baca window.location.search) dan btnKembaliKonversi buat arah
-  // sebaliknya — ini genuine full-page navigation (window.location.href),
-  // bukan in-place SPA nav, biar crud-produk's mount() dapat
-  // window.location.search yang valid dari fresh page load, sama persis
-  // kayak konversian sendiri butuh itu buat restoreNavContext() di atas.
+  // crud-produk sekarang route SPA (/crud-produk). Query string sama pola yang
+  // dipakai crud-produk/index.js's handleNavParamsIfAny() (baca
+  // window.location.search) dan btnKembaliKonversi buat arah sebaliknya — ini
+  // genuine full-page navigation (window.location.href), bukan in-place SPA nav,
+  // biar crud-produk's mount() dapat window.location.search yang valid dari fresh
+  // page load, sama persis kayak konversian sendiri butuh itu buat
+  // restoreNavContext() di atas.
   const url = new URL('/crud-produk', window.location.href);
   url.searchParams.set('edit', kode);
   url.searchParams.set('return_to', 'konversian');
@@ -5358,24 +5281,14 @@ export function unmount() {
   document.getElementById('sph-riwayat-modal')?.remove();
   document.getElementById('konversi-riwayat-modal')?.remove();
 
-  // UPDATE (jank fix, reverses the "Lepas pnm-universal.css" call this
-  // comment used to describe): that removal was originally added to stop
-  // pnm-universal.css's bare/unscoped selectors (header{}, .stat-val, tr/td
-  // rules -- see map.md sesi keenam) leaking into whatever OTHER page
-  // mounted next, back when konversian was the only module using the
-  // stylesheet at all. That's no longer true -- dashboard/stok/crud-produk/
-  // kompres-pdf/export-gambar have since all been migrated onto the same
-  // pnm-universal.css themselves (same id, same href, same version), so
-  // every routed page today already expects these rules; there's no longer
-  // a page for it to leak INTO. Meanwhile the remove-then-reload on every
-  // single navigation was its own bug: the OLD page's markup stays on
-  // screen (unmount() doesn't clear it) for the async gap until the NEW
-  // page's mount() finishes reloading this file, so during that gap the
-  // still-visible old page would visibly lose its styling and snap back --
-  // read as a slight "zoom" jump on every module switch. It's now a
-  // permanent <link> loaded once by shell.html/index.html instead (see the
-  // shared-pnm-universal-css comment there), same treatment Google Fonts/
-  // Tabler icons already had.
+  // pnm-universal.css TIDAK dilepas di sini: itu permanent <link>
+  // (id shared-pnm-universal-css) yang dimuat sekali oleh index.html dan dipakai
+  // semua halaman yang di-route. Dulu dilepas tiap unmount() karena selector
+  // bare/unscoped-nya (header{}, .stat-val, tr/td) bisa bocor ke halaman lain;
+  // sekarang semua halaman memang memakai stylesheet itu, dan remove-lalu-reload
+  // di tiap navigasi malah bikin halaman lama sempat kehilangan style selama
+  // jeda async mount() halaman baru (terbaca sebagai "zoom" kecil tiap pindah
+  // modul).
 
   delete window.__konvBridge;
   delete window.switchTab;

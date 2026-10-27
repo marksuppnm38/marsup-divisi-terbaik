@@ -1,46 +1,26 @@
 // stok page module: mount(container) / unmount().
-// Per map.md bagian 4 urutan #6 -- SATU-SATUNYA sisa halaman. Beda dari 5
-// halaman lain yang sudah dimigrasi: stok.html masih inline <script> (belum
-// kepisah dari HTML-nya), jadi sesi ini juga ngerjain langkah restrukturisasi
-// itu sekaligus (markup.js dipisah dari script, persis pola halaman lain).
 //
-// Dibangun SESUDAH shared nav (app/pages/nav/) sudah wired in, jadi
-// pendekatannya ngikutin dashboard/index.js (halaman pertama yang dibangun
-// langsung pakai pw-topbar), BUKAN pola konversian/crud-produk yang lebih
-// tua (dobel sidebar/topbar internal belum dibersihin -- lihat map.md).
-// Artinya: design.md checklist step 1 (structural: shared topbar) + step 7
-// (wire-up logic) dikerjain sesi ini, TAPI BUKAN step 2-6 (token warna/
-// spacing/icon/status-dot) -- konten card/table di dalam halaman ini MASIH
-// pakai class pnm-universal.css yang lama, sama scope limit yang dashboard
-// ambil (lihat komentar di dashboard/index.js buat alasan yang sama).
+// Layout: markup.js (HTML) dipisah dari script; halaman memakai shared nav
+// (app/pages/nav/) + pw-topbar, sama seperti dashboard/index.js. Konten card/table
+// di dalam halaman masih memakai class pnm-universal.css, dengan override
+// page-scoped di style.css.
 //
-// AUTH: file asli (inline <script> di stok.html) SAMA SEKALI GAK PAKAI SDK
-// Supabase -- persis pola dashboard.js asli: raw fetch() manual ke
-// /auth/v1/token, token & refresh_token disimpan manual di localStorage
-// (key pnm_auth_session -- KEBETULAN nama key-nya SAMA PERSIS dengan yang
-// dipakai shared/supabase-client.js sekarang, jadi user yang lagi login di
-// versi lama otomatis kebaca sesinya di sini, gak perlu re-login massal),
-// email di-decode manual dari JWT. SELURUH auth layer di bawah diganti ke
-// PNMAuth.*, sama besar perubahannya kayak dashboard punya.
+// AUTH: tidak ada login gate di halaman ini; router.js baru mount() setelah
+// shared/auth-gate.js lolos. Semua panggilan auth lewat PNMAuth.* (halaman aslinya
+// dulu pakai raw fetch() ke /auth/v1/token dan token manual di localStorage; key
+// sesi pnm_auth_session sama dengan yang dipakai shared/supabase-client.js).
 //
-// document.getElementById(...) TIDAK di-rescope ke container.querySelector
-// (sama kayak semua halaman lain yang sudah dimigrasi) -- aman selama cuma
-// satu halaman yang termount di satu waktu, dijamin router.js.
+// document.getElementById(...) TIDAK di-rescope ke container.querySelector -- aman
+// selama cuma satu halaman yang termount di satu waktu, dijamin router.js.
 //
-// TIDAK ADA inline onclick/onchange/oninput di markup aslinya (semua wiring
-// addEventListener di script) -- jadi TIDAK ADA fungsi yang perlu diekspos
-// ke window.* di sini, beda dari dashboard/crud-produk yang markupnya penuh
-// onclick="..." lama.
+// Tidak ada inline onclick/onchange/oninput di markup (semua wiring via
+// addEventListener), jadi tidak ada fungsi yang perlu diekspos ke window.*.
 //
-// window.PNM_SUPABASE_URL/window.PNM_SUPABASE_ANON_KEY dipakai (bukan const
-// SUPABASE_URL/ANON_KEY yang di-duplicate ulang di file ini) -- ini
-// menuntaskan item checklist map.md yang secara eksplisit nyebut stok.html
-// sebagai salah satu dari 2 file yang masih nge-declare ulang
-// `const SUPABASE_URL = ...` (lihat map.md bagian 1). Diisi di dalam
-// mount() setelah ensureVendorScripts() resolve (bukan di module scope --
-// window.PNM_SUPABASE_URL belum ada di titik module ini di-import() router,
-// sama alasan kenapa `const sb = window.pnmSupabase` juga gak boleh di
-// module scope, lihat map.md checklist).
+// window.PNM_SUPABASE_URL / window.PNM_SUPABASE_ANON_KEY dipakai (bukan const
+// SUPABASE_URL/ANON_KEY duplikat di file ini). Diisi di dalam mount() setelah
+// ensureVendorScripts() resolve, bukan di module scope: window.PNM_SUPABASE_URL
+// belum ada saat modul ini di-import() router, dan alasan yang sama berlaku untuk
+// `const sb = window.pnmSupabase`.
 
 import { STOK_MARKUP } from './markup.js';
 import { mountKelengkapan, refreshKelengkapan, unmountKelengkapan } from './kelengkapan.js';
@@ -147,8 +127,8 @@ function loadLink(id, href) {
 // yang dilepas lagi pas unmount()), persis kelas bug "token-leak" yang
 // komentar nav.css bilang udah ketemu & difix pas nav dibangun.
 //
-// UPDATE (sesi retrofit design.md, sesudah dashboard): sekarang ADA
-// style.css di folder ini -- design.md steps 2-6 (lihat file itu). Sama
+// UPDATE (retrofit style, sesudah dashboard): sekarang ADA
+// style.css di folder ini (lihat file itu). Sama
 // kayak dashboard, ini page-scoped OVERRIDE (di bawah `#app-root`, bukan
 // `:root`), jadi peringatan token-leak di atas TETAP dihormati -- custom
 // property baru (--success-dot dkk) di-scope ke selector `#app-root`
@@ -727,11 +707,11 @@ export async function mount(container) {
 
 export function unmount() {
   // UPDATE (jank fix): pnm-universal.css NO LONGER removed here -- see the
-  // shared-pnm-universal-css comment in app/shell.html. Same "leave it
+  // shared-pnm-universal-css comment in index.html. Same "leave it
   // attached, it's cheap and other pages want it too" reasoning this
   // comment already applied to fonts/phosphor-icons now also applies to
   // pnm-universal.css itself: it's a permanent <link> loaded once by
-  // shell.html/index.html, which also fixes a flash-of-unstyled-content
+  // index.html, which also fixes a flash-of-unstyled-content
   // "jaggy zoom" that removing/reloading it on every navigation was causing.
   document.getElementById('page-stok-style')?.remove();
   unmountKelengkapan();

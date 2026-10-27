@@ -1,36 +1,15 @@
-// Static markup for the kompres-pdf page, extracted from the old kompres-pdf.html.
-// Kept as a plain template string (zero-build: no bundler to import .html as text).
+// Static markup for the kompres-pdf page (plain template string; zero-build, so no
+// bundler to import .html as text).
 //
-// UPDATE (sesi lanjutan, design.md full rewrite): 3 change dari versi asli:
-//   1. `.pw-topbar` breadcrumb ditambah di atas (design.md step 1), pola
-//      sama kayak dashboard/stok/export-gambar.
-//   2. Semua isi dibungkus `<div class="kp-main">` (bukan lagi `.wrap`
-//      dikasih ke `container` langsung di index.js -- lihat file itu) --
-//      lihat style.css-nya buat alasan kenapa bukan elemen `<main>`.
-//   3. 3 SVG dropzone (kompres/split/merge) yang tadinya hardcode
-//      `stroke="currentColor"` (warna palet lama) diganti `stroke="currentColor"`
-//      supaya ngikut `--ink-soft` yang di-retint di style.css, bukan warna
-//      beku dari palet yang udah dibuang. Icon lain di file ini (index.js
-//      juga) UDAH pakai currentColor dari awal -- dicek dulu lewat grep
-//      sebelum nyimpulkan cuma 3 titik ini yang perlu diubah.
+// Struktur: `.pw-topbar` breadcrumb di atas, lalu seluruh isi dibungkus
+// `<div class="kp-main">` (bukan elemen `<main>`; alasannya ada di style.css).
+// Tiap card (upload, split, merge) punya .card-head/.icon-box.
 //
-// Icon library TETAP inline SVG, SENGAJA TIDAK di-swap ke Tabler
-// (`ti ti-*`, yang export-gambar pakai) -- alasannya bukan preferensi,
-// tapi risiko: ganti tiap SVG ke webfont icon berarti ngubah ukuran/
-// alignment di 25+ titik across markup.js+index.js tanpa browser buat
-// ngecek hasilnya beneran pas. Anti-pattern yang design.md eksplisit
-// larang (gradient/shadow/warna beku palet lama) itu udah dibenerin;
-// "satu icon library" itu poin gaya yang lebih rendah prioritas, bukan
-// hal yang bikin halaman ini "gak compliant" secara substantif.
-//
-// UPDATE (card-head consistency pass): ke-3 card di halaman ini (upload,
-// split, merge) sebelumnya nggak punya .card-head/.icon-box sama sekali --
-// gap yang sama kayak yang baru dibenerin di export-gambar. Ditambahin di
-// sini juga, TAPI ikon di dalam icon-box-nya masih inline SVG (dipetik dari
-// SVG tab compress/split/merge yang udah ada di file ini, bukan `ti ti-*`)
-// -- ngikutin keputusan icon-library di atas apa adanya: nambah card-head
-// nggak berarti buka pintu buat nyampur Tabler ke file yang udah sengaja
-// dipertahanin satu bahasa ikon (inline SVG + currentColor).
+// Icon library TETAP inline SVG + `stroke="currentColor"` (supaya ikut --ink-soft di
+// style.css), SENGAJA tidak di-swap ke Tabler (`ti ti-*`) seperti export-gambar:
+// ganti 25+ titik di markup.js+index.js berisiko ngubah ukuran/alignment tanpa
+// browser buat ngecek hasilnya. Jangan campur Tabler ke file ini; ikon di dalam
+// icon-box juga inline SVG.
 export const KOMPRES_PDF_MARKUP = `
 <div class="pw-topbar">
   <div class="pw-topbar-crumb"><strong>Perkakas PDF</strong></div>

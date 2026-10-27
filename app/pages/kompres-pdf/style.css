@@ -1,130 +1,31 @@
 /* app/pages/kompres-pdf/style.css
-   ══════════════════════════════════════════════════════════════════════
-   CONSOLIDATION PASS (Sep 2026) — read this first, it supersedes parts of
-   the "full rewrite" history below:
+   Semua selector di-scope di bawah `.kp-page` (class yang dipasang mount() di
+   container), nol bare selector, jadi aman ditinggal di <head> dan tetap dilepas di
+   unmount(). Halaman ini tetap memakai nama class sendiri (.tab, .segmented, .gauge,
+   .chip, .badge, .card, .btn, dst) karena markup.js/index.js merujuk nama itu lewat
+   classList/querySelector; `.kp-page .card` (2 kelas) otomatis menang lawan
+   pnm-universal.css `.card` (1 kelas) tanpa !important.
 
-   Complaint: this page (and export-gambar) still looked "unstyled" next to
-   konversian/crud-produk/dashboard even after the design.md rewrite
-   documented below. Root cause was design.md itself was chasing a stricter
-   flat/no-shadow/hero-heading spec that was NEVER actually reconciled with
-   pnm-universal.css — the file every OTHER page in this app genuinely
-   renders from (see design.md's own "Anti-patterns" section: "these should
-   merge into one token set", never done). So this page ended up
-   internally consistent with an aspirational doc nobody else follows,
-   which made it look like a different product from the rest of the app.
-   Fixed 3 concrete things:
-     1. Token duplication removed: this page used to keep a full second
-        copy of pnm-universal.css's :root values, hand-synced to match
-        (see the "NOTE" a few lines below — that reconciliation effort is
-        exactly the anti-pattern design.md warns against, "kept separate
-        on purpose... but that's a stopgap, not the target end state").
-        Tokens that were pure duplicates are deleted outright (this page
-        just inherits the real :root now); --ink/--ink-soft/--font/--mono
-        (names pnm-universal.css doesn't use) are aliased to the real
-        token (var(--text) etc.) instead of hand-copied, so there is only
-        ONE number anywhere in this app for e.g. body text color.
-     2. `.card` box-shadow restored (var(--shadow)) — every other page's
-        `.card` has it; removing it here (done per design.md's "no shadow"
-        rule below) just made this page's cards read as flatter/plainer
-        than the rest of the app, not more "compliant".
-     3. Header downsized from a marketing/landing-page treatment (eyebrow
-        dot label, clamp(28px,4vw,36px) hero heading, 56ch subtitle) to
-        the same `.page-head` scale every other module's header actually
-        uses (24px h1) — the oversized hero heading was the single biggest
-        "this doesn't belong in the same product" signal.
-     4. Inline hand-drawn SVGs swapped for Tabler (`ti ti-*`) icons — see
-        markup.js — matching the icon library every other module uses.
-   ══════════════════════════════════════════════════════════════════════
+   TOKEN: tidak ada salinan token sendiri. .kp-page mewarisi :root pnm-universal.css;
+   nama lokal --ink/--ink-soft/--font/--mono hanya alias ke token aslinya. Jangan
+   copy-paste nilai token ke sini (akan drift). --success-dot/--warning-dot/
+   --danger-dot didefinisikan lokal di .kp-page (bukan :root global), dengan varian
+   dark mode.
 
-   Sesi lanjutan (sesudah dashboard/stok): FULL REWRITE, bukan CSS-override
-   kayak dua modul itu -- halaman ini butuh lebih dari itu (lihat alasan di
-   bawah), jadi ini beneran sesi kesembilan belas-style rewrite, sama kelas
-   kerjanya kayak export-gambar.
-
-   KENAPA full rewrite (bukan override tipis kayak dashboard/stok):
-   - `body{background:radial-gradient(...)}` -- gradient, dilarang total
-     sama design.md ("No shadows, no blur, no gradients, no glass").
-   - `.card`/`.tab.active` pakai `box-shadow` -- juga dilarang (SUPERSEDED
-     di atas: shadow di `.card` udah dibalikin lagi, lihat poin 2).
-   - Punya `:root` token set sendiri yang sama sekali beda dari
-     pnm-universal.css (`--ink`/`--ink-soft` dkk, bukan `--text`/
-     `--text-secondary`), dan sebelum sesi ini TIDAK memuat
-     pnm-universal.css sama sekali -- jadi nol dark-mode support (satu
-     blok :root doang, gak ada `html[data-theme="dark"]` variant), bakal
-     kelihatan patah begitu user toggle dark mode dari sidebar nav global
-     (yang sekarang selalu ada di semua halaman).
-   - Body-level `padding:48px 20px 80px` di-set langsung ke `body` (bare,
-     gak di-scope) -- persis kelas bug CSS-leak yang sama yang udah
-     ketemu & difix di halaman lain (nav.css/export-gambar's komentar).
-
-   PENDEKATAN: kebalikan dari export-gambar (yang ngadopsi HABIS-HABISAN
-   class pnm-universal.css: .card/.btn/.field-input/.stat-pill dst, style.css
-   sisa cuma ~85 baris) -- halaman ini TETAP pakai nama class dia sendiri
-   (`.tab`, `.segmented`, `.gauge`, `.chip`, `.badge`, `.card`, `.btn`, dst,
-   SAMA PERSIS kayak sebelumnya) karena markup.js/index.js yang 1400+ baris
-   gabungan itu terus-menerus rujuk nama-nama itu lewat classList.toggle()/
-   querySelector() -- ganti nama class di 25+ titik tanpa browser buat tes
-   drag-drop/tab-switch/compress-split-merge flow itu risiko yang gak
-   sepadan buat manfaat "1 nama class doang" waktu solusi yang sama amannya
-   (scoping) udah cukup. Yang berubah:
-     1. SETIAP selector di bawah di-scope di bawah `.kp-page` (element
-        classList container dapetin di index.js's mount(), ganti dari
-        `.wrap` yang lama) -- termasuk `.card`/`.btn`/`.chip`/`.hidden`/
-        `.field`, yang SEKARANG PENTING karena pnm-universal.css (baru
-        dimuat sesi ini, lihat index.js) definisiin ulang nama-nama itu
-        secara global juga -- tanpa scope, dua definisi bakal tabrakan.
-        Spesifisitas `.kp-page .card` (2 kelas) otomatis menang lawan
-        pnm-universal.css punya `.card` (1 kelas) -- gak butuh
-        `!important` di mana pun di file ini.
-     2. `:root` -> `.kp-page` (custom property TETEP nama sama --bg/--ink/
-        --accent dst, cuma sekarang di-scope + NILAI diganti ke token
-        design.md yang persis, plus varian dark mode baru). SUPERSEDED di
-        atas: --bg/--accent dkk sekarang gak di-declare ulang sama sekali,
-        cuma warisan langsung dari :root pnm-universal.css.
-     3. Semua `box-shadow` dicopot (SUPERSEDED — lihat poin 2 di atas).
-        Gradient body dicopot, diganti flat `--bg`. Padding body pindah ke
-        `.kp-page .kp-main` (div baru, BUKAN elemen `<main>` --
-        pnm-universal.css punya rule `body:has(.dropzone) main{...}` yang
-        di-scope buat stok, sengaja dihindari biar gak nabrak/ambigu,
-        meskipun secara spesifisitas rule ini bakal tetep menang -- lebih
-        aman gak pake `<main>` sama sekali daripada ngandelin itung-itungan
-        spesifisitas).
-     4. Icon warna: SVG di markup.js yang tadinya hardcode
-        `stroke="#6c685f"` (warna palet lama, 3 titik: dropzone kompres/
-        split/merge) diganti `stroke="currentColor"` di markup.js (lihat
-        file itu) supaya ngikut `.kp-page` punya `--ink-soft`/`--ink` yang
-        udah di-retint -- BUKAN diganti Tabler icon (lihat markup.js's
-        komentar buat alasan icon library tetep inline SVG, bukan
-        di-swap).
-     5. `.badge` (status file: Menunggu/Memproses/Selesai/Gagal) yang
-        tadinya full-tint pill jadi dot+label, sama pola kayak dashboard/
-        stok's chip/days-pill retrofit -- pake `--success-dot`/
-        `--warning-dot`/`--danger-dot` token persis design.md, didefinisikan
-        lokal di `.kp-page` (bukan `:root` global), sama alasan/pola kayak
-        dashboard & stok's style.css.
+   BENTUK: `.card` pakai box-shadow var(--shadow) seperti halaman lain; header
+   memakai skala `.page-head` (h1 24px) yang sama dengan modul lain, bukan hero/
+   landing; `.badge` status file (Menunggu/Memproses/Selesai/Gagal) berbentuk
+   dot + label, bukan pill berwarna. Padding halaman ada di `.kp-page .kp-main`
+   (div, BUKAN elemen <main> -- pnm-universal.css punya rule
+   `body:has(.dropzone) main{...}` untuk stok yang sengaja dihindari).
 */
 
 .kp-page{
-  /* CONSOLIDATION PASS (kompres-pdf & export-gambar accidentally "faux
-     universal" — Sep 2026): this page used to keep its OWN full duplicate
-     copy of pnm-universal.css's tokens (same values, different variable
-     names) — the exact "two token sets that should merge into one" stopgap
-     design.md itself flags as not-the-target-end-state (see design.md's
-     "Anti-patterns" section). A duplicate copy drifts the moment someone
-     edits one file and forgets the other (that's literally what happened
-     before the reconciliation comment above this block used to describe).
-     Fix: tokens that are pure duplicates of a real pnm-universal.css :root
-     value (--bg/--surface/--border/--accent/--accent-soft/--danger/
-     --danger-soft/--warn/--warn-soft/--radius-lg/--radius-md/--radius-sm)
-     are REMOVED here entirely — .kp-page just inherits the real ones from
-     :root, so there is only ever one source of truth, no re-sync needed
-     ever again. The few names below (--ink/--ink-soft/--font/--mono) don't
-     exist under those names in pnm-universal.css, so instead of deleting
-     them they're aliased to the real token they were always meant to mean
-     (var(--text) etc.) — same effect (this page's ~25+ existing var(--ink)
-     references elsewhere in this file keep working untouched, zero risk of
-     a markup.js/index.js selector break), but now a genuine alias instead
-     of a hand-copied number. */
+  /* Token: nama lokal --ink/--ink-soft/--font/--mono hanya alias ke token asli
+     pnm-universal.css (var(--text) dst) supaya ~25 referensi var(--ink) di file ini
+     tetap jalan. Token yang identik dengan :root (--bg/--surface/--border/--accent/
+     --danger/--warn/--radius-*) sengaja TIDAK di-declare ulang di sini supaya hanya
+     ada satu sumber nilai. */
   --ink:var(--text);
   --ink-soft:var(--text-secondary);
   --font:var(--font-body);
@@ -261,7 +162,7 @@ html[data-theme="dark"] .kp-page{
 .kp-page .file-size{font-size:12px;color:var(--ink-soft);margin-top:2px;font-family:var(--mono);}
 .kp-page .file-name{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .kp-page .file-status{font-size:12px;color:var(--ink-soft);margin-top:2px;display:flex;align-items:center;gap:6px;}
-/* status badge: dot + label, not a tinted pill (design.md step 4, same
+/* status badge: dot + label, not a tinted pill (same
    pattern as dashboard's chip/days-pill and stok's stat-pill/metric) */
 .kp-page .file-status .badge{
   font-size:11px;font-weight:600;text-transform:none;letter-spacing:normal;
