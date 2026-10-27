@@ -1738,3 +1738,34 @@
   #app-root .panel-collapse-btn{margin-left:auto;flex:0 0 auto;width:30px;height:30px}
   #app-root #cari-controls{display:block}
 }
+/* ══════════════════════════════════════════════════════════════════════
+   POLISH (27 Okt 2026) — kerapian panel kanan di lebar sempit/menengah.
+   Blok ini sengaja PALING AKHIR; hapus blok = balik ke tampilan sebelumnya.
+   1. Tombol aksi header (🙋 / Selesaikan / ✎ / ✕) dulu beda-beda ukuran (22×28, 24×22, …).
+      Sekarang semuanya persegi 26×26 dengan radius & ikon seragam.
+   2. Chip "N item · x/N terpenuhi" turun ke baris sendiri di bawah tab dengan jarak napas
+      (dulu nempel ke garis bawah tab & kelihatan menimpa). Di panel sempit/menengah (<480px)
+      selalu baris sendiri, rata kiri sejajar tab; di panel lebar tetap sebaris di kanan.
+   ══════════════════════════════════════════════════════════════════════ */
+#app-root .clip-strip-actions{gap:6px}
+#app-root .clip-strip-actions .clip-header-icon-btn,
+#app-root .clip-strip-actions .clip-header-edit-btn,
+#app-root .clip-strip-actions .btn-end-sesi{
+  box-sizing:border-box;height:26px;min-height:26px;border-radius:6px;
+  display:inline-flex;align-items:center;justify-content:center;line-height:1;
+}
+#app-root .clip-strip-actions .clip-header-icon-btn{width:26px;min-width:26px;padding:0}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-strip-actions .btn-end-sesi,
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-strip-actions .clip-header-edit-btn{
+  width:26px;min-width:26px;padding:0;
+}
+#app-root .clip-strip-actions .btn-end-sesi i,
+#app-root .clip-strip-actions .clip-header-icon-btn i{font-size:14px}
+
+#app-root .clip-tab-row{row-gap:0}
+#app-root .clip-tab-row .rs-strip{padding:6px 0}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-tab-row .rs-strip{
+  flex:1 1 100%;margin:0;justify-content:flex-start;
+  border-top:1px solid var(--border);
+}
+#app-root .clip-tab-row .rs-strip-state{height:26px}
