@@ -933,9 +933,14 @@ async function runSearch(opts) {
   if (opts && opts.reuse && S.rawCache && S.rawCache.q === q) {
     dataRaw = S.rawCache.data; error = null; // toggle "Tampilkan belum firm": hasil RPC yang sama
   } else {
-    ({data: dataRaw, error} = await rpc('search_produk_dengan_harga', {
-      q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false
-    }));
+    // Pencarian + Dictionary: produk yang cocok dgn istilah customer di Dictionary dinaikkan ke atas
+    // (r.dict_istilah terisi). Kalau fungsi barunya belum di-deploy / error, jatuh balik ke pencarian lama.
+    const searchArgs = { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false };
+    ({data: dataRaw, error} = await rpc('search_produk_dengan_dictionary', searchArgs));
+    if (error) {
+      console.warn('search_produk_dengan_dictionary gagal, pakai pencarian biasa:', error.message || error);
+      ({data: dataRaw, error} = await rpc('search_produk_dengan_harga', searchArgs));
+    }
     if (!error) S.rawCache = { q, data: dataRaw };
     if (S.showNotFirmQ !== q) S.showNotFirmQ = null; // kata kunci baru -> belum firm disembunyikan lagi
   }
@@ -1129,6 +1134,7 @@ function renderResults(data) {
         <span class="rcard-name" title="${namaEsc}">${namaEsc||'—'}</span>
         ${r.tipe?`<span class="tipe-badge ${tipeClass}">${tipeEsc}</span>`:''}
         ${(!S.modeSwasta && !S.isProdukFirm(r)) ? `<span class="tipe-badge tipe-other" title="Link V6 masih ada catatan — tidak dipakai buat konversi">Belum firm</span>` : ''}
+        ${r.dict_istilah ? `<span class="tipe-badge tipe-other" title="Cocok dengan istilah di Dictionary: ${S.escapeHtmlAttr(r.dict_istilah)}"><i class="ti ti-book-2"></i> Dictionary</span>` : ''}
         ${priceHtml}
         ${ctaHtml}
       </div>

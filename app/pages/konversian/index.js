@@ -5280,7 +5280,11 @@ async function convManualSearch(i, qRaw) {
   const mySeq = (S.convManualSeq[i] = (S.convManualSeq[i] || 0) + 1);
   S.convManualResults[i] = { loading: true };
   patchConvRow(i, { keepFocus: true });
-  const { data, error } = await S.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
+  // Sama kayak search utama: produk yang cocok dgn istilah di Dictionary naik ke atas; kalau fungsi
+  // barunya belum di-deploy / error, jatuh balik ke pencarian lama.
+  const manualArgs = { q, p_tipe: null, only_akd: false, only_kfa: false };
+  let { data, error } = await S.rpc('search_produk_dengan_dictionary', manualArgs);
+  if (error) ({ data, error } = await S.rpc('search_produk_dengan_harga', manualArgs));
   if (mySeq !== S.convManualSeq[i]) return; // udah ada ketikan baru nyusul, buang hasil basi ini
   S.convManualResults[i] = error
     ? { error: error.message || JSON.stringify(error) }
