@@ -1,4 +1,6 @@
 import { MODULES } from '../home/markup.js';
+// Dropdown custom (menggantikan popup <select> bawaan browser). Self-installing, cuma efek samping.
+import '../../../shared/ui-select.js';
 import { CRUD_PRODUK_SUBNAV } from '../crud-produk/subnav.js';
 import { KONVERSIAN_SUBNAV } from '../konversian/subnav.js';
 
@@ -74,7 +76,7 @@ export function navMarkup(activeId, activeSub) {
   const items = MODULES.map((mod) => navItemHtml(mod, activeId, activeSub)).join('');
   return `
     <div class="pw-nav-brand">
-      <img src="/assets/logo-mark-pnm.png" alt="PNM" width="43" height="18">
+      <div class="pw-nav-brand-mark"><img class="logo-light" src="/assets/logo-mark-pnm-sidebar.png" alt="PNM" width="48" height="18"><img class="logo-dark" src="/assets/logo-mark-pnm-sidebar-dark.png" alt="" width="48" height="18"></div>
       <span>Pionir Workspaces</span>
     </div>
     <button class="pw-nav-collapse-btn" id="pwNavCollapseBtn" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">

@@ -357,7 +357,12 @@ export function navSetActive(activeId, sub) {
     // Re-render is unavoidable here (new accordion needs to exist in the
     // DOM) — cheap enough (a few dozen small nodes, not a heavy page) that
     // this isn't worth optimizing further.
+    // Blok brand (logo + nama) TIDAK ikut dibuat ulang: elemen lama dipindah balik ke
+    // markup baru. Kalau <img> logo dibuat ulang tiap pindah modul, logo sempat
+    // berkedip / loncat ukuran sesaat -- kelihatan jelas, padahal isinya sama persis.
+    const keptBrand = navEl.querySelector('.pw-nav-brand');
     navEl.innerHTML = navMarkup(activeId, sub);
+    if (keptBrand) navEl.querySelector('.pw-nav-brand')?.replaceWith(keptBrand);
     applyThemeIcon();
     fillUser();
     // Re-wire the bits that live inside the just-replaced innerHTML —

@@ -105,7 +105,7 @@
 }
 
 .pw-nav-brand {
-  height: 52px;
+  height: 56px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -114,10 +114,23 @@
   border-bottom: 0.5px solid var(--border);
 }
 
-.pw-nav-brand img { height: 18px; width: auto; flex-shrink: 0; }
+/* Logo: PNG-nya cuma huruf PNM (tagline kecil "PT. PIONIR NUSANTARA MANUFACTURING"
+   dibuang -- di tinggi 18px itu cuma jadi blur dan kelihatan nabrak teks), latar transparan.
+   Tema gelap pakai file terpisah (-dark.png): huruf biru dibuat terang, oranye tetap.
+   Dipilih lewat data-theme (bukan prefers-color-scheme) supaya ikut tombol tema di sidebar. */
+.pw-nav-brand-mark {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.pw-nav-brand-mark img { display: block; height: 18px; width: auto; }
+.pw-nav-brand-mark .logo-dark { display: none; }
+html[data-theme="dark"] .pw-nav-brand-mark .logo-light { display: none; }
+html[data-theme="dark"] .pw-nav-brand-mark .logo-dark { display: block; }
 .pw-nav-brand span {
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
+  letter-spacing: -0.005em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -161,7 +174,7 @@
    block that documents what changed if someone diffs this file later. */
 .pw-nav-search-wrap {
   position: relative;
-  margin: 12px 12px 4px;
+  margin: 14px 12px 6px;
 }
 .pw-nav-search-wrap > i {
   position: absolute;
@@ -261,7 +274,7 @@
    specificity ambiguity to debug. See nav.js for the actual rule. */
 
 .pw-nav-eyebrow {
-  margin: 16px 16px 4px;
+  margin: 20px 16px 8px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -272,18 +285,18 @@
 .pw-nav-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0 8px;
+  padding: 0 8px 12px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .pw-nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 34px;
-  padding: 0 8px;
+  height: 36px;
+  padding: 0 10px;
   border-radius: var(--radius);
   color: var(--text-secondary);
   text-decoration: none;
@@ -315,18 +328,18 @@
 .pw-nav-subitems {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding-left: 20px;
-  margin: 2px 0 4px;
+  gap: 2px;
+  padding-left: 10px;
+  margin: 2px 0 8px 18px;   /* garis kiri sejajar tengah ikon induk (8 + 10 + 18/2) */
   border-left: 1px solid var(--border);
-  margin-left: 17px;
 }
+.pw-nav-subitems + .pw-nav-item { margin-top: 2px; }
 .pw-nav-subitem {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 8px;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
   border-radius: var(--radius);
   color: var(--text-secondary);
   text-decoration: none;
@@ -345,7 +358,7 @@
 .pw-nav-user {
   flex-shrink: 0;
   border-top: 0.5px solid var(--border);
-  padding: 10px 12px;
+  padding: 12px 12px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -444,6 +457,7 @@
   display: none;
 }
 .pw-nav.collapsed .pw-nav-brand { justify-content: center; padding: 0; }
+.pw-nav.collapsed .pw-nav-brand-mark img { height: 13px; }
 .pw-nav.collapsed .pw-nav-item { justify-content: center; padding: 0; }
 /* BUGFIX: .pw-nav-user is avatar(26px)+name+theme-btn(26px)+logout-btn(26px)
    in one row with 8px gaps. With the name hidden at this width, the 3
@@ -474,6 +488,7 @@
     display: none;
   }
   .pw-nav-brand { justify-content: center; padding: 0; }
+  .pw-nav-brand-mark img { height: 12px; }
   .pw-nav-search-wrap { display: none; } /* no room for a meaningful search UI at 48px -- revisit if this becomes a real complaint */
   .pw-nav-item { justify-content: center; padding: 0; }
   /* Same overflow bug as .pw-nav.collapsed above, just worse (48px instead
@@ -552,3 +567,83 @@
 .pw-status-dot.danger  { background: var(--danger-dot); }
 /* (Auto-rail 768–1100px DIHAPUS: sidebar tidak lagi mengecil sendiri di zoom/lebar menengah.
    Rail cuma muncul lewat tombol collapse manual, atau di <768px (mobile).) */
+
+/* =====================================================================
+   Dropdown custom (shared/ui-select.js) -- pengganti popup <select> bawaan.
+   <select class="filter-select"> asli tetap ada (disembunyikan), ini cuma tampilannya.
+   ===================================================================== */
+.ui-select { position: relative; display: inline-flex; flex: 0 0 auto; }
+.ui-select[hidden] { display: none !important; }
+.ui-select-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+}
+.ui-select-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.ui-select-btn:hover:not(:disabled) { background: var(--surface-2); }
+.ui-select-btn:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.ui-select-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ui-select.is-open .ui-select-btn { border-color: var(--accent); background: var(--surface); }
+.ui-select-btn.is-active { border-color: var(--accent); background: var(--accent-bg); color: var(--accent-text); }
+.ui-select-icon { font-size: 14px; color: var(--text-muted); }
+.ui-select-btn.is-active .ui-select-icon { color: var(--accent-text); }
+.ui-select-label { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select-chev { font-size: 12px; color: var(--text-muted); transition: transform 0.15s ease; }
+.ui-select.is-open .ui-select-chev { transform: rotate(180deg); }
+
+.ui-select-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: 300px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.16));
+  z-index: 60;
+}
+.ui-select-menu[hidden] { display: none; }
+.ui-select.is-right .ui-select-menu { left: auto; right: 0; }
+.ui-select.is-up .ui-select-menu { top: auto; bottom: calc(100% + 6px); }
+.ui-select-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ui-select-opt.is-active { background: var(--fill-ghost-hover, var(--surface-2)); color: var(--text); }
+.ui-select-opt.is-selected { color: var(--text); font-weight: 600; }
+.ui-select-opt.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.ui-select-check { font-size: 14px; color: var(--accent); opacity: 0; flex-shrink: 0; }
+.ui-select-opt.is-selected .ui-select-check { opacity: 1; }
