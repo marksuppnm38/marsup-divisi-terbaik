@@ -13,3 +13,17 @@ output/
 node_modules/
 dist/
 output_abadinusa/
+# Pengecualian sempit: migrasi/audit keamanan di supabase/ BOLEH ter-commit (tanpa data).
+# Dump database di tempat lain tetap terblokir oleh *.sql di atas.
+!supabase/
+!supabase/*.sql
+
+# Jangan pernah ter-commit lagi (pernah bocor di history)
+*.bak
+.env
+.env.*
+*.pem
+*.key
+inaproc_scrapper/output/
+products.csv
+*.tsv

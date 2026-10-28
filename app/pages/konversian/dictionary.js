@@ -605,7 +605,7 @@ dictModalAddInput.addEventListener('input', () => {
       `).join('');
     } catch (err) {
       dictModalAddResults.style.display = 'block';
-      dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--danger)">${err.message}</div>`;
+      dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--danger)">${S.escapeHtmlAttr(err.message)}</div>`;
     }
   }, 300);
 });
@@ -966,7 +966,7 @@ async function openSphRiwayatModal(sesiId, namaRs) {
       });
     });
   } catch (err) {
-    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${err.message}</div>`;
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${S.escapeHtmlAttr(err.message)}</div>`;
   }
 }
 S.openSphRiwayatModal = openSphRiwayatModal;
@@ -1111,7 +1111,7 @@ async function openKonversiRiwayatModal(sesiId, namaRs) {
       });
     });
   } catch (err) {
-    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${err.message}</div>`;
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger)">${S.escapeHtmlAttr(err.message)}</div>`;
   }
 }
 S.openKonversiRiwayatModal = openKonversiRiwayatModal;

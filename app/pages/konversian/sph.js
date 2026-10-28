@@ -278,7 +278,7 @@ function sphAssetSlotHtml(kind, label, asset, status) {
   if (status === 'ok' && asset) {
     return `
       <div class="sph-asset-slot ok">
-        <img src="${asset.dataUrl}" alt="${label}"/>
+        <img src="${/^data:image\//i.test(asset.dataUrl) ? asset.dataUrl.replace(/"/g, '%22') : ''}" alt="${label}"/>
         <div class="sph-asset-label">${label} <span style="opacity:.7">— siap dipakai</span></div>
         <input type="file" accept="image/*" id="sph-asset-${kind}-input"/>
         <button type="button" id="sph-asset-${kind}-btn">Ganti</button>

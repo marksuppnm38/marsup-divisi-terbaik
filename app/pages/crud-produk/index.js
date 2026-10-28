@@ -75,11 +75,17 @@ const INDEPENDENT_SCRIPTS = [
   '/shared/toast.js',
 ];
 
+const SRI_BY_SRC = {
+  'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js':
+    'sha384-OUW9euuUyxyHcAhTqbhI+Iyb8LMssXt/cpz0yXhs9UWG2/R/uaWdakx/4cfww7Vb',
+};
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) return resolve();
     const s = document.createElement('script');
     s.src = src;
+    if (SRI_BY_SRC[src]) { s.integrity = SRI_BY_SRC[src]; s.crossOrigin = 'anonymous'; } // SRI: browser tolak file yang byte-nya beda
     s.onload = () => resolve();
     s.onerror = () => reject(new Error('Gagal memuat ' + src));
     document.head.appendChild(s);

@@ -27,10 +27,16 @@ const SHARED_LINKS = [
   { id: 'shared-pnm-universal-css', href: '/pnm-universal.css?v=20260813b' },
 ];
 
+const SRI_BY_SRC = {
+  'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js':
+    'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw',
+};
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) return resolve();
     const s = document.createElement('script');
+    if (SRI_BY_SRC[src]) { s.integrity = SRI_BY_SRC[src]; s.crossOrigin = 'anonymous'; } // SRI: browser tolak file yang byte-nya beda
     s.src = src; s.onload = () => resolve(); s.onerror = () => reject(new Error('Gagal memuat ' + src));
     document.head.appendChild(s);
   });

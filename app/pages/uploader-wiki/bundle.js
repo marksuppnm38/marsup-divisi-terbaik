@@ -18,7 +18,8 @@ const RPC_CHUNK = 50;
 const RPC_CONCURRENCY = 3;
 const IMG_CHECK_CONCURRENCY = 6;
 const PDF_CONCURRENCY = 3;
-const SHEETJS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+const SHEETJS_SRC = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+const SHEETJS_SRI = 'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw'; // SRI: hash file npm xlsx@0.18.5 (jsDelivr menyajikan byte yang sama)
 // Nama file di dalam paket (yang dipasang user) vs nama file di server. Di server memakai .txt dan ditaruh di assets/ (root repo):
 // build produksi menyalin assets/ apa adanya, tapi TIDAK menyalin file non-JS dari app/pages/** dan bisa mengutak-atik file .js.
 export const SCRIPT_FILE = 'inaproc-upload-v6.user.js';
@@ -43,6 +44,7 @@ function loadPlainScript(src) {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) return resolve();
     const s = document.createElement('script');
+    if (src === SHEETJS_SRC) { s.integrity = SHEETJS_SRI; s.crossOrigin = 'anonymous'; }
     s.src = src; s.onload = () => resolve(); s.onerror = () => reject(new Error('Gagal memuat ' + src));
     document.head.appendChild(s);
   });

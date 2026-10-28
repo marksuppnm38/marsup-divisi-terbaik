@@ -237,7 +237,7 @@ export function mountSpp(panel, deps) {
       return `<div class="sph-asset-slot"><i class="ti ti-loader-2 sph-spin" style="font-size:16px"></i><div class="sph-asset-label">${label} — memuat aset default…</div></div>`;
     }
     if (st === 'ok' && asset) {
-      return `<div class="sph-asset-slot ok"><img src="${asset.dataUrl}" alt="${label}"><div class="sph-asset-label">${label} <span style="opacity:.7">— siap dipakai</span></div>${file}<button type="button" data-sp="asset-pick" data-kind="${kind}">Ganti</button></div>`;
+      return `<div class="sph-asset-slot ok"><img src="${/^data:image\//i.test(asset.dataUrl) ? asset.dataUrl.replace(/"/g, '%22') : ''}" alt="${label}"><div class="sph-asset-label">${label} <span style="opacity:.7">— siap dipakai</span></div>${file}<button type="button" data-sp="asset-pick" data-kind="${kind}">Ganti</button></div>`;
     }
     if (st === 'error') {
       return `<div class="sph-asset-slot error"><i class="ti ti-alert-triangle" style="font-size:16px"></i><div class="sph-asset-label">${label} — gagal dimuat dari server (cek console buat detail). Coba lagi, atau upload manual.</div>${file}<button type="button" data-sp="asset-retry" data-kind="${kind}">Coba lagi</button><button type="button" data-sp="asset-pick" data-kind="${kind}">Upload</button></div>`;

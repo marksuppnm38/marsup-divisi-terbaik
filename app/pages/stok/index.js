@@ -64,11 +64,17 @@ const INDEPENDENT_SCRIPTS = [
   'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
 ];
 
+const SRI_BY_SRC = {
+  'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js':
+    'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw',
+};
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) return resolve();
     const s = document.createElement('script');
     s.src = src;
+    if (SRI_BY_SRC[src]) { s.integrity = SRI_BY_SRC[src]; s.crossOrigin = 'anonymous'; } // SRI: browser tolak file yang byte-nya beda
     s.onload = () => resolve();
     s.onerror = () => reject(new Error('Gagal memuat ' + src));
     document.head.appendChild(s);
@@ -565,7 +571,7 @@ export async function mount(container) {
       await runPrecheck(rows);
     } catch (err) {
       checkingRow.style.display = 'none';
-      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal baca file: ${err.message}</div>`;
+      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal baca file: ${escapeHtml(err.message)}</div>`;
     }
   }
   async function fetchValidKodeSet(kodeList) {
@@ -604,7 +610,7 @@ export async function mount(container) {
       actionsRow.style.display = 'flex';
       stokUploadBtn.disabled = false;
     } catch (err) {
-      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal memeriksa database: ${err.message} — kamu tetap bisa upload, tapi laporan "dilewati" baru muncul setelah proses selesai.</div>`;
+      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal memeriksa database: ${escapeHtml(err.message)} — kamu tetap bisa upload, tapi laporan "dilewati" baru muncul setelah proses selesai.</div>`;
       actionsRow.style.display = 'flex';
       stokUploadBtn.disabled = false;
     } finally {
@@ -676,11 +682,11 @@ export async function mount(container) {
       const serverSkippedCodes = result.skipped_codes || [];
       let msg = `Berhasil! ${result.inserted.toLocaleString('id-ID')} kode stok diperbarui.`;
       if (serverSkippedCount > 0) {
-        msg += ` ${serverSkippedCount} kode DILEWATI karena belum terdaftar di master_produk: ` +
+        msg += ` ${Number(serverSkippedCount)} kode DILEWATI karena belum terdaftar di master_produk: ` +
           escapeHtml(serverSkippedCodes.slice(0, 15).join(', ')) +
           (serverSkippedCodes.length > 15 ? `, dan ${serverSkippedCodes.length - 15} lainnya…` : '');
       }
-      stokStatusMsg.innerHTML = `<div class="result-banner ${serverSkippedCount > 0 ? 'err' : 'ok'}">${msg}</div>`;
+      stokStatusMsg.innerHTML = `<div class="result-banner ${serverSkippedCount > 0 ? 'err' : 'ok'}">${msg}</div>`; // sec-ok: msg = angka + escapeHtml(kode), tidak ada teks mentah
       await recordUpload({
         at: new Date().toISOString(),
         email: stokCurrentEmail,
@@ -695,7 +701,7 @@ export async function mount(container) {
       refreshKelengkapan(); // stok baru masuk → hitung ulang komponen bolong
       resetUploadUI();
     } catch (err) {
-      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal: ${err.message}</div>`;
+      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal: ${escapeHtml(err.message)}</div>`;
       stokUploadBtn.disabled = false;
       actionsRow.style.display = 'flex';
       stokCancelBtn.style.display = 'block';

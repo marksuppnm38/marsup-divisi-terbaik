@@ -198,7 +198,7 @@ async function runSearch(opts) {
       S.metaEl.textContent='Pencarian timeout — coba kata kunci lebih spesifik';
     } else {
       const offlineHint = (!navigator.onLine) ? ' Sepertinya koneksi internet kamu sedang terputus.' : '';
-      S.errEl.innerHTML = `<div>Gagal mencari: ${msg}.${offlineHint}</div><button type="button" id="err-retry-btn" style="margin-top:6px;background:none;border:1px solid var(--danger-border);color:var(--danger);border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Coba lagi</button>`;
+      S.errEl.innerHTML = `<div>Gagal mencari: ${S.escapeHtmlAttr(msg)}.${offlineHint}</div><button type="button" id="err-retry-btn" style="margin-top:6px;background:none;border:1px solid var(--danger-border);color:var(--danger);border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Coba lagi</button>`;
       S.errEl.style.display='block';
       const retryBtn = document.getElementById('err-retry-btn');
       if (retryBtn) retryBtn.addEventListener('click', () => { S.errEl.style.display='none'; runSearch(); });

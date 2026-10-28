@@ -236,9 +236,12 @@ function ensureSphExportLibs() {
         'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
         'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk'
       ),
-      // docx@8 (bukan versi persis, mis. @8.6.0) SENGAJA belum dikasih SRI
-      // -- lihat komentar panjang di loadScript() di atas file ini kenapa.
-      loadScript('https://cdn.jsdelivr.net/npm/docx@8/build/index.umd.js'),
+      // docx di-pin ke versi persis (8.6.0 = rilis 8.x terbaru yang selama ini
+      // di-resolve oleh tag longgar @8), jadi sekarang bisa dikasih SRI.
+      loadScript(
+        'https://cdn.jsdelivr.net/npm/docx@8.6.0/build/index.umd.js',
+        'sha384-4SKfH1E/s1imU9AjjNoxcGV2w4NxAzi4HDrJD7MweJJY+LZrRYDhP05DALqhQ15G'
+      ),
     ]);
   }
   return sphExportLibsReady;
@@ -387,7 +390,7 @@ export async function mount(container, initialSub) {
   // urutan install*(S). Definisi lokal di permintaan-rs.js (S.escapeHtmlAttr =
   // escapeHtmlAttr) dibiarkan; dia cuma nimpa ulang fungsi yang identik.
   S.escapeHtmlAttr = function escapeHtmlAttr(s) {
-    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   };
   // Security: field `link`/`link_v6` datang dari database (diisi manual lewat
   // form), bukan sesuatu yang bisa kita percaya begitu aja buat langsung
@@ -1973,7 +1976,7 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
   const imgs = items.map(it => lampiranThumbCache.get(thumbKeyForItem(it)) || null);
 
   lampiranStatus.style.display = 'none';
-  const esc = (s) => String(s ?? '').replace(/</g, '&lt;');
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   // Ringkasan: jenis item unik (kode_produk berbeda) + total qty (jumlah pcs semua
   // baris). qty null dihitung 1 -- sama dengan yang ditampilkan di kolom Qty.
   const uniqueCount = new Set(items.map(it => it.kode_produk)).size;

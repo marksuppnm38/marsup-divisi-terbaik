@@ -185,7 +185,7 @@ S.showToast = showToast;
 // sama tombol "Coba lagi" — biar user gak harus pindah tab/refresh cuma buat
 // nyoba ulang satu request yang gagal (misal gara-gara koneksi sempat putus).
 function renderListError(el, msg, retryFn) {
-  el.innerHTML = `<div>${msg}</div><button type="button" class="list-error-retry-btn" style="margin-top:8px;background:none;border:1px solid var(--danger-border);color:var(--danger);border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Coba lagi</button>`;
+  el.innerHTML = `<div>${String(msg == null ? '' : msg).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}</div><button type="button" class="list-error-retry-btn" style="margin-top:8px;background:none;border:1px solid var(--danger-border);color:var(--danger);border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit">Coba lagi</button>`;
   el.style.display = 'block';
   const btn = el.querySelector('.list-error-retry-btn');
   if (btn) btn.addEventListener('click', retryFn);

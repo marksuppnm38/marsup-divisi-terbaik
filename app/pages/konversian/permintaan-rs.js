@@ -1111,7 +1111,7 @@ function renderChecklistItemHtml(item) {
       matchedHtml = `<div class="kb-item-matched">${item.matched_items.map(l => {
         const nama = namaProdukByKode(l.kode_produk);
         const qtyLineTxt = l.qty_alokasi != null ? ` · qty ${l.qty_alokasi}` : '';
-        return `<span class="kb-matched-row">→ ${l.kode_produk}${nama ? ' — ' + nama : ''}${qtyLineTxt}</span>`;
+        return `<span class="kb-matched-row">→ ${S.escapeHtmlAttr(l.kode_produk)}${nama ? ' — ' + S.escapeHtmlAttr(nama) : ''}${S.escapeHtmlAttr(qtyLineTxt)}</span>`;
       }).join('')}</div>`;
     }
 
