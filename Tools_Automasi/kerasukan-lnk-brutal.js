@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         INAPROC Upload Produk V6 (v0.8.7 - dokumen, lampiran, simpan, batch, skip SKU)
+// @name         INAPROC Upload Produk V6 (v0.8.12 - dokumen, lampiran, simpan, batch, skip SKU, reset antrian)
 // @namespace    inaproc-upload-produk-v6
-// @version      0.8.7
-// @description  v0.8.7 (+link katalog AKTUAL: setelah Simpan, cari nama produk di Daftar Produk lalu baca href tautan produk; slugify ° -> deg sebagai estimasi; tombol Cari Link Aktual utk SKU lama). v0.8.6 (+KBKI: scroll bertahap sampai dasar menu, fuzzy "... general use" ala kategori, fallback 999/lainnya; +harga & deskripsi yang diupload dicatat di log & Export Hasil). v0.8.5 (+rerun pintar: pesan "Data produk sudah digunakan"/"Nama Produk tidak boleh sama" = link sudah terupload -> skip & geser antrian, dicatat confirmed; cek nama produk setelah diisi). v0.8.4 (+fallback KBKI, scroll menu KBKI, kategori toleran, mode ulang dari awal). v0.8.3 (+Lihat Dokumen=OK, slug katalog, minimize panel). v0.8.2 (+centang dialog konfirmasi Simpan, verifikasi harga). v0.8.1 (+skip SKU). v0.8.0: baca MASTER.xlsx, folder dokumen lokal, dropdown Spesifikasi, upload foto + 7 lampiran PDF, Simpan, loop batch dengan resume.
+// @version      0.8.12
+// @description  v0.8.12 (+Export TSV file, Copy TSV ke clipboard, Copy link saja ke clipboard -- siap paste ke sheet). v0.8.11 (FIX Nama Produk: nama otomatis dari AKD setelah pilih Daftar Produk Sektoral DIHAPUS dulu, lalu diisi "ROBUST " + nama produk MASTER; diulang sampai bertahan; verifikasi sebelum Simpan ikut cek nama final). v0.8.10 (+deskripsi otomatis diawali "ROBUST " kalau belum ada). v0.8.9 (FIX KBKI: teks KBKI tidak lagi masuk ke kolom Daftar Produk Sektoral. Dropdown KBKI = tombol #form-product-kbki-select tanpa kotak cari; input & menu kini DI-SCOPE ke area "Kode KBKI" saja, bukan document.querySelector('.select__input') global. Kalau tidak ada kotak cari -> cukup scroll menu. +verifikasi tombol KBKI berubah setelah pilih). v0.8.8 (+tombol Reset Antrian). v0.8.7 (+link katalog AKTUAL). v0.8.6 (+KBKI scroll bertahap, fuzzy, fallback 999/lainnya). v0.8.5 (+rerun pintar). v0.8.0: baca MASTER.xlsx, folder dokumen lokal, dropdown Spesifikasi, upload foto + 7 lampiran PDF, Simpan, loop batch dengan resume.
 // @author       you
 // @match        https://penyedia.inaproc.id/*
 // @run-at       document-idle
@@ -22,7 +22,7 @@
   // #region CONFIG
   // =====================================================================
   const CONFIG = {
-    version: '0.8.7',
+    version: '0.8.12',
     debug: true,
 
     // DRY RUN (default TRUE = aman): semua field diisi & semua file diupload
@@ -85,6 +85,7 @@
       merekInput: '#form-product-brand-application-number-input',
       merekCheckBtn: '#form-product-check-brand-btn',
       kbkiButton: '#form-product-kbki-select',
+      kbkiHeading: 'Kode KBKI',
       daftarProdukSektoralHeading: 'Daftar Produk Sektoral',
       kategoriTrigger: '#form-product-category-select',
       kategoriKolomList: 'ul.custom-scrollbar',
@@ -807,6 +808,36 @@
       return c;
     },
     clear() { STATE.results = []; this.save(); UIPanel.refresh(); },
+    // v0.8.12: urutan sesuai antrian (MASTER), sisanya (kalau ada) menyusul.
+    _ordered() {
+      const seen = new Set();
+      const out = [];
+      (STATE.queue || []).forEach((it) => {
+        const r = this.get(it.kodeProduk);
+        if (r) { out.push(r); seen.add(r.kode); }
+      });
+      STATE.results.forEach((r) => { if (!seen.has(r.kode)) out.push(r); });
+      return out;
+    },
+    _cell(v) { return String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ').trim(); },
+    // TSV polos (tab antar kolom, baris baru antar baris) -- langsung paste ke Google Sheet / Excel.
+    // Kolom: kode, nama_produk, harga, link_katalog, status, deskripsi. Link hanya diisi untuk SKU terkonfirmasi.
+    tsvText({ header = true } = {}) {
+      const lines = [];
+      if (header) lines.push(['kode', 'nama_produk', 'harga', 'link_katalog', 'status', 'deskripsi'].join('\t'));
+      this._ordered().forEach((r) => {
+        const qi = (STATE.queue || []).find((i) => i.kodeProduk === r.kode);
+        const nama = qi ? FormFiller._namaFinal(qi) : (r.nama || '');
+        const harga = r.hargaForm != null ? r.hargaForm : (r.hargaMaster != null ? r.hargaMaster : '');
+        const link = this.isConfirmed(r) ? (r.url || '') : '';
+        lines.push([r.kode, nama, harga, link, r.status, r.deskripsiForm || r.deskripsi || ''].map((v) => this._cell(v)).join('\t'));
+      });
+      return lines.join('\n');
+    },
+    // Link saja, satu per baris (hanya SKU terkonfirmasi yang punya link).
+    linksText() {
+      return this._ordered().filter((r) => this.isConfirmed(r) && r.url).map((r) => r.url).join('\n');
+    },
     exportCsv() {
       const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
       const lines = ['kode,status,terkonfirmasi,attempts,waktu,catatan,slug,url_katalog,sumber_url,nama_produk,harga_master,harga_form,deskripsi'];
@@ -1581,9 +1612,13 @@
       return 'OK';
     },
 
-    // Kode KBKI: MASTER hanya punya DESKRIPSI (bukan kode). Menu berisi "kode - deskripsi" dan lazy-load saat di-scroll.
+    // Kode KBKI (v0.8.10 FIX).
+    // Dari capture: KBKI = tombol #form-product-kbki-select ("Pilih kode KBKI") yang membuka menu react-select
+    // TANPA kotak cari. Versi lama memakai document.querySelector('.select__input') global -> yang kena adalah
+    // kotak cari Daftar Produk Sektoral, jadi teks KBKI ("Manual surgical instrument for general use") salah ketik di situ.
+    // Sekarang: input & menu di-scope ke area "Kode KBKI" saja. Kalau tidak ada kotak cari -> tidak mengetik apa pun, cukup scroll menu.
+    // MASTER hanya punya DESKRIPSI (bukan kode); menu berisi "kode - deskripsi" dan bisa lazy-load.
     // Tahap: (1) kode/exact (+partial) -> (2) fuzzy ekor "... general use" -> (3) fallback "lainnya"/kode 999.
-    // Setiap tahap men-scroll menu bertahap sampai dasar (dan menunggu lazy-load) sebelum menyerah.
     async fillKbki(item) {
       const target = QueueManager.kbkiTarget(item);
       if (!target.code && !target.desc) {
@@ -1592,21 +1627,54 @@
       }
       const btn = await DomHelper.waitForElement(CONFIG.formSelectors.kbkiButton);
       DomHelper.scrollIntoView(btn);
-      DomHelper.dispatchClick(btn);
+      await DomHelper.sleep(250);
 
-      const findInput = () => {
-        const active = document.activeElement;
-        if (active && active.matches && active.matches('.select__input')) return active;
+      // Scope = pembungkus terbesar di sekitar tombol KBKI yang hanya memuat heading "Kode KBKI" (<=1 h3).
+      const scope = (() => {
         let node = btn;
-        for (let i = 0; i < 4 && node; i += 1) {
-          const f = node.querySelector && node.querySelector('.select__input');
-          if (f) return f;
+        let best = btn.parentElement || btn;
+        for (let i = 0; i < 8 && node.parentElement; i += 1) {
           node = node.parentElement;
+          if (node === document.body) break;
+          if (node.querySelectorAll('h3').length > 1) break;
+          best = node;
         }
-        return document.querySelector('.select__input');
+        return best;
+      })();
+      const inScope = (el) => !!el && scope.contains(el);
+
+      // Menu KBKI: yang berada di scope; kalau menu di-portal ke body -> yang paling dekat di bawah tombol.
+      const getMenu = () => {
+        const menus = Array.from(document.querySelectorAll('.select__menu')).filter((m) => DomHelper.isVisible(m));
+        if (!menus.length) return null;
+        const mine = menus.find(inScope);
+        if (mine) return mine;
+        const bb = btn.getBoundingClientRect();
+        menus.sort((a, b) => Math.abs(a.getBoundingClientRect().top - bb.bottom) - Math.abs(b.getBoundingClientRect().top - bb.bottom));
+        return menus[0];
       };
-      await DomHelper.waitForElement('.select__input', { timeout: 5000 }).catch(() => null);
-      const readOpts = () => Array.from(document.querySelectorAll('.select__option'))
+      // Kotak cari KBKI (kalau ada): HANYA di dalam scope / menu KBKI. TIDAK PERNAH global.
+      const findInput = () => {
+        const sel = 'input.select__input, .select__input input, input[role="combobox"]';
+        const menu = getMenu();
+        const cand = (scope.querySelector(sel)) || (menu && menu.querySelector('input'));
+        return cand && !cand.readOnly && !cand.disabled ? cand : null;
+      };
+
+      DomHelper.dispatchClick(btn);
+      let menuEl = await DomHelper.pollUntil(getMenu, { timeout: 3000, interval: 150 }).catch(() => null);
+      if (!menuEl) {
+        DomHelper.dispatchMouseDown(btn);
+        menuEl = await DomHelper.pollUntil(getMenu, { timeout: 3000, interval: 150 }).catch(() => null);
+      }
+      if (!menuEl) {
+        Logger.error('fillKbki: menu KBKI tidak terbuka setelah klik tombol "Pilih kode KBKI".');
+        return 'NEEDS_MANUAL_REVIEW';
+      }
+      const hasInput = !!findInput();
+      Logger.debug(`KBKI: menu terbuka, kotak cari ${hasInput ? 'ADA (di scope KBKI)' : 'TIDAK ADA -> hanya scroll menu, tidak mengetik'}.`);
+
+      const readOpts = () => Array.from((getMenu() || document).querySelectorAll('.select__option'))
         .map((el) => ({ el, text: Txt.oneLine(el.textContent) }));
 
       const typeText = async (value) => {
@@ -1614,23 +1682,27 @@
         if (input) {
           DomHelper.setNativeValue(input, value);
           DomHelper.dispatchInput(input);
+          await DomHelper.sleep(600);
+          await DomHelper.pollUntil(() => !document.querySelector('.select__loading-message'), { timeout: 3000, interval: 150 }).catch(() => null);
         }
-        await DomHelper.sleep(600);
-        await DomHelper.pollUntil(() => !document.querySelector('.select__loading-message'), { timeout: 3000, interval: 150 }).catch(() => null);
         await DomHelper.sleep(200);
       };
 
       // Scroll menu bertahap dari atas sampai dasar; di tiap langkah jalankan finder(opts).
       // Di dasar: tunggu sampai 2.5 dtk untuk lazy-load; berhenti kalau 2x berturut-turut tidak bertambah.
       // Finder dicoba di setiap langkah, jadi aman juga kalau list-nya virtualized.
+      const getList = () => {
+        const m = getMenu();
+        return m ? (m.querySelector('.select__menu-list') || m) : null;
+      };
       const scan = async (finder) => {
-        let list = document.querySelector('.select__menu-list');
+        let list = getList();
         if (!list) return finder(readOpts());
         list.scrollTop = 0;
         await DomHelper.sleep(200);
         let stable = 0;
         for (let i = 0; i < 120; i += 1) {
-          list = document.querySelector('.select__menu-list') || list;
+          list = getList() || list;
           const hit = finder(readOpts());
           if (hit) return hit;
           const sig = () => {
@@ -1653,12 +1725,16 @@
 
       const descClean = Txt.stripEndPunct(target.desc);
       const words = descClean.split(' ').filter(Boolean);
-      const queries = [target.code || descClean];
-      if (words.length > 2) queries.push(words.slice(1).join(' '));
-      if (words.length > 3) queries.push(words.slice(-3).join(' '));
-      if (words.length > 2) queries.push(words.slice(-2).join(' '));
-      queries.push('');
-      const uniq = Array.from(new Set(queries));
+      // Tanpa kotak cari, mengetik tidak ada gunanya -> satu putaran saja ('' = tanpa ketik).
+      let uniq = [''];
+      if (hasInput) {
+        const queries = [target.code || descClean];
+        if (words.length > 2) queries.push(words.slice(1).join(' '));
+        if (words.length > 3) queries.push(words.slice(-3).join(' '));
+        if (words.length > 2) queries.push(words.slice(-2).join(' '));
+        queries.push('');
+        uniq = Array.from(new Set(queries));
+      }
 
       // Tahap 1: kode / exact (partial hanya dipakai kalau exact tidak ketemu di seluruh scroll)
       let pick = null;
@@ -1705,7 +1781,8 @@
 
       // Tahap 3: fallback "...lainnya" / kode berakhiran 999
       if (!pick) {
-        for (const q of ['lainnya', '999', '']) {
+        const fbQueries = hasInput ? ['lainnya', '999', ''] : [''];
+        for (const q of fbQueries) {
           await typeText(q);
           pick = await scan((opts) => Kbki.pickFallback(opts));
           if (pick) break;
@@ -1721,7 +1798,16 @@
       }
       if (pick.opt.el.scrollIntoView) pick.opt.el.scrollIntoView({ block: 'nearest' });
       DomHelper.dispatchClick(pick.opt.el);
-      await DomHelper.sleep(250);
+      await DomHelper.sleep(350);
+
+      // Verifikasi: tombol harus berhenti menampilkan "Pilih kode KBKI".
+      const btnNow = document.querySelector(CONFIG.formSelectors.kbkiButton);
+      const shown = btnNow ? Txt.oneLine(btnNow.textContent) : '';
+      if (!btnNow || /^pilih kode kbki$/i.test(shown)) {
+        Logger.warning(`KBKI: opsi sudah diklik ("${pick.opt.text}") tapi tombol KBKI masih "${shown || '-'}" -- cek manual.`);
+      } else {
+        Logger.debug(`KBKI: tombol sekarang menampilkan "${shown}".`);
+      }
       Logger.success(`Kode KBKI terisi (${pick.how}): ${pick.opt.text}`);
       return 'OK';
     },
@@ -1841,28 +1927,72 @@
       await DomHelper.sleep(250);
     },
 
-    // Isi Nama Produk, picu blur (validasi unik biasanya jalan saat blur), lalu cek pesan
-    // "Nama Produk tidak boleh sama". Return 'OK' | 'SKIP_USED'.
+    // v0.8.11: nama final = "ROBUST " + nama produk MASTER (kalau belum diawali ROBUST).
+    _namaFinal(item) {
+      let n = Txt.oneLine(item.namaProduk || item.deskripsi || '');
+      const brand = CONFIG.catalog.brandWord;
+      if (n && brand && !new RegExp(`^${Txt.escapeRe(brand)}(?![A-Za-z0-9])`, 'i').test(n)) n = `${brand} ${n}`;
+      return n;
+    },
+
+    // v0.8.11 FIX: nama otomatis dari AKD (muncul setelah pilih Daftar Produk Sektoral) DIHAPUS dulu,
+    // lalu diisi ROBUST + nama produk. Diulang sampai nilainya bertahan (kalau autofill telat menimpa).
+    // Return 'OK' | 'SKIP_USED' | 'FAILED'.
     async fillNamaProduk(item) {
-      const input = await DomHelper.waitForElement(CONFIG.formSelectors.namaProdukInput);
-      DomHelper.setNativeValue(input, item.namaProduk || '');
-      DomHelper.dispatchInput(input);
-      DomHelper.dispatchChange(input);
-      DomHelper.dispatchBlur(input);
-      Logger.success(`Nama Produk terisi: "${item.namaProduk}"`);
+      const sel = CONFIG.formSelectors.namaProdukInput;
+      await DomHelper.waitForElement(sel);
+      const teks = this._namaFinal(item);
+      // Tunggu autofill dari AKD selesai dulu supaya tidak menimpa isian kita.
+      await NetIdle.waitIdle({ quiet: 700, timeout: 8000 });
+      await DomHelper.sleep(300);
+      let ok = false;
+      for (let attempt = 1; attempt <= 4 && !ok; attempt += 1) {
+        const el = document.querySelector(sel);
+        if (!el) break;
+        const before = Txt.oneLine(el.value);
+        if (attempt === 1 && before && before !== teks) Logger.info(`Nama Produk otomatis dari form ("${before}") dihapus, diganti "${teks}".`);
+        if (el.focus) el.focus();
+        if (el.select) el.select();
+        DomHelper.setNativeValue(el, '');
+        DomHelper.dispatchInput(el);
+        DomHelper.dispatchChange(el);
+        await DomHelper.sleep(200);
+        DomHelper.setNativeValue(el, teks);
+        DomHelper.dispatchInput(el);
+        DomHelper.dispatchChange(el);
+        DomHelper.dispatchBlur(el);
+        await DomHelper.sleep(800);
+        await NetIdle.waitIdle({ quiet: 500, timeout: 5000 });
+        const now = document.querySelector(sel);
+        ok = !!now && Txt.oneLine(now.value) === teks;
+        if (!ok) Logger.warning(`Nama Produk belum bertahan (percobaan ${attempt}): form="${now ? Txt.oneLine(now.value) : '-'}" -- diulang.`);
+      }
+      if (!ok) {
+        Logger.error(`Nama Produk gagal diisi "${teks}" (tertimpa terus oleh form).`);
+        return 'FAILED';
+      }
+      Logger.success(`Nama Produk terisi: "${teks}"`);
       const used = await this._waitUsedMessage(1500);
       if (used) {
-        Logger.warning(`Nama Produk: form menolak "${item.namaProduk}": "${used}" -> produk sudah ada, SKIP SKU.`);
+        Logger.warning(`Nama Produk: form menolak "${teks}": "${used}" -> produk sudah ada, SKIP SKU.`);
         return 'SKIP_USED';
       }
       return 'OK';
     },
 
+    // v0.8.10: deskripsi diawali nama merek ("ROBUST ") kalau belum ada. Batas form 2000 karakter.
+    _deskripsiFinal(item) {
+      let d = Txt.oneLine(item.deskripsi || '');
+      const brand = CONFIG.catalog.brandWord;
+      if (d && brand && !new RegExp(`^${Txt.escapeRe(brand)}(?![A-Za-z0-9])`, 'i').test(d)) d = `${brand} ${d}`;
+      return d.slice(0, 2000);
+    },
     async fillDeskripsi(item) {
       const textarea = await DomHelper.waitForElement(CONFIG.formSelectors.deskripsiTextarea);
-      DomHelper.setNativeValue(textarea, item.deskripsi || '');
+      const teks = this._deskripsiFinal(item);
+      DomHelper.setNativeValue(textarea, teks);
       DomHelper.dispatchInput(textarea);
-      Logger.success('Deskripsi terisi.');
+      Logger.success(`Deskripsi terisi: "${teks.slice(0, 80)}${teks.length > 80 ? '...' : ''}"`);
     },
 
     // Default PDN (lokal 100%) -- verifikasi saja, tidak diubah.
@@ -1974,6 +2104,10 @@
       }
       const namaResult = await this.fillNamaProduk(item);
       if (namaResult === 'SKIP_USED') return 'SKIPPED_NAMA_USED';
+      if (namaResult === 'FAILED') {
+        UIPanel.setStatusText('PAUSED: Nama Produk gagal diisi (lihat log)');
+        return 'PAUSED_NAMA';
+      }
       const fotoResult = await this.fillFotoProduk(item);
       if (fotoResult !== 'OK' && fotoResult !== 'SKIPPED_NO_FILES') {
         UIPanel.setStatusText('PAUSED: foto produk gagal (lihat log)');
@@ -2227,7 +2361,10 @@
       num(fs.beratInput, item.berat, 'Berat');
       const nama = document.querySelector(fs.namaProdukInput);
       if (!nama) problems.push('Nama Produk: input tidak ditemukan');
-      else if (Txt.oneLine(nama.value) !== Txt.oneLine(item.namaProduk)) problems.push(`Nama: form="${Txt.oneLine(nama.value)}", MASTER="${Txt.oneLine(item.namaProduk)}"`);
+      else if (Txt.oneLine(nama.value) !== this._namaFinal(item)) problems.push(`Nama: form="${Txt.oneLine(nama.value)}", diharapkan="${this._namaFinal(item)}"`);
+      // v0.8.10: pastikan kotak cari Daftar Produk Sektoral tidak berisi teks nyasar (mis. teks KBKI).
+      const kbkiBtn = document.querySelector(fs.kbkiButton);
+      if (kbkiBtn && /^pilih kode kbki$/i.test(Txt.oneLine(kbkiBtn.textContent))) problems.push('KBKI: tombol masih "Pilih kode KBKI" (belum terpilih)');
       // v0.8.6: simpan snapshot harga & deskripsi yang benar-benar ada di form (untuk log & Export Hasil).
       const hEl = document.querySelector(fs.hargaInput);
       const dEl = document.querySelector(fs.deskripsiTextarea);
@@ -2516,153 +2653,328 @@
   // =====================================================================
   // #region UI PANEL
   // =====================================================================
+  // - Bisa di-resize (tarik pojok kanan-bawah) dan digeser (tarik header); posisi, ukuran, & bagian yang
+  //   dibuka/ditutup diingat antar reload.
+  // - Ringkasan progres, tombol utama di atas, Persiapan/Opsi/Alat dilipat, log mengisi sisa ruang.
+  // - Badge DRY RUN / LIVE selalu terlihat di header.
+  // - Klik 2x header (atau klik pil saat diminimalkan) = minimize / buka.
+  // v0.8.8: + tombol "Reset antrian" di bagian Alat.
   const UIPanel = {
     _root: null,
     _els: {},
+    _ui: {},
+    _expanded: null,
+    _saveTimer: null,
+    UI_KEY: 'inaproc_v6_ui',
+
+    _loadUi() {
+      const s = Storage.load(this.UI_KEY, null);
+      this._ui = s && typeof s === 'object' ? s : {};
+      if (!this._ui.open || typeof this._ui.open !== 'object') this._ui.open = {};
+    },
+    _saveUi() { Storage.save(this.UI_KEY, this._ui); },
+
     create() {
       if (document.getElementById('inaproc-v6-panel')) {
         this._root = document.getElementById('inaproc-v6-panel');
         return this._root;
       }
+      this._loadUi();
       const style = document.createElement('style');
       style.textContent = `
+        #inaproc-v6-panel, #inaproc-v6-panel * { box-sizing: border-box; }
+        #inaproc-v6-panel [hidden] { display: none !important; }
         #inaproc-v6-panel {
-          position: fixed; top: 16px; right: 16px; width: 330px; max-height: 92vh; overflow-y: auto;
-          background: #1e1e1e; color: #f0f0f0;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px;
-          border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); z-index: 999999;
-          border: 1px solid #3a3a3a;
+          --bg:#15171c; --surface:#1d2027; --surface2:#262a33; --border:#30353f; --text:#e8eaed; --muted:#9aa0ab;
+          --accent:#4c8dff; --ok:#3ecf8e; --warn:#f5b942; --bad:#f2685f;
+          position: fixed; left: 16px; top: 16px; width: 360px; height: 600px;
+          min-width: 300px; min-height: 190px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px);
+          display: flex; flex-direction: column; resize: both; overflow: hidden;
+          background: var(--bg); color: var(--text);
+          font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          border: 1px solid var(--border); border-radius: 12px;
+          box-shadow: 0 12px 40px rgba(0,0,0,.38); z-index: 2147483000;
         }
-        #inaproc-v6-panel .iv6-header { background: #2b2b2b; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center; cursor: move; user-select: none; position: sticky; top: 0; }
-        #inaproc-v6-panel .iv6-title { font-weight: 600; font-size: 13px; }
-        #inaproc-v6-panel .iv6-version { opacity: 0.6; font-size: 10px; }
-        #inaproc-v6-panel .iv6-body { padding: 10px; }
-        #inaproc-v6-panel .iv6-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
-        #inaproc-v6-panel .iv6-row .iv6-label { opacity: 0.7; white-space: nowrap; }
-        #inaproc-v6-panel .iv6-row span:last-child { text-align: right; word-break: break-word; }
-        #inaproc-v6-panel .iv6-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
-        #inaproc-v6-panel button { background: #333; color: #f0f0f0; border: 1px solid #4a4a4a; border-radius: 4px; padding: 6px 8px; font-size: 11px; cursor: pointer; }
-        #inaproc-v6-panel button:hover { background: #444; }
-        #inaproc-v6-panel button:disabled { opacity: 0.4; cursor: not-allowed; }
-        #inaproc-v6-panel button.iv6-primary { background: #1a5fb4; border-color: #3584e4; }
-        #inaproc-v6-panel .iv6-wide { width: 100%; margin-top: 6px; }
-        #inaproc-v6-panel .iv6-log { margin-top: 8px; height: 150px; overflow-y: auto; background: #111; border-radius: 4px; border: 1px solid #333; }
-        #inaproc-v6-panel .iv6-section { margin-top: 8px; border-top: 1px solid #333; padding-top: 8px; }
-        #inaproc-v6-panel .iv6-section-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-        #inaproc-v6-panel .iv6-hint { opacity: 0.55; font-size: 10px; cursor: help; }
-        #inaproc-v6-panel textarea#iv6-queue-input { width: 100%; box-sizing: border-box; height: 50px; background: #111; color: #f0f0f0; border: 1px solid #3a3a3a; border-radius: 4px; font-family: monospace; font-size: 10px; padding: 6px; resize: vertical; }
-        #inaproc-v6-panel label.iv6-check { display: flex; align-items: center; gap: 6px; margin-top: 6px; cursor: pointer; }
-        #inaproc-v6-panel.iv6-collapsed { width: auto; min-width: 150px; max-height: none; overflow: hidden; opacity: .92; }
-        #inaproc-v6-panel.iv6-collapsed .iv6-body { display: none; }
-        #inaproc-v6-panel.iv6-collapsed .iv6-title, #inaproc-v6-panel.iv6-collapsed .iv6-version { display: none; }
-        #inaproc-v6-panel.iv6-collapsed .iv6-mini { display: inline !important; font-size: 11px; margin-right: 8px; }
-        #inaproc-v6-panel .iv6-warn { color: #fdd663; }
+        @media (prefers-color-scheme: light) {
+          #inaproc-v6-panel { --bg:#f6f7f9; --surface:#ffffff; --surface2:#eef0f4; --border:#dcdfe6; --text:#1b1f27; --muted:#667085;
+            --accent:#2563eb; --ok:#16a34a; --warn:#b45309; --bad:#dc2626; box-shadow: 0 12px 40px rgba(16,24,40,.18); }
+        }
+        #inaproc-v6-panel.iv6-dragging { opacity: .92; user-select: none; }
+        #inaproc-v6-panel.iv6-collapsed { resize: none; min-width: 0; min-height: 0; width: auto !important; height: auto !important; border-radius: 999px; }
+        #inaproc-v6-panel.iv6-collapsed .iv6-body, #inaproc-v6-panel.iv6-collapsed .iv6-titlebox { display: none; }
+        #inaproc-v6-panel.iv6-collapsed .iv6-mini { display: inline; }
+        #inaproc-v6-panel.iv6-collapsed .iv6-header { border-bottom: 0; border-radius: 999px; padding: 7px 8px 7px 12px; }
+
+        #inaproc-v6-panel .iv6-header { flex: none; display: flex; align-items: center; gap: 9px; padding: 10px 10px 10px 12px;
+          background: var(--surface); border-bottom: 1px solid var(--border); cursor: grab; user-select: none; touch-action: none; }
+        #inaproc-v6-panel .iv6-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+        #inaproc-v6-panel .iv6-dot[data-tone="run"] { background: var(--ok); box-shadow: 0 0 0 0 rgba(62,207,142,.6); animation: iv6pulse 1.6s infinite; }
+        #inaproc-v6-panel .iv6-dot[data-tone="pause"], #inaproc-v6-panel .iv6-dot[data-tone="warn"] { background: var(--warn); }
+        @keyframes iv6pulse { 70% { box-shadow: 0 0 0 7px rgba(62,207,142,0); } 100% { box-shadow: 0 0 0 0 rgba(62,207,142,0); } }
+        #inaproc-v6-panel .iv6-titlebox { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
+        #inaproc-v6-panel .iv6-title { font-weight: 600; font-size: 13px; line-height: 1.2; white-space: nowrap; }
+        #inaproc-v6-panel .iv6-version { color: var(--muted); font-size: 10px; }
+        #inaproc-v6-panel .iv6-mini { display: none; font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+        #inaproc-v6-panel .iv6-mode { flex: none; font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px;
+          background: rgba(62,207,142,.15); color: var(--ok); }
+        #inaproc-v6-panel .iv6-mode[data-live="1"] { background: rgba(242,104,95,.16); color: var(--bad); }
+        #inaproc-v6-panel .iv6-icon-btn { padding: 1px 9px !important; font-size: 15px !important; line-height: 1.3 !important; }
+
+        #inaproc-v6-panel .iv6-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 10px; overflow-y: auto; }
+        #inaproc-v6-panel .iv6-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+        #inaproc-v6-panel .iv6-statusline { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+        #inaproc-v6-panel .iv6-status { font-size: 14px; font-weight: 600; word-break: break-word; }
+        #inaproc-v6-panel .iv6-status[data-tone="warn"] { color: var(--warn); }
+        #inaproc-v6-panel .iv6-muted { color: var(--muted); font-size: 11px; }
+        #inaproc-v6-panel .iv6-sku { margin-top: 2px; display: flex; justify-content: space-between; gap: 8px; color: var(--muted); }
+        #inaproc-v6-panel .iv6-sku b { color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; word-break: break-all; }
+        #inaproc-v6-panel .iv6-bar { height: 6px; border-radius: 999px; background: var(--surface2); margin: 9px 0 5px; overflow: hidden; }
+        #inaproc-v6-panel .iv6-bar > div { height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width .25s; }
+        #inaproc-v6-panel .iv6-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 9px; }
+        #inaproc-v6-panel .iv6-stat { background: var(--surface2); border-radius: 8px; padding: 5px 4px; text-align: center; }
+        #inaproc-v6-panel .iv6-stat b { display: block; font-size: 14px; line-height: 1.2; }
+        #inaproc-v6-panel .iv6-stat span { color: var(--muted); font-size: 10px; }
+        #inaproc-v6-panel .iv6-stat.ok b { color: var(--ok); }
+        #inaproc-v6-panel .iv6-stat.bad b { color: var(--bad); }
+
+        #inaproc-v6-panel button { font: inherit; font-size: 12px; color: var(--text); background: var(--surface2); border: 1px solid var(--border);
+          border-radius: 8px; padding: 7px 10px; cursor: pointer; transition: border-color .12s, background .12s, opacity .12s; }
+        #inaproc-v6-panel button:hover:not(:disabled) { border-color: var(--accent); }
+        #inaproc-v6-panel button:disabled { opacity: .4; cursor: not-allowed; }
+        #inaproc-v6-panel button.iv6-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+        #inaproc-v6-panel button.iv6-primary:hover:not(:disabled) { filter: brightness(1.1); }
+        #inaproc-v6-panel button.iv6-danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
+        #inaproc-v6-panel .iv6-wide { width: 100%; }
+        #inaproc-v6-panel .iv6-actions { display: flex; gap: 6px; }
+        #inaproc-v6-panel .iv6-actions button { flex: 1; padding: 9px 8px; }
+        #inaproc-v6-panel .iv6-actions .iv6-primary { flex: 2; }
+        #inaproc-v6-panel .iv6-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+        #inaproc-v6-panel details.iv6-acc { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+        #inaproc-v6-panel details.iv6-acc > summary { list-style: none; cursor: pointer; padding: 9px 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; user-select: none; }
+        #inaproc-v6-panel details > summary::-webkit-details-marker { display: none; }
+        #inaproc-v6-panel details.iv6-acc > summary::before { content: ''; flex: none; width: 6px; height: 6px; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform .12s; }
+        #inaproc-v6-panel details.iv6-acc[open] > summary::before { transform: rotate(45deg); }
+        #inaproc-v6-panel .iv6-badge { margin-left: auto; font-size: 10px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--surface2); color: var(--muted); }
+        #inaproc-v6-panel .iv6-badge[data-ok="1"] { background: rgba(62,207,142,.15); color: var(--ok); }
+        #inaproc-v6-panel .iv6-acc-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 12px; }
+        #inaproc-v6-panel .iv6-step { display: flex; flex-direction: column; gap: 6px; }
+        #inaproc-v6-panel .iv6-step-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+        #inaproc-v6-panel .iv6-step-head b { font-weight: 600; }
+        #inaproc-v6-panel .iv6-state { font-size: 11px; color: var(--muted); text-align: right; word-break: break-word; }
+        #inaproc-v6-panel .iv6-state[data-ok="1"] { color: var(--ok); }
+        #inaproc-v6-panel details.iv6-inline > summary { cursor: pointer; color: var(--muted); font-size: 11px; padding: 2px 0; list-style: none; }
+        #inaproc-v6-panel details.iv6-inline[open] > summary { margin-bottom: 6px; }
+        #inaproc-v6-panel textarea#iv6-queue-input { width: 100%; height: 70px; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+          border-radius: 8px; font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 6px 8px; resize: vertical; margin-bottom: 6px; }
+        #inaproc-v6-panel .iv6-tools { display: flex; flex-direction: column; gap: 6px; }
+
+        #inaproc-v6-panel label.iv6-switch { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; padding: 5px 0; position: relative; }
+        #inaproc-v6-panel .iv6-switch input { position: absolute; opacity: 0; pointer-events: none; }
+        #inaproc-v6-panel .iv6-track { flex: none; width: 30px; height: 18px; border-radius: 999px; background: var(--border); position: relative; transition: background .15s; margin-top: 1px; }
+        #inaproc-v6-panel .iv6-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+        #inaproc-v6-panel .iv6-switch input:checked + .iv6-track { background: var(--accent); }
+        #inaproc-v6-panel .iv6-switch input:checked + .iv6-track::after { transform: translateX(12px); }
+        #inaproc-v6-panel .iv6-switch input:focus-visible + .iv6-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+        #inaproc-v6-panel .iv6-switch small { display: block; color: var(--muted); font-size: 11px; }
+
+        #inaproc-v6-panel .iv6-logwrap { flex: 1 0 150px; display: flex; flex-direction: column; min-height: 150px; }
+        #inaproc-v6-panel .iv6-logtitle { color: var(--muted); font-size: 11px; font-weight: 600; margin: 0 2px 5px; text-transform: uppercase; letter-spacing: .05em; }
+        #inaproc-v6-panel .iv6-log { flex: 1; min-height: 0; overflow: auto; background: #0f1115; border: 1px solid #262a33; border-radius: 8px; padding: 4px; }
       `;
       document.head.appendChild(style);
+
       const root = document.createElement('div');
       root.id = 'inaproc-v6-panel';
       root.innerHTML = `
-        <div class="iv6-header" id="iv6-drag-handle">
-          <span class="iv6-title">INAPROC Upload V6</span>
-          <span class="iv6-mini" id="iv6-mini" style="display:none"></span>
-          <span><span class="iv6-version">v${CONFIG.version}</span> <button id="iv6-btn-min" title="Minimize / buka panel" style="padding:0 7px;margin-left:6px">&#8211;</button></span>
+        <div class="iv6-header" id="iv6-drag-handle" title="Tarik untuk memindahkan. Klik 2x untuk minimize.">
+          <span class="iv6-dot" id="iv6-dot"></span>
+          <span class="iv6-titlebox">
+            <span class="iv6-title">INAPROC Upload V6</span>
+            <span class="iv6-version">v${CONFIG.version}</span>
+          </span>
+          <span class="iv6-mini" id="iv6-mini"></span>
+          <span class="iv6-mode" id="iv6-mode">DRY RUN</span>
+          <button id="iv6-btn-min" class="iv6-icon-btn" title="Minimize / buka panel">&#8211;</button>
         </div>
         <div class="iv6-body">
-          <div class="iv6-section" style="border-top:none;margin-top:0;padding-top:0">
-            <div class="iv6-section-label">
-              <span class="iv6-label">1. Data produk</span>
-              <span class="iv6-hint" title="Load MASTER.xlsx (sheet MASTER), .csv, .tsv, atau queue.json. Header kolom dicocokkan berdasarkan NAMA, urutan kolom bebas.&#10;Atau paste teks di kotak bawah lalu klik 'Load dari Teks'.">?</span>
-            </div>
-            <button class="iv6-wide iv6-primary" id="iv6-btn-load-file">Load MASTER (.xlsx / .csv / .json)</button>
-            <input type="file" id="iv6-file-input" accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt,.json" style="display:none">
-            <textarea id="iv6-queue-input" placeholder="(opsional) paste CSV/TSV/JSON di sini"></textarea>
-            <button class="iv6-wide" id="iv6-btn-load-text">Load dari Teks</button>
-          </div>
-          <div class="iv6-section">
-            <div class="iv6-section-label">
-              <span class="iv6-label">2. Folder dokumen</span>
-              <span class="iv6-hint" title="Pilih folder induk yang berisi subfolder THUMBNAILS, STRUKTUR_HARGA, SPEK, AKD, STATIC_DOC (mis. hasil download / sync Google Drive). Hanya dibaca, tidak diubah.">?</span>
-            </div>
-            <button class="iv6-wide" id="iv6-btn-pick-folder">Pilih Folder Dokumen</button>
-            <div class="iv6-buttons">
-              <button id="iv6-btn-check-files">Cek Berkas</button>
-              <button id="iv6-btn-diagnose">Diagnosa Form</button>
+          <div class="iv6-card">
+            <div class="iv6-statusline"><span class="iv6-status" id="iv6-status">Idle</span><span class="iv6-muted">stage: <span id="iv6-stage">idle</span></span></div>
+            <div class="iv6-sku"><span>SKU <b id="iv6-sku">-</b></span><span id="iv6-queue-pos">0 / 0</span></div>
+            <div class="iv6-bar"><div id="iv6-prog-fill"></div></div>
+            <div class="iv6-muted" id="iv6-prog-text"></div>
+            <div class="iv6-stats">
+              <div class="iv6-stat ok"><b id="iv6-n-saved">0</b><span>Saved</span></div>
+              <div class="iv6-stat bad"><b id="iv6-n-failed">0</b><span>Gagal</span></div>
+              <div class="iv6-stat"><b id="iv6-n-skip">0</b><span>Skip</span></div>
+              <div class="iv6-stat" title="SKU yang pasti sudah ada di INAPROC (SAVED, atau ditolak form sebagai duplikat)"><b id="iv6-confirmed">0</b><span>Terkonfirmasi</span></div>
             </div>
           </div>
-          <div class="iv6-section">
-            <div class="iv6-row"><span class="iv6-label">Status</span><span id="iv6-status">Idle</span></div>
-            <div class="iv6-row"><span class="iv6-label">Stage</span><span id="iv6-stage">idle</span></div>
-            <div class="iv6-row"><span class="iv6-label">SKU</span><span id="iv6-sku">-</span></div>
-            <div class="iv6-row"><span class="iv6-label">Queue</span><span id="iv6-queue-pos">0 / 0</span></div>
-            <div class="iv6-row"><span class="iv6-label">Folder</span><span id="iv6-docs">(belum dipilih)</span></div>
-            <div class="iv6-row"><span class="iv6-label">Hasil</span><span id="iv6-results">0 saved / 0 gagal / 0 skip</span></div>
-            <div class="iv6-row"><span class="iv6-label">Terkonfirmasi</span><span id="iv6-confirmed" title="SKU yang pasti sudah ada di INAPROC (SAVED, atau ditolak form sebagai duplikat)">0</span></div>
-            <label class="iv6-check"><input type="checkbox" id="iv6-chk-dry"> <span>Dry run (JANGAN klik Simpan)</span></label>
-            <label class="iv6-check"><input type="checkbox" id="iv6-chk-skip"> <span>Lanjut ke produk berikutnya kalau error</span></label>
-            <label class="iv6-check"><input type="checkbox" id="iv6-chk-rerun"> <span>Mode ulang dari awal (abaikan hasil lama)</span></label>
-            <div class="iv6-buttons">
-              <button id="iv6-btn-start" class="iv6-primary">Start</button>
-              <button id="iv6-btn-stop">Stop</button>
-              <button id="iv6-btn-pause">Pause</button>
-              <button id="iv6-btn-resume">Resume</button>
+
+          <div class="iv6-actions">
+            <button id="iv6-btn-start" class="iv6-primary">Start</button>
+            <button id="iv6-btn-pause">Pause</button>
+            <button id="iv6-btn-resume" hidden>Resume</button>
+            <button id="iv6-btn-stop" class="iv6-danger">Stop</button>
+          </div>
+
+          <details class="iv6-acc" data-key="setup" open>
+            <summary>Persiapan <span class="iv6-badge" id="iv6-setup-badge">Belum siap</span></summary>
+            <div class="iv6-acc-body">
+              <div class="iv6-step">
+                <div class="iv6-step-head"><b>1. Data produk</b><span class="iv6-state" id="iv6-data-state">Belum ada data</span></div>
+                <button class="iv6-wide iv6-primary" id="iv6-btn-load-file" title="MASTER.xlsx (sheet MASTER), .csv, .tsv, atau queue.json. Header dicocokkan berdasarkan NAMA kolom, urutan bebas.">Load MASTER (.xlsx / .csv / .json)</button>
+                <input type="file" id="iv6-file-input" accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt,.json" style="display:none">
+                <details class="iv6-inline">
+                  <summary>atau tempel teks (CSV / TSV / JSON)</summary>
+                  <textarea id="iv6-queue-input" placeholder="Tempel CSV / TSV / JSON di sini"></textarea>
+                  <button class="iv6-wide" id="iv6-btn-load-text">Load dari teks</button>
+                </details>
+              </div>
+              <div class="iv6-step">
+                <div class="iv6-step-head"><b>2. Folder dokumen</b><span class="iv6-state" id="iv6-docs">Belum dipilih</span></div>
+                <button class="iv6-wide" id="iv6-btn-pick-folder" title="Folder induk berisi THUMBNAILS, STRUKTUR_HARGA, SPEK, AKD, STATIC_DOC. Hanya dibaca, tidak diubah.">Pilih folder dokumen</button>
+                <div class="iv6-pair">
+                  <button id="iv6-btn-check-files">Cek berkas</button>
+                  <button id="iv6-btn-diagnose">Diagnosa form</button>
+                </div>
+              </div>
             </div>
-            <div class="iv6-buttons">
-              <button id="iv6-btn-export">Export Log</button>
-              <button id="iv6-btn-export-results">Export Hasil</button>
+          </details>
+
+          <details class="iv6-acc" data-key="opsi">
+            <summary>Opsi</summary>
+            <div class="iv6-acc-body" style="gap:2px">
+              <label class="iv6-switch"><input type="checkbox" id="iv6-chk-dry"><span class="iv6-track"></span><span>Dry run<small>Isi form tanpa klik Simpan</small></span></label>
+              <label class="iv6-switch"><input type="checkbox" id="iv6-chk-skip"><span class="iv6-track"></span><span>Lanjut kalau error<small>Reload, coba ulang 1x, lalu lewati</small></span></label>
+              <label class="iv6-switch"><input type="checkbox" id="iv6-chk-rerun"><span class="iv6-track"></span><span>Ulang dari awal<small>Abaikan hasil lama; SKU yang sudah ada ditandai terkonfirmasi</small></span></label>
             </div>
-            <button class="iv6-wide" id="iv6-btn-links" title="Buka Daftar Produk dulu. Cari nama tiap SKU terkonfirmasi, baca link katalog aslinya.">Cari Link Aktual (SKU terkonfirmasi)</button>
-            <button class="iv6-wide" id="iv6-btn-skip" title="Saat berjalan: lewati SKU yang sedang diproses (dicatat SKIPPED_MANUAL). Saat idle: tandai SKU berikutnya sebagai skip.">Skip SKU</button>
-            <button class="iv6-wide" id="iv6-btn-reset-results">Reset Hasil (ulang dari awal)</button>
+          </details>
+
+          <details class="iv6-acc" data-key="alat">
+            <summary>Alat</summary>
+            <div class="iv6-acc-body">
+              <div class="iv6-tools">
+                <div class="iv6-pair">
+                  <button id="iv6-btn-export">Export log</button>
+                  <button id="iv6-btn-export-results">Export hasil (CSV)</button>
+                </div>
+                <div class="iv6-pair">
+                  <button id="iv6-btn-export-tsv" title="Download file .tsv (kode, nama, harga, link, status, deskripsi)">Export TSV (file)</button>
+                  <button id="iv6-btn-copy-tsv" title="Salin TSV ke clipboard, langsung paste ke sheet">Copy TSV</button>
+                </div>
+                <button class="iv6-wide iv6-primary" id="iv6-btn-copy-links" title="Salin link katalog saja (satu per baris) ke clipboard">Copy link saja</button>
+                <button class="iv6-wide" id="iv6-btn-links" title="Buka Daftar Produk dulu. Cari nama tiap SKU terkonfirmasi, baca link katalog aslinya.">Cari link aktual (SKU terkonfirmasi)</button>
+                <button class="iv6-wide" id="iv6-btn-skip" title="Saat berjalan: lewati SKU yang sedang diproses. Saat idle: tandai SKU berikutnya sebagai skip.">Skip SKU</button>
+                <button class="iv6-wide iv6-danger" id="iv6-btn-reset-queue" title="Kosongkan data produk yang dimuat + semua counter (saved/gagal/skip/terkonfirmasi) + progress rerun. Folder dokumen tidak ikut dihapus.">Reset antrian (kosongkan data &amp; counter)</button>
+                <button class="iv6-wide iv6-danger" id="iv6-btn-reset-results">Reset hasil (ulang dari awal)</button>
+              </div>
+            </div>
+          </details>
+
+          <div class="iv6-logwrap">
+            <div class="iv6-logtitle">Log</div>
             <div class="iv6-log" id="iv6-log"></div>
           </div>
         </div>
       `;
       document.body.appendChild(root);
       this._root = root;
+      const q = (s) => root.querySelector(s);
       this._els = {
-        queueInput: root.querySelector('#iv6-queue-input'),
-        fileInput: root.querySelector('#iv6-file-input'),
-        btnLoadFile: root.querySelector('#iv6-btn-load-file'),
-        btnLoadText: root.querySelector('#iv6-btn-load-text'),
-        btnPickFolder: root.querySelector('#iv6-btn-pick-folder'),
-        btnCheckFiles: root.querySelector('#iv6-btn-check-files'),
-        btnDiagnose: root.querySelector('#iv6-btn-diagnose'),
-        status: root.querySelector('#iv6-status'),
-        stage: root.querySelector('#iv6-stage'),
-        sku: root.querySelector('#iv6-sku'),
-        queuePos: root.querySelector('#iv6-queue-pos'),
-        docs: root.querySelector('#iv6-docs'),
-        results: root.querySelector('#iv6-results'),
-        confirmed: root.querySelector('#iv6-confirmed'),
-        chkDry: root.querySelector('#iv6-chk-dry'),
-        chkSkip: root.querySelector('#iv6-chk-skip'),
-        chkRerun: root.querySelector('#iv6-chk-rerun'),
-        btnStart: root.querySelector('#iv6-btn-start'),
-        btnPause: root.querySelector('#iv6-btn-pause'),
-        btnResume: root.querySelector('#iv6-btn-resume'),
-        btnStop: root.querySelector('#iv6-btn-stop'),
-        btnExport: root.querySelector('#iv6-btn-export'),
-        btnExportResults: root.querySelector('#iv6-btn-export-results'),
-        btnResetResults: root.querySelector('#iv6-btn-reset-results'),
-        btnSkip: root.querySelector('#iv6-btn-skip'),
-        btnLinks: root.querySelector('#iv6-btn-links'),
-        btnMin: root.querySelector('#iv6-btn-min'),
-        mini: root.querySelector('#iv6-mini'),
-        log: root.querySelector('#iv6-log'),
+        queueInput: q('#iv6-queue-input'),
+        fileInput: q('#iv6-file-input'),
+        btnLoadFile: q('#iv6-btn-load-file'),
+        btnLoadText: q('#iv6-btn-load-text'),
+        btnPickFolder: q('#iv6-btn-pick-folder'),
+        btnCheckFiles: q('#iv6-btn-check-files'),
+        btnDiagnose: q('#iv6-btn-diagnose'),
+        dot: q('#iv6-dot'),
+        mode: q('#iv6-mode'),
+        status: q('#iv6-status'),
+        stage: q('#iv6-stage'),
+        sku: q('#iv6-sku'),
+        queuePos: q('#iv6-queue-pos'),
+        progFill: q('#iv6-prog-fill'),
+        progText: q('#iv6-prog-text'),
+        dataState: q('#iv6-data-state'),
+        setupBadge: q('#iv6-setup-badge'),
+        docs: q('#iv6-docs'),
+        nSaved: q('#iv6-n-saved'),
+        nFailed: q('#iv6-n-failed'),
+        nSkip: q('#iv6-n-skip'),
+        confirmed: q('#iv6-confirmed'),
+        chkDry: q('#iv6-chk-dry'),
+        chkSkip: q('#iv6-chk-skip'),
+        chkRerun: q('#iv6-chk-rerun'),
+        btnStart: q('#iv6-btn-start'),
+        btnPause: q('#iv6-btn-pause'),
+        btnResume: q('#iv6-btn-resume'),
+        btnStop: q('#iv6-btn-stop'),
+        btnExport: q('#iv6-btn-export'),
+        btnExportResults: q('#iv6-btn-export-results'),
+        btnExportTsv: q('#iv6-btn-export-tsv'),
+        btnCopyTsv: q('#iv6-btn-copy-tsv'),
+        btnCopyLinks: q('#iv6-btn-copy-links'),
+        btnResetResults: q('#iv6-btn-reset-results'),
+        btnResetQueue: q('#iv6-btn-reset-queue'),
+        btnSkip: q('#iv6-btn-skip'),
+        btnLinks: q('#iv6-btn-links'),
+        btnMin: q('#iv6-btn-min'),
+        mini: q('#iv6-mini'),
+        log: q('#iv6-log'),
       };
+
+      // Geometri awal: pakai yang tersimpan, kalau tidak -> pojok kanan-atas.
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const clampN = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+      const w = clampN(this._ui.width || 360, 300, Math.max(300, vw - 16));
+      const h = clampN(this._ui.height || Math.min(620, vh - 32), 190, Math.max(190, vh - 16));
+      root.style.width = `${w}px`;
+      root.style.height = `${h}px`;
+      root.style.left = `${this._ui.left != null ? this._ui.left : Math.max(8, vw - w - 16)}px`;
+      root.style.top = `${this._ui.top != null ? this._ui.top : 16}px`;
+      this._clamp();
+
+      // Bagian yang dilipat: ingat buka/tutupnya.
+      root.querySelectorAll('details.iv6-acc[data-key]').forEach((d) => {
+        const k = d.dataset.key;
+        if (this._ui.open[k] !== undefined) d.open = !!this._ui.open[k];
+        d.addEventListener('toggle', () => { this._ui.open[k] = d.open; this._saveUi(); });
+      });
+
       Logger.setPanelListElement(this._els.log);
       this._bindEvents();
       this._makeDraggable(root, root.querySelector('#iv6-drag-handle'));
+
+      // Simpan ukuran setelah di-resize (tidak saat minimize).
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(() => {
+          if (root.classList.contains('iv6-collapsed')) return;
+          clearTimeout(this._saveTimer);
+          this._saveTimer = setTimeout(() => {
+            this._ui.width = Math.round(root.offsetWidth);
+            this._ui.height = Math.round(root.offsetHeight);
+            this._clamp();
+            this._saveUi();
+          }, 250);
+        }).observe(root);
+      }
+      window.addEventListener('resize', () => this._clamp());
+
+      if (this._ui.collapsed) this.setCollapsed(true);
       this.refresh();
       return root;
     },
+
     _bindEvents() {
       const e = this._els;
       e.btnStart.addEventListener('click', () => {
         if (!CONFIG.dryRun && !window.confirm('Dry run OFF: script akan menekan "Simpan" dan menyimpan produk SUNGGUHAN ke INAPROC. Lanjut?')) return;
         Main.start();
       });
-      e.btnMin.addEventListener('click', () => this.setCollapsed(!this._root.classList.contains('iv6-collapsed')));
+      e.btnMin.addEventListener('click', () => this.setCollapsed(!this._root.classList.contains('iv6-collapsed'), true));
       e.btnSkip.addEventListener('click', () => Main.skipCurrent());
       e.btnLinks.addEventListener('click', () => Main.backfillLinks());
       e.btnPause.addEventListener('click', () => Main.pause());
@@ -2670,12 +2982,31 @@
       e.btnStop.addEventListener('click', () => Main.stop());
       e.btnExport.addEventListener('click', () => this._download(Logger.exportAsText(), 'inaproc-v6-log', 'txt'));
       e.btnExportResults.addEventListener('click', () => this._download(Results.exportCsv(), 'inaproc-v6-hasil', 'csv'));
+      e.btnExportTsv.addEventListener('click', () => {
+        if (!STATE.results.length) { Logger.warning('Belum ada hasil untuk diexport.'); return; }
+        this._download('\uFEFF' + Results.tsvText(), 'inaproc-v6-hasil', 'tsv', 'text/tab-separated-values');
+      });
+      e.btnCopyTsv.addEventListener('click', async () => {
+        if (!STATE.results.length) { Logger.warning('Belum ada hasil untuk disalin.'); return; }
+        const ok = await this._copy(Results.tsvText());
+        if (ok) Logger.success(`TSV disalin ke clipboard (${STATE.results.length} baris + header). Paste di sheet.`);
+        else Logger.error('Gagal menyalin ke clipboard. Pakai "Export TSV (file)" sebagai gantinya.');
+      });
+      e.btnCopyLinks.addEventListener('click', async () => {
+        const txt = Results.linksText();
+        if (!txt) { Logger.warning('Belum ada link terkonfirmasi untuk disalin.'); return; }
+        const ok = await this._copy(txt);
+        const n = txt.split('\n').length;
+        if (ok) Logger.success(`${n} link disalin ke clipboard (satu per baris).`);
+        else Logger.error('Gagal menyalin ke clipboard.');
+      });
       e.btnResetResults.addEventListener('click', () => {
         if (window.confirm('Hapus semua catatan hasil? Produk yang sudah SAVED akan diproses ulang (bisa duplikat di INAPROC).')) {
           Results.clear();
           Logger.info('Catatan hasil direset.');
         }
       });
+      e.btnResetQueue.addEventListener('click', () => Main.resetQueue());
       e.btnLoadFile.addEventListener('click', () => e.fileInput.click());
       e.fileInput.addEventListener('change', async () => {
         const f = e.fileInput.files && e.fileInput.files[0];
@@ -2708,6 +3039,7 @@
         Main.saveConfig();
         if (!CONFIG.dryRun) Logger.warning('DRY RUN OFF: script akan klik Simpan sungguhan.');
         else Logger.info('Dry run ON: tombol Simpan tidak akan diklik.');
+        this.refresh();
       });
       e.chkSkip.addEventListener('change', () => {
         CONFIG.onItemError = e.chkSkip.checked ? 'skip' : 'stop';
@@ -2723,6 +3055,7 @@
           : 'Mode ulang dari awal dimatikan (progress rerun dihapus).');
       });
     },
+
     _applyParsed(parsed, sourceName) {
       const { items, errors, totalLines } = parsed;
       errors.slice(0, 25).forEach((msg) => Logger.error(`Parse ${sourceName} -- ${msg}`));
@@ -2737,6 +3070,7 @@
       Logger.success(`Load ${sourceName} berhasil: ${items.length} dari ${totalLines} baris valid.`);
       if (errors.length > 0) Logger.warning(`${errors.length} baris dilewati karena tidak valid -- lihat pesan error di atas.`);
     },
+
     async _checkFiles() {
       if (QueueManager.isEmpty()) { Logger.warning('Queue kosong. Load MASTER dulu.'); return; }
       if (!DocStore.hasFolder()) {
@@ -2754,8 +3088,34 @@
         if (rep.total - rep.okItems > rep.lines.length) Logger.warning(`  ...dan ${rep.total - rep.okItems - rep.lines.length} produk lain.`);
       }
     },
-    _download(text, base, ext) {
-      const blob = new Blob([text], { type: 'text/plain' });
+
+    // v0.8.12: salin teks ke clipboard (klik = user gesture). Fallback ke textarea + execCommand.
+    async _copy(text) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (err) {
+        Logger.debug('navigator.clipboard gagal, pakai fallback.', { reason: err && err.message });
+      }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return !!ok;
+      } catch (err) {
+        return false;
+      }
+    },
+
+    _download(text, base, ext, mime = 'text/plain') {
+      const blob = new Blob([text], { type: mime });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -2767,56 +3127,146 @@
       URL.revokeObjectURL(url);
       Logger.info(`File ${a.download} diexport.`);
     },
+
+    // Jaga panel tetap berada di dalam layar (mis. setelah window dikecilkan).
+    _clamp() {
+      const r = this._root;
+      if (!r) return;
+      const rect = r.getBoundingClientRect();
+      const left = Math.min(Math.max(0, rect.left), Math.max(0, window.innerWidth - rect.width));
+      const top = Math.min(Math.max(0, rect.top), Math.max(0, window.innerHeight - Math.min(rect.height, 48)));
+      r.style.left = `${Math.round(left)}px`;
+      r.style.top = `${Math.round(top)}px`;
+    },
+    _persistPos() {
+      const rect = this._root.getBoundingClientRect();
+      this._ui.left = Math.round(rect.left);
+      this._ui.top = Math.round(rect.top);
+      this._saveUi();
+    },
+
     _makeDraggable(root, handle) {
-      let isDragging = false;
-      let offsetX = 0;
-      let offsetY = 0;
-      handle.addEventListener('mousedown', (e) => {
-        isDragging = true;
+      let drag = null;
+      handle.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== 0 || ev.target.closest('button')) return;
         const rect = root.getBoundingClientRect();
-        offsetX = e.clientX - rect.left;
-        offsetY = e.clientY - rect.top;
+        drag = { dx: ev.clientX - rect.left, dy: ev.clientY - rect.top, sx: ev.clientX, sy: ev.clientY, moved: false };
+        try { handle.setPointerCapture(ev.pointerId); } catch (e) { /* abaikan */ }
+        handle.style.cursor = 'grabbing';
+        ev.preventDefault();
       });
-      document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        root.style.left = `${e.clientX - offsetX}px`;
-        root.style.top = `${e.clientY - offsetY}px`;
-        root.style.right = 'auto';
+      handle.addEventListener('pointermove', (ev) => {
+        if (!drag) return;
+        if (!drag.moved && Math.abs(ev.clientX - drag.sx) + Math.abs(ev.clientY - drag.sy) < 4) return;
+        drag.moved = true;
+        root.classList.add('iv6-dragging');
+        root.style.left = `${ev.clientX - drag.dx}px`;
+        root.style.top = `${ev.clientY - drag.dy}px`;
       });
-      document.addEventListener('mouseup', () => { isDragging = false; });
+      const end = (ev) => {
+        if (!drag) return;
+        const d = drag;
+        drag = null;
+        handle.style.cursor = '';
+        root.classList.remove('iv6-dragging');
+        try { handle.releasePointerCapture(ev.pointerId); } catch (e) { /* abaikan */ }
+        if (d.moved) { this._clamp(); this._persistPos(); return; }
+        // Klik biasa pada pil yang sedang diminimalkan -> buka panel.
+        if (root.classList.contains('iv6-collapsed')) this.setCollapsed(false, true);
+      };
+      handle.addEventListener('pointerup', end);
+      handle.addEventListener('pointercancel', end);
+      handle.addEventListener('dblclick', (ev) => {
+        if (ev.target.closest('button')) return;
+        if (!root.classList.contains('iv6-collapsed')) this.setCollapsed(true, true);
+      });
     },
-    setCollapsed(on) {
-      if (!this._root) return;
-      this._root.classList.toggle('iv6-collapsed', !!on);
-      this._els.btnMin.textContent = on ? '+' : '\u2013';
+
+    // persist = true hanya untuk aksi pengguna; minimize otomatis dari Main.start()/stop() tidak disimpan.
+    setCollapsed(on, persist = false) {
+      const r = this._root;
+      if (!r) return;
+      const isCol = r.classList.contains('iv6-collapsed');
+      if (on && !isCol) {
+        this._expanded = { w: r.offsetWidth, h: r.offsetHeight };
+        r.classList.add('iv6-collapsed');
+        r.style.width = '';
+        r.style.height = '';
+      } else if (!on && isCol) {
+        r.classList.remove('iv6-collapsed');
+        const ex = this._expanded || { w: this._ui.width || 360, h: this._ui.height || 560 };
+        r.style.width = `${ex.w}px`;
+        r.style.height = `${ex.h}px`;
+        this._clamp();
+      }
+      if (this._els.btnMin) this._els.btnMin.textContent = on ? '+' : '\u2013';
+      if (persist) { this._ui.collapsed = !!on; this._saveUi(); }
     },
+
     setStatusText(text) {
       STATE.statusText = text || null;
       this.refresh();
     },
+
     refresh() {
-      if (!this._els.status) return;
-      const defaultStatus = STATE.isRunning
-        ? (STATE.isPaused ? 'Paused' : 'Running')
-        : 'Idle';
-      this._els.status.textContent = STATE.statusText || defaultStatus;
-      this._els.stage.textContent = STATE.currentStage;
+      const e = this._els;
+      if (!e.status) return;
+      const running = STATE.isRunning;
+      const paused = STATE.isPaused;
+      const defaultStatus = running ? (paused ? 'Paused' : 'Running') : 'Idle';
+      e.status.textContent = STATE.statusText || defaultStatus;
+      const warn = !!STATE.statusText && /^PAUSED|dulu/i.test(STATE.statusText);
+      const tone = warn ? 'warn' : (running ? (paused ? 'pause' : 'run') : 'idle');
+      e.dot.dataset.tone = tone;
+      e.status.dataset.tone = warn ? 'warn' : '';
+      e.stage.textContent = STATE.currentStage;
+
+      const total = STATE.queue.length;
       const c = Results.counts();
-      if (this._els.mini) { this._els.mini.textContent = `${STATE.isRunning ? (STATE.isPaused ? '\u23F8' : '\u25B6') : '\u25A0'} ${STATE.currentSku || '-'} | ${c.saved}/${c.failed}/${c.skipped}`; }
-      this._els.sku.textContent = STATE.currentSku || '-';
-      this._els.queuePos.textContent = `${STATE.queue.length ? STATE.currentIndex + 1 : 0} / ${STATE.queue.length}`;
-      this._els.docs.textContent = DocStore.label() || '(belum dipilih)';
-      this._els.results.textContent = `${c.saved} saved / ${c.failed} gagal / ${c.skipped} skip`;
-      if (this._els.confirmed) this._els.confirmed.textContent = `${c.confirmed} / ${STATE.queue.length}`;
-      this._els.chkDry.checked = !!CONFIG.dryRun;
-      this._els.chkSkip.checked = CONFIG.onItemError === 'skip';
-      if (this._els.chkRerun) this._els.chkRerun.checked = !!CONFIG.rerunAll;
-      this._els.btnSkip.disabled = STATE.queue.length === 0;
-      this._els.btnSkip.textContent = STATE.isRunning && STATE.currentSku ? `Skip SKU ini (${STATE.currentSku})` : 'Skip SKU berikutnya';
-      this._els.btnStart.disabled = STATE.isRunning;
-      this._els.btnPause.disabled = !STATE.isRunning || STATE.isPaused;
-      this._els.btnResume.disabled = !STATE.isRunning || !STATE.isPaused;
-      this._els.btnStop.disabled = !STATE.isRunning;
+      // Progres = SKU di queue yang sudah punya hasil akhir (saved / skip / dry run).
+      const finished = new Set();
+      STATE.results.forEach((r) => {
+        if (r.status === 'SAVED' || r.status === 'DRYRUN_DONE' || r.status.indexOf('SKIPPED') === 0) finished.add(r.kode);
+      });
+      let done = 0;
+      STATE.queue.forEach((it) => { if (finished.has(it.kodeProduk)) done += 1; });
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      e.progFill.style.width = `${pct}%`;
+      e.progText.textContent = total ? `${done} dari ${total} selesai (${pct}%)` : 'Belum ada data produk';
+      e.sku.textContent = STATE.currentSku || '-';
+      e.queuePos.textContent = `${total ? STATE.currentIndex + 1 : 0} / ${total}`;
+      e.nSaved.textContent = c.saved;
+      e.nFailed.textContent = c.failed;
+      e.nSkip.textContent = c.skipped;
+      e.confirmed.textContent = `${c.confirmed}/${total}`;
+      if (e.mini) e.mini.textContent = `${running ? (paused ? '\u23F8' : '\u25B6') : '\u25A0'} ${STATE.currentSku || '-'} | ${c.saved}/${c.failed}/${c.skipped}`;
+
+      const live = !CONFIG.dryRun;
+      e.mode.textContent = live ? 'LIVE' : 'DRY RUN';
+      e.mode.dataset.live = live ? '1' : '0';
+      e.mode.title = live ? 'LIVE: tombol Simpan akan diklik sungguhan' : 'Dry run: tombol Simpan tidak diklik';
+
+      const hasData = total > 0;
+      const hasFolder = DocStore.hasFolder();
+      e.dataState.textContent = hasData ? `${total} produk dimuat` : 'Belum ada data';
+      e.dataState.dataset.ok = hasData ? '1' : '0';
+      e.docs.textContent = DocStore.label() || 'Belum dipilih';
+      e.docs.dataset.ok = hasFolder ? '1' : '0';
+      const ready = hasData && hasFolder;
+      e.setupBadge.textContent = ready ? 'Siap' : 'Belum siap';
+      e.setupBadge.dataset.ok = ready ? '1' : '0';
+
+      e.chkDry.checked = !!CONFIG.dryRun;
+      e.chkSkip.checked = CONFIG.onItemError === 'skip';
+      if (e.chkRerun) e.chkRerun.checked = !!CONFIG.rerunAll;
+      e.btnSkip.disabled = total === 0;
+      e.btnSkip.textContent = running && STATE.currentSku ? `Skip SKU ini (${STATE.currentSku})` : 'Skip SKU berikutnya';
+      e.btnStart.disabled = running;
+      e.btnPause.disabled = !running;
+      e.btnPause.hidden = !!(running && paused);
+      e.btnResume.hidden = !(running && paused);
+      e.btnStop.disabled = !running;
+      if (e.btnResetQueue) e.btnResetQueue.disabled = running;
     },
   };
   // #endregion UI PANEL
@@ -2846,6 +3296,47 @@
     clearRerun() {
       STATE.runDone = new Set();
       Storage.remove(STORAGE_KEYS.RERUN_KEY);
+    },
+
+    // v0.8.8: RESET ANTRIAN. Kosongkan data produk yang dimuat + semua counter/hasil + progress rerun + flag run.
+    // Yang TIDAK ikut dihapus: folder dokumen, pengaturan (dry run / lanjut kalau error / ulang dari awal), log.
+    resetQueue() {
+      if (STATE.isRunning) {
+        Logger.warning('Reset antrian ditolak: proses sedang berjalan. Klik Stop dulu.');
+        return false;
+      }
+      const total = STATE.queue.length;
+      const nRes = STATE.results.length;
+      if (total === 0 && nRes === 0) {
+        Logger.info('Antrian & counter sudah kosong.');
+        return true;
+      }
+      if (!window.confirm(`Reset antrian?\n\n- ${total} produk yang dimuat dikosongkan\n- ${nRes} catatan hasil (counter Saved/Gagal/Skip/Terkonfirmasi) dihapus\n- Progress "ulang dari awal" dihapus\n\nFolder dokumen & pengaturan tetap. Produk yang sudah tersimpan di INAPROC TIDAK terpengaruh.\n\n(Tips: Export hasil dulu kalau masih butuh datanya.)`)) {
+        Logger.info('Reset antrian dibatalkan.');
+        return false;
+      }
+      // Data produk (queue)
+      STATE.queue = [];
+      STATE.currentIndex = 0;
+      STATE.currentSku = null;
+      Storage.remove(STORAGE_KEYS.QUEUE_KEY);
+      // Counter / hasil
+      STATE.results = [];
+      Storage.remove(STORAGE_KEYS.RESULT_KEY);
+      STATE.formSnap = {};
+      // Progress rerun, flag, run aktif, stage
+      this.clearRerun();
+      STATE.flags = {};
+      Storage.remove(STORAGE_KEYS.FLAG_KEY);
+      Storage.remove(STORAGE_KEYS.RUN_KEY);
+      STATE.skipRequested = false;
+      STATE.statusText = null;
+      StageManager.resetStage();
+      // Textarea tempel teks
+      if (UIPanel._els.queueInput) UIPanel._els.queueInput.value = '';
+      UIPanel.refresh();
+      Logger.success(`Antrian direset: ${total} produk dikosongkan, ${nRes} catatan hasil & semua counter dihapus. Load MASTER lagi untuk mulai baru.`);
+      return true;
     },
 
     init() {
