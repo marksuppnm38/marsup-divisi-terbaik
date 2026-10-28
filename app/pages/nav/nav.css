@@ -174,7 +174,8 @@ html[data-theme="dark"] .pw-nav-brand-mark .logo-dark { display: block; }
    block that documents what changed if someone diffs this file later. */
 .pw-nav-search-wrap {
   position: relative;
-  margin: 14px 12px 6px;
+  flex-shrink: 0;
+  margin: 14px 12px 4px;
 }
 .pw-nav-search-wrap > i {
   position: absolute;
@@ -274,7 +275,8 @@ html[data-theme="dark"] .pw-nav-brand-mark .logo-dark { display: block; }
    specificity ambiguity to debug. See nav.js for the actual rule. */
 
 .pw-nav-eyebrow {
-  margin: 20px 16px 8px;
+  flex-shrink: 0;
+  margin: 16px 16px 6px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -284,12 +286,26 @@ html[data-theme="dark"] .pw-nav-brand-mark .logo-dark { display: block; }
 
 .pw-nav-list {
   flex: 1;
+  min-height: 0;               /* wajib biar flex child ini boleh lebih pendek dari isinya -> muncul scroll */
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
   padding: 0 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
+/* FIX spacing: item di dalam list ini flex child dengan height tetap (36/32px),
+   tapi default flex-shrink:1 bikin mereka ikut DIGEPENG pas total tinggi modul
+   > tinggi viewport (Stok..Rekon Meeting jadi rapet banget, sementara subitem
+   tetap lega). Dikunci flex-shrink:0 supaya tinggi item selalu konsisten dan
+   kelebihannya jatuh ke scroll di .pw-nav-list. */
+.pw-nav-list > *,
+.pw-nav-subitems > * { flex-shrink: 0; }
+.pw-nav-list::-webkit-scrollbar { width: 6px; }
+.pw-nav-list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+.pw-nav-list::-webkit-scrollbar-track { background: transparent; }
 
 .pw-nav-item {
   display: flex;
@@ -330,10 +346,9 @@ html[data-theme="dark"] .pw-nav-brand-mark .logo-dark { display: block; }
   flex-direction: column;
   gap: 2px;
   padding-left: 10px;
-  margin: 2px 0 8px 18px;   /* garis kiri sejajar tengah ikon induk (8 + 10 + 18/2) */
+  margin: 2px 0 2px 18px;   /* garis kiri sejajar tengah ikon induk (8 + 10 + 18/2); 2px bawah + gap 4px = pitch 40px ke item berikutnya, sama kayak antar item biasa */
   border-left: 1px solid var(--border);
 }
-.pw-nav-subitems + .pw-nav-item { margin-top: 2px; }
 .pw-nav-subitem {
   display: flex;
   align-items: center;
