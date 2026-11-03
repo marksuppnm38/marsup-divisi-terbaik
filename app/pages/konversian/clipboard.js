@@ -245,6 +245,17 @@ async function sesiFetch(path, options = {}) {
 }
 S.sesiFetch = sesiFetch;
 
+// sesiFetch cuma ngelempar buat 401. Status error lain (400/409/429/5xx) balik sebagai
+// `res` biasa, jadi penulisan ke DB yang ditolak server dulu tetap kelihatan "Tersimpan ✓".
+// Pakai ini setelah tiap sesiFetch yang MENULIS supaya kegagalannya masuk ke catch.
+async function assertOk(res, fallbackMsg) {
+  if (res.ok) return res;
+  let e = {};
+  try { e = await res.json(); } catch { /* body bukan JSON */ }
+  throw new Error(e.message || e.hint || `${fallbackMsg || 'Gagal menyimpan'} (HTTP ${res.status})`);
+}
+S.assertOk = assertOk;
+
 async function touchSesiUpdatedAt(id) {
   if (!id) return;
   try {
@@ -313,10 +324,9 @@ async function persistAddItem(item) {
         qty: item.qty
       })
     });
-    if (res.ok) {
-      const rows = await res.json();
-      item._sesiItemId = rows[0] && rows[0].id;
-    }
+    await assertOk(res, 'Gagal simpan item');
+    const rows = await res.json();
+    item._sesiItemId = rows[0] && rows[0].id;
     await touchSesiUpdatedAt(sesiId);
     setSesiSavedStatus('Tersimpan ✓');
   } catch (err) {
@@ -330,9 +340,9 @@ async function persistRemoveItem(item) {
   setSesiSavedStatus('Menyimpan…');
   try {
     if (item._sesiItemId) {
-      await sesiFetch(`${SESI_ITEM_TABLE}?id=eq.${item._sesiItemId}`, { method: 'DELETE' });
+      await assertOk(await sesiFetch(`${SESI_ITEM_TABLE}?id=eq.${item._sesiItemId}`, { method: 'DELETE' }), 'Gagal hapus item');
     } else {
-      await sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${S.currentSesiId}&kode_produk=eq.${encodeURIComponent(item.kode_produk)}`, { method: 'DELETE' });
+      await assertOk(await sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${S.currentSesiId}&kode_produk=eq.${encodeURIComponent(item.kode_produk)}`, { method: 'DELETE' }), 'Gagal hapus item');
     }
     await touchSesiUpdatedAt(S.currentSesiId);
     // WORKAROUND: postgres_changes event DELETE ternyata gak reliable di Supabase
@@ -354,10 +364,11 @@ function persistUpdateQty(item) {
   clearTimeout(qtySaveTimer);
   qtySaveTimer = setTimeout(async () => {
     try {
-      await sesiFetch(`${SESI_ITEM_TABLE}?id=eq.${item._sesiItemId}`, {
+      const qtyRes = await sesiFetch(`${SESI_ITEM_TABLE}?id=eq.${item._sesiItemId}`, {
         method: 'PATCH',
         body: JSON.stringify({ qty: item.qty })
       });
+      await assertOk(qtyRes, 'Gagal simpan qty');
       await touchSesiUpdatedAt(S.currentSesiId);
       setSesiSavedStatus('Tersimpan ✓');
     } catch (err) {
@@ -396,7 +407,7 @@ S.headerFieldsSesiDeclined = false;
         S.markLocalWrite(SESI_TABLE, sesiId, 'nama_rs', namaRs);
         S.markLocalWrite(SESI_TABLE, sesiId, 'nama_sales', namaSales);
         S.markLocalWrite(SESI_TABLE, sesiId, 'pic_marsup', picMarsup);
-        await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
+        const hdrRes = await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
           method: 'PATCH',
           body: JSON.stringify({
             nama_rs: namaRs,
@@ -405,6 +416,7 @@ S.headerFieldsSesiDeclined = false;
             updated_at: new Date().toISOString()
           })
         });
+        await assertOk(hdrRes, 'Gagal simpan data sesi');
         setSesiSavedStatus('Tersimpan ✓');
       } catch (err) {
         setSesiSavedStatus('Gagal simpan: ' + err.message, true);
@@ -473,10 +485,10 @@ btnButuhBantuan.addEventListener('click', async () => {
   try {
     const sesiId = await ensureSesi();
     S.markLocalWrite(SESI_TABLE, sesiId, 'butuh_bantuan', S.currentButuhBantuan);
-    await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
+    await assertOk(await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
       method: 'PATCH',
       body: JSON.stringify({ butuh_bantuan: S.currentButuhBantuan, updated_at: new Date().toISOString() })
-    });
+    }), 'Gagal simpan status bantuan');
     // Baru minta bantuan (bukan batalin) → langsung tawarin kirim link sesinya ke WA,
     // biar temen yang dihubungi bisa langsung klik & buka sesi yang sama.
     if (S.currentButuhBantuan && await S.showConfirmModal({ title: 'Minta Bantuan', text: 'Kirim link sesi ini ke WhatsApp sekarang?', okText: 'Ya, Kirim' })) {
@@ -564,10 +576,10 @@ btnEndSesi.addEventListener('click', async () => {
   if (!ok) return;
   btnEndSesi.disabled = true;
   try {
-    await sesiFetch(`${SESI_TABLE}?id=eq.${S.currentSesiId}`, {
+    await assertOk(await sesiFetch(`${SESI_TABLE}?id=eq.${S.currentSesiId}`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
-    });
+    }), 'Gagal menyelesaikan sesi');
     S.currentSesiId = null;
     S.currentButuhBantuan = false;
     S.clipboard = [];
@@ -2061,10 +2073,10 @@ async function persistModeSwastaOutput(swasta) {
   try {
     const sesiId = await ensureSesi();
     S.markLocalWrite(SESI_TABLE, sesiId, 'mode_harga_swasta', swasta);
-    await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
+    await assertOk(await sesiFetch(`${SESI_TABLE}?id=eq.${sesiId}`, {
       method: 'PATCH',
       body: JSON.stringify({ mode_harga_swasta: swasta, updated_at: new Date().toISOString() })
-    });
+    }), 'Gagal simpan mode harga');
   } catch (err) {
     console.error('Gagal simpan mode harga ke server', err);
     showToast('Mode harga ganti di layar ini, tapi gagal kesimpen ke server — kolaborator lain belum ikut kesinkron. Coba lagi.', 'error');
