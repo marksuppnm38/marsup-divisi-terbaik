@@ -122,18 +122,9 @@ export async function mount(container) {
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.innerHTML = DASHBOARD_MARKUP;
 
-  // theme-init: dashboard.html asli nyetel INI di <head>, sebelum <body>
-  // ke-parse (cegah flash tema salah) -- dipindah ke sini sebagai kode JS
-  // beneran (script di dalam markup yang di-assign lewat innerHTML gak
-  // otomatis jalan), posisi sama kayak pola di halaman lain yang udah
-  // dimigrasi. HANYA nyetel <html> (bukan lagi document.body juga kayak
-  // versi lama) -- lihat catatan BUG #1 di komentar atas.
-  (function(){
-    const saved = localStorage.getItem('theme');
-    const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.style.colorScheme = theme;
-  })();
+  // theme-init: DIHAPUS dari halaman ini. Tema dipasang sekali, sinkron di
+  // <head>, oleh shared/theme-init.js (window.PNMTheme) -- halaman cukup
+  // membaca <html data-theme>, tidak menyetelnya sendiri.
 
 // ══════════════════════════════════════════
 // AUTH — sesi kesembilan belas: per-page gate (auth-gate/gate-email/

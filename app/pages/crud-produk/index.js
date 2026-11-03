@@ -267,18 +267,8 @@ export async function mount(container, initialSub) {
   const S = { sb, escapeHtml };
   container.innerHTML = CRUD_PRODUK_MARKUP;
 
-  // ── inline script (theme-init) — SEBELUMNYA hidup sebagai <script> inline
-  // di <head>/atas <body> crud-produk.html asli (jalan sebelum body ke-parse,
-  // biar gak ada flash tema salah). <script> di dalam markup HTML yang
-  // di-assign lewat innerHTML gak otomatis jalan (DOM quirk), jadi logic-nya
-  // dipindah ke sini sebagai kode JS beneran — posisi sama persis kayak
-  // pola yang sama di konversian/index.js. ──
-  (function(){
-    const saved = localStorage.getItem('theme') || localStorage.getItem('pnum-theme');
-    const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.style.colorScheme = theme;
-    document.documentElement.setAttribute('data-theme', theme);
-  })();
+  // ── theme-init: DIHAPUS dari halaman ini. Tema dipasang sekali, sinkron di
+  // <head>, oleh shared/theme-init.js (window.PNMTheme). ──
 
 // ---- Theme ----
 // NOTE: data-theme attribute is already set as early as possible by the

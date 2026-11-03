@@ -449,14 +449,10 @@ export async function mount(container, initialSub) {
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.innerHTML = KONVERSIAN_MARKUP;
 
-  // ── inline script #1 (theme-init) — set <html data-theme> SEBELUM app
-  // kelihatan, sama kayak posisinya di konversian.html asli (di atas <body>). ──
-  (function(){
-  var stored = localStorage.getItem('theme') || localStorage.getItem('pnum-theme');
-  var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  document.documentElement.setAttribute('data-theme', theme);
-  document.documentElement.style.colorScheme = theme;
-  })();
+  // ── theme-init: DIHAPUS dari sini. Dulu tiap halaman menyetel <html data-theme>
+  // sendiri saat mount() (fallback ke prefers-color-scheme), sementara halaman
+  // lain tidak -> tema "loncat" saat pindah halaman. Sekarang tema dipasang
+  // SEKALI, sinkron di <head>, oleh shared/theme-init.js (window.PNMTheme). ──
 
   // ── inline script #2 (conv-flow-ux) — "menumpang" di atas elemen export/
   // drive modal, gak pernah mengubah konversian.js. Diposisikan sebelum
@@ -880,39 +876,36 @@ export async function mount(container, initialSub) {
   // di sini juga (gak bergantung ke apapun dari konversian.js, cuma bind
   // tombol #theme-toggle). ──
 
-/* Theme toggle — standalone, works even if dashboard.js omits it.
-   Single source of truth: <html data-theme>. Do NOT also write to
-   <body> — pnm-universal.css only reacts to the attribute on <html>,
-   and a second theme system used to live in konversian.js (bottom of
-   file) that read/wrote <body> only; the two fought over the same
-   #theme-toggle button and made the toggle look stuck. That duplicate
-   block has been removed — this is now the only theme-toggle logic. */
+/* Theme toggle — tombol #theme-toggle halaman ini cuma "remote control".
+   Semua state/penyimpanan tema ada di window.PNMTheme (shared/theme-init.js),
+   SATU-SATUNYA sumber kebenaran, yang menulis <html data-theme> + localStorage
+   'theme'. Penting: bind() dulu memanggil applyTheme(currentTheme()) saat
+   mount, yang diam-diam MENULIS tema hasil fallback sistem ke localStorage
+   sebagai "pilihan manual" -- hanya dengan membuka Konversian, preferensi
+   "ikut sistem" pengguna hilang. Sekarang bind() cuma menyinkronkan ikon,
+   tanpa menulis apa pun. */
 (function(){
-  function applyTheme(theme){
-    theme = theme === 'dark' ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.style.colorScheme = theme;
-    localStorage.setItem('theme', theme);
-    localStorage.setItem('pnum-theme', theme);
+  function syncIcon(theme){
     var icon = document.getElementById('theme-icon');
     if (icon) {
       icon.className = theme === 'dark' ? 'ti ti-sun' : 'ti ti-moon';
     }
   }
-  function currentTheme(){
-    return document.documentElement.getAttribute('data-theme')
-      || localStorage.getItem('theme')
-      || localStorage.getItem('pnum-theme')
-      || 'light';
-  }
   function bind(){
     var btn = document.getElementById('theme-toggle');
     if (!btn || btn.dataset.themeBound) return;
     btn.dataset.themeBound = '1';
-    applyTheme(currentTheme());
+    var T = window.PNMTheme;
+    syncIcon(T ? T.get() : document.documentElement.getAttribute('data-theme'));
+    // ikut berubah kalau toggle di sidebar/tab lain/OS yang mengganti tema.
+    // Berhenti langganan yang lama dulu: bind() jalan lagi tiap Konversian di-mount ulang.
+    if (T) {
+      if (window.__konvThemeUnsub) window.__konvThemeUnsub();
+      window.__konvThemeUnsub = T.subscribe(syncIcon);
+    }
     btn.addEventListener('click', function(e){
       e.preventDefault();
-      applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+      if (T) T.toggle();
     });
   }
   if (document.readyState === 'loading') {

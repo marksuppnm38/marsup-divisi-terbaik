@@ -387,13 +387,7 @@ export async function mount(container) {
   root.innerHTML = RK_MARKUP;
   S = freshState();
 
-  // jaga-jaga flash tema salah kalau halaman ini yang pertama ke-mount (pola sama kayak stok/dashboard)
-  (function () {
-    const saved = localStorage.getItem('theme');
-    const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.style.colorScheme = theme;
-  })();
+  // tema: dipasang global oleh shared/theme-init.js (window.PNMTheme), bukan di sini.
 
   root.addEventListener('click', onClick);
   root.addEventListener('change', onChange);

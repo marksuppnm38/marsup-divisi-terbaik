@@ -116,6 +116,21 @@ function applyThemeIcon() {
   icon.className = isDark ? 'ti ti-moon' : 'ti ti-sun';
 }
 
+// Tema dikelola SATU tempat: window.PNMTheme (shared/theme-init.js, dimuat
+// sinkron di <head>). Nav cuma tombol + ikon: klik -> PNMTheme.toggle(), dan
+// ikon ikut tiap tema berubah (termasuk dari toggle lain, tab lain, atau OS).
+let themeIconUnsub = null;
+function wireThemeToggle() {
+  const toggle = document.getElementById('pwNavThemeToggle');
+  toggle?.addEventListener('click', () => {
+    window.PNMTheme?.toggle();
+    applyThemeIcon();
+  });
+  if (!themeIconUnsub && window.PNMTheme) {
+    themeIconUnsub = window.PNMTheme.subscribe(applyThemeIcon);
+  }
+}
+
 async function fillUser() {
   const nameEl = document.getElementById('pwNavUserName');
   const avatarEl = document.getElementById('pwNavAvatar');
@@ -292,15 +307,7 @@ export async function navMount(container, activeId, activeSub) {
 
   applyThemeIcon();
   fillUser();
-
-  const toggle = document.getElementById('pwNavThemeToggle');
-  toggle?.addEventListener('click', () => {
-    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    document.documentElement.style.colorScheme = next;
-    localStorage.setItem('theme', next);
-    applyThemeIcon();
-  });
+  wireThemeToggle();
 
   // Logout — added sesi keenam belas so pages can retire their own
   // page-specific logout button (e.g. konversian's "Keluar") in favor of
@@ -372,14 +379,7 @@ export function navSetActive(activeId, sub) {
     // its style-loading/idempotency guard (that part doesn't need to
     // re-run — the stylesheet's already loaded, navEl is still the same
     // element).
-    const toggle = document.getElementById('pwNavThemeToggle');
-    toggle?.addEventListener('click', () => {
-      const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      document.documentElement.style.colorScheme = next;
-      localStorage.setItem('theme', next);
-      applyThemeIcon();
-    });
+    wireThemeToggle();
     const logoutBtn = document.getElementById('pwNavLogoutBtn');
     logoutBtn?.addEventListener('click', async () => {
       if (!window.PNMAuth) return;

@@ -172,21 +172,10 @@ export async function mount(container) {
   ANON_KEY = window.PNM_SUPABASE_ANON_KEY;
   container.innerHTML = STOK_MARKUP;
 
-  // theme-init: sama pola kayak dashboard/index.js -- stok.html asli nyetel
-  // tema SENDIRI (applyTheme(getStoredTheme()) dipanggil begitu script
-  // jalan, key localStorage 'pnm_theme'). Toggle-nya sendiri DIHAPUS TOTAL
-  // (lihat markup.js) -- shared nav sekarang satu-satunya pemilik theming,
-  // dan nav pakai key 'theme' (bukan 'pnm_theme' punya stok yang lama) buat
-  // konsisten sama semua halaman lain. Baris ini cuma jaga-jaga cegah flash
-  // tema salah kalau #stok kebetulan halaman PERTAMA yang ke-mount di satu
-  // page load (mis. buka langsung /#stok) -- <html data-theme> ini juga
-  // dibaca ulang oleh nav.js's applyThemeIcon() begitu navMount() jalan.
-  (function () {
-    const saved = localStorage.getItem('theme');
-    const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.style.colorScheme = theme;
-  })();
+  // theme-init: DIHAPUS dari halaman ini. Toggle stok sudah dihapus (lihat
+  // markup.js) dan tema sekarang dipasang global, sinkron di <head>, oleh
+  // shared/theme-init.js (window.PNMTheme) -- halaman cukup membaca
+  // <html data-theme>, tidak menyetelnya sendiri.
 
   // Reset state tiap mount() -- lihat komentar di deklarasi variabel di atas.
   stokCurrentEmail = null;

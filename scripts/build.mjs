@@ -164,7 +164,9 @@ function hashOf(content) {
 const SUPABASE_VENDOR_KEY = 'vendor:supabase-js';
 // Dua bentuk URL CDN yang dipakai di source (konversian pakai yang panjang).
 const SUPABASE_CDN_RE = /(['"])https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2(?:\/dist\/umd\/supabase\.js)?\1/g;
-const CLASSIC_SHARED_SCRIPTS = ['supabase-client.js', 'auth-session.js', 'toast.js'];
+// theme-init.js: classic <script> sinkron di <head> index.html (tema harus terpasang
+// sebelum paint pertama; CSP melarang inline script) -> ikut di-hash di sini.
+const CLASSIC_SHARED_SCRIPTS = ['supabase-client.js', 'auth-session.js', 'toast.js', 'theme-init.js'];
 
 // ─── Step 1: hash + copy page-local CSS (loaded via
 // `new URL('./x.css', import.meta.url)`) AND the classic-script-tag
