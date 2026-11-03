@@ -52,7 +52,7 @@ export const EXPORT_GAMBAR_MARKUP = `
         </div>
 
         <label class="field-label eg-mt-16" for="bulkInput">Kode produk <span class="eg-field-hint">satu per baris, maks 4</span></label>
-        <textarea id="bulkInput" class="field-input eg-textarea" placeholder="MY001&#10;MY002&#10;MY003&#10;MY004" aria-label="Input kode file, satu per baris"></textarea>
+        <textarea id="bulkInput" class="field-input eg-textarea" placeholder="RB32-KE861-B002-U07&#10;RB32-KE861-B003-U07" aria-label="Input kode produk, satu per baris"></textarea>
         <button type="button" class="eg-link-btn" data-action="apply-bulk-input">
           <i class="ti ti-corner-down-left" aria-hidden="true"></i> Terapkan
         </button>

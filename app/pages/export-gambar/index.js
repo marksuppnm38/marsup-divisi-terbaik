@@ -172,7 +172,7 @@ export async function mount(container) {
       loadFileList();
       // Input cepat: cocokkan tiap baris terhadap nama file (atau file ID) di daftar,
       // lalu pilih otomatis (maks 4).
-      function applyBulkInput() {
+      async function applyBulkInput() {
           const raw = container.querySelector('#' + "bulkInput").value;
           const lines = [...new Set(raw.split("\n").map(s => s.trim()).filter(Boolean))];
   
@@ -190,15 +190,40 @@ export async function mount(container) {
           // buang ekstensi file (.png, .jpg, dst) supaya kode tanpa ekstensi tetap cocok
           const stripExt = (s) => String(s).trim().toLowerCase().replace(/\.[a-z0-9]{2,5}$/i, "");
   
+          // 1) cocok langsung ke nama file (= kode_asli)
+          const unresolved = [];
           lines.forEach(line => {
               const target = stripExt(line);
               const found = allFiles.find(f => stripExt(f.id) === target);
               if (found) {
                   if (!matchedIds.includes(found.id)) matchedIds.push(found.id);
               } else {
-                  notFound.push(line);
+                  unresolved.push(line);
               }
           });
+
+          // 2) sisanya dianggap kode produk -> cari kode_asli di tabel produk
+          if (unresolved.length) {
+              try {
+                  const produk = await lookupByKodeProduk(unresolved);
+                  if (!isMounted) return;
+                  unresolved.forEach(line => {
+                      const pr = produk.get(line.toUpperCase());
+                      const target = pr && pr.kode_asli ? stripExt(pr.kode_asli) : null;
+                      const found = target ? allFiles.find(f => stripExt(f.id) === target) : null;
+                      if (found) {
+                          produkLabel[found.id] = pr.kode_produk; // label = kode produk yang diketik
+                          if (!matchedIds.includes(found.id)) matchedIds.push(found.id);
+                      } else {
+                          notFound.push(line);
+                      }
+                  });
+              } catch (err) {
+                  if (!isMounted) return;
+                  toast(err.message || "Gagal mencocokkan kode produk.", "error");
+                  unresolved.forEach(line => notFound.push(line));
+              }
+          }
   
           if (matchedIds.length === 0) {
               toast("Tidak ada kode yang cocok dengan daftar file.", "error");
@@ -249,6 +274,45 @@ export async function mount(container) {
       let allFiles = [];       // {id, name} — id & name sama-sama kode_asli (nama file tanpa ekstensi)
       const selectedIds = [];  // max 4
       const MAX_IMAGES = 4;
+
+      // ── KODE PRODUK <-> kode_asli ──
+      // File di bucket dinamai kode_asli, tapi user kerjanya pakai kode produk
+      // (mis. RB32-KE861-B002-U07). produkLabel: fileId (kode_asli) -> kode_produk,
+      // dipakai buat tampilan chip & nama file export. null = tidak ketemu / ambigu
+      // (1 kode_asli dipakai >1 produk) -> tampilan & nama file jatuh ke kode_asli.
+      const produkLabel = {};
+      async function produkRest(query) {
+          const session = await PNMAuth.getSession();
+          if (!session) throw new Error("Sesi login habis, silakan masuk lagi.");
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/produk?${query}`, {
+              headers: { apikey: window.PNM_SUPABASE_ANON_KEY, Authorization: `Bearer ${session.access_token}` },
+          });
+          if (res.status === 401) throw new Error("Sesi login habis, silakan masuk lagi.");
+          if (!res.ok) throw new Error(`Gagal mengambil data produk (HTTP ${res.status})`);
+          return res.json();
+      }
+      const inList = (arr) => encodeURIComponent(arr.map(c => '"' + String(c).replace(/["\\]/g, "") + '"').join(","));
+      // kode_produk -> {kode_produk, kode_asli}; key Map = kode_produk UPPERCASE
+      async function lookupByKodeProduk(codes) {
+          const map = new Map();
+          for (let i = 0; i < codes.length; i += 50) {
+              const part = codes.slice(i, i + 50);
+              const rows = await produkRest(`kode_produk=in.(${inList(part)})&select=kode_produk,kode_asli&limit=${part.length}`);
+              rows.forEach(r => map.set(String(r.kode_produk).toUpperCase(), r));
+          }
+          return map;
+      }
+      // isi produkLabel buat id bucket yang belum punya (kode_asli -> kode_produk)
+      async function resolveLabels(ids) {
+          const need = ids.filter(id => !isCustomId(id) && !(id in produkLabel));
+          for (let i = 0; i < need.length; i += 50) {
+              const part = need.slice(i, i + 50);
+              const rows = await produkRest(`kode_asli=in.(${inList(part)})&select=kode_produk,kode_asli&order=kode_produk.asc&limit=1000`);
+              const by = new Map();
+              rows.forEach(r => { if (!by.has(r.kode_asli)) by.set(r.kode_asli, []); by.get(r.kode_asli).push(r.kode_produk); });
+              part.forEach(id => { const l = by.get(id); produkLabel[id] = l && l.length === 1 ? l[0] : null; });
+          }
+      }
   
       // Nama file template ini sendiri juga hidup di bucket "thumbnails" yang sama,
       // jadi harus difilter supaya nggak nongol sebagai "produk" di daftar pilihan.
@@ -349,7 +413,7 @@ export async function mount(container) {
           chipsEl.innerHTML = selectedIds.map(id => {
               const file = allFiles.find(f => f.id === id);
               const custom = customImages[id];
-              const rawName = custom ? custom.name : (file ? file.name : id);
+              const rawName = custom ? custom.name : (produkLabel[id] || (file ? file.name : id));
               const name = escapeHtml(rawName);
               const thumb = custom ? `<img src="${custom.thumb}" alt="">` : "";
               return `<span class="chip">${thumb}${name}<button type="button" aria-label="Hapus ${name}" data-action="toggle-file" data-id="${escapeHtml(id)}">✕</button></span>`;
@@ -540,10 +604,17 @@ export async function mount(container) {
       // udah mastiin sesi valid sebelum modul ini di-mount, jadi gak perlu nunggu
       // gate apapun lagi di sini.
   
-      function exportCanvasAsPNG() {
+      async function exportCanvasAsPNG() {
           let canvas = container.querySelector('#' + "finalCanvas");
+          // Nama file = kode produk gambar yang digabung (fallback kode_asli kalau
+          // tidak ketemu / ambigu; gambar tempel/upload tidak ikut dipakai).
+          const ids = selectedIds.filter(id => !isCustomId(id));
+          try { await resolveLabels(ids); } catch (err) { console.warn("[WARN] Gagal cari kode produk buat nama file:", err); }
+          if (!isMounted) return;
+          const base = ids.map(id => produkLabel[id] || id).join("_")
+              .normalize("NFKC").replace(/[^\w.-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
           let link = document.createElement("a");
-          link.download = `combined-image-${canvasTemplateKey}.png`;
+          link.download = base ? `${base}-${canvasTemplateKey}.png` : `combined-image-${canvasTemplateKey}.png`;
           link.href = canvas.toDataURL("image/png");
           link.click();
           toast("Gambar berhasil diunduh.", "success", 2500);

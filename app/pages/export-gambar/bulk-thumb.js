@@ -10,6 +10,10 @@
 // list, bukan HEAD per gambar), jadi pemeriksaan 900+ kode hampir instan.
 // Kode yang tidak langsung cocok dengan nama file dicari di tabel `produk`
 // (kode_produk -> kode_asli), karena file di bucket dinamai kode_asli.
+// NAMA FILE HASIL (PNG) = KODE PRODUK, bukan kode_asli: kalau input berupa
+// kode_produk dipakai apa adanya; kalau input kode_asli dicari balik ke
+// kode_produk-nya (kalau 1 kode_asli dipakai >1 produk / tidak ketemu, nama
+// file jatuh ke kode_asli dan baris diberi catatan).
 //
 // Fungsi render/gambar dipakai ulang dari index.js lewat `deps` -- hasil bulk
 // identik dengan mode satuan. Gambar TIDAK di-cache di sini (hemat memori).
@@ -187,6 +191,27 @@ export function mountBulkThumb(panel, deps) {
     return map;
   }
 
+  // kode_asli -> [kode_produk] (urut abjad), buat penamaan file hasil
+  async function lookupKodeProduk(files) {
+    const s = await getSession();
+    if (!s) throw new Error('Sesi login habis, silakan masuk lagi.');
+    const map = new Map();
+    for (const part of chunk(files, DB_CHUNK)) {
+      const list = part.map((c) => '"' + c.replace(/["\\]/g, '') + '"').join(',');
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/produk?kode_asli=in.(${encodeURIComponent(list)})&select=kode_produk,kode_asli&order=kode_produk.asc&limit=1000`,
+        { headers: { apikey: anonKey, Authorization: 'Bearer ' + s.access_token } }
+      );
+      if (res.status === 401) throw new Error('Sesi login habis, silakan masuk lagi.');
+      if (!res.ok) throw new Error('Gagal mengambil kode produk (HTTP ' + res.status + ')');
+      (await res.json()).forEach((r) => {
+        if (!map.has(r.kode_asli)) map.set(r.kode_asli, []);
+        map.get(r.kode_asli).push(r.kode_produk);
+      });
+    }
+    return map;
+  }
+
   // ---- render ----
   function badge(cls, text) {
     const t = mk('span', 'eg-bk-tag ' + cls);
@@ -202,6 +227,7 @@ export function mountBulkThumb(panel, deps) {
     const tags = mk('div', 'eg-bulk-tags');
     if (r.ok) tags.appendChild(badge('ok', r.tokens.length > 1 ? `siap · ${r.tokens.length} gambar` : 'siap · gambar ada'));
     else r.reasons.forEach((x) => tags.appendChild(badge('warn', x)));
+    (r.notes || []).forEach((x) => tags.appendChild(badge('warn', x)));
     row.append(top, tags);
     return row;
   }
@@ -254,11 +280,11 @@ export function mountBulkThumb(panel, deps) {
       rows = parsed.map((p, i) => {
         const states = p.tokens.map((t) => {
           const direct = fileMap.get(stripExt(t));
-          if (direct) return { token: t, state: 'ok', file: direct };
+          if (direct) return { token: t, state: 'ok', file: direct, name: null }; // input = kode_asli, kode_produk dicari di bawah
           const pr = produk.get(t.toUpperCase());
           if (!pr) return { token: t, state: 'unknown', file: null };
           const asli = pr.kode_asli ? fileMap.get(stripExt(pr.kode_asli)) : null;
-          return asli ? { token: t, state: 'ok', file: asli } : { token: t, state: 'noimg', file: null };
+          return asli ? { token: t, state: 'ok', file: asli, name: pr.kode_produk } : { token: t, state: 'noimg', file: null };
         });
         const reasons = [];
         if (p.tooMany) reasons.push(`maks ${maxImages} kode per baris`);
@@ -266,8 +292,25 @@ export function mountBulkThumb(panel, deps) {
         const unk = states.filter((s) => s.state === 'unknown').map((s) => s.token);
         if (noimg.length) reasons.push('gambar belum ada: ' + noimg.join(', '));
         if (unk.length) reasons.push('kode tidak dikenal: ' + unk.join(', '));
-        return { id: i + 1, tokens: p.tokens, states, reasons, ok: reasons.length === 0 };
+        return { id: i + 1, tokens: p.tokens, states, reasons, notes: [], ok: reasons.length === 0 };
       });
+
+      // input yang berupa kode_asli: cari kode_produk-nya buat nama file
+      const needName = [...new Set(rows.flatMap((r) => r.states.filter((x) => x.state === 'ok' && !x.name).map((x) => x.file)))];
+      if (needName.length) {
+        setProgress(0, 1, `Mencari kode produk untuk ${needName.length} kode asli...`);
+        const asliMap = await lookupKodeProduk(needName);
+        if (!live() || myRun !== runId) return;
+        rows.forEach((r) => r.states.forEach((x) => {
+          if (x.state !== 'ok' || x.name) return;
+          const list = asliMap.get(x.file) || [];
+          if (list.length === 1) { x.name = list[0]; return; }
+          x.name = x.file; // fallback: kode_asli
+          r.notes.push(list.length
+            ? `${x.file}: dipakai ${list.length} produk, nama file pakai kode asli`
+            : `${x.file}: kode produk tidak ketemu, nama file pakai kode asli`);
+        }));
+      }
       renderAll();
       setProgress(0, 0, '');
     } catch (err) {
@@ -323,7 +366,7 @@ export function mountBulkThumb(panel, deps) {
               drawMergedCanvas(templateImg, overlays, tpl.box, canvas);
               const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
               if (!blob) throw new Error('gagal membuat PNG');
-              const base = safeName(r.states.map((s) => s.file).join('_')); // nama file = kode_asli (sama dengan nama di bucket)
+              const base = safeName(r.states.map((s) => s.name || s.file).join('_')); // nama file = kode produk (fallback kode_asli)
               let name = base + '.png';
               for (let n = 2; used.has(name); n++) name = `${base}_${n}.png`;
               used.add(name);
@@ -364,10 +407,11 @@ export function mountBulkThumb(panel, deps) {
   const csvCell = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   function downloadCsv() {
     if (!rows.length) return;
-    const lines = [['no', 'kode', 'status', 'alasan', 'file_gambar'].join(',')];
+    const lines = [['no', 'kode', 'status', 'alasan', 'file_gambar', 'nama_file_hasil'].join(',')];
     rows.forEach((r) => lines.push([
       r.id, r.tokens.join(' + '), r.ok ? 'SIAP' : 'BELUM BISA', r.reasons.join('; '),
       r.states.map((s) => s.file || '').join(' + '),
+      r.ok ? r.states.map((s) => s.name || s.file).join('_') + '.png' : '',
     ].map(csvCell).join(',')));
     triggerDownload(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }), `laporan-thumbnail-${stamp()}.csv`);
   }
