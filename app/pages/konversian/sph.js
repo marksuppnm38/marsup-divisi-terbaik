@@ -1057,18 +1057,7 @@ async function sphGenerate() {
 
   // Guard harga kosong: produk tanpa harga di mode output yang dipilih sebelumnya diam-diam
   // tercetak Rp 0 (item.harga_xxx || 0 di bawah) di surat penawaran ke customer.
-  const tanpaHarga = S.clipboard.filter(it => !(Number(S.modeSwastaOutput ? it.harga_swasta : it.harga_ekat) > 0));
-  if (tanpaHarga.length) {
-    const daftar = tanpaHarga.slice(0, 5).map(it => it.kode_produk).join(' · ');
-    const lebih = tanpaHarga.length > 5 ? ` · +${tanpaHarga.length - 5} lainnya` : '';
-    const lanjut = await S.showConfirmModal({
-      title: 'Ada produk tanpa harga',
-      text: `${tanpaHarga.length} produk belum punya harga ${S.modeSwastaOutput ? 'swasta' : 'e-katalog'} dan akan tercetak Rp 0 di SPH: ${daftar}${lebih}. Tetap generate?`,
-      okText: 'Ya, tetap generate',
-      danger: true
-    });
-    if (!lanjut) return;
-  }
+  if (!(await S.preflightExport({ aksi: 'generate SPH', tanpaHarga: S.clipboard.filter(S.itemTanpaHarga) }))) return;
 
   sphGenerateBtn.disabled = true;
   sphStatusEl.textContent = 'Menyusun dokumen…';
@@ -1348,6 +1337,12 @@ async function sphGenerate() {
         const setImgMap = await sphFetchThumbForKodes(setKodeMap, (done, total) => {
           sphStatusEl.textContent = `Mengambil foto rincian set… (${done}/${total})`;
         });
+        {
+          const namaSetItem = new Map();
+          Object.values(setItemsMap).forEach(arr => (arr || []).forEach(si => namaSetItem.set(si.kode_produk, si.nama_produk)));
+          const tanpaGambar = [...setKodeMap.keys()].filter(k => !setImgMap[k]).map(k => ({ kode_produk: k, nama_produk: namaSetItem.get(k) || '' }));
+          if (!(await S.preflightExport({ aksi: 'generate SPH', tanpaGambar, konteks: 'rincian set' }))) return;
+        }
         const setImgDims = {};
         for (const kode of Object.keys(setImgMap)) {
           setImgDims[kode] = await sphGetImageDimensions(setImgMap[kode]);
@@ -1378,6 +1373,10 @@ async function sphGenerate() {
         const satuanImgMap = await sphFetchThumbForKodes(satuanKodeMap, (done, total) => {
           sphStatusEl.textContent = `Mengambil foto item satuan… (${done}/${total})`;
         });
+        {
+          const tanpaGambar = satuans.filter(it => !satuanImgMap[it.kode_produk]).map(it => ({ kode_produk: it.kode_produk, nama_produk: it.nama_produk }));
+          if (!(await S.preflightExport({ aksi: 'generate SPH', tanpaGambar, konteks: 'item satuan' }))) return;
+        }
         const satuanImgDims = {};
         for (const kode of Object.keys(satuanImgMap)) {
           satuanImgDims[kode] = await sphGetImageDimensions(satuanImgMap[kode]);

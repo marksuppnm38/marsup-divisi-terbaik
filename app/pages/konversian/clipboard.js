@@ -256,6 +256,49 @@ async function assertOk(res, fallbackMsg) {
 }
 S.assertOk = assertOk;
 
+// ── PRE-FLIGHT EXPORT / SPH ──
+// Harga yang dipakai = mode output yang aktif (sama persis dengan yang dicetak di Excel & SPH).
+S.itemTanpaHarga = (it) => !(Number(S.modeSwastaOutput ? it.harga_swasta : it.harga_ekat) > 0);
+
+// Satu dialog gabungan SEBELUM file dibuat. true = boleh lanjut (tidak ada masalah, atau user memilih lanjut).
+// Enter sengaja tidak menyetujui — ini dialog peringatan, jangan sampai kepencet.
+async function preflightExport({ aksi, tanpaHarga = [], tanpaGambar = [], konteks = '' }) {
+  if (!tanpaHarga.length && !tanpaGambar.length) return true;
+  const potong = (arr) => {
+    const baris = arr.slice(0, 6).map(x => `   • ${x.kode_produk}${x.nama_produk ? ' — ' + x.nama_produk : ''}`);
+    if (arr.length > 6) baris.push(`   … dan ${arr.length - 6} lainnya`);
+    return baris;
+  };
+  const mode = S.modeSwastaOutput ? 'swasta' : 'e-katalog';
+  const blok = [];
+  if (tanpaHarga.length) blok.push([`⚠ ${tanpaHarga.length} produk belum punya harga ${mode} — akan tercetak Rp 0:`, ...potong(tanpaHarga)].join('\n'));
+  if (tanpaGambar.length) blok.push([`⚠ ${tanpaGambar.length} gambar${konteks ? ' (' + konteks + ')' : ''} belum ada — kolom gambar akan kosong:`, ...potong(tanpaGambar)].join('\n'));
+  return S.showConfirmModal({
+    title: `Cek dulu sebelum ${aksi}`,
+    text: blok.join('\n\n') + `\n\nTetap ${aksi} sekarang?`,
+    okText: `Ya, tetap ${aksi}`,
+    cancelText: 'Kembali & lengkapi',
+    multiline: true,
+    enterConfirms: false
+  });
+}
+S.preflightExport = preflightExport;
+
+// Guard keluar sesi: file export yang belum masuk Drive hilang kesempatannya begitu sesi ditinggalkan
+// (resetChecklistUI mengosongkan lastExportBlob), jadi tanyakan dulu.
+async function lanjutkanTanpaDrive(aksi) {
+  if (!(S.exportDrivePending && S.lastExportBlob)) return true;
+  return S.showConfirmModal({
+    title: 'File belum disimpan ke Drive',
+    text: `File hasil export sesi ini belum disimpan ke Drive.\n\nKalau kamu ${aksi} sekarang, tombol "Simpan ke Drive" tidak bisa dipakai lagi untuk file ini — harus export ulang.`,
+    okText: `Tetap ${aksi}`,
+    cancelText: 'Kembali',
+    multiline: true,
+    enterConfirms: false
+  });
+}
+S.lanjutkanTanpaDrive = lanjutkanTanpaDrive;
+
 async function touchSesiUpdatedAt(id) {
   if (!id) return;
   try {
@@ -505,6 +548,7 @@ renderButuhBantuanBtn();
 // itu juga (bukan nunggu user isi form/nambah produk dulu) — biar "Mulai Sesi Baru"
 // beneran berarti sesi udah mulai, dan langsung muncul di daftar Konversi Berjalan.
 async function startNewSesi() {
+  if (!(await S.lanjutkanTanpaDrive('mulai sesi baru'))) return;
   if (S.clipboard.length && !(await S.showConfirmModal({ title: 'Mulai Sesi Baru', text: 'Sesi yang sedang dibuka akan ditinggalkan — datanya tetap tersimpan, bisa dibuka lagi lewat daftar Konversi Berjalan.', okText: 'Ya, Mulai Baru' }))) return;
   S.currentSesiId = null;
   S.currentButuhBantuan = false;
@@ -547,8 +591,9 @@ btnSesiBaru.addEventListener('click', startNewSesi);
 // Sesi tetap 'berjalan', tetap di daftar Konversi Berjalan, kolaborator lain
 // (kalau ada) sama sekali gak keganggu — bisa dibuka lagi kapan aja lanjut
 // dari kondisi terakhir, gak ada state yang keubah/ke-reset di server.
-btnLeaveSesi.addEventListener('click', () => {
+btnLeaveSesi.addEventListener('click', async () => {
   if (!S.currentSesiId) return;
+  if (!(await S.lanjutkanTanpaDrive('keluar dari sesi'))) return;
   S.currentSesiId = null;
   S.currentButuhBantuan = false;
   S.clipboard = [];
@@ -567,6 +612,7 @@ btnLeaveSesi.addEventListener('click', () => {
 });
 btnEndSesi.addEventListener('click', async () => {
   if (!S.currentSesiId) return;
+  if (!(await S.lanjutkanTanpaDrive('selesaikan sesi'))) return;
   const namaAktif = S.inpRs.value.trim() || '(Nama RS belum diisi)';
   const ok = await S.showConfirmModal({
     title: 'Selesaikan Sesi',
@@ -1416,6 +1462,8 @@ async function uploadKonversianToDrive(blob, fileName, tahun, namaSalesForFolder
     const result = await res.json();
     if (!result.success) throw new Error(result.error || 'Upload gagal');
     showToast(`Tersimpan ke Drive ✓ (KONVERSI ${tahun} / ${namaSalesForFolder})`, 'success');
+    S.exportDrivePending = false;
+    if (btnDriveUpload) btnDriveUpload.classList.remove('is-nudge');
     // Apps Script-nya udah balikin fileUrl (link file yang baru diupload) dan
     // folderPath (path Drive yang BENERAN dipakai, termasuk penyesuaian nama
     // folder kalau ternyata udah ada sebelumnya lewat findOrCreateFolder yang
@@ -1530,6 +1578,21 @@ S.btnExport.addEventListener('click', async () => {
     await Promise.all(kodesArr.map(async (k, i) => {
   if (results[i]) imgMap[k] = await removeBackground(results[i]);
   }));
+    // ── PRE-FLIGHT: harga / gambar yang belum lengkap → konfirmasi SEBELUM file dibuat ──
+    // Posisinya sengaja SEBELUM setProgress(N, N, …) di bawah: label "N / N" dipantau convFlow
+    // sebagai tanda export selesai, jadi dialog harus muncul selagi label masih "0 / N".
+    {
+      const namaByKode = new Map();
+      S.clipboard.forEach(it => namaByKode.set(it.kode_produk, it.nama_produk));
+      Object.values(setItemsMap).forEach(arr => (arr || []).forEach(si => namaByKode.set(si.kode_produk, si.nama_produk)));
+      const tanpaGambar = kodesArr.filter(k => !imgMap[k]).map(k => ({ kode_produk: k, nama_produk: namaByKode.get(k) || '' }));
+      const tanpaHarga = S.clipboard.filter(S.itemTanpaHarga);
+      const lanjut = await S.preflightExport({ aksi: 'export', tanpaHarga, tanpaGambar, konteks: 'lampiran set / gambar' });
+      if (!lanjut) {
+        if (window.convFlow && window.convFlow.cancelPending) window.convFlow.cancelPending();
+        return; // finally di bawah tetap jalan (modal progres ditutup)
+      }
+    }
     setProgress(kodesArr.length, kodesArr.length, 'Gambar selesai…');
 
     setProgress(kodesArr.length, kodesArr.length, 'Membuat file Excel…');
@@ -2027,6 +2090,15 @@ S.btnExport.addEventListener('click', async () => {
     // Fire-and-forget: gak boleh nahan/ngegagalin export. Nama file di atas sudah dihitung sebelum ini, jadi gak berubah.
     if (S.autoRecordCurrent) S.autoRecordCurrent('export').catch(() => {});
     if (btnDriveUpload) btnDriveUpload.disabled = false;
+    // File BARU ini belum ada di Drive → tandai pending & denyutkan langkah 2 sampai di-upload.
+    // (is-done dicabut: kalau ini export ulang di sesi yang sama, centang lama bukan untuk file ini.)
+    S.exportDrivePending = true;
+    if (btnDriveUpload) {
+      btnDriveUpload.classList.remove('is-done');
+      btnDriveUpload.classList.add('is-nudge');
+      const h = document.getElementById('conv-step-drive-hint');
+      if (h) h.textContent = 'Belum disimpan — klik untuk upload';
+    }
 
   } catch(e) {
     showToast('Export gagal: ' + e.message, 'error');

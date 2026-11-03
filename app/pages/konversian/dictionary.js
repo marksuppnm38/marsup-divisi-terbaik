@@ -751,7 +751,9 @@ dictNewOk.addEventListener('click', () => {
 // Modal konfirmasi custom — pengganti confirm() bawaan browser biar konsisten
 // dengan tampilan app dan gak nge-block thread (native confirm() nge-freeze
 // seluruh tab, termasuk animasi/toast lain yang lagi jalan).
-function showConfirmModal({ title = 'Konfirmasi', text = '', okText = 'Ya, Lanjutkan', danger = false } = {}) {
+// Opsi tambahan (semua default = perilaku lama): cancelText = label tombol batal, multiline = hormati \n di text,
+// enterConfirms:false = Enter TIDAK otomatis menyetujui (dipakai dialog peringatan biar gak kepencet).
+function showConfirmModal({ title = 'Konfirmasi', text = '', okText = 'Ya, Lanjutkan', danger = false, cancelText = null, multiline = false, enterConfirms = true } = {}) {
   return new Promise((resolve) => {
     const modal = document.getElementById('confirm-modal');
     const titleEl = document.getElementById('confirm-modal-title');
@@ -762,7 +764,10 @@ function showConfirmModal({ title = 'Konfirmasi', text = '', okText = 'Ya, Lanju
 
     titleEl.textContent = title;
     textEl.textContent = text;
+    textEl.style.whiteSpace = multiline ? 'pre-line' : '';
     okBtn.textContent = okText;
+    if (!cancelBtn.dataset.defText) cancelBtn.dataset.defText = cancelBtn.textContent;
+    cancelBtn.textContent = cancelText || cancelBtn.dataset.defText;
     okBtn.style.background = danger ? 'var(--danger)' : 'var(--accent)';
     iconWrap.style.background = danger ? 'var(--danger-soft)' : 'var(--warn-soft)';
     iconWrap.style.color = danger ? 'var(--danger-text)' : 'var(--warn-text)';
@@ -779,7 +784,7 @@ function showConfirmModal({ title = 'Konfirmasi', text = '', okText = 'Ya, Lanju
     function onOk() { cleanup(true); }
     function onCancel() { cleanup(false); }
     function onOverlay(e) { if (e.target === modal) cleanup(false); }
-    function onKey(e) { if (e.key === 'Escape') cleanup(false); if (e.key === 'Enter') cleanup(true); }
+    function onKey(e) { if (e.key === 'Escape') cleanup(false); if (e.key === 'Enter' && enterConfirms) cleanup(true); }
 
     okBtn.addEventListener('click', onOk);
     cancelBtn.addEventListener('click', onCancel);

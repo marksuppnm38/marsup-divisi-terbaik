@@ -569,7 +569,7 @@ export async function mount(container, initialSub) {
     if(stepExport) stepExport.addEventListener('click', function(){ if(!stepExport.disabled) resetToLoading('export'); });
     if(stepDrive) stepDrive.addEventListener('click', function(){ if(!stepDrive.disabled) resetToLoading('drive'); });
     if(btnClearAll) btnClearAll.addEventListener('click', function(){
-      [stepExport, stepDrive].forEach(function(el){ if(el) el.classList.remove('is-done','is-loading'); });
+      [stepExport, stepDrive].forEach(function(el){ if(el) el.classList.remove('is-done','is-loading','is-nudge'); });
       if(driveTimeoutTimer){ clearTimeout(driveTimeoutTimer); driveTimeoutTimer = null; }
     });
 
@@ -736,6 +736,8 @@ export async function mount(container, initialSub) {
       if(viewError) viewError.style.display = 'none';
       viewSuccess.style.display = 'flex';
       ensureOpen();
+      // Fokus ke tombol "Lanjut" supaya langkah berikutnya (Drive → Record) cukup tekan Enter.
+      if(nextBtn && nextBtn.style.display !== 'none'){ setTimeout(function(){ try{ nextBtn.focus(); }catch(e){} }, 60); }
     }
 
     var closeBtn = document.getElementById('conv-success-close');
@@ -843,13 +845,20 @@ export async function mount(container, initialSub) {
         if(activePollTimer){ clearInterval(activePollTimer); activePollTimer = null; }
         if(driveTimeoutTimer){ clearTimeout(driveTimeoutTimer); driveTimeoutTimer = null; }
         currentLocationPath = null;
-        [stepExport, stepDrive].forEach(function(el){ if(el) el.classList.remove('is-done','is-loading'); });
+        [stepExport, stepDrive].forEach(function(el){ if(el) el.classList.remove('is-done','is-loading','is-nudge'); });
         var locBox = document.getElementById('conv-location');
         if(locBox) locBox.style.display = 'none';
         if(driveOpenChip){ driveOpenChip.classList.remove('show'); driveOpenChip.removeAttribute('href'); }
         if(driveHintEl) driveHintEl.textContent = 'Aktif setelah Export selesai';
         if(modalTitle) modalTitle.textContent = COPY.export.loadingTitle;
         closeModal(); // jaga-jaga kalau kepanggil pas modal masih kebuka
+      },
+      // Dipanggil saat export dibatalkan di tengah jalan (dialog pre-flight → "Kembali & lengkapi"):
+      // bersihkan spinner langkah 1 & tutup overlay progres tanpa menandai sukses/error.
+      cancelPending: function(){
+        watching = false; doneShown = false;
+        [stepExport, stepDrive].forEach(function(el){ if(el) el.classList.remove('is-loading'); });
+        closeModal();
       },
       // Ditambahin buat SPA migration (bukan bagian asli) — dipanggil dari
       // unmount() di index.js biar observer/listener modul ini gak nyisa
@@ -4642,6 +4651,7 @@ function resetChecklistUI() {
   S.lastExportBlob = null;
   S.lastExportFilename = null;
   S.lastExportNamaSales = null;
+  S.exportDrivePending = false;
   if (typeof S.btnDriveUpload !== 'undefined' && S.btnDriveUpload) S.btnDriveUpload.disabled = true;
   if (window.convFlow && typeof window.convFlow.reset === 'function') window.convFlow.reset();
   // BUGFIX: isian tab "Buat SPH" (RS/Sales/Tanggal/Nomor/preview) nempel ke sesi
