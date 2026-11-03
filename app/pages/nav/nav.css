@@ -105,7 +105,10 @@
 }
 
 .pw-nav-brand {
-  height: 56px;
+  /* 52px, SAMA dengan .pw-topbar (dan toolbar konversian): garis bawah brand sidebar
+     dan garis bawah topbar harus sejajar jadi satu garis lurus di seam sidebar|konten.
+     Dulu 56px vs 52px -> garisnya patah/loncat 4px di pertemuan keduanya. */
+  height: 52px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
