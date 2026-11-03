@@ -1,4 +1,4 @@
-// export-gambar/bulk-thumb.js -- tab "Bulk" di Merge & Export.
+// export-gambar/bulk-thumb.js -- tab "Bulk" di Merge & Export (kerangka 2 panel sama dengan mode Satuan).
 //
 // Satu BARIS = satu thumbnail. Baris isi 1 kode -> thumbnail 1 gambar; baris
 // isi beberapa kode (pisah koma / spasi, maks 4) -> thumbnail gabungan seperti
@@ -26,60 +26,69 @@ const RENDER_CONCURRENCY = 3;
 
 const MARKUP = `
 <div class="eg-bulk">
-  <div class="card">
-    <div class="card-head">
-      <div class="icon-box orange"><i class="ti ti-stack-2"></i></div>
-      <div class="card-head-text">
-        <h2>Bulk Thumbnail</h2>
-        <p>Satu baris = satu thumbnail. Diperiksa dulu, PNG hanya dibuat untuk yang gambarnya ada.</p>
-      </div>
-    </div>
-    <label class="field-label" for="btCodes">Kode <span class="eg-field-hint">satu per baris &middot; gabungan: pisah dengan koma/spasi, maks 4</span></label>
-    <textarea id="btCodes" class="field-input eg-textarea" style="min-height:140px" placeholder="RBB-KEC-B076-U1R&#10;RBB-KEC-B077-U1R&#10;MY001, MY002" aria-label="Kode produk, satu thumbnail per baris"></textarea>
-    <span class="field-label eg-mt-16">Template</span>
-    <div class="eg-bulk-types">
-      <label class="eg-bulk-check"><input type="checkbox" id="btRobust" checked> Robust</label>
-      <label class="eg-bulk-check"><input type="checkbox" id="btAdler"> Adler</label>
-    </div>
-    <div class="eg-bulk-actions eg-mt-16">
-      <span id="btStatus" class="eg-bulk-status"></span>
-      <button id="btCheckBtn" type="button" class="btn btn-accent" data-bt="check"><i class="ti ti-search" aria-hidden="true"></i> Periksa</button>
-    </div>
-    <progress id="btProgress" class="eg-bulk-progress" value="0" max="1" style="display:none"></progress>
-  </div>
+  <div class="eg-split">
 
-  <div id="btListCard" class="card eg-mt-16" style="display:none;">
-    <div class="card-head">
-      <div class="icon-box green"><i class="ti ti-list-check"></i></div>
-      <div class="card-head-text">
-        <h2>Hasil Pemeriksaan</h2>
-        <p id="btSummary"></p>
+    <!-- 1. KODE -->
+    <section class="card eg-src" aria-labelledby="btH1">
+      <div class="eg-step">
+        <span class="eg-step-n" aria-hidden="true">1</span>
+        <div class="eg-step-t"><h2 id="btH1">Tempel kode</h2><p>Satu baris = satu thumbnail. Dicek otomatis setelah paste.</p></div>
       </div>
-    </div>
-    <div class="eg-bulk-filters" role="group" aria-label="Filter">
-      <button type="button" class="eg-bulk-chip active" data-bt="filter" data-v="all">Semua <b id="btCntAll"></b></button>
-      <button type="button" class="eg-bulk-chip" data-bt="filter" data-v="ok">Siap <b id="btCntOk"></b></button>
-      <button type="button" class="eg-bulk-chip" data-bt="filter" data-v="skip">Belum bisa <b id="btCntSkip"></b></button>
-    </div>
-    <div id="btList" class="eg-bulk-list"></div>
-    <div class="eg-bulk-actions eg-mt-16">
-      <button type="button" class="btn btn-ghost" data-bt="csv"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> Laporan CSV</button>
-      <button type="button" class="btn btn-ghost" data-bt="copy-missing"><i class="ti ti-copy" aria-hidden="true"></i> Salin kode tanpa gambar</button>
-    </div>
-    <div class="eg-bulk-run eg-mt-16">
-      <label class="eg-bulk-field"><span>Isi per ZIP</span>
-        <select id="btBatch" class="field-input">
-          <option value="25">25 file</option>
-          <option value="50" selected>50 file</option>
-          <option value="100">100 file</option>
-          <option value="100000">Satu ZIP</option>
-        </select>
-      </label>
-      <div class="eg-bulk-actions">
-        <button id="btCancelBtn" type="button" class="btn btn-ghost" data-bt="cancel" style="display:none">Batal</button>
-        <button id="btRunBtn" type="button" class="btn btn-primary" data-bt="run"><i class="ti ti-download" aria-hidden="true"></i> Proses yang siap</button>
+      <label class="field-label" for="btCodes">Kode produk <span class="eg-field-hint">gabungan: pisah koma/spasi, maks 4 per baris</span></label>
+      <textarea id="btCodes" class="field-input eg-textarea" spellcheck="false" autocomplete="off" style="min-height:220px" placeholder="RB32-KE861-B002-U07&#10;RB32-KE861-B003-U07&#10;RB32-KE861-B004-U07, RB32-KE861-B005-U07" aria-label="Kode produk, satu thumbnail per baris"></textarea>
+      <span class="field-label eg-mt-16">Template</span>
+      <div class="eg-bulk-types">
+        <label class="eg-bulk-check"><input type="checkbox" id="btRobust" checked> Robust</label>
+        <label class="eg-bulk-check"><input type="checkbox" id="btAdler"> Adler</label>
       </div>
-    </div>
+      <div class="eg-bulk-actions eg-mt-16">
+        <span id="btStatus" class="eg-bulk-status"></span>
+        <button id="btCheckBtn" type="button" class="btn btn-accent" data-bt="check"><i class="ti ti-search" aria-hidden="true"></i> Periksa ulang</button>
+      </div>
+      <progress id="btProgress" class="eg-bulk-progress" value="0" max="1" style="display:none"></progress>
+    </section>
+
+    <!-- 2. HASIL PEMERIKSAAN -> PROSES -->
+    <section class="card eg-out" aria-labelledby="btH2">
+      <div class="eg-step">
+        <span class="eg-step-n" aria-hidden="true">2</span>
+        <div class="eg-step-t"><h2 id="btH2">Hasil pemeriksaan</h2><p id="btSummary">Belum diperiksa</p></div>
+      </div>
+
+      <div id="btEmpty" class="eg-empty eg-empty-box">
+        <i class="ti ti-list-check" aria-hidden="true"></i>
+        <strong>Daftar kode muncul di sini</strong>
+        <span>Tempel kode di kiri. Yang gambarnya sudah ada ditandai siap, lalu klik &ldquo;Proses&rdquo;.</span>
+      </div>
+
+      <div id="btListCard" style="display:none;">
+        <div class="eg-bulk-filters" role="group" aria-label="Filter">
+          <button type="button" class="eg-bulk-chip active" data-bt="filter" data-v="all">Semua <b id="btCntAll"></b></button>
+          <button type="button" class="eg-bulk-chip" data-bt="filter" data-v="ok">Siap <b id="btCntOk"></b></button>
+          <button type="button" class="eg-bulk-chip" data-bt="filter" data-v="skip">Belum bisa <b id="btCntSkip"></b></button>
+        </div>
+        <div id="btList" class="eg-bulk-list"></div>
+        <div class="eg-bulk-actions eg-mt-16">
+          <button type="button" class="btn btn-ghost" data-bt="csv"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> Laporan CSV</button>
+          <button type="button" class="btn btn-ghost" data-bt="copy-missing"><i class="ti ti-copy" aria-hidden="true"></i> Salin kode tanpa gambar</button>
+        </div>
+        <div class="eg-bulk-run eg-mt-16">
+          <label class="eg-bulk-field"><span>Isi per ZIP</span>
+            <select id="btBatch" class="field-input">
+              <option value="25">25 file</option>
+              <option value="50" selected>50 file</option>
+              <option value="100">100 file</option>
+              <option value="100000">Satu ZIP</option>
+            </select>
+          </label>
+          <div class="eg-bulk-actions">
+            <button id="btCancelBtn" type="button" class="btn btn-ghost" data-bt="cancel" style="display:none">Batal</button>
+            <button id="btRunBtn" type="button" class="btn btn-primary" data-bt="run"><i class="ti ti-download" aria-hidden="true"></i> Proses yang siap</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
   </div>
 </div>
 `;
@@ -240,6 +249,7 @@ export function mountBulkThumb(panel, deps) {
   }
   function renderAll() {
     $('btListCard').style.display = rows.length ? '' : 'none';
+    $('btEmpty').style.display = rows.length ? 'none' : '';
     $('btList').replaceChildren(...rows.map(buildRow));
     const ok = rows.filter((r) => r.ok).length;
     const noImg = rows.filter((r) => r.states.some((s) => s.state === 'noimg')).length;
@@ -436,6 +446,10 @@ export function mountBulkThumb(panel, deps) {
       case 'copy-missing': copyMissing(); break;
       default: break;
     }
+  });
+  // tempel kode -> langsung diperiksa (tanpa klik "Periksa")
+  listen(panel, 'paste', (e) => {
+    if (e.target.id === 'btCodes') setTimeout(() => { if (!busy && alive) check(); }, 0);
   });
   listen(panel, 'keydown', (e) => {
     if (e.target.id === 'btCodes' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!busy) check(); }

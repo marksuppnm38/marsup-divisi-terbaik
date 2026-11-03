@@ -170,80 +170,97 @@ export async function mount(container) {
       // begitu mount() jalan, sesi SUDAH PASTI ada. Langsung loadFileList().
       // ══════════════════════════════════════════
       loadFileList();
-      // Input cepat: cocokkan tiap baris terhadap nama file (atau file ID) di daftar,
-      // lalu pilih otomatis (maks 4).
-      async function applyBulkInput() {
-          const raw = container.querySelector('#' + "bulkInput").value;
-          const lines = [...new Set(raw.split("\n").map(s => s.trim()).filter(Boolean))];
-  
-          if (lines.length === 0) {
-              toast("Masukkan kode terlebih dahulu, satu per baris.", "error");
-              return;
-          }
-          if (lines.length > MAX_IMAGES) {
-              toast(`Maksimal ${MAX_IMAGES} kode sekaligus. Kamu memasukkan ${lines.length}.`, "error");
-              return;
-          }
-  
-          const matchedIds = [];
+      // Input kode (auto, tanpa tombol "Terapkan"): textarea dibaca otomatis
+      // setelah paste / berhenti mengetik. Tiap kode dicocokkan ke nama file
+      // (kode_asli) lalu, kalau tidak ketemu, ke tabel produk (kode_produk).
+      // codeIds = id bucket yang berasal dari textarea, supaya pilihan manual
+      // dari daftar & gambar tempel tidak ikut tertimpa waktu textarea berubah.
+      let codeIds = [];
+      let applyRun = 0;
+      let codeTimer = null;
+      function setCodeStatus(text, kind) {
+          const el = container.querySelector('#codeStatus');
+          if (!el) return;
+          el.textContent = text || "";
+          el.dataset.kind = kind || "";
+      }
+      async function applyCodes() {
+          if (!isMounted) return;
+          const run = ++applyRun;
+          const raw = container.querySelector('#bulkInput').value;
+          const lines = [...new Set(raw.split(/[\s,;+]+/).map(t => t.trim()).filter(Boolean))]
+              .filter(t => t.toUpperCase() !== "KODE"); // header kolom ikut ke-paste
+
+          const prev = new Set(codeIds);
+          const keep = selectedIds.filter(id => !prev.has(id)); // pilihan manual + gambar tempel
+          const commit = (ids) => {
+              selectedIds.length = 0;
+              keep.forEach(id => selectedIds.push(id));
+              ids.forEach(id => selectedIds.push(id));
+              codeIds = ids.slice();
+              selectionChanged();
+          };
+
+          if (!lines.length) { commit([]); setCodeStatus("", ""); return; }
+          if (!allFiles.length) { setCodeStatus("Memuat daftar gambar…", ""); return; } // dilanjutkan dari loadFileList()
+
+          const stripExt = (t) => String(t).trim().toLowerCase().replace(/\.[a-z0-9]{2,5}$/i, "");
+          // hasil per baris, urutan SAMA dengan yang diketik (urutan = posisi gambar di slot)
+          const byLine = new Map();
           const notFound = [];
-          // buang ekstensi file (.png, .jpg, dst) supaya kode tanpa ekstensi tetap cocok
-          const stripExt = (s) => String(s).trim().toLowerCase().replace(/\.[a-z0-9]{2,5}$/i, "");
-  
-          // 1) cocok langsung ke nama file (= kode_asli)
           const unresolved = [];
           lines.forEach(line => {
-              const target = stripExt(line);
-              const found = allFiles.find(f => stripExt(f.id) === target);
-              if (found) {
-                  if (!matchedIds.includes(found.id)) matchedIds.push(found.id);
-              } else {
-                  unresolved.push(line);
-              }
+              const found = allFiles.find(f => stripExt(f.id) === stripExt(line));
+              if (found) byLine.set(line, found.id);
+              else unresolved.push(line);
           });
 
-          // 2) sisanya dianggap kode produk -> cari kode_asli di tabel produk
           if (unresolved.length) {
+              setCodeStatus(`Mencocokkan ${unresolved.length} kode produk…`, "");
               try {
                   const produk = await lookupByKodeProduk(unresolved);
-                  if (!isMounted) return;
+                  if (!isMounted || run !== applyRun) return;
                   unresolved.forEach(line => {
                       const pr = produk.get(line.toUpperCase());
                       const target = pr && pr.kode_asli ? stripExt(pr.kode_asli) : null;
                       const found = target ? allFiles.find(f => stripExt(f.id) === target) : null;
                       if (found) {
                           produkLabel[found.id] = pr.kode_produk; // label = kode produk yang diketik
-                          if (!matchedIds.includes(found.id)) matchedIds.push(found.id);
+                          byLine.set(line, found.id);
                       } else {
                           notFound.push(line);
                       }
                   });
               } catch (err) {
-                  if (!isMounted) return;
-                  toast(err.message || "Gagal mencocokkan kode produk.", "error");
+                  if (!isMounted || run !== applyRun) return;
                   unresolved.forEach(line => notFound.push(line));
+                  toast(err.message || "Gagal mencocokkan kode produk.", "error");
               }
           }
-  
-          if (matchedIds.length === 0) {
-              toast("Tidak ada kode yang cocok dengan daftar file.", "error");
-              return;
-          }
-  
-          // gambar paste/upload tetap dipertahankan, kode bucket mengisi sisa slot
-          const kept = selectedIds.filter(isCustomId);
-          matchedIds.splice(Math.max(0, MAX_IMAGES - kept.length));
-          selectedIds.length = 0;
-          kept.forEach(id => selectedIds.push(id));
-          matchedIds.forEach(id => selectedIds.push(id));
+          if (run !== applyRun) return;
+
+          const matched = [...new Set(lines.map(l => byLine.get(l)).filter(Boolean))];
+          const room = Math.max(0, MAX_IMAGES - keep.length);
+          const used = matched.filter(id => !keep.includes(id)).slice(0, room);
+          const overflow = matched.filter(id => !keep.includes(id)).length - used.length;
+          commit(used);
+
+          const parts = [`${used.length} gambar dipilih`];
+          if (overflow > 0) parts.push(`${overflow} kode melebihi batas ${MAX_IMAGES}, diabaikan`);
+          if (notFound.length) parts.push(`tidak ditemukan: ${notFound.join(", ")}`);
+          setCodeStatus(parts.join(" · "), notFound.length || overflow > 0 ? "warn" : "ok");
+      }
+
+      // Pilihan berubah (kode, daftar, gambar tempel) -> segarkan daftar, slot, dan preview otomatis.
+      function selectionChanged() {
           renderFileList();
           renderChips();
-  
-          if (notFound.length > 0) {
-              toast(`${matchedIds.length} cocok, ${notFound.length} tidak ditemukan: ${notFound.join(", ")}`, "error", 6000);
-          } else {
-              toast(`${matchedIds.length} gambar berhasil dipilih dari kode.`, "success", 2500);
-          }
+          schedulePreview();
+      }
+      let previewTimer = null;
+      function schedulePreview(delay = 200) {
+          clearTimeout(previewTimer);
+          previewTimer = setTimeout(() => { if (isMounted) mergeAndPreview(); }, delay);
       }
   
       // Toast notification helper — feedback ke user, bukan cuma console
@@ -360,6 +377,7 @@ export async function mount(container) {
                       return { id: kode, name: kode };
                   });
               renderFileList();
+              if (container.querySelector('#bulkInput').value.trim()) applyCodes(); // kode sudah ditempel sebelum daftar selesai dimuat
               return true;
           } catch (error) {
               console.error("[ERROR] Gagal mengambil daftar file dari Supabase Storage!", error);
@@ -404,20 +422,29 @@ export async function mount(container) {
               }
               selectedIds.push(id);
           }
-          renderFileList();
-          renderChips();
+          selectionChanged();
       }
   
+      // 4 slot tetap (bukan chip yang melebar): kelihatan jelas "maks 4" dan urutannya.
+      const thumbCache = {};   // fileId -> dataURL kecil (diisi setelah overlay selesai diproses)
       function renderChips() {
-          const chipsEl = container.querySelector('#' + "selectedChips");
-          chipsEl.innerHTML = selectedIds.map(id => {
+          const el = container.querySelector('#' + "selectedChips");
+          if (!el) return;
+          const tiles = [];
+          for (let i = 0; i < MAX_IMAGES; i++) {
+              const id = selectedIds[i];
+              if (id === undefined) {
+                  tiles.push(`<div class="eg-slot empty" aria-hidden="true"><span class="eg-slot-n">${i + 1}</span><div class="eg-slot-img"><i class="ti ti-plus"></i></div><span class="eg-slot-name">Kosong</span></div>`);
+                  continue;
+              }
               const file = allFiles.find(f => f.id === id);
               const custom = customImages[id];
-              const rawName = custom ? custom.name : (produkLabel[id] || (file ? file.name : id));
-              const name = escapeHtml(rawName);
-              const thumb = custom ? `<img src="${custom.thumb}" alt="">` : "";
-              return `<span class="chip">${thumb}${name}<button type="button" aria-label="Hapus ${name}" data-action="toggle-file" data-id="${escapeHtml(id)}">✕</button></span>`;
-          }).join("");
+              const raw = custom ? custom.name : (produkLabel[id] || (file ? file.name : id));
+              const name = escapeHtml(raw);
+              const th = custom ? custom.thumb : thumbCache[id];
+              tiles.push(`<div class="eg-slot filled"><span class="eg-slot-n">${i + 1}</span><div class="eg-slot-img">${th ? `<img src="${th}" alt="">` : `<i class="ti ti-photo"></i>`}</div><span class="eg-slot-name" title="${name}">${name}</span><button type="button" class="eg-slot-x" aria-label="Hapus ${name}" data-action="toggle-file" data-id="${escapeHtml(id)}"><i class="ti ti-x" aria-hidden="true"></i></button></div>`);
+          }
+          el.innerHTML = tiles.join("");
       }
       // Cache supaya gambar yang sama tidak difetch ulang ke Google
       const imageCache = {};
@@ -443,6 +470,7 @@ export async function mount(container) {
           const overlayImg = await loadImageWithRetry(overlaySrc);
           const processedOverlay = await removeBackgroundHighQuality(overlayImg);
           imageCache[kode] = processedOverlay;
+          thumbCache[kode] = makeThumb(processedOverlay);
           return processedOverlay;
       }
   
@@ -498,8 +526,7 @@ export async function mount(container) {
                       thumb: makeThumb(processed),
                   };
                   selectedIds.push(id);
-                  renderFileList();
-                  renderChips();
+                  selectionChanged();
               } catch (err) {
                   console.error("[ERROR] Gagal membaca gambar dari luar bucket:", err);
                   if (isMounted) toast("Gagal membaca gambar itu.", "error");
@@ -536,85 +563,89 @@ export async function mount(container) {
               btn.classList.toggle("active", on);
               btn.setAttribute("aria-checked", String(on));
           });
-          // Kalau preview sudah tampil, langsung render ulang pakai template baru.
-          const previewShown = container.querySelector('#previewContainer').style.display !== "none";
-          if (previewShown && selectedIds.length > 0 && !isMerging) mergeAndPreview();
+          if (selectedIds.length > 0) schedulePreview(0); // preview ikut ganti template otomatis
       }
-  
+
+      // Keadaan panel Hasil: empty | loading | ready | error
+      function setPreviewState(kind, text) {
+          const stage = container.querySelector('#egStage');
+          if (!stage) return;
+          stage.classList.toggle("is-empty", kind === "empty" || kind === "error");
+          stage.classList.toggle("is-loading", kind === "loading");
+          container.querySelector('#egPrevState').textContent = text || "";
+          const ex = container.querySelector('#exportBtn');
+          ex.disabled = kind !== "ready" && kind !== "loading"; // saat loading, hasil lama masih bisa diunduh
+          if (kind === "empty") container.querySelector('#egFileName').textContent = "—";
+      }
+
+      // Nama file unduhan = kode produk gambar yang digabung (fallback kode_asli kalau
+      // tidak ketemu / ambigu; gambar tempel/upload tidak ikut dipakai).
+      async function exportFileName() {
+          const ids = selectedIds.filter(id => !isCustomId(id));
+          try { await resolveLabels(ids); } catch (err) { console.warn("[WARN] Gagal cari kode produk buat nama file:", err); }
+          const base = ids.map(id => produkLabel[id] || id).join("_")
+              .normalize("NFKC").replace(/[^\w.-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+          return base ? `${base}-${canvasTemplateKey}.png` : `combined-image-${canvasTemplateKey}.png`;
+      }
+
+      let previewDirty = false;
       async function mergeAndPreview() {
-          if (isMerging) {
-              console.warn("[SKIP] Proses merge sebelumnya masih berjalan, klik diabaikan.");
-              return;
-          }
-          if (selectedIds.length === 0) {
-              toast("Pilih minimal 1 gambar terlebih dahulu!", "error");
-              return;
-          }
+          if (!isMounted) return;
+          if (isMerging) { previewDirty = true; return; } // pilihan berubah saat render jalan -> ulang setelah selesai
+          if (selectedIds.length === 0) { setPreviewState("empty", "Belum ada gambar dipilih"); return; }
           if (selectedIds.some(id => !isValidFileId(id))) {
               toast("Ada file ID yang tidak valid.", "error");
               return;
           }
-          console.log("[INFO] File ID yang dipilih:", selectedIds);
-  
-          const btn = container.querySelector('#' + "previewBtn");
           const tplKey = currentTemplate; // snapshot: user bisa ganti template di tengah proses
           const tpl = TEMPLATES[tplKey];
+          const ids = selectedIds.slice();
           isMerging = true;
-          setButtonLoading(btn, true, "Memproses...");
-  
+          previewDirty = false;
+          setPreviewState("loading", "Memproses gambar…");
+
           try {
-              console.log("[INFO] Mengambil gambar template & overlay...");
-  
               // SECURITY FIX: template diambil lewat signed URL (bucket private);
-              // cache key-nya nama file template (string tetap), bukan URL-nya
-              // (yang berubah tiap signing). Lihat getTemplateImage().
+              // cache key-nya nama file template (string tetap). Lihat getTemplateImage().
               let templateImg;
               try {
                   templateImg = await getTemplateImage(tpl);
               } catch (err) {
                   console.error("[ERROR] Gagal memuat template:", tpl.file, err);
-                  if (isMounted) toast(`Template ${tpl.label} gagal dimuat. Pastikan ${tpl.file} sudah ada di bucket thumbnails.`, "error", 6000);
+                  if (isMounted) {
+                      toast(`Template ${tpl.label} gagal dimuat. Pastikan ${tpl.file} sudah ada di bucket thumbnails.`, "error", 6000);
+                      setPreviewState("error", "Template gagal dimuat");
+                  }
                   return;
               }
-  
-              // ambil semua overlay secara paralel, masing-masing pakai cache + retry sendiri
-              let processedOverlays = await Promise.all(
-                  selectedIds.map(id => getOverlayCanvasCached(id))
-              );
-  
-              console.log("[SUCCESS] Gambar berhasil diproses.");
+
+              // overlay paralel, masing-masing pakai cache + retry sendiri
+              const overlays = await Promise.all(ids.map(id => getOverlayCanvasCached(id)));
               if (!isMounted) return;
-              drawMergedCanvas(templateImg, processedOverlays, tpl.box);
+              drawMergedCanvas(templateImg, overlays, tpl.box);
               canvasTemplateKey = tplKey;
-              container.querySelector('#' + "metaCount").textContent = String(selectedIds.length);
-              container.querySelector('#' + "previewContainer").style.display = "block";
-              container.querySelector('#' + "exportBtn").style.display = "inline-flex";
-              toast("Preview berhasil dibuat.", "success", 2500);
+              renderChips(); // thumbnail slot sudah tersedia
+              container.querySelector('#egFileName').textContent = await exportFileName();
+              if (!isMounted) return;
+              setPreviewState("ready", `${ids.length} gambar · ${tpl.label} · PNG latar transparan`);
           } catch (error) {
               console.error("[ERROR] Gagal memproses gambar:", error);
-              toast("Gagal memproses gambar. Pastikan file dapat diakses publik, atau coba lagi (rate-limit).", "error");
+              if (isMounted) {
+                  setPreviewState("error", "Gagal memproses gambar");
+                  toast("Gagal memproses gambar. Coba lagi (bisa karena rate-limit) atau cek apakah file-nya ada.", "error");
+              }
           } finally {
               isMerging = false;
-              setButtonLoading(btn, false);
+              if (previewDirty && isMounted) schedulePreview(0);
           }
-          // User ganti template selagi proses jalan -> render ulang dengan pilihan terbaru.
-          if (isMounted && tplKey !== currentTemplate) mergeAndPreview();
       }
-      // loadFileList() dipanggil langsung setelah mount() (lihat atas) -- router.js
-      // udah mastiin sesi valid sebelum modul ini di-mount, jadi gak perlu nunggu
-      // gate apapun lagi di sini.
-  
+
       async function exportCanvasAsPNG() {
-          let canvas = container.querySelector('#' + "finalCanvas");
-          // Nama file = kode produk gambar yang digabung (fallback kode_asli kalau
-          // tidak ketemu / ambigu; gambar tempel/upload tidak ikut dipakai).
-          const ids = selectedIds.filter(id => !isCustomId(id));
-          try { await resolveLabels(ids); } catch (err) { console.warn("[WARN] Gagal cari kode produk buat nama file:", err); }
+          const canvas = container.querySelector('#' + "finalCanvas");
+          const name = await exportFileName();
           if (!isMounted) return;
-          const base = ids.map(id => produkLabel[id] || id).join("_")
-              .normalize("NFKC").replace(/[^\w.-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
-          let link = document.createElement("a");
-          link.download = base ? `${base}-${canvasTemplateKey}.png` : `combined-image-${canvasTemplateKey}.png`;
+          const link = document.createElement("a");
+          link.download = name;
           link.href = canvas.toDataURL("image/png");
           link.click();
           toast("Gambar berhasil diunduh.", "success", 2500);
@@ -642,12 +673,14 @@ export async function mount(container) {
       t.classList.toggle('active', on);
       t.setAttribute('aria-selected', String(on));
     });
+    container.querySelector('#egCrumb').textContent = bulk ? 'Bulk' : 'Satuan';
+    container.querySelector('#egHint').textContent = bulk
+      ? 'Satu baris = satu thumbnail. Periksa dulu, lalu proses jadi ZIP.'
+      : 'Gabungkan sampai 4 gambar produk jadi satu PNG.';
   }
 
   const ACTIONS = {
     'tab':                (el) => switchTab(el.dataset.tab),
-    'apply-bulk-input':   () => applyBulkInput(),
-    'merge-and-preview':  () => mergeAndPreview(),
     'export-canvas-png':  () => exportCanvasAsPNG(),
     'toggle-file':        (el) => toggleFile(el.dataset.id),
     'set-template':       (el) => setTemplate(el.dataset.template),
@@ -661,6 +694,10 @@ export async function mount(container) {
   }
   function onContainerInput(e) {
     if (e.target.id === 'searchInput') renderFileList();
+    else if (e.target.id === 'bulkInput') {
+      clearTimeout(codeTimer); // auto-terapkan: langsung setelah paste, 450ms setelah berhenti mengetik
+      codeTimer = setTimeout(applyCodes, e.inputType === 'insertFromPaste' ? 0 : 450);
+    }
   }
   function onContainerChange(e) {
     if (e.target.id !== 'imageFileInput') return;
@@ -694,6 +731,10 @@ export async function mount(container) {
     addImageFiles(files);
   };
   document.addEventListener('paste', docPasteHandler);
+
+  // keadaan awal: 4 slot kosong + panel Hasil kosong (preview muncul otomatis begitu ada gambar)
+  renderChips();
+  setPreviewState('empty', 'Belum ada gambar dipilih');
 
   // Tab Bulk: logic di bulk-thumb.js, helper render/gambar dipakai ulang dari sini
   // supaya hasilnya identik dengan mode satuan.

@@ -1,238 +1,237 @@
-/* export-gambar/style.css — sesi kesembilan belas rewrite.
-   Semua token warna/spacing/tipografi (H1, card, button, field, stat-pill)
-   sekarang datang dari pnm-universal.css, sama seperti dashboard/stok --
-   file ini CUMA nutup bagian yang bener-bener spesifik halaman ini
-   (list file selectable, chip dengan tombol hapus, frame canvas, toast).
+/* export-gambar/style.css — rewrite UX: layout dua panel (Pilih gambar | Hasil),
+   pola yang sama dengan Konversi (topbar breadcrumb + toolbar tipis + workspace).
+   Token warna/spacing/tipografi dari pnm-universal.css (otomatis ikut dark mode).
 
-   PENTING (root cause bug sesi kesembilan belas yang baru difix): setiap
-   selector di bawah ini SENGAJA di-scope di bawah `.eg-page`/kelasnya
-   sendiri -- NOL bare/unscoped selector (gak ada :root, body, h1, *,
-   input[type=...], select telanjang). Ini bikin index.js's unmount()
-   yang manggil remove() jadi lapis pertahanan KEDUA, bukan satu-satunya --
-   kalaupun someday ada yang lupa nge-remove() lagi, halaman lain tetap
-   aman karena gak ada rule yang bisa nyasar ke elemen mereka. */
+   ATURAN: semua selector di-scope di bawah `.eg-page` / kelas `eg-*` milik
+   halaman ini -- NOL bare selector (tanpa :root, body, h1, *, input telanjang)
+   supaya tidak bocor ke modul lain. index.js unmount() tetap me-remove() <link>
+   ini sebagai lapis pertahanan kedua. */
 
-/* Same seam bug fixed on konversian/crud-produk/dashboard/stok: .pw-topbar
-   is white (nav.css), this centered <main> column had no background of its
-   own and fell through to body's gray var(--bg), so the topbar read as a
-   white slab against a greyer strip directly underneath it. .card already
-   has its own white bordered surface inside main.
-   FULLBLEED PASS (superseded below): this page was originally capped at
-   640px/centered, then widened to edge-to-edge to match every other
-   module. Kept edge-to-edge here (padding/background below), but see
-   .eg-col right after -- a single-column utility form (paste codes, get
-   one PNG back) reads as an unfinished spreadsheet at 1600px+ wide input
-   fields; a comfortable reading column inside the full-bleed canvas is
-   the Vercel pattern (full-width chrome, centered content), not a
-   contradiction of the earlier fullbleed request. */
-/* Root cause of the empty-gap-at-bottom bug: .pw-nav (nav.css) always sets
-   its own height:100vh, and as a flex sibling of .pw-content inside
-   .pw-shell{display:flex} (pnm-universal.css), that stretches .pw-content
-   itself to at least a full viewport tall -- regardless of how short this
-   page's own content is. .eg-page (plain block div, no sizing of its own)
-   and main below it were only ever as tall as their actual content, so on
-   a short page (one card, no long list) there was a real leftover strip
-   of .pw-content's enforced height below them with no background of its
-   own -- falling through to <body>'s var(--bg), which reads as a stray
-   block of the wrong color sitting under the card, not simply "empty
-   space". Filling that same box with .eg-page/main themselves (flex
-   column, min-height:100% so it matches whatever .pw-content was already
-   stretched to -- never a hardcoded px/vh value, and never taller than
-   that on a short page) makes the page's own background cover it
-   instead. Content still ends right after the card on any viewport at or
-   above one screen tall; this only fills color, it doesn't add scroll
-   height beyond what .pw-nav's own height already required. */
-.eg-page {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-.eg-page main {
-  flex: 1;
-  max-width: none;
-  margin: 0;
-  padding: 40px 20px 64px;
+.eg-page { display: flex; flex-direction: column; min-height: 100%; }
+
+/* Toolbar tipis di bawah topbar (tab Satuan/Bulk + petunjuk) */
+.eg-page .eg-toolbar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 20px;
   background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
-.eg-col {
-  max-width: 640px;
-  margin: 0 auto;
+.eg-page .eg-toolbar-hint { font-size: 12.5px; color: var(--text-muted); }
+
+.eg-page main { flex: 1; max-width: none; margin: 0; padding: 20px 20px 56px; background: var(--bg); }
+.eg-page .eg-wrap { max-width: 1180px; margin: 0 auto; }
+
+.eg-page .eg-mt-8 { margin-top: 8px; }
+.eg-page .eg-mt-16 { margin-top: 16px; }
+.eg-page .eg-field-hint { margin-left: 4px; font-weight: 400; color: var(--text-muted); }
+
+/* ── Dua panel ── */
+.eg-page .eg-split {
+  display: grid;
+  grid-template-columns: minmax(340px, 460px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.eg-page .eg-out { position: sticky; top: 16px; }
+@media (max-width: 980px) {
+  .eg-page .eg-split { grid-template-columns: minmax(0, 1fr); }
+  .eg-page .eg-out { position: static; }
+  .eg-page main { padding: 14px 12px 40px; }
+  .eg-page .eg-toolbar { padding: 8px 12px; }
 }
 
-.eg-mt-8 { margin-top: 8px; }
-.eg-mt-16 { margin-top: 16px; }
-
-.eg-field-hint {
-  margin-left: 4px;
-  font-weight: 400;
-  color: var(--text-muted);
+/* Header langkah: nomor + judul + (opsional) kontrol di kanan */
+.eg-page .eg-step { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+.eg-page .eg-step-n {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent-bg); color: var(--accent-text);
+  font-size: 12px; font-weight: 600; margin-top: 1px;
 }
+.eg-page .eg-step-t { flex: 1; min-width: 0; }
+.eg-page .eg-step-t h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.3; }
+.eg-page .eg-step-t p { margin: 2px 0 0; font-size: 12.5px; color: var(--text-muted); }
+.eg-page .eg-step-r { flex-shrink: 0; }
 
-/* Pemilih template (Robust / Adler) -- segmented control datar, tanpa
-   shadow. Border transparan di state non-aktif supaya lebar gak loncat
-   waktu ganti pilihan. */
-.eg-seg {
+/* Segmented control (tab mode, template) */
+.eg-page .eg-seg {
   display: inline-flex; gap: 2px; padding: 2px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
-.eg-seg-btn {
+.eg-page .eg-seg-btn {
+  display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid transparent; background: none;
-  padding: 6px 18px;
+  padding: 6px 14px;
   font-size: 12.5px; font-weight: 500; font-family: inherit;
   color: var(--text-secondary);
   border-radius: calc(var(--radius) - 2px);
   cursor: pointer;
-  transition: color .12s, background .12s;
+  transition: color .12s, background .12s, border-color .12s;
 }
-.eg-seg-btn:hover { color: var(--text); }
-.eg-seg-btn.active {
+.eg-page .eg-seg-btn:hover { color: var(--text); }
+.eg-page .eg-seg-btn.active { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
+.eg-page .eg-seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Input kode */
+.eg-page .eg-textarea {
+  min-height: 96px; resize: vertical;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+}
+.eg-page .eg-status { min-height: 18px; margin: 6px 2px 0; font-size: 12px; color: var(--text-muted); }
+.eg-page .eg-status[data-kind="ok"] { color: var(--success-text, var(--success)); }
+.eg-page .eg-status[data-kind="warn"] { color: var(--danger-text, var(--danger)); }
+
+/* 4 slot gambar */
+.eg-page .eg-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 460px) { .eg-page .eg-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.eg-page .eg-slot {
+  position: relative; display: flex; flex-direction: column; gap: 6px;
+  padding: 6px 6px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
   background: var(--surface);
-  border-color: var(--border-strong);
-  color: var(--text);
+  min-width: 0;
 }
-
-.eg-meta {
-  margin: 10px 2px 0;
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--mono);
+.eg-page .eg-slot.empty { border-style: dashed; background: transparent; color: var(--text-muted); }
+.eg-page .eg-slot.filled { border-color: var(--border-strong); }
+.eg-page .eg-slot-n {
+  position: absolute; top: 8px; left: 8px; z-index: 1;
+  width: 16px; height: 16px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-3); color: var(--text-secondary); font-size: 10px; font-weight: 600;
 }
+.eg-page .eg-slot-img {
+  aspect-ratio: 1 / 1; border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); font-size: 20px; overflow: hidden;
+}
+.eg-page .eg-slot-img img { width: 100%; height: 100%; object-fit: contain; }
+.eg-page .eg-slot-name {
+  font-family: var(--mono); font-size: 10.5px; color: var(--text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center;
+}
+.eg-page .eg-slot.empty .eg-slot-name { font-family: inherit; color: var(--text-muted); }
+.eg-page .eg-slot-x {
+  position: absolute; top: 4px; right: 4px; z-index: 1;
+  width: 20px; height: 20px; border: none; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface); color: var(--text-muted); font-size: 12px; cursor: pointer;
+  box-shadow: var(--shadow); opacity: 0; transition: opacity .12s, color .12s, background .12s;
+}
+.eg-page .eg-slot:hover .eg-slot-x, .eg-page .eg-slot-x:focus-visible { opacity: 1; }
+.eg-page .eg-slot-x:hover { background: var(--danger-bg); color: var(--danger); }
+@media (hover: none) { .eg-page .eg-slot-x { opacity: 1; } }
 
-/* De-emphasized "apply pasted codes" action -- was a full bordered
-   .btn-ghost, competing visually with the page's one real CTA (Preview).
-   A quiet inline text link right under the textarea reads as a small
-   confirm step, not a second button to weigh against the first. */
-.eg-link-btn {
+/* Gambar dari luar bucket */
+.eg-page .eg-drop {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius);
+  font-size: 12.5px; color: var(--text-muted);
+}
+.eg-page .eg-drop i { font-size: 16px; }
+.eg-page .eg-link-btn {
   display: inline-flex; align-items: center; gap: 5px;
-  margin-top: 8px;
-  border: none; background: none;
-  padding: 2px 0;
-  font-size: 12px; font-weight: 500;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-family: inherit;
+  border: none; background: none; padding: 2px 0;
+  font-size: 12.5px; font-weight: 500; font-family: inherit;
+  color: var(--accent-text); cursor: pointer;
 }
-.eg-link-btn:hover { color: var(--accent); }
-.eg-link-btn i { font-size: 13px; }
+.eg-page .eg-link-btn:hover { text-decoration: underline; }
 
-.eg-textarea {
-  min-height: 84px;
-  resize: vertical;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  line-height: 1.5;
+/* Cari manual (collapsible) */
+.eg-page .eg-browse { border-top: 1px solid var(--border); padding-top: 12px; }
+.eg-page .eg-browse > summary {
+  display: inline-flex; align-items: center; gap: 6px; list-style: none;
+  font-size: 12.5px; font-weight: 500; color: var(--text-secondary); cursor: pointer;
 }
-
-.eg-file-list {
-  max-height: 220px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.eg-page .eg-browse > summary::-webkit-details-marker { display: none; }
+.eg-page .eg-browse > summary:hover { color: var(--text); }
+.eg-page .eg-browse[open] > summary { color: var(--text); }
+.eg-page .eg-file-list { max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.eg-page .eg-file-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; font-size: 13px; cursor: pointer;
+  border-bottom: 0.5px solid var(--border); transition: background .12s;
 }
-
-.eg-file-list .eg-file-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  font-size: 13px;
-  cursor: pointer;
-  border-bottom: 0.5px solid var(--border);
-  transition: background .12s;
-}
-.eg-file-list .eg-file-item:last-child { border-bottom: none; }
-.eg-file-list .eg-file-item:hover:not(.disabled) { background: var(--surface-2); }
-.eg-file-list .eg-file-item.selected { background: var(--accent-bg); color: var(--accent-text); }
-.eg-file-list .eg-file-item.disabled { color: var(--text-muted); cursor: not-allowed; opacity: .55; }
-.eg-file-list .eg-check {
+.eg-page .eg-file-item:last-child { border-bottom: none; }
+.eg-page .eg-file-item:hover:not(.disabled) { background: var(--surface-2); }
+.eg-page .eg-file-item.selected { background: var(--accent-bg); color: var(--accent-text); }
+.eg-page .eg-file-item.disabled { color: var(--text-muted); cursor: not-allowed; opacity: .55; }
+.eg-page .eg-check {
   width: 16px; height: 16px; flex-shrink: 0;
   border: 1px solid var(--border-strong); border-radius: 4px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1;
 }
-.eg-file-list .eg-file-item.selected .eg-check {
-  background: var(--accent); border-color: var(--accent); color: #fff;
-}
-.eg-file-list .eg-file-item .eg-name {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono);
-}
-.eg-file-list-empty { padding: 16px; text-align: center; color: var(--text-muted); font-size: 12.5px; }
+.eg-page .eg-file-item.selected .eg-check { background: var(--accent); border-color: var(--accent); color: #fff; }
+.eg-page .eg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+.eg-page .eg-file-list-empty { padding: 16px; text-align: center; color: var(--text-muted); font-size: 12.5px; }
 
-.eg-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.eg-chips .chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 20px; padding: 3px 6px 3px 10px;
-  font-size: 11.5px; font-family: var(--mono); color: var(--text-secondary);
+/* Panel Hasil: stage dengan latar kotak-kotak (tanda transparan) */
+.eg-page .eg-stage {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background-color: var(--surface-2);
+  background-image:
+    linear-gradient(45deg, var(--surface-3) 25%, transparent 25%, transparent 75%, var(--surface-3) 75%),
+    linear-gradient(45deg, var(--surface-3) 25%, transparent 25%, transparent 75%, var(--surface-3) 75%);
+  background-size: 16px 16px; background-position: 0 0, 8px 8px;
 }
-.eg-chips .chip button {
-  border: none; background: none; cursor: pointer; color: var(--text-muted);
-  width: 16px; height: 16px; border-radius: 50%; font-size: 11px; line-height: 1;
-  display: flex; align-items: center; justify-content: center;
-}
-.eg-chips .chip button:hover { background: var(--danger-bg); color: var(--danger); }
+.eg-page .eg-canvas { display: block; width: 100%; height: auto; }
+.eg-page .eg-stage.is-empty { background-image: none; }
+.eg-page .eg-stage.is-empty .eg-canvas { display: none; }
+.eg-page .eg-stage:not(.is-empty) .eg-empty { display: none; }
 
-/* Gambar dari luar bucket (paste / drag-drop / pilih file) */
-.eg-drop {
-  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px;
-  padding: 12px;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius);
-  font-size: 12.5px;
-  color: var(--text-muted);
+.eg-page .eg-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; min-height: 340px; padding: 24px; text-align: center;
+  color: var(--text-muted); font-size: 12.5px;
 }
-.eg-drop .eg-link-btn { margin-top: 0; }
-.eg-chips .chip img {
-  width: 20px; height: 20px; object-fit: contain;
-  border-radius: 3px; background: var(--surface);
-}
-.eg-chips .chip:has(img) { padding-left: 6px; }
-
-.eg-canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
+.eg-page .eg-empty i { font-size: 30px; color: var(--border-strong); }
+.eg-page .eg-empty strong { font-size: 13.5px; font-weight: 600; color: var(--text-secondary); }
+.eg-page .eg-empty-box {
+  min-height: 260px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md);
 }
 
-.eg-toast-root {
-  position: fixed; bottom: 20px; right: 20px; z-index: 3000;
-  display: flex; flex-direction: column; gap: 8px;
+.eg-page .eg-loading {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
 }
+.eg-page .eg-stage.is-loading .eg-loading { display: flex; }
+.eg-page .eg-spin {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--border-strong); border-top-color: var(--accent);
+  animation: eg-spin .7s linear infinite;
+}
+@keyframes eg-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .eg-page .eg-spin { animation-duration: 2s; } }
+
+.eg-page .eg-out-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.eg-page .eg-fname-wrap { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.eg-page .eg-fname-label { font-size: 11px; color: var(--text-muted); }
+.eg-page .eg-fname {
+  font-family: var(--mono); font-size: 12.5px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.eg-page .eg-out-foot .btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+/* Toast */
+.eg-toast-root { position: fixed; bottom: 20px; right: 20px; z-index: 3000; display: flex; flex-direction: column; gap: 8px; }
 .eg-toast-root .toast {
   display: flex; align-items: center; gap: 8px;
   background: var(--surface-raised, var(--surface));
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  padding: 10px 14px;
-  font-size: 12.5px;
-  color: var(--text);
-  opacity: 0;
-  transform: translateY(6px);
-  transition: opacity .15s, transform .15s;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  padding: 10px 14px; font-size: 12.5px; color: var(--text);
+  box-shadow: var(--shadow-lg);
+  opacity: 0; transform: translateY(6px); transition: opacity .15s, transform .15s;
 }
 .eg-toast-root .toast.in { opacity: 1; transform: translateY(0); }
 .eg-toast-root .toast .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--text-muted); }
 .eg-toast-root .toast.success .dot { background: var(--success-dot, var(--success)); }
 .eg-toast-root .toast.error .dot { background: var(--danger-dot, var(--danger)); }
 
-/* Tab Satuan / Bulk */
-.eg-page .eg-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
-.eg-page .eg-tab {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 12px; margin-bottom: -1px;
-  border: none; border-bottom: 2px solid transparent; background: none;
-  font-family: inherit; font-size: 13px; font-weight: 500;
-  color: var(--text-secondary); cursor: pointer;
-}
-.eg-page .eg-tab:hover { color: var(--text); }
-.eg-page .eg-tab.active { color: var(--text); border-bottom-color: var(--accent); }
-
-/* Tab Bulk */
+/* ── Tab Bulk ── */
 .eg-page .eg-bulk-types { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 4px; }
 .eg-page .eg-bulk-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
 .eg-page .eg-bulk-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; align-items: center; }
@@ -245,8 +244,8 @@
   border: 1px solid var(--border); border-radius: 999px;
 }
 .eg-page .eg-bulk-chip b { font-weight: 600; margin-left: 2px; }
-.eg-page .eg-bulk-chip.active { color: var(--text); border-color: var(--accent); }
-.eg-page .eg-bulk-list { max-height: 480px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.eg-page .eg-bulk-chip.active { color: var(--text); border-color: var(--accent); background: var(--accent-bg); }
+.eg-page .eg-bulk-list { max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
 .eg-page .eg-bulk-row { padding: 8px 12px; border-bottom: 0.5px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
 .eg-page .eg-bulk-row[hidden] { display: none; }
 .eg-page .eg-bulk-row:last-child { border-bottom: none; }
