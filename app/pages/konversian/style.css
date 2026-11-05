@@ -287,7 +287,20 @@
 }
 
 #app-root .clip-body{padding:14px 20px}
-#app-root .clip-tab-panel .clip-empty{margin:auto}
+#app-root .clip-tab-panel .clip-empty{
+  margin:auto;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;max-width:320px;
+}
+#app-root .clip-tab-panel .clip-empty > i{font-size:28px;color:var(--text-muted)}
+#app-root .clip-tab-panel .clip-empty p{margin:0;font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
+/* CTA empty state = tombol biasa 1 baris (bukan kotak tinggi dengan ikon di atas) */
+#app-root #kb-empty-cta{
+  display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:6px;
+  width:auto;height:32px;padding:0 14px;font-size:12.5px;
+}
+/* Di tab Kebutuhan RS yang masih kosong, CTA besar di tengah sudah jadi pintu masuknya —
+   chip "Catat Permintaan RS" di baris tab disembunyikan biar gak ada dua tombol untuk aksi yang sama.
+   Di tab Clipboard / saat sudah ada data, chip tetap tampil. */
+#app-root .clip-sticky-top:has(#clip-tab-btn-kb.active) .rs-strip:has(.rs-strip-state:not(.has-data)){display:none}
 
 /* Clipboard/produk list items: keep as list rows, but border only appears
    on hover/interaction, not sitting there constantly as visual noise */
