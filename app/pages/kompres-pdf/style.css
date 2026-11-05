@@ -374,3 +374,6 @@ html[data-theme="dark"] .kp-page .btn:hover:not(:disabled){background:#5aa6ff;}
   .kp-page .size-value{font-size:16px;}
   .kp-page .btn-row{flex-direction:column;}
 }
+
+/* Fokus keyboard terlihat di tombol/link (sebelumnya modul ini tidak punya aturan :focus-visible). */
+.kp-page :is(button, a[href], summary, [tabindex]:not([tabindex="-1"])):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

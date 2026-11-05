@@ -1030,13 +1030,21 @@ S.syncRealtimeAuth = syncRealtimeAuth;
 // getFreshToken() manggil PNMAuth.getAccessToken() -> sb.auth.getSession(),
 // yang ngecek-dan-refresh DI MOMEN ini juga (bukan nunggu timer) — sama
 // persis kayak yang otomatis dilakuin sb.from()/sb.rpc() di crud-produk.js.
-// Fallback ke stokAccessToken/ANON_KEY kalau PNMAuth somehow belum siap.
+// Fallback ke stokAccessToken HANYA kalau PNMAuth error (belum siap). Kalau sesi memang
+// sudah tidak ada, JANGAN lanjut sebagai anon (dulu: list kosong / error aneh tanpa
+// penjelasan) -- langsung tampilkan layar login lewat showGate() dan hentikan request.
 async function getFreshToken() {
-  try {
-    const t = await PNMAuth.getAccessToken();
-    if (t) return t;
-  } catch { /* lanjut ke fallback di bawah */ }
-  return S.stokAccessToken || ANON_KEY;
+  let t = null;
+  let authErr = false;
+  try { t = await PNMAuth.getAccessToken(); } catch { authErr = true; }
+  if (t) return t;
+  if (authErr && S.stokAccessToken) return S.stokAccessToken;
+  // Banyak request paralel bisa gagal bareng -> kick ke login cukup sekali per 5 detik.
+  if (!S._sessionKickAt || Date.now() - S._sessionKickAt > 5000) {
+    S._sessionKickAt = Date.now();
+    if (typeof S.showGate === 'function') S.showGate('Sesi kamu habis, silakan masuk lagi.');
+  }
+  throw new Error('Sesi login habis');
 }
 S.getFreshToken = getFreshToken;
 function showApp() {
@@ -1327,6 +1335,7 @@ async function uploadToSupabaseStorage(bucket, path, fileOrBlob, contentType) {
 }
 
 // bikin dropzone (klik utk browse + drag&drop) manggil callback dgn File yg dipilih/di-drop
+// Class 'drag' = yang diberi gaya oleh pnm-universal.css (.dropzone.drag). Dulu 'dragover' -> tanpa gaya.
 function setupDropzone(zoneEl, inputEl, onFile) {
   if (!zoneEl || !inputEl) return;
   zoneEl.addEventListener('click', () => inputEl.click());
@@ -1335,14 +1344,14 @@ function setupDropzone(zoneEl, inputEl, onFile) {
     inputEl.value = '';
   });
   ['dragenter', 'dragover'].forEach(evt => zoneEl.addEventListener(evt, (e) => {
-    e.preventDefault(); e.stopPropagation(); zoneEl.classList.add('dragover');
+    e.preventDefault(); e.stopPropagation(); zoneEl.classList.add('drag');
   }));
   ['dragleave', 'dragend'].forEach(evt => zoneEl.addEventListener(evt, (e) => {
-    e.preventDefault(); e.stopPropagation(); zoneEl.classList.remove('dragover');
+    e.preventDefault(); e.stopPropagation(); zoneEl.classList.remove('drag');
   }));
   zoneEl.addEventListener('drop', (e) => {
     e.preventDefault(); e.stopPropagation();
-    zoneEl.classList.remove('dragover');
+    zoneEl.classList.remove('drag');
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     if (f) onFile(f);
   });
@@ -5286,6 +5295,8 @@ export function unmount() {
   // di sini, mereka nyisa nempel ke body walau halaman ini udah di-unmount.
   document.getElementById('sph-riwayat-modal')?.remove();
   document.getElementById('konversi-riwayat-modal')?.remove();
+  document.getElementById('set-stok-pop')?.remove();
+  document.getElementById('set-stok-pop-style')?.remove();
 
   // pnm-universal.css TIDAK dilepas di sini: itu permanent <link>
   // (id shared-pnm-universal-css) yang dimuat sekali oleh index.html dan dipakai

@@ -96,6 +96,7 @@ let sphCurrentCompany = 'smy';
 let sphHeaderAsset = null;   // {dataUrl, w, h} atau null
 let sphFooterAsset = null;
 let sphTtdAsset = null;
+let sphDrawFailed = [];     // nama aset yang GAGAL digambar ke PDF saat generate (dilaporkan ke user di akhir)
 let sphHeaderStatus = 'loading'; // 'loading' | 'ok' | 'unconfigured' | 'error'
 let sphFooterStatus = 'loading';
 let sphTtdStatus = 'loading';
@@ -687,14 +688,14 @@ function sphGetFooterLayout() {
 function sphDrawFooter(doc) {
   if (!sphFooterAsset) return;
   const { h } = sphGetFooterLayout();
-  try { doc.addImage(sphFooterAsset.dataUrl, 'PNG', 0, SPH_PAGE_H - h, SPH_PAGE_W, h); } catch (e) { }
+  try { doc.addImage(sphFooterAsset.dataUrl, 'PNG', 0, SPH_PAGE_H - h, SPH_PAGE_W, h); } catch (e) { sphDrawFailed.push('Footer'); console.error('[SPH] gagal gambar footer', e); }
 }
 function sphDrawHeader(doc, yTop) {
   if (!sphHeaderAsset) return 0;
   const company = SPH_COMPANIES[sphCurrentCompany];
   const headerW = company.headerWidthMm || 45;
   const headerH = (sphHeaderAsset.h / sphHeaderAsset.w) * headerW;
-  try { doc.addImage(sphHeaderAsset.dataUrl, 'PNG', SPH_MARGIN_X, yTop, headerW, headerH); } catch (e) { }
+  try { doc.addImage(sphHeaderAsset.dataUrl, 'PNG', SPH_MARGIN_X, yTop, headerW, headerH); } catch (e) { sphDrawFailed.push('Kop Surat'); console.error('[SPH] gagal gambar kop surat', e); }
   return headerH;
 }
 function sphAddPageWithFooter(doc) {
@@ -1070,6 +1071,7 @@ async function sphGenerate() {
     const company = SPH_COMPANIES[sphCurrentCompany];
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    sphDrawFailed = [];
     const tableW = SPH_PAGE_W - SPH_MARGIN_X * 2;
     const footerLayout = sphGetFooterLayout();
     const safeBottom = footerLayout.bottom;
@@ -1302,7 +1304,7 @@ async function sphGenerate() {
     if (sphTtdAsset) {
       const sigH = sigHForLayout;
       const sigY = labelY + SIG_TOP_OFFSET;
-      try { doc.addImage(sphTtdAsset.dataUrl, 'PNG', signColX, sigY, sigW, sigH); } catch (e) { }
+      try { doc.addImage(sphTtdAsset.dataUrl, 'PNG', signColX, sigY, sigW, sigH); } catch (e) { sphDrawFailed.push('Tanda Tangan'); console.error('[SPH] gagal gambar tanda tangan', e); }
     }
     doc.text('Marketing,', signColX, labelY);
     doc.setFont('helvetica', 'bold');
@@ -1409,6 +1411,10 @@ async function sphGenerate() {
 
     sphStatusEl.textContent = 'Menyiapkan preview…';
     const blob = doc.output('blob');
+    if (sphDrawFailed.length) {
+      // Dulu: PDF jadi tanpa logo/TTD tanpa pemberitahuan. Sekarang user diberi tahu sebelum kirim ke customer.
+      PNMToast.show('PERHATIAN: PDF jadi TANPA ' + [...new Set(sphDrawFailed)].join(', ') + ' (gambar gagal dimuat). Cek slot aset lalu Generate ulang sebelum dikirim.', 'error', { duration: 10000 });
+    }
     const url = URL.createObjectURL(blob);
     sphPreviewFrame.src = url;
     sphPreviewFrame.style.display = 'block';

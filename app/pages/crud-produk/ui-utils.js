@@ -98,9 +98,9 @@ export function renderPgBar(el, { page, pageSize, total, onPageChange }){
   el.innerHTML = `
     <span class="pg-info">${startItem}–${endItem} dari ${total}</span>
     <div class="pg-btns">
-      <button class="pg-btn" data-page="${page - 1}" ${page === 1 ? 'disabled' : ''}><i class="ti ti-chevron-left"></i></button>
+      <button class="pg-btn" data-page="${page - 1}" aria-label="Halaman sebelumnya" title="Halaman sebelumnya" ${page === 1 ? 'disabled' : ''}><i class="ti ti-chevron-left"></i></button>
       ${numberBtns}
-      <button class="pg-btn" data-page="${page + 1}" ${page === totalPages ? 'disabled' : ''}><i class="ti ti-chevron-right"></i></button>
+      <button class="pg-btn" data-page="${page + 1}" aria-label="Halaman berikutnya" title="Halaman berikutnya" ${page === totalPages ? 'disabled' : ''}><i class="ti ti-chevron-right"></i></button>
     </div>
   `;
   el.querySelectorAll('.pg-btn[data-page]:not(:disabled)').forEach(btn => {

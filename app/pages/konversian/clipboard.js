@@ -1315,10 +1315,13 @@ S.getSetStokGap = getSetStokGap;
 // global, dipakai bareng Cari Cepat & Converter lewat event delegation di document —
 // jadi gak perlu sentuh tiap tempat yang manggil stokBadgeHtml().
 (function installSetStokPopover() {
-  if (window.__setStokPopoverInstalled) return;
-  window.__setStokPopoverInstalled = true;
+  // Per-mount: elemen lama (kalau ada) dibuang dulu; listener global lewat S.onGlobal supaya
+  // otomatis dilepas di unmount() (dulu dipasang sekali dan menempel di SEMUA modul selamanya).
+  document.getElementById('set-stok-pop')?.remove();
+  document.getElementById('set-stok-pop-style')?.remove();
 
   const st = document.createElement('style');
+  st.id = 'set-stok-pop-style';
   st.textContent = `
     #set-stok-pop{position:fixed;z-index:10000;max-width:360px;min-width:220px;max-height:320px;overflow:auto;
       background:var(--surface,#171717);color:var(--text,inherit);border:1px solid var(--border,#444);
@@ -1400,21 +1403,21 @@ S.getSetStokGap = getSetStokGap;
     hideTimer = setTimeout(() => { pop.style.display = 'none'; activeEl = null; seq++; }, 120);
   }
 
-  document.addEventListener('mouseover', (e) => {
+  S.onGlobal(document, 'mouseover', (e) => {
     const el = e.target.closest && e.target.closest('.mi.stok-warn[data-set-kode]');
     if (el) show(el);
   });
-  document.addEventListener('mouseout', (e) => {
+  S.onGlobal(document, 'mouseout', (e) => {
     const el = e.target.closest && e.target.closest('.mi.stok-warn[data-set-kode]');
     if (el && !(e.relatedTarget && el.contains(e.relatedTarget))) hide();
   });
   // Touch/mobile: tap badge buat buka, tap di luar buat nutup
-  document.addEventListener('click', (e) => {
+  S.onGlobal(document, 'click', (e) => {
     const el = e.target.closest && e.target.closest('.mi.stok-warn[data-set-kode]');
     if (el) { show(el); return; }
     if (!pop.contains(e.target)) { pop.style.display = 'none'; activeEl = null; seq++; }
   });
-  document.addEventListener('scroll', () => { pop.style.display = 'none'; activeEl = null; seq++; }, true);
+  S.onGlobal(document, 'scroll', () => { if (pop.style.display === 'none') return; pop.style.display = 'none'; activeEl = null; seq++; }, true);
 })();
 
 // ── SIMPAN KE DRIVE (manual, lewat tombol — bukan otomatis pas Export) ──
@@ -2095,7 +2098,11 @@ S.btnExport.addEventListener('click', async () => {
     S.lastExportNamaSales = namaSales;
     // Export = konversi ini beneran kejadian -> pastikan sesinya punya Record (tahap database; Sheet tetap manual).
     // Fire-and-forget: gak boleh nahan/ngegagalin export. Nama file di atas sudah dihitung sebelum ini, jadi gak berubah.
-    if (S.autoRecordCurrent) S.autoRecordCurrent('export').catch(() => {});
+    if (S.autoRecordCurrent) S.autoRecordCurrent('export').catch((err) => {
+      // Fire-and-forget tetap (tidak menahan export), tapi kegagalan JANGAN senyap: user perlu tahu Riwayat belum tercatat.
+      console.error('[auto-record export] gagal:', err);
+      showToast('Export berhasil, tapi Riwayat belum tercatat otomatis. Klik "Record Konversi" agar tercatat.', 'error');
+    });
     if (btnDriveUpload) btnDriveUpload.disabled = false;
     // File BARU ini belum ada di Drive → tandai pending & denyutkan langkah 2 sampai di-upload.
     // (is-done dicabut: kalau ini export ulang di sesi yang sama, centang lama bukan untuk file ini.)
@@ -2120,14 +2127,22 @@ S.btnClearAll.addEventListener('click', async () => {
   if (!S.clipboard.length) return;
   if (await S.showConfirmModal({ title: 'Hapus Semua', text: 'Hapus semua item dari clipboard?', okText: 'Ya, Hapus', danger: true })) {
     const sesiIdSebelumnya = S.currentSesiId;
+    // Hapus di server DULU. Kalau gagal, clipboard dibiarkan utuh + user diberi tahu
+    // (dulu: layar kosong duluan, error ditelan -> item muncul lagi saat refresh / di layar rekan).
+    if (sesiIdSebelumnya) {
+      try {
+        const res = await sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${sesiIdSebelumnya}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+      } catch (err) {
+        console.error('[clear all] gagal hapus item di server:', err);
+        showToast('Gagal menghapus item di server, clipboard TIDAK dikosongkan. Coba lagi. (' + err.message + ')', 'error');
+        return;
+      }
+    }
     S.clipboard = [];
     updateClipboard();
     S.renderResults(S.lastResults);
-    if (sesiIdSebelumnya) {
-      sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${sesiIdSebelumnya}`, { method: 'DELETE' })
-        .then(() => touchSesiUpdatedAt(sesiIdSebelumnya))
-        .catch(() => {});
-    }
+    if (sesiIdSebelumnya) touchSesiUpdatedAt(sesiIdSebelumnya);
   }
 });
 

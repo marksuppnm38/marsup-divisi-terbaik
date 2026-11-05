@@ -122,6 +122,8 @@ const navContainer = document.getElementById('app-nav');
 let currentPage = null; // the mounted module, so we can call .unmount()
 let currentModule = null; // which top-level module id currentPage is (separate from route's module -- see render())
 let routingEnabled = false; // false while the gate is showing (logged out / not yet authed)
+let currentMounted = false; // true hanya setelah mount() halaman aktif selesai (jalur setSubroute tidak boleh menyentuh halaman setengah jadi)
+let renderSeq = 0; // penanda render terbaru: render() lama yang tertinggal (klik nav cepat) harus berhenti, bukan ikut mount
 let hasResolvedInitialRoute = false; // lihat LAST_ROUTE_KEY di atas -- cuma render() PERTAMA yang boleh substitusi path kosong
 
 function currentRoute() {
@@ -176,6 +178,7 @@ function navigate(path, { replace = false } = {}) {
 async function render() {
   if (!routingEnabled) return; // popstate fired while logged out -- ignore, gate owns the screen
   clearPendingKick(); // any earlier "you're about to be logged out" from a previous bad URL no longer applies
+  const mySeq = ++renderSeq;
   let { module, sub, extra } = currentRoute();
   if (RETIRED_REDIRECTS[module]) {
     module = RETIRED_REDIRECTS[module];
@@ -219,6 +222,7 @@ async function render() {
   // item highlight still updates every render() via navSetActive().
   if (navContainer) {
     await navMount(navContainer, module, sub);
+    if (mySeq !== renderSeq) return; // sudah ada navigasi yang lebih baru
     navSetActive(module, sub);
   }
 
@@ -231,7 +235,7 @@ async function render() {
   // exporting setSubroute() take this path; everything else falls through
   // to the normal mount/unmount below exactly as before. `sub` is
   // guaranteed valid for this module by the `tampered` check above.
-  if (currentModule === module && currentPage && typeof currentPage.setSubroute === 'function') {
+  if (currentMounted && currentModule === module && currentPage && typeof currentPage.setSubroute === 'function') {
     currentPage.setSubroute(sub);
     return;
   }
@@ -243,35 +247,39 @@ async function render() {
   currentModule = null;
   container.innerHTML = '';
 
-  const mod = await load();
-  // FIX: mount() dulu dipanggil telanjang (gak dibungkus try/catch). Kalau
-  // mount() throw di tengah jalan (misal exception sinkron dari salah satu
-  // install*(S) di dalamnya), promise `render()` reject sebelum sempet nyampe
-  // baris `currentPage = mod`/`currentModule = module` -- router jadi gak
-  // punya pegangan buat manggil `mod.unmount()` pas user pindah halaman
-  // berikutnya (lihat `if (currentPage && ...)` di atas), padahal mount() yang
-  // gagal itu mungkin udah keburu masang listener document/window-level
-  // (querySelector/addEventListener) SEBELUM baris yang bikin dia throw.
-  // Listener itu nempel selamanya, nunjuk ke DOM container yang sebentar lagi
-  // dikosongin router buat halaman lain -- persis kelas bug di balik
-  // "S.escapeHtmlAttr is not a function" (installRealtime) yang nyusul lempar
-  // "Cannot read properties of null (reading 'contains')" di klik BERIKUTNYA
-  // di halaman lain manapun. try/catch di sini gak nyembuhin bug di dalam
-  // mount() itu sendiri, tapi nyegah satu mount() yang gagal ninggalin jejak
-  // permanen: tetep panggil unmount() (kalau modulnya punya) buat lepas
-  // listener yang keburu kepasang, baru tampilin pesan error -- bukan
-  // ninggalin currentPage/currentModule null selamanya kayak sebelumnya.
+  let mod;
+  try {
+    mod = await load();
+  } catch (err) {
+    // Chunk gagal diunduh (koneksi putus / versi baru baru saja dideploy): beri tahu, jangan layar kosong.
+    console.error(`gagal memuat modul "${module}":`, err);
+    if (mySeq === renderSeq) {
+      container.innerHTML = `<div style="max-width:520px;margin:60px auto;font-family:sans-serif;">
+      <p>Halaman "${module}" gagal diunduh. Cek koneksi internet, lalu muat ulang halaman.</p>
+    </div>`;
+    }
+    return;
+  }
+  if (mySeq !== renderSeq) return; // user sudah pindah lagi selagi chunk diunduh -> jangan mount halaman ini
+
+  // currentPage/currentModule diisi SEBELUM mount() selesai: kalau user pindah lagi selagi mount() masih
+  // berjalan, render() berikutnya bisa meng-unmount halaman ini (dulu: tertinggal terpasang tanpa pegangan).
+  currentPage = mod;
+  currentModule = module;
+  currentMounted = false;
   try {
     await mod.mount(container, sub);
-    currentPage = mod;
-    currentModule = module;
+    if (currentPage === mod) currentMounted = true;
   } catch (err) {
     console.error(`mount gagal untuk modul "${module}":`, err);
     try { mod.unmount?.(); } catch (unmountErr) { console.error('unmount (setelah mount gagal) juga gagal:', unmountErr); }
-    container.innerHTML = `<div style="max-width:520px;margin:60px auto;font-family:sans-serif;">
+    if (currentPage === mod) { currentPage = null; currentModule = null; }
+    if (mySeq === renderSeq) {
+      container.innerHTML = `<div style="max-width:520px;margin:60px auto;font-family:sans-serif;">
       <p>Halaman "${module}" gagal dimuat karena error internal.</p>
       <p>Coba muat ulang halaman. Kalau masih gagal, hubungi admin.</p>
     </div>`;
+    }
   }
 }
 
@@ -448,6 +456,7 @@ function startRouting() {
 }
 
 function stopRouting() {
+  renderSeq++; // batalkan render() yang masih menunggu (logout di tengah navigasi)
   routingEnabled = false; // render() now no-ops on any popstate/pnm:navigate until startRouting() again
   // Logout while a page was mounted: tear it down and hide nav/content so
   // nothing stale sits behind the gate when it reappears.
@@ -469,7 +478,8 @@ function stopRouting() {
 // akan langsung masuk) -- yang belum login dapat gate login tanpa download ekstra.
 function prefetchLikelyRoute() {
   try {
-    if (!localStorage.getItem('pnm_auth_session')) return;
+    // Sesi disimpan di COOKIE (shared/supabase-client.js), bukan localStorage -- dulu cek ini selalu gagal.
+    if (!document.cookie.split('; ').some((c) => c.startsWith('pnm_auth_session='))) return;
     let mod = location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0];
     if (!mod) { const last = readLastRoute(); mod = last ? last.split('/')[0] : DEFAULT_ROUTE; }
     if (RETIRED_REDIRECTS[mod]) mod = RETIRED_REDIRECTS[mod];

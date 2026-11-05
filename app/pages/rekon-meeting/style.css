@@ -137,3 +137,6 @@
   .rk-page .rk-cols { grid-template-columns: 1fr; gap: 10px; }
   .rk-page .rk-diff { text-align: left; }
 }
+
+/* Fokus keyboard terlihat di tombol/link (sebelumnya modul ini tidak punya aturan :focus-visible). */
+.rk-page :is(button, a[href], summary, [tabindex]:not([tabindex="-1"])):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

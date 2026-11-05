@@ -736,7 +736,7 @@ dictNewOk.addEventListener('click', () => {
 
   closeBtn.addEventListener('click', () => modal.classList.remove('show'));
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
-  document.addEventListener('keydown', e => {
+  S.onGlobal(document, 'keydown', e => {
     if (e.key === 'Escape' && modal.classList.contains('show')) modal.classList.remove('show');
   });
 

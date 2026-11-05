@@ -2249,7 +2249,7 @@ function renderMediaTable(){
       <td>${escapeHtml(m.judul || '—')}</td>
       <td><a class="media-link" href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${escapeHtml(m.url)}</a></td>
       <td>${m.is_primary ? '<span class="badge-primary">Utama</span>' : '—'}</td>
-      <td><button class="btn btn-danger-ghost btn-sm" data-id="${m.id}"><i class="ti ti-trash"></i></button></td>
+      <td><button class="btn btn-danger-ghost btn-sm" data-id="${m.id}" aria-label="Hapus media" title="Hapus media"><i class="ti ti-trash"></i></button></td>
     `;
     tr.querySelector('button').addEventListener('click', () => deleteMedia(m.id));
     // SECURITY FIX: bucket 'lampiran-unit' private -> URL public di kolom url

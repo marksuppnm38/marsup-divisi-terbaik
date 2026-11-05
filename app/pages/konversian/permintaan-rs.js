@@ -504,9 +504,13 @@ async function apiInsertPermintaanItems(items) {
   // diduplikasi di RPC baru.
   const sectionId = (typeof S.activeSectionTab === 'number') ? S.activeSectionTab : null;
   if (sectionId != null) {
-    for (const it of inserted) {
-      await S.rpc('move_permintaan_item_section', { p_item_id: it.id, p_section_id: sectionId });
-      it.section_id = sectionId;
+    // Dulu satu-satu berurutan (41 item = 41 panggilan beruntun). Sekarang 6 sekaligus; RPC-nya tetap yang sama.
+    const PARALEL = 6;
+    for (let i = 0; i < inserted.length; i += PARALEL) {
+      await Promise.all(inserted.slice(i, i + PARALEL).map(async (it) => {
+        await S.rpc('move_permintaan_item_section', { p_item_id: it.id, p_section_id: sectionId });
+        it.section_id = sectionId;
+      }));
     }
   }
   return inserted;

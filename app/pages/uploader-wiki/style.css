@@ -111,3 +111,6 @@
 .uw-page .uw-need > summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .uw-page .uw-need .uw-actions { margin-top: 8px; }
 .uw-page .uw-need .uw-issues { max-height: 200px; }
+
+/* Fokus keyboard terlihat di tombol/link (sebelumnya modul ini tidak punya aturan :focus-visible). */
+.uw-page :is(button, a[href], summary, [tabindex]:not([tabindex="-1"])):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
