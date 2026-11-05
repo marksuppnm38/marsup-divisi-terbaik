@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         KFA Alkes Automation - Pionir
 // @namespace    pionir-marsup
-// @version      2.0
-// @description  Automasi SKU -> cangkang + validasi KFA di kamus-alkes.kemkes.go.id (v2.0: diagnosa lengkap, cek via RPC, layout guard, panel ringkas)
+// @version      2.3
+// @description  Automasi SKU -> cangkang + validasi KFA di kamus-alkes.kemkes.go.id (v2.3: fix item kepilih salah (aktifkan item sebelum klik), Search More aman, deteksi tag nyasar; v2.2: exact match wajib + Search More, deteksi produk sudah valid; v2.1: saran zoom; v2.0: diagnosa lengkap, cek via RPC, layout guard, panel ringkas)
 // @match        https://kamus-alkes.kemkes.go.id/*
 // @grant        none
 // ==/UserScript==
@@ -21,8 +21,9 @@
   //  5. PENTING: lebar jendela (viewport) harus >= 768px. Di bawah itu Odoo 14
   //     pindah ke layout MOBILE (tab/tombol disembunyiin). Split screen? Zoom
   //     browser out (Ctrl + minus) sampai lebar >= 900px.
+  //  6. Jangan pindah tab browser selama run (timer di-throttle browser).
   // ============================================================
-  const VERSION = '2.0';
+  const VERSION = '2.3';
   const STORAGE_KEY = 'kfa_automation_queue_v1';
   const RESULTS_KEY = 'kfa_automation_results_v1';
   const AUTORESUME_PROSES_A_KEY = 'kfa_autoresume_prosesA_v1';
@@ -260,8 +261,12 @@
       if (w < CONFIG.RECOMMENDED_WIDTH) log(`ℹ️ Lebar viewport ${w}px -- masih layout desktop, tapi sempit. Kalau sering gagal, zoom out (Ctrl -) atau fullscreen.`);
       return true;
     }
-    log(`⚠️ Lebar viewport ${w}px < ${CONFIG.MIN_VIEWPORT_WIDTH}px: Odoo pindah ke layout MOBILE (tab/tombol dipindah/disembunyiin) -- ini penyebab utama script beda hasil di split screen vs fullscreen. Zoom out (Ctrl + minus) sampai lebar >= ${CONFIG.RECOMMENDED_WIDTH}px.`, 'error');
-    return confirm(`Lebar jendela ${w}px < ${CONFIG.MIN_VIEWPORT_WIDTH}px -> Odoo pakai layout MOBILE, script rawan gagal.\n\nSaran: zoom out (Ctrl + minus) atau fullscreen.\n\nTetap lanjut?`);
+    // Saran zoom Chrome (asumsi zoom sekarang 100%).
+    const steps = [25, 33, 50, 67, 75, 80, 90, 100];
+    const need = Math.floor((w / CONFIG.RECOMMENDED_WIDTH) * 100);
+    const zoom = steps.filter((s) => s <= need).pop() || 25;
+    log(`⚠️ Lebar viewport ${w}px < ${CONFIG.MIN_VIEWPORT_WIDTH}px = layout MOBILE. Kalau zoom sekarang 100%, set zoom Chrome ke ±${zoom}% (Ctrl + minus) supaya lebar >= ${CONFIG.RECOMMENDED_WIDTH}px.`, 'error');
+    return confirm(`Lebar jendela ${w}px < ${CONFIG.MIN_VIEWPORT_WIDTH}px -> Odoo pakai layout MOBILE, script rawan gagal.\n\nSaran: set zoom Chrome ke ±${zoom}% (Ctrl + minus) atau fullscreen.\n\nTetap lanjut?`);
   }
   // ============================================================
   // DOM HELPERS
@@ -424,7 +429,7 @@
     return false;
   }
   // ============================================================
-  // AUTOCOMPLETE
+  // AUTOCOMPLETE (v2.2: exact match wajib, Search More, verifikasi field wizard)
   // ============================================================
   function collectCandidateMenus() {
     return new Set(document.querySelectorAll('.ui-autocomplete, .ui-autocomplete-menu, .o-autocomplete--dropdown-menu, .dropdown-menu, [role="listbox"], [role="menu"]'));
@@ -432,6 +437,33 @@
   function isNearInput(el, inputEl, maxDist = 400) {
     const r = el.getBoundingClientRect(), ir = inputEl.getBoundingClientRect();
     return Math.min(Math.abs(r.top - ir.bottom), Math.abs(ir.top - r.bottom)) < maxDist;
+  }
+  function menuItemsOf(menu) { return Array.from(menu.querySelectorAll('li, [role="option"], .dropdown-item')); }
+  function findMenuNear(inputEl) {
+    for (const m of document.querySelectorAll('.ui-autocomplete, .ui-autocomplete-menu')) {
+      if (isVisible(m) && m.querySelectorAll('li').length && isNearInput(m, inputEl)) return m;
+    }
+    return null;
+  }
+  const SPECIAL_ITEM_RE = /^(search more|cari lebih|create|buat)/i;
+  // Hasil name_search itu ilike -> SEMUA item asli harus mengandung teks yang diketik. Kalau ada yang nggak, itu daftar basi.
+  function menuLooksFresh(items, text) {
+    const t = text.toLowerCase();
+    return items.filter((li) => { const x = norm(li.textContent); return x && !SPECIAL_ITEM_RE.test(x); })
+      .every((li) => norm(li.textContent).toLowerCase().includes(t));
+  }
+  // Tunggu daftar autocomplete untuk teks INI muncul dan stabil (nggak berubah) minimal 500ms.
+  async function waitForFreshMenu(inputEl, text, timeout) {
+    let lastSig = null, since = 0;
+    return waitUntil(`daftar autocomplete stabil "${text}"`, () => {
+      const m = findMenuNear(inputEl);
+      if (!m) { lastSig = null; return null; }
+      const items = menuItemsOf(m);
+      if (!items.length || !menuLooksFresh(items, text)) { lastSig = null; return null; }
+      const sig = items.map((li) => norm(li.textContent)).join('|');
+      if (sig !== lastSig) { lastSig = sig; since = Date.now(); return null; }
+      return Date.now() - since >= 500 ? m : null;
+    }, { timeout, interval: 150 });
   }
   // Cuma terima: item PERSIS sama, atau opsi Create "TEKS PERSIS SAMA". Selain itu null (nggak nebak).
   function findAutocompleteTarget(items, text) {
@@ -443,20 +475,95 @@
     });
     return create ? { target: create, isCreate: true } : { target: null, isCreate: false };
   }
+  function findSearchMoreItem(items) {
+    return items.find((li) => /^(search more|cari lebih)/i.test(norm(li.textContent))) || null;
+  }
+  function clearAutocompleteInput(inputEl) {
+    // Kosongin biar Odoo nggak auto-milih item pertama pas field kehilangan fokus.
+    try { if (inputEl && inputEl.isConnected) setNativeValue(inputEl, ''); } catch (e) { /* abaikan */ }
+  }
+  // AKAR MASALAH "kepilih BASIC ...": jQuery UI autocomplete (autoFocus) otomatis mengaktifkan item PERTAMA,
+  // dan klik di item memilih item yang AKTIF, bukan yang diklik. Jadi item target harus dibuat aktif dulu
+  // (hover / panah bawah) dan DIVERIFIKASI aktif sebelum diklik.
+  async function activateMenuItem(inputEl, menu, target) {
+    const isActive = () => {
+      if (!target.isConnected) return false;
+      const act = menu.querySelector('.ui-state-active, .ui-state-focus');
+      return !!act && (act === target || target.contains(act) || act.contains(target));
+    };
+    const a = target.querySelector('a, .ui-menu-item-wrapper') || target;
+    const hoverInit = { bubbles: true, cancelable: true, composed: true, view: window };
+    for (let i = 0; i < 3 && !isActive(); i++) {
+      a.dispatchEvent(new MouseEvent('mouseover', hoverInit));
+      a.dispatchEvent(new MouseEvent('mouseenter', Object.assign({}, hoverInit, { bubbles: false })));
+      a.dispatchEvent(new MouseEvent('mousemove', hoverInit));
+      await sleep(150);
+    }
+    if (isActive()) return true;
+    const key = (k, code) => {
+      const init = { key: k, code: k, keyCode: code, which: code, bubbles: true, cancelable: true };
+      inputEl.dispatchEvent(new KeyboardEvent('keydown', init));
+      inputEl.dispatchEvent(new KeyboardEvent('keyup', init));
+    };
+    const n = menuItemsOf(menu).length + 1;
+    for (let i = 0; i < n && !isActive(); i++) { key('ArrowDown', 40); await sleep(120); }
+    return isActive();
+  }
+  // Buka dialog "Search More...", pilih baris yang namanya PERSIS sama. Dialog wizard (owner) TIDAK pernah disentuh.
+  async function pickFromSearchMoreDialog(text, ownerModal) {
+    const dlg = await waitUntil('dialog Search More', () => {
+      const m = getUnexpectedModals().filter((x) => x !== ownerModal && !x.contains(ownerModal || document.body) && x.querySelector('.o_list_view') && x.querySelector('.o_searchview, .o_searchview_input'));
+      return m.length ? m[m.length - 1] : null;
+    }, { timeout: 10000 });
+    if (!dlg) return false;
+    await settleAfterAction('buka Search More');
+    const closeDlg = async () => {
+      const close = Array.from(dlg.querySelectorAll('footer button, .modal-footer button')).find((b) => /discard|cancel|close/i.test(b.textContent)) || dlg.querySelector('button.close');
+      if (close) close.click();
+      await waitUntil('dialog Search More nutup', () => !dlg.isConnected || !isVisible(dlg), { timeout: 5000 });
+    };
+    const findRow = () => Array.from(dlg.querySelectorAll('tbody tr.o_data_row')).find((tr) =>
+      Array.from(tr.querySelectorAll('td')).some((td) => norm(td.textContent) === text));
+    let row = findRow();
+    if (!row) {
+      const box = dlg.querySelector('.o_searchview_input');
+      if (box) {
+        box.focus(); setNativeValue(box, text); await sleep(300);
+        ['keydown', 'keyup'].forEach((type) => box.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true })));
+        await sleep(400);
+        await settleAfterAction('search di dialog Search More');
+        row = await waitUntil(`baris persis "${text}" di dialog`, findRow, { timeout: 8000 });
+      }
+    }
+    if (!row) {
+      const names = Array.from(dlg.querySelectorAll('tbody tr.o_data_row')).slice(0, 6).map((tr) => norm(tr.textContent).slice(0, 50)).join(' | ');
+      log(`⚠️ Di dialog Search More nggak ada baris yang PERSIS "${text}". Yang muncul: ${names || '(kosong)'}`, 'error');
+      await closeDlg();
+      return false;
+    }
+    const cell = Array.from(row.querySelectorAll('td')).find((td) => norm(td.textContent) === text) || row;
+    cell.click();
+    await waitUntil('dialog Search More nutup', () => !dlg.isConnected || !isVisible(dlg), { timeout: 8000 });
+    await settleAfterAction(`pilih "${text}" dari Search More`);
+    return true;
+  }
   async function fillAutocomplete(inputEl, text) {
     await waitForBlockUIClear({ logIfWaiting: false });
     if (!inputEl || !inputEl.isConnected) { log(`Input buat "${text}" udah lepas dari halaman (di-render ulang).`, 'error'); return false; }
+    const ownerModal = inputEl.closest('.modal');   // many2one di wizard -> wajib diverifikasi
+    const inModal = !!ownerModal;
+    const inputIdx = inModal ? Array.from(ownerModal.querySelectorAll('.o_input.ui-autocomplete-input')).indexOf(inputEl) : -1;
+    const curInput = () => (inputEl.isConnected ? inputEl : (ownerModal && ownerModal.isConnected ? ownerModal.querySelectorAll('.o_input.ui-autocomplete-input')[inputIdx] : null));
     inputEl.focus();
     const before = collectCandidateMenus();
     setNativeValue(inputEl, text);
     inputEl.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: text.slice(-1) }));
     inputEl.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: text.slice(-1) }));
-    let menu = await waitUntil(`autocomplete "${text}"`, () => {
-      for (const m of document.querySelectorAll('.ui-autocomplete, .ui-autocomplete-menu')) {
-        if (isVisible(m) && m.querySelectorAll('li').length && isNearInput(m, inputEl)) return m;
-      }
-      return null;
-    }, { timeout: CONFIG.AUTOCOMPLETE_TIMEOUT_MS });
+    let menu = await waitForFreshMenu(inputEl, text, CONFIG.AUTOCOMPLETE_TIMEOUT_MS);
+    if (!menu) {
+      menu = findMenuNear(inputEl);
+      if (menu) dbg('Daftar autocomplete belum stabil/segar -- lanjut dengan yang ada (tetap wajib PERSIS).');
+    }
     if (!menu) {
       menu = await waitUntil(`dropdown baru "${text}"`, () => {
         for (const el of collectCandidateMenus()) {
@@ -468,17 +575,46 @@
     if (!menu) {
       log(`⚠️ Autocomplete nggak muncul buat "${text}".`, 'error');
       console.log('[KFA-AUTO] input:', inputEl, 'value:', inputEl.value, 'rect:', inputEl.getBoundingClientRect());
+      if (inModal) clearAutocompleteInput(inputEl);
       return false;
     }
-    const items = Array.from(menu.querySelectorAll('li, [role="option"], .dropdown-item'));
+    const items = menuItemsOf(menu);
     const { target, isCreate } = findAutocompleteTarget(items, text);
     if (!target) {
-      log(`⚠️ Nggak ada item autocomplete yang PERSIS "${text}" -- berhenti daripada nebak. Opsi yang muncul: ${items.map((li) => norm(li.textContent)).slice(0, 8).join(' | ')}`, 'error');
-      return false;
+      // Exact match nggak ada di item yang tampil -> coba Search More (exact juga).
+      const more = findSearchMoreItem(items);
+      if (more) {
+        log(`🔎 "${text}" nggak ada di daftar singkat -- cari lewat "Search More..." (tetap wajib PERSIS).`);
+        if (!(await activateMenuItem(inputEl, menu, more))) { log('⚠️ Item "Search More..." nggak bisa diaktifkan.', 'error'); if (inModal) clearAutocompleteInput(inputEl); return false; }
+        (more.querySelector('a') || more).click();
+        const picked = await pickFromSearchMoreDialog(text, ownerModal);
+        if (!picked) { if (inModal) clearAutocompleteInput(curInput()); return false; }
+      } else {
+        log(`⚠️ Nggak ada item autocomplete yang PERSIS "${text}" -- berhenti daripada nebak. Opsi yang muncul: ${items.map((li) => norm(li.textContent)).slice(0, 8).join(' | ')}`, 'error');
+        if (inModal) clearAutocompleteInput(inputEl);
+        return false;
+      }
+    } else {
+      if (isCreate) log(`📌 "${text}" belum terdaftar -- script bikin value BARU (permanen di sistem KFA nasional).`);
+      if (!(await activateMenuItem(inputEl, menu, target))) {
+        log(`⚠️ Item "${text}" ada di daftar tapi nggak bisa diaktifin (hover/panah gagal) -- batal klik biar nggak kepilih item lain.`, 'error');
+        if (inModal) clearAutocompleteInput(inputEl); else clearAutocompleteInput(inputEl);
+        return false;
+      }
+      (target.querySelector('a') || target).click();
+      await settleAfterAction(`pilih "${text}"`);
     }
-    if (isCreate) log(`📌 "${text}" belum terdaftar -- script bikin value BARU (permanen di sistem KFA nasional).`);
-    (target.querySelector('a') || target).click();
-    await settleAfterAction(`pilih "${text}"`);
+    // Verifikasi akhir wizard: isi field HARUS persis sama dan TETAP begitu (cegah balik/auto-pilih item lain).
+    if (inModal) {
+      const okVal = await waitUntil(`field berisi persis "${text}"`, () => { const c = curInput(); return c && norm(c.value) === text; }, { timeout: 4000, interval: 150 });
+      if (okVal) await sleep(1200);
+      const c = curInput();
+      if (!okVal || !c || norm(c.value) !== text) {
+        log(`⚠️ Field kepilih "${c ? norm(c.value) : '(hilang)'}" padahal yang dimau PERSIS "${text}" -- ditolak, field dikosongin.`, 'error');
+        if (c) clearAutocompleteInput(c);
+        return false;
+      }
+    }
     return true;
   }
   // ============================================================
@@ -762,6 +898,18 @@
     fail(`Input tag "Tipe (Type)" nggak muncul setelah ${attempts}x klik cell dalam ${Math.round(CONFIG.AUTOCOMPLETE_TIMEOUT_MS / 1000)}d.`);
     return null;
   }
+  async function removeStrayTypeTags(strays) {
+    const field = findTipeAttributeRowNow()?.querySelector(SEL.typeField);
+    if (!field) return false;
+    for (const s of strays) {
+      const badge = Array.from(field.querySelectorAll('.o_tag')).find((b) => norm(b.querySelector('.o_tag_badge_text')?.textContent) === s);
+      const del = badge && badge.querySelector('.o_delete');
+      if (del) { del.click(); await sleep(350); }
+    }
+    await sleep(400);
+    const now = getExistingTypeTagsText(findTipeAttributeRowNow());
+    return strays.every((s) => !now.includes(s));
+  }
   async function runProsesA(kodeProduk) {
     log(`Proses A: masukin "${kodeProduk}" ke cangkang...`);
     setStatus('Proses A: cek via server', kodeProduk);
@@ -798,6 +946,7 @@
     const input = await withRetry(() => activateTypeInput(), { retries: CONFIG.PROSES_A_RETRY_COUNT, label: 'aktifin input tag Tipe (Type)' });
     if (!input) return fail('Input tag "Tipe (Type)" nggak bisa dibuka lewat script. Fallback: klik manual cell Values-nya sampai kursor kedip, lalu Alt+Enter.');
     setStatus(`Proses A: isi tag "${kodeProduk}"`, kodeProduk);
+    const tagsBeforeSet = new Set(getExistingTypeTagsText(findTipeAttributeRowNow()));
     const ok = await withRetry(async () => {
       const cur = findTipeAttributeRowNow()?.querySelector(SEL.typeInput) || input;
       return fillAutocomplete(cur, kodeProduk);
@@ -809,6 +958,17 @@
       log(`⚠️ Dialog tak terduga abis milih "${kodeProduk}" -- dianggap DUPLIKAT. Isi: "${t}"`, 'error');
       dismissUnexpectedModal();
       return 'DUPLICATE';
+    }
+    // v2.3: deteksi tag NYASAR (item lain yang ikut kepilih) dan coba buang sebelum lanjut.
+    {
+      const nowTags = getExistingTypeTagsText(findTipeAttributeRowNow());
+      const strays = nowTags.filter((t) => t !== kodeProduk && !tagsBeforeSet.has(t));
+      if (strays.length) {
+        log(`⚠️ Ada tag NYASAR ikut ketambah di widget (bukan "${kodeProduk}"): ${strays.join(' | ')} -- coba dibuang...`, 'error');
+        const removed = await removeStrayTypeTags(strays);
+        if (!removed) return fail(`Tag nyasar (${strays.join(' | ')}) nggak bisa dibuang otomatis. JANGAN Save -- klik Discard lalu ulangi.`);
+        log('🧹 Tag nyasar sudah dibuang.');
+      }
     }
     const badge = await waitUntil(`badge "${kodeProduk}" muncul di widget`, () => getExistingTypeTagsText(findTipeAttributeRowNow()).includes(kodeProduk), { timeout: 6000 });
     if (!badge) return fail(`Autocomplete sudah dipilih tapi badge "${kodeProduk}" nggak muncul di widget Tipe (Type) -- jangan Save dulu, cek manual.`);
@@ -915,12 +1075,33 @@
     setNativeValue(nieInput, nie);
     if (tkdn !== undefined && tkdn !== '') setNativeValue(tkdnInput, String(tkdn));
     await sleep(300);
-    if (!clickByText('span', 'Get NIE REGALKES', { visibleOnly: true })) return fail('Tombol "Get NIE REGALKES" nggak ketemu.');
-    log('⏳ Nunggu data Regalkes ke-fetch...');
-    await settleAfterAction('klik Get NIE REGALKES');
-    setStatus('Proses B: nunggu tombol Validate', kodeProduk);
-    if (!(await waitUntil('tombol Validate kelihatan', hasVisibleValidateButton, { timeout: CONFIG.VALIDATE_VISIBLE_TIMEOUT_MS, interval: 300 }))) {
-      return fail('Tombol Validate nggak pernah kelihatan setelah Get NIE REGALKES -- fetch Regalkes gagal / NIE nggak valid.');
+    // v2.2: Get NIE REGALKES maks 2x, tiap percobaan nunggu 45d; deteksi produk yang sudah valid.
+    const statusbarNow = () => {
+      const a = document.querySelector('.o_statusbar_status .o_arrow_button.btn-primary');
+      return a ? norm(a.textContent) : null;
+    };
+    const kfaPaNow = () => {
+      const t = document.querySelector('span[name="kfa_pa_code"]')?.textContent.trim();
+      return isValidKfaCode(t) ? t : null;
+    };
+    let outcome = null;
+    for (let attempt = 1; attempt <= 2 && !outcome; attempt++) {
+      if (!clickByText('span', 'Get NIE REGALKES', { visibleOnly: true })) return fail('Tombol "Get NIE REGALKES" nggak ketemu.');
+      log(`⏳ Nunggu data Regalkes ke-fetch (percobaan ${attempt}/2)...`);
+      await settleAfterAction('klik Get NIE REGALKES');
+      setStatus(`Proses B: nunggu Validate (percobaan ${attempt}/2)`, kodeProduk);
+      outcome = await waitUntil('tombol Validate / produk sudah valid', () => {
+        if (hasVisibleValidateButton()) return 'VALIDATE';
+        if (kfaPaNow()) return 'ALREADY';
+        return null;
+      }, { timeout: 45000, interval: 400, logEvery: 10000 });
+    }
+    if (!outcome) {
+      return fail(`Tombol Validate nggak muncul & Kode KFA (PA) kosong setelah 2x Get NIE REGALKES. Status record: "${statusbarNow()}". Cek manual NIE "${nie}" -- Regalkes gagal / NIE nggak valid.`);
+    }
+    if (outcome === 'ALREADY') {
+      log(`ℹ️ Produk "${kodeProduk}" ternyata SUDAH ter-validate (Kode KFA PA sudah ada) -- skip Validate, ambil kodenya.`);
+      return finishProsesB(kodeProduk, true);
     }
     if (!autoFlags.autovalidate) {
       log('⏸️ Berhenti sebelum Validate -- klik Validate manual (script nungguin & lanjut otomatis), atau centang "Validate".');
