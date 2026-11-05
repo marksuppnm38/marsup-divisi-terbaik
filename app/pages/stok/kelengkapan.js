@@ -32,12 +32,13 @@ const CSS = `
 #kelengkapan-card .kel-stat{display:block;width:100%;text-align:left;background:transparent;font-family:inherit;border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;cursor:pointer;transition:border-color .12s,background .12s}
 #kelengkapan-card .kel-stat:hover{border-color:var(--accent)}
 #kelengkapan-card .kel-stat:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-#kelengkapan-card .kel-stat.active{border-color:var(--accent);background:var(--accent-soft,rgba(80,120,255,.08))}
-#kelengkapan-card .kel-stat .n{font-family:var(--font-mono,monospace);font-size:20px;font-weight:600;color:var(--text);line-height:1.2}
+#kelengkapan-card .kel-stat.active{border-color:var(--accent);background:var(--accent-soft)}
+#kelengkapan-card .kel-stat .n{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;color:var(--text);line-height:1.2}
 #kelengkapan-card .kel-stat .l{font-size:11px;color:var(--text-muted);margin-top:2px}
-#kelengkapan-card .kel-stat.warn .n{color:var(--warn-text,#b45309)}
-#kelengkapan-card .kel-banner{border:1px solid var(--warn,#d97706);background:var(--warn-soft,#fffbeb);color:var(--warn-text,#b45309);border-radius:var(--radius-sm);padding:9px 12px;font-size:12px;margin-bottom:12px;line-height:1.5}
-#kelengkapan-card .kel-banner code{font-family:var(--font-mono,monospace);font-size:11.5px}
+#kelengkapan-card .kel-stat.warn .n{color:var(--text)}
+#kelengkapan-card .kel-stat.warn .n::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warning-dot);margin-right:6px;vertical-align:middle}
+#kelengkapan-card .kel-banner{border:1px solid var(--warn);background:var(--warn-soft);color:var(--warn-text);border-radius:var(--radius-sm);padding:9px 12px;font-size:12px;margin-bottom:12px;line-height:1.5}
+#kelengkapan-card .kel-banner code{font-family:var(--font-mono);font-size:11.5px}
 #kelengkapan-card .kel-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap}
 #kelengkapan-card .kel-tab{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--text-muted);cursor:pointer;margin-bottom:-1px}
 #kelengkapan-card .kel-tab:hover{color:var(--text)}
@@ -51,14 +52,14 @@ const CSS = `
 #kelengkapan-card .kel-table th{position:sticky;top:0;background:var(--surface-2);text-align:left;padding:7px 11px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border);white-space:nowrap}
 #kelengkapan-card .kel-table td{padding:7px 11px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top}
 #kelengkapan-card .kel-table tr:last-child td{border-bottom:0}
-#kelengkapan-card .kel-mono{font-family:var(--font-mono,monospace);white-space:nowrap}
-#kelengkapan-card .kel-num{text-align:right;white-space:nowrap}
-#kelengkapan-card .kel-bar{display:inline-block;width:56px;height:5px;border-radius:3px;background:var(--surface-3,#eee);vertical-align:middle;margin-left:8px;overflow:hidden}
-#kelengkapan-card .kel-bar i{display:block;height:100%;background:var(--warning-dot,#d97706)}
+#kelengkapan-card .kel-mono{font-family:var(--font-mono);white-space:nowrap}
+#kelengkapan-card .kel-num,#kelengkapan-card .kel-table th.kel-num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+#kelengkapan-card .kel-bar{display:inline-block;width:56px;height:5px;border-radius:3px;background:var(--surface-3);vertical-align:middle;margin-left:8px;overflow:hidden}
+#kelengkapan-card .kel-bar i{display:block;height:100%;background:var(--warning-dot)}
 #kelengkapan-card .kel-tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--border);color:var(--text-secondary)}
-#kelengkapan-card .kel-tag.skip{border-color:var(--warn,#d97706);color:var(--warn-text,#b45309)}
+#kelengkapan-card .kel-tag.skip{border-color:var(--warn);color:var(--warn-text)}
 #kelengkapan-card .kel-tag.mirip{border-color:var(--accent);color:var(--accent-text)}
-#kelengkapan-card .kel-tag.ok{border-color:var(--success-dot,#16a34a);color:var(--success-text,#15803d)}
+#kelengkapan-card .kel-tag.ok{border-color:var(--success-dot);color:var(--success-text)}
 #kelengkapan-card .kel-muted{color:var(--text-muted)}
 #kelengkapan-card .kel-link{background:none;border:0;padding:0;margin:0;font:inherit;color:var(--accent-text);cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
 #kelengkapan-card .kel-link:hover{text-decoration-style:solid}
@@ -70,21 +71,20 @@ const CSS = `
 
 const SHELL = `
 <div class="card-head">
-  <div class="icon-box green"><i class="ti ti-checklist"></i></div>
   <div class="card-head-text">
-    <h2>Kelengkapan Stok Set</h2>
+    <h2 id="kel-title">Kelengkapan stok set</h2>
     <p>Komponen set yang belum punya data stok, dan set yang tinggal kurang sedikit lagi.</p>
   </div>
   <div class="card-head-action">
-    <button class="mini-btn" data-kel="refresh" title="Muat ulang"><i class="ti ti-refresh"></i>Refresh</button>
+    <button class="mini-btn" type="button" data-kel="refresh" title="Muat ulang"><i class="ti ti-refresh" aria-hidden="true"></i>Muat ulang</button>
   </div>
 </div>
 <div class="kel-stats" data-kel-region="stats"></div>
-<div class="kel-banner" data-kel-region="banner" style="display:none"></div>
+<div class="kel-banner" data-kel-region="banner" role="status" hidden></div>
 <div class="kel-tabs" data-kel-region="tabs"></div>
 <div class="kel-toolbar">
-  <input type="text" data-kel="q" placeholder="Cari kode / nama…" autocomplete="off"/>
-  <select data-kel="filter"></select>
+  <input type="text" data-kel="q" placeholder="Cari kode / nama…" aria-label="Cari kode atau nama" autocomplete="off"/>
+  <select data-kel="filter" aria-label="Filter daftar"></select>
   <div class="kel-btns" data-kel-region="btns"></div>
 </div>
 <div class="kel-wrap"><table class="kel-table"><thead data-kel-region="thead"></thead><tbody data-kel-region="tbody"></tbody></table></div>
@@ -198,9 +198,9 @@ function buildSkipIndex(log) {
 function alasanFor(k, skip) {
   const kode = k.kode_asli;
   if (!kode) return { type: 'kosong', text: 'kode_asli kosong di katalog' };
-  if (skip.exact.has(kode)) return { type: 'skip', text: 'Ter-skip saat upload (belum ada di master_produk)' };
+  if (skip.exact.has(kode)) return { type: 'skip', text: 'Dilewati saat upload (belum ada di master_produk)' };
   const m = skip.byNorm.get(norm(kode));
-  if (m) return { type: 'mirip', text: 'Mirip kode ter-skip: ' + m };
+  if (m) return { type: 'mirip', text: 'Mirip kode yang dilewati: ' + m };
   return { type: 'absen', text: 'Tidak ada di file stok' };
 }
 
@@ -336,21 +336,21 @@ function renderBanner() {
   if (S.error) {
     const missing = S.error.code === 'PGRST205' || S.error.code === '42P01' || S.error.code === '404';
     html = missing
-      ? 'View belum dibuat di database. Jalankan <code>stok_kelengkapan_views.sql</code> di Supabase SQL Editor, lalu klik Refresh.'
-      : 'Gagal memuat data: ' + esc(S.error.message || S.error);
+      ? 'View belum dibuat di database. Jalankan <code>stok_kelengkapan_views.sql</code> di Supabase SQL Editor, lalu klik Muat ulang.'
+      : 'Gagal memuat data: ' + esc(S.error.message || S.error) + '. Klik Muat ulang untuk mencoba lagi.';
   } else if (S.warn) {
     html = S.warn;
   }
   el.innerHTML = html;
-  el.style.display = html ? 'block' : 'none';
+  el.hidden = !html;
 }
 
 function renderTabs() {
   const nKomp = S.komponen ? fmtN(S.komponen.length) : '…';
   const nSet = S.counts ? fmtN(S.counts.total) : '…';
   region('tabs').innerHTML =
-    `<button class="kel-tab ${S.tab === 'komponen' ? 'active' : ''}" data-kel="tab" data-tab="komponen">Komponen bolong (${nKomp})</button>` +
-    `<button class="kel-tab ${S.tab === 'set' ? 'active' : ''}" data-kel="tab" data-tab="set">Daftar set (${nSet})</button>`;
+    `<button type="button" class="kel-tab ${S.tab === 'komponen' ? 'active' : ''}" data-kel="tab" data-tab="komponen" aria-pressed="${S.tab === 'komponen'}">Komponen bolong (${nKomp})</button>` +
+    `<button type="button" class="kel-tab ${S.tab === 'set' ? 'active' : ''}" data-kel="tab" data-tab="set" aria-pressed="${S.tab === 'set'}">Daftar set (${nSet})</button>`;
 }
 
 function syncToolbar() {
@@ -358,16 +358,16 @@ function syncToolbar() {
   const qIn = S.host.querySelector('[data-kel="q"]');
   if (qIn.value !== S.q) qIn.value = S.q; // sinkron kalau q di-set dari klik kartu/tautan
   const opts = S.tab === 'komponen'
-    ? [['all', 'Semua alasan'], ['absen', 'Tidak ada di file stok'], ['skip', 'Ter-skip saat upload'], ['mirip', 'Mirip kode ter-skip'], ['kosong', 'kode_asli kosong']]
+    ? [['all', 'Semua alasan'], ['absen', 'Tidak ada di file stok'], ['skip', 'Dilewati saat upload'], ['mirip', 'Mirip kode yang dilewati'], ['kosong', 'kode_asli kosong']]
     : [['all', 'Semua status'], ['READY', 'Siap rakit'], ['INDENT', 'Indent'], ['TL', 'Tidak lengkap · semua'],
        ['TL1', 'Tidak lengkap · kurang 1 komponen'], ['TL2', 'Tidak lengkap · maks. 2 bolong'], ['TL3', 'Tidak lengkap · maks. 3 bolong']];
   const cur = S.tab === 'komponen' ? S.fKomp : S.fSet;
   sel.innerHTML = opts.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('');
   region('btns').innerHTML =
-    `<button class="mini-btn" data-kel="copy" title="Salin sebagai tabel — tinggal Ctrl+V di Google Sheets / Excel"><i class="ti ti-copy"></i>Salin ke Sheets</button>` +
-    `<button class="mini-btn" data-kel="xlsx"><i class="ti ti-file-spreadsheet"></i>.xlsx</button>` +
-    `<button class="mini-btn" data-kel="csv"><i class="ti ti-download"></i>CSV</button>` +
-    (S.tab === 'komponen' ? `<button class="mini-btn" data-kel="codes" title="Satu kode per baris, buat dikirim ke Logistik"><i class="ti ti-list"></i>Salin kode saja</button>` : '');
+    `<button type="button" class="mini-btn" data-kel="copy" title="Salin sebagai tabel — tinggal Ctrl+V di Google Sheets / Excel"><i class="ti ti-copy" aria-hidden="true"></i>Salin ke Sheets</button>` +
+    `<button type="button" class="mini-btn" data-kel="xlsx"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i>.xlsx</button>` +
+    `<button type="button" class="mini-btn" data-kel="csv"><i class="ti ti-download" aria-hidden="true"></i>CSV</button>` +
+    (S.tab === 'komponen' ? `<button type="button" class="mini-btn" data-kel="codes" title="Satu kode per baris, buat dikirim ke Logistik"><i class="ti ti-list" aria-hidden="true"></i>Salin kode saja</button>` : '');
 }
 
 function renderList() {
@@ -376,8 +376,8 @@ function renderList() {
   const isKomp = S.tab === 'komponen';
   const busy = S.loading || (!isKomp && (S.setsLoading || S.sets === null));
   thead.innerHTML = isKomp
-    ? '<tr><th>Kode Asli</th><th>Nama Komponen</th><th class="kel-num">Set terblokir</th><th>Alasan</th></tr>'
-    : '<tr><th>Kode Set</th><th>Nama Set</th><th>Status</th><th class="kel-num">Terdata</th><th>Detail</th></tr>';
+    ? '<tr><th scope="col">Kode asli</th><th scope="col">Nama komponen</th><th scope="col" class="kel-num">Set terblokir</th><th scope="col">Alasan</th></tr>'
+    : '<tr><th scope="col">Kode set</th><th scope="col">Nama set</th><th scope="col">Status</th><th scope="col" class="kel-num">Terdata</th><th scope="col">Detail</th></tr>';
   const cols = isKomp ? 4 : 5;
   if (S.error && !S.komponen) { tbody.innerHTML = `<tr><td colspan="${cols}"><div class="kel-empty">Data belum bisa ditampilkan.</div></td></tr>`; foot.innerHTML = ''; return; }
   if (busy) { tbody.innerHTML = `<tr><td colspan="${cols}"><div class="kel-empty">Memuat…</div></td></tr>`; foot.innerHTML = ''; return; }
@@ -385,7 +385,7 @@ function renderList() {
   const rows = filtered();
   const shown = rows.slice(0, S.limit);
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="${cols}"><div class="kel-empty">${S.q ? 'Tidak ada yang cocok dengan pencarian.' : 'Tidak ada data untuk filter ini 🎉'}</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${cols}"><div class="kel-empty">${S.q ? 'Tidak ada yang cocok dengan pencarian.' : 'Tidak ada data untuk filter ini.'}</div></td></tr>`;
   } else if (isKomp) {
     const max = (S.komponen[0] && S.komponen[0].set_terblokir) || 1;
     tbody.innerHTML = shown.map(k => {
@@ -429,10 +429,10 @@ function renderList() {
   let note = '';
   if (isKomp && S.logMeta) {
     note = `Alasan dibaca dari upload terakhir: ${esc(S.logMeta.file || '-')} (${esc(fmtDate(S.logMeta.at))})`
-      + (S.skip.partial ? ' — daftar kode ter-skip di log terpotong, sebagian komponen mungkin salah terbaca "Tidak ada di file stok".' : '.');
+      + (S.skip.partial ? ' — daftar kode yang dilewati di log terpotong, sebagian komponen mungkin salah terbaca "Tidak ada di file stok".' : '.');
   }
   foot.innerHTML = `<span>Menampilkan ${fmtN(shown.length)} dari ${fmtN(rows.length)}${note ? ' · ' + note : ''}</span>`
-    + (rows.length > shown.length ? `<button class="mini-btn" data-kel="more">Tampilkan ${fmtN(Math.min(PAGE_STEP, rows.length - shown.length))} lagi</button>` : '');
+    + (rows.length > shown.length ? `<button type="button" class="mini-btn" data-kel="more">Tampilkan ${fmtN(Math.min(PAGE_STEP, rows.length - shown.length))} lagi</button>` : '');
 }
 
 // ───────── export ─────────

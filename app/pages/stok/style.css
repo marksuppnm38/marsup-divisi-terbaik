@@ -1,70 +1,104 @@
 /* app/pages/stok/style.css
-   the design spec steps 2-6 retrofit for Stock Inventory (steps 1/7 -- topbar +
-   route wiring -- already done, same session as dashboard's step 1; this
-   closes the same deferred gap dashboard's style.css closed there).
+   Page-scoped OVERRIDE untuk kelas stok-only di pnm-universal.css. Semua selector
+   di bawah #app-root (tidak ada bare selector), dimuat di mount() dan dilepas di
+   unmount() -- tidak bocor ke halaman lain.
 
-   Same approach/guarantees as app/pages/dashboard/style.css (read that
-   file's header first if this is your first time in this pair) -- page-
-   scoped OVERRIDE of pnm-universal.css's stok-only classes, zero bare
-   selectors, loaded/removed in mount()/unmount() alongside it.
+   Acuan: konversian/style.css (flat surface + hairline border, status = titik +
+   label bukan blok warna, mono untuk angka, fokus keyboard terlihat, reduced-motion).
 
-   Uses the design spec's EXACT token names for the status dots
-   (--success-dot/--warning-dot/--danger-dot), not pnm-universal.css's
-   existing --success/--warning/--danger -- same correction applied to
-   dashboard's style.css after that file's first pass got this wrong, see
-   that file's own CORRECTION comment for the full reasoning. Defined
-   locally under #app-root rather than touching pnm-universal.css's :root.
+   Token: tidak ada nilai warna mentah di file ini selain #fff untuk teks di atas
+   warna aksen (sama seperti .btn-accent di pnm-universal.css). Titik status dipetakan
+   ke --success/--warning/--danger milik pnm-universal.css, yang sudah punya varian
+   dark; dulu didefinisikan ulang di sini dengan hex tetap yang tidak ikut tema.
 */
 
 #app-root{
-  --success-dot: #3BA55D;
-  --warning-dot: #C99A2C;
-  --danger-dot: #E5484D;
+  --success-dot: var(--success);
+  --warning-dot: var(--warning);
+  --danger-dot:  var(--danger);
 }
 
-/* Same seam bug fixed on konversian/crud-produk/dashboard (see those pages'
-   style.css files): .pw-topbar is white (nav.css), <main> has no background
-   of its own (pnm-universal.css line ~326) and falls through to body's gray
-   var(--bg) -- topbar reads as a white slab against a greyer canvas right
-   underneath it. .card already carries its own white bordered surface
-   inside main, so this only removes the seam at the topbar/main boundary.
-   FULLBLEED PASS: stok's <main> also matches `#app:has(.dropzone) main`
-   (pnm-universal.css ~line 2002, stok's own dropzone makes it live) on top
-   of the bare `main{}` rule -- that :has() selector is HIGHER specificity
-   (id + pseudo-class + tag) than a plain `#app-root main` reset can beat,
-   so max-width/margin need !important here to actually win. Its
-   padding/display:flex/flex-direction/gap are left alone -- stok's cards
-   genuinely rely on that flex-column + gap for vertical stacking, this is
-   only about killing the 820px cap + auto-centering. */
-#app-root main{
-  max-width: none !important;
-  margin: 0 !important;
+/* Atribut [hidden] harus menang atas display:flex/grid milik class (UA stylesheet
+   kalah dari aturan author). Satu-satunya !important di file ini, dan memang
+   itulah gunanya. */
+#app-root [hidden]{ display: none !important; }
+
+/* Utilitas teks khusus pembaca layar. */
+#app-root .sr-only{
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+/* ---- Kanvas halaman ----
+   <main> juga cocok dengan `#app:has(.dropzone) main` (pnm-universal.css, specificity
+   1,1,1) yang membatasi lebar 820px. `#app #app-root main` (2,0,1) menang tanpa
+   !important. Lebar penuh dipertahankan: topbar putih + <main> putih supaya tidak ada
+   seam abu-abu di bawah topbar (sama seperti konversian/dashboard), dan tabel riwayat
+   butuh lebar. Layout flex-column + gap dari universal tetap dipakai untuk menumpuk card. */
+#app #app-root main{
+  max-width: none;
+  margin: 0;
+  padding: 20px 24px 48px;
+  gap: 16px;
   background: var(--surface);
 }
 
-/* ---- Step 2/3: icon squares -- neutral, no per-instance tint, resized to
-   the design spec's 32px/7px-radius spec (.icon-box was 42px/11px, oversized
-   relative to that spec; .metric-icon was already 32px, just needed the
-   radius + color fix). ---- */
-#app-root .icon-box,
-#app-root .metric-icon{
-  width: 32px;
-  height: 32px;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-secondary);
-  border: 0.5px solid var(--border);
+/* ---- Card: flat, hairline, tanpa bayangan ---- */
+#app-root .card{
+  padding: 16px;
+  box-shadow: none;
+}
+#app-root .card-head{
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+#app-root .card-head-text h2{
+  font-size: 14px;
+  font-weight: 600;
+}
+#app-root .card-head-text p{
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-top: 4px;
+  max-width: 72ch;
+}
+#app-root .card-head-actions{
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
-/* .dropzone-icon is a large hero/call-to-action graphic, not the module
-   icon-square component the design spec's Iconography section targets -- left
-   at its existing 52px size. Only its per-instance color tint is in
-   scope: neutral at rest, keeping the existing accent highlight ONLY on
-   the active drag state (the design spec's "one accent... for a single primary
-   button/focus" extends naturally to "the one thing you're about to drop
-   a file onto being highlighted while you're doing it" -- judgment call,
-   flagged here rather than silently decided). */
+/* ---- Tombol kecil: target sentuh minimal 32px ---- */
+#app-root .mini-btn{
+  min-height: 32px;
+}
+#app-root .mini-btn:disabled{
+  opacity: .5;
+  cursor: not-allowed;
+}
+#app-root .mini-btn.is-loading i{
+  animation: spin .7s linear infinite;
+}
+#app-root .act-dl{
+  width: 32px;
+  height: 32px;
+}
+
+/* ---- Dropzone ----
+   Ikon kecil, netral saat diam; aksen hanya saat file sedang diseret ke atasnya.
+   Input file transparan menutupi seluruh area, jadi ring fokus digambar di label
+   (outline di dalam .dropzone akan terpotong overflow:hidden). :has(:focus-visible)
+   supaya ring muncul untuk keyboard, bukan setelah klik mouse. */
+#app-root .dropzone{
+  padding: 32px 16px;
+}
 #app-root .dropzone-icon{
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 20px;
+  margin-bottom: 12px;
   background: transparent;
   color: var(--text-secondary);
   border: 0.5px solid var(--border);
@@ -74,20 +108,39 @@
   color: #fff;
   border-color: var(--accent);
 }
+#app-root .dropzone:has(input:focus-visible){
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
-/* ---- Step 4: status -- dot + label instead of colored fills/pills. ----
-   stat-pill (precheck: total/match/skip), metric (Last Sync: updated/
-   skipped), act-num (history table: updated/skipped columns) are all the
-   SAME two states (neutral count vs "match"/"ok" vs "skip"/"warn")
-   repeated across three components -- flatten all three to neutral text
-   + a leading dot, dropping the tinted background/border fills. */
+/* ---- File terpilih ---- */
+#app-root .file-row .fico{
+  background: transparent;
+  color: var(--text-secondary);
+  border: 0.5px solid var(--border);
+}
+#app-root .file-row .fdel{
+  width: 32px;
+  height: 32px;
+}
+
+/* ---- Status: titik + label, bukan pil/blok berwarna ---- */
+#app-root .stat-row{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
 #app-root .stat-pill{
-  background: transparent !important;
-  border: 0.5px solid var(--border) !important;
+  background: transparent;
+  border: 0.5px solid var(--border);
 }
 #app-root .stat-pill .num{
-  color: var(--text) !important;
+  color: var(--text);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 #app-root .stat-pill.ok .num,
 #app-root .stat-pill.warn .num{
@@ -106,19 +159,72 @@
 #app-root .stat-pill.ok .num::before{ background: var(--success-dot); }
 #app-root .stat-pill.warn .num::before{ background: var(--warning-dot); }
 
-#app-root .metric-icon.green,
-#app-root .metric-icon.amber,
-#app-root .metric.green .num,
-#app-root .metric.amber .num,
-#app-root .act-num.green,
-#app-root .act-num.amber{
-  color: var(--text) !important;
+/* Panel kode yang dilewati: kartu netral, penanda status hanya titik di judulnya. */
+#app-root .skip-panel{
+  background: var(--surface);
+  border: 0.5px solid var(--border);
 }
+#app-root .skip-head-title{
+  color: var(--text);
+}
+#app-root .skip-head-title::before{
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning-dot);
+  flex-shrink: 0;
+}
+#app-root table.skip-table td:first-child{
+  font-family: var(--font-mono);
+}
+#app-root table.skip-table td.skip-empty{
+  color: var(--text-muted);
+  font-family: var(--font-body);
+}
+#app-root table.skip-table th.num,
+#app-root table.skip-table td.num{
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Aksi upload ---- */
+/* pnm-universal.css menolkan margin-top tombol di dalam .actions-row, jadi baris ini
+   sendiri yang harus memberi jarak dari panel di atasnya. */
+#app-root .actions-row{
+  margin-top: 16px;
+}
+#app-root #stok-status-msg:not(:empty){
+  margin-top: 12px;
+}
+#app-root .btn-primary-lg .spinner{
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor;
+}
+/* "Batal" bukan aksi destruktif: hover netral, bukan merah. */
+#app-root .btn-secondary:hover{
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+}
+#app-root #stok-status-msg:empty{
+  margin-top: 0;
+}
+
+/* ---- Sinkron terakhir ---- */
+#app-root .summary-row{ gap: 16px; }
+#app-root .metric-group{ gap: 24px; }
 #app-root .metric .num{
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
 }
 #app-root .metric .num::before{
   content: '';
@@ -131,8 +237,19 @@
 #app-root .metric.green .num::before{ background: var(--success-dot); }
 #app-root .metric.amber .num::before{ background: var(--warning-dot); }
 
+/* ---- Tabel riwayat ---- */
+#app-root .table-scroll{
+  overflow-x: auto;
+}
+#app-root .activity-table th.num,
+#app-root .activity-table td.act-num{
+  text-align: right;
+}
 #app-root .act-num{
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
 }
 #app-root .act-num.green::before,
 #app-root .act-num.amber::before{
@@ -142,49 +259,75 @@
   height: 6px;
   border-radius: 50%;
   margin-right: 6px;
+  vertical-align: middle;
 }
 #app-root .act-num.green::before{ background: var(--success-dot); }
 #app-root .act-num.amber::before{ background: var(--warning-dot); }
-
-/* skip-panel: was a full warning-tinted surface (bg + border both
-   --warn). Flattened to the same neutral card treatment as everything
-   else, with the dot+label pattern carried onto its own title instead of
-   painting the whole panel -- consistent with "no saturated status
-   pills" extended to this banner-shaped instance of the same pattern. */
-#app-root .skip-panel{
-  background: var(--surface) !important;
-  border: 0.5px solid var(--border) !important;
-}
-#app-root .skip-head-title{
-  color: var(--text-secondary) !important;
-}
-#app-root .skip-head-title::before{
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--warning-dot);
-  margin-right: 2px;
-}
-#app-root .skip-head-title i{ display: none; } /* redundant with the dot now */
-
-/* ---- Step 5: spacing -- 8pt scale + no shadow ---- */
-#app-root .card{
-  padding: 16px;      /* was 22px 24px */
-  box-shadow: none;   /* the design spec: flat surfaces + hairline borders only, no shadow */
-}
-#app-root .card-head{ margin-bottom: 16px; }     /* was 18px */
-#app-root .stat-row{ gap: 12px; }                /* was 10px */
-#app-root .summary-row{ gap: 16px; }             /* was 20px */
-#app-root .metric-group{ gap: 16px; }            /* was 22px */
-#app-root .dropzone{ padding: 32px 16px; }       /* was 36px 16px */
-
-/* ---- Step 6: mono for tabular/numeric text ----
-   stat-pill/metric/act-num nums covered above (added inline with their
-   dot rules, same declaration doing double duty). Remaining gap found:
-   Recent Activity table's Waktu (date/time) column had no mono. */
 #app-root .act-when .d,
 #app-root .act-when .t{
   font-family: var(--font-mono);
+}
+#app-root .act-file{
+  max-width: 240px;
+}
+#app-root .activity-table .mlabel{
+  display: none;
+}
+#app-root .activity-table tbody td.activity-empty{
+  text-align: left;
+}
+
+/* ---- Dialog konfirmasi ---- */
+#app-root .confirm-card:focus{
+  outline: none;
+}
+
+/* ---- Fokus keyboard terlihat di semua kontrol (sama dengan konversian) ---- */
+#app-root :is(button, a, select, input:not([type="file"]), [role="button"], [tabindex="0"]):focus-visible{
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- Layar sempit ---- */
+@media (max-width: 768px){
+  #app #app-root main{
+    padding: 16px 16px 40px;
+  }
+  #app-root .card-head-actions{
+    margin-left: 0;
+  }
+}
+@media (max-width: 640px){
+  #app-root .stat-row{
+    grid-template-columns: 1fr;
+  }
+  #app-root .actions-row{
+    flex-direction: column-reverse;
+  }
+  #app-root .actions-row .btn-secondary{
+    width: 100%;
+  }
+}
+/* Di bawah 600px pnm-universal.css mengubah tabel riwayat jadi kartu per baris dan
+   menyembunyikan header; label kolom dipindah ke dalam sel supaya angkanya tetap
+   punya arti. */
+@media (max-width: 600px){
+  #app-root .activity-table td.act-num{
+    text-align: left;
+  }
+  #app-root .activity-table .mlabel{
+    display: inline;
+    color: var(--text-muted);
+    font-family: var(--font-body);
+    font-weight: 400;
+    font-size: 11.5px;
+    margin-right: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce){
+  #app-root *, #app-root *::before, #app-root *::after{
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
 }

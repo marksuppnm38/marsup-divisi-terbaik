@@ -224,10 +224,6 @@ export async function mount(container) {
       time: d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
     };
   }
-  function initials(email) {
-    if (!email) return '?';
-    return email.trim()[0].toUpperCase();
-  }
   async function fetchSharedHistory(limit) {
     const accessToken = await window.PNMAuth.getAccessToken();
     const res = await fetch(
@@ -300,7 +296,7 @@ export async function mount(container) {
     const hist = await getHistory(1);
     updateLocalNote();
     if (hist.length === 0) {
-      body.innerHTML = '<div class="summary-empty">Belum ada riwayat upload.</div>';
+      body.innerHTML = '<div class="summary-empty">Belum pernah upload stok.</div>';
       return;
     }
     const last = hist[0];
@@ -308,21 +304,18 @@ export async function mount(container) {
     body.innerHTML = `
       <div class="summary-row">
         <div class="summary-main">
-          <div class="icon-box green"><i class="ti ti-trending-up"></i></div>
           <div class="summary-main-text">
-            <div class="lbl">Last Sync</div>
+            <div class="lbl">Sinkron terakhir</div>
             <div class="val">${w.date}, ${w.time}</div>
-            <div class="who"><i class="ti ti-user-circle"></i>${last.email || '—'}</div>
+            <div class="who">${escapeHtml(last.email) || 'Pengguna tidak diketahui'}</div>
           </div>
         </div>
         <div class="metric-group">
           <div class="metric green">
-            <div class="metric-icon green"><i class="ti ti-circle-check"></i></div>
-            <div><div class="num">${last.total.toLocaleString('id-ID')}</div><div class="lbl2">Updated</div></div>
+            <div><div class="num">${last.total.toLocaleString('id-ID')}</div><div class="lbl2">Diperbarui</div></div>
           </div>
           <div class="metric amber">
-            <div class="metric-icon amber"><i class="ti ti-alert-triangle"></i></div>
-            <div><div class="num">${last.skipped.toLocaleString('id-ID')}</div><div class="lbl2">Skipped</div></div>
+            <div><div class="num">${last.skipped.toLocaleString('id-ID')}</div><div class="lbl2">Dilewati</div></div>
           </div>
         </div>
       </div>`;
@@ -331,32 +324,34 @@ export async function mount(container) {
     const tbody = document.getElementById('history-tbody');
     const emptyEl = document.getElementById('history-empty');
     const showMoreBtn = document.getElementById('show-more-btn');
+    const historyMsg = document.getElementById('history-msg');
     const hist = await getHistory(historyShowAll ? 30 : 10);
     updateLocalNote();
     if (hist.length === 0) {
       tbody.innerHTML = '';
-      emptyEl.style.display = 'block';
-      showMoreBtn.style.display = 'none';
+      emptyEl.hidden = false;
+      showMoreBtn.hidden = true;
       return;
     }
-    emptyEl.style.display = 'none';
+    emptyEl.hidden = true;
     const visible = historyShowAll ? hist : hist.slice(0, 5);
-    showMoreBtn.style.display = hist.length > 5 ? 'inline-flex' : 'none';
+    showMoreBtn.hidden = hist.length <= 5;
     showMoreBtn.innerHTML = historyShowAll
-      ? 'Ringkas <i class="ti ti-chevron-up"></i>'
-      : 'Lihat Semua <i class="ti ti-chevron-right"></i>';
+      ? 'Ringkas <i class="ti ti-chevron-up" aria-hidden="true"></i>'
+      : 'Lihat semua <i class="ti ti-chevron-right" aria-hidden="true"></i>';
     tbody.innerHTML = visible.map(h => {
       const w = fmtWhen(h.at);
+      const dlLabel = h.skipped > 0 ? 'Unduh kode yang dilewati' : 'Tidak ada kode yang dilewati';
       return `
       <tr>
         <td class="act-when"><div class="d">${w.date}</div><div class="t">${w.time}</div></td>
-        <td><div class="act-user"><div class="act-user-icon">${initials(h.email)}</div>${escapeHtml(h.email) || 'Tidak diketahui'}</div></td>
-        <td class="act-num green">${h.total.toLocaleString('id-ID')}</td>
-        <td class="act-num ${h.skipped > 0 ? 'amber' : ''}">${h.skipped.toLocaleString('id-ID')}</td>
+        <td>${escapeHtml(h.email) || 'Tidak diketahui'}</td>
+        <td class="act-num green"><span class="mlabel">Diperbarui</span>${h.total.toLocaleString('id-ID')}</td>
+        <td class="act-num ${h.skipped > 0 ? 'amber' : ''}"><span class="mlabel">Dilewati</span>${h.skipped.toLocaleString('id-ID')}</td>
         <td class="act-file" title="${escapeHtml(h.fileName || '')}">${escapeHtml(h.fileName) || '—'}</td>
         <td>
-          <button class="act-dl" data-id="${h.id || ''}" data-skipped="${h.skipped}" title="${h.skipped > 0 ? 'Download kode yang dilewati' : 'Tidak ada yang dilewati'}" ${(!h.id || h.skipped === 0) ? 'disabled' : ''}>
-            <i class="ti ti-download"></i>
+          <button class="act-dl" type="button" data-id="${h.id || ''}" data-skipped="${h.skipped}" title="${dlLabel}" aria-label="${dlLabel}" ${(!h.id || h.skipped === 0) ? 'disabled' : ''}>
+            <i class="ti ti-download" aria-hidden="true"></i>
           </button>
         </td>
       </tr>`;
@@ -366,6 +361,7 @@ export async function mount(container) {
         const id = btn.dataset.id;
         if (!id) return;
         btn.disabled = true;
+        historyMsg.innerHTML = '';
         try {
           const codes = await fetchSkippedCodesForRow(id);
           const csv = ['kode_asli', ...codes].join('\n');
@@ -376,7 +372,9 @@ export async function mount(container) {
           a.download = `stok-dilewati-log-${id}.csv`;
           a.click();
           URL.revokeObjectURL(url);
-        } catch {} finally {
+        } catch {
+          historyMsg.innerHTML = '<div class="result-banner fail">Gagal mengunduh kode yang dilewati. Coba lagi sebentar lagi.</div>';
+        } finally {
           btn.disabled = false;
         }
       });
@@ -389,13 +387,13 @@ export async function mount(container) {
   const refreshHistoryBtn = document.getElementById('refresh-history-btn');
   refreshHistoryBtn.addEventListener('click', async () => {
     refreshHistoryBtn.disabled = true;
-    refreshHistoryBtn.innerHTML = '<i class="ti ti-refresh" style="animation:spin .7s linear infinite"></i>Refresh';
+    refreshHistoryBtn.classList.add('is-loading');
     try {
       await renderLastStatus();
       await renderHistory();
     } finally {
       refreshHistoryBtn.disabled = false;
-      refreshHistoryBtn.innerHTML = '<i class="ti ti-refresh"></i>Refresh';
+      refreshHistoryBtn.classList.remove('is-loading');
     }
   });
 
@@ -436,27 +434,42 @@ export async function mount(container) {
   // kebutuhan halaman ini), jadi resolver lama ditimpa aja kalau ada
   // panggilan baru sebelum yang sebelumnya kejawab -- overlay-nya sendiri
   // cuma bisa nunjukin satu confirm dalam satu waktu juga.
+  //
+  // Aksesibilitas: fokus pindah ke dialog saat dibuka (default ke "Batal" untuk
+  // aksi destruktif, supaya Enter tidak langsung menimpa data), Tab berputar di
+  // dalam dialog, Esc = batal, dan fokus dikembalikan ke tombol pemicu saat
+  // ditutup. Klik di luar kartu juga = batal.
   const stokConfirmOverlay = document.getElementById('stokConfirmOverlay');
+  const stokConfirmCard = document.getElementById('stokConfirmCard');
   const stokConfirmTitle = document.getElementById('stokConfirmTitle');
   const stokConfirmMsg = document.getElementById('stokConfirmMsg');
   const stokConfirmCancelBtn = document.getElementById('stokConfirmCancelBtn');
   const stokConfirmOkBtn = document.getElementById('stokConfirmOkBtn');
   let stokConfirmResolve = null;
+  let stokConfirmReturnFocus = null;
 
-  function stokConfirm(message, { title = 'Konfirmasi', okLabel = 'Lanjutkan' } = {}) {
+  function stokConfirm(message, { title = 'Konfirmasi', okLabel = 'Lanjutkan', danger = false } = {}) {
     stokConfirmTitle.textContent = title;
     // pesan boleh multi-line (\n\n dari skipNote) -- konversi ke <br> karena
     // <p> gak nge-render newline mentah; escapeHtml dulu biar aman dari XSS
     // kalau suatu saat pesannya include teks dari file upload (kode produk dst).
     stokConfirmMsg.innerHTML = escapeHtml(message).replace(/\n/g, '<br>');
     stokConfirmOkBtn.textContent = okLabel;
+    stokConfirmCard.classList.toggle('danger', danger);
+    stokConfirmOkBtn.className = 'btn ' + (danger ? 'btn-danger-ghost' : 'btn-accent');
+    stokConfirmReturnFocus = document.activeElement;
     stokConfirmOverlay.classList.add('open');
+    (danger ? stokConfirmCancelBtn : stokConfirmOkBtn).focus();
     return new Promise((resolve) => {
       stokConfirmResolve = resolve;
     });
   }
   function closeStokConfirm(result) {
     stokConfirmOverlay.classList.remove('open');
+    if (stokConfirmReturnFocus && typeof stokConfirmReturnFocus.focus === 'function' && stokConfirmReturnFocus.isConnected) {
+      stokConfirmReturnFocus.focus();
+    }
+    stokConfirmReturnFocus = null;
     if (stokConfirmResolve) { stokConfirmResolve(result); stokConfirmResolve = null; }
   }
   stokConfirmCancelBtn.addEventListener('click', () => closeStokConfirm(false));
@@ -465,22 +478,36 @@ export async function mount(container) {
   stokConfirmOverlay.addEventListener('click', (e) => {
     if (e.target === stokConfirmOverlay) closeStokConfirm(false);
   });
+  stokConfirmOverlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); closeStokConfirm(false); return; }
+    if (e.key !== 'Tab') return;
+    const focusables = [stokConfirmCancelBtn, stokConfirmOkBtn];
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === stokConfirmCard)) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    }
+  });
 
   function fmtSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / 1024 / 1024).toFixed(1) + ' MB';
   }
+  const UPLOAD_BTN_HTML = '<i class="ti ti-upload" aria-hidden="true"></i>Upload stok';
   function resetUploadUI() {
     stokParsedRows = null; stokMatchedRows = null; stokSkippedRows = null; currentFileName = null;
-    fileChip.style.display = 'none';
-    checkingRow.style.display = 'none';
-    progressTrack.style.display = 'none';
-    precheckPanel.style.display = 'none';
-    skipPanel.style.display = 'none';
-    actionsRow.style.display = 'none';
+    fileChip.hidden = true;
+    checkingRow.hidden = true;
+    progressTrack.hidden = true;
+    precheckPanel.hidden = true;
+    skipPanel.hidden = true;
+    actionsRow.hidden = true;
+    stokCancelBtn.hidden = false;
     stokUploadBtn.disabled = true;
-    stokUploadBtn.innerHTML = '<i class="ti ti-upload"></i>Upload Stock';
+    stokUploadBtn.innerHTML = UPLOAD_BTN_HTML;
     stokStatusMsg.innerHTML = '';
     stokFile.value = '';
   }
@@ -507,17 +534,17 @@ export async function mount(container) {
   async function handleFile(file) {
     resetUploadUI();
     if (file.size > MAX_XLSX_SIZE_BYTES) {
-      fileChip.style.display = 'flex';
+      fileChip.hidden = false;
       fileChipName.textContent = file.name;
       fileChipMeta.textContent = fmtSize(file.size);
-      stokStatusMsg.innerHTML = `<div class="result-banner fail">File terlalu besar (${fmtSize(file.size)}). Maksimal ${fmtSize(MAX_XLSX_SIZE_BYTES)}.</div>`;
+      stokStatusMsg.innerHTML = `<div class="result-banner fail">File terlalu besar (${fmtSize(file.size)}), batasnya ${fmtSize(MAX_XLSX_SIZE_BYTES)}. Pilih file yang lebih kecil.</div>`;
       return;
     }
     currentFileName = file.name;
-    fileChip.style.display = 'flex';
+    fileChip.hidden = false;
     fileChipName.textContent = file.name;
     fileChipMeta.textContent = fmtSize(file.size);
-    checkingRow.style.display = 'flex';
+    checkingRow.hidden = false;
     checkingText.textContent = 'Membaca file…';
     try {
       // SheetJS: baca sheet pertama sebagai array-of-arrays (header: 1) --
@@ -537,7 +564,7 @@ export async function mount(container) {
         if (v === 'QTY') colQty = colIndex;
       });
       if (colKode === null || colQty === null) {
-        throw new Error('Kolom KODEASLI dan/atau QTY tidak ditemukan di baris pertama file.');
+        throw new Error('Kolom KODEASLI dan/atau QTY tidak ditemukan di baris pertama file. Periksa nama kolom di header.');
       }
       const seen = new Map();
       let dupCount = 0;
@@ -555,12 +582,12 @@ export async function mount(container) {
       stokParsedRows = rows;
       fileChipMeta.textContent = `${fmtSize(file.size)} • ${rows.length.toLocaleString('id-ID')} baris`;
       if (dupCount > 0) {
-        stokStatusMsg.innerHTML = `<div class="result-banner err">Catatan: ${dupCount} kode duplikat ditemukan di file, baris terakhir untuk tiap kode yang dipakai.</div>`;
+        stokStatusMsg.innerHTML = `<div class="result-banner err">${dupCount} kode duplikat di file. Untuk tiap kode, baris terakhir yang dipakai.</div>`;
       }
       await runPrecheck(rows);
     } catch (err) {
-      checkingRow.style.display = 'none';
-      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal baca file: ${escapeHtml(err.message)}</div>`;
+      checkingRow.hidden = true;
+      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal membaca file: ${escapeHtml(err.message)}</div>`;
     }
   }
   async function fetchValidKodeSet(kodeList) {
@@ -575,15 +602,18 @@ export async function mount(container) {
       const url = `${SUPABASE_URL}/rest/v1/master_produk?select=kode_asli&kode_asli=in.(${inList})`;
       const res = await fetch(url, { headers: { 'apikey': ANON_KEY, 'Authorization': 'Bearer ' + accessToken } });
       if (res.ok) { (await res.json()).forEach(d => valid.add(d.kode_asli)); }
-      progressFill.style.width = Math.round(((i + 1) / chunks.length) * 100) + '%';
+      const pct = Math.round(((i + 1) / chunks.length) * 100);
+      progressFill.style.width = pct + '%';
+      progressTrack.setAttribute('aria-valuenow', String(pct));
     }
     return valid;
   }
   async function runPrecheck(rows) {
-    checkingRow.style.display = 'flex';
+    checkingRow.hidden = false;
     checkingText.textContent = `Memeriksa ${rows.length.toLocaleString('id-ID')} kode ke database produk…`;
-    progressTrack.style.display = 'block';
+    progressTrack.hidden = false;
     progressFill.style.width = '0%';
+    progressTrack.setAttribute('aria-valuenow', '0');
     try {
       const validSet = await fetchValidKodeSet(rows.map(r => r.kode_asli));
       const matched = rows.filter(r => validSet.has(r.kode_asli));
@@ -593,35 +623,37 @@ export async function mount(container) {
       statTotal.textContent = rows.length.toLocaleString('id-ID');
       statMatch.textContent = matched.length.toLocaleString('id-ID');
       statSkip.textContent = skipped.length.toLocaleString('id-ID');
-      precheckPanel.style.display = 'block';
-      skipPanel.style.display = skipped.length > 0 ? 'block' : 'none';
+      precheckPanel.hidden = false;
+      skipPanel.hidden = skipped.length === 0;
       if (skipped.length > 0) renderSkipTable(skipped);
-      actionsRow.style.display = 'flex';
+      actionsRow.hidden = false;
       stokUploadBtn.disabled = false;
     } catch (err) {
-      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal memeriksa database: ${escapeHtml(err.message)} — kamu tetap bisa upload, tapi laporan "dilewati" baru muncul setelah proses selesai.</div>`;
-      actionsRow.style.display = 'flex';
+      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal memeriksa database: ${escapeHtml(err.message)}. Kamu tetap bisa upload, tapi daftar kode yang dilewati baru muncul setelah upload selesai.</div>`;
+      actionsRow.hidden = false;
       stokUploadBtn.disabled = false;
     } finally {
-      checkingRow.style.display = 'none';
-      progressTrack.style.display = 'none';
+      checkingRow.hidden = true;
+      progressTrack.hidden = true;
     }
   }
   function renderSkipTable(skipped, filter) {
     const q = (filter || '').trim().toLowerCase();
     const rowsToShow = q ? skipped.filter(r => r.kode_asli.toLowerCase().includes(q)) : skipped;
     skipTbody.innerHTML = rowsToShow.slice(0, 500).map(r =>
-      `<tr><td>${escapeHtml(r.kode_asli)}</td><td>${escapeHtml(r.qty)}</td></tr>`
-    ).join('') || '<tr><td colspan="2" style="color:var(--text-muted)">Tidak ada yang cocok.</td></tr>';
+      `<tr><td>${escapeHtml(r.kode_asli)}</td><td class="num">${escapeHtml(r.qty)}</td></tr>`
+    ).join('') || '<tr><td colspan="2" class="skip-empty">Tidak ada yang cocok.</td></tr>';
   }
   skipSearch.addEventListener('input', () => { if (stokSkippedRows) renderSkipTable(stokSkippedRows, skipSearch.value); });
   copySkipBtn.addEventListener('click', async () => {
     if (!stokSkippedRows || stokSkippedRows.length === 0) return;
     try {
       await navigator.clipboard.writeText(stokSkippedRows.map(r => r.kode_asli).join('\n'));
-      copySkipBtn.innerHTML = '<i class="ti ti-check"></i>Tersalin';
-      setTimeout(() => { copySkipBtn.innerHTML = '<i class="ti ti-copy"></i>Salin'; }, 1500);
-    } catch {}
+      copySkipBtn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>Tersalin';
+    } catch {
+      copySkipBtn.innerHTML = '<i class="ti ti-alert-circle" aria-hidden="true"></i>Gagal menyalin';
+    }
+    setTimeout(() => { copySkipBtn.innerHTML = '<i class="ti ti-copy" aria-hidden="true"></i>Salin'; }, 1500);
   });
   exportSkipBtn.addEventListener('click', () => {
     if (!stokSkippedRows || stokSkippedRows.length === 0) return;
@@ -643,17 +675,17 @@ export async function mount(container) {
     const accessToken = await window.PNMAuth.getAccessToken();
     if (!accessToken) { window.PNMAuth.logout(); return; }
     const skipNote = stokSkippedRows && stokSkippedRows.length > 0
-      ? `${stokSkippedRows.length} kode akan DILEWATI karena belum terdaftar sebagai produk.\n\n`
+      ? `${stokSkippedRows.length.toLocaleString('id-ID')} kode akan dilewati karena belum terdaftar sebagai produk.\n\n`
       : '';
     const ok = await stokConfirm(
-      `${skipNote}Yakin timpa seluruh data stok dengan ${stokParsedRows.length} baris dari file ini?`,
-      { title: 'Timpa data stok?', okLabel: 'Ya, Timpa' }
+      `${skipNote}Seluruh data stok yang ada akan diganti dengan ${stokParsedRows.length.toLocaleString('id-ID')} baris dari file ini. Tindakan ini tidak bisa dibatalkan.`,
+      { title: 'Timpa data stok?', okLabel: 'Timpa data stok', danger: true }
     );
     if (!ok) return;
     stokUploadBtn.disabled = true;
-    actionsRow.style.display = 'flex';
-    stokCancelBtn.style.display = 'none';
-    stokUploadBtn.innerHTML = '<div class="spinner" style="border-top-color:#fff;border-color:rgba(255,255,255,.35)"></div>&nbsp;Mengupload…';
+    actionsRow.hidden = false;
+    stokCancelBtn.hidden = true;
+    stokUploadBtn.innerHTML = '<div class="spinner" aria-hidden="true"></div>Mengupload…';
     stokStatusMsg.innerHTML = '';
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/replace_stok_produk`, {
@@ -669,13 +701,16 @@ export async function mount(container) {
       const result = await res.json();
       const serverSkippedCount = result.skipped_count || 0;
       const serverSkippedCodes = result.skipped_codes || [];
-      let msg = `Berhasil! ${result.inserted.toLocaleString('id-ID')} kode stok diperbarui.`;
+      let msg = `${result.inserted.toLocaleString('id-ID')} kode stok diperbarui.`;
       if (serverSkippedCount > 0) {
-        msg += ` ${Number(serverSkippedCount)} kode DILEWATI karena belum terdaftar di master_produk: ` +
+        msg += ` ${Number(serverSkippedCount).toLocaleString('id-ID')} kode dilewati karena belum terdaftar di master_produk: ` +
           escapeHtml(serverSkippedCodes.slice(0, 15).join(', ')) +
-          (serverSkippedCodes.length > 15 ? `, dan ${serverSkippedCodes.length - 15} lainnya…` : '');
+          (serverSkippedCodes.length > 15 ? `, dan ${serverSkippedCodes.length - 15} lainnya.` : '.');
       }
-      stokStatusMsg.innerHTML = `<div class="result-banner ${serverSkippedCount > 0 ? 'err' : 'ok'}">${msg}</div>`; // sec-ok: msg = angka + escapeHtml(kode), tidak ada teks mentah
+      // Disimpan dulu, dipasang SETELAH resetUploadUI() di bawah: reset itu mengosongkan
+      // #stok-status-msg, jadi dulu banner sukses hilang di frame yang sama dan pengguna
+      // tidak pernah melihat konfirmasi hasil upload.
+      const resultHtml = `<div class="result-banner ${serverSkippedCount > 0 ? 'err' : 'ok'}">${msg}</div>`; // sec-ok: msg = angka + escapeHtml(kode), tidak ada teks mentah
       await recordUpload({
         at: new Date().toISOString(),
         email: stokCurrentEmail,
@@ -689,13 +724,14 @@ export async function mount(container) {
       await renderHistory();
       refreshKelengkapan(); // stok baru masuk → hitung ulang komponen bolong
       resetUploadUI();
+      stokStatusMsg.innerHTML = resultHtml; // sec-ok: resultHtml dibangun dari angka + escapeHtml(kode) di atas
     } catch (err) {
-      stokStatusMsg.innerHTML = `<div class="result-banner fail">Gagal: ${escapeHtml(err.message)}</div>`;
+      stokStatusMsg.innerHTML = `<div class="result-banner fail">Upload gagal: ${escapeHtml(err.message)}</div>`;
       stokUploadBtn.disabled = false;
-      actionsRow.style.display = 'flex';
-      stokCancelBtn.style.display = 'block';
+      actionsRow.hidden = false;
+      stokCancelBtn.hidden = false;
     } finally {
-      stokUploadBtn.innerHTML = '<i class="ti ti-upload"></i>Upload Stock';
+      stokUploadBtn.innerHTML = UPLOAD_BTN_HTML;
     }
   });
 }
