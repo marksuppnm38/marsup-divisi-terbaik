@@ -1214,7 +1214,7 @@ async function muatRevisiKeClipboard(idx, btnEl) {
     S.inpSales.value = row.pic_sales || '';
     if (row.pic_marsup) S.inpMarsup.value = row.pic_marsup;
     S.resetChecklistUI();
-    S.setClipHeaderCollapsed(false);
+    S.setClipHeaderCollapsed(!!S.inpRs.value.trim(), false);
     S.renderButuhBantuanBtn();
     S.setSesiSavedStatus('');
     S.updateEndSesiBtnState();

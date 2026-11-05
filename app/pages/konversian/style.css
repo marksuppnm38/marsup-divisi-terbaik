@@ -1255,6 +1255,23 @@
   padding:8px 10px;max-height:220px;overflow:auto;font-size:11px;color:var(--text-secondary);
 }
 
+/* Form RS / Sales / PIC bisa diciutkan (toggle pensil). Info ini jarang dilihat setelah sesi
+   jalan — barisnya sudah diringkas di #clip-header-compact. Aturan ini sempat hilang waktu
+   migrasi ke SPA (JS tetap toggle .collapsed, CSS-nya tidak ada) → form selalu nampak. */
+#app-root .clip-header-form-collapsible{
+  display:grid;grid-template-rows:1fr;opacity:1;
+  transition:grid-template-rows .25s var(--ease,ease),opacity .22s ease .05s;
+}
+#app-root .clip-header-form-inner{overflow:hidden;min-height:0}
+#app-root .clip-header.collapsed .clip-header-form-collapsible{
+  grid-template-rows:0fr;opacity:0;visibility:hidden;pointer-events:none;
+  transition:grid-template-rows .25s var(--ease,ease),opacity .18s ease,visibility 0s linear .25s;
+}
+@media (prefers-reduced-motion:reduce){
+  #app-root .clip-header-form-collapsible,
+  #app-root .clip-header.collapsed .clip-header-form-collapsible{transition:none}
+}
+
 /* Form edit RS / Sales / PIC: 1 baris inline (bukan 3 baris bertumpuk) */
 #app-root .clip-header-form{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;padding:8px 0 2px;

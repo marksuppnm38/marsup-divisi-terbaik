@@ -4589,7 +4589,7 @@ async function openSesi(id) {
     S.setModeSwastaOutput(!!sesi.mode_harga_swasta);
     if (S.lastResults.length) S.renderResults(S.lastResults);
     S.renderButuhBantuanBtn();
-    S.setClipHeaderCollapsed(false);
+    S.setClipHeaderCollapsed(!!S.inpRs.value.trim(), false);
     S.updateClipHeaderCompact();
     S.setSesiSavedStatus('Sesi dimuat ✓');
     switchSubTab('cari');
