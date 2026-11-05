@@ -58,7 +58,7 @@ export const KONVERSIAN_MARKUP = `
     <div class="rt-avatar-cluster" id="rt-avatar-cluster"></div>
   </div>
   <div class="header-right">
-    <span class="clip-count" id="hdr-clip-count-wrap" role="button" tabindex="0" title="Tutup clipboard">Clipboard: <span id="hdr-count">0</span> item<i class="ti ti-layout-sidebar-right-collapse" id="hdr-clip-toggle-ic"></i></span>
+    <span class="clip-count" id="hdr-clip-count-wrap" role="button" tabindex="0" title="Tutup clipboard" aria-label="Buka/tutup clipboard"><span class="hdr-clip-label">Clipboard: <span id="hdr-count">0</span> item</span><i class="ti ti-layout-sidebar-right-collapse" id="hdr-clip-toggle-ic"></i></span>
     <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ti ti-clipboard-text"></i> <span class="toggle-btn-label">Permintaan RS</span></button>
   </div>
 </div>

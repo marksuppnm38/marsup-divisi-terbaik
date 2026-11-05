@@ -989,6 +989,9 @@
 }
 #app-root #hdr-clip-count-wrap{cursor:pointer;user-select:none;border-radius:6px;padding:3px 6px;transition:background .12s}
 #app-root #hdr-clip-count-wrap:hover{background:var(--surface-2)}
+/* Hitungan item cuma relevan pas panel clipboard ditutup — pas terbuka sudah ada di badge tab & footer */
+#app-root:not(.clip-closed) #hdr-clip-count-wrap .hdr-clip-label{display:none}
+#app-root:not(.clip-closed) #hdr-clip-count-wrap i{margin-left:0}
 #app-root #hdr-clip-count-wrap i{margin-left:5px;font-size:14px;vertical-align:-2px;color:var(--text-muted)}
 
 /* Item yang di-klik di e-Kat */

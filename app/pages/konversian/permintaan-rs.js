@@ -160,7 +160,7 @@ function updateRsStrip() {
   rsStripState.classList.toggle('has-data', active);
   rsStripState.title = active ? 'Lihat / tambah item / edit Permintaan RS sesi ini' : 'Catat Permintaan RS untuk sesi ini';
   const lbl = S.btnPermintaan.querySelector('.toggle-btn-label');
-  if (lbl) lbl.textContent = active ? `Permintaan RS · ${n}` : 'Permintaan RS';
+  if (lbl) lbl.textContent = 'Permintaan RS';
   S.btnPermintaan.title = active ? 'Lihat / tambah / edit Permintaan RS sesi ini' : 'Catat Permintaan RS';
 }
 S.updateRsStrip = updateRsStrip;
@@ -951,7 +951,7 @@ function startChecklistSession(submitResult, namaRs, picSales, pagu, tanggal) {
   S.setClipHeaderCollapsed(true);
 
   S.kbSection.classList.remove('kb-collapsed');
-  S.kbRecordStatus.textContent = 'Tingkat pemenuhan tersimpan otomatis tiap item ditandai.';
+  S.kbRecordStatus.textContent = '';
   S.kbRefreshStatus.textContent = '';
   renderChecklist();
   S.maybeFetchSuggestionForExpanded();
@@ -1855,8 +1855,6 @@ async function autoFinalizePermintaan() {
   const done = S.checklistItems.filter(i => i.status === 'TERPENUHI').length;
   const tingkatPemenuhan = total > 0 ? Math.round((done / total) * 1000) / 10 : 0; // 1 desimal
 
-  S.kbRecordStatus.style.color = 'var(--text-muted)';
-  S.kbRecordStatus.textContent = 'Menyimpan…';
   try {
     const res = await fetch(`${S.SUPABASE_URL}/rest/v1/rpc/finalize_permintaan_rs`, {
       method: 'POST',
@@ -1873,8 +1871,8 @@ async function autoFinalizePermintaan() {
       })
     });
     if (!res.ok) throw new Error('Gagal simpan rekap');
-    S.kbRecordStatus.style.color = 'var(--success)';
-    S.kbRecordStatus.textContent = `Tersimpan otomatis ✓ ${tingkatPemenuhan}% terpenuhi (${done}/${total} item)`;
+    S.kbRecordStatus.textContent = '';
+    S.setSesiSavedStatus('Tersimpan ✓');
   } catch {
     S.kbRecordStatus.style.color = 'var(--danger)';
     S.kbRecordStatus.textContent = 'Gagal simpan rekap otomatis (gak masalah, dicoba lagi pas item berikutnya ditandai)';

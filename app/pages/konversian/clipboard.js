@@ -202,8 +202,15 @@ function updateEndSesiBtnState() {
 }
 S.updateEndSesiBtnState = updateEndSesiBtnState;
 
+let sesiSavedFadeTimer = null;
 function setSesiSavedStatus(text, isError) {
   sesiSaveStatus.textContent = text || '';
+  // Teks sukses cuma konfirmasi sesaat (titik status di header global tetap jadi indikator permanen);
+  // error & 'Menyimpan…' tetap tampil sampai statusnya berubah.
+  clearTimeout(sesiSavedFadeTimer);
+  if (text && !isError && /✓$/.test(text)) {
+    sesiSavedFadeTimer = setTimeout(() => { if (sesiSaveStatus.textContent === text) sesiSaveStatus.textContent = ''; }, 3000);
+  }
   sesiSaveStatus.style.color = isError ? 'var(--danger)' : 'var(--text-muted)';
   // Dot di badge sesi (header global) ngikutin status simpan yang sama —
   // biar "draft belum tersimpan" vs "sudah tersimpan" kebaca dari satu titik
