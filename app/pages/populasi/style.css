@@ -28,10 +28,26 @@
 #app-root .ps-note[hidden]{ display: none; }
 #app-root .ps-note i{ color: var(--warning-dot); font-size: 16px; flex-shrink: 0; margin-top: 1px; }
 
-/* ── filter ── */
-#app-root .ps-filters{
+/* ── pertanyaan cepat ── */
+#app-root .ps-quick{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+#app-root .ps-quick .ps-lbl{ margin-right: 2px; }
+#app-root .ps-q{
+  height: 28px; padding: 0 12px; cursor: pointer;
+  font: inherit; font-size: 12px; color: var(--text-secondary);
+  background: var(--surface); border: 0.5px solid var(--border-strong); border-radius: 999px;
+}
+#app-root .ps-q:hover{ color: var(--text); background: var(--surface-2); }
+#app-root .ps-q:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ── panel filter ── */
+#app-root .ps-panel{
+  display: flex; flex-direction: column; gap: 14px;
+  margin: 0 0 16px; padding: 14px 16px;
+  border: 0.5px solid var(--border); border-radius: 10px; background: var(--surface);
+}
+#app-root .ps-row-main,
+#app-root .ps-row-sub{
   display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end;
-  margin: 0 0 16px;
 }
 #app-root .ps-field{ display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 #app-root .ps-field-grow{ flex: 1 1 220px; }
@@ -43,6 +59,60 @@
 }
 #app-root .ps-input:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
 #app-root .ps-seg{ display: flex; gap: 6px; }
+
+/* kategori: tombol toggle, boleh lebih dari satu */
+#app-root .ps-cats{ display: flex; flex-wrap: wrap; gap: 6px; }
+#app-root .ps-cat{
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 32px; padding: 0 11px; cursor: pointer;
+  font: inherit; font-size: 12.5px; color: var(--text-secondary);
+  background: var(--surface); border: 0.5px solid var(--border-strong); border-radius: 8px;
+}
+#app-root .ps-cat:hover{ background: var(--surface-2); color: var(--text); }
+#app-root .ps-cat:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+#app-root .ps-cat.on{ color: var(--text); font-weight: 500; background: var(--surface-2); border-color: var(--accent); }
+#app-root .ps-cat.dim:not(.on){ opacity: .55; }
+#app-root .ps-cat-n{ font-family: var(--font-mono); font-size: 11px; font-weight: 400; color: var(--text-muted); }
+
+/* opsi isi set */
+#app-root .ps-check{
+  display: inline-flex; align-items: center; gap: 7px; height: 32px;
+  font-size: 12.5px; color: var(--text-secondary); cursor: pointer;
+}
+#app-root .ps-check[hidden]{ display: none; }
+#app-root .ps-check input{ width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+#app-root .ps-check input:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* periode + cakupan: disembunyikan sampai dibutuhkan */
+#app-root .ps-more-filters > summary{
+  cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-muted);
+}
+#app-root .ps-more-filters > summary::-webkit-details-marker{ display: none; }
+#app-root .ps-more-filters > summary::before{
+  content: '\203A'; display: inline-block; width: 10px; transition: transform .15s;
+}
+#app-root .ps-more-filters[open] > summary::before{ transform: rotate(90deg); }
+#app-root .ps-more-filters > summary:hover{ color: var(--text); }
+#app-root .ps-more-filters > summary:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+#app-root .ps-more-body{ margin-top: 10px; }
+
+/* filter aktif yang bisa dilepas satu per satu */
+#app-root .ps-active{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#app-root .ps-active[hidden]{ display: none; }
+#app-root .ps-chip{
+  display: inline-flex; align-items: center; gap: 2px;
+  height: 24px; padding: 0 3px 0 10px;
+  font-size: 11.5px; color: var(--text-secondary);
+  border: 0.5px solid var(--border-strong); border-radius: 999px;
+}
+#app-root .ps-chip button{
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; cursor: pointer;
+  color: var(--text-muted); background: transparent; border: 0; border-radius: 50%;
+}
+#app-root .ps-chip button:hover{ color: var(--text); background: var(--surface-2); }
+#app-root .ps-chip button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ── ringkasan satu baris ── */
 #app-root .ps-summary{
@@ -56,6 +126,14 @@
 #app-root .ps-lokasi{ color: var(--text-secondary); }
 #app-root .ps-sum-sub{ margin-top: 2px; font-size: 12px; color: var(--text-muted); }
 #app-root .ps-sum-actions{ display: flex; gap: 8px; flex-wrap: wrap; }
+#app-root .ps-xlsx:disabled{ opacity: .6; cursor: progress; }
+
+#app-root .ps-hint{
+  margin: 0 0 12px; padding: 8px 12px;
+  font-size: 12px; line-height: 1.5; color: var(--text-secondary);
+  border-left: 2px solid var(--warning-dot); background: var(--surface-2); border-radius: 0 6px 6px 0;
+}
+#app-root .ps-hint[hidden]{ display: none; }
 
 /* ── tabel ── */
 #app-root #ps-table{ transition: opacity .15s; }
@@ -69,6 +147,7 @@
 }
 #app-root .ps-row.open .ps-chev{ transform: rotate(90deg); }
 #app-root .ps-rs{ font-weight: 500; }
+#app-root .ps-muted{ color: var(--text-muted); }
 #app-root .ps-num{ text-align: right; font-family: var(--font-mono); white-space: nowrap; }
 #app-root .ps-num b{ font-weight: 600; }
 #app-root .ps-sub{ display: block; font-size: 10.5px; font-weight: 400; color: var(--text-muted); font-family: inherit; }
@@ -77,6 +156,17 @@
 #app-root .ps-more{ color: var(--text-muted); cursor: help; white-space: nowrap; }
 #app-root .ps-col-act{ width: 1%; white-space: nowrap; text-align: right; }
 #app-root .ps-sr{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* header yang bisa diurutkan */
+#app-root .ps-th-num{ text-align: right; }
+#app-root .ps-sort{
+  display: inline-flex; align-items: center; gap: 4px; padding: 0; cursor: pointer;
+  font: inherit; font-weight: inherit; color: inherit; background: none; border: 0;
+}
+#app-root .ps-sort i{ font-size: 12px; opacity: .35; }
+#app-root .ps-sort.on i{ opacity: 1; }
+#app-root .ps-sort:hover{ color: var(--text); }
+#app-root .ps-sort:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 
 #app-root .ps-tag{
   display: inline-block; margin-left: 4px; padding: 0 5px;
@@ -95,7 +185,7 @@
 #app-root .ps-iconbtn:hover{ color: var(--text); border-color: var(--border-strong); background: var(--surface); }
 #app-root .ps-iconbtn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
 
-#app-root .ps-empty{ text-align: center; padding: 30px 12px; color: var(--text-muted); }
+#app-root .ps-empty{ text-align: center; padding: 30px 12px; color: var(--text-muted); line-height: 1.6; }
 #app-root .ps-empty-err{ color: var(--danger); }
 #app-root .ps-empty i{ margin-right: 4px; }
 
@@ -105,7 +195,7 @@
 #app-root .ps-detail-empty{ color: var(--text-muted); }
 #app-root .ps-dt{ width: 100%; border-collapse: collapse; font-size: 12px; }
 #app-root .ps-dt th{ text-align: left; padding: 4px 10px 4px 0; font-size: 11px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
-#app-root .ps-dt th[style]{ padding-right: 0; padding-left: 10px; }
+#app-root .ps-dt th.ps-th-num{ text-align: right; padding-right: 0; padding-left: 10px; }
 #app-root .ps-dt td{ padding: 5px 10px 5px 0; border-top: 0.5px solid var(--border); vertical-align: top; }
 #app-root .ps-dt td.ps-num{ padding-left: 10px; padding-right: 0; }
 #app-root .ps-lepas td{ opacity: .6; }
@@ -124,6 +214,18 @@
 #app-root .ps-unmapped > summary:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
 #app-root .ps-unm-table{ width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12.5px; }
 #app-root .ps-unm-table td{ padding: 6px 8px 6px 0; border-top: 0.5px solid var(--border); }
+
+@media (max-width: 640px){
+  #app-root .ps-panel{ padding: 12px; }
+  #app-root .ps-sum-actions{ width: 100%; }
+  #app-root .ps-detail{ padding-left: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  #app-root .ps-chev,
+  #app-root .ps-more-filters > summary::before,
+  #app-root #ps-table{ transition: none; }
+}
 
 /* ── dialog wilayah (memakai .confirm-overlay/.confirm-card generik) ──
    Overlay-nya ada DI LUAR #app-root (sama seperti presetNameOverlay di dashboard), jadi
