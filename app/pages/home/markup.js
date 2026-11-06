@@ -42,6 +42,15 @@ export const MODULES = [
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>',
   },
   {
+    id: 'populasi',
+    title: 'Populasi Set per RS',
+    desc: 'Set instrumen apa, di RS mana saja.',
+    url: '/populasi',
+    migrated: true,
+    color: '#0EA5E9',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>',
+  },
+  {
     id: 'kompres-pdf',
     title: 'Kompres PDF',
     desc: 'Smaller files, same content.',

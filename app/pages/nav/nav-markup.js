@@ -18,6 +18,7 @@ const NAV_ICONS = {
   'stok':          'ti-package',
   'crud-produk':   'ti-database',
   'dashboard':     'ti-layout-dashboard',
+  'populasi':      'ti-building-hospital',
   'kompres-pdf':   'ti-file-zip',
   'export-gambar': 'ti-photo',
   'uploader-wiki': 'ti-table-export',
@@ -28,7 +29,7 @@ const NAV_ICONS = {
 // UPDATE (sesi lanjutan -- "double nav" fix): module -> its own SUBNAV
 // registry, same single-source-of-truth reasoning as NAV_ICONS above.
 // A module with no entry here just renders with no accordion (dashboard/
-// stok/kompres-pdf/export-gambar all currently have none -- single-view
+// populasi/stok/kompres-pdf/export-gambar all currently have none -- single-view
 // pages, nothing to sub-navigate). Add an entry here the day a module
 // grows its own tabs/views, same moment its subnav.js gets created.
 const SUBNAV = {

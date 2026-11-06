@@ -13,7 +13,7 @@
 // sub-view with a real, bookmarkable, back-button-safe URL. A page opts in by
 // exporting an optional `setSubroute(sub)` alongside mount()/unmount() (see
 // crud-produk/index.js and konversian/index.js). render() only calls it when it
-// exists; for pages without it (dashboard/stok/kompres-pdf/export-gambar) the sub
+// exists; for pages without it (dashboard/populasi/stok/kompres-pdf/export-gambar) the sub
 // segment is simply ignored.
 //
 // CLEAN URLS: real path (location.pathname) + History API (pushState/popstate),
@@ -44,7 +44,7 @@ import { initNoAutofillGuard } from '../shared/no-autofill.js';
 // accordion (see app/pages/nav/nav-markup.js's SUBNAV) -- reused here as
 // the single source of truth for "is this sub-route real", so router.js
 // never has its own separate, driftable copy of the 5/6 valid ids. Any
-// module NOT in SUBROUTES below (dashboard/stok/kompres-pdf/export-gambar)
+// module NOT in SUBROUTES below (dashboard/populasi/stok/kompres-pdf/export-gambar)
 // simply has no legitimate sub-routes at all -- see isValidSub().
 import { CRUD_PRODUK_SUBNAV } from './pages/crud-produk/subnav.js';
 import { KONVERSIAN_SUBNAV } from './pages/konversian/subnav.js';
@@ -58,6 +58,7 @@ const ROUTES = {
   'konversian': () => import('./pages/konversian/index.js'),
   'crud-produk': () => import('./pages/crud-produk/index.js'),
   'dashboard': () => import('./pages/dashboard/index.js'),
+  'populasi': () => import('./pages/populasi/index.js'),
   'stok': () => import('./pages/stok/index.js'),
 };
 
