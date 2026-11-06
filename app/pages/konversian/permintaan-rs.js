@@ -1100,6 +1100,7 @@ function renderChecklistItemHtml(item) {
       <div class="kb-item-text">${S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
       ${!isExpanded ? compactMatchedTxt : ''}
     </div>
+    <button type="button" class="kb-item-copy" data-action="copy-text" data-id="${item.id}" title="Copy deskripsi permintaan" aria-label="Copy deskripsi permintaan"><i class="ti ti-copy"></i></button>
     <i class="ti ti-chevron-down kb-item-chevron"></i>
   </div>`;
 
@@ -1650,6 +1651,25 @@ S.kbList.addEventListener('click', async (e) => {
   const action = el.dataset.action;
   const item = S.checklistItems.find(i => i.id === itemId);
   if (!item) return;
+
+  if (action === 'copy-text') {
+    // Copy deskripsi permintaan RS apa adanya (tanpa qty/pagu) — buat dipaste ke search / Sheet.
+    const text = String(item.raw_text || '').trim();
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (_) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+        document.body.appendChild(ta); ta.select();
+        ok = document.execCommand('copy'); ta.remove();
+      } catch (__) { ok = false; }
+    }
+    if (!ok) { S.showToast('Gagal copy — browser nolak akses clipboard', 'error'); return; }
+    S.showToast('Deskripsi permintaan disalin ✓');
+    const ic = btn.querySelector('i');
+    if (ic) { ic.className = 'ti ti-check'; setTimeout(() => { ic.className = 'ti ti-copy'; }, 1400); }
+    return;
+  }
 
   if (action === 'toggle-expand') {
     // Kalau lagi milih produk (picker kebuka), jangan biarin ke-collapse cuma
