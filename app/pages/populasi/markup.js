@@ -1,12 +1,14 @@
 // app/pages/populasi/markup.js
 // Markup halaman "Populasi" -- SATU layar untuk SATU pertanyaan:
 // "kategori/produk apa, di RS mana saja, di provinsi X", dengan hasil yang bisa diunduh
-// sebagai Excel. Tidak ada kartu statistik, grafik, atau panel audit di jalur utama.
+// sebagai Excel. Memakai komponen bersama pnm-universal.css (section-label, stats-grid/stat-card,
+// table-section/table-header, filter-btn, filter-select, search-mini, bulk-btn, btn-clear-all)
+// supaya tampilannya seragam dengan Dashboard dan modul lain; override khusus ada di style.css.
 // Semua id berawalan ps- kecuali err-banner/err-text/toast-container (kelas generik
 // dari pnm-universal.css, sama seperti dashboard).
 //
-// Yang dirender lewat JS (bukan di sini): chip kategori (#ps-cats), header tabel (#ps-thead,
-// kolom Set/Qty muncul sesuai isi hasil), chip filter aktif (#ps-active).
+// Yang dirender lewat JS (bukan di sini): chip kategori (#ps-cats), kartu ringkasan (#ps-stats),
+// header tabel (#ps-thead, kolom Set/Unit muncul sesuai isi hasil), chip filter aktif (#ps-active).
 
 export const POPULASI_MARKUP = `
 <div id="app-root">
@@ -23,34 +25,28 @@ export const POPULASI_MARKUP = `
 
   <div class="ps-note" id="ps-stale" hidden role="status"></div>
 
-  <section class="ps-quick" aria-label="Pertanyaan cepat">
-    <span class="ps-lbl">Pertanyaan cepat</span>
-    <button type="button" class="ps-q" data-action="ps-preset" data-p="set-jateng">Set instrumen di Jawa Tengah</button>
-    <button type="button" class="ps-q" data-action="ps-preset" data-p="drill">Drill, semua provinsi</button>
-    <button type="button" class="ps-q" data-action="ps-preset" data-p="lab">Alat laboratorium, semua provinsi</button>
-    <button type="button" class="ps-q" data-action="ps-preset" data-p="elektromedis">Elektromedis, semua provinsi</button>
-  </section>
-
+  <div class="section-label"><i class="ti ti-filter"></i> Filter</div>
   <section class="ps-panel" aria-label="Filter">
-    <div class="ps-row-main">
+    <div class="ps-quick">
+      <span class="ps-lbl"><i class="ti ti-bolt"></i> Pertanyaan cepat</span>
+      <button type="button" class="filter-btn" data-action="ps-preset" data-p="set-jateng">Set instrumen di Jawa Tengah</button>
+      <button type="button" class="filter-btn" data-action="ps-preset" data-p="drill">Drill, semua provinsi</button>
+      <button type="button" class="filter-btn" data-action="ps-preset" data-p="lab">Alat laboratorium, semua provinsi</button>
+      <button type="button" class="filter-btn" data-action="ps-preset" data-p="elektromedis">Elektromedis, semua provinsi</button>
+    </div>
+
+    <div class="ps-grid">
       <label class="ps-field">
         <span class="ps-lbl">Provinsi</span>
         <select class="filter-select" id="ps-provinsi"><option value="">Semua provinsi</option></select>
       </label>
-      <div class="ps-field ps-field-grow">
-        <span class="ps-lbl" id="ps-lbl-kat">Kategori (boleh pilih lebih dari satu)</span>
-        <div class="ps-cats" id="ps-cats" role="group" aria-labelledby="ps-lbl-kat"></div>
-      </div>
-    </div>
-
-    <div class="ps-row-sub">
-      <label class="ps-field ps-field-grow">
+      <label class="ps-field">
         <span class="ps-lbl">Nama produk mengandung</span>
-        <input class="ps-input" type="search" id="ps-produk" placeholder="mis. drill, centrifuge, dental chair" autocomplete="off">
+        <input class="search-mini" type="search" id="ps-produk" placeholder="mis. drill, centrifuge, dental chair" autocomplete="off">
       </label>
-      <label class="ps-field ps-field-grow">
+      <label class="ps-field">
         <span class="ps-lbl">Rumah sakit</span>
-        <input class="ps-input" type="search" id="ps-rs" placeholder="mis. soetrasno" autocomplete="off">
+        <input class="search-mini" type="search" id="ps-rs" placeholder="mis. soetrasno" autocomplete="off">
       </label>
       <div class="ps-field">
         <span class="ps-lbl">Status pesanan</span>
@@ -59,50 +55,64 @@ export const POPULASI_MARKUP = `
           <button type="button" class="filter-btn" data-action="ps-status" data-v="ALL">+ Dalam proses</button>
         </div>
       </div>
+    </div>
+
+    <div class="ps-field">
+      <span class="ps-lbl" id="ps-lbl-kat">Kategori (boleh pilih lebih dari satu)</span>
+      <div class="ps-cats" id="ps-cats" role="group" aria-labelledby="ps-lbl-kat"></div>
+    </div>
+
+    <div class="ps-opts">
       <label class="ps-check" id="ps-isi-wrap" hidden>
         <input type="checkbox" id="ps-isi-set">
         <span>Termasuk isi set</span>
       </label>
+      <details class="ps-more-filters">
+        <summary>Periode dan cakupan data</summary>
+        <div class="ps-grid ps-more-body">
+          <label class="ps-field">
+            <span class="ps-lbl">Dari tanggal</span>
+            <input class="search-mini" type="date" id="ps-dari">
+          </label>
+          <label class="ps-field">
+            <span class="ps-lbl">Sampai</span>
+            <input class="search-mini" type="date" id="ps-sampai">
+          </label>
+          <label class="ps-field">
+            <span class="ps-lbl">Cakupan</span>
+            <select class="filter-select" id="ps-cakupan">
+              <option value="POPULASI">Populasi (INAPROC &amp; beli langsung)</option>
+              <option value="SEMUA">Semua non-sample (termasuk retail)</option>
+            </select>
+          </label>
+        </div>
+      </details>
     </div>
-
-    <details class="ps-more-filters">
-      <summary>Periode dan cakupan data</summary>
-      <div class="ps-row-sub ps-more-body">
-        <label class="ps-field">
-          <span class="ps-lbl">Dari tanggal</span>
-          <input class="ps-input" type="date" id="ps-dari">
-        </label>
-        <label class="ps-field">
-          <span class="ps-lbl">Sampai</span>
-          <input class="ps-input" type="date" id="ps-sampai">
-        </label>
-        <label class="ps-field">
-          <span class="ps-lbl">Cakupan</span>
-          <select class="filter-select" id="ps-cakupan">
-            <option value="POPULASI">Populasi (INAPROC &amp; beli langsung)</option>
-            <option value="SEMUA">Semua non-sample (termasuk retail)</option>
-          </select>
-        </label>
-      </div>
-    </details>
 
     <div class="ps-active" id="ps-active" hidden></div>
   </section>
 
-  <section class="ps-summary" aria-live="polite">
-    <div class="ps-sum-text">
-      <div class="ps-sum-main" id="ps-sum-main">—</div>
-      <div class="ps-sum-sub" id="ps-sum-sub"></div>
-    </div>
-    <div class="ps-sum-actions">
-      <button type="button" class="bulk-btn export" data-action="ps-copy"><i class="ti ti-copy"></i> Salin teks</button>
-      <button type="button" class="bulk-btn export ps-xlsx" data-action="ps-xlsx"><i class="ti ti-file-spreadsheet"></i> Unduh Excel</button>
-    </div>
-  </section>
+  <div class="section-label"><i class="ti ti-chart-bar"></i> Hasil</div>
+  <div class="ps-scope" aria-live="polite">
+    <div class="ps-sum-main" id="ps-sum-main">—</div>
+    <div class="ps-sum-sub" id="ps-sum-sub"></div>
+  </div>
+  <div class="stats-grid ps-stats" id="ps-stats">
+    <div class="stat-card"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+    <div class="stat-card"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+    <div class="stat-card"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
+  </div>
 
   <div class="ps-hint" id="ps-hint" hidden role="status"></div>
 
   <div class="table-section" id="ps-table">
+    <div class="table-header">
+      <div class="table-title"><i class="ti ti-building-hospital"></i> <span id="ps-tbl-title">Rumah sakit</span></div>
+      <div class="filter-bar">
+        <button type="button" class="bulk-btn clear" data-action="ps-copy" title="Salin daftar sebagai teks untuk ditempel ke chat atau email"><i class="ti ti-copy"></i> Salin teks</button>
+        <button type="button" class="bulk-btn export ps-xlsx" data-action="ps-xlsx" title="Unduh Excel yang siap dikirim: ringkasan, daftar RS, dan rincian pesanan"><i class="ti ti-file-spreadsheet"></i> <span>Unduh Excel</span></button>
+      </div>
+    </div>
     <div class="table-scroll">
       <table>
         <thead id="ps-thead"></thead>
@@ -112,7 +122,7 @@ export const POPULASI_MARKUP = `
       </table>
     </div>
     <div class="table-footer">
-      <span>Set dihitung dari <b>isi set di DB produk</b> (QTY dipesan ÷ QTY item di set). <b>estimasi</b> = set tidak ada di DB produk, dihitung dari tebakan QTY. <b>perlu dicek</b> = QTY tidak sepakat dengan isi set, belum dihitung. Pesanan dengan kurang dari 3 baris dianggap item lepas. Unit/pcs = total QTY baris barang. Klik baris untuk melihat PO dan isi setnya.</span>
+      <span>Klik baris untuk melihat PO dan isi setnya. Set dihitung dari <b>isi set di DB produk</b>. <b>estimasi</b> = set tidak ada di DB produk. <b>perlu dicek</b> = QTY tidak sepakat dengan isi set, belum dihitung. Pesanan kurang dari 3 baris dianggap item lepas.</span>
     </div>
   </div>
 

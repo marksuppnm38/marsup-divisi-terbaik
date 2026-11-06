@@ -1,8 +1,11 @@
 /* app/pages/populasi/style.css
    Semua selector diawali #app-root (mount root halaman ini) -- nol selector bare/unscoped,
-   disiplin yang sama dengan dashboard/style.css. Hanya memakai token yang sudah dipakai
-   halaman lain (--surface, --surface-2, --border, --text-*, --accent, --font-mono);
-   tidak ada warna baru selain dot status (hijau/kuning), sama seperti dashboard. */
+   disiplin yang sama dengan dashboard/style.css. Komponen dasar (section-label, stat-card,
+   table-section, filter-btn, filter-select, search-mini, bulk-btn, btn-clear-all) datang dari
+   pnm-universal.css, jadi halaman ini tampil seragam dengan Dashboard; file ini hanya menambah
+   tata letak khusus Populasi dan menjinakkan efek yang tidak pas (mis. hover-lift pada panel besar).
+   Hanya memakai token yang sudah dipakai halaman lain; satu-satunya warna tambahan adalah dot
+   status (hijau/kuning), sama seperti dashboard. */
 
 #app-root{
   --success-dot: #3BA55D;
@@ -17,73 +20,57 @@
   background: var(--surface);
 }
 
+/* Panel/kartu besar tidak boleh "melompat" saat di-hover (hover-lift dari pnm-universal.css
+   cocok untuk kartu kecil, bukan untuk panel yang isinya kontrol). */
+#app-root .ps-panel:hover,
+#app-root .ps-stats .stat-card:hover,
+#app-root .ps-unmapped:hover{ transform: none; box-shadow: none; }
+
 /* ── catatan kesegaran data ── */
 #app-root .ps-note{
   display: flex; align-items: flex-start; gap: 8px;
-  margin: 0 0 16px; padding: 10px 12px;
-  border: 0.5px solid var(--border-strong); border-radius: 8px;
+  margin: 0 0 16px; padding: 10px 14px;
+  border: 1px solid var(--warning-border); border-radius: var(--radius);
   font-size: 12.5px; line-height: 1.5; color: var(--text-secondary);
-  background: var(--surface-2);
+  background: var(--warning-bg);
 }
 #app-root .ps-note[hidden]{ display: none; }
 #app-root .ps-note i{ color: var(--warning-dot); font-size: 16px; flex-shrink: 0; margin-top: 1px; }
 
-/* ── pertanyaan cepat ── */
-#app-root .ps-quick{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
-#app-root .ps-quick .ps-lbl{ margin-right: 2px; }
-#app-root .ps-q{
-  height: 28px; padding: 0 12px; cursor: pointer;
-  font: inherit; font-size: 12px; color: var(--text-secondary);
-  background: var(--surface); border: 0.5px solid var(--border-strong); border-radius: 999px;
-}
-#app-root .ps-q:hover{ color: var(--text); background: var(--surface-2); }
-#app-root .ps-q:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
-
 /* ── panel filter ── */
 #app-root .ps-panel{
-  display: flex; flex-direction: column; gap: 14px;
-  margin: 0 0 16px; padding: 14px 16px;
-  border: 0.5px solid var(--border); border-radius: 10px; background: var(--surface);
+  display: flex; flex-direction: column; gap: 16px;
+  margin: 0 0 26px; padding: 16px 18px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
 }
-#app-root .ps-row-main,
-#app-root .ps-row-sub{
-  display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end;
+#app-root .ps-quick{ display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+#app-root .ps-quick .ps-lbl{ margin-right: 4px; display: inline-flex; align-items: center; gap: 4px; }
+#app-root .ps-grid{
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 16px; align-items: end;
 }
-#app-root .ps-field{ display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-#app-root .ps-field-grow{ flex: 1 1 220px; }
-#app-root .ps-lbl{ font-size: 11px; font-weight: 500; color: var(--text-muted); }
-#app-root .ps-input{
-  height: 32px; padding: 0 10px; box-sizing: border-box;
-  font: inherit; font-size: 12.5px; color: var(--text);
-  background: var(--surface); border: 0.5px solid var(--border-strong); border-radius: 8px;
-}
-#app-root .ps-input:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
-#app-root .ps-seg{ display: flex; gap: 6px; }
+#app-root .ps-field{ display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+#app-root .ps-lbl{ font-size: 11px; font-weight: 600; color: var(--text-muted); }
+#app-root .ps-panel .filter-select,
+#app-root .ps-panel .search-mini{ width: 100%; height: 30px; box-sizing: border-box; font-size: 12px; }
+#app-root .ps-seg{ display: flex; gap: 7px; flex-wrap: wrap; }
 
-/* kategori: tombol toggle, boleh lebih dari satu */
-#app-root .ps-cats{ display: flex; flex-wrap: wrap; gap: 6px; }
-#app-root .ps-cat{
-  display: inline-flex; align-items: center; gap: 7px;
-  height: 32px; padding: 0 11px; cursor: pointer;
-  font: inherit; font-size: 12.5px; color: var(--text-secondary);
-  background: var(--surface); border: 0.5px solid var(--border-strong); border-radius: 8px;
-}
-#app-root .ps-cat:hover{ background: var(--surface-2); color: var(--text); }
-#app-root .ps-cat:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
-#app-root .ps-cat.on{ color: var(--text); font-weight: 500; background: var(--surface-2); border-color: var(--accent); }
-#app-root .ps-cat.dim:not(.on){ opacity: .55; }
-#app-root .ps-cat-n{ font-family: var(--font-mono); font-size: 11px; font-weight: 400; color: var(--text-muted); }
+/* kategori: tombol toggle (boleh lebih dari satu), pakai filter-btn bersama */
+#app-root .ps-cats{ display: flex; flex-wrap: wrap; gap: 7px; }
+#app-root .ps-cat.dim:not(.active){ opacity: .55; }
+#app-root .ps-cat-n{ font-family: var(--mono); font-size: 10.5px; font-weight: 400; color: var(--text-muted); }
+#app-root .ps-cat.active .ps-cat-n{ color: inherit; opacity: .8; }
+#app-root .filter-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* opsi isi set */
+/* opsi isi set + periode/cakupan */
+#app-root .ps-opts{ display: flex; flex-direction: column; gap: 10px; }
+#app-root .ps-opts:empty{ display: none; }
 #app-root .ps-check{
-  display: inline-flex; align-items: center; gap: 7px; height: 32px;
-  font-size: 12.5px; color: var(--text-secondary); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px; height: 28px;
+  font-size: 12px; color: var(--text-secondary); cursor: pointer;
 }
 #app-root .ps-check[hidden]{ display: none; }
 #app-root .ps-check input{ width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 #app-root .ps-check input:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
-
-/* periode + cakupan: disembunyikan sampai dibutuhkan */
 #app-root .ps-more-filters > summary{
   cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--text-muted);
@@ -98,35 +85,35 @@
 #app-root .ps-more-body{ margin-top: 10px; }
 
 /* filter aktif yang bisa dilepas satu per satu */
-#app-root .ps-active{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#app-root .ps-active{ display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding-top: 2px; }
 #app-root .ps-active[hidden]{ display: none; }
 #app-root .ps-chip{
   display: inline-flex; align-items: center; gap: 2px;
-  height: 24px; padding: 0 3px 0 10px;
-  font-size: 11.5px; color: var(--text-secondary);
-  border: 0.5px solid var(--border-strong); border-radius: 999px;
+  height: 26px; padding: 0 3px 0 10px;
+  font-size: 11.5px; color: var(--accent-text);
+  background: var(--accent-bg); border: 1px solid var(--accent); border-radius: 20px;
 }
 #app-root .ps-chip button{
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; padding: 0; cursor: pointer;
-  color: var(--text-muted); background: transparent; border: 0; border-radius: 50%;
+  color: inherit; background: transparent; border: 0; border-radius: 50%;
 }
-#app-root .ps-chip button:hover{ color: var(--text); background: var(--surface-2); }
+#app-root .ps-chip button:hover{ background: var(--surface); }
 #app-root .ps-chip button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* ── ringkasan satu baris ── */
-#app-root .ps-summary{
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
-  margin: 0 0 12px; padding: 14px 16px;
-  border: 0.5px solid var(--border); border-radius: 10px; background: var(--surface);
-}
+/* ── hasil: judul cakupan + kartu ringkasan ── */
+#app-root .ps-scope{ margin: -2px 0 12px; }
 #app-root .ps-sum-main{ font-size: 15px; color: var(--text); }
-#app-root .ps-big{ font-size: 24px; font-weight: 600; font-family: var(--font-mono); letter-spacing: -0.02em; }
 #app-root .ps-sep{ color: var(--text-muted); margin: 0 2px; }
-#app-root .ps-lokasi{ color: var(--text-secondary); }
 #app-root .ps-sum-sub{ margin-top: 2px; font-size: 12px; color: var(--text-muted); }
-#app-root .ps-sum-actions{ display: flex; gap: 8px; flex-wrap: wrap; }
-#app-root .ps-xlsx:disabled{ opacity: .6; cursor: progress; }
+#app-root .ps-stats{ margin-bottom: 16px; transition: opacity .15s; }
+#app-root .ps-stats.ps-busy{ opacity: .55; }
+#app-root .ps-stats .stat-icon{ background: var(--surface-2); color: var(--text-secondary); }
+#app-root .ps-warn{ color: var(--warning-dot); }
+#app-root .bulk-btn.ps-xlsx:disabled{ opacity: .6; cursor: not-allowed; }
+#app-root .bulk-btn.ps-xlsx:disabled:has(.spinner){ cursor: progress; }
+#app-root .table-header .bulk-btn{ height: 30px; padding: 0 12px; font-size: 12px; }
+#app-root .table-header .bulk-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
 
 #app-root .ps-hint{
   margin: 0 0 12px; padding: 8px 12px;
@@ -150,7 +137,10 @@
 #app-root .ps-muted{ color: var(--text-muted); }
 #app-root .ps-num{ text-align: right; font-family: var(--font-mono); white-space: nowrap; }
 #app-root .ps-num b{ font-weight: 600; }
-#app-root .ps-sub{ display: block; font-size: 10.5px; font-weight: 400; color: var(--text-muted); font-family: inherit; }
+#app-root .ps-numwrap{ display: inline-block; min-width: 92px; text-align: right; }
+#app-root .ps-bar{ display: block; height: 3px; margin-top: 5px; background: var(--surface-3); border-radius: 2px; overflow: hidden; }
+#app-root .ps-bar i{ display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+#app-root .ps-sub{ display: block; font-size: 11px; font-weight: 400; color: var(--text-muted); font-family: inherit; }
 #app-root .ps-date{ font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
 #app-root .ps-jenis{ font-size: 12px; color: var(--text-secondary); max-width: 360px; }
 #app-root .ps-more{ color: var(--text-muted); cursor: help; white-space: nowrap; }
@@ -172,7 +162,7 @@
   display: inline-block; margin-left: 4px; padding: 0 5px;
   font-size: 10px; font-weight: 500; line-height: 16px; white-space: nowrap;
   color: var(--text-secondary); background: transparent;
-  border: 0.5px solid var(--border-strong); border-radius: 4px;
+  border: 1px solid var(--border-strong); border-radius: 4px;
 }
 #app-root .ps-tag-auto{ color: var(--text-muted); border-style: dashed; }
 #app-root .ps-tag-cek{ color: var(--text); border-color: var(--warning-dot); }
@@ -187,9 +177,9 @@
 #app-root .ps-isi > summary:hover{ color: var(--text); }
 #app-root .ps-isi > summary:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
 #app-root .ps-isi-t{ width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 11.5px; }
-#app-root .ps-isi-t th{ text-align: left; padding: 3px 8px 3px 0; font-size: 10.5px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+#app-root .ps-isi-t th{ text-align: left; padding: 3px 8px 3px 0; font-size: 11px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
 #app-root .ps-isi-t th.ps-th-num{ text-align: right; padding-right: 0; padding-left: 8px; }
-#app-root .ps-isi-t td{ padding: 3px 8px 3px 0; border-top: 0.5px solid var(--border); vertical-align: top; }
+#app-root .ps-isi-t td{ padding: 3px 8px 3px 0; border-top: 1px solid var(--border); vertical-align: top; }
 #app-root .ps-isi-t td.ps-num{ padding-left: 8px; padding-right: 0; }
 #app-root .ps-isi-cat{ color: var(--text-muted); white-space: nowrap; text-align: right; }
 #app-root .ps-isi-luar td, #app-root .ps-isi-beda td{ color: var(--text); }
@@ -200,7 +190,7 @@
   display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; padding: 0; cursor: pointer;
   color: var(--text-muted); background: transparent;
-  border: 0.5px solid transparent; border-radius: 7px;
+  border: 1px solid transparent; border-radius: 7px;
 }
 #app-root .ps-iconbtn:hover{ color: var(--text); border-color: var(--border-strong); background: var(--surface); }
 #app-root .ps-iconbtn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -216,7 +206,7 @@
 #app-root .ps-dt{ width: 100%; border-collapse: collapse; font-size: 12px; }
 #app-root .ps-dt th{ text-align: left; padding: 4px 10px 4px 0; font-size: 11px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
 #app-root .ps-dt th.ps-th-num{ text-align: right; padding-right: 0; padding-left: 10px; }
-#app-root .ps-dt td{ padding: 5px 10px 5px 0; border-top: 0.5px solid var(--border); vertical-align: top; }
+#app-root .ps-dt td{ padding: 5px 10px 5px 0; border-top: 1px solid var(--border); vertical-align: top; }
 #app-root .ps-dt td.ps-num{ padding-left: 10px; padding-right: 0; }
 #app-root .ps-lepas td{ opacity: .6; }
 
@@ -233,11 +223,11 @@
 #app-root .ps-unmapped > summary::-webkit-details-marker{ display: none; }
 #app-root .ps-unmapped > summary:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
 #app-root .ps-unm-table{ width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12.5px; }
-#app-root .ps-unm-table td{ padding: 6px 8px 6px 0; border-top: 0.5px solid var(--border); }
+#app-root .ps-unm-table td{ padding: 6px 8px 6px 0; border-top: 1px solid var(--border); }
 
 @media (max-width: 640px){
   #app-root .ps-panel{ padding: 12px; }
-  #app-root .ps-sum-actions{ width: 100%; }
+  #app-root .ps-grid{ grid-template-columns: 1fr; }
   #app-root .ps-detail{ padding-left: 16px; }
 }
 
@@ -245,6 +235,7 @@
   #app-root .ps-chev,
   #app-root .ps-isi > summary::before,
   #app-root .ps-more-filters > summary::before,
+  #app-root .ps-stats,
   #app-root #ps-table{ transition: none; }
 }
 
