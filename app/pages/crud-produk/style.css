@@ -288,10 +288,5 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 
 @media (max-width:900px){.orph-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:560px){.orph-stats{grid-template-columns:1fr}.orph-fgroup{flex-wrap:wrap}}
-/* ---- Stok & Nilai (view v_stok_nilai): angka rata kanan, mono, tabular ---- */
-#viewStok .orph-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-#viewStok .orph-btn-group{display:inline-flex}
-#viewStok .orph-btn-group .btn:not(:first-child){border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-1px}
-#viewStok .orph-btn-group .btn:not(:last-child){border-top-right-radius:0;border-bottom-right-radius:0}
-#viewStok .sn-num{text-align:right;white-space:nowrap;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
-@media (max-width:768px){ #viewStok .orph-stats{grid-template-columns:repeat(2,minmax(0,1fr))} }
+/* ---- Chip stok di baris Produk (v_produk_stok_ringkas). Pakai .status-pill dari pnm-universal.css, cuma dikecilin. ---- */
+.stok-pill{font-size:10.5px;padding:2px 8px;margin-right:6px;vertical-align:middle}

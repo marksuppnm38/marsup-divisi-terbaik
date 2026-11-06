@@ -45,7 +45,6 @@ import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
 import { installOrphan } from './orphan.js';
-import { installStokNilai } from './stok-nilai.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -322,10 +321,9 @@ const CRUD_VIEW_LABELS = {
   bulk: 'Bulk Edit',
   sync: 'Sync dari Sheet',
   orphan: 'Orphan / Drift',
-  stok: 'Stok & Nilai',
 };
 function switchView(view){
-  ['produk','set','akd','kfa','bulk','sync','orphan','stok'].forEach(v => {
+  ['produk','set','akd','kfa','bulk','sync','orphan'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
   const crumbEl = document.getElementById('pw-topbar-crumb-text');
@@ -341,8 +339,6 @@ function switchView(view){
   if (view === 'sync') S.loadSyncUnmatched();
   // 'orphan' juga RELOAD tiap masuk: snapshot manifest diperbarui tiap jam di background.
   if (view === 'orphan') S.loadOrphan();
-  // 'stok' juga RELOAD tiap masuk: stok baru bisa saja diupload di halaman Stok.
-  if (view === 'stok') S.loadStokNilai();
   // 'set' punya semantik beda dari akd/kfa's "sekali doang" -- dipindah
   // dari listener terpisah yang tadinya nempel di tombol sidebar sendiri
   // (`.sb-item[data-view="set"]`, gak ada lagi): reload SETIAP kali masuk
@@ -626,7 +622,51 @@ const PRODUK_FILTER_DIMS = [
       { value: 'ada', label: 'Sudah ada link' },
       { value: 'kosong', label: 'Belum ada link' },
   ]},
+  // Stok = atribut produk, sama kayak Harga & Link V6: bisa ditumpuk dengan filter lain
+  // (mis. Stok Siap + Link V6 Sudah ada = "siap tayang"; Stok Siap + Harga Belum ada = "ada stok, belum ada harga").
+  // Sumber: view v_produk_stok_ringkas (sql/01_stok_filter_produk.sql). Definisi status SAMA dengan v_siap_tayang.
+  { key: 'stok', label: 'Stok', icon: 'ti-packages', options: [
+      { value: 'READY', label: 'Siap' },
+      { value: 'INDENT', label: 'Indent (stok kosong / tidak tercatat)' },
+      { value: 'DATA_TIDAK_LENGKAP', label: 'Set: data stok komponen belum lengkap' },
+  ]},
 ];
+
+// ---- Stok per produk (untuk chip di baris, filter jalur client, dan kolom Excel) ----
+// Cache per produk_id dengan TTL pendek: stok bisa berubah kapan saja lewat upload di halaman Stok,
+// tapi gak perlu tarik ulang tiap ganti halaman. Gagal ambil (mis. SQL migrasi belum jalan) TIDAK
+// boleh mematikan halaman Produk -- cukup chip/kolom stok kosong.
+const STOK_TTL_MS = 2 * 60 * 1000;
+const STOK_LABEL = { READY: 'Siap', INDENT: 'Indent', DATA_TIDAK_LENGKAP: 'Data tidak lengkap' };
+const STOK_PILL = { READY: 'ok', INDENT: 'neutral', DATA_TIDAK_LENGKAP: 'warn' };
+const produkStokCache = new Map(); // produk_id -> { t, status, qty }
+async function ensureStokForIds(ids){
+  const now = Date.now();
+  const need = ids.filter(id => { const c = produkStokCache.get(id); return !c || (now - c.t) > STOK_TTL_MS; });
+  if (!need.length) return true;
+  const CHUNK = 150, jobs = []; // 1 baris per produk_id -> aman dari limit 1000 baris PostgREST
+  for (let i = 0; i < need.length; i += CHUNK) {
+    jobs.push(sb.from('v_produk_stok_ringkas').select('produk_id,stok_status,qty_ready').in('produk_id', need.slice(i, i + CHUNK)));
+  }
+  const results = await Promise.all(jobs);
+  let ok = true;
+  results.forEach(res => {
+    if (res.error) { ok = false; console.warn('v_produk_stok_ringkas gagal:', res.error.message); return; }
+    (res.data || []).forEach(r => produkStokCache.set(r.produk_id, { t: now, status: r.stok_status, qty: r.qty_ready == null ? null : Number(r.qty_ready) }));
+  });
+  return ok;
+}
+function stokPillHtml(id){
+  const sk = produkStokCache.get(id);
+  if (!sk || !STOK_LABEL[sk.status]) return '';
+  const qty = Number(sk.qty);
+  const showQty = sk.status === 'READY' && Number.isFinite(qty);
+  const title = sk.status === 'READY' ? 'Stok siap' + (showQty ? ': ' + qty.toLocaleString('id-ID') : '')
+    : sk.status === 'INDENT' ? 'Stok kosong / belum tercatat di file stok'
+    : 'Data stok sebagian komponen set belum ada';
+  const text = sk.status === 'DATA_TIDAK_LENGKAP' ? 'Set tdk lengkap' : STOK_LABEL[sk.status] + (showQty ? ' · ' + qty.toLocaleString('id-ID') : '');
+  return `<span class="status-pill stok-pill ${STOK_PILL[sk.status]}" title="${escapeHtml(title)}">${escapeHtml(text)}</span>`;
+}
 
 // ---- Cache kecil di sessionStorage (hemat IO DB free tier) ----
 // Opsi filter (tipe/golongan/status) hampir tidak pernah berubah, jadi tidak perlu
@@ -782,6 +822,7 @@ function produkRowMatchesFilter(row, filt){
       return filt.value === 'ada' ? has : !has;
     }
     case 'link_v6': return filt.value === 'ada' ? !!row.link_v6 : !row.link_v6;
+    case 'stok': { const sk = produkStokCache.get(row.id); return !!sk && sk.status === filt.value; }
     default: return true;
   }
 }
@@ -799,6 +840,7 @@ function buildProdukDimParams(){
     else if (f.dim === 'status_inaproc') params.p_status_inaproc = f.value;
     else if (f.dim === 'harga') params.p_harga = f.value;
     else if (f.dim === 'link_v6') params.p_link_v6 = f.value;
+    else if (f.dim === 'stok') params.p_stok = f.value; // sengaja gak ada default null: RPC lama (sebelum SQL migrasi) gak kenal p_stok
   });
   return params;
 }
@@ -817,6 +859,7 @@ async function loadProduk(q, page){
   const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
   if (needsHarga) await ensureProdukHargaSet();
   await ensureVerifiedSet();
+  const needsStok = produkActiveFilters.some(f => f.dim === 'stok');
 
   let rows = [];
   let total = 0;
@@ -847,6 +890,9 @@ async function loadProduk(q, page){
       }
       } // end if (!fastSearchOk)
     }
+    if (needsStok && !(await ensureStokForIds(produkSearchRawRows.map(r => r.id)))) {
+      showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
+    }
     const matcher = PRODUK_FILTERS[produkActiveFilter];
     let filtered = matcher ? produkSearchRawRows.filter(matcher) : produkSearchRawRows;
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
@@ -861,6 +907,9 @@ async function loadProduk(q, page){
     const all = await ensureVerifiedRows();
     if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat produk Verified.</td></tr>`; return; }
     let filtered = all;
+    if (needsStok && !(await ensureStokForIds(all.map(r => r.id)))) {
+      showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
+    }
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
     produkCurrentFilteredFull = filtered;
     total = filtered.length;
@@ -877,7 +926,13 @@ async function loadProduk(q, page){
       p_page: produkPage,
       p_page_size: PRODUK_PAGE_SIZE,
     });
-    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+    if (error) {
+      const stokBelumMigrasi = needsStok && (error.code === 'PGRST202' || /p_stok/.test(error.message || ''));
+      tableBody.innerHTML = `<tr class="state-row"><td colspan="5">${stokBelumMigrasi
+        ? 'Filter Stok belum aktif di database. Jalankan <code>sql/01_stok_filter_produk.sql</code> di Supabase SQL Editor, lalu muat ulang.'
+        : 'Gagal memuat: ' + escapeHtml(error.message)}</td></tr>`;
+      return;
+    }
     rows = data?.rows || [];
     total = data?.total || 0;
     produkCurrentFilteredFull = null; // gak lagi nyimpen array penuh di client -> export narik ulang lewat RPC (lihat exportProdukToExcel)
@@ -935,7 +990,7 @@ async function loadProduk(q, page){
   // case (see ensureProdukHargaSet()'s comment above, get_produk_harga_ids
   // RPC) -- just never applied here. Reusing that same cached, RPC-backed
   // Set instead of a fresh row-limited query fixes it the same way.
-  const hargaExistIds = await fetchHargaExistForIds(rows.map(r => r.id));
+  const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id))]);
   const ONE_DAY = 24 * 60 * 60 * 1000;
   function attentionMeta(p){
     const noHarga = !hargaExistIds.has(p.id);
@@ -956,7 +1011,7 @@ async function loadProduk(q, page){
       <td>${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</td>
       <td><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span></td>
       <td>${sealHtml(p.status_akd)} ${noLinkIcon}</td>
-      <td style="text-align:right;color:var(--text-muted);">${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga"></i>' : ''}${p.is_active ? '' : ' <i class="ti ti-eye-off" title="Nonaktif"></i>'}</td>
+      <td style="text-align:right;color:var(--text-muted);white-space:nowrap;">${stokPillHtml(p.id)}${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga"></i>' : ''}${p.is_active ? '' : ' <i class="ti ti-eye-off" title="Nonaktif"></i>'}</td>
     `;
     tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     tableBody.appendChild(tr);
@@ -966,7 +1021,7 @@ async function loadProduk(q, page){
     card.innerHTML = `
       <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</div>
       <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</div>
-      <div class="pc-foot"><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}${noLinkIcon}${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga" style="color:var(--amber);margin-left:4px;"></i>' : ''}</div>
+      <div class="pc-foot"><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}${stokPillHtml(p.id)}${noLinkIcon}${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga" style="color:var(--amber);margin-left:4px;"></i>' : ''}</div>
     `;
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     cardWrap.appendChild(card);
@@ -1248,6 +1303,9 @@ async function fetchAkdNoMap(produkIds){
 // sudah ada (bukan Ya/Tidak), + styling (judul, header berwarna, zebra, format Rp,
 // freeze header, autofilter, status berwarna). Semua pakai xlsx-js-style yang sama
 // dengan exportPricelistSales.
+// Stok: kolom Status Stok / Qty / Nilai (Nilai = rumus Qty x Harga EKATALOG, bisa diaudit di Excel) +
+// baris total di bawah. Total fisik (Instrument+Unit) DIPISAH dari nilai SET: qty SET = jumlah set yang
+// bisa dirakit dari komponen yang sama, jadi menjumlahkan keduanya = hitung stok dua kali.
 async function exportProdukToExcel(){
   try { await ensureXlsx(); } catch (e) { showToast('Gagal memuat library Excel: ' + e.message, true); return; }
   await ensureVerifiedSet(); // kolom "Verified" di Excel baca produkVerifiedIdSet
@@ -1259,21 +1317,31 @@ async function exportProdukToExcel(){
   if (!rowsToExport.length) { showToast('Tidak ada data untuk diexport', true); return; }
 
   const ids = rowsToExport.map(r => r.id);
-  const [hargaMap, akdMap] = await Promise.all([fetchHargaLatestMap(ids), fetchAkdNoMap(ids)]);
+  const [hargaMap, akdMap, stokOk] = await Promise.all([fetchHargaLatestMap(ids), fetchAkdNoMap(ids), ensureStokForIds(ids)]);
   if (hargaMap === null || akdMap === null) return;
+  // Stok gagal dimuat (mis. SQL migrasi belum jalan) -> export tetap jalan, kolom stok kosong.
+  if (!stokOk) showToast('Status stok gagal dimuat (SQL migrasi stok sudah dijalankan?) — kolom stok dikosongkan.', true);
 
-  const HEADER = ['No', 'Kode Produk', 'Nama Produk', 'Tipe', 'Golongan', 'No. AKD', 'Status AKD', 'Status INAPROC', 'Harga EKATALOG', 'Harga SWASTA', 'Tahun Harga', 'Aktif', 'Link V6', 'Verified INAPROC'];
-  const COL = { no: 0, akd: 5, statusAkd: 6, inaproc: 7, ekat: 8, swasta: 9, tahun: 10, aktif: 11, link: 12, verified: 13 };
+  const HEADER = ['No', 'Kode Produk', 'Nama Produk', 'Tipe', 'Golongan', 'No. AKD', 'Status AKD', 'Status INAPROC', 'Harga EKATALOG', 'Harga SWASTA', 'Tahun Harga', 'Status Stok', 'Qty Stok', 'Nilai Stok', 'Aktif', 'Link V6', 'Verified INAPROC'];
+  const COL = { no: 0, tipe: 3, akd: 5, statusAkd: 6, inaproc: 7, ekat: 8, swasta: 9, tahun: 10, stok: 11, qty: 12, nilai: 13, aktif: 14, link: 15, verified: 16 };
   const KOSONG = '—';
+  const FIRST_DATA_ROW = 3; // 0-based: judul, subtitle, header
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const filterParts = describeActiveFilters();
   const subtitle = (filterParts.length ? filterParts.join(' · ') + ' — ' : 'Semua produk — ') + `per ${dateStr} — ${rowsToExport.length} produk`;
 
   const aoa = [['EXPORT PRODUK'], [subtitle], HEADER];
+  let nilaiFisik = 0, nilaiSet = 0, adaNilai = false;
   rowsToExport.forEach((r, idx) => {
     const h = hargaMap.get(r.id);
     const akdList = akdMap.get(r.id) || (r.no_akd ? [r.no_akd] : []);
+    const sk = stokOk ? produkStokCache.get(r.id) : null;
+    const ekat = h && h.ekatalog != null ? Number(h.ekatalog) : null;
+    const qty = sk && sk.qty != null && Number.isFinite(sk.qty) ? sk.qty : null;
+    // Sama dengan definisi lama v_stok_nilai: nilai cuma ada kalau qty > 0 DAN harga EKATALOG ada.
+    const nilai = qty != null && qty > 0 && ekat != null ? qty * ekat : null;
+    if (nilai != null) { adaNilai = true; if (r.tipe === 'SET') nilaiSet += nilai; else nilaiFisik += nilai; }
     aoa.push([
       idx + 1,
       r.kode_produk || '',
@@ -1283,17 +1351,32 @@ async function exportProdukToExcel(){
       akdList.length ? akdList.join(', ') : KOSONG,
       SEAL_LABELS[r.status_akd] || r.status_akd || KOSONG,
       r.status_inaproc || KOSONG,
-      h && h.ekatalog != null ? h.ekatalog : KOSONG,
+      ekat != null ? ekat : KOSONG,
       h && h.swasta != null ? h.swasta : KOSONG,
       h ? h.tahun : KOSONG,
+      sk && STOK_LABEL[sk.status] ? STOK_LABEL[sk.status] : KOSONG,
+      qty != null ? qty : KOSONG,
+      nilai != null ? nilai : KOSONG,
       r.is_active ? 'Ya' : 'Tidak',
       r.link_v6 || KOSONG,
       produkVerifiedIdSet && produkVerifiedIdSet.has(r.id) ? 'Ya' : KOSONG,
     ]);
   });
+  const lastCol = HEADER.length - 1;
+  const lastDataRow = aoa.length - 1; // 0-based, baris data terakhir (sebelum baris total)
+
+  // Baris total (di luar autofilter): fisik (Instrument+Unit) DIPISAH dari SET -- lihat komentar di atas fungsi.
+  let totalFisikRow = -1, totalSetRow = -1;
+  if (adaNilai) {
+    const blank = () => new Array(HEADER.length).fill('');
+    aoa.push(blank());
+    const rFisik = blank(); rFisik[COL.tipe - 1] = 'TOTAL NILAI STOK FISIK (Instrument + Unit, semua baris export)'; rFisik[COL.nilai] = nilaiFisik;
+    const rSet = blank(); rSet[COL.tipe - 1] = 'Nilai SET siap rakit — dari komponen yang sama, JANGAN dijumlahkan dengan total di atas'; rSet[COL.nilai] = nilaiSet;
+    totalFisikRow = aoa.length; aoa.push(rFisik);
+    totalSetRow = aoa.length; aoa.push(rSet);
+  }
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  const lastCol = HEADER.length - 1;
   const lastRow = aoa.length - 1;
 
   ws['!merges'] = [
@@ -1315,21 +1398,25 @@ async function exportProdukToExcel(){
     const addr = XLSX.utils.encode_cell({ r: 2, c });
     if (ws[addr]) ws[addr].s = headerStyle;
   });
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: lastRow, c: lastCol } }) };
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: lastDataRow, c: lastCol } }) };
   ws['!freeze'] = { xSplit: 3, ySplit: 3 }; // header + kolom No/Kode/Nama tetap kelihatan pas scroll
   ws['!views'] = [{ state: 'frozen', xSplit: 3, ySplit: 3 }];
 
   // Warna status (teks + background lembut) biar bolongnya langsung kelihatan.
   const STATUS_COLOR = {
-    'Terhubung':       { fg: '1E6B3A', bg: 'E2F4E8' },
-    'Perlu AKD':       { fg: '9C2B2B', bg: 'FBE4E4' },
-    'Belum Firm':      { fg: '8A5A00', bg: 'FFF1D6' },
-    'Di Luar Cakupan': { fg: '555555', bg: 'ECECEC' },
-    'Disetujui':       { fg: '1E6B3A', bg: 'E2F4E8' },
+    'Terhubung':          { fg: '1E6B3A', bg: 'E2F4E8' },
+    'Perlu AKD':          { fg: '9C2B2B', bg: 'FBE4E4' },
+    'Belum Firm':         { fg: '8A5A00', bg: 'FFF1D6' },
+    'Di Luar Cakupan':    { fg: '555555', bg: 'ECECEC' },
+    'Disetujui':          { fg: '1E6B3A', bg: 'E2F4E8' },
+    'Siap':               { fg: '1E6B3A', bg: 'E2F4E8' },
+    'Indent':             { fg: '555555', bg: 'ECECEC' },
+    'Data tidak lengkap': { fg: '8A5A00', bg: 'FFF1D6' },
   };
+  const colLetter = (c) => XLSX.utils.encode_col(c);
 
-  for (let r = 3; r <= lastRow; r++) {
-    const zebra = (r - 3) % 2 === 1;
+  for (let r = FIRST_DATA_ROW; r <= lastDataRow; r++) {
+    const zebra = (r - FIRST_DATA_ROW) % 2 === 1;
     for (let c = 0; c <= lastCol; c++) {
       const addr = XLSX.utils.encode_cell({ r, c });
       const cell = ws[addr];
@@ -1340,14 +1427,24 @@ async function exportProdukToExcel(){
       const isEmpty = cell.v === KOSONG;
       if (isEmpty) style.font = { color: { rgb: 'A0A0A0' } };
 
-      if ([COL.no, COL.tahun, COL.aktif, COL.statusAkd, COL.inaproc, COL.verified].includes(c) || isEmpty) {
+      if ([COL.no, COL.tahun, COL.aktif, COL.statusAkd, COL.inaproc, COL.stok, COL.verified].includes(c) || isEmpty) {
         style.alignment = { vertical: 'center', horizontal: 'center' };
       }
       if ((c === COL.ekat || c === COL.swasta) && typeof cell.v === 'number') {
         cell.z = '"Rp" #,##0';
         style.alignment = { vertical: 'center', horizontal: 'right' };
       }
-      if ((c === COL.statusAkd || c === COL.inaproc) && STATUS_COLOR[cell.v]) {
+      if (c === COL.qty && typeof cell.v === 'number') {
+        cell.z = '#,##0';
+        style.alignment = { vertical: 'center', horizontal: 'right' };
+      }
+      if (c === COL.nilai && typeof cell.v === 'number') {
+        // Rumus (bukan angka mati) supaya bisa diaudit: Qty x Harga EKATALOG di baris yang sama.
+        cell.f = `${colLetter(COL.qty)}${r + 1}*${colLetter(COL.ekat)}${r + 1}`;
+        cell.z = '"Rp" #,##0';
+        style.alignment = { vertical: 'center', horizontal: 'right' };
+      }
+      if ((c === COL.statusAkd || c === COL.inaproc || c === COL.stok) && STATUS_COLOR[cell.v]) {
         const sc = STATUS_COLOR[cell.v];
         style.font = { bold: true, color: { rgb: sc.fg } };
         style.fill = { fgColor: { rgb: sc.bg } };
@@ -1358,6 +1455,23 @@ async function exportProdukToExcel(){
       }
       cell.s = style;
     }
+  }
+
+  // Baris total: SUMIF terhadap kolom Tipe supaya fisik & SET terpisah.
+  if (adaNilai) {
+    const tipeRng = `${colLetter(COL.tipe)}${FIRST_DATA_ROW + 1}:${colLetter(COL.tipe)}${lastDataRow + 1}`;
+    const nilaiRng = `${colLetter(COL.nilai)}${FIRST_DATA_ROW + 1}:${colLetter(COL.nilai)}${lastDataRow + 1}`;
+    const topBorder = { top: { style: 'medium', color: { rgb: '2F5496' } } };
+    [[totalFisikRow, `SUMIF(${tipeRng},"<>SET",${nilaiRng})`, true], [totalSetRow, `SUMIF(${tipeRng},"SET",${nilaiRng})`, false]].forEach(([r, formula, bold]) => {
+      const labelCell = ws[XLSX.utils.encode_cell({ r, c: COL.tipe - 1 })];
+      const valCell = ws[XLSX.utils.encode_cell({ r, c: COL.nilai })];
+      if (labelCell) labelCell.s = { font: { bold, italic: !bold, color: { rgb: bold ? '000000' : '666666' } }, border: bold ? topBorder : undefined };
+      if (valCell) {
+        valCell.f = formula;
+        valCell.z = '"Rp" #,##0';
+        valCell.s = { font: { bold, italic: !bold, color: { rgb: bold ? '000000' : '666666' } }, alignment: { horizontal: 'right' }, border: bold ? topBorder : undefined };
+      }
+    });
   }
 
   ws['!cols'] = [
@@ -1372,6 +1486,9 @@ async function exportProdukToExcel(){
     { wch: 16 },  // Harga EKATALOG
     { wch: 16 },  // Harga SWASTA
     { wch: 11 },  // Tahun Harga
+    { wch: 18 },  // Status Stok
+    { wch: 10 },  // Qty Stok
+    { wch: 18 },  // Nilai Stok
     { wch: 8 },   // Aktif
     { wch: 40 },  // Link V6
     { wch: 16 },  // Verified INAPROC
@@ -3227,7 +3344,6 @@ deleteBtn.addEventListener('click', async () => {
   S.openAdd = openAdd;
   installKfa(S);
   installOrphan(S);
-  installStokNilai(S);
 
   // Kick off the initial data load now -- moved here from near the top of
   // mount() (see the long comment by the old spot, near the auth section)
