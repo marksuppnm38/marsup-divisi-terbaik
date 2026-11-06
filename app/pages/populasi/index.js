@@ -552,6 +552,8 @@ function detailHtml(list) {
           const jml = isSet ? ((d.item_lepas || sh === 'cek') ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} pcs`;
           const hTag = sh === 'estimasi'
             ? ' <span class="ps-tag ps-tag-auto" title="Set ini tidak ditemukan di DB produk, jadi dihitung dari tebakan QTY (FPB). Tambahkan alias bila namanya salah ketik.">estimasi</span>'
+            : sh === 'ok_beda'
+              ? ' <span class="ps-tag ps-tag-auto" title="Dihitung dari item yang cocok dengan isi set. Ada item di sheet yang tidak ada di isi set (mis. substitusi produk); lihat rincian isi set.">ada item beda</span>'
             : sh === 'cek'
               ? ' <span class="ps-tag ps-tag-cek" title="QTY di sheet tidak sepakat dengan isi set, atau ada item di luar isi set. Tidak dihitung; buka rincian isi set untuk memeriksa.">perlu dicek</span>'
               : '';
@@ -906,6 +908,7 @@ async function buildWorkbook(ctx) {
     sheet: l.sumber_sheet || '',
     catatan: l.item_lepas ? 'Item lepas (kurang dari 3 baris), tidak dihitung'
       : (l.kind === 'SET' && l.status_hitung === 'cek') ? 'Perlu dicek: QTY tidak sepakat dengan isi set (' + (l.set_kode || 'set') + '), tidak dihitung'
+      : (l.kind === 'SET' && l.status_hitung === 'ok_beda') ? 'Dihitung dari item yang cocok; ada item sheet di luar isi set (' + (l.set_kode || 'set') + ')'
       : (l.kind === 'SET' && l.status_hitung === 'estimasi') ? 'Estimasi: set tidak ada di DB produk'
       : '',
   })), 1);
