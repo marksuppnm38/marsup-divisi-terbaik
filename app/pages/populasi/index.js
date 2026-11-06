@@ -80,7 +80,15 @@ let handlers = null;
 let searchTimer = null;
 let reqId = 0;
 
-const state = { provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI', dari: '', sampai: '', search: '' };
+const state = { provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI', tipe: 'SET', dari: '', sampai: '', search: '' };
+
+// Teks per tipe produk. Nilai 'jumlah_set' dari RPC = jumlah set (SET) atau total qty (INSTRUMENT/UNIT).
+const TIPE = {
+  SET:        { satuan: 'set',   judul: 'Populasi set instrumen',   kolom: 'Set',        jenis: 'Jenis set',       pesanan: 'pesanan set',   cari: 'RS / jenis set' },
+  INSTRUMENT: { satuan: 'pcs',   judul: 'Populasi instrumen satuan', kolom: 'Qty',        jenis: 'Kategori (family)', pesanan: 'pesanan satuan', cari: 'RS / kategori' },
+  UNIT:       { satuan: 'unit',  judul: 'Populasi unit',            kolom: 'Unit',       jenis: 'Jenis unit',      pesanan: 'pesanan unit',  cari: 'RS / jenis unit' },
+};
+const T = () => TIPE[state.tipe] || TIPE.SET;
 let data = null;                    // respons get_populasi_set_rs terakhir
 let rows = [];                      // data.rows
 let unmapped = [];                  // data.belum_terpetakan
@@ -169,6 +177,7 @@ function filterParams() {
     p_provinsi: state.provinsi || null,
     p_status: state.status,
     p_cakupan: state.cakupan,
+    p_tipe: state.tipe,
     p_dari: state.dari || null,
     p_sampai: state.sampai || null,
     p_search: state.search.trim() || null,
@@ -244,14 +253,14 @@ function renderSummary() {
   const s = data.ringkasan || {};
   const lokasi = state.provinsi || 'semua provinsi';
   $('ps-sum-main').innerHTML =
-    `<span class="ps-big">${fmt(s.jumlah_set)}</span> set di <span class="ps-big">${fmt(s.jumlah_rs)}</span> RS` +
+    `<span class="ps-big">${fmt(s.jumlah_set)}</span> ${T().satuan} di <span class="ps-big">${fmt(s.jumlah_rs)}</span> RS` +
     ` <span class="ps-sep">·</span> <span class="ps-lokasi">${esc(lokasi)}</span>`;
   const parts = [];
   parts.push(state.status === 'ALL'
     ? `${fmt(s.set_terkirim)} terkirim · ${fmt(s.set_proses)} dalam proses`
     : 'terkirim saja');
-  parts.push(`${fmt(s.jumlah_pesanan)} pesanan set`);
-  if (Number(s.item_lepas) > 0) parts.push(`${fmt(s.item_lepas)} item lepas tidak dihitung`);
+  parts.push(`${fmt(s.jumlah_pesanan)} ${T().pesanan}`);
+  if (state.tipe === 'SET' && Number(s.item_lepas) > 0) parts.push(`${fmt(s.item_lepas)} item lepas tidak dihitung`);
   $('ps-sum-sub').textContent = parts.join(' · ');
 }
 
@@ -315,7 +324,7 @@ function detailHtml(list) {
   return `
     <table class="ps-dt">
       <thead><tr>
-        <th>PO</th><th>Kode RMP</th><th>Set</th><th style="text-align:right">Jml set</th>
+        <th>PO</th><th>Kode RMP</th><th>${esc(T().jenis)}</th><th style="text-align:right">Jml ${esc(T().satuan)}</th>
         <th style="text-align:right">Baris</th><th style="text-align:right">QTY min–maks</th>
         <th>Status</th><th>Tanggal</th><th>Sheet</th>
       </tr></thead>
@@ -354,13 +363,13 @@ async function toggleDetail(idx) {
   tr.setAttribute('aria-expanded', 'true');
   tr.classList.add('open');
 
-  const key = JSON.stringify([r.customer, state.status, state.cakupan, state.dari, state.sampai]);
+  const key = JSON.stringify([r.customer, state.status, state.cakupan, state.tipe, state.dari, state.sampai]);
   const slot = dtr.querySelector('.ps-detail');
   try {
     let list = detailCache.get(key);
     if (!list) {
       list = await rpc('get_populasi_set_rs_detail', {
-        p_customer: r.customer, p_status: state.status, p_cakupan: state.cakupan,
+        p_customer: r.customer, p_status: state.status, p_cakupan: state.cakupan, p_tipe: state.tipe,
         p_dari: state.dari || null, p_sampai: state.sampai || null,
       });
       detailCache.set(key, list);
@@ -432,16 +441,16 @@ function editWilayah(customer, provinsi, kab) {
 function buildText() {
   const s = data.ringkasan || {};
   const lines = [];
-  lines.push(`Populasi set instrumen — ${state.provinsi || 'Semua provinsi'}`);
+  lines.push(`${T().judul} — ${state.provinsi || 'Semua provinsi'}`);
   let sub = state.status === 'ALL' ? 'Terkirim + dalam proses' : 'Terkirim';
   if (state.dari || state.sampai) sub += ` · ${state.dari ? fmtDate(state.dari) : '…'} s/d ${state.sampai ? fmtDate(state.sampai) : '…'}`;
   sub += ` · data per ${fmtDate(data.data_per)}`;
   lines.push(sub, '');
   rows.forEach((r, i) => {
     const jenis = jenisText(r);
-    lines.push(`${i + 1}. ${r.customer}${r.kab_kota ? ` (${r.kab_kota})` : ''} — ${fmt(r.jumlah_set)} set${jenis ? ` [${jenis}]` : ''}`);
+    lines.push(`${i + 1}. ${r.customer}${r.kab_kota ? ` (${r.kab_kota})` : ''} — ${fmt(r.jumlah_set)} ${T().satuan}${jenis ? ` [${jenis}]` : ''}`);
   });
-  lines.push('', `Total: ${fmt(s.jumlah_rs)} RS, ${fmt(s.jumlah_set)} set (estimasi)`);
+  lines.push('', `Total: ${fmt(s.jumlah_rs)} RS, ${fmt(s.jumlah_set)} ${T().satuan}${state.tipe === 'SET' ? ' (estimasi)' : ''}`);
   if (unmapped.length) lines.push(`Catatan: ${fmt(unmapped.length)} RS lain belum diketahui wilayahnya, belum termasuk.`);
   return lines.join('\n');
 }
@@ -458,8 +467,8 @@ async function copyText() {
 
 function downloadCsv() {
   if (!data || !rows.length) { showToast('Belum ada data untuk diunduh', 'error'); return; }
-  const head = ['Rumah sakit', 'Provinsi', 'Kab/Kota', 'Sumber wilayah', 'Jumlah set (estimasi)', 'Set terkirim',
-    'Set proses', 'Pesanan set', 'Item lepas', 'Jenis set', 'Terakhir'];
+  const head = ['Rumah sakit', 'Provinsi', 'Kab/Kota', 'Sumber wilayah', `Jumlah ${T().satuan}`, `${T().kolom} terkirim`,
+    `${T().kolom} proses`, 'Pesanan', 'Item lepas', T().jenis, 'Terakhir'];
   const lines = [head].concat(rows.map((r) => [
     r.customer, r.provinsi, r.kab_kota, r.sumber_wilayah, r.jumlah_set, r.set_terkirim,
     r.set_proses, r.jumlah_pesanan, r.item_lepas, jenisText(r), r.terakhir,
@@ -469,7 +478,7 @@ function downloadCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `populasi-set-${(state.provinsi || 'semua').toLowerCase().replace(/\s+/g, '-')}-${localISODate()}.csv`;
+  a.download = `populasi-${state.tipe.toLowerCase()}-${(state.provinsi || 'semua').toLowerCase().replace(/\s+/g, '-')}-${localISODate()}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -479,6 +488,21 @@ function downloadCsv() {
 // ── event ────────────────────────────────────────────────────────────────────
 function syncStatusButtons() {
   document.querySelectorAll('[data-action="ps-status"]').forEach((b) => b.classList.toggle('active', b.dataset.v === state.status));
+}
+
+// Tipe produk: tombol aktif + teks header/placeholder ikut tipe.
+function syncTipe() {
+  document.querySelectorAll('[data-action="ps-tipe"]').forEach((b) => b.classList.toggle('active', b.dataset.v === state.tipe));
+  const set = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
+  set('ps-th-jml', T().kolom);
+  set('ps-th-jenis', T().jenis);
+  set('ps-lbl-cari', 'Cari ' + T().cari);
+  const foot = $('ps-foot');
+  if (foot) {
+    foot.innerHTML = state.tipe === 'SET'
+      ? 'Jumlah set = <b>estimasi</b> dari QTY baris isi set (FPB). Pesanan dengan kurang dari 3 baris dianggap item lepas dan tidak dihitung.'
+      : 'Jumlah = <b>total QTY</b> baris satuan pada pesanan (bukan estimasi set). Kategori diambil dari family di master produk.';
+  }
 }
 
 export async function mount(container) {
@@ -491,6 +515,7 @@ export async function mount(container) {
   state.provinsi = saved === null ? DEFAULT_PROV : saved;
   state.status = 'DELIVERED';
   state.cakupan = 'POPULASI';
+  state.tipe = 'SET';
   state.dari = state.sampai = state.search = '';
   data = null; rows = []; unmapped = [];
   detailCache.clear();
@@ -498,6 +523,10 @@ export async function mount(container) {
   const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   const ACTIONS = {
     'ps-reload': () => load(),
+    'ps-tipe': (el) => {
+      state.tipe = ['INSTRUMENT', 'UNIT'].includes(el.dataset.v) ? el.dataset.v : 'SET';
+      syncTipe(); load();
+    },
     'ps-status': (el) => { state.status = el.dataset.v === 'ALL' ? 'ALL' : 'DELIVERED'; syncStatusButtons(); load(); },
     'ps-toggle': (el) => toggleDetail(+el.dataset.idx),
     'ps-edit-wil': (el) => { const r = rows[+el.dataset.idx]; if (r) editWilayah(r.customer, r.provinsi, r.kab_kota); },
@@ -544,6 +573,7 @@ export async function mount(container) {
     (state.provinsi ? `<option value="${esc(state.provinsi)}">${esc(state.provinsi)}</option>` : '');
   $('ps-provinsi').value = state.provinsi;
   syncStatusButtons();
+  syncTipe();
 
   // dipanggil paling akhir, setelah semua let/const modul terinisialisasi (hindari TDZ)
   load();

@@ -26,6 +26,14 @@ export const POPULASI_MARKUP = `
       <select class="filter-select" id="ps-provinsi"><option value="">Semua provinsi</option></select>
     </label>
     <div class="ps-field">
+      <span class="ps-lbl">Tipe</span>
+      <div class="ps-seg" role="group" aria-label="Tipe produk">
+        <button type="button" class="filter-btn active" data-action="ps-tipe" data-v="SET">Set</button>
+        <button type="button" class="filter-btn" data-action="ps-tipe" data-v="INSTRUMENT">Instrumen</button>
+        <button type="button" class="filter-btn" data-action="ps-tipe" data-v="UNIT">Unit</button>
+      </div>
+    </div>
+    <div class="ps-field">
       <span class="ps-lbl">Status</span>
       <div class="ps-seg" role="group" aria-label="Status pesanan">
         <button type="button" class="filter-btn active" data-action="ps-status" data-v="DELIVERED">Terkirim</button>
@@ -48,7 +56,7 @@ export const POPULASI_MARKUP = `
       </select>
     </label>
     <label class="ps-field ps-field-grow">
-      <span class="ps-lbl">Cari RS / jenis set</span>
+      <span class="ps-lbl" id="ps-lbl-cari">Cari RS / jenis set</span>
       <input class="ps-input" type="search" id="ps-search" placeholder="mis. soetrasno, partus…" autocomplete="off">
     </label>
   </section>
@@ -71,8 +79,8 @@ export const POPULASI_MARKUP = `
           <tr>
             <th>Rumah sakit</th>
             <th>Wilayah</th>
-            <th style="text-align:right">Set</th>
-            <th>Jenis set</th>
+            <th style="text-align:right" id="ps-th-jml">Set</th>
+            <th id="ps-th-jenis">Jenis set</th>
             <th>Terakhir</th>
             <th class="ps-col-act"><span class="ps-sr">Aksi</span></th>
           </tr>
