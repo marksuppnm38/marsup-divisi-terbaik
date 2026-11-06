@@ -471,6 +471,43 @@ export const CRUD_PRODUK_MARKUP = `
       <div id="orphanBody"></div>
       <div class="pg-bar" id="orphanPagination" style="display:none;"></div>
     </div>
+
+    <!-- STOK & NILAI VIEW (INFORMASI SAJA): stok per produk + nilai (qty x harga EKATALOG),
+         bisa difilter dan diexport. Sumber: view v_stok_nilai (stok_nilai_view.sql). -->
+    <div class="content" id="viewStok" style="display:none;">
+      <div class="content-head">
+        <div>
+          <div class="content-title">Stok &amp; Nilai</div>
+          <div class="content-sub" id="stokCount">Memuat...</div>
+        </div>
+        <div class="orph-actions">
+          <div class="orph-btn-group">
+            <button class="btn btn-sm" id="stokCopyBtn" title="Salin hasil filter sebagai tabel (Ctrl+V di Sheets/Excel)"><i class="ti ti-copy"></i> Salin</button>
+            <button class="btn btn-sm" id="stokCsvBtn" title="Unduh hasil filter sebagai CSV"><i class="ti ti-download"></i> CSV</button>
+            <button class="btn btn-sm btn-accent" id="stokXlsxBtn" title="Unduh hasil filter sebagai Excel + total nilai"><i class="ti ti-file-spreadsheet"></i> Excel</button>
+          </div>
+          <button class="btn btn-sm" id="stokRefreshBtn" title="Muat ulang data"><i class="ti ti-refresh"></i> Muat ulang</button>
+        </div>
+      </div>
+      <details class="orph-info">
+        <summary><i class="ti ti-info-circle"></i> Cara membaca halaman ini</summary>
+        <div class="orph-info-body">
+          <b>Nilai</b> = qty siap &times; harga EKATALOG (tahun terbaru), yaitu harga tayang tanpa nego. Untuk set, qty = jumlah set yang bisa dirakit.
+          Produk yang ada stok tetapi belum punya harga tidak ikut terhitung (lihat kartu "Ada stok, belum ada harga").
+          Total nilai, daftar, dan file export selalu mengikuti filter yang sedang aktif.
+        </div>
+      </details>
+      <div class="orph-stats" id="stokStats"></div>
+      <div class="akd-toolbar">
+        <div class="akd-search-box">
+          <i class="ti ti-search"></i>
+          <input type="text" id="stokSearchInput" placeholder="Cari kode produk, kode asli, nama, golongan..."/>
+        </div>
+      </div>
+      <div class="orph-filters" id="stokFilterBar"></div>
+      <div id="stokBody"></div>
+      <div class="pg-bar" id="stokPagination" style="display:none;"></div>
+    </div>
   </main>
 </div>
 

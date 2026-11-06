@@ -45,6 +45,7 @@ import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
 import { installOrphan } from './orphan.js';
+import { installStokNilai } from './stok-nilai.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -321,9 +322,10 @@ const CRUD_VIEW_LABELS = {
   bulk: 'Bulk Edit',
   sync: 'Sync dari Sheet',
   orphan: 'Orphan / Drift',
+  stok: 'Stok & Nilai',
 };
 function switchView(view){
-  ['produk','set','akd','kfa','bulk','sync','orphan'].forEach(v => {
+  ['produk','set','akd','kfa','bulk','sync','orphan','stok'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
   const crumbEl = document.getElementById('pw-topbar-crumb-text');
@@ -339,6 +341,8 @@ function switchView(view){
   if (view === 'sync') S.loadSyncUnmatched();
   // 'orphan' juga RELOAD tiap masuk: snapshot manifest diperbarui tiap jam di background.
   if (view === 'orphan') S.loadOrphan();
+  // 'stok' juga RELOAD tiap masuk: stok baru bisa saja diupload di halaman Stok.
+  if (view === 'stok') S.loadStokNilai();
   // 'set' punya semantik beda dari akd/kfa's "sekali doang" -- dipindah
   // dari listener terpisah yang tadinya nempel di tombol sidebar sendiri
   // (`.sb-item[data-view="set"]`, gak ada lagi): reload SETIAP kali masuk
@@ -3223,6 +3227,7 @@ deleteBtn.addEventListener('click', async () => {
   S.openAdd = openAdd;
   installKfa(S);
   installOrphan(S);
+  installStokNilai(S);
 
   // Kick off the initial data load now -- moved here from near the top of
   // mount() (see the long comment by the old spot, near the auth section)
