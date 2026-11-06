@@ -8,7 +8,7 @@
 export const POPULASI_MARKUP = `
 <div id="app-root">
 <div class="pw-topbar">
-  <div class="pw-topbar-crumb"><strong>Populasi Set per RS</strong></div>
+  <div class="pw-topbar-crumb"><strong>Populasi</strong></div>
   <div class="pw-topbar-actions">
     <span class="last-update"><i class="ti ti-database"></i> <span id="ps-data-per">Memuat…</span></span>
     <button class="toggle-btn" type="button" data-action="ps-reload"><i class="ti ti-rotate-clockwise"></i> Muat ulang</button>

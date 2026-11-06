@@ -43,7 +43,7 @@ export const MODULES = [
   },
   {
     id: 'populasi',
-    title: 'Populasi Set per RS',
+    title: 'Populasi',
     desc: 'Set instrumen apa, di RS mana saja.',
     url: '/populasi',
     migrated: true,
