@@ -98,6 +98,8 @@ export const STOK_MARKUP = `
   </section>
   <!-- KELENGKAPAN STOK SET (diisi kelengkapan.js) -->
   <section class="card" id="kelengkapan-card" aria-labelledby="kel-title"></section>
+  <!-- SIAP TAYANG: ada link e-Katalog + stok ready (diisi siap-tayang.js) -->
+  <section class="card" id="siap-card" aria-labelledby="siap-title"></section>
   <!-- RIWAYAT -->
   <section class="card" aria-labelledby="riwayat-title">
     <div class="card-head">

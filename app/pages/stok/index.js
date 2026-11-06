@@ -24,6 +24,7 @@
 
 import { STOK_MARKUP } from './markup.js';
 import { mountKelengkapan, refreshKelengkapan, unmountKelengkapan } from './kelengkapan.js';
+import { mountSiapTayang, refreshSiapTayang, unmountSiapTayang } from './siap-tayang.js';
 
 // SECURITY FIX: renderSkipTable() and the upload-history table below render
 // `kode_asli` (parsed straight from cells in the Excel file the user
@@ -202,6 +203,7 @@ export async function mount(container) {
   renderLastStatus();
   renderHistory();
   mountKelengkapan({ supabaseUrl: SUPABASE_URL, anonKey: ANON_KEY });
+  mountSiapTayang({ supabaseUrl: SUPABASE_URL, anonKey: ANON_KEY });
 
   // ══════════════════════════════════════════
   // RIWAYAT — dibaca/ditulis ke tabel bersama `stok_upload_log` di Supabase.
@@ -723,6 +725,7 @@ export async function mount(container) {
       historyShowAll = false;
       await renderHistory();
       refreshKelengkapan(); // stok baru masuk → hitung ulang komponen bolong
+      refreshSiapTayang();  // stok baru masuk → status siap/indent berubah
       resetUploadUI();
       stokStatusMsg.innerHTML = resultHtml; // sec-ok: resultHtml dibangun dari angka + escapeHtml(kode) di atas
     } catch (err) {
@@ -746,6 +749,7 @@ export function unmount() {
   // "jaggy zoom" that removing/reloading it on every navigation was causing.
   document.getElementById('page-stok-style')?.remove();
   unmountKelengkapan();
+  unmountSiapTayang();
 
   mountedContainer = null;
 }
