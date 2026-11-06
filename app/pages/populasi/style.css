@@ -1,0 +1,133 @@
+/* app/pages/populasi/style.css
+   Semua selector diawali #app-root (mount root halaman ini) -- nol selector bare/unscoped,
+   disiplin yang sama dengan dashboard/style.css. Hanya memakai token yang sudah dipakai
+   halaman lain (--surface, --surface-2, --border, --text-*, --accent, --font-mono);
+   tidak ada warna baru selain dot status (hijau/kuning), sama seperti dashboard. */
+
+#app-root{
+  --success-dot: #3BA55D;
+  --warning-dot: #C99A2C;
+}
+
+/* Edge-to-edge seperti konversian/crud-produk/dashboard (lihat catatan "FULLBLEED PASS" di
+   dashboard/style.css): <main> polos membawa max-width+margin auto dan tanpa background. */
+#app-root main{
+  max-width: none;
+  margin: 0;
+  background: var(--surface);
+}
+
+/* ── catatan kesegaran data ── */
+#app-root .ps-note{
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: 0 0 16px; padding: 10px 12px;
+  border: 0.5px solid var(--border-strong); border-radius: 8px;
+  font-size: 12.5px; line-height: 1.5; color: var(--text-secondary);
+  background: var(--surface-2);
+}
+#app-root .ps-note[hidden]{ display: none; }
+#app-root .ps-note i{ color: var(--warning-dot); font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+/* ── filter ── */
+#app-root .ps-filters{
+  display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end;
+  margin: 0 0 16px;
+}
+#app-root .ps-field{ display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#app-root .ps-field-grow{ flex: 1 1 220px; }
+#app-root .ps-lbl{ font-size: 11px; font-weight: 500; color: var(--text-muted); }
+#app-root .ps-input{
+  height: 32px; padding: 0 10px; box-sizing: border-box;
+  font: inherit; font-size: 12.5px; color: var(--text);
+  background: var(--surface); border: 0.5px solid var(--border-strong); border-radius: 8px;
+}
+#app-root .ps-input:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+#app-root .ps-seg{ display: flex; gap: 6px; }
+
+/* ── ringkasan satu baris ── */
+#app-root .ps-summary{
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 0 12px; padding: 14px 16px;
+  border: 0.5px solid var(--border); border-radius: 10px; background: var(--surface);
+}
+#app-root .ps-sum-main{ font-size: 15px; color: var(--text); }
+#app-root .ps-big{ font-size: 24px; font-weight: 600; font-family: var(--font-mono); letter-spacing: -0.02em; }
+#app-root .ps-sep{ color: var(--text-muted); margin: 0 2px; }
+#app-root .ps-lokasi{ color: var(--text-secondary); }
+#app-root .ps-sum-sub{ margin-top: 2px; font-size: 12px; color: var(--text-muted); }
+#app-root .ps-sum-actions{ display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── tabel ── */
+#app-root #ps-table{ transition: opacity .15s; }
+#app-root #ps-table.ps-busy{ opacity: .55; pointer-events: none; }
+#app-root .ps-row{ cursor: pointer; }
+#app-root .ps-row:hover{ background: var(--surface-2); }
+#app-root .ps-row:focus-visible{ outline: 2px solid var(--accent); outline-offset: -2px; }
+#app-root .ps-chev{
+  display: inline-block; width: 16px; margin-right: 4px; color: var(--text-muted);
+  transition: transform .15s;
+}
+#app-root .ps-row.open .ps-chev{ transform: rotate(90deg); }
+#app-root .ps-rs{ font-weight: 500; }
+#app-root .ps-num{ text-align: right; font-family: var(--font-mono); white-space: nowrap; }
+#app-root .ps-num b{ font-weight: 600; }
+#app-root .ps-sub{ display: block; font-size: 10.5px; font-weight: 400; color: var(--text-muted); font-family: inherit; }
+#app-root .ps-date{ font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+#app-root .ps-jenis{ font-size: 12px; color: var(--text-secondary); max-width: 360px; }
+#app-root .ps-more{ color: var(--text-muted); cursor: help; white-space: nowrap; }
+#app-root .ps-col-act{ width: 1%; white-space: nowrap; text-align: right; }
+#app-root .ps-sr{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+#app-root .ps-tag{
+  display: inline-block; margin-left: 4px; padding: 0 5px;
+  font-size: 10px; font-weight: 500; line-height: 16px; white-space: nowrap;
+  color: var(--text-secondary); background: transparent;
+  border: 0.5px solid var(--border-strong); border-radius: 4px;
+}
+#app-root .ps-tag-auto{ color: var(--text-muted); border-style: dashed; }
+
+#app-root .ps-iconbtn{
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; cursor: pointer;
+  color: var(--text-muted); background: transparent;
+  border: 0.5px solid transparent; border-radius: 7px;
+}
+#app-root .ps-iconbtn:hover{ color: var(--text); border-color: var(--border-strong); background: var(--surface); }
+#app-root .ps-iconbtn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+#app-root .ps-empty{ text-align: center; padding: 30px 12px; color: var(--text-muted); }
+#app-root .ps-empty-err{ color: var(--danger); }
+#app-root .ps-empty i{ margin-right: 4px; }
+
+/* rincian satu RS (baris yang membuka di bawah baris RS) */
+#app-root .ps-detail-row > td{ padding: 0; background: var(--surface-2); }
+#app-root .ps-detail{ padding: 10px 16px 12px 36px; overflow-x: auto; font-size: 12px; color: var(--text-secondary); }
+#app-root .ps-detail-empty{ color: var(--text-muted); }
+#app-root .ps-dt{ width: 100%; border-collapse: collapse; font-size: 12px; }
+#app-root .ps-dt th{ text-align: left; padding: 4px 10px 4px 0; font-size: 11px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+#app-root .ps-dt th[style]{ padding-right: 0; padding-left: 10px; }
+#app-root .ps-dt td{ padding: 5px 10px 5px 0; border-top: 0.5px solid var(--border); vertical-align: top; }
+#app-root .ps-dt td.ps-num{ padding-left: 10px; padding-right: 0; }
+#app-root .ps-lepas td{ opacity: .6; }
+
+/* status: dot + label, bukan pil berwarna (sama dgn dashboard) */
+#app-root .ps-st{ display: inline-flex; align-items: center; gap: 5px; font-weight: 500; color: var(--text-secondary); }
+#app-root .ps-st::before{ content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--text-muted); }
+#app-root .ps-st-ok::before{ background: var(--success-dot); }
+#app-root .ps-st-wip::before{ background: var(--warning-dot); }
+
+/* ── RS yang wilayahnya belum diketahui ── */
+#app-root .ps-unmapped{ margin-top: 16px; }
+#app-root .ps-unmapped[hidden]{ display: none; }
+#app-root .ps-unmapped > summary{ cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
+#app-root .ps-unmapped > summary::-webkit-details-marker{ display: none; }
+#app-root .ps-unmapped > summary:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+#app-root .ps-unm-table{ width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12.5px; }
+#app-root .ps-unm-table td{ padding: 6px 8px 6px 0; border-top: 0.5px solid var(--border); }
+
+/* ── dialog wilayah (memakai .confirm-overlay/.confirm-card generik) ──
+   Overlay-nya ada DI LUAR #app-root (sama seperti presetNameOverlay di dashboard), jadi
+   di-scope lewat id-nya sendiri -- tetap tidak ada selector bare. */
+#ps-wil-overlay .ps-lbl{ display: block; margin-bottom: 4px; font-size: 11px; font-weight: 500; color: var(--text-muted); }
+#ps-wil-overlay .ps-wil-rs{ margin: 0 0 12px; font-weight: 500; word-break: break-word; }
+#ps-wil-overlay .ps-wil-err{ display: none; margin-top: 8px; font-size: 11.5px; color: var(--danger); }
