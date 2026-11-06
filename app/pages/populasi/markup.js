@@ -112,7 +112,7 @@ export const POPULASI_MARKUP = `
       </table>
     </div>
     <div class="table-footer">
-      <span>Set = <b>estimasi</b> dari QTY baris isi set (FPB); pesanan dengan kurang dari 3 baris dianggap item lepas dan tidak dihitung. Unit/pcs = total QTY baris barang. Klik baris untuk melihat PO-nya.</span>
+      <span>Set dihitung dari <b>isi set di DB produk</b> (QTY dipesan ÷ QTY item di set). <b>estimasi</b> = set tidak ada di DB produk, dihitung dari tebakan QTY. <b>perlu dicek</b> = QTY tidak sepakat dengan isi set, belum dihitung. Pesanan dengan kurang dari 3 baris dianggap item lepas. Unit/pcs = total QTY baris barang. Klik baris untuk melihat PO dan isi setnya.</span>
     </div>
   </div>
 

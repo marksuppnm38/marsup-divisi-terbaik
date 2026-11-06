@@ -367,7 +367,7 @@ function renderFreshness() {
 
 function renderSummary() {
   const s = data.ringkasan || {};
-  const hasSet = num(s.set_total) > 0;
+  const hasSet = num(s.set_total) > 0 || num(s.set_cek) > 0;
   const hasPcs = num(s.pcs_total) > 0;
   const lokasi = state.provinsi || 'semua provinsi';
   const big = [];
@@ -384,6 +384,8 @@ function renderSummary() {
   if (hasPcs && state.status === 'ALL') parts.push(`unit/pcs: ${fmt(s.pcs_terkirim)} terkirim, ${fmt(s.pcs_proses)} proses`);
   if (big.length) parts.push(`${fmt(s.jumlah_pesanan)} pesanan`);
   if (hasSet && num(s.item_lepas) > 0) parts.push(`${fmt(s.item_lepas)} item lepas tidak dihitung`);
+  if (num(s.set_cek) > 0) parts.push(`${fmt(s.set_cek)} pesanan set perlu dicek (belum dihitung)`);
+  if (hasSet && num(s.set_estimasi) > 0) parts.push(`${fmt(s.set_estimasi)} set masih estimasi`);
   $('ps-sum-sub').textContent = parts.join(' · ');
 
   const xl = document.querySelector('[data-action="ps-xlsx"]');
@@ -415,7 +417,7 @@ function renderHead(cols) {
 
 function colsInfo() {
   const s = (data && data.ringkasan) || {};
-  const set = num(s.set_total) > 0;
+  const set = num(s.set_total) > 0 || num(s.set_cek) > 0;
   const pcs = num(s.pcs_total) > 0;
   return { set, pcs, n: 5 + (set ? 1 : 0) + (pcs ? 1 : 0) };
 }
@@ -455,12 +457,13 @@ function renderTable() {
     const shown = rinci.slice(0, 2).map((j) => `${esc(j.label)} ×${fmt(j.nilai)}`).join(', ');
     const more = rinci.length > 2 ? ` <span class="ps-more" title="${esc(rincianText(r))}">+${rinci.length - 2} lainnya</span>` : '';
     const subSet = num(r.set_proses) > 0 ? `<span class="ps-sub">${fmt(r.set_terkirim)} terkirim, ${fmt(r.set_proses)} proses</span>` : '';
+    const subCek = num(r.set_cek) > 0 ? `<span class="ps-sub ps-sub-cek">${fmt(r.set_cek)} pesanan perlu dicek</span>` : '';
     const subPcs = num(r.pcs_proses) > 0 ? `<span class="ps-sub">${fmt(r.pcs_terkirim)} terkirim, ${fmt(r.pcs_proses)} proses</span>` : '';
     return `
       <tr class="ps-row" role="button" tabindex="0" aria-expanded="false" data-action="ps-toggle" data-idx="${i}">
         <td><i class="ti ti-chevron-right ps-chev"></i><span class="ps-rs">${esc(r.customer)}</span></td>
         <td>${wilayah} ${tag}</td>
-        ${cols.set ? `<td class="ps-num">${r.set ? `<b>${fmt(r.set)}</b>${subSet}` : '<span class="ps-muted">—</span>'}</td>` : ''}
+        ${cols.set ? `<td class="ps-num">${r.set ? `<b>${fmt(r.set)}</b>${subSet}` : '<span class="ps-muted">—</span>'}${subCek}</td>` : ''}
         ${cols.pcs ? `<td class="ps-num">${r.pcs ? `<b>${fmt(r.pcs)}</b>${subPcs}` : '<span class="ps-muted">—</span>'}</td>` : ''}
         <td class="ps-jenis">${shown}${more}</td>
         <td class="ps-date">${esc(fmtDate(r.terakhir))}</td>
@@ -495,6 +498,42 @@ function renderUnmapped() {
 }
 
 // ── rincian satu RS ──────────────────────────────────────────────────────────
+// Isi set di DB produk vs yang dipesan di sheet, supaya hitungan bisa dicek sendiri.
+function isiHtml(d) {
+  const isi = Array.isArray(d.isi) ? d.isi : [];
+  if (d.kind !== 'SET' || !isi.length) return '';
+  // rasio yang paling sering muncul dianggap "acuan"; yang lain ditandai beda
+  const freq = new Map();
+  isi.forEach((x) => { if (x.rasio != null && num(x.dipesan) > 0) freq.set(num(x.rasio), (freq.get(num(x.rasio)) || 0) + 1); });
+  let acuan = null, best = 0;
+  freq.forEach((c, v) => { if (c > best) { best = c; acuan = v; } });
+  const kurang = isi.filter((x) => x.qty_set != null && num(x.dipesan) === 0).length;
+  const luar = isi.filter((x) => x.qty_set == null).length;
+  const body = isi.map((x) => {
+    const isLuar = x.qty_set == null;
+    const isKurang = !isLuar && num(x.dipesan) === 0;
+    const beda = !isLuar && !isKurang && acuan != null && num(x.rasio) !== acuan;
+    const cls = isLuar ? 'ps-isi-luar' : (isKurang ? 'ps-isi-kurang' : (beda ? 'ps-isi-beda' : ''));
+    const cat = isLuar ? 'tidak ada di isi set' : (isKurang ? 'tidak ada di sheet' : (beda ? 'tidak sepakat' : ''));
+    return `<tr class="${cls}">
+      <td><span class="kode-text">${esc(x.kode || '—')}</span></td>
+      <td>${esc(x.nama || '')}</td>
+      <td class="ps-num">${isLuar ? '—' : fmt(x.qty_set)}</td>
+      <td class="ps-num">${isKurang ? '—' : fmt(x.dipesan)}</td>
+      <td class="ps-num">${x.rasio == null || isKurang ? '—' : fmt(Math.round(num(x.rasio) * 100) / 100)}</td>
+      <td class="ps-isi-cat">${cat}</td></tr>`;
+  }).join('');
+  const ringkas = [
+    d.set_kode ? `acuan ${esc(d.set_kode)}` : '',
+    kurang ? `${kurang} item set tidak ada di sheet` : '',
+    luar ? `${luar} item sheet di luar isi set` : '',
+  ].filter(Boolean).join(' · ');
+  return `<details class="ps-isi"><summary>Isi set vs dipesan${ringkas ? ` <span class="ps-muted">(${ringkas})</span>` : ''}</summary>
+    <table class="ps-isi-t"><thead><tr><th>Kode item</th><th>Nama item</th>
+      <th class="ps-th-num">Isi/set</th><th class="ps-th-num">Dipesan</th><th class="ps-th-num">= set</th><th></th></tr></thead>
+    <tbody>${body}</tbody></table></details>`;
+}
+
 function detailHtml(list) {
   if (!list || !list.length) return '<div class="ps-detail-empty">Tidak ada pesanan pada filter ini.</div>';
   return `
@@ -509,14 +548,20 @@ function detailHtml(list) {
           const nama = isSet ? d.label : d.produk;
           const sub = !isSet && (d.family || d.kode_produk)
             ? `<span class="ps-sub">${esc(d.family || d.kode_produk)}</span>` : '';
-          const jml = isSet ? (d.item_lepas ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} pcs`;
+          const sh = isSet && !d.item_lepas ? d.status_hitung : '';
+          const jml = isSet ? ((d.item_lepas || sh === 'cek') ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} pcs`;
+          const hTag = sh === 'estimasi'
+            ? ' <span class="ps-tag ps-tag-auto" title="Set ini tidak ditemukan di DB produk, jadi dihitung dari tebakan QTY (FPB). Tambahkan alias bila namanya salah ketik.">estimasi</span>'
+            : sh === 'cek'
+              ? ' <span class="ps-tag ps-tag-cek" title="QTY di sheet tidak sepakat dengan isi set, atau ada item di luar isi set. Tidak dihitung; buka rincian isi set untuk memeriksa.">perlu dicek</span>'
+              : '';
           return `
           <tr${d.item_lepas ? ' class="ps-lepas"' : ''}>
             <td>${esc(d.po || '—')}</td>
             <td><span class="kode-text">${esc(d.kode_rmp || '—')}</span></td>
             <td>${esc(katName(d.kelompok))}</td>
-            <td>${esc(nama)}${d.item_lepas ? ' <span class="ps-tag" title="Kurang dari 3 baris: bukan satu set utuh, tidak dihitung">item lepas</span>' : ''}${sub}</td>
-            <td class="ps-num">${esc(jml)}</td>
+            <td>${esc(nama)}${d.item_lepas ? ' <span class="ps-tag" title="Kurang dari 3 baris: bukan satu set utuh, tidak dihitung">item lepas</span>' : ''}${sub}${isiHtml(d)}</td>
+            <td class="ps-num">${esc(jml)}${hTag}</td>
             <td><span class="ps-st ${d.status === 'TERKIRIM' ? 'ps-st-ok' : 'ps-st-wip'}">${d.status === 'TERKIRIM' ? 'Terkirim' : 'Proses'}</span></td>
             <td class="ps-date">${esc(fmtDate(d.tanggal))}</td>
             <td class="ps-date">${esc(d.sumber_sheet || '—')}</td>
@@ -631,8 +676,9 @@ function buildText() {
     const rinci = rincianText(r);
     lines.push(`${i + 1}. ${r.customer}${r.kab_kota ? ` (${r.kab_kota})` : ''}${state.provinsi ? '' : ` [${r.provinsi || 'wilayah belum diketahui'}]`} — ${jml}${rinci ? ` (${rinci})` : ''}`);
   });
-  const tot = [num(s.set_total) ? `${fmt(s.set_total)} set${state.produk.trim() ? '' : ' (estimasi)'}` : '', num(s.pcs_total) ? `${fmt(s.pcs_total)} unit/pcs` : ''].filter(Boolean).join(' + ');
+  const tot = [num(s.set_total) ? `${fmt(s.set_total)} set${num(s.set_estimasi) > 0 ? ` (${fmt(s.set_estimasi)} di antaranya estimasi)` : ''}` : '', num(s.pcs_total) ? `${fmt(s.pcs_total)} unit/pcs` : ''].filter(Boolean).join(' + ');
   lines.push('', `Total: ${fmt(s.jumlah_rs)} RS, ${tot}`);
+  if (num(s.set_cek) > 0) lines.push(`Catatan: ${fmt(s.set_cek)} pesanan set perlu dicek dan belum dihitung.`);
   if (state.provinsi && unmapped.length) lines.push(`Catatan: ${fmt(unmapped.length)} RS lain belum diketahui wilayahnya, belum termasuk.`);
   return lines.join('\n');
 }
@@ -744,7 +790,8 @@ async function buildWorkbook(ctx) {
   section('Hasil');
   kv('Jumlah RS', num(s.jumlah_rs), NUM);
   if (hasSet) {
-    kv('Set (estimasi)', num(s.set_total), NUM);
+    kv('Set', num(s.set_total), NUM);
+    if (num(s.set_estimasi) > 0) kv('   di antaranya estimasi (set tidak ada di DB produk)', num(s.set_estimasi), NUM);
     if (st.status === 'ALL') { kv('   terkirim', num(s.set_terkirim), NUM); kv('   dalam proses', num(s.set_proses), NUM); }
   }
   if (hasPcs) {
@@ -753,6 +800,7 @@ async function buildWorkbook(ctx) {
   }
   kv('Jumlah pesanan', num(s.jumlah_pesanan), NUM);
   if (hasSet) kv('Item lepas (tidak dihitung)', num(s.item_lepas), NUM);
+  if (hasSet) kv('Pesanan set perlu dicek (tidak dihitung)', num(s.set_cek), NUM);
 
   if (!st.provinsi && R.length) {
     section('Per provinsi');
@@ -784,7 +832,7 @@ async function buildWorkbook(ctx) {
   }
 
   section('Catatan membaca angka');
-  if (hasSet) note('Set adalah estimasi dari QTY baris isi set pada FPB (pembagi bersama terbesar dari QTY per baris). Pesanan set dengan kurang dari 3 baris dianggap item lepas dan tidak dihitung; barisnya tetap tampil di sheet Rincian.');
+  if (hasSet) note('Set dihitung dari isi set di DB produk: QTY dipesan dibagi QTY item itu di dalam set. Bila semua item sepakat, itulah jumlah set. Bila tidak sepakat atau ada item di luar isi set, pesanan ditandai "perlu dicek" dan tidak dihitung. Bila set tidak ditemukan di DB produk, dipakai estimasi (pembagi bersama terbesar dari QTY per baris) dan diberi label estimasi. Pesanan set dengan kurang dari 3 baris dianggap item lepas dan tidak dihitung; barisnya tetap tampil di sheet Rincian.');
   if (hasPcs) note('Unit/pcs adalah total QTY baris barang (instrumen satuan, elektromedis, alat laboratorium, dan sejenisnya), bukan estimasi.');
   note('Wilayah ditentukan dari koreksi manual bila ada, kalau tidak dari deteksi alamat pengiriman. Kolom Sumber wilayah di sheet Per RS menunjukkan mana yang dipakai; yang otomatis bisa salah.');
 
@@ -805,7 +853,7 @@ async function buildWorkbook(ctx) {
     { h: 'Unit/pcs proses', k: 'pcs_p', w: 14, fmt: NUM },
     { h: 'Unit/pcs total', k: 'pcs', w: 14, fmt: NUM });
   perCols.push({ h: 'Pesanan', k: 'pesanan', w: 10, fmt: NUM });
-  if (hasSet) perCols.push({ h: 'Item lepas', k: 'lepas', w: 10, fmt: NUM });
+  if (hasSet) perCols.push({ h: 'Item lepas', k: 'lepas', w: 10, fmt: NUM }, { h: 'Perlu dicek', k: 'cek', w: 11, fmt: NUM });
   perCols.push({ h: 'Terakhir', k: 'terakhir', w: 14, fmt: DATE }, { h: 'Rincian', k: 'rincian', w: 90 });
   tableSheet('Per RS', perCols, R.map((x, i) => ({
     no: i + 1,
@@ -817,6 +865,7 @@ async function buildWorkbook(ctx) {
     pcs_t: num(x.pcs_terkirim), pcs_p: num(x.pcs_proses), pcs: x.pcs,
     pesanan: num(x.jumlah_pesanan),
     lepas: num(x.item_lepas),
+    cek: num(x.set_cek),
     terakhir: xlDate(x.terakhir),
     rincian: rincianText(x, '; '),
   })), 2);
@@ -855,7 +904,10 @@ async function buildWorkbook(ctx) {
     status: l.status === 'TERKIRIM' ? 'Terkirim' : 'Dalam proses',
     tanggal: xlDate(l.tanggal),
     sheet: l.sumber_sheet || '',
-    catatan: l.item_lepas ? 'Item lepas (kurang dari 3 baris), tidak dihitung' : '',
+    catatan: l.item_lepas ? 'Item lepas (kurang dari 3 baris), tidak dihitung'
+      : (l.kind === 'SET' && l.status_hitung === 'cek') ? 'Perlu dicek: QTY tidak sepakat dengan isi set (' + (l.set_kode || 'set') + '), tidak dihitung'
+      : (l.kind === 'SET' && l.status_hitung === 'estimasi') ? 'Estimasi: set tidak ada di DB produk'
+      : '',
   })), 1);
 
   // 4) Matriks RS x kategori (hanya kalau hasilnya memuat lebih dari satu kategori)
