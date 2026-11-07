@@ -251,7 +251,7 @@ async function load() {
     showError(msg);
     if (!data) {
       renderHead({ set: false, pcs: false, n: 5 });
-      $('ps-body').innerHTML = `<tr><td colspan="5" class="ps-empty ps-empty-err">${esc(msg)}</td></tr>`;
+      $('ps-body').innerHTML = `<tr><td colspan="5" class="ps-empty ps-empty-err">${esc(msg)}<br><button type="button" class="btn btn-ghost ps-retry" data-action="ps-reload">Coba lagi</button></td></tr>`;
     }
   } finally {
     if (my === reqId) { $('ps-table').classList.remove('ps-busy'); $('ps-stats').classList.remove('ps-busy'); }
@@ -357,7 +357,7 @@ function renderFreshness() {
   const days = dp ? Math.floor((Date.now() - dp.getTime()) / 86400000) : null;
   if (days !== null && days > STALE_DAYS) {
     note.hidden = false;
-    note.innerHTML = `<i class="ti ti-clock-exclamation"></i> Data di database terakhir diperbarui <b>${fmt(days)} hari lalu</b> ` +
+    note.innerHTML = `Data di database terakhir diperbarui <b>${fmt(days)} hari lalu</b> ` +
       `(${esc(fmtDate(data.data_per))}); PO terbaru yang tercatat ${esc(fmtDate(data.po_terbaru))}. ` +
       `Isi Google Sheet bisa lebih baru dari yang tampil di sini.`;
   } else {
@@ -366,10 +366,12 @@ function renderFreshness() {
   }
 }
 
+// Kartu ringkasan: angka lalu label. Parameter `icon` dipertahankan supaya pemanggil tidak berubah,
+// tetapi tidak dirender (ikon di atas setiap angka tidak membawa informasi).
 function statCard(icon, val, label, sub, warn) {
-  return `<div class="stat-card"><div class="stat-icon"><i class="ti ti-${icon}"></i></div>` +
+  return `<div class="stat-card${warn ? ' ps-stat-warn' : ''}">` +
     `<div class="stat-val">${val}</div><div class="stat-label">${esc(label)}</div>` +
-    (sub ? `<div class="stat-sub">${warn ? '<i class="ti ti-alert-triangle ps-warn"></i> ' : ''}${esc(sub)}</div>` : '') +
+    (sub ? `<div class="stat-sub">${esc(sub)}</div>` : '') +
     '</div>';
 }
 
@@ -416,7 +418,7 @@ function sortTh(key, label, cls) {
   const on = state.sort.k === key;
   const aria = on ? (state.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
   const icon = on ? (state.sort.dir === 'asc' ? 'ti-sort-ascending' : 'ti-sort-descending') : 'ti-arrows-sort';
-  return `<th class="${cls}" aria-sort="${aria}"><button type="button" class="ps-sort${on ? ' on' : ''}" data-action="ps-sort" data-k="${key}">${esc(label)}<i class="ti ${icon}"></i></button></th>`;
+  return `<th class="${cls}" aria-sort="${aria}"><button type="button" class="ps-sort${on ? ' on' : ''}" data-action="ps-sort" data-k="${key}" title="Urutkan menurut ${esc(label.toLowerCase())}">${esc(label)}<i class="ti ${icon}" aria-hidden="true"></i></button></th>`;
 }
 
 function renderHead(cols) {
@@ -459,40 +461,47 @@ function renderTable() {
     : 'Rumah sakit';
   const body = $('ps-body');
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="${cols.n}" class="ps-empty"><i class="ti ti-search"></i> ${emptyMessage()}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="${cols.n}" class="ps-empty">${emptyMessage()}</td></tr>`;
     return;
   }
-  // Batang tipis di bawah angka = porsi terhadap RS teratas, supaya peringkat terbaca sekilas.
-  const maxSet = Math.max(1, ...rows.map((r) => r.set));
-  const maxPcs = Math.max(1, ...rows.map((r) => r.pcs));
-  const bar = (v, max) => `<span class="ps-bar"><i style="width:${Math.max(4, Math.round(v / max * 100))}%"></i></span>`;
   body.innerHTML = rows.map((r, i) => {
+    // Wilayah: hanya yang sudah dikoreksi manual yang diberi penanda (artinya sudah pernah diperiksa orang).
+    // Wilayah hasil deteksi alamat adalah kondisi biasa, jadi tidak diberi penanda per baris; peringatannya
+    // ada di tooltip tombol Ubah, tempat keputusan mengoreksi diambil.
     let wilayah;
     if (r.provinsi || r.kab_kota) {
       wilayah = esc([r.kab_kota, state.provinsi ? '' : r.provinsi].filter(Boolean).join(' · ') || r.provinsi);
+      if (r.sumber_wilayah === 'manual') {
+        wilayah += ' <span class="ps-wil-note" title="Wilayah ini sudah dikoreksi manual oleh tim">dikoreksi</span>';
+      }
     } else {
-      wilayah = '<span class="ps-muted">Belum diketahui</span>';
+      wilayah = '<span class="ps-unknown">Belum diketahui</span>';
     }
-    const tag = r.sumber_wilayah === 'manual'
-      ? '<span class="ps-tag" title="Wilayah ditetapkan manual">manual</span>'
-      : r.sumber_wilayah === 'alamat'
-        ? '<span class="ps-tag ps-tag-auto" title="Wilayah terdeteksi otomatis dari alamat, bisa salah. Klik pensil untuk mengoreksi">otomatis</span>'
-        : '';
+    const editTip = r.sumber_wilayah === 'alamat'
+      ? 'Wilayah terdeteksi otomatis dari alamat dan bisa salah. Klik untuk mengoreksi'
+      : 'Ubah wilayah';
+
     const rinci = r.rincian || [];
-    const shown = rinci.slice(0, 2).map((j) => `${esc(j.label)} ×${fmt(j.nilai)}`).join(', ');
-    const more = rinci.length > 2 ? ` <span class="ps-more" title="${esc(rincianText(r))}">+${rinci.length - 2} lainnya</span>` : '';
+    const items = rinci.map((j, k) =>
+      `<span class="ps-it"${k >= 2 ? ' hidden data-rest="1"' : ''}>${esc(j.label)} ×${fmt(j.nilai)}</span>`).join('');
+    const more = rinci.length > 2
+      ? `<button type="button" class="ps-more-btn" data-action="ps-more" data-n="${rinci.length - 2}" aria-expanded="false">+${rinci.length - 2} lainnya</button>`
+      : '';
+
     const subSet = num(r.set_proses) > 0 ? `<span class="ps-sub">${fmt(r.set_terkirim)} terkirim, ${fmt(r.set_proses)} proses</span>` : '';
-    const subCek = num(r.set_cek) > 0 ? `<span class="ps-sub ps-sub-cek">${fmt(r.set_cek)} pesanan perlu dicek</span>` : '';
+    const subCek = num(r.set_cek) > 0
+      ? `<span class="ps-flag" title="QTY di sheet tidak sepakat dengan isi set, atau ada item di luar isi set. Pesanan ini belum dihitung sebagai set. Buka baris untuk memeriksa isinya.">${fmt(r.set_cek)} pesanan perlu dicek</span>` : '';
     const subPcs = num(r.pcs_proses) > 0 ? `<span class="ps-sub">${fmt(r.pcs_terkirim)} terkirim, ${fmt(r.pcs_proses)} proses</span>` : '';
+    const cell = (v, sub) => (v ? `<b>${fmt(v)}</b>${sub}` : '<span class="ps-muted">—</span>');
     return `
-      <tr class="ps-row" role="button" tabindex="0" aria-expanded="false" data-action="ps-toggle" data-idx="${i}">
-        <td><i class="ti ti-chevron-right ps-chev"></i><span class="ps-rs">${esc(r.customer)}</span></td>
-        <td>${wilayah} ${tag}</td>
-        ${cols.set ? `<td class="ps-num">${r.set ? `<span class="ps-numwrap"><b>${fmt(r.set)}</b>${subSet}${bar(r.set, maxSet)}</span>` : '<span class="ps-muted">—</span>'}${subCek}</td>` : ''}
-        ${cols.pcs ? `<td class="ps-num">${r.pcs ? `<span class="ps-numwrap"><b>${fmt(r.pcs)}</b>${subPcs}${bar(r.pcs, maxPcs)}</span>` : '<span class="ps-muted">—</span>'}</td>` : ''}
-        <td class="ps-jenis">${shown}${more}</td>
+      <tr class="ps-row" data-action="ps-toggle" data-idx="${i}">
+        <td class="ps-col-rs"><button type="button" class="ps-rs-btn" data-action="ps-toggle" data-idx="${i}" aria-expanded="false" title="Lihat PO dan isinya"><i class="ti ti-chevron-right ps-chev" aria-hidden="true"></i><span class="ps-rs">${esc(r.customer)}</span></button></td>
+        <td class="ps-col-wil">${wilayah}</td>
+        ${cols.set ? `<td class="ps-num">${cell(r.set, subSet)}${subCek}</td>` : ''}
+        ${cols.pcs ? `<td class="ps-num">${cell(r.pcs, subPcs)}</td>` : ''}
+        <td class="ps-jenis"><div class="ps-jenis-list">${items}</div>${more}</td>
         <td class="ps-date">${esc(fmtDate(r.terakhir))}</td>
-        <td class="ps-col-act"><button type="button" class="ps-iconbtn" data-action="ps-edit-wil" data-idx="${i}" title="Ubah wilayah" aria-label="Ubah wilayah ${esc(r.customer)}"><i class="ti ti-pencil"></i></button></td>
+        <td class="ps-col-act"><button type="button" class="ps-iconbtn" data-action="ps-edit-wil" data-idx="${i}" title="${esc(editTip)}" aria-label="Ubah wilayah ${esc(r.customer)}"><i class="ti ti-pencil" aria-hidden="true"></i></button></td>
       </tr>`;
   }).join('');
 }
@@ -506,7 +515,7 @@ function renderUnmapped() {
   const tot = [totSet ? `${fmt(totSet)} set` : '', totPcs ? `${fmt(totPcs)} unit/pcs` : ''].filter(Boolean).join(' + ');
   box.hidden = false;
   $('ps-unm-title').innerHTML =
-    `<i class="ti ti-map-pin-off"></i> ${fmt(unmapped.length)} RS belum diketahui wilayahnya ` +
+    `${fmt(unmapped.length)} RS belum diketahui wilayahnya ` +
     `(${esc(tot)}), <b>belum ikut</b> hasil per provinsi di atas`;
   $('ps-unm-list').innerHTML = `
     <table class="ps-unm-table"><tbody>
@@ -516,7 +525,7 @@ function renderUnmapped() {
         <tr>
           <td>${esc(u.customer)}</td>
           <td class="ps-num">${esc(v)}</td>
-          <td class="ps-col-act"><button type="button" class="btn btn-ghost" data-action="ps-edit-unm" data-idx="${i}"><i class="ti ti-map-pin"></i> Tetapkan wilayah</button></td>
+          <td class="ps-col-act"><button type="button" class="btn btn-ghost" data-action="ps-edit-unm" data-idx="${i}" aria-label="Tetapkan wilayah ${esc(u.customer)}">Tetapkan wilayah</button></td>
         </tr>`;
       }).join('')}
     </tbody></table>`;
@@ -575,20 +584,24 @@ function detailHtml(list) {
             ? `<span class="ps-sub">${esc(d.family || d.kode_produk)}</span>` : '';
           const sh = isSet && !d.item_lepas ? d.status_hitung : '';
           const jml = isSet ? ((d.item_lepas || sh === 'cek') ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} pcs`;
-          const hTag = sh === 'estimasi'
-            ? ' <span class="ps-tag ps-tag-auto" title="Set ini tidak ditemukan di DB produk, jadi dihitung dari tebakan QTY (FPB). Tambahkan alias bila namanya salah ketik.">estimasi</span>'
-            : sh === 'ok_beda'
-              ? ' <span class="ps-tag ps-tag-auto" title="Dihitung dari item yang cocok dengan isi set. Ada item di sheet yang tidak ada di isi set (mis. substitusi produk); lihat rincian isi set.">ada item beda</span>'
-            : sh === 'cek'
-              ? ' <span class="ps-tag ps-tag-cek" title="QTY di sheet tidak sepakat dengan isi set, atau ada item di luar isi set. Tidak dihitung; buka rincian isi set untuk memeriksa.">perlu dicek</span>'
-              : '';
+          // Status hitungan ditulis langsung di baris PO (teks jelas, penjelasan lengkap di tooltip).
+          let status = '';
+          if (d.item_lepas) {
+            status = '<span class="ps-flag ps-flag-muted" title="Kurang dari 3 baris: bukan satu set utuh, jadi tidak dihitung.">Item lepas, tidak dihitung</span>';
+          } else if (sh === 'cek') {
+            status = '<span class="ps-flag" title="QTY di sheet tidak sepakat dengan isi set, atau ada item di luar isi set. Tidak dihitung; buka isi set untuk memeriksa.">Perlu dicek: QTY tidak sepakat dengan isi set, belum dihitung</span>';
+          } else if (sh === 'estimasi') {
+            status = '<span class="ps-flag ps-flag-soft" title="Set ini tidak ditemukan di DB produk, jadi dihitung dari tebakan QTY (FPB). Tambahkan alias bila namanya salah ketik.">Perkiraan: set tidak ada di DB produk</span>';
+          } else if (sh === 'ok_beda') {
+            status = '<span class="ps-flag ps-flag-soft" title="Dihitung dari item yang cocok dengan isi set. Ada item di sheet yang tidak ada di isi set (mis. substitusi produk); lihat isi set.">Ada item yang berbeda dari isi set</span>';
+          }
           return `
           <tr${d.item_lepas ? ' class="ps-lepas"' : ''}>
             <td>${esc(d.po || '—')}</td>
             <td><span class="kode-text">${esc(d.kode_rmp || '—')}</span></td>
             <td>${esc(katName(d.kelompok))}</td>
-            <td>${esc(nama)}${d.item_lepas ? ' <span class="ps-tag" title="Kurang dari 3 baris: bukan satu set utuh, tidak dihitung">item lepas</span>' : ''}${sub}${isiHtml(d)}</td>
-            <td class="ps-num">${esc(jml)}${hTag}</td>
+            <td>${esc(nama)}${sub}${status}${isiHtml(d)}</td>
+            <td class="ps-num">${esc(jml)}</td>
             <td><span class="ps-st ${d.status === 'TERKIRIM' ? 'ps-st-ok' : 'ps-st-wip'}">${d.status === 'TERKIRIM' ? 'Terkirim' : 'Proses'}</span></td>
             <td class="ps-date">${esc(fmtDate(d.tanggal))}</td>
             <td class="ps-date">${esc(d.sumber_sheet || '—')}</td>
@@ -605,15 +618,17 @@ async function toggleDetail(idx) {
   const next = tr.nextElementSibling;
   if (next && next.classList.contains('ps-detail-row')) {
     next.remove();
-    tr.setAttribute('aria-expanded', 'false');
+    const b0 = tr.querySelector('.ps-rs-btn');
+    if (b0) b0.setAttribute('aria-expanded', 'false');
     tr.classList.remove('open');
     return;
   }
   const dtr = document.createElement('tr');
   dtr.className = 'ps-detail-row';
-  dtr.innerHTML = `<td colspan="${colsInfo().n}"><div class="ps-detail"><i class="ti ti-loader-2 spinner"></i> Memuat rincian…</div></td>`;
+  dtr.innerHTML = `<td colspan="${colsInfo().n}"><div class="ps-detail ps-detail-loading" role="status"><i class="ti ti-loader-2 spinner" aria-hidden="true"></i> Memuat rincian…</div></td>`;
   tr.after(dtr);
-  tr.setAttribute('aria-expanded', 'true');
+  const b1 = tr.querySelector('.ps-rs-btn');
+  if (b1) b1.setAttribute('aria-expanded', 'true');
   tr.classList.add('open');
 
   const params = Object.assign(filterParams(), { p_customer: r.customer });
@@ -1262,7 +1277,11 @@ async function downloadXlsx() {
 
 // ── kontrol ──────────────────────────────────────────────────────────────────
 function syncStatusButtons() {
-  document.querySelectorAll('[data-action="ps-status"]').forEach((b) => b.classList.toggle('active', b.dataset.v === state.status));
+  document.querySelectorAll('[data-action="ps-status"]').forEach((b) => {
+    const on = b.dataset.v === state.status;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
 }
 
 // Samakan semua kontrol dengan state (dipakai setelah preset / lepas filter).
@@ -1346,6 +1365,13 @@ export async function mount(container) {
       if (data) { applySort(); renderTable(); }
     },
     'ps-toggle': (el) => toggleDetail(+el.dataset.idx),
+    'ps-more': (el) => {
+      const td = el.closest('td');
+      const open = el.getAttribute('aria-expanded') !== 'true';
+      td.querySelectorAll('[data-rest]').forEach((x) => { x.hidden = !open; });
+      el.setAttribute('aria-expanded', String(open));
+      el.textContent = open ? 'Sembunyikan' : `+${el.dataset.n} lainnya`;
+    },
     'ps-edit-wil': (el) => { const r = rows[+el.dataset.idx]; if (r) editWilayah(r.customer, r.provinsi, r.kab_kota); },
     'ps-edit-unm': (el) => { const u = unmapped[+el.dataset.idx]; if (u) editWilayah(u.customer, '', ''); },
     'ps-clear': (el) => clearFilter(el.dataset.k),
@@ -1379,16 +1405,7 @@ export async function mount(container) {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => load(), 300);
   }
-  function onKeydown(e) {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    const t = e.target;
-    if (t.matches('input, select, textarea, button, a')) return;   // kontrol native menangani sendiri
-    if (t.matches('tr.ps-row')) {
-      e.preventDefault();
-      toggleDetail(+t.dataset.idx);
-    }
-  }
-  handlers = { click: onClick, change: onChange, input: onInput, keydown: onKeydown };
+  handlers = { click: onClick, change: onChange, input: onInput };
   Object.entries(handlers).forEach(([type, fn]) => container.addEventListener(type, fn));
 
   // nilai awal kontrol (setelah markup terpasang)
