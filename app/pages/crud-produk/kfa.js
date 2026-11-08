@@ -5,6 +5,8 @@
 // showToast/crudConfirm/crudAlert/renderPgBar tetap import langsung dari
 // ui-utils.js, konsisten sama akd-master.js. Logic TIDAK diubah.
 import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6 } from './ui-utils.js';
+import { orIlike } from '../../../shared/api.js';
+import { cariProdukBelumKfa } from './kfa-search.js';
 
 export function installKfa(S) {
 // ============================================================
@@ -48,9 +50,9 @@ async function loadKfa(page){
     // produk_kfa gak bisa di-ilike langsung pakai kolom produk (beda tabel),
     // jadi resolve dulu produk_id yang cocok, baru gabung sama pencarian kode_kfa.
     const { data: matchedProduk } = await S.sb.from('produk').select('id')
-      .or(`kode_produk.ilike.%${q}%,nama_produk.ilike.%${q}%`).limit(500);
+      .or(orIlike(['kode_produk', 'nama_produk'], q)).limit(500);
     const ids = (matchedProduk || []).map(p => p.id);
-    if (ids.length) query = query.or(`kode_kfa.ilike.%${q}%,produk_id.in.(${ids.join(',')})`);
+    if (ids.length) query = query.or(`${orIlike(['kode_kfa'], q)},produk_id.in.(${ids.join(',')})`);
     else query = query.ilike('kode_kfa', `%${q}%`);
   }
 
@@ -158,24 +160,31 @@ document.getElementById('addKfaBtn').addEventListener('click', () => {
   if (kfaAddBox.style.display === 'block') document.getElementById('kfaAddSearchInput').focus();
 });
 let kfaAddSearchDebounce = null;
+let kfaAddSearchCtl = null; // AbortController: ketikan baru MEMBATALKAN request lama di jaringan
+let kfaAddSearchSeq = 0;    // dan hasil yang basi tidak boleh menimpa hasil yang lebih baru
 document.getElementById('kfaAddSearchInput').addEventListener('input', (e) => {
   clearTimeout(kfaAddSearchDebounce);
   const q = e.target.value.trim();
   const resultsEl = document.getElementById('kfaAddResults');
+  kfaAddSearchSeq++;
+  if (kfaAddSearchCtl) { kfaAddSearchCtl.abort(); kfaAddSearchCtl = null; }
   if (!q) { resultsEl.innerHTML = ''; return; }
+  // RPC mengabaikan token < 2 karakter tapi tetap kerja keras lalu balikin kosong.
+  if (q.length < 2) { resultsEl.innerHTML = `<div class="akd-hint">Ketik minimal 2 karakter...</div>`; return; }
+  const mySeq = kfaAddSearchSeq;
   kfaAddSearchDebounce = setTimeout(async () => {
-    // cari produk yang cocok DAN belum punya baris di produk_kfa sama sekali
-    // (SET ikut disertakan -- SET juga wajib lewat proses KFA sama kayak instrumen satuan)
-    const { data: matched } = await S.sb.from('produk').select('id, kode_produk, nama_produk')
-      .or(`kode_produk.ilike.%${q}%,nama_produk.ilike.%${q}%`).limit(15);
-    if (!matched || !matched.length) { resultsEl.innerHTML = `<div class="akd-hint">Tidak ada produk cocok.</div>`; return; }
-    const ids = matched.map(p => p.id);
-    const { data: existing } = await S.sb.from('produk_kfa').select('produk_id').in('produk_id', ids);
-    const existingIds = new Set((existing || []).map(r => r.produk_id));
-    const available = matched.filter(p => !existingIds.has(p.id));
-    if (!available.length) { resultsEl.innerHTML = `<div class="akd-hint">Semua hasil pencarian ini sudah punya record KFA.</div>`; return; }
+    // Cari produk yang cocok DAN belum punya baris di produk_kfa sama sekali
+    // (SET ikut disertakan -- SET juga wajib lewat proses KFA sama kayak instrumen satuan).
+    // Pengecualian yang sudah ber-KFA dikerjakan DI DALAM SQL (RPC search_produk_kfa_tambah,
+    // mesin ranking yang sama dengan Konversi) sebelum LIMIT; lihat kfa-search.js.
+    kfaAddSearchCtl = new AbortController();
+    resultsEl.innerHTML = `<div class="akd-hint">Mencari...</div>`;
+    const { rows, error, aborted } = await cariProdukBelumKfa(S.sb, q, { limit: 15, signal: kfaAddSearchCtl.signal });
+    if (aborted || mySeq !== kfaAddSearchSeq) return;
+    if (error) { resultsEl.innerHTML = `<div class="akd-hint">Gagal mencari: ${S.escapeHtml(error.message || String(error))}</div>`; return; }
+    if (!rows.length) { resultsEl.innerHTML = `<div class="akd-hint">Tidak ada produk cocok yang belum punya record KFA.</div>`; return; }
     resultsEl.innerHTML = '';
-    available.forEach(p => {
+    rows.forEach(p => {
       const div = document.createElement('div');
       div.className = 'akd-result-row';
       div.innerHTML = `<span class="ar-no">${S.escapeHtml(p.kode_produk)}</span><span class="ar-nama">${S.escapeHtml(p.nama_produk || '')}</span>`;

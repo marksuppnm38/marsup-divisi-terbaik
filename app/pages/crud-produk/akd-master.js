@@ -7,6 +7,7 @@
 // lewat S) karena keduanya sama-sama sudah level module, gak perlu
 // nebeng S. Logic di dalam TIDAK diubah sama sekali.
 import { showToast, crudConfirm, crudAlert, renderPgBar } from './ui-utils.js';
+import { orIlike } from '../../../shared/api.js';
 
 export function installAkdMaster(S) {
 // ================================================================
@@ -91,7 +92,7 @@ async function loadAkd(page){
   const from = (akdPage - 1) * AKD_PAGE_SIZE, to = from + AKD_PAGE_SIZE - 1;
   let query = S.sb.from('akd').select(AKD_COLUMNS, { count: 'exact' });
   const q = akdSearchQuery.trim();
-  if (q) query = query.or(`no_akd.ilike.%${q}%,nama_akd.ilike.%${q}%,kode_set.ilike.%${q}%`);
+  if (q) query = query.or(orIlike(['no_akd', 'nama_akd', 'kode_set'], q));
   const { data, error, count } = await query.order('updated_at', { ascending: false }).range(from, to);
   if (error) { tbody.innerHTML = `<tr class="state-row"><td colspan="9">Gagal memuat: ${S.escapeHtml(error.message)}</td></tr>`; return; }
   const rows = data || [], total = count || 0;

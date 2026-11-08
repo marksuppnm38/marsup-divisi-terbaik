@@ -45,6 +45,7 @@ import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
 import { installOrphan } from './orphan.js';
+import { orIlike } from '../../../shared/api.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -569,6 +570,8 @@ topSearchClear.addEventListener('click', () => {
 
 let produkPage = 1;
 const PRODUK_PAGE_SIZE = 30;
+let produkSearchCtl = null; // AbortController RPC search terakhir: search baru / search dikosongkan membatalkan yang lama
+let produkSearchSeq = 0;    // hanya naik saat search BERUBAH (bukan saat ganti halaman) -> hasil search basi dibuang
 let produkSearchRawRows = []; // hasil lengkap dari RPC search_produk_dengan_harga, BELUM difilter status
 let produkSearchAllRows = []; // produkSearchRawRows setelah difilter status_akd/link, di-page di client
 
@@ -863,6 +866,7 @@ async function loadProduk(q, page){
 
   let rows = [];
   let total = 0;
+  if (!qq && produkSearchCtl) { produkSearchCtl.abort(); produkSearchCtl = null; produkSearchSeq++; } // search dikosongkan: jangan sampai hasil search lama menimpa list biasa
   if (qq) {
     // pakai RPC search yang sudah ranked (token search + trigram + fast-path exact match)
     // RPC ini ambil SEMUA hasil match sekaligus (gak dukung limit/offset dan gak dukung
@@ -871,7 +875,11 @@ async function loadProduk(q, page){
     if (searchChanged) {
       // PERF: search_produk_list = pembungkus RPC search (ranking sama) yang langsung
       // balikin kolom list -> 1 round trip, bukan 2. Fallback ke jalur lama kalau belum ada.
-      const { data: listData, error: listErr } = await sb.rpc('search_produk_list', { q: qq });
+      if (produkSearchCtl) produkSearchCtl.abort();
+      produkSearchCtl = new AbortController();
+      const mySearchSeq = ++produkSearchSeq;
+      const { data: listData, error: listErr } = await sb.rpc('search_produk_list', { q: qq }).abortSignal(produkSearchCtl.signal);
+      if (mySearchSeq !== produkSearchSeq) return; // sudah ada search lebih baru -- buang hasil/abort ini
       const fastSearchOk = !listErr && Array.isArray(listData);
       if (fastSearchOk) produkSearchRawRows = listData;
       if (!fastSearchOk) {
@@ -1725,16 +1733,19 @@ cmdkKeydownHandler = e => {
 document.addEventListener('keydown', cmdkKeydownHandler);
 
 let cmdkSeq = 0;
+let cmdkCtl = null; // AbortController: request lama dibatalkan di jaringan, bukan cuma hasilnya dibuang
 cmdkInput.addEventListener('input', () => {
   clearTimeout(cmdkTimer);
   const q = cmdkInput.value.trim();
   cmdkSeq++; // bikin respons RPC yang lebih lama (lebih lambat) gak nimpa hasil yang lebih baru
+  if (cmdkCtl) { cmdkCtl.abort(); cmdkCtl = null; }
   if (!q) { cmdkList.innerHTML = '<div class="cmdk-empty">Ketik untuk mencari produk...</div>'; cmdkResults = []; return; }
   // PERF: RPC mengabaikan token < 2 karakter tapi tetap kerja keras (800 kandidat) lalu balikin kosong.
   if (q.length < 2) { cmdkList.innerHTML = '<div class="cmdk-empty">Ketik minimal 2 karakter...</div>'; cmdkResults = []; return; }
   const mySeq = cmdkSeq;
   cmdkTimer = setTimeout(async () => {
-    const { data, error } = await sb.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
+    cmdkCtl = new AbortController();
+    const { data, error } = await sb.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false }).abortSignal(cmdkCtl.signal);
     if (mySeq !== cmdkSeq) return;
     if (error) { cmdkList.innerHTML = `<div class="cmdk-empty">Gagal mencari: ${escapeHtml(error.message)}</div>`; return; }
     cmdkResults = (data || []).slice(0, 10);
@@ -2214,7 +2225,7 @@ document.getElementById('akdSearchInput').addEventListener('input', () => {
   akdSearchTimer = setTimeout(async () => {
     const tipe = document.getElementById('f_tipe').value;
     const mapped = TIPE_TO_AKD[tipe];
-    let query = sb.from('akd').select('id, no_akd, nama_akd, tipe_akd').or(`no_akd.ilike.%${q}%,nama_akd.ilike.%${q}%`).limit(15);
+    let query = sb.from('akd').select('id, no_akd, nama_akd, tipe_akd').or(orIlike(['no_akd', 'nama_akd'], q)).limit(15);
     if (mapped) query = query.eq('tipe_akd', mapped);
     const { data, error } = await query;
     if (error) { resEl.innerHTML = `<div class="akd-empty">Gagal mencari: ${escapeHtml(error.message)}</div>`; return; }
@@ -2858,13 +2869,22 @@ async function deleteCompItem(rowId){
 }
 
 let compSearchTimer = null;
+let compSearchCtl = null; // batalkan request lama di jaringan
+let compSearchSeq = 0;    // respons lambat dari ketikan lama TIDAK boleh menimpa hasil yang lebih baru
 document.getElementById('compSearchInput').addEventListener('input', () => {
   clearTimeout(compSearchTimer);
   const q = document.getElementById('compSearchInput').value.trim();
   const resEl = document.getElementById('compSearchResults');
+  compSearchSeq++;
+  if (compSearchCtl) { compSearchCtl.abort(); compSearchCtl = null; }
   if (!q) { resEl.innerHTML = ''; return; }
+  // RPC mengabaikan token < 2 karakter tapi tetap kerja keras lalu balikin kosong.
+  if (q.length < 2) { resEl.innerHTML = '<div class="akd-empty">Ketik minimal 2 karakter...</div>'; return; }
+  const mySeq = compSearchSeq;
   compSearchTimer = setTimeout(async () => {
-    const { data, error } = await sb.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
+    compSearchCtl = new AbortController();
+    const { data, error } = await sb.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false }).abortSignal(compSearchCtl.signal);
+    if (mySeq !== compSearchSeq) return;
     if (error) { resEl.innerHTML = `<div class="akd-empty">Gagal mencari: ${escapeHtml(error.message)}</div>`; return; }
     const filtered = (data || []).filter(r => r.tipe !== 'SET').slice(0, 10);
     if (filtered.length === 0) { resEl.innerHTML = '<div class="akd-empty">Tidak ditemukan (SET tidak bisa jadi isi set lain).</div>'; return; }
@@ -2887,6 +2907,7 @@ async function addCompItem(kodeProduk){
     showToast('Gagal tambah item: ' + error.message, true); return;
   }
   showToast('Item ditambahkan (qty default 1) — atur angkanya di daftar kalau perlu');
+  compSearchSeq++; if (compSearchCtl) { compSearchCtl.abort(); compSearchCtl = null; }
   document.getElementById('compSearchInput').value = '';
   document.getElementById('compSearchResults').innerHTML = '';
   lastAddedItemRowId = inserted?.id ?? null;
@@ -3067,7 +3088,7 @@ document.getElementById('setAkdSearchInput').addEventListener('input', () => {
   const resEl = document.getElementById('setAkdResults');
   if (!q) { resEl.innerHTML = ''; return; }
   setAkdSearchTimer = setTimeout(async () => {
-    const { data, error } = await sb.from('akd').select('id, no_akd, nama_akd').eq('tipe_akd', 'set').or(`no_akd.ilike.%${q}%,nama_akd.ilike.%${q}%`).limit(15);
+    const { data, error } = await sb.from('akd').select('id, no_akd, nama_akd').eq('tipe_akd', 'set').or(orIlike(['no_akd', 'nama_akd'], q)).limit(15);
     if (error) { resEl.innerHTML = `<div class="akd-empty">Gagal mencari: ${escapeHtml(error.message)}</div>`; return; }
     if (!data || data.length === 0) { resEl.innerHTML = '<div class="akd-empty">Tidak ditemukan.</div>'; return; }
     resEl.innerHTML = '';
