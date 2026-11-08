@@ -14,7 +14,7 @@
 // Pola mount/unmount/auth/rpc() sama dengan dashboard/index.js (PNMAuth, token diambil
 // fresh tiap request, delegasi event di container).
 //
-// "Perlu dicek" / "perkiraan" / "item lepas" (state.tinjau): kartu angka itu membuka DAFTAR PESANAN-nya
+// "Perlu dicek" / "perkiraan" (state.tinjau): kartu angka itu membuka DAFTAR PESANAN-nya
 // (dari get_populasi_v2_baris, filter yang sama dengan tabel) lengkap dengan alasan per pesanan.
 // Angka kartu selalu disamakan dengan daftar yang tampil (lihat renderReview).
 //
@@ -114,7 +114,7 @@ const state = {
   provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI',
   kelompok: ['SET'], produk: '', rs: '', isiSet: false, dari: '', sampai: '',
   sort: { k: 'total', dir: 'desc' },
-  tinjau: '',                       // '' | 'cek' | 'estimasi' | 'lepas' -> tabel berganti jadi daftar pesanan
+  tinjau: '',                       // '' | 'cek' | 'estimasi' -> tabel berganti jadi daftar pesanan
 };
 
 let data = null;                    // respons get_populasi_v2 terakhir
@@ -373,24 +373,22 @@ function renderFreshness() {
   }
 }
 
-// ── daftar tinjau: "perlu dicek", "perkiraan", "item lepas" ──────────────────
+// ── daftar tinjau: "perlu dicek", "perkiraan" ──────────────────
 // Tiap kunci = satu angka di halaman yang bisa dibuka daftarnya. Predikat memakai aturan yang sama
-// dengan detail per RS dan Excel (item lepas lebih dulu, baru status_hitung).
+// dengan detail per RS dan Excel (status_hitung).
 const TIP = {
   cek: 'QTY di sheet tidak sepakat dengan isi set, atau ada item di luar isi set. Belum dihitung sebagai set.',
   estimasi: 'Set ini tidak ada di daftar produk, jadi jumlahnya dihitung dari perkiraan QTY.',
-  lepas: 'Pesanan dengan kurang dari 3 baris: bukan satu set utuh, jadi tidak dihitung.',
   ok_beda: 'Dihitung dari item yang cocok dengan isi set. Ada item di sheet yang tidak ada di isi set (mis. substitusi produk).',
 };
 const TINJAU = {
-  cek:      { tabel: 'Pesanan set perlu dicek', frasa: 'perlu dicek', pred: (l) => l.kind === 'SET' && !l.item_lepas && l.status_hitung === 'cek' },
-  estimasi: { tabel: 'Pesanan set dengan hitungan perkiraan', frasa: 'dengan hitungan perkiraan', pred: (l) => l.kind === 'SET' && !l.item_lepas && l.status_hitung === 'estimasi' },
-  lepas:    { tabel: 'Pesanan item lepas (tidak dihitung)', frasa: 'item lepas yang tidak dihitung', pred: (l) => !!l.item_lepas },
+  cek:      { tabel: 'Pesanan set perlu dicek', frasa: 'perlu dicek', pred: (l) => l.kind === 'SET' && l.status_hitung === 'cek' },
+  estimasi: { tabel: 'Pesanan set dengan hitungan perkiraan', frasa: 'dengan hitungan perkiraan', pred: (l) => l.kind === 'SET' && l.status_hitung === 'estimasi' },
 };
-// Angka dari server (ringkasan). cek & lepas = jumlah pesanan; estimasi = jumlah SET perkiraan.
+// Angka dari server (ringkasan). cek = jumlah pesanan; estimasi = jumlah SET perkiraan.
 function angkaServer(k) {
   const s = (data && data.ringkasan) || {};
-  return num(k === 'cek' ? s.set_cek : (k === 'estimasi' ? s.set_estimasi : s.item_lepas));
+  return num(k === 'cek' ? s.set_cek : s.set_estimasi);
 }
 // Angka yang ditampilkan di kartu: angka server, kecuali sudah dicocokkan dengan daftar.
 const angka = (k) => (recon[k] !== undefined ? recon[k] : angkaServer(k));
@@ -439,11 +437,10 @@ function renderSummary() {
   if (cek > 0) cards.push(statCard(fmt(cek), 'Pesanan set perlu dicek', { sub: 'belum dihitung sebagai set', warn: true, tinjau: 'cek', on: state.tinjau === 'cek' }));
   $('ps-stats').innerHTML = cards.join('');
 
-  // Catatan hitungan yang bukan kartu sendiri: item lepas (bisa dibuka daftarnya).
-  const lepas = hasSet ? angka('lepas') : 0;
+  // Tidak ada catatan hitungan tambahan: semua pesanan masuk hitungan atau tampil sebagai "perlu dicek".
   const cv = $('ps-caveats');
-  cv.hidden = lepas <= 0;
-  cv.innerHTML = lepas > 0 ? linkBtn('lepas', `${fmt(lepas)} item lepas tidak dihitung sebagai set`) : '';
+  cv.hidden = true;
+  cv.innerHTML = '';
 
   const xl = document.querySelector('[data-action="ps-xlsx"]');
   if (xl) xl.disabled = !rows.length;
@@ -494,7 +491,6 @@ function emptyMessage() {
 // Penanda hitungan: SATU komponen (.ps-tag) dipakai di baris RS, baris pesanan, dan daftar tinjau.
 // warn = perlu tindakan; polos = informasi.
 function tagHitung(d) {
-  if (d.item_lepas) return `<span class="ps-tag" title="${esc(TIP.lepas)}">Tidak dihitung</span>`;
   if (d.kind !== 'SET') return '';
   if (d.status_hitung === 'cek') return `<span class="ps-tag warn" title="${esc(TIP.cek)}">Perlu dicek</span>`;
   if (d.status_hitung === 'estimasi') return `<span class="ps-tag" title="${esc(TIP.estimasi)}">Perkiraan</span>`;
@@ -586,7 +582,6 @@ const isiStat = (d) => {
 
 // Alasan satu pesanan, dalam kalimat biasa.
 function alasanText(d) {
-  if (d.item_lepas) return 'Kurang dari 3 baris, jadi bukan satu set utuh dan tidak dihitung.';
   if (d.kind !== 'SET') return '';
   if (d.status_hitung === 'estimasi') return 'Set tidak ada di daftar produk, jadi jumlahnya dihitung dari perkiraan QTY.';
   if (d.status_hitung === 'ok_beda') return 'Ada item di sheet yang tidak ada di isi set (mis. substitusi produk). Dihitung dari item yang cocok.';
@@ -604,8 +599,8 @@ function alasanText(d) {
 
 function jmlText(d) {
   const isSet = d.kind === 'SET';
-  const sh = isSet && !d.item_lepas ? d.status_hitung : '';
-  return isSet ? ((d.item_lepas || sh === 'cek') ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} pcs`;
+  const sh = isSet ? d.status_hitung : '';
+  return isSet ? ((sh === 'cek') ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} pcs`;
 }
 
 function setTinjau(k) {
@@ -625,7 +620,7 @@ async function renderReview() {
   const body = $('ps-body');
   $('ps-actions').hidden = true;
   $('ps-tbl-title').textContent = cfg.tabel;
-  $('ps-thead').innerHTML = '<tr><th>Rumah sakit</th><th>No. PO</th><th>Set / produk</th><th class="ps-th-num">Jumlah</th><th>Alasan</th><th>Tanggal</th></tr>';
+  $('ps-thead').innerHTML = '<tr><th>Rumah sakit</th><th>No. RMP</th><th>Set / produk</th><th class="ps-th-num">Jumlah</th><th>Alasan</th><th>Tanggal</th></tr>';
   bar.hidden = false;
   bar.innerHTML = `<span class="ps-review-msg">Memuat pesanan ${esc(cfg.frasa)}…</span>${reset}`;
   body.innerHTML = '<tr><td colspan="6" class="ps-empty" role="status">Memuat pesanan…</td></tr>';
@@ -644,7 +639,7 @@ async function renderReview() {
   const items = list.filter(cfg.pred).sort((a, b) =>
     String(a.customer).localeCompare(String(b.customer), 'id') ||
     String(b.tanggal || '').localeCompare(String(a.tanggal || '')) ||
-    String(a.po || '').localeCompare(String(b.po || ''), 'id'));
+    String(a.kode_rmp || '').localeCompare(String(b.kode_rmp || ''), 'id'));
   const hitung = k === 'estimasi' ? items.reduce((a, l) => a + num(l.nilai), 0) : items.length;
   const server = angkaServer(k);
   const sebelum = angka(k);
@@ -671,7 +666,7 @@ async function renderReview() {
     return `
       <tr class="ps-rev-row">
         <td class="ps-col-rs"><span class="ps-rs">${esc(l.customer)}</span>${lokasi ? `<span class="ps-sub">${esc(lokasi)}</span>` : ''}</td>
-        <td>${esc(l.po || '—')}</td>
+        <td><span class="kode-text">${esc(l.kode_rmp || '—')}</span></td>
         <td>${esc(nama)}${asal}</td>
         <td class="ps-num">${esc(jmlText(l))}</td>
         <td class="ps-alasan">${tagHitung(l)}<span class="ps-alasan-t">${esc(alasanText(l))}</span>${isiHtml(l)}</td>
@@ -768,7 +763,7 @@ function detailHtml(list) {
   return `
     <table class="ps-dt">
       <thead><tr>
-        <th>PO</th><th>Kode RMP</th><th>Kategori</th><th>Jenis set / produk</th>
+        <th>No. RMP</th><th>No. PO</th><th>Kategori</th><th>Jenis set / produk</th>
         <th class="ps-th-num">Jumlah</th><th>Hitungan</th><th>Status</th><th>Tanggal</th><th>Sheet</th>
         <th class="ps-col-act"><span class="ps-sr">Koreksi</span></th>
       </tr></thead>
@@ -779,11 +774,11 @@ function detailHtml(list) {
           const sub = !isSet && (d.family || d.kode_produk)
             ? `<span class="ps-sub">${esc(d.family || d.kode_produk)}</span>`
             : (isSet && d.label_asli ? `<span class="ps-sub">Dialihkan dari: ${esc(d.label_asli)}</span>` : '');
-          const cek = isSet && !d.item_lepas && d.status_hitung === 'cek';
+          const cek = isSet && d.status_hitung === 'cek';
           return `
-          <tr class="${d.item_lepas ? 'ps-lepas' : ''}${cek ? ' is-cek' : ''}">
-            <td>${esc(d.po || '—')}</td>
+          <tr class="${cek ? 'is-cek' : ''}">
             <td><span class="kode-text">${esc(d.kode_rmp || '—')}</span></td>
+            <td>${esc(d.po || '—')}</td>
             <td>${kelKategoriCell(d)}</td>
             <td>${esc(nama)}${sub}${isiHtml(d)}</td>
             <td class="ps-num">${esc(jmlText(d))}</td>
@@ -1326,11 +1321,10 @@ const xlFill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb }
 const xlLine = { style: 'thin', color: { argb: XL.line } };
 
 // Pesanan yang tidak ikut hitungan set (sama dengan aturan di sisi database).
-const dihitung = (l) => !l.item_lepas && !(l.kind === 'SET' && l.status_hitung === 'cek');
+const dihitung = (l) => !(l.kind === 'SET' && l.status_hitung === 'cek');
 
 // Keterangan per baris pesanan, dalam bahasa yang bisa dipahami pembaca luar.
 function ketBaris(l) {
-  if (l.item_lepas) return 'Tidak dihitung sebagai set: kurang dari 3 baris, bukan satu set utuh';
   if (l.kind !== 'SET') return '';
   if (l.status_hitung === 'cek') return 'Belum dihitung: jumlah item tidak sesuai isi set, perlu dicek';
   if (l.status_hitung === 'ok_beda') return 'Dihitung dari item yang sesuai isi set; ada item pengganti atau di luar isi set';
@@ -1382,7 +1376,7 @@ async function buildWorkbook(ctx) {
   // Perkiraan set per RS (dari rincian), untuk kolom Keterangan.
   const estimasi = new Map();
   lines.forEach((l) => {
-    if (l.kind === 'SET' && !l.item_lepas && l.status_hitung === 'estimasi') {
+    if (l.kind === 'SET' && l.status_hitung === 'estimasi') {
       estimasi.set(l.customer, (estimasi.get(l.customer) || 0) + num(l.nilai));
     }
   });
@@ -1507,7 +1501,6 @@ async function buildWorkbook(ctx) {
   if (hasSet) bullets.push('Set = jumlah set instrumen utuh. Dihitung dari isi set di database produk: jumlah item yang dipesan dibagi jumlah item itu di dalam satu set.');
   if (hasSet && num(s.set_estimasi) > 0) bullets.push(`${fmt(s.set_estimasi)} set berupa perkiraan karena isi setnya belum terdaftar di database produk. Baris terkait diberi keterangan.`);
   if (hasSet && num(s.set_cek) > 0) bullets.push(`${fmt(s.set_cek)} pesanan set belum dihitung karena jumlah itemnya tidak sesuai isi set. Pesanannya tetap tercantum di sheet “Rincian Pesanan” dengan keterangan.`);
-  if (hasSet && num(s.item_lepas) > 0) bullets.push(`${fmt(s.item_lepas)} pesanan dengan kurang dari 3 baris dianggap barang satuan, bukan set, sehingga tidak masuk hitungan set.`);
   if (hasPcs) bullets.push('Unit/pcs = total jumlah barang satuan (instrumen satuan, elektromedis, alat laboratorium, dan sejenisnya).');
   bullets.push(st.cakupan === 'SEMUA'
     ? 'Cakupan: semua pesanan non-sample, termasuk retail.'
@@ -1650,7 +1643,6 @@ async function buildWorkbook(ctx) {
       const ket = [];
       if (est > 0) ket.push(`${fmt(est)} set berupa perkiraan`);
       if (num(x.set_cek) > 0) ket.push(`${fmt(x.set_cek)} pesanan set belum dihitung (perlu dicek)`);
-      if (num(x.item_lepas) > 0) ket.push(`${fmt(x.item_lepas)} pesanan barang satuan tidak dihitung sebagai set`);
       if (!x.provinsi) ket.push('wilayah belum diketahui');
       return {
         no: i + 1,
@@ -1675,7 +1667,7 @@ async function buildWorkbook(ctx) {
   const L2 = lines.slice().sort((a, b) =>
     ((ord.get(a.customer) || 0) - (ord.get(b.customer) || 0)) ||
     String(b.tanggal || '').localeCompare(String(a.tanggal || '')) ||
-    String(a.po || '').localeCompare(String(b.po || ''), 'id'));
+    String(a.kode_rmp || '').localeCompare(String(b.kode_rmp || ''), 'id'));
   const linCols = [
     { h: 'Rumah sakit', k: 'customer', w: 40 },
     { h: 'Kab/Kota', k: 'kab', w: 20 },
@@ -1688,9 +1680,9 @@ async function buildWorkbook(ctx) {
   linCols.push(
     { h: 'Status', k: 'status', w: 14 },
     { h: 'Tanggal pesanan', k: 'tanggal', w: 14, fmt: XL_DATE },
-    { h: 'No. PO', k: 'po', w: 24 },
+    { h: 'No. RMP', k: 'rmp', w: 24 },
     { h: 'Keterangan', k: 'ket', w: 44, wrap: true, warn: true },
-    { h: 'Kode RMP', k: 'rmp', w: 16, tech: true },
+    { h: 'No. PO', k: 'po', w: 24, tech: true },
     { h: 'Kode produk', k: 'kode', w: 16, tech: true },
     { h: 'Family', k: 'family', w: 24, tech: true },
     { h: 'Jumlah baris di FPB', k: 'baris', w: 12, fmt: XL_NUM, tech: true },
