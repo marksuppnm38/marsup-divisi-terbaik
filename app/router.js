@@ -127,6 +127,91 @@ let currentMounted = false; // true hanya setelah mount() halaman aktif selesai 
 let renderSeq = 0; // penanda render terbaru: render() lama yang tertinggal (klik nav cepat) harus berhenti, bukan ikut mount
 let hasResolvedInitialRoute = false; // lihat LAST_ROUTE_KEY di atas -- cuma render() PERTAMA yang boleh substitusi path kosong
 
+// ── PERCEPTED-SPEED: CSS halaman "diparkir", bukan dibuang ───────────────────────────────
+// Tiap halaman memasang <link>/<style> miliknya di mount() dan membuangnya di unmount()
+// (supaya selector-nya gak bocor ke halaman lain). Akibatnya SETIAP kembali ke modul yang
+// pernah dibuka, mount() harus menunggu stylesheet diunduh/di-parse ulang dulu sebelum
+// kontennya muncul. Di sini .remove() elemen style halaman, KHUSUS selama unmount() jalan,
+// diganti jadi media="not all" (stylesheet tetap ter-parse di memori tapi tidak berlaku ->
+// perilaku visual sama persis dengan dibuang). Begitu modul itu di-mount lagi, media
+// dikembalikan SEBELUM mount() dipanggil; loadLink() halaman melihat elemennya sudah ada
+// dan langsung lanjut -- tanpa fetch, tanpa flash tanpa-gaya. Tidak ada file halaman yang
+// perlu diubah. Elemen 'shared-*' tidak pernah disentuh (memang permanen).
+const parkedStyles = new Map(); // moduleId -> elemen <link>/<style> yang diparkir
+
+function isParkableStyle(el) {
+  return !!el && el.parentNode === document.head && !!el.id && !el.id.startsWith('shared-') &&
+    ((el.tagName === 'LINK' && /stylesheet/i.test(el.rel || '')) || el.tagName === 'STYLE');
+}
+
+function unmountPage(page, moduleId, label) {
+  if (!page || typeof page.unmount !== 'function') return;
+  const nativeRemove = Element.prototype.remove;
+  const parked = [];
+  Element.prototype.remove = function () {
+    if (isParkableStyle(this)) {
+      if (!this.hasAttribute('data-pnm-media')) this.setAttribute('data-pnm-media', this.getAttribute('media') || '');
+      this.setAttribute('media', 'not all');
+      parked.push(this);
+      return undefined;
+    }
+    return nativeRemove.call(this);
+  };
+  try {
+    page.unmount();
+  } catch (err) {
+    console.error(label || 'unmount gagal:', err);
+  } finally {
+    Element.prototype.remove = nativeRemove;
+  }
+  if (moduleId && parked.length) {
+    const list = parkedStyles.get(moduleId) || [];
+    parked.forEach((el) => { if (!list.includes(el)) list.push(el); });
+    parkedStyles.set(moduleId, list);
+  }
+}
+
+function unparkStyles(moduleId) {
+  const list = parkedStyles.get(moduleId);
+  if (!list) return;
+  parkedStyles.delete(moduleId);
+  list.forEach((el) => {
+    if (!el.isConnected) return;
+    const orig = el.getAttribute('data-pnm-media');
+    if (orig) el.setAttribute('media', orig); else el.removeAttribute('media');
+    el.removeAttribute('data-pnm-media');
+  });
+}
+
+// ── PERCEPTED-SPEED: skeleton instan selama chunk/CSS/data modul baru belum siap ──────────
+// Muncul hanya kalau mount() belum menaruh apa-apa setelah 120 ms (navigasi cepat tidak
+// berkedip). Otomatis tertimpa oleh container.innerHTML milik halaman.
+const SKEL_STYLE_ID = 'pnm-route-skel-style';
+function ensureSkelStyle() {
+  if (document.getElementById(SKEL_STYLE_ID)) return;
+  const st = document.createElement('style');
+  st.id = SKEL_STYLE_ID;
+  st.textContent = '.pnm-route-skel{padding:28px 32px;display:flex;flex-direction:column;gap:14px}' +
+    '.pnm-route-skel i{display:block;border-radius:10px;background:var(--border,#e2e4e9);opacity:.45;animation:pnm-skel 1.2s ease-in-out infinite}' +
+    '.pnm-route-skel i:nth-child(1){height:28px;width:34%}' +
+    '.pnm-route-skel i:nth-child(2){height:84px}' +
+    '.pnm-route-skel i:nth-child(n+3){height:44px}' +
+    '@keyframes pnm-skel{0%,100%{opacity:.28}50%{opacity:.55}}' +
+    '@media (prefers-reduced-motion:reduce){.pnm-route-skel i{animation:none}}';
+  document.head.appendChild(st);
+}
+function scheduleSkeleton(seq) {
+  return setTimeout(() => {
+    if (seq !== renderSeq || currentMounted || container.childElementCount) return;
+    ensureSkelStyle();
+    container.innerHTML = '<div class="pnm-route-skel" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>';
+  }, 120);
+}
+function clearSkeleton(timer) {
+  clearTimeout(timer);
+  container.querySelector(':scope > .pnm-route-skel')?.remove();
+}
+
 function currentRoute() {
   let path = location.pathname.replace(/^\/+/, '').replace(/\/+$/, '').trim();
   if (!path && !hasResolvedInitialRoute) {
@@ -201,9 +286,7 @@ async function render() {
   // unrecognized destination is an unrecognized destination.
   const tampered = !load || extra || !isValidSub(module, sub);
   if (tampered) {
-    if (currentPage && typeof currentPage.unmount === 'function') {
-      try { currentPage.unmount(); } catch (err) { console.error('unmount gagal:', err); }
-    }
+    unmountPage(currentPage, currentModule);
     currentPage = null;
     currentModule = null;
     container.innerHTML = '';
@@ -241,17 +324,17 @@ async function render() {
     return;
   }
 
-  if (currentPage && typeof currentPage.unmount === 'function') {
-    try { currentPage.unmount(); } catch (err) { console.error('unmount gagal:', err); }
-  }
+  unmountPage(currentPage, currentModule);
   currentPage = null;
   currentModule = null;
   container.innerHTML = '';
+  const skelTimer = scheduleSkeleton(mySeq);
 
   let mod;
   try {
     mod = await load();
   } catch (err) {
+    clearSkeleton(skelTimer);
     // Chunk gagal diunduh (koneksi putus / versi baru baru saja dideploy): beri tahu, jangan layar kosong.
     console.error(`gagal memuat modul "${module}":`, err);
     if (mySeq === renderSeq) {
@@ -261,17 +344,20 @@ async function render() {
     }
     return;
   }
-  if (mySeq !== renderSeq) return; // user sudah pindah lagi selagi chunk diunduh -> jangan mount halaman ini
+  if (mySeq !== renderSeq) { clearTimeout(skelTimer); return; } // user sudah pindah lagi selagi chunk diunduh -> jangan mount halaman ini
 
   // currentPage/currentModule diisi SEBELUM mount() selesai: kalau user pindah lagi selagi mount() masih
   // berjalan, render() berikutnya bisa meng-unmount halaman ini (dulu: tertinggal terpasang tanpa pegangan).
   currentPage = mod;
   currentModule = module;
   currentMounted = false;
+  unparkStyles(module); // CSS halaman ini (kalau pernah dibuka) dipasang lagi dari memori, sebelum mount()
   try {
     await mod.mount(container, sub);
     if (currentPage === mod) currentMounted = true;
+    clearSkeleton(skelTimer);
   } catch (err) {
+    clearSkeleton(skelTimer);
     console.error(`mount gagal untuk modul "${module}":`, err);
     try { mod.unmount?.(); } catch (unmountErr) { console.error('unmount (setelah mount gagal) juga gagal:', unmountErr); }
     if (currentPage === mod) { currentPage = null; currentModule = null; }
@@ -454,6 +540,7 @@ function startRouting() {
     window.addEventListener('pnm:navigate', (e) => navigate(e.detail?.path));
   }
   render(); // covers both first-ever login and re-login after a logout
+  startIdlePrefetch();
 }
 
 function stopRouting() {
@@ -461,9 +548,7 @@ function stopRouting() {
   routingEnabled = false; // render() now no-ops on any popstate/pnm:navigate until startRouting() again
   // Logout while a page was mounted: tear it down and hide nav/content so
   // nothing stale sits behind the gate when it reappears.
-  if (currentPage && typeof currentPage.unmount === 'function') {
-    try { currentPage.unmount(); } catch (err) { console.error('unmount gagal (logout):', err); }
-  }
+  unmountPage(currentPage, currentModule, 'unmount gagal (logout):');
   currentPage = null;
   currentModule = null;
   container.innerHTML = '';
@@ -489,6 +574,52 @@ function prefetchLikelyRoute() {
   } catch (err) { /* prefetch cuma optimasi -- gagal ya diam */ }
 }
 prefetchLikelyRoute();
+
+// PREFETCH saat hover/fokus/sentuh link sidebar: chunk modul tujuan mulai diunduh sebelum klik
+// selesai (import() di-cache modul-loader, jadi render() nanti langsung dapat). Listener
+// dipasang di container sidebar saja, bukan document-wide.
+function prefetchRoute(mod) {
+  if (RETIRED_REDIRECTS[mod]) mod = RETIRED_REDIRECTS[mod];
+  const load = ROUTES[mod];
+  if (load) load().catch(() => {});
+}
+function prefetchFromEvent(e) {
+  const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+  if (!a) return;
+  try {
+    const u = new URL(a.getAttribute('href'), location.origin);
+    if (u.origin !== location.origin) return;
+    prefetchRoute(u.pathname.replace(/^\/+/, '').split('/')[0]);
+  } catch (err) { /* href aneh -- abaikan */ }
+}
+if (navContainer) {
+  navContainer.addEventListener('pointerover', prefetchFromEvent, { passive: true });
+  navContainer.addEventListener('focusin', prefetchFromEvent);
+  navContainer.addEventListener('touchstart', prefetchFromEvent, { passive: true });
+}
+
+// PREFETCH IDLE: setelah halaman pertama tampil, sisa chunk modul diunduh satu per satu saat
+// browser menganggur (modul yang paling sering dipakai duluan). Dilewati di mode hemat data /
+// koneksi 2G. Cuma dipanggil setelah login lolos (dari startRouting), bukan untuk tamu.
+let idlePrefetchStarted = false;
+function startIdlePrefetch() {
+  if (idlePrefetchStarted) return;
+  idlePrefetchStarted = true;
+  try {
+    const c = navigator.connection;
+    if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ''))) return;
+  } catch (err) { /* abaikan */ }
+  const first = ['populasi', 'crud-produk', 'konversian', 'dashboard', 'stok'];
+  const queue = first.concat(Object.keys(ROUTES).filter((m) => !first.includes(m))).filter((m) => ROUTES[m]);
+  const idle = window.requestIdleCallback ? (fn) => window.requestIdleCallback(fn, { timeout: 4000 }) : (fn) => setTimeout(fn, 500);
+  const step = () => {
+    const m = queue.shift();
+    if (!m) return;
+    ROUTES[m]().catch(() => {});
+    idle(step);
+  };
+  setTimeout(() => idle(step), 1500);
+}
 
 window.addEventListener('DOMContentLoaded', () => {
   initNoAutofillGuard();

@@ -165,7 +165,15 @@ function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return n
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* abaikan */ } }
 
 // Token diambil FRESH tiap request (bukan variabel lokal yang bisa basi) -- sama dgn dashboard.
+// Cache stale-while-revalidate untuk get_populasi_v2 (module-scope: selamat dari unmount/mount,
+// jadi kembali ke modul ini langsung menampilkan hasil terakhir, lalu disegarkan di belakang).
+// Setiap RPC tulis (bukan get_*) mengosongkan cache supaya data basi tidak pernah tampil
+// setelah suntingan.
+const SWR_MAX = 12;
+const swrCache = new Map(); // JSON(params) -> { res, json }
+
 async function rpc(fn, params, timeoutMs = RPC_TIMEOUT_MS) {
+  if (!/^get_/.test(fn)) swrCache.clear();
   const accessToken = await window.PNMAuth.getAccessToken();
   if (!accessToken) {
     window.PNMAuth.logout();
@@ -229,20 +237,31 @@ async function load() {
   renderCats();
   renderActive();
   try {
-    const res = await rpc('get_populasi_v2', filterParams());
+    const params = filterParams();
+    const key = JSON.stringify(params);
+    const hit = swrCache.get(key);
+    const applyResult = (res) => {
+      data = res || {};
+      rows = (data.rows || []).map((r) => {
+        const set = num(r.set_terkirim) + num(r.set_proses);
+        const pcs = num(r.pcs_terkirim) + num(r.pcs_proses);
+        return Object.assign({}, r, { set, pcs, total: set + pcs });
+      });
+      unmapped = data.belum_terpetakan || [];
+      detailCache.clear();
+      linesAll = null;
+      recon = {};
+      applySort();
+      render();
+    };
+    if (hit) applyResult(hit.res);      // tampilkan hasil terakhir seketika, lalu segarkan di belakang
+    const res = await rpc('get_populasi_v2', params);
     if (my !== reqId) return;           // respons telat tidak boleh menimpa yang lebih baru
-    data = res || {};
-    rows = (data.rows || []).map((r) => {
-      const set = num(r.set_terkirim) + num(r.set_proses);
-      const pcs = num(r.pcs_terkirim) + num(r.pcs_proses);
-      return Object.assign({}, r, { set, pcs, total: set + pcs });
-    });
-    unmapped = data.belum_terpetakan || [];
-    detailCache.clear();
-    linesAll = null;
-    recon = {};
-    applySort();
-    render();
+    const json = JSON.stringify(res || {});
+    swrCache.delete(key);
+    swrCache.set(key, { res, json });
+    while (swrCache.size > SWR_MAX) swrCache.delete(swrCache.keys().next().value);
+    if (!hit || hit.json !== json) applyResult(res);   // data sama -> tidak render ulang (baris terbuka tetap)
   } catch (e) {
     if (my !== reqId || String(e.message).startsWith('unauthorized')) return;
     const missing = e.code === 'PGRST202' || e.status === 404;

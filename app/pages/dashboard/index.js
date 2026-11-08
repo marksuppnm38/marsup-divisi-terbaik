@@ -117,8 +117,19 @@ const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const RPC_TIMEOUT_MS = 25000;
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
 
+// ── Stale-while-revalidate untuk RPC baca (get_*) yang dipanggil oleh loadEverything() ──
+// Module-scope supaya selamat dari unmount/mount: kembali ke dashboard menampilkan hasil
+// terakhir SEKETIKA (9 RPC paralel tidak lagi ditunggu), lalu semua yang tadi disajikan dari
+// cache disegarkan di belakang; kalau ada yang berubah, dashboard dimuat ulang sekali dari
+// cache yang sudah segar. Tombol "Muat ulang" mengosongkan cache -> perilaku tetap seperti dulu.
+const rpcMemo = new Map();   // fn|JSON(params) -> data
+let dashMountSeq = 0;        // penanda mount aktif (unmount menaikkannya -> revalidasi lama berhenti)
+let bulkLoading = false;     // true hanya selama loadEverything() berjalan
+let staleServed = [];        // { fn, params, key, data } yang disajikan dari cache pada pemuatan ini
+
 export async function mount(container) {
   mountedContainer = container;
+  const myMount = ++dashMountSeq;
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.innerHTML = DASHBOARD_MARKUP;
 
@@ -336,7 +347,7 @@ function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}
 // yang gak diport sama sekali ke sini -- baik bug maupun duplikasinya jadi
 // moot sekarang karena keduanya dihapus, bukan diwariskan.
 // FIX: "Muat ulang" dulu gak pernah refetch tabel produk (halaman yang sama diambil dari pageCache).
-document.getElementById('reload-btn').addEventListener('click', () => { clearPageCache(); loadEverything(); });
+document.getElementById('reload-btn').addEventListener('click', () => { clearPageCache(); rpcMemo.clear(); loadEverything({ revalidate: false }); });
 
 function fmt(n){ return Number(n||0).toLocaleString('id-ID'); }
 function pct(a,b){ return b ? Math.round(a/b*100) : 0; }
@@ -371,7 +382,7 @@ function clearError(){ document.getElementById('err-banner').classList.remove('s
 // Semua RPC call di dashboard ini butuh role 'authenticated' (bukan
 // cuma anon key) supaya RLS produk/produk_harga konsisten dengan
 // tools lain. Kalau token expired di tengah jalan, lempar ke gate lagi.
-async function rpc(fn, params){
+async function rpcNet(fn, params){
   // SPA migration: accessToken (variable lokal yang di-set manual saat login/
   // refresh) diganti PNMAuth.getAccessToken() dipanggil FRESH tiap request --
   // sama fix persis kayak getFreshToken() di konversian/index.js (bug asalnya:
@@ -421,6 +432,32 @@ async function rpc(fn, params){
     throw err;
   }
   return data;
+}
+
+async function rpc(fn, params){
+  if (!bulkLoading || !/^get_(dashboard_|wordtree_)/.test(fn)) return rpcNet(fn, params);
+  const key = fn + '|' + JSON.stringify(params || {});
+  if (rpcMemo.has(key)) {
+    const data = rpcMemo.get(key);
+    staleServed.push({ fn, params, key, data });
+    return data;
+  }
+  const data = await rpcNet(fn, params);
+  rpcMemo.set(key, data);
+  return data;
+}
+
+// Segarkan di belakang semua hasil yang tadi disajikan dari cache; muat ulang SEKALI kalau ada yang beda.
+async function revalidateStale(list, seq){
+  let changed = false;
+  await Promise.all(list.map(async (it) => {
+    try {
+      const fresh = await rpcNet(it.fn, it.params);
+      rpcMemo.set(it.key, fresh);
+      if (JSON.stringify(fresh) !== JSON.stringify(it.data)) changed = true;
+    } catch (e) { /* gagal menyegarkan -> biarkan yang tampil */ }
+  }));
+  if (changed && seq === dashMountSeq) await loadEverything({ revalidate: false });
 }
 
 // ══════════════════════════════════════════
@@ -704,7 +741,10 @@ function handleLoadError(err){
   showToast('Gagal memuat data: ' + (err && err.message), 'error');
 }
 
-async function loadEverything(){
+async function loadEverything(opts){
+  const doRevalidate = !opts || opts.revalidate !== false;
+  staleServed = [];
+  bulkLoading = true;
   clearError();
   const lu = document.getElementById('last-update-text');
   if (lu) lu.textContent = 'Memuat…';
@@ -723,7 +763,11 @@ async function loadEverything(){
     ['(forecast)', loadForecastStok()],
   ];
   // allSettled: dulu Promise.all -- satu RPC gagal = satu toast, sisanya skeleton selamanya.
-  const results = await Promise.allSettled(jobs.map(j => j[1]));
+  let results;
+  try { results = await Promise.allSettled(jobs.map(j => j[1])); }
+  finally { bulkLoading = false; }
+  const served = staleServed;
+  staleServed = [];
   let failed = 0;
   results.forEach((r, i) => {
     if (r.status === 'fulfilled') return;
@@ -744,6 +788,7 @@ async function loadEverything(){
   });
   if (failed) showError(`${failed} bagian dashboard gagal dimuat. Klik "Muat ulang" untuk mencoba lagi.`);
   if (lu) lu.textContent = (failed ? 'Sebagian gagal — ' : 'Diperbarui ') + new Date().toLocaleTimeString('id-ID');
+  if (doRevalidate && served.length && myMount === dashMountSeq) revalidateStale(served, myMount);
 }
 // SPA migration: di-nama-in + ditangkep ke var module-scope biar unmount()
 // bisa removeEventListener -- listener document-level ini gak otomatis
@@ -1435,6 +1480,7 @@ async function loadForecastStok(){
 }
 
 export function unmount() {
+  dashMountSeq++;
   if (dashKeydownHandler) document.removeEventListener('keydown', dashKeydownHandler);
   if (dashClickHandler) document.removeEventListener('click', dashClickHandler);
   dashKeydownHandler = null;
