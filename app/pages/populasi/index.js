@@ -8,10 +8,9 @@
 //   get_populasi_v2_baris   -> baris per PO/produk: rincian satu RS (saat baris dibuka)
 //                              dan bahan seluruh sheet Excel
 //   set_rs_wilayah          -> simpan koreksi wilayah satu RS (tidak berubah)
-//   get_produk_kelompok     -> daftar produk + kategori sekarang/asal untuk panel "Kelola kategori produk"
-//   set_produk_kelompok     -> simpan koreksi kategori satu produk (data sheet TIDAK disentuh)
-//   hapus_produk_kelompok   -> kembalikan produk ke kategori menurut label sheet
-//   (tabel + RPC: sql/01_tabel_dan_rpc.sql, fungsi yang diganti: sql/02_ganti_fungsi_populasi.sql)
+//   get_produk_kelompok / set_produk_kelompok / hapus_produk_kelompok -> koreksi kategori produk (sql/01)
+//   get_set_grup / set_set_grup / hapus_set_grup -> alihkan set custom ke populasi set lain (sql/07)
+//   (data sheet TIDAK disentuh; keduanya hanya mengubah nama/kategori yang dihitung)
 // Pola mount/unmount/auth/rpc() sama dengan dashboard/index.js (PNMAuth, token diambil
 // fresh tiap request, delegasi event di container).
 //
@@ -343,17 +342,14 @@ function renderHint() {
   const el = $('ps-hint');
   if (!el) return;
   const p = state.produk.trim();
-  const msg = [];
+  let msg = '';
   if (p) {
-    msg.push(`Pencarian “${p}” mencakup nama set (spasi dan titik diabaikan) dan barang yang dijual sendiri.`);
-    msg.push(state.isiSet
+    msg = `“${p}” dicari di nama set dan barang satuan. ` + (state.isiSet
       ? 'Isi set dihitung per komponen (pcs), bukan per set.'
-      : 'Barang di dalam set belum ikut; centang “Termasuk isi set” untuk menambahkannya.');
-    if (state.kelompok.length) msg.push(`Hasil dibatasi ke kategori ${kategoriText()}; lepas pilihan kategori untuk mencari di semua.`);
-    if (state.provinsi) msg.push(`Hanya di ${state.provinsi}; pilih “Semua provinsi” untuk melihat semuanya.`);
+      : 'Barang di dalam set tidak ikut; centang “Termasuk isi set” untuk menambahkannya.');
   }
-  el.hidden = !msg.length;
-  el.textContent = msg.join(' ');
+  el.hidden = !msg;
+  el.textContent = msg;
 }
 
 // Data di DB bisa tertinggal dari Google Sheet (sinkron berjalan terpisah) -- jangan disembunyikan.
@@ -576,18 +572,24 @@ function isiHtml(d) {
     <tbody>${body}</tbody></table></details>`;
 }
 
-// Sel "Kategori" di rincian PO: nama kategori + penanda "dikoreksi" + pensil untuk membuka panel koreksi.
-// Penanda hanya tampil di layar internal; Excel dan teks salinan tidak memuatnya.
-function katCellHtml(d, nama) {
+// Sel "Kategori" di rincian PO (pcs): nama kategori, penanda "dikoreksi", dan pensil yang membuka dialog Kelola produk.
+// Penanda hanya di layar internal; Excel dan teks salinan tidak memuatnya.
+function kelKategoriCell(d, nama) {
   let h = esc(katName(d.kelompok));
   if (d.dikoreksi) {
-    const tip = 'Kategori sudah dikoreksi tim. Menurut label di sheet: ' + katName(d.kelompok_asal);
-    h += ` <span class="ps-wil-note" title="${esc(tip)}">dikoreksi</span>`;
+    h += ` <span class="ps-wil-note" title="${esc('Kategori sudah dikoreksi tim. Menurut label di sheet: ' + katName(d.kelompok_asal))}">dikoreksi</span>`;
   }
   if (d.kind === 'PCS' && d.kelompok !== 'ISI SET' && d.kode_produk) {
-    h += ` <button type="button" class="ps-iconbtn ps-kat-pen" data-action="ps-kat-edit-row" data-kode="${esc(d.kode_produk)}" title="Ubah kategori produk ini" aria-label="Ubah kategori ${esc(nama)}"><i class="ti ti-pencil" aria-hidden="true"></i></button>`;
+    h += ` <button type="button" class="ps-iconbtn ps-pen-sm" data-action="ps-kel-edit-row" data-tab="kat" data-q="${esc(d.kode_produk)}" title="Ubah kategori produk ini" aria-label="Ubah kategori ${esc(nama)}"><i class="ti ti-pencil" aria-hidden="true"></i></button>`;
   }
   return h;
+}
+
+// Pensil di samping nama set: membuka dialog Kelola produk > Alihkan set untuk set ini.
+function kelSetPen(d) {
+  if (d.kind !== 'SET') return '';
+  const q = d.label_asli || d.label;
+  return ` <button type="button" class="ps-iconbtn ps-pen-sm" data-action="ps-kel-edit-row" data-tab="set" data-q="${esc(q)}" title="${d.label_asli ? 'Ubah atau lepas alihan set ini' : 'Hitung set ini sebagai populasi set lain'}" aria-label="Alihkan set ${esc(q)}"><i class="ti ti-pencil" aria-hidden="true"></i></button>`;
 }
 
 function detailHtml(list) {
@@ -603,7 +605,8 @@ function detailHtml(list) {
           const isSet = d.kind === 'SET';
           const nama = isSet ? d.label : d.produk;
           const sub = !isSet && (d.family || d.kode_produk)
-            ? `<span class="ps-sub">${esc(d.family || d.kode_produk)}</span>` : '';
+            ? `<span class="ps-sub">${esc(d.family || d.kode_produk)}</span>`
+            : (isSet && d.label_asli ? `<span class="ps-sub">Dialihkan dari: ${esc(d.label_asli)}</span>` : '');
           const sh = isSet && !d.item_lepas ? d.status_hitung : '';
           const jml = isSet ? ((d.item_lepas || sh === 'cek') ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} pcs`;
           // Status hitungan ditulis langsung di baris PO (teks jelas, penjelasan lengkap di tooltip).
@@ -621,8 +624,8 @@ function detailHtml(list) {
           <tr${d.item_lepas ? ' class="ps-lepas"' : ''}>
             <td>${esc(d.po || '—')}</td>
             <td><span class="kode-text">${esc(d.kode_rmp || '—')}</span></td>
-            <td>${katCellHtml(d, nama)}</td>
-            <td>${esc(nama)}${sub}${status}${isiHtml(d)}</td>
+            <td>${kelKategoriCell(d, nama)}</td>
+            <td>${esc(nama)}${kelSetPen(d)}${sub}${status}${isiHtml(d)}</td>
             <td class="ps-num">${esc(jml)}</td>
             <td><span class="ps-st ${d.status === 'TERKIRIM' ? 'ps-st-ok' : 'ps-st-wip'}">${d.status === 'TERKIRIM' ? 'Terkirim' : 'Proses'}</span></td>
             <td class="ps-date">${esc(fmtDate(d.tanggal))}</td>
@@ -725,218 +728,377 @@ function editWilayah(customer, provinsi, kab) {
   setTimeout(() => sel.focus(), 30);
 }
 
-// ── kelola kategori produk ───────────────────────────────────────────────────
-// Koreksi kategori per PRODUK (kunci = kode produk tanpa spasi + nol di depan angka dibuang, jadi semua
-// ejaan kode yang sama ikut). Data sheet tidak diubah. Koreksi hanya berlaku untuk baris pcs; pesanan set
-// utuh dan isi set tidak terpengaruh. Semua nilai dari DB lewat esc() / textContent.
+// ── kelola produk: kategori produk + alihkan set ─────────────────────────────
+// Dua tab di satu dialog, pola yang sama: cari, daftar, pensil -> form di bawah baris, Simpan/Batal.
+//  • Kategori produk: koreksi kategori per PRODUK (kunci = kode tanpa spasi, nol di depan angka dibuang).
+//  • Alihkan set: set custom yang sudah tidak dijual dihitung sebagai populasi set lain. Jumlah set tidak berubah.
+// Data Google Sheet tidak diubah. Semua nilai dari DB lewat esc() / textContent.
 const KAT_TARGET = KELOMPOK.filter((k) => k.id !== 'SET');
-const kat = { q: '', kel: '', hanya: false, list: [], total: 0, tanpaKode: 0, opener: null };
-let katTimer = null;
-let katReq = 0;
-let katKeyHandler = null;
+const kel = { tab: 'kat', q: '', kelompok: '', hanya: false, list: [], total: 0, tanpaKode: 0, edit: -1, draft: '', saran: [], match: '', opener: null };
+let kelTimer = null;
+let kelSaranTimer = null;
+let kelReq = 0;
+let kelKeyHandler = null;
 
 const katAsal = (r) => (r.kelompok_asal || []).map(katName).join(', ');
-const katKode = (r) => (r.ejaan && r.ejaan[0]) || r.kode_key;   // ejaan nyata dari sheet; server menormalkannya lagi
+const kelIsKat = () => kel.tab === 'kat';
+const kelRow = () => kel.list[kel.edit];
+const kelKodeKat = (r) => (r.ejaan && r.ejaan[0]) || r.kode_key;   // ejaan nyata dari sheet; server menormalkannya lagi
+
+const KEL_TEKS = {
+  kat: {
+    sub: 'Betulkan kategori produk yang salah tag di sheet. Berlaku di hasil Populasi, Excel, dan teks salinan.',
+    cari: 'Cari kode atau nama produk', hanya: 'Hanya yang dikoreksi',
+    kosong: 'Tidak ada produk yang cocok.', kosongHanya: 'Belum ada koreksi.',
+  },
+  set: {
+    sub: 'Set custom yang sudah tidak dijual bisa dihitung sebagai populasi set lain. Jumlah setnya tidak berubah; hanya nama set yang dihitung.',
+    cari: 'Cari nama set, mis. kit atau dental', hanya: 'Hanya yang dialihkan',
+    kosong: 'Tidak ada set yang cocok.', kosongHanya: 'Belum ada set yang dialihkan.',
+  },
+};
 
 function katOptions(selected, placeholder) {
   return (placeholder ? '<option value="">Pilih kategori…</option>' : '') +
     KAT_TARGET.map((k) => `<option value="${esc(k.id)}"${k.id === selected ? ' selected' : ''}>${esc(k.nama)}</option>`).join('');
 }
 
-function katRenderBar() {
-  $('ps-kat-kel').innerHTML = '<option value="">Semua kategori</option>' +
-    KAT_TARGET.map((k) => `<option value="${esc(k.id)}">${esc(k.nama)}</option>`).join('');
-  $('ps-kat-kel').value = kat.kel;
-  $('ps-kat-q').value = kat.q;
-  $('ps-kat-hanya').checked = kat.hanya;
+// Bagian dialog yang berubah menurut tab: judul tab, kolom, kotak cari, filter.
+function kelRenderChrome() {
+  const t = KEL_TEKS[kel.tab];
+  ['kat', 'set'].forEach((k) => {
+    const b = $('ps-kel-tab-' + k);
+    b.setAttribute('aria-selected', String(k === kel.tab));
+    b.tabIndex = k === kel.tab ? 0 : -1;
+  });
+  $('ps-kel-sub').textContent = t.sub;
+  $('ps-kel-q').placeholder = t.cari;
+  $('ps-kel-q').setAttribute('aria-label', t.cari);
+  $('ps-kel-q').value = kel.q;
+  $('ps-kel-hanya-t').textContent = t.hanya;
+  $('ps-kel-hanya').checked = kel.hanya;
+  const sel = $('ps-kel-kelompok');
+  sel.hidden = !kelIsKat();
+  if (kelIsKat()) {
+    sel.innerHTML = '<option value="">Semua kategori</option>' +
+      KAT_TARGET.map((k) => `<option value="${esc(k.id)}">${esc(k.nama)}</option>`).join('');
+    sel.value = kel.kelompok;
+  }
+  $('ps-kel-thead').innerHTML = kelIsKat()
+    ? '<tr><th>Produk</th><th>Kategori</th><th class="ps-kel-num">Pesanan</th><th class="ps-kel-act"><span class="ps-kel-sr">Ubah</span></th></tr>'
+    : '<tr><th>Set</th><th>Dihitung sebagai</th><th class="ps-kel-num">Populasi</th><th class="ps-kel-act"><span class="ps-kel-sr">Ubah</span></th></tr>';
 }
 
-function katRenderMeta() {
-  const shown = kat.list.length;
-  let t = kat.total > shown
-    ? `Menampilkan ${fmt(shown)} dari ${fmt(kat.total)} produk, diurutkan menurut jumlah RS. Persempit dengan pencarian atau kategori.`
-    : `${fmt(kat.total)} produk`;
-  if (kat.tanpaKode > 0) t += ` · ${fmt(kat.tanpaKode)} baris pesanan tanpa kode produk tidak bisa dikoreksi di sini.`;
-  $('ps-kat-meta').textContent = t;
+function kelRenderMeta() {
+  const unit = kelIsKat() ? 'produk' : 'set';
+  let t = kel.total > kel.list.length
+    ? `${fmt(kel.list.length)} dari ${fmt(kel.total)} ${unit}, urut menurut jumlah RS`
+    : `${fmt(kel.total)} ${unit}`;
+  if (kelIsKat() && kel.tanpaKode > 0) t += ` · ${fmt(kel.tanpaKode)} baris pesanan tanpa kode tidak bisa dikoreksi`;
+  $('ps-kel-meta').textContent = t;
 }
 
-function katRenderRows() {
-  const body = $('ps-kat-body');
-  if (!kat.list.length) {
-    body.innerHTML = `<tr><td colspan="5" class="ps-kat-empty">${esc(kat.hanya ? 'Belum ada koreksi yang cocok.' : 'Tidak ada produk yang cocok.')}</td></tr>`;
+function kelRowKat(r, i, open) {
+  const sekarang = r.kelompok || [];
+  const ej = r.ejaan || [];
+  const ejHtml = (ej.length > 1 || (ej[0] && ej[0] !== r.kode_key))
+    ? `<span class="ps-kel-sub">Di sheet: ${ej.slice(0, 3).map((e) => '“' + esc(e) + '”').join(' · ')}${ej.length > 3 ? ' +' + (ej.length - 3) : ''}</span>` : '';
+  const nm = r.nama || [];
+  let kelHtml = `<span class="ps-kel-strong">${esc(sekarang.map(katName).join(' / '))}</span>`;
+  if (r.dikoreksi) kelHtml += `<span class="ps-kel-sub">Dikoreksi · di sheet: ${esc(katAsal(r))}</span>`;
+  else if (sekarang.length > 1) kelHtml += '<span class="ps-kel-warn" title="Baris-baris produk ini diberi label kategori berbeda di sheet. Menyimpan koreksi menyeragamkan semuanya.">Label di sheet tidak konsisten</span>';
+  return `<tr class="ps-kel-row${open ? ' is-open' : ''}" data-i="${i}">
+    <td><span class="ps-kel-strong">${esc(nm[0] || r.kode_key)}</span><span class="ps-kel-sub"><span class="kode-text">${esc(r.kode_key)}</span></span>${ejHtml}</td>
+    <td>${kelHtml}</td>
+    <td class="ps-kel-num">${esc(fmt(r.baris))} baris<span class="ps-kel-sub">${esc(fmt(r.qty))} pcs · ${esc(fmt(r.jumlah_rs))} RS</span></td>
+    <td class="ps-kel-act"><button type="button" class="ps-iconbtn" data-action="ps-kel-edit" data-i="${i}" aria-expanded="${open}" title="${open ? 'Tutup' : 'Ubah kategori'}" aria-label="Ubah kategori ${esc(r.kode_key)}"><i class="ti ti-pencil" aria-hidden="true"></i></button></td>
+  </tr>`;
+}
+
+function kelRowSet(r, i, open) {
+  const v = (r.varian || []).filter((x) => x !== r.label);
+  const sub = [
+    v.length ? `<span class="ps-kel-sub">Ditulis juga: ${v.slice(0, 3).map(esc).join(' · ')}${v.length > 3 ? ' +' + (v.length - 3) : ''}</span>` : '',
+    num(r.jumlah_asal) > 0 ? `<span class="ps-kel-sub">Menampung ${fmt(r.jumlah_asal)} set yang dialihkan ke sini</span>` : '',
+  ].join('');
+  const tujuan = r.target
+    ? `<span class="ps-kel-strong">${esc(r.target)}</span><span class="ps-kel-sub">Dialihkan</span>`
+    : '<span class="ps-kel-muted">Dihitung sendiri</span>';
+  const cek = num(r.perlu_cek) > 0 ? `<span class="ps-kel-warn">${fmt(r.perlu_cek)} pesanan perlu dicek</span>` : '';
+  return `<tr class="ps-kel-row${open ? ' is-open' : ''}" data-i="${i}">
+    <td><span class="ps-kel-strong">${esc(r.label)}</span>${sub}</td>
+    <td>${tujuan}</td>
+    <td class="ps-kel-num">${esc(fmt(r.jumlah_set))} set<span class="ps-kel-sub">${esc(fmt(r.jumlah_rs))} RS · ${esc(fmt(r.pesanan))} pesanan</span>${cek}</td>
+    <td class="ps-kel-act"><button type="button" class="ps-iconbtn" data-action="ps-kel-edit" data-i="${i}" aria-expanded="${open}" title="${open ? 'Tutup' : 'Alihkan set'}" aria-label="Alihkan set ${esc(r.label)}"><i class="ti ti-pencil" aria-hidden="true"></i></button></td>
+  </tr>`;
+}
+
+function kelEditor(r) {
+  const kat = kelIsKat();
+  const kontrol = kat
+    ? `<label class="ps-kel-lbl" for="ps-kel-draft">Pindahkan ke kategori</label>
+       <select id="ps-kel-draft" class="field-input">${katOptions(kel.draft, !kel.draft)}</select>`
+    : `<label class="ps-kel-lbl" for="ps-kel-draft">Hitung sebagai populasi set</label>
+       <input id="ps-kel-draft" class="field-input" type="text" list="ps-kel-dl" autocomplete="off" placeholder="Ketik nama set tujuan, mis. dental" value="${esc(kel.draft)}">
+       <datalist id="ps-kel-dl">${kelSaranHtml()}</datalist>`;
+  const lepas = kat ? r.dikoreksi : !!r.target;
+  return `<tr class="ps-kel-edit"><td colspan="4"><div class="ps-kel-form">
+    ${kontrol}
+    <p class="ps-kel-impact" id="ps-kel-impact"></p>
+    <p class="ps-kel-err" id="ps-kel-err" role="alert" hidden></p>
+    <div class="ps-kel-btns">
+      ${lepas ? `<button type="button" class="btn btn-ghost" data-action="ps-kel-reset">${kat ? 'Kembalikan ke label sheet' : 'Lepas alihan'}</button>` : ''}
+      <span class="ps-kel-grow"></span>
+      <button type="button" class="btn btn-ghost" data-action="ps-kel-batal">Batal</button>
+      <button type="button" class="btn btn-accent" id="ps-kel-ok" data-action="ps-kel-save" disabled>Simpan</button>
+    </div>
+  </div></td></tr>`;
+}
+
+function kelSaranHtml() {
+  return kel.saran.map((x) => `<option value="${esc(x.label)}">${esc(fmt(x.jumlah_rs))} RS · ${esc(fmt(x.jumlah_set))} set</option>`).join('');
+}
+
+function kelRender() {
+  const body = $('ps-kel-body');
+  if (!kel.list.length) {
+    const t = KEL_TEKS[kel.tab];
+    body.innerHTML = `<tr><td colspan="4" class="ps-kel-empty">${esc(kel.hanya && !kel.q.trim() ? t.kosongHanya : t.kosong)}</td></tr>`;
+    kelRenderMeta();
     return;
   }
-  body.innerHTML = kat.list.map((r, i) => {
-    const sekarang = r.kelompok || [];
-    const cur = sekarang.length === 1 ? sekarang[0] : '';
-    const ej = r.ejaan || [];
-    const ejHtml = (ej.length > 1 || (ej[0] && ej[0] !== r.kode_key))
-      ? `<span class="ps-kat-sub">Di sheet: ${ej.slice(0, 3).map((e) => '“' + esc(e) + '”').join(' · ')}${ej.length > 3 ? ' +' + (ej.length - 3) : ''}</span>`
-      : '';
-    const nm = (r.nama || []);
-    const namaHtml = esc(nm[0] || '—') + nm.slice(1, 3).map((n) => `<span class="ps-kat-sub">${esc(n)}</span>`).join('');
-    let kelHtml = esc(sekarang.map(katName).join(' / '));
-    if (r.dikoreksi) {
-      kelHtml += ` <span class="ps-kat-badge">dikoreksi</span><span class="ps-kat-sub">Label di sheet: ${esc(katAsal(r))}</span>`;
-    } else if (sekarang.length > 1) {
-      kelHtml += '<span class="ps-kat-warn" title="Baris-baris produk ini diberi label kategori berbeda di sheet. Menyimpan koreksi menyeragamkan semuanya.">Label di sheet tidak konsisten</span>';
-    }
-    return `<tr data-i="${i}">
-      <td><span class="kode-text">${esc(r.kode_key)}</span>${ejHtml}</td>
-      <td class="ps-kat-nama">${namaHtml}</td>
-      <td>${kelHtml}</td>
-      <td class="ps-kat-num">${esc(fmt(r.baris))} baris<span class="ps-kat-sub">${esc(fmt(r.qty))} pcs · ${esc(fmt(r.jumlah_rs))} RS</span></td>
-      <td class="ps-kat-act">
-        <div class="ps-kat-ctl">
-          <select class="filter-select ps-kat-sel" aria-label="Ubah kategori ${esc(r.kode_key)}">${katOptions(cur, !cur)}</select>
-          <button type="button" class="btn btn-accent ps-kat-btn" data-action="ps-kat-save" disabled>Simpan</button>
-          ${r.dikoreksi ? '<button type="button" class="btn btn-ghost ps-kat-btn" data-action="ps-kat-reset" title="Kembalikan ke kategori menurut label di sheet">Kembalikan</button>' : ''}
-        </div>
-        <div class="ps-kat-hint" role="status"></div>
-      </td>
-    </tr>`;
+  body.innerHTML = kel.list.map((r, i) => {
+    const open = i === kel.edit;
+    return (kelIsKat() ? kelRowKat(r, i, open) : kelRowSet(r, i, open)) + (open ? kelEditor(r) : '');
   }).join('');
+  kelRenderMeta();
+  if (kel.edit >= 0) kelEditSync();
 }
 
-async function katLoad() {
-  const my = ++katReq;
-  $('ps-kat-meta').textContent = 'Memuat…';
+// Dampak dan status tombol Simpan mengikuti isian; ditulis lewat textContent.
+function kelEditSync() {
+  const r = kelRow();
+  const ok = $('ps-kel-ok');
+  const imp = $('ps-kel-impact');
+  if (!r || !ok || !imp) return;
+  const d = kel.draft.trim();
+  let changed = false;
+  let teks = '';
+  if (kelIsKat()) {
+    const cur = (r.kelompok || []).length === 1 ? r.kelompok[0] : '';
+    changed = !!d && d !== cur;
+    if (changed) teks = `Seluruh baris produk ini (${fmt(r.baris)} baris, ${fmt(r.qty)} pcs, ${fmt(r.jumlah_rs)} RS) akan masuk ke ${katName(d)}.`;
+  } else {
+    changed = !!d && d.toLowerCase() !== String(r.target || '').toLowerCase();
+    if (changed) teks = `${fmt(r.jumlah_set)} set di ${fmt(r.jumlah_rs)} RS akan dihitung sebagai “${d}”. Jumlah set tidak berubah dan isi setnya tidak dibandingkan dengan set tujuan.`;
+  }
+  ok.disabled = !changed;
+  imp.textContent = teks;
+}
+
+function kelEditOpen(i, fokus) {
+  const r = kel.list[i];
+  if (!r) return;
+  kel.edit = i;
+  kel.draft = kelIsKat() ? ((r.kelompok || []).length === 1 ? r.kelompok[0] : '') : (r.target || '');
+  kel.saran = [];
+  kelRender();
+  if (!kelIsKat()) kelCariSaran(kel.draft);
+  if (fokus) setTimeout(() => { const el = $('ps-kel-draft'); if (el) el.focus(); }, 0);
+}
+
+function kelEditClose() {
+  kel.edit = -1;
+  kel.draft = '';
+  clearTimeout(kelSaranTimer);
+  kelRender();
+}
+
+// Saran set tujuan: set yang belum dialihkan, kecuali set ini sendiri. Memperbarui datalist tanpa merender ulang (fokus tetap).
+async function kelCariSaran(teks) {
+  const r = kelRow();
+  if (!r || kelIsKat()) return;
+  const idx = kel.edit;
   try {
-    const res = await rpc('get_produk_kelompok', {
-      p_cari: kat.q.trim() || null,
-      p_kelompok: kat.kel || null,
-      p_hanya_koreksi: !!kat.hanya,
-      p_batas: 200,
-    });
-    if (my !== katReq) return;
-    kat.list = (res && res.rows) || [];
-    kat.total = num(res && res.total);
-    kat.tanpaKode = num(res && res.tanpa_kode);
-    katRenderRows();
-    katRenderMeta();
+    const res = await rpc('get_set_grup', { p_cari: teks.trim() || null, p_hanya_alih: false, p_untuk_tujuan: true, p_batas: 8 });
+    if (kel.edit !== idx || kelRow() !== r) return;
+    kel.saran = ((res && res.rows) || []).filter((x) => x.label_key !== r.label_key);
+    const dl = $('ps-kel-dl');
+    if (dl) dl.innerHTML = kelSaranHtml();
+  } catch (e) { /* saran bersifat tambahan; kegagalan tidak perlu mengganggu pengisian */ }
+}
+
+async function kelLoad() {
+  const my = ++kelReq;
+  $('ps-kel-meta').textContent = 'Memuat…';
+  try {
+    const res = kelIsKat()
+      ? await rpc('get_produk_kelompok', { p_cari: kel.q.trim() || null, p_kelompok: kel.kelompok || null, p_hanya_koreksi: !!kel.hanya, p_batas: 200 })
+      : await rpc('get_set_grup', { p_cari: kel.q.trim() || null, p_hanya_alih: !!kel.hanya, p_untuk_tujuan: false, p_batas: 200 });
+    if (my !== kelReq) return;
+    kel.list = (res && res.rows) || [];
+    kel.total = num(res && res.total);
+    kel.tanpaKode = num(res && res.tanpa_kode);
+    kel.edit = -1;
+    kel.draft = '';
+    let buka = -1;
+    if (kel.match) {
+      buka = kel.list.findIndex((r) => ((kelIsKat() ? r.ejaan : r.varian) || []).includes(kel.match));
+      kel.match = '';
+    }
+    kelRender();
+    if (buka >= 0) kelEditOpen(buka, true);
   } catch (e) {
-    if (my !== katReq || String(e.message).startsWith('unauthorized')) return;
-    const missing = e.code === 'PGRST202' || e.status === 404;
-    kat.list = [];
-    $('ps-kat-meta').textContent = '';
-    $('ps-kat-body').innerHTML = `<tr><td colspan="5" class="ps-kat-empty ps-kat-err">${esc(missing
-      ? 'RPC kategori produk belum terpasang. Jalankan 01_tabel_dan_rpc.sql di Supabase SQL Editor.'
-      : 'Gagal memuat: ' + e.message)}</td></tr>`;
+    if (my !== kelReq || String(e.message).startsWith('unauthorized')) return;
+    const hilang = e.code === 'PGRST202' || e.status === 404;
+    kel.list = [];
+    $('ps-kel-meta').textContent = '';
+    const pesan = hilang
+      ? (kelIsKat() ? 'RPC kategori produk belum terpasang. Jalankan 01_tabel_dan_rpc.sql.' : 'RPC alihkan set belum terpasang. Jalankan 07_alihkan_set.sql.')
+      : 'Gagal memuat: ' + e.message;
+    $('ps-kel-body').innerHTML = `<tr><td colspan="4" class="ps-kel-empty ps-kel-bad">${esc(pesan)}</td></tr>`;
   }
 }
 
-function katOpen(opts = {}) {
-  const ov = $('ps-kat-overlay');
+function kelOpen(opts = {}) {
+  const ov = $('ps-kel-overlay');
   if (!ov) return;
-  kat.opener = document.activeElement;
-  kat.q = opts.q || '';
-  kat.kel = opts.kel || '';
-  kat.hanya = !!opts.hanya;
-  katRenderBar();
+  kel.opener = document.activeElement;
+  kel.tab = opts.tab === 'set' ? 'set' : 'kat';
+  kel.q = opts.q || '';
+  kel.match = (opts.q || '').trim();
+  kel.kelompok = '';
+  kel.hanya = false;
+  kel.edit = -1;
+  kel.draft = '';
+  kelRenderChrome();
   ov.classList.add('open');
-  katKeyHandler = (e) => { if (e.key === 'Escape') { e.stopPropagation(); katClose(); } };
-  ov.addEventListener('keydown', katKeyHandler);
-  setTimeout(() => { const q = $('ps-kat-q'); if (q) q.focus(); }, 30);
-  katLoad();
+  kelKeyHandler = (e) => { if (e.key === 'Escape') { e.stopPropagation(); kelClose(); } };
+  ov.addEventListener('keydown', kelKeyHandler);
+  setTimeout(() => { const q = $('ps-kel-q'); if (q) q.focus(); }, 30);   // bila editor terbuka otomatis, fokus berpindah ke sana
+  kelLoad();
 }
 
-function katClose() {
-  const ov = $('ps-kat-overlay');
+function kelClose() {
+  const ov = $('ps-kel-overlay');
   if (!ov) return;
   ov.classList.remove('open');
-  if (katKeyHandler) { ov.removeEventListener('keydown', katKeyHandler); katKeyHandler = null; }
-  clearTimeout(katTimer);
-  katReq++;
-  const o = kat.opener;
-  kat.opener = null;
+  if (kelKeyHandler) { ov.removeEventListener('keydown', kelKeyHandler); kelKeyHandler = null; }
+  clearTimeout(kelTimer);
+  clearTimeout(kelSaranTimer);
+  kelReq++;
+  const o = kel.opener;
+  kel.opener = null;
   if (o && o.isConnected && o.focus) o.focus();
 }
 
-// Pilihan di dropdown baris: tampilkan dampaknya dulu, tombol Simpan baru aktif bila memang berubah.
-function katOnSel(sel) {
-  const tr = sel.closest('tr');
-  const r = tr && kat.list[+tr.dataset.i];
-  if (!r) return;
-  const cur = (r.kelompok || []).length === 1 ? r.kelompok[0] : '';
-  const changed = !!sel.value && sel.value !== cur;
-  tr.querySelector('[data-action="ps-kat-save"]').disabled = !changed;
-  const hint = tr.querySelector('.ps-kat-hint');
-  hint.classList.remove('err');
-  hint.textContent = changed
-    ? `Seluruh baris produk ini (${fmt(r.baris)} baris, ${fmt(r.qty)} pcs, ${fmt(r.jumlah_rs)} RS) akan masuk ke ${katName(sel.value)}.`
-    : '';
+function kelSetTab(tab) {
+  if (tab === kel.tab) return;
+  kel.tab = tab;
+  kel.q = '';
+  kel.kelompok = '';
+  kel.hanya = false;
+  kel.match = '';
+  kel.edit = -1;
+  kel.draft = '';
+  kelRenderChrome();
+  kelLoad();
 }
 
-async function katSimpan(btn, reset) {
-  const tr = btn.closest('tr');
-  const r = tr && kat.list[+tr.dataset.i];
-  if (!r || btn.disabled) return;
-  const hint = tr.querySelector('.ps-kat-hint');
-  const sel = tr.querySelector('.ps-kat-sel');
-  const v = sel ? sel.value : '';
-  if (!reset && !v) return;
-  tr.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-  hint.classList.remove('err');
-  hint.textContent = 'Menyimpan…';
+function kelError(teks) {
+  const el = $('ps-kel-err');
+  if (!el) return;
+  el.textContent = teks;
+  el.hidden = !teks;
+}
+
+async function kelSimpan(reset) {
+  const r = kelRow();
+  if (!r) return;
+  const ok = $('ps-kel-ok');
+  const tombol = document.querySelectorAll('#ps-kel-body .ps-kel-btns button');
+  const d = kel.draft.trim();
+  if (!reset && !d) return;
+  tombol.forEach((b) => { b.disabled = true; });
+  kelError('');
   try {
-    if (reset) await rpc('hapus_produk_kelompok', { p_kode: katKode(r) });
-    else await rpc('set_produk_kelompok', { p_kode: katKode(r), p_kelompok: v, p_catatan: null });
-    showToast(reset ? `${r.kode_key} dikembalikan ke kategori di sheet` : `${r.kode_key} dipindah ke ${katName(v)}`);
-    await katLoad();
-    load();                               // hasil Populasi di belakang panel ikut diperbarui
+    let pesan;
+    if (kelIsKat()) {
+      if (reset) { await rpc('hapus_produk_kelompok', { p_kode: kelKodeKat(r) }); pesan = `${r.kode_key} dikembalikan ke kategori di sheet`; }
+      else { await rpc('set_produk_kelompok', { p_kode: kelKodeKat(r), p_kelompok: d, p_catatan: null }); pesan = `${r.kode_key} dipindah ke ${katName(d)}`; }
+    } else if (reset) {
+      await rpc('hapus_set_grup', { p_label: r.label }); pesan = `Alihan “${r.label}” dilepas`;
+    } else {
+      const res = await rpc('set_set_grup', { p_label: r.label, p_target: d, p_catatan: null });
+      pesan = `“${r.label}” dihitung sebagai “${(res && res.target_label) || d}”`;
+    }
+    showToast(pesan);
+    await kelLoad();
+    load();                               // hasil Populasi di belakang dialog ikut diperbarui
   } catch (e) {
     if (String(e.message).startsWith('unauthorized')) return;
-    hint.classList.add('err');
-    hint.textContent = e.message;
-    tr.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+    kelError(e.message);
+    tombol.forEach((b) => { b.disabled = false; });
+    if (ok) kelEditSync();
   }
 }
 
 // Daftar koreksi (Excel) supaya yang meng-input di sheet bisa memperbaiki sumbernya.
-async function katUnduh(btn) {
+async function kelUnduh(btn) {
   if (btn.disabled) return;
   btn.disabled = true;
   try {
-    const res = await rpc('get_produk_kelompok', { p_cari: null, p_kelompok: null, p_hanya_koreksi: true, p_batas: 500 });
-    const list = (res && res.rows) || [];
-    if (!list.length) { showToast('Belum ada koreksi untuk diunduh', 'error'); return; }
+    const aman = (p) => p.catch((e) => { if (String(e.message).startsWith('unauthorized')) throw e; return null; });
+    const [rk, rs] = await Promise.all([
+      aman(rpc('get_produk_kelompok', { p_cari: null, p_kelompok: null, p_hanya_koreksi: true, p_batas: 500 })),
+      aman(rpc('get_set_grup', { p_cari: null, p_hanya_alih: true, p_untuk_tujuan: false, p_batas: 500 })),
+    ]);
+    const lk = (rk && rk.rows) || [];
+    const ls = (rs && rs.rows) || [];
+    if (!lk.length && !ls.length) { showToast('Belum ada koreksi atau alihan untuk diunduh', 'error'); return; }
     await loadScript(EXCELJS_SRC);
     if (!window.ExcelJS) throw new Error('library Excel tidak termuat');
     const wb = new window.ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Koreksi kategori');
-    ws.columns = [
-      { header: 'Kode produk', key: 'kode', width: 24 },
-      { header: 'Ejaan kode di sheet', key: 'ejaan', width: 34 },
-      { header: 'Nama produk', key: 'nama', width: 48 },
-      { header: 'Kategori di sheet', key: 'asal', width: 26 },
-      { header: 'Dikoreksi menjadi', key: 'ke', width: 22 },
-      { header: 'Baris pesanan', key: 'baris', width: 14 },
-      { header: 'Jumlah (pcs)', key: 'qty', width: 14 },
-      { header: 'Jumlah RS', key: 'rs', width: 11 },
-      { header: 'Diubah oleh', key: 'oleh', width: 28 },
-      { header: 'Waktu ubah', key: 'pada', width: 20 },
-      { header: 'Catatan', key: 'catatan', width: 30 },
-    ];
-    list.forEach((r) => ws.addRow({
-      kode: r.kode_key,
-      ejaan: (r.ejaan || []).join(' | '),
-      nama: (r.nama || []).join(' | '),
-      asal: katAsal(r),
-      ke: katName(r.koreksi_ke),
-      baris: num(r.baris),
-      qty: num(r.qty),
-      rs: num(r.jumlah_rs),
-      oleh: r.oleh || '',
-      pada: r.pada ? new Date(r.pada).toLocaleString('id-ID') : '',
-      catatan: r.catatan || '',
-    }));
-    ws.getRow(1).font = { bold: true };
-    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    const waktu = (v) => (v ? new Date(v).toLocaleString('id-ID') : '');
+    const lembar = (nama, cols, rows) => {
+      const ws = wb.addWorksheet(nama);
+      ws.columns = cols;
+      rows.forEach((x) => ws.addRow(x));
+      ws.getRow(1).font = { bold: true };
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+    };
+    if (lk.length) {
+      lembar('Koreksi kategori', [
+        { header: 'Kode produk', key: 'kode', width: 24 }, { header: 'Ejaan kode di sheet', key: 'ejaan', width: 34 },
+        { header: 'Nama produk', key: 'nama', width: 48 }, { header: 'Kategori di sheet', key: 'asal', width: 26 },
+        { header: 'Dikoreksi menjadi', key: 'ke', width: 22 }, { header: 'Baris pesanan', key: 'baris', width: 14 },
+        { header: 'Jumlah (pcs)', key: 'qty', width: 14 }, { header: 'Jumlah RS', key: 'rs', width: 11 },
+        { header: 'Diubah oleh', key: 'oleh', width: 28 }, { header: 'Waktu ubah', key: 'pada', width: 20 },
+        { header: 'Catatan', key: 'catatan', width: 30 },
+      ], lk.map((r) => ({
+        kode: r.kode_key, ejaan: (r.ejaan || []).join(' | '), nama: (r.nama || []).join(' | '), asal: katAsal(r),
+        ke: katName(r.koreksi_ke), baris: num(r.baris), qty: num(r.qty), rs: num(r.jumlah_rs),
+        oleh: r.oleh || '', pada: waktu(r.pada), catatan: r.catatan || '',
+      })));
+    }
+    if (ls.length) {
+      lembar('Alihan set', [
+        { header: 'Nama set di sheet', key: 'label', width: 34 }, { header: 'Ditulis juga', key: 'varian', width: 40 },
+        { header: 'Dihitung sebagai', key: 'target', width: 34 }, { header: 'Jumlah set', key: 'set', width: 12 },
+        { header: 'Jumlah RS', key: 'rs', width: 11 }, { header: 'Pesanan', key: 'pesanan', width: 11 },
+        { header: 'Diubah oleh', key: 'oleh', width: 28 }, { header: 'Waktu ubah', key: 'pada', width: 20 },
+        { header: 'Catatan', key: 'catatan', width: 30 },
+      ], ls.map((r) => ({
+        label: r.label, varian: (r.varian || []).filter((x) => x !== r.label).join(' | '), target: r.target,
+        set: num(r.jumlah_set), rs: num(r.jumlah_rs), pesanan: num(r.pesanan),
+        oleh: r.oleh || '', pada: waktu(r.pada), catatan: r.catatan || '',
+      })));
+    }
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const name = `koreksi-kategori-produk-${localISODate()}.xlsx`;
+    const name = `koreksi-produk-${localISODate()}.xlsx`;
     saveBlob(blob, name);
-    showToast(`${name} diunduh` + (num(res.total) > list.length ? ` (${fmt(list.length)} dari ${fmt(res.total)} koreksi)` : ''));
+    showToast(`${name} diunduh`);
   } catch (e) {
     if (String(e.message).startsWith('unauthorized')) return;
     showToast('Gagal membuat Excel: ' + e.message, 'error');
@@ -1371,6 +1533,7 @@ async function buildWorkbook(ctx) {
     { h: 'Family', k: 'family', w: 24, tech: true },
     { h: 'Jumlah baris di FPB', k: 'baris', w: 12, fmt: XL_NUM, tech: true },
     { h: 'Sheet sumber', k: 'sheet', w: 18, tech: true });
+  if (lines.some((l) => l.label_asli)) linCols.push({ h: 'Nama set di sheet', k: 'asli', w: 28, tech: true });
   tableSheet('Rincian Pesanan', {
     title: 'Rincian pesanan',
     sub: `${subLine}  ·  kolom abu-abu di kanan = data teknis`,
@@ -1399,6 +1562,7 @@ async function buildWorkbook(ctx) {
         family: l.family || '',
         baris: num(l.jumlah_baris),
         sheet: l.sumber_sheet || '',
+        asli: l.label_asli || '',
       };
     }),
   });
@@ -1585,7 +1749,7 @@ export async function mount(container) {
   });
   data = null; rows = []; unmapped = [];
   detailCache.clear();
-  Object.assign(kat, { q: '', kel: '', hanya: false, list: [], total: 0, tanpaKode: 0, opener: null });
+  Object.assign(kel, { tab: 'kat', q: '', kelompok: '', hanya: false, list: [], total: 0, tanpaKode: 0, edit: -1, draft: '', saran: [], match: '', opener: null });
 
   const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   const ACTIONS = {
@@ -1620,12 +1784,15 @@ export async function mount(container) {
     'ps-clear': (el) => clearFilter(el.dataset.k),
     'ps-copy': () => copyText(),
     'ps-xlsx': () => downloadXlsx(),
-    'ps-kat-open': () => katOpen(),
-    'ps-kat-close': () => katClose(),
-    'ps-kat-edit-row': (el) => katOpen({ q: el.dataset.kode || '' }),
-    'ps-kat-save': (el) => katSimpan(el, false),
-    'ps-kat-reset': (el) => katSimpan(el, true),
-    'ps-kat-unduh': (el) => katUnduh(el),
+    'ps-kel-open': () => kelOpen(),
+    'ps-kel-close': () => kelClose(),
+    'ps-kel-tab': (el) => kelSetTab(el.dataset.tab),
+    'ps-kel-edit-row': (el) => kelOpen({ tab: el.dataset.tab, q: el.dataset.q || '' }),
+    'ps-kel-edit': (el) => { const i = +el.dataset.i; if (i === kel.edit) kelEditClose(); else kelEditOpen(i, true); },
+    'ps-kel-batal': () => kelEditClose(),
+    'ps-kel-save': () => kelSimpan(false),
+    'ps-kel-reset': () => kelSimpan(true),
+    'ps-kel-unduh': (el) => kelUnduh(el),
   };
   const CHANGE_BY_ID = {
     'ps-provinsi': (t) => { state.provinsi = t.value; lsSet(LS_PROV, t.value); load(); },
@@ -1633,27 +1800,34 @@ export async function mount(container) {
     'ps-dari': (t) => { state.dari = t.value; load(); },
     'ps-sampai': (t) => { state.sampai = t.value; load(); },
     'ps-isi-set': (t) => { state.isiSet = t.checked; load(); },
-    'ps-kat-kel': (t) => { kat.kel = t.value; katLoad(); },
-    'ps-kat-hanya': (t) => { kat.hanya = t.checked; katLoad(); },
+    'ps-kel-kelompok': (t) => { kel.kelompok = t.value; kelLoad(); },
+    'ps-kel-hanya': (t) => { kel.hanya = t.checked; kelLoad(); },
+    'ps-kel-draft': (t) => { kel.draft = t.value; kelEditSync(); },
   };
 
   function onClick(e) {
-    if (e.target.id === 'ps-kat-overlay') { katClose(); return; }   // klik di luar kartu = tutup
+    if (e.target.id === 'ps-kel-overlay') { kelClose(); return; }   // klik di luar kartu = tutup
     const el = e.target.closest('[data-action]');
     if (!el || !container.contains(el)) return;
     if (hasOwn(ACTIONS, el.dataset.action)) ACTIONS[el.dataset.action](el, e);
   }
   function onChange(e) {
     const t = e.target;
-    if (t.classList && t.classList.contains('ps-kat-sel')) { katOnSel(t); return; }
     if (hasOwn(CHANGE_BY_ID, t.id)) CHANGE_BY_ID[t.id](t);
   }
   function onInput(e) {
     const id = e.target.id;
-    if (id === 'ps-kat-q') {
-      kat.q = e.target.value;
-      clearTimeout(katTimer);
-      katTimer = setTimeout(() => katLoad(), 300);
+    if (id === 'ps-kel-q') {
+      kel.q = e.target.value;
+      clearTimeout(kelTimer);
+      kelTimer = setTimeout(() => kelLoad(), 300);
+      return;
+    }
+    if (id === 'ps-kel-draft' && !kelIsKat()) {
+      kel.draft = e.target.value;
+      kelEditSync();
+      clearTimeout(kelSaranTimer);
+      kelSaranTimer = setTimeout(() => kelCariSaran(kel.draft), 250);
       return;
     }
     if (id !== 'ps-produk' && id !== 'ps-rs') return;
@@ -1684,10 +1858,12 @@ export function unmount() {
   handlers = null;
   clearTimeout(searchTimer);
   searchTimer = null;
-  clearTimeout(katTimer);
-  katTimer = null;
-  katKeyHandler = null;         // overlay ikut hilang bersama markup
-  katReq++;
+  clearTimeout(kelTimer);
+  clearTimeout(kelSaranTimer);
+  kelTimer = null;
+  kelSaranTimer = null;
+  kelKeyHandler = null;         // overlay ikut hilang bersama markup
+  kelReq++;
   reqId++;                      // batalkan respons yang masih di jalan
   // pnm-universal.css TIDAK dilepas (permanent <link>, lihat dashboard/index.js unmount()).
   document.getElementById('page-populasi-style')?.remove();
