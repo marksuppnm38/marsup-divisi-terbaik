@@ -14,6 +14,10 @@
 // Pola mount/unmount/auth/rpc() sama dengan dashboard/index.js (PNMAuth, token diambil
 // fresh tiap request, delegasi event di container).
 //
+// "Perlu dicek" / "perkiraan" / "item lepas" (state.tinjau): kartu angka itu membuka DAFTAR PESANAN-nya
+// (dari get_populasi_v2_baris, filter yang sama dengan tabel) lengkap dengan alasan per pesanan.
+// Angka kartu selalu disamakan dengan daftar yang tampil (lihat renderReview).
+//
 // Semua nilai dari DB yang masuk ke innerHTML WAJIB lewat esc() -- data orderan datang dari
 // sheet yang bisa diedit banyak orang, bukan input tepercaya.
 
@@ -101,13 +105,6 @@ const KELOMPOK = [
 const KEL = Object.fromEntries(KELOMPOK.map((k) => [k.id, k]));
 const katName = (id) => (id === 'ISI SET' ? 'Isi set' : (KEL[id] ? KEL[id].nama : (id || '—')));
 
-const PRESETS = {
-  'set-jateng':   { provinsi: 'Jawa Tengah', kelompok: ['SET'], produk: '' },
-  'drill':        { provinsi: '', kelompok: [], produk: 'drill' },
-  'lab':          { provinsi: '', kelompok: ['ALAT LABORATORIUM'], produk: '' },
-  'elektromedis': { provinsi: '', kelompok: ['ELEKTROMEDIS'], produk: '' },
-};
-
 let mountedContainer = null;
 let handlers = null;
 let searchTimer = null;
@@ -117,12 +114,16 @@ const state = {
   provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI',
   kelompok: ['SET'], produk: '', rs: '', isiSet: false, dari: '', sampai: '',
   sort: { k: 'total', dir: 'desc' },
+  tinjau: '',                       // '' | 'cek' | 'estimasi' | 'lepas' -> tabel berganti jadi daftar pesanan
 };
 
 let data = null;                    // respons get_populasi_v2 terakhir
 let rows = [];                      // data.rows (+ field turunan set/pcs/total), urutan = tampilan
 let unmapped = [];                  // data.belum_terpetakan
 const detailCache = new Map();      // kunci -> baris satu RS (dibersihkan tiap load)
+let linesAll = null;                // {key, list}: seluruh baris pesanan pada filter aktif (bahan daftar tinjau)
+let recon = {};                     // angka kartu yang disamakan dengan daftar (kosong = pakai angka server)
+let reviewReq = 0;
 
 // ── util ────────────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -145,10 +146,6 @@ function fmtDate(s) {
 function localISODate(d = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-function slug(s) {
-  return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'semua';
 }
 function showError(msg) { $('err-text').textContent = msg; $('err-banner').classList.add('show'); }
 function clearError() { $('err-banner').classList.remove('show'); }
@@ -231,7 +228,6 @@ async function load() {
   clearError();
   renderCats();
   renderActive();
-  renderHint();
   try {
     const res = await rpc('get_populasi_v2', filterParams());
     if (my !== reqId) return;           // respons telat tidak boleh menimpa yang lebih baru
@@ -243,6 +239,8 @@ async function load() {
     });
     unmapped = data.belum_terpetakan || [];
     detailCache.clear();
+    linesAll = null;
+    recon = {};
     applySort();
     render();
   } catch (e) {
@@ -283,6 +281,7 @@ function applySort() {
 
 // ── render ──────────────────────────────────────────────────────────────────
 function render() {
+  if (state.tinjau && angkaServer(state.tinjau) <= 0) state.tinjau = '';   // masalahnya sudah tidak ada pada filter ini
   renderProvinsi();
   renderCats();
   renderFreshness();
@@ -338,20 +337,6 @@ function renderActive() {
   ).join('') + (a.length > 1 ? '<button type="button" class="btn-clear-all" data-action="ps-clear" data-k="semua">Lepas semua</button>' : '');
 }
 
-function renderHint() {
-  const el = $('ps-hint');
-  if (!el) return;
-  const p = state.produk.trim();
-  let msg = '';
-  if (p) {
-    msg = `“${p}” dicari di nama set dan barang satuan. ` + (state.isiSet
-      ? 'Isi set dihitung per komponen (pcs), bukan per set.'
-      : 'Barang di dalam set tidak ikut; centang “Termasuk isi set” untuk menambahkannya.');
-  }
-  el.hidden = !msg;
-  el.textContent = msg;
-}
-
 // Data di DB bisa tertinggal dari Google Sheet (sinkron berjalan terpisah) -- jangan disembunyikan.
 function renderFreshness() {
   const dp = toDate(data.data_per);
@@ -369,13 +354,42 @@ function renderFreshness() {
   }
 }
 
-// Kartu ringkasan: angka lalu label. Parameter `icon` dipertahankan supaya pemanggil tidak berubah,
-// tetapi tidak dirender (ikon di atas setiap angka tidak membawa informasi).
-function statCard(icon, val, label, sub, warn) {
-  return `<div class="stat-card${warn ? ' ps-stat-warn' : ''}">` +
-    `<div class="stat-val">${val}</div><div class="stat-label">${esc(label)}</div>` +
-    (sub ? `<div class="stat-sub">${esc(sub)}</div>` : '') +
-    '</div>';
+// ── daftar tinjau: "perlu dicek", "perkiraan", "item lepas" ──────────────────
+// Tiap kunci = satu angka di halaman yang bisa dibuka daftarnya. Predikat memakai aturan yang sama
+// dengan detail per RS dan Excel (item lepas lebih dulu, baru status_hitung).
+const TIP = {
+  cek: 'QTY di sheet tidak sepakat dengan isi set, atau ada item di luar isi set. Belum dihitung sebagai set.',
+  estimasi: 'Set ini tidak ada di daftar produk, jadi jumlahnya dihitung dari perkiraan QTY.',
+  lepas: 'Pesanan dengan kurang dari 3 baris: bukan satu set utuh, jadi tidak dihitung.',
+  ok_beda: 'Dihitung dari item yang cocok dengan isi set. Ada item di sheet yang tidak ada di isi set (mis. substitusi produk).',
+};
+const TINJAU = {
+  cek:      { tabel: 'Pesanan set perlu dicek', frasa: 'perlu dicek', pred: (l) => l.kind === 'SET' && !l.item_lepas && l.status_hitung === 'cek' },
+  estimasi: { tabel: 'Pesanan set dengan hitungan perkiraan', frasa: 'dengan hitungan perkiraan', pred: (l) => l.kind === 'SET' && !l.item_lepas && l.status_hitung === 'estimasi' },
+  lepas:    { tabel: 'Pesanan item lepas (tidak dihitung)', frasa: 'item lepas yang tidak dihitung', pred: (l) => !!l.item_lepas },
+};
+// Angka dari server (ringkasan). cek & lepas = jumlah pesanan; estimasi = jumlah SET perkiraan.
+function angkaServer(k) {
+  const s = (data && data.ringkasan) || {};
+  return num(k === 'cek' ? s.set_cek : (k === 'estimasi' ? s.set_estimasi : s.item_lepas));
+}
+// Angka yang ditampilkan di kartu: angka server, kecuali sudah dicocokkan dengan daftar.
+const angka = (k) => (recon[k] !== undefined ? recon[k] : angkaServer(k));
+
+// Kartu ringkasan. Kartu yang bisa diklik adalah <button> sungguhan (o.tinjau = daftar yang dibuka);
+// kartu lain murni angka dan tidak diberi gaya klik.
+function statCard(val, label, o = {}) {
+  const sub = o.sub ? `<div class="stat-sub">${esc(o.sub)}</div>` : '';
+  const inner = `<div class="stat-val">${val}</div><div class="stat-label">${esc(label)}</div>${sub}${o.subHtml || ''}`;
+  if (o.tinjau) {
+    return `<button type="button" class="stat-card ps-stat-act${o.warn ? ' ps-stat-warn' : ''}${o.on ? ' on' : ''}" data-action="ps-tinjau" data-k="${o.tinjau}" aria-pressed="${!!o.on}" title="${esc(TIP[o.tinjau])}">${inner}<div class="ps-stat-go">${o.on ? 'Sedang ditampilkan' : 'Lihat daftar'}</div></button>`;
+  }
+  return `<div class="stat-card">${inner}</div>`;
+}
+
+function linkBtn(k, teks) {
+  const on = state.tinjau === k;
+  return `<button type="button" class="ps-linkbtn${on ? ' on' : ''}" data-action="ps-tinjau" data-k="${k}" aria-pressed="${on}" title="${esc(TIP[k])}">${esc(teks)}</button>`;
 }
 
 function renderSummary() {
@@ -387,27 +401,30 @@ function renderSummary() {
 
   $('ps-sum-main').innerHTML = `<b>${esc(kategoriText())}</b> <span class="ps-sep">·</span> ${esc(lokasi)}`;
 
-  const cards = [statCard('building-hospital', fmt(s.jumlah_rs), 'Rumah sakit', rows.length ? lokasi : 'tidak ada yang cocok')];
+  const cards = [statCard(fmt(s.jumlah_rs), 'Rumah sakit', { sub: rows.length ? '' : 'tidak ada yang cocok' })];
   if (hasSet) {
-    const sub = status ? `${fmt(s.set_terkirim)} terkirim · ${fmt(s.set_proses)} proses`
-      : (num(s.set_estimasi) > 0 ? `${fmt(s.set_estimasi)} di antaranya perkiraan` : 'sudah terkirim');
-    cards.push(statCard('stack-2', fmt(s.set_total), 'Set', sub));
+    const perk = angka('estimasi');
+    cards.push(statCard(fmt(s.set_total), 'Set', {
+      sub: status ? `${fmt(s.set_terkirim)} terkirim · ${fmt(s.set_proses)} proses` : '',
+      subHtml: perk > 0 ? linkBtn('estimasi', `${fmt(perk)} di antaranya perkiraan`) : '',
+    }));
   }
   if (hasPcs) {
-    cards.push(statCard('package', fmt(s.pcs_total), 'Unit/pcs', status ? `${fmt(s.pcs_terkirim)} terkirim · ${fmt(s.pcs_proses)} proses` : 'sudah terkirim'));
+    cards.push(statCard(fmt(s.pcs_total), 'Unit/pcs', { sub: status ? `${fmt(s.pcs_terkirim)} terkirim · ${fmt(s.pcs_proses)} proses` : '' }));
   }
   if (hasSet || hasPcs) {
     const last = rows.reduce((m, r) => (r.terakhir && r.terakhir > m ? r.terakhir : m), '');
-    cards.push(statCard('file-invoice', fmt(s.jumlah_pesanan), 'Pesanan', last ? 'terakhir ' + fmtDate(last) : ''));
+    cards.push(statCard(fmt(s.jumlah_pesanan), 'Pesanan', { sub: last ? 'terakhir ' + fmtDate(last) : '' }));
   }
-  if (num(s.set_cek) > 0) cards.push(statCard('alert-triangle', fmt(s.set_cek), 'Pesanan set perlu dicek', 'belum dihitung sebagai set', true));
+  const cek = angka('cek');
+  if (cek > 0) cards.push(statCard(fmt(cek), 'Pesanan set perlu dicek', { sub: 'belum dihitung sebagai set', warn: true, tinjau: 'cek', on: state.tinjau === 'cek' }));
   $('ps-stats').innerHTML = cards.join('');
 
-  const parts = [status ? 'Terkirim dan dalam proses' : 'Hanya yang sudah terkirim'];
-  if (state.produk.trim()) parts.push(`produk “${state.produk.trim()}”`);
-  if (hasSet && num(s.item_lepas) > 0) parts.push(`${fmt(s.item_lepas)} item lepas tidak dihitung`);
-  if (state.provinsi && unmapped.length) parts.push(`${fmt(unmapped.length)} RS belum diketahui wilayahnya tidak ikut`);
-  $('ps-sum-sub').textContent = parts.join(' · ');
+  // Catatan hitungan yang bukan kartu sendiri: item lepas (bisa dibuka daftarnya).
+  const lepas = hasSet ? angka('lepas') : 0;
+  const cv = $('ps-caveats');
+  cv.hidden = lepas <= 0;
+  cv.innerHTML = lepas > 0 ? linkBtn('lepas', `${fmt(lepas)} item lepas tidak dihitung sebagai set`) : '';
 
   const xl = document.querySelector('[data-action="ps-xlsx"]');
   if (xl) xl.disabled = !rows.length;
@@ -455,35 +472,45 @@ function emptyMessage() {
   return 'Tidak ada RS yang cocok dengan filter ini.' + (tips.length ? '<br>' + esc(tips.join(' ')) : '');
 }
 
-const SORT_LABEL = { customer: 'nama RS', wilayah: 'wilayah', set: 'jumlah set', pcs: 'jumlah unit/pcs', terakhir: 'pesanan terakhir', total: 'jumlah' };
+// Penanda hitungan: SATU komponen (.ps-tag) dipakai di baris RS, baris pesanan, dan daftar tinjau.
+// warn = perlu tindakan; polos = informasi.
+function tagHitung(d) {
+  if (d.item_lepas) return `<span class="ps-tag" title="${esc(TIP.lepas)}">Tidak dihitung</span>`;
+  if (d.kind !== 'SET') return '';
+  if (d.status_hitung === 'cek') return `<span class="ps-tag warn" title="${esc(TIP.cek)}">Perlu dicek</span>`;
+  if (d.status_hitung === 'estimasi') return `<span class="ps-tag" title="${esc(TIP.estimasi)}">Perkiraan</span>`;
+  if (d.status_hitung === 'ok_beda') return `<span class="ps-tag" title="${esc(TIP.ok_beda)}">Isi beda</span>`;
+  return '';
+}
 
 function renderTable() {
+  if (state.tinjau) { renderReview(); return; }
+  reviewReq++;                                  // batalkan daftar tinjau yang masih memuat
+  $('ps-review-bar').hidden = true;
+  $('ps-actions').hidden = false;
   const cols = colsInfo();
   renderHead(cols);
-  $('ps-tbl-title').textContent = rows.length
-    ? `${fmt(rows.length)} rumah sakit · diurutkan menurut ${SORT_LABEL[state.sort.k] || 'jumlah'}`
-    : 'Rumah sakit';
+  $('ps-tbl-title').textContent = rows.length ? `${fmt(rows.length)} rumah sakit` : 'Rumah sakit';
   const body = $('ps-body');
   if (!rows.length) {
     body.innerHTML = `<tr><td colspan="${cols.n}" class="ps-empty">${emptyMessage()}</td></tr>`;
     return;
   }
   body.innerHTML = rows.map((r, i) => {
-    // Wilayah: hanya yang sudah dikoreksi manual yang diberi penanda (artinya sudah pernah diperiksa orang).
-    // Wilayah hasil deteksi alamat adalah kondisi biasa, jadi tidak diberi penanda per baris; peringatannya
-    // ada di tooltip tombol Ubah, tempat keputusan mengoreksi diambil.
+    // Wilayah hasil deteksi alamat adalah kondisi biasa (tanpa penanda); yang diberi penanda hanya
+    // wilayah yang sudah dikoreksi manual dan wilayah yang belum diketahui.
     let wilayah;
     if (r.provinsi || r.kab_kota) {
       wilayah = esc([r.kab_kota, state.provinsi ? '' : r.provinsi].filter(Boolean).join(' · ') || r.provinsi);
       if (r.sumber_wilayah === 'manual') {
-        wilayah += ' <span class="ps-wil-note" title="Wilayah ini sudah dikoreksi manual oleh tim">dikoreksi</span>';
+        wilayah += ' <span class="ps-tag ps-tag-inline" title="Wilayah ini sudah dikoreksi manual oleh tim">dikoreksi</span>';
       }
     } else {
-      wilayah = '<span class="ps-unknown">Belum diketahui</span>';
+      wilayah = '<span class="ps-tag warn" title="Wilayah RS ini belum diketahui. Arahkan ke baris lalu klik Ubah wilayah.">Belum diketahui</span>';
     }
     const editTip = r.sumber_wilayah === 'alamat'
       ? 'Wilayah terdeteksi otomatis dari alamat dan bisa salah. Klik untuk mengoreksi'
-      : 'Ubah wilayah';
+      : 'Ubah provinsi dan kab/kota rumah sakit ini';
 
     const rinci = r.rincian || [];
     const items = rinci.map((j, k) =>
@@ -494,18 +521,142 @@ function renderTable() {
 
     const subSet = num(r.set_proses) > 0 ? `<span class="ps-sub">${fmt(r.set_terkirim)} terkirim, ${fmt(r.set_proses)} proses</span>` : '';
     const subCek = num(r.set_cek) > 0
-      ? `<span class="ps-flag" title="QTY di sheet tidak sepakat dengan isi set, atau ada item di luar isi set. Pesanan ini belum dihitung sebagai set. Buka baris untuk memeriksa isinya.">${fmt(r.set_cek)} pesanan perlu dicek</span>` : '';
+      ? `<span class="ps-tag warn" title="${esc(TIP.cek + ' Buka baris untuk memeriksa isinya.')}">${fmt(r.set_cek)} perlu dicek</span>` : '';
     const subPcs = num(r.pcs_proses) > 0 ? `<span class="ps-sub">${fmt(r.pcs_terkirim)} terkirim, ${fmt(r.pcs_proses)} proses</span>` : '';
     const cell = (v, sub) => (v ? `<b>${fmt(v)}</b>${sub}` : '<span class="ps-muted">—</span>');
     return `
-      <tr class="ps-row" data-action="ps-toggle" data-idx="${i}">
+      <tr class="ps-row${num(r.set_cek) > 0 ? ' has-cek' : ''}" data-action="ps-toggle" data-idx="${i}">
         <td class="ps-col-rs"><button type="button" class="ps-rs-btn" data-action="ps-toggle" data-idx="${i}" aria-expanded="false" title="Lihat PO dan isinya"><i class="ti ti-chevron-right ps-chev" aria-hidden="true"></i><span class="ps-rs">${esc(r.customer)}</span></button></td>
         <td class="ps-col-wil">${wilayah}</td>
         ${cols.set ? `<td class="ps-num">${cell(r.set, subSet)}${subCek}</td>` : ''}
         ${cols.pcs ? `<td class="ps-num">${cell(r.pcs, subPcs)}</td>` : ''}
         <td class="ps-jenis"><div class="ps-jenis-list">${items}</div>${more}</td>
         <td class="ps-date">${esc(fmtDate(r.terakhir))}</td>
-        <td class="ps-col-act"><button type="button" class="ps-iconbtn" data-action="ps-edit-wil" data-idx="${i}" title="${esc(editTip)}" aria-label="Ubah wilayah ${esc(r.customer)}"><i class="ti ti-pencil" aria-hidden="true"></i></button></td>
+        <td class="ps-col-act"><button type="button" class="ps-rowact" data-action="ps-edit-wil" data-idx="${i}" title="${esc(editTip)}" aria-label="Ubah wilayah ${esc(r.customer)}"><i class="ti ti-pencil" aria-hidden="true"></i> Ubah wilayah</button></td>
+      </tr>`;
+  }).join('');
+}
+
+// ── daftar tinjau (mengganti tabel RS selama state.tinjau aktif) ─────────────
+// Sumber: get_populasi_v2_baris pada filter yang sama dengan tabel, dibatasi ke RS yang tampil
+// (sama dengan Excel). Angka kartu = jumlah baris daftar ini; kalau angka server berbeda,
+// kartu disamakan dengan daftar dan selisihnya ditulis di bilah status (bukan disembunyikan).
+async function fetchLines() {
+  const params = filterParams();
+  const key = JSON.stringify(params);
+  if (linesAll && linesAll.key === key) return linesAll.list;
+  const res = await rpc('get_populasi_v2_baris', params, EXPORT_TIMEOUT_MS);
+  const dipilih = new Set(rows.map((x) => x.customer));
+  const list = (res || []).filter((b) => dipilih.has(b.customer));
+  linesAll = { key, list };
+  return list;
+}
+
+const isiStat = (d) => {
+  const isi = Array.isArray(d.isi) ? d.isi : [];
+  // rasio yang paling sering muncul dianggap "acuan"; yang lain ditandai beda
+  const freq = new Map();
+  isi.forEach((x) => { if (x.rasio != null && num(x.dipesan) > 0) freq.set(num(x.rasio), (freq.get(num(x.rasio)) || 0) + 1); });
+  let acuan = null, best = 0;
+  freq.forEach((c, v) => { if (c > best) { best = c; acuan = v; } });
+  const luar = isi.filter((x) => x.qty_set == null).length;
+  const kurang = isi.filter((x) => x.qty_set != null && num(x.dipesan) === 0).length;
+  const beda = isi.filter((x) => x.qty_set != null && num(x.dipesan) !== 0 && acuan != null && num(x.rasio) !== acuan).length;
+  return { isi, acuan, luar, kurang, beda };
+};
+
+// Alasan satu pesanan, dalam kalimat biasa.
+function alasanText(d) {
+  if (d.item_lepas) return 'Kurang dari 3 baris, jadi bukan satu set utuh dan tidak dihitung.';
+  if (d.kind !== 'SET') return '';
+  if (d.status_hitung === 'estimasi') return 'Set tidak ada di daftar produk, jadi jumlahnya dihitung dari perkiraan QTY.';
+  if (d.status_hitung === 'ok_beda') return 'Ada item di sheet yang tidak ada di isi set (mis. substitusi produk). Dihitung dari item yang cocok.';
+  if (d.status_hitung === 'cek') {
+    const st = isiStat(d);
+    const rinci = [
+      st.kurang ? `${st.kurang} item set tidak ada di sheet` : '',
+      st.luar ? `${st.luar} item di sheet tidak ada di isi set` : '',
+      st.beda ? 'QTY antar item tidak sepakat' : '',
+    ].filter(Boolean);
+    return 'Isi set beda dari yang dipesan' + (rinci.length ? ': ' + rinci.join('; ') : '') + '. Belum dihitung sebagai set.';
+  }
+  return '';
+}
+
+function jmlText(d) {
+  const isSet = d.kind === 'SET';
+  const sh = isSet && !d.item_lepas ? d.status_hitung : '';
+  return isSet ? ((d.item_lepas || sh === 'cek') ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} pcs`;
+}
+
+function setTinjau(k) {
+  state.tinjau = (!k || state.tinjau === k || !TINJAU[k]) ? '' : k;
+  if (!data) return;
+  renderSummary();
+  renderTable();
+  if (state.tinjau) { const bar = $('ps-review-bar'); if (bar && bar.scrollIntoView) bar.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+}
+
+async function renderReview() {
+  const k = state.tinjau;
+  const cfg = TINJAU[k];
+  const my = ++reviewReq;
+  const reset = '<button type="button" class="btn btn-ghost" data-action="ps-tinjau-reset">Tampilkan semua rumah sakit</button>';
+  const bar = $('ps-review-bar');
+  const body = $('ps-body');
+  $('ps-actions').hidden = true;
+  $('ps-tbl-title').textContent = cfg.tabel;
+  $('ps-thead').innerHTML = '<tr><th>Rumah sakit</th><th>No. PO</th><th>Set / produk</th><th class="ps-th-num">Jumlah</th><th>Alasan</th><th>Tanggal</th></tr>';
+  bar.hidden = false;
+  bar.innerHTML = `<span class="ps-review-msg">Memuat pesanan ${esc(cfg.frasa)}…</span>${reset}`;
+  body.innerHTML = '<tr><td colspan="6" class="ps-empty" role="status">Memuat pesanan…</td></tr>';
+
+  let list;
+  try {
+    list = await fetchLines();
+  } catch (e) {
+    if (my !== reviewReq || String(e.message).startsWith('unauthorized')) return;
+    bar.innerHTML = `<span class="ps-review-msg">Gagal memuat daftar pesanan.</span>${reset}`;
+    body.innerHTML = `<tr><td colspan="6" class="ps-empty ps-empty-err">Gagal memuat daftar: ${esc(e.message)}</td></tr>`;
+    return;
+  }
+  if (my !== reviewReq || state.tinjau !== k) return;
+
+  const items = list.filter(cfg.pred).sort((a, b) =>
+    String(a.customer).localeCompare(String(b.customer), 'id') ||
+    String(b.tanggal || '').localeCompare(String(a.tanggal || '')) ||
+    String(a.po || '').localeCompare(String(b.po || ''), 'id'));
+  const hitung = k === 'estimasi' ? items.reduce((a, l) => a + num(l.nilai), 0) : items.length;
+  const server = angkaServer(k);
+  const sebelum = angka(k);
+  if (hitung !== server) recon[k] = hitung; else delete recon[k];
+  if (angka(k) !== sebelum) renderSummary();
+
+  const msg = k === 'estimasi'
+    ? `Menampilkan <b>${fmt(items.length)}</b> pesanan ${esc(cfg.frasa)} · <b>${fmt(hitung)}</b> set`
+    : `Menampilkan <b>${fmt(items.length)}</b> pesanan ${esc(cfg.frasa)}`;
+  const note = hitung !== server
+    ? `<span class="ps-review-note">Ringkasan awal menyebut ${fmt(server)}; angka kartu sudah disesuaikan dengan daftar ini.</span>` : '';
+  bar.innerHTML = `<span class="ps-review-msg">${msg}</span>${note}${reset}`;
+
+  if (!items.length) {
+    body.innerHTML = '<tr><td colspan="6" class="ps-empty">Tidak ada pesanan yang cocok pada filter ini.</td></tr>';
+    return;
+  }
+  const wil = new Map(rows.map((x) => [x.customer, x]));
+  body.innerHTML = items.map((l) => {
+    const w = wil.get(l.customer) || {};
+    const lokasi = [w.kab_kota || l.kab_kota, state.provinsi ? '' : (w.provinsi || l.provinsi)].filter(Boolean).join(' · ');
+    const nama = l.kind === 'SET' ? l.label : l.produk;
+    const asal = l.kind === 'SET' && l.label_asli ? `<span class="ps-sub">Dialihkan dari: ${esc(l.label_asli)}</span>` : '';
+    return `
+      <tr class="ps-rev-row">
+        <td class="ps-col-rs"><span class="ps-rs">${esc(l.customer)}</span>${lokasi ? `<span class="ps-sub">${esc(lokasi)}</span>` : ''}</td>
+        <td>${esc(l.po || '—')}</td>
+        <td>${esc(nama)}${asal}</td>
+        <td class="ps-num">${esc(jmlText(l))}</td>
+        <td class="ps-alasan">${tagHitung(l)}<span class="ps-alasan-t">${esc(alasanText(l))}</span>${isiHtml(l)}</td>
+        <td class="ps-date">${esc(fmtDate(l.tanggal))}</td>
       </tr>`;
   }).join('');
 }
@@ -538,15 +689,9 @@ function renderUnmapped() {
 // ── rincian satu RS ──────────────────────────────────────────────────────────
 // Isi set di DB produk vs yang dipesan di sheet, supaya hitungan bisa dicek sendiri.
 function isiHtml(d) {
-  const isi = Array.isArray(d.isi) ? d.isi : [];
-  if (d.kind !== 'SET' || !isi.length) return '';
-  // rasio yang paling sering muncul dianggap "acuan"; yang lain ditandai beda
-  const freq = new Map();
-  isi.forEach((x) => { if (x.rasio != null && num(x.dipesan) > 0) freq.set(num(x.rasio), (freq.get(num(x.rasio)) || 0) + 1); });
-  let acuan = null, best = 0;
-  freq.forEach((c, v) => { if (c > best) { best = c; acuan = v; } });
-  const kurang = isi.filter((x) => x.qty_set != null && num(x.dipesan) === 0).length;
-  const luar = isi.filter((x) => x.qty_set == null).length;
+  if (d.kind !== 'SET') return '';
+  const { isi, acuan, luar, kurang } = isiStat(d);
+  if (!isi.length) return '';
   const body = isi.map((x) => {
     const isLuar = x.qty_set == null;
     const isKurang = !isLuar && num(x.dipesan) === 0;
@@ -572,24 +717,31 @@ function isiHtml(d) {
     <tbody>${body}</tbody></table></details>`;
 }
 
-// Sel "Kategori" di rincian PO (pcs): nama kategori, penanda "dikoreksi", dan pensil yang membuka dialog Kelola produk.
-// Penanda hanya di layar internal; Excel dan teks salinan tidak memuatnya.
-function kelKategoriCell(d, nama) {
+// Sel "Kategori" di rincian PO: nama kategori + penanda "dikoreksi" (hanya di layar internal;
+// Excel dan teks salinan tidak memuatnya).
+function kelKategoriCell(d) {
   let h = esc(katName(d.kelompok));
   if (d.dikoreksi) {
-    h += ` <span class="ps-wil-note" title="${esc('Kategori sudah dikoreksi tim. Menurut label di sheet: ' + katName(d.kelompok_asal))}">dikoreksi</span>`;
-  }
-  if (d.kind === 'PCS' && d.kelompok !== 'ISI SET' && d.kode_produk) {
-    h += ` <button type="button" class="ps-iconbtn ps-pen-sm" data-action="ps-kel-edit-row" data-tab="kat" data-q="${esc(d.kode_produk)}" title="Ubah kategori produk ini" aria-label="Ubah kategori ${esc(nama)}"><i class="ti ti-pencil" aria-hidden="true"></i></button>`;
+    h += ` <span class="ps-tag ps-tag-inline" title="${esc('Kategori sudah dikoreksi tim. Menurut label di sheet: ' + katName(d.kelompok_asal))}">dikoreksi</span>`;
   }
   return h;
 }
 
-// Pensil di samping nama set: membuka dialog Kelola produk > Alihkan set untuk set ini.
-function kelSetPen(d) {
-  if (d.kind !== 'SET') return '';
-  const q = d.label_asli || d.label;
-  return ` <button type="button" class="ps-iconbtn ps-pen-sm" data-action="ps-kel-edit-row" data-tab="set" data-q="${esc(q)}" title="${d.label_asli ? 'Ubah atau lepas alihan set ini' : 'Hitung set ini sebagai populasi set lain'}" aria-label="Alihkan set ${esc(q)}"><i class="ti ti-pencil" aria-hidden="true"></i></button>`;
+// SATU jalur koreksi per baris pesanan, bertuliskan jelas dan muncul saat baris di-hover/fokus:
+//  • set  -> "Alihkan set"   (hitung set ini sebagai populasi set lain)
+//  • pcs  -> "Ubah kategori" (pindahkan produk ini ke kategori lain)
+// Keduanya membuka dialog Kelola produk, sudah terarah ke produk/set ini (editor yang sama dengan
+// tombol Kelola produk di bawah halaman; tidak ada editor kedua).
+function koreksiBtn(d, nama) {
+  if (d.kind === 'SET') {
+    const q = d.label_asli || d.label;
+    const tip = d.label_asli ? 'Ubah atau lepas alihan set ini' : 'Hitung set ini sebagai populasi set lain. Jumlah set tidak berubah';
+    return `<button type="button" class="ps-rowact" data-action="ps-kel-edit-row" data-tab="set" data-q="${esc(q)}" title="${esc(tip)}" aria-label="Alihkan set ${esc(q)}"><i class="ti ti-pencil" aria-hidden="true"></i> Alihkan set</button>`;
+  }
+  if (d.kind === 'PCS' && d.kelompok !== 'ISI SET' && d.kode_produk) {
+    return `<button type="button" class="ps-rowact" data-action="ps-kel-edit-row" data-tab="kat" data-q="${esc(d.kode_produk)}" title="Pindahkan produk ini ke kategori lain" aria-label="Ubah kategori ${esc(nama)}"><i class="ti ti-pencil" aria-hidden="true"></i> Ubah kategori</button>`;
+  }
+  return '';
 }
 
 function detailHtml(list) {
@@ -598,7 +750,8 @@ function detailHtml(list) {
     <table class="ps-dt">
       <thead><tr>
         <th>PO</th><th>Kode RMP</th><th>Kategori</th><th>Jenis set / produk</th>
-        <th class="ps-th-num">Jumlah</th><th>Status</th><th>Tanggal</th><th>Sheet</th>
+        <th class="ps-th-num">Jumlah</th><th>Hitungan</th><th>Status</th><th>Tanggal</th><th>Sheet</th>
+        <th class="ps-col-act"><span class="ps-sr">Koreksi</span></th>
       </tr></thead>
       <tbody>
         ${list.map((d) => {
@@ -607,29 +760,19 @@ function detailHtml(list) {
           const sub = !isSet && (d.family || d.kode_produk)
             ? `<span class="ps-sub">${esc(d.family || d.kode_produk)}</span>`
             : (isSet && d.label_asli ? `<span class="ps-sub">Dialihkan dari: ${esc(d.label_asli)}</span>` : '');
-          const sh = isSet && !d.item_lepas ? d.status_hitung : '';
-          const jml = isSet ? ((d.item_lepas || sh === 'cek') ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} pcs`;
-          // Status hitungan ditulis langsung di baris PO (teks jelas, penjelasan lengkap di tooltip).
-          let status = '';
-          if (d.item_lepas) {
-            status = '<span class="ps-flag ps-flag-muted" title="Kurang dari 3 baris: bukan satu set utuh, jadi tidak dihitung.">Item lepas, tidak dihitung</span>';
-          } else if (sh === 'cek') {
-            status = '<span class="ps-flag" title="QTY di sheet tidak sepakat dengan isi set, atau ada item di luar isi set. Tidak dihitung; buka isi set untuk memeriksa.">Perlu dicek: QTY tidak sepakat dengan isi set, belum dihitung</span>';
-          } else if (sh === 'estimasi') {
-            status = '<span class="ps-flag ps-flag-soft" title="Set ini tidak ditemukan di DB produk, jadi dihitung dari tebakan QTY (FPB). Tambahkan alias bila namanya salah ketik.">Perkiraan: set tidak ada di DB produk</span>';
-          } else if (sh === 'ok_beda') {
-            status = '<span class="ps-flag ps-flag-soft" title="Dihitung dari item yang cocok dengan isi set. Ada item di sheet yang tidak ada di isi set (mis. substitusi produk); lihat isi set.">Ada item yang berbeda dari isi set</span>';
-          }
+          const cek = isSet && !d.item_lepas && d.status_hitung === 'cek';
           return `
-          <tr${d.item_lepas ? ' class="ps-lepas"' : ''}>
+          <tr class="${d.item_lepas ? 'ps-lepas' : ''}${cek ? ' is-cek' : ''}">
             <td>${esc(d.po || '—')}</td>
             <td><span class="kode-text">${esc(d.kode_rmp || '—')}</span></td>
-            <td>${kelKategoriCell(d, nama)}</td>
-            <td>${esc(nama)}${kelSetPen(d)}${sub}${status}${isiHtml(d)}</td>
-            <td class="ps-num">${esc(jml)}</td>
-            <td><span class="ps-st ${d.status === 'TERKIRIM' ? 'ps-st-ok' : 'ps-st-wip'}">${d.status === 'TERKIRIM' ? 'Terkirim' : 'Proses'}</span></td>
+            <td>${kelKategoriCell(d)}</td>
+            <td>${esc(nama)}${sub}${isiHtml(d)}</td>
+            <td class="ps-num">${esc(jmlText(d))}</td>
+            <td>${tagHitung(d)}</td>
+            <td><span class="ps-st">${d.status === 'TERKIRIM' ? 'Terkirim' : 'Proses'}</span></td>
             <td class="ps-date">${esc(fmtDate(d.tanggal))}</td>
             <td class="ps-date">${esc(d.sumber_sheet || '—')}</td>
+            <td class="ps-col-act">${koreksiBtn(d, nama)}</td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -811,7 +954,7 @@ function kelRowKat(r, i, open) {
     <td><span class="ps-kel-strong">${esc(nm[0] || r.kode_key)}</span><span class="ps-kel-sub"><span class="kode-text">${esc(r.kode_key)}</span></span>${ejHtml}</td>
     <td>${kelHtml}</td>
     <td class="ps-kel-num">${esc(fmt(r.baris))} baris<span class="ps-kel-sub">${esc(fmt(r.qty))} pcs · ${esc(fmt(r.jumlah_rs))} RS</span></td>
-    <td class="ps-kel-act"><button type="button" class="ps-iconbtn" data-action="ps-kel-edit" data-i="${i}" aria-expanded="${open}" title="${open ? 'Tutup' : 'Ubah kategori'}" aria-label="Ubah kategori ${esc(r.kode_key)}"><i class="ti ti-pencil" aria-hidden="true"></i></button></td>
+    <td class="ps-kel-act"><button type="button" class="ps-rowact" data-action="ps-kel-edit" data-i="${i}" aria-expanded="${open}" title="${open ? 'Tutup' : 'Pindahkan produk ini ke kategori lain'}" aria-label="Ubah kategori ${esc(r.kode_key)}">${open ? 'Tutup' : '<i class="ti ti-pencil" aria-hidden="true"></i> Ubah kategori'}</button></td>
   </tr>`;
 }
 
@@ -824,12 +967,12 @@ function kelRowSet(r, i, open) {
   const tujuan = r.target
     ? `<span class="ps-kel-strong">${esc(r.target)}</span><span class="ps-kel-sub">Dialihkan</span>`
     : '<span class="ps-kel-muted">Dihitung sendiri</span>';
-  const cek = num(r.perlu_cek) > 0 ? `<span class="ps-kel-warn">${fmt(r.perlu_cek)} pesanan perlu dicek</span>` : '';
+  const cek = num(r.perlu_cek) > 0 ? `<span class="ps-kel-warn" title="${esc(TIP.cek)}">${fmt(r.perlu_cek)} pesanan perlu dicek</span>` : '';
   return `<tr class="ps-kel-row${open ? ' is-open' : ''}" data-i="${i}">
     <td><span class="ps-kel-strong">${esc(r.label)}</span>${sub}</td>
     <td>${tujuan}</td>
     <td class="ps-kel-num">${esc(fmt(r.jumlah_set))} set<span class="ps-kel-sub">${esc(fmt(r.jumlah_rs))} RS · ${esc(fmt(r.pesanan))} pesanan</span>${cek}</td>
-    <td class="ps-kel-act"><button type="button" class="ps-iconbtn" data-action="ps-kel-edit" data-i="${i}" aria-expanded="${open}" title="${open ? 'Tutup' : 'Alihkan set'}" aria-label="Alihkan set ${esc(r.label)}"><i class="ti ti-pencil" aria-hidden="true"></i></button></td>
+    <td class="ps-kel-act"><button type="button" class="ps-rowact" data-action="ps-kel-edit" data-i="${i}" aria-expanded="${open}" title="${open ? 'Tutup' : 'Hitung set ini sebagai populasi set lain'}" aria-label="Alihkan set ${esc(r.label)}">${open ? 'Tutup' : '<i class="ti ti-pencil" aria-hidden="true"></i> Alihkan set'}</button></td>
   </tr>`;
 }
 
@@ -1690,7 +1833,7 @@ function syncStatusButtons() {
   });
 }
 
-// Samakan semua kontrol dengan state (dipakai setelah preset / lepas filter).
+// Samakan semua kontrol dengan state (dipakai setelah lepas filter).
 function syncControls() {
   const sel = $('ps-provinsi');
   if (state.provinsi && ![...sel.options].some((o) => o.value === state.provinsi)) {
@@ -1706,18 +1849,6 @@ function syncControls() {
   $('ps-cakupan').value = state.cakupan;
   syncStatusButtons();
   renderCats();
-}
-
-function applyPreset(id) {
-  const p = PRESETS[id];
-  if (!p) return;
-  state.provinsi = p.provinsi;
-  state.kelompok = p.kelompok.slice();
-  state.produk = p.produk;
-  state.rs = '';
-  state.isiSet = false;
-  syncControls();
-  load();
 }
 
 function clearFilter(k) {
@@ -1745,16 +1876,18 @@ export async function mount(container) {
     provinsi: saved === null ? DEFAULT_PROV : saved,
     status: 'DELIVERED', cakupan: 'POPULASI', kelompok: ['SET'],
     produk: '', rs: '', isiSet: false, dari: '', sampai: '',
-    sort: { k: 'total', dir: 'desc' },
+    sort: { k: 'total', dir: 'desc' }, tinjau: '',
   });
   data = null; rows = []; unmapped = [];
   detailCache.clear();
+  linesAll = null; recon = {};
   Object.assign(kel, { tab: 'kat', q: '', kelompok: '', hanya: false, list: [], total: 0, tanpaKode: 0, edit: -1, draft: '', saran: [], match: '', opener: null });
 
   const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   const ACTIONS = {
     'ps-reload': () => load(),
-    'ps-preset': (el) => applyPreset(el.dataset.p),
+    'ps-tinjau': (el) => setTinjau(el.dataset.k),
+    'ps-tinjau-reset': () => setTinjau(''),
     'ps-cat': (el) => {
       const k = el.dataset.k;
       if (!k) state.kelompok = [];
@@ -1865,9 +1998,12 @@ export function unmount() {
   kelKeyHandler = null;         // overlay ikut hilang bersama markup
   kelReq++;
   reqId++;                      // batalkan respons yang masih di jalan
+  reviewReq++;
   // pnm-universal.css TIDAK dilepas (permanent <link>, lihat dashboard/index.js unmount()).
   document.getElementById('page-populasi-style')?.remove();
   mountedContainer = null;
   data = null; rows = []; unmapped = [];
   detailCache.clear();
+  linesAll = null; recon = {};
+  state.tinjau = '';
 }

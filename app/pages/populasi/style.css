@@ -1,109 +1,117 @@
 /* app/pages/populasi/style.css
-   Semua selector diawali #app-root (mount root halaman ini) -- nol selector bare/unscoped,
-   disiplin yang sama dengan dashboard/style.css. Komponen dasar (section-label, stat-card,
-   table-section, filter-btn, filter-select, search-mini, bulk-btn, btn-clear-all) datang dari
-   pnm-universal.css, jadi halaman ini tampil seragam dengan Dashboard; file ini hanya menambah
-   tata letak khusus Populasi dan menjinakkan efek yang tidak pas (mis. hover-lift pada panel besar).
-   Hanya memakai token yang sudah dipakai halaman lain. Tambahan lokal: dot status (hijau/kuning)
-   dan --ps-muted, abu sekunder yang dipakai untuk metadata supaya kontras tetap AA di tema terang
-   (--text-muted di atas --surface-2 hanya ~4.4:1). */
+   Semua selector diawali #app-root (mount root halaman ini) atau id dialognya sendiri
+   (#ps-wil-overlay, #ps-kel-overlay -- keduanya di luar #app-root). Nol selector bare/unscoped.
+   Komponen dasar (stat-card, table-section, filter-btn, filter-select, search-mini, bulk-btn,
+   btn-clear-all) datang dari pnm-universal.css; file ini hanya menambah tata letak Populasi.
 
+   SISTEM VISUAL (sengaja kecil):
+   - Ukuran teks: 11px (label, keterangan, penanda), 12px (isi tabel, kontrol), 14px (nama RS, angka, judul hasil).
+   - Satu penanda: .ps-tag. Polos = informasi, .warn = perlu tindakan (titik kuning + teks kuning tua).
+   - Satu aksi per baris: .ps-rowact (ikon + teks), tersembunyi sampai baris di-hover/fokus/dibuka.
+   - Warna teks sekunder: --ps-muted (kontras tetap AA di tema terang). */
+
+#app-root,
+#ps-wil-overlay,
+#ps-kel-overlay{
+  --ps-fs-cap: 11px;
+  --ps-fs: 12px;
+  --ps-fs-lg: 14px;
+}
 #app-root{
-  --success-dot: #3BA55D;
   --warning-dot: #C99A2C;
   --ps-muted: #556070;
 }
 html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 
-/* Edge-to-edge seperti konversian/crud-produk/dashboard (lihat catatan "FULLBLEED PASS" di
-   dashboard/style.css): <main> polos membawa max-width+margin auto dan tanpa background. */
-#app-root main{
-  max-width: none;
-  margin: 0;
-  background: var(--surface);
-}
+/* Edge-to-edge seperti konversian/crud-produk/dashboard. */
+#app-root main{ max-width: none; margin: 0; background: var(--surface); }
 
-/* Panel/kartu besar tidak boleh "melompat" saat di-hover (hover-lift dari pnm-universal.css
-   cocok untuk kartu kecil, bukan untuk panel yang isinya kontrol). */
+/* Panel/kartu besar tidak boleh "melompat" saat di-hover (hover-lift dari pnm-universal.css). */
 #app-root .ps-panel:hover,
 #app-root .ps-stats .stat-card:hover,
 #app-root .ps-unmapped:hover{ transform: none; box-shadow: none; }
 
-/* Fokus keyboard: satu aturan untuk semua kontrol di halaman ini. */
+/* Fokus keyboard: satu aturan untuk semua kontrol. */
 #app-root button:focus-visible,
 #app-root input:focus-visible,
 #app-root select:focus-visible,
-#app-root summary:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+#app-root summary:focus-visible,
+#ps-kel-overlay button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Kontrol: tinggi 32px (target sentuh) dan sudut yang sama dengan komponen lain, bukan pil. */
+/* Kontrol: tinggi 32px, sudut sama dengan komponen lain (bukan pil). */
 #app-root .filter-btn{ min-height: 32px; border-radius: var(--radius-sm); }
-#app-root .pw-topbar .toggle-btn,
-#app-root .table-header .bulk-btn{ min-height: 32px; }
-#app-root .table-header .bulk-btn{ padding: 0 12px; font-size: 12px; }
+#app-root .table-header .bulk-btn{ min-height: 32px; padding: 0 12px; font-size: var(--ps-fs); }
 #app-root .bulk-btn.ps-xlsx:disabled{ opacity: .6; cursor: not-allowed; }
 #app-root .bulk-btn.ps-xlsx:disabled:has(.spinner){ cursor: progress; }
+
+/* ── penanda (satu komponen) ── */
+#app-root .ps-tag,
+#ps-kel-overlay .ps-tag{
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--ps-fs-cap); font-weight: 500; line-height: 16px; color: var(--ps-muted); cursor: help;
+}
+#app-root .ps-tag.warn{ color: var(--warn-text); }
+#app-root .ps-tag.warn::before{
+  content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--warning-dot);
+}
+#app-root .ps-tag-inline{ margin-left: 6px; }
+#app-root .ps-num .ps-tag{ display: flex; justify-content: flex-end; }
 
 /* ── catatan kesegaran data ── */
 #app-root .ps-note{
   margin: 0 0 16px; padding: 10px 14px;
   border: 1px solid var(--warning-border); border-radius: var(--radius);
-  font-size: 12.5px; line-height: 1.5; color: var(--text);
-  background: var(--warning-bg);
+  font-size: var(--ps-fs); line-height: 1.5; color: var(--text); background: var(--warning-bg);
 }
 #app-root .ps-note[hidden]{ display: none; }
 
-/* ── panel filter ── */
+/* ── filter (ringkas) ── */
 #app-root .ps-panel{
-  display: flex; flex-direction: column; gap: 16px;
-  margin: 0 0 26px; padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 12px;
+  margin: 0 0 16px; padding: 12px 16px;
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
 }
-#app-root .ps-quick{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-#app-root .ps-quick .ps-lbl{ margin-right: 4px; }
 #app-root .ps-grid{
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 16px; align-items: end;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; align-items: end;
 }
-#app-root .ps-field{ display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-#app-root .ps-lbl{ font-size: 11px; font-weight: 600; color: var(--ps-muted); }
+#app-root .ps-field{ display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#app-root .ps-lbl{ font-size: var(--ps-fs-cap); font-weight: 600; color: var(--ps-muted); }
 #app-root .ps-panel .filter-select,
-#app-root .ps-panel .search-mini{ width: 100%; height: 32px; box-sizing: border-box; font-size: 12px; }
+#app-root .ps-panel .search-mini{ width: 100%; height: 32px; box-sizing: border-box; font-size: var(--ps-fs); }
 #app-root .ps-seg{ display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* kategori: tombol toggle (boleh lebih dari satu), pakai filter-btn bersama.
-   Kategori tanpa RS diredupkan lewat warna teks (bukan opacity) supaya kontrasnya tetap lolos. */
+/* kategori: tombol toggle (boleh lebih dari satu). Kategori tanpa RS diredupkan lewat warna teks. */
 #app-root .ps-cats{ display: flex; flex-wrap: wrap; gap: 8px; }
 #app-root .ps-cat.dim:not(.active){ color: var(--ps-muted); background: transparent; }
-#app-root .ps-cat-n{ font-family: var(--font-mono); font-size: 10.5px; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--ps-muted); }
+#app-root .ps-cat-n{ font-family: var(--font-mono); font-size: var(--ps-fs-cap); font-weight: 400; font-variant-numeric: tabular-nums; color: var(--ps-muted); }
 #app-root .ps-cat.active .ps-cat-n{ color: inherit; opacity: .85; }
 
-/* opsi isi set + periode/cakupan */
-#app-root .ps-opts{ display: flex; flex-direction: column; gap: 10px; }
-#app-root .ps-opts:empty{ display: none; }
+/* opsi: cari di isi set + periode/cakupan, satu baris */
+#app-root .ps-opts{ display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 20px; row-gap: 4px; }
 #app-root .ps-check{
   display: inline-flex; align-items: center; gap: 8px; min-height: 32px;
-  font-size: 12px; color: var(--text-secondary); cursor: pointer;
+  font-size: var(--ps-fs); color: var(--text-secondary); cursor: pointer;
 }
 #app-root .ps-check[hidden]{ display: none; }
 #app-root .ps-check input{ width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+#app-root .ps-more-filters{ flex: 1 1 100%; }
 #app-root .ps-more-filters > summary{
   cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px;
-  font-size: 12px; color: var(--ps-muted);
+  font-size: var(--ps-fs); color: var(--ps-muted);
 }
 #app-root .ps-more-filters > summary::-webkit-details-marker{ display: none; }
-#app-root .ps-more-filters > summary::before{
-  content: '\203A'; display: inline-block; width: 10px; transition: transform .15s;
-}
+#app-root .ps-more-filters > summary::before{ content: '\203A'; display: inline-block; width: 10px; transition: transform .15s; }
 #app-root .ps-more-filters[open] > summary::before{ transform: rotate(90deg); }
 #app-root .ps-more-filters > summary:hover{ color: var(--text); }
 #app-root .ps-more-body{ margin-top: 6px; }
 
 /* filter aktif yang bisa dilepas satu per satu */
-#app-root .ps-active{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 2px; }
+#app-root .ps-active{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 #app-root .ps-active[hidden]{ display: none; }
 #app-root .ps-chip{
   display: inline-flex; align-items: center; gap: 2px;
   min-height: 28px; padding: 0 3px 0 10px;
-  font-size: 11.5px; color: var(--accent-text);
+  font-size: var(--ps-fs); color: var(--accent-text);
   background: var(--accent-bg); border: 1px solid var(--accent); border-radius: var(--radius-sm);
 }
 #app-root .ps-chip button{
@@ -113,83 +121,90 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 }
 #app-root .ps-chip button:hover{ background: var(--surface); }
 
-/* ── hasil: judul cakupan + kartu ringkasan ── */
-#app-root .ps-scope{ margin: -2px 0 12px; }
-#app-root .ps-sum-main{ font-size: 15px; color: var(--text); }
+/* ── hasil: judul + kartu angka ── */
+#app-root .ps-scope{ margin: 0 0 10px; }
+#app-root .ps-sum-main{ font-size: var(--ps-fs-lg); color: var(--text); }
 #app-root .ps-sep{ color: var(--ps-muted); margin: 0 2px; }
-#app-root .ps-sum-sub{ margin-top: 2px; font-size: 12px; color: var(--ps-muted); }
+#app-root .ps-caveats{ margin-top: 4px; font-size: var(--ps-fs); }
+#app-root .ps-caveats[hidden]{ display: none; }
 #app-root .ps-stats{ margin-bottom: 16px; transition: opacity .15s; }
 #app-root .ps-stats.ps-busy{ opacity: .55; }
 #app-root .ps-stats .stat-card{ min-height: 92px; }
 #app-root .ps-stats .stat-val{ font-variant-numeric: tabular-nums; }
 #app-root .ps-stats .stat-label{ color: var(--text-secondary); }
 #app-root .ps-stats .stat-sub{ color: var(--ps-muted); }
-/* kartu yang butuh tindakan: terbaca dari teks dan angkanya, bukan dari ikon */
+
+/* kartu yang bisa diklik: <button> sungguhan, terbaca dari tulisan "Lihat daftar" */
+#app-root button.stat-card{
+  display: block; width: 100%; font: inherit; text-align: left; color: inherit; cursor: pointer; appearance: none;
+}
+#app-root .ps-stat-act:hover{ border-color: var(--accent); }
+#app-root .ps-stat-act.on{ border-color: var(--accent); background: var(--accent-bg); }
 #app-root .ps-stat-warn{ border-color: var(--warning-border); }
 #app-root .ps-stat-warn .stat-val,
 #app-root .ps-stat-warn .stat-label{ color: var(--warn-text); }
+#app-root .ps-stat-go{ margin-top: 8px; font-size: var(--ps-fs-cap); font-weight: 600; color: var(--accent-text); }
+#app-root .ps-stat-go::after{ content: ' \203A'; }
 
-/* catatan di atas tabel: kotak netral, tanpa garis tebal di satu sisi */
-#app-root .ps-hint{
-  margin: 0 0 12px; padding: 10px 14px;
-  font-size: 12px; line-height: 1.5; color: var(--text-secondary);
-  border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius);
+/* teks yang bisa diklik di dalam kartu / catatan (membuka daftar pesanannya) */
+#app-root .ps-linkbtn{
+  display: block; margin: 6px 0 0; padding: 0; font: inherit; font-size: var(--ps-fs-cap); text-align: left;
+  color: var(--accent-text); background: none; border: 0; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
 }
-#app-root .ps-hint[hidden]{ display: none; }
+#app-root .ps-caveats .ps-linkbtn{ margin: 0; font-size: var(--ps-fs); }
+#app-root .ps-linkbtn.on{ font-weight: 600; }
+
+/* bilah status daftar tinjau: "Menampilkan N pesanan ..." + tombol reset */
+#app-root .ps-review-bar{
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  margin: 0 0 12px; padding: 8px 8px 8px 14px;
+  font-size: var(--ps-fs); color: var(--text);
+  border: 1px solid var(--accent); background: var(--accent-bg); border-radius: var(--radius);
+}
+#app-root .ps-review-bar[hidden]{ display: none; }
+#app-root .ps-review-msg{ font-size: var(--ps-fs-lg); }
+#app-root .ps-review-note{ flex: 1 1 240px; color: var(--text-secondary); }
+#app-root .ps-review-bar .btn{ margin-left: auto; min-height: 32px; }
 
 /* ── tabel ── */
 #app-root #ps-table{ transition: opacity .15s; }
 #app-root #ps-table.ps-busy{ opacity: .55; pointer-events: none; }
 #app-root #ps-table .table-scroll{ min-height: 240px; }   /* tinggi tetap saat loading/kosong -> tidak melompat */
-#app-root .table-title{ font-size: 13px; font-variant-numeric: tabular-nums; }
-#app-root .ps-row > td{ vertical-align: top; padding-top: 10px; padding-bottom: 10px; line-height: 20px; }
+#app-root .table-title{ font-size: var(--ps-fs-lg); font-variant-numeric: tabular-nums; }
+#app-root .ps-row > td,
+#app-root .ps-rev-row > td{ vertical-align: top; padding-top: 10px; padding-bottom: 10px; line-height: 20px; font-size: var(--ps-fs); }
 #app-root .ps-row{ cursor: pointer; }
 #app-root .ps-row:hover > td,
 #app-root .ps-row.open > td{ background: var(--surface-2); }
+/* RS yang terbuka ditandai garis aksen di kiri; anaknya (detail) menyambung ke garis itu */
+#app-root .ps-row.open > td:first-child{ box-shadow: inset 3px 0 0 var(--accent); }
 
 /* nama RS = tombol sungguhan (keyboard + aria-expanded); seluruh baris tetap bisa diklik */
+#app-root .ps-rs{ font-size: var(--ps-fs-lg); font-weight: 600; color: var(--text); }
 #app-root .ps-rs-btn{
   display: inline-flex; align-items: flex-start; gap: 4px; padding: 0; margin: 0;
-  font: inherit; font-size: 13px; font-weight: 600; line-height: 20px; text-align: left;
+  font: inherit; line-height: 20px; text-align: left;
   color: var(--text); background: none; border: 0; cursor: pointer;
 }
 #app-root .ps-rs-btn:hover .ps-rs{ text-decoration: underline; text-underline-offset: 2px; }
-#app-root .ps-chev{
-  flex-shrink: 0; width: 16px; margin-top: 2px; color: var(--ps-muted); font-size: 14px;
-  transition: transform .15s;
-}
+#app-root .ps-chev{ flex-shrink: 0; width: 16px; margin-top: 2px; color: var(--ps-muted); font-size: 14px; transition: transform .15s; }
 #app-root .ps-row.open .ps-chev{ transform: rotate(90deg); }
 #app-root .ps-muted{ color: var(--ps-muted); }
-#app-root .ps-unknown{ color: var(--ps-muted); font-style: italic; }
-#app-root .ps-wil-note{ margin-left: 6px; font-size: 11px; color: var(--ps-muted); cursor: help; }
 
 /* angka: rata kanan, tabular */
 #app-root .ps-num{ text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 #app-root .ps-row > td.ps-num{ min-width: 76px; }
-#app-root .ps-num b{ display: block; font-family: var(--font-mono); font-size: 14px; font-weight: 600; line-height: 20px; color: var(--text); }
-#app-root .ps-sub{ display: block; font-size: 11px; font-weight: 400; line-height: 16px; color: var(--ps-muted); font-family: inherit; }
-#app-root .ps-date{ font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--ps-muted); white-space: nowrap; }
-
-/* status yang butuh perhatian: dot + teks jelas di baris yang bersangkutan */
-#app-root .ps-flag{
-  display: inline-flex; align-items: center; gap: 6px; margin-top: 2px;
-  font-size: 11.5px; font-weight: 500; line-height: 16px; color: var(--warn-text); cursor: help;
-}
-#app-root .ps-flag::before{
-  content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--warning-dot);
-}
-#app-root .ps-flag-soft,
-#app-root .ps-flag-muted{ color: var(--text-secondary); font-weight: 400; }
-#app-root .ps-flag-soft::before,
-#app-root .ps-flag-muted::before{ display: none; }
-#app-root .ps-num .ps-flag{ display: flex; justify-content: flex-end; }
+#app-root .ps-num b{ display: block; font-family: var(--font-mono); font-size: var(--ps-fs-lg); font-weight: 600; line-height: 20px; color: var(--text); }
+#app-root .ps-sub{ display: block; font-size: var(--ps-fs-cap); font-weight: 400; line-height: 16px; color: var(--ps-muted); }
+#app-root .ps-date{ font-family: var(--font-mono); font-size: var(--ps-fs-cap); font-variant-numeric: tabular-nums; color: var(--ps-muted); white-space: nowrap; }
 
 /* rincian: dua baris pertama + tombol untuk membuka sisanya di tempat */
-#app-root .ps-jenis{ font-size: 12px; color: var(--text-secondary); max-width: 360px; }
+#app-root .ps-jenis{ color: var(--text-secondary); max-width: 360px; }
 #app-root .ps-jenis-list{ display: flex; flex-direction: column; gap: 2px; }
 #app-root .ps-more-btn{
   display: inline-flex; align-items: center; min-height: 32px; margin: -4px 0; padding: 0 8px 0 0;
-  font: inherit; font-size: 11.5px; color: var(--accent-text); background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: var(--ps-fs-cap); color: var(--accent-text); background: none; border: 0; cursor: pointer;
 }
 #app-root .ps-more-btn:hover{ text-decoration: underline; text-underline-offset: 2px; }
 
@@ -209,34 +224,48 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 #app-root .ps-sort.on i{ opacity: 1; }
 #app-root .ps-sort:hover,
 #app-root .ps-sort.on{ color: var(--text); }
-#app-root .ps-sort:focus-visible{ border-radius: 3px; }
 
-/* isi set vs dipesan (di dalam rincian PO) */
+/* ── aksi per baris (SATU gaya, dipakai tabel RS, rincian pesanan, dan dialog Kelola produk) ──
+   Selalu bertuliskan apa yang dilakukan; baru terlihat saat baris di-hover, difokus, atau dibuka.
+   Di layar sentuh (tanpa hover) selalu terlihat. */
+#app-root .ps-rowact,
+#ps-kel-overlay .ps-rowact{
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; margin: -4px 0; padding: 0 9px;
+  font: inherit; font-size: var(--ps-fs); color: var(--text-secondary); white-space: nowrap; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  opacity: 0; pointer-events: none; transition: opacity .12s;
+}
+#app-root .ps-rowact:hover,
+#ps-kel-overlay .ps-rowact:hover{ color: var(--text); background: var(--surface-2); }
+#app-root .ps-row:hover .ps-rowact,
+#app-root .ps-row:focus-within .ps-rowact,
+#app-root .ps-row.open .ps-rowact,
+#app-root .ps-dt tr:hover .ps-rowact,
+#app-root .ps-dt tr:focus-within .ps-rowact,
+#ps-kel-overlay .ps-kel-row:hover .ps-rowact,
+#ps-kel-overlay .ps-kel-row:focus-within .ps-rowact,
+#ps-kel-overlay .ps-kel-row.is-open .ps-rowact{ opacity: 1; pointer-events: auto; }
+@media (hover: none){
+  #app-root .ps-rowact,
+  #ps-kel-overlay .ps-rowact{ opacity: 1; pointer-events: auto; }
+}
+
+/* isi set vs dipesan (di dalam rincian PO / daftar tinjau) */
 #app-root .ps-isi{ margin-top: 6px; }
-#app-root .ps-isi > summary{ cursor: pointer; list-style: none; font-size: 11.5px; color: var(--ps-muted); }
+#app-root .ps-isi > summary{ cursor: pointer; list-style: none; font-size: var(--ps-fs-cap); color: var(--ps-muted); }
 #app-root .ps-isi > summary::-webkit-details-marker{ display: none; }
 #app-root .ps-isi > summary::before{ content: '\203A'; display: inline-block; width: 10px; transition: transform .15s; }
 #app-root .ps-isi[open] > summary::before{ transform: rotate(90deg); }
 #app-root .ps-isi > summary:hover{ color: var(--text); }
-#app-root .ps-isi-t{ width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 11.5px; }
-#app-root .ps-isi-t th{ text-align: left; padding: 3px 8px 3px 0; font-size: 11px; font-weight: 500; color: var(--ps-muted); white-space: nowrap; }
+#app-root .ps-isi-t{ width: 100%; margin-top: 6px; border-collapse: collapse; font-size: var(--ps-fs-cap); }
+#app-root .ps-isi-t th{ text-align: left; padding: 3px 8px 3px 0; font-size: var(--ps-fs-cap); font-weight: 500; color: var(--ps-muted); white-space: nowrap; }
 #app-root .ps-isi-t th.ps-th-num{ text-align: right; padding-right: 0; padding-left: 8px; }
-#app-root .ps-isi-t td{ padding: 3px 8px 3px 0; border-top: 1px solid var(--border); vertical-align: top; }
+#app-root .ps-isi-t td{ padding: 3px 8px 3px 0; border-top: 1px solid var(--border); vertical-align: top; font-size: var(--ps-fs-cap); line-height: 16px; }
 #app-root .ps-isi-t td.ps-num{ padding-left: 8px; padding-right: 0; }
-#app-root .ps-isi-t td.ps-num{ font-size: 11.5px; }
 #app-root .ps-isi-cat{ color: var(--ps-muted); white-space: nowrap; text-align: right; }
 #app-root .ps-isi-luar td, #app-root .ps-isi-beda td{ color: var(--text); }
 #app-root .ps-isi-luar .ps-isi-cat, #app-root .ps-isi-beda .ps-isi-cat{ color: var(--warn-text); }
 #app-root .ps-isi-kurang td{ color: var(--ps-muted); }
-
-/* tombol aksi per baris (ubah wilayah): 32px, tidak menambah tinggi baris */
-#app-root .ps-iconbtn{
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; margin: -6px 0; padding: 0; cursor: pointer;
-  color: var(--ps-muted); background: transparent;
-  border: 1px solid transparent; border-radius: var(--radius-sm);
-}
-#app-root .ps-iconbtn:hover{ color: var(--text); border-color: var(--border-strong); background: var(--surface); }
 
 /* state kosong / error / loading */
 #app-root .ps-empty{ text-align: center; padding: 40px 12px; color: var(--ps-muted); line-height: 1.6; }
@@ -246,37 +275,52 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 #app-root .ps-skel-note > td{ padding: 0; border: 0; height: 0; }
 #app-root .ps-skel-row:hover > td{ background: transparent; }
 
-/* rincian satu RS (baris yang membuka di bawah baris RS) */
-#app-root .ps-detail-row > td{ padding: 0; background: var(--surface-2); }
+/* ── rincian satu RS: terbaca sebagai ANAK baris RS-nya ──
+   Menjorok ke bawah nama RS, dengan garis penghubung di kiri yang menyambung ke garis aksen baris RS. */
+#app-root .ps-detail-row > td{ padding: 0; background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
 #app-root .ps-detail-row:hover > td{ background: var(--surface-2); }
-#app-root .ps-detail{ padding: 10px 16px 14px 36px; overflow-x: auto; font-size: 12px; color: var(--text-secondary); }
-#app-root .ps-detail-empty{ color: var(--ps-muted); }
-#app-root .ps-dt{ width: 100%; border-collapse: collapse; font-size: 12px; }
-#app-root .ps-dt th{ text-align: left; padding: 4px 10px 4px 0; font-size: 11px; font-weight: 500; color: var(--ps-muted); white-space: nowrap; background: transparent; }
+#app-root .ps-detail{
+  margin: 0 16px 14px 28px; padding: 2px 0 0 16px; overflow-x: auto;
+  font-size: var(--ps-fs); color: var(--text-secondary);
+  border-left: 1px solid var(--border-strong);
+}
+#app-root .ps-detail-loading{ padding: 8px 0 8px 16px; }
+#app-root .ps-detail-empty{ padding: 8px 0; color: var(--ps-muted); }
+#app-root .ps-dt{ width: 100%; border-collapse: collapse; font-size: var(--ps-fs); }
+#app-root .ps-dt th{ text-align: left; padding: 6px 10px 4px 0; font-size: var(--ps-fs-cap); font-weight: 500; color: var(--ps-muted); white-space: nowrap; background: transparent; }
 #app-root .ps-dt th.ps-th-num{ text-align: right; padding-right: 22px; padding-left: 10px; }
-#app-root .ps-dt td{ padding: 6px 10px 6px 0; border-top: 1px solid var(--border); border-bottom: 0; vertical-align: top; font-size: 12px; }
+#app-root .ps-dt td{ padding: 6px 10px 6px 0; border-top: 1px solid var(--border); border-bottom: 0; vertical-align: top; font-size: var(--ps-fs); line-height: 18px; }
 #app-root .ps-dt td.ps-num{ padding-left: 10px; padding-right: 22px; }
 #app-root .ps-dt tr:hover td{ background: transparent; }
-#app-root .ps-dt .ps-flag{ display: flex; margin-top: 3px; }
+#app-root .ps-dt td.ps-col-act{ padding-right: 0; }
 #app-root .ps-lepas td{ color: var(--ps-muted); }
+/* pesanan yang perlu dicek: garis kuning tipis di kiri baris (penanda yang sama dengan kartu) */
+#app-root .ps-dt tr.is-cek td:first-child{ box-shadow: inset 2px 0 0 var(--warning-dot); padding-left: 8px; }
+#app-root .ps-st{ color: var(--text-secondary); }
 
-/* status pesanan: dot + label, bukan pil berwarna (sama dgn dashboard) */
-#app-root .ps-st{ font-weight: 500; color: var(--text-secondary); }
-#app-root .ps-st-wip{ color: var(--warn-text); }
+/* daftar tinjau: alasan per pesanan */
+#app-root .ps-alasan{ min-width: 280px; max-width: 460px; white-space: normal; }
+#app-root .ps-alasan .ps-tag{ display: flex; margin-bottom: 2px; }
+#app-root .ps-alasan-t{ display: block; color: var(--text-secondary); line-height: 18px; }
 
 /* ── RS yang wilayahnya belum diketahui ── */
 #app-root .ps-unmapped{ margin-top: 16px; }
 #app-root .ps-unmapped[hidden]{ display: none; }
 #app-root .ps-unmapped > summary{ cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
 #app-root .ps-unmapped > summary::-webkit-details-marker{ display: none; }
-#app-root .ps-unm-table{ width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12.5px; }
+#app-root .ps-unm-table{ width: 100%; border-collapse: collapse; margin-top: 8px; font-size: var(--ps-fs); }
 #app-root .ps-unm-table td{ padding: 6px 8px 6px 0; border-top: 1px solid var(--border); }
+
+/* pengaturan: paling bawah, tidak bersaing dengan hasil */
+#app-root .ps-foot{ display: flex; justify-content: flex-start; margin-top: 20px; }
+#app-root .ps-foot .btn{ min-height: 32px; font-size: var(--ps-fs); }
 
 @media (max-width: 640px){
   #app-root .ps-panel{ padding: 12px; }
   #app-root .ps-grid{ grid-template-columns: 1fr; }
-  #app-root .ps-detail{ padding-left: 16px; }
+  #app-root .ps-detail{ margin-left: 16px; padding-left: 12px; }
   #app-root .ps-jenis{ min-width: 220px; }
+  #app-root .ps-review-bar .btn{ margin-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce){
@@ -284,27 +328,24 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
   #app-root .ps-isi > summary::before,
   #app-root .ps-more-filters > summary::before,
   #app-root .ps-stats,
+  #app-root .ps-rowact,
+  #ps-kel-overlay .ps-rowact,
   #app-root #ps-table{ transition: none; }
 }
 
-/* ── dialog wilayah (memakai .confirm-overlay/.confirm-card generik) ──
-   Overlay-nya ada DI LUAR #app-root (sama seperti presetNameOverlay di dashboard), jadi
-   di-scope lewat id-nya sendiri -- tetap tidak ada selector bare. */
-#ps-wil-overlay .ps-lbl{ display: block; margin-bottom: 4px; font-size: 11px; font-weight: 500; color: var(--text-muted); }
+/* ── dialog wilayah (memakai .confirm-overlay/.confirm-card generik) ── */
+#ps-wil-overlay .ps-lbl{ display: block; margin-bottom: 4px; font-size: var(--ps-fs-cap); font-weight: 500; color: var(--text-muted); }
 #ps-wil-overlay .ps-wil-rs{ margin: 0 0 12px; font-weight: 500; word-break: break-word; }
-#ps-wil-overlay .ps-wil-err{ display: none; margin-top: 8px; font-size: 11.5px; color: var(--danger); }
+#ps-wil-overlay .ps-wil-err{ display: none; margin-top: 8px; font-size: var(--ps-fs); color: var(--danger); }
 
-/* pensil kecil di dalam sel tabel rincian PO */
-#app-root .ps-pen-sm{ width: 24px; height: 24px; margin: -4px 0 -4px 2px; vertical-align: middle; }
-
-/* ── dialog "Kelola produk" (overlay di luar #app-root, jadi di-scope lewat id-nya) ── */
+/* ── dialog "Kelola produk" ── */
 #ps-kel-overlay .ps-kel-card{
   max-width: 960px; width: 100%; max-height: 86vh; padding: 0;
   display: flex; flex-direction: column; overflow: hidden; text-align: left;
 }
 #ps-kel-overlay .ps-kel-head{ display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 0; }
 #ps-kel-overlay .ps-kel-head h3{ margin: 0; }
-#ps-kel-overlay .ps-kel-lede{ margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); max-width: 720px; }
+#ps-kel-overlay .ps-kel-lede{ margin: 4px 0 0; font-size: var(--ps-fs); line-height: 1.5; color: var(--text-secondary); max-width: 720px; }
 #ps-kel-overlay .ps-kel-x{
   flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
   color: var(--text-secondary); background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer;
@@ -312,21 +353,21 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 #ps-kel-overlay .ps-kel-x:hover{ color: var(--text); border-color: var(--border-strong); background: var(--surface-2); }
 #ps-kel-overlay .ps-kel-tabs{ display: flex; gap: 4px; padding: 0 24px; margin-top: 14px; border-bottom: 1px solid var(--border); }
 #ps-kel-overlay .ps-kel-tab{
-  margin-bottom: -1px; padding: 9px 12px; font: inherit; font-size: 13px; color: var(--text-secondary);
+  margin-bottom: -1px; padding: 9px 12px; font: inherit; font-size: var(--ps-fs); color: var(--text-secondary);
   background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer;
 }
 #ps-kel-overlay .ps-kel-tab:hover{ color: var(--text); }
 #ps-kel-overlay .ps-kel-tab[aria-selected="true"]{ color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
 #ps-kel-overlay .ps-kel-bar{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 14px 24px 10px; }
-#ps-kel-overlay .ps-kel-search{ width: 280px; max-width: 100%; padding: 8px 12px; font-size: 13px; }
-#ps-kel-overlay .ps-kel-sel{ width: auto; min-width: 170px; padding: 8px 12px; font-size: 13px; }
-#ps-kel-overlay .ps-kel-check{ display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
+#ps-kel-overlay .ps-kel-search{ width: 280px; max-width: 100%; padding: 8px 12px; font-size: var(--ps-fs); }
+#ps-kel-overlay .ps-kel-sel{ width: auto; min-width: 170px; padding: 8px 12px; font-size: var(--ps-fs); }
+#ps-kel-overlay .ps-kel-check{ display: inline-flex; align-items: center; gap: 6px; font-size: var(--ps-fs); color: var(--text-secondary); cursor: pointer; }
 #ps-kel-overlay .ps-kel-check input{ width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
-#ps-kel-overlay .ps-kel-meta{ margin-left: auto; font-size: 12px; color: var(--text-muted); }
+#ps-kel-overlay .ps-kel-meta{ margin-left: auto; font-size: var(--ps-fs); color: var(--text-muted); }
 #ps-kel-overlay .ps-kel-scroll{ flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--border); }
-#ps-kel-overlay .ps-kel-t{ width: 100%; border-collapse: collapse; font-size: 13px; }
+#ps-kel-overlay .ps-kel-t{ width: 100%; border-collapse: collapse; font-size: var(--ps-fs); }
 #ps-kel-overlay .ps-kel-t th{
-  position: sticky; top: 0; z-index: 1; padding: 9px 12px; text-align: left; font-size: 11px; font-weight: 600;
+  position: sticky; top: 0; z-index: 1; padding: 9px 12px; text-align: left; font-size: var(--ps-fs-cap); font-weight: 600;
   letter-spacing: .02em; color: var(--text-muted); background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap;
 }
 #ps-kel-overlay .ps-kel-t th:first-child, #ps-kel-overlay .ps-kel-t td:first-child{ padding-left: 24px; }
@@ -337,30 +378,25 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 #ps-kel-overlay .ps-kel-num{ text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 #ps-kel-overlay .ps-kel-act{ width: 1%; text-align: right; white-space: nowrap; }
 #ps-kel-overlay .ps-kel-strong{ display: block; font-weight: 500; line-height: 1.4; word-break: break-word; }
-#ps-kel-overlay .ps-kel-sub{ display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.45; font-weight: 400; color: var(--text-muted); word-break: break-word; }
+#ps-kel-overlay .ps-kel-sub{ display: block; margin-top: 2px; font-size: var(--ps-fs-cap); line-height: 1.45; font-weight: 400; color: var(--text-muted); word-break: break-word; }
 #ps-kel-overlay .ps-kel-muted{ color: var(--text-muted); }
-#ps-kel-overlay .ps-kel-warn{ display: block; margin-top: 2px; font-size: 11.5px; color: var(--warn-text); cursor: help; }
+#ps-kel-overlay .ps-kel-warn{ display: block; margin-top: 2px; font-size: var(--ps-fs-cap); color: var(--warn-text); cursor: help; }
 #ps-kel-overlay .ps-kel-sr{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 #ps-kel-overlay .ps-kel-empty{ padding: 40px 24px; text-align: center; color: var(--text-muted); }
 #ps-kel-overlay .ps-kel-bad{ color: var(--danger); }
-#ps-kel-overlay .ps-iconbtn{
-  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0;
-  color: var(--text-secondary); background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer;
-}
-#ps-kel-overlay .ps-iconbtn:hover, #ps-kel-overlay .ps-iconbtn[aria-expanded="true"]{ color: var(--text); border-color: var(--border-strong); background: var(--surface); }
 
 /* form ubah, tepat di bawah baris yang dipilih */
 #ps-kel-overlay .ps-kel-edit td{ padding: 4px 24px 18px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
 #ps-kel-overlay .ps-kel-form{ max-width: 520px; }
-#ps-kel-overlay .ps-kel-lbl{ display: block; margin-bottom: 6px; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
-#ps-kel-overlay .ps-kel-impact{ min-height: 18px; margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
-#ps-kel-overlay .ps-kel-err{ margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--danger); }
+#ps-kel-overlay .ps-kel-lbl{ display: block; margin-bottom: 6px; font-size: var(--ps-fs); font-weight: 500; color: var(--text-secondary); }
+#ps-kel-overlay .ps-kel-impact{ min-height: 18px; margin: 8px 0 0; font-size: var(--ps-fs); line-height: 1.5; color: var(--text-secondary); }
+#ps-kel-overlay .ps-kel-err{ margin: 6px 0 0; font-size: var(--ps-fs); line-height: 1.5; color: var(--danger); }
 #ps-kel-overlay .ps-kel-btns{ display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 #ps-kel-overlay .ps-kel-btns .btn:disabled{ opacity: .5; cursor: default; }
 #ps-kel-overlay .ps-kel-grow{ flex: 1; }
 #ps-kel-overlay .ps-kel-foot{
   display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 24px;
-  font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border);
+  font-size: var(--ps-fs); color: var(--text-muted); border-top: 1px solid var(--border);
 }
 
 @media (max-width: 640px){
