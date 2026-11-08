@@ -8,6 +8,10 @@
 //   get_populasi_v2_baris   -> baris per PO/produk: rincian satu RS (saat baris dibuka)
 //                              dan bahan seluruh sheet Excel
 //   set_rs_wilayah          -> simpan koreksi wilayah satu RS (tidak berubah)
+//   get_produk_kelompok     -> daftar produk + kategori sekarang/asal untuk panel "Kelola kategori produk"
+//   set_produk_kelompok     -> simpan koreksi kategori satu produk (data sheet TIDAK disentuh)
+//   hapus_produk_kelompok   -> kembalikan produk ke kategori menurut label sheet
+//   (tabel + RPC: sql/01_tabel_dan_rpc.sql, fungsi yang diganti: sql/02_ganti_fungsi_populasi.sql)
 // Pola mount/unmount/auth/rpc() sama dengan dashboard/index.js (PNMAuth, token diambil
 // fresh tiap request, delegasi event di container).
 //
@@ -568,6 +572,20 @@ function isiHtml(d) {
     <tbody>${body}</tbody></table></details>`;
 }
 
+// Sel "Kategori" di rincian PO: nama kategori + penanda "dikoreksi" + pensil untuk membuka panel koreksi.
+// Penanda hanya tampil di layar internal; Excel dan teks salinan tidak memuatnya.
+function katCellHtml(d, nama) {
+  let h = esc(katName(d.kelompok));
+  if (d.dikoreksi) {
+    const tip = 'Kategori sudah dikoreksi tim. Menurut label di sheet: ' + katName(d.kelompok_asal);
+    h += ` <span class="ps-wil-note" title="${esc(tip)}">dikoreksi</span>`;
+  }
+  if (d.kind === 'PCS' && d.kelompok !== 'ISI SET' && d.kode_produk) {
+    h += ` <button type="button" class="ps-iconbtn ps-kat-pen" data-action="ps-kat-edit-row" data-kode="${esc(d.kode_produk)}" title="Ubah kategori produk ini" aria-label="Ubah kategori ${esc(nama)}"><i class="ti ti-pencil" aria-hidden="true"></i></button>`;
+  }
+  return h;
+}
+
 function detailHtml(list) {
   if (!list || !list.length) return '<div class="ps-detail-empty">Tidak ada pesanan pada filter ini.</div>';
   return `
@@ -599,7 +617,7 @@ function detailHtml(list) {
           <tr${d.item_lepas ? ' class="ps-lepas"' : ''}>
             <td>${esc(d.po || '—')}</td>
             <td><span class="kode-text">${esc(d.kode_rmp || '—')}</span></td>
-            <td>${esc(katName(d.kelompok))}</td>
+            <td>${katCellHtml(d, nama)}</td>
             <td>${esc(nama)}${sub}${status}${isiHtml(d)}</td>
             <td class="ps-num">${esc(jml)}</td>
             <td><span class="ps-st ${d.status === 'TERKIRIM' ? 'ps-st-ok' : 'ps-st-wip'}">${d.status === 'TERKIRIM' ? 'Terkirim' : 'Proses'}</span></td>
@@ -701,6 +719,226 @@ function editWilayah(customer, provinsi, kab) {
   overlay.addEventListener('keydown', onKey);
   overlay.classList.add('open');
   setTimeout(() => sel.focus(), 30);
+}
+
+// ── kelola kategori produk ───────────────────────────────────────────────────
+// Koreksi kategori per PRODUK (kunci = kode produk tanpa spasi + nol di depan angka dibuang, jadi semua
+// ejaan kode yang sama ikut). Data sheet tidak diubah. Koreksi hanya berlaku untuk baris pcs; pesanan set
+// utuh dan isi set tidak terpengaruh. Semua nilai dari DB lewat esc() / textContent.
+const KAT_TARGET = KELOMPOK.filter((k) => k.id !== 'SET');
+const kat = { q: '', kel: '', hanya: false, list: [], total: 0, tanpaKode: 0, opener: null };
+let katTimer = null;
+let katReq = 0;
+let katKeyHandler = null;
+
+const katAsal = (r) => (r.kelompok_asal || []).map(katName).join(', ');
+const katKode = (r) => (r.ejaan && r.ejaan[0]) || r.kode_key;   // ejaan nyata dari sheet; server menormalkannya lagi
+
+function katOptions(selected, placeholder) {
+  return (placeholder ? '<option value="">Pilih kategori…</option>' : '') +
+    KAT_TARGET.map((k) => `<option value="${esc(k.id)}"${k.id === selected ? ' selected' : ''}>${esc(k.nama)}</option>`).join('');
+}
+
+function katRenderBar() {
+  $('ps-kat-kel').innerHTML = '<option value="">Semua kategori</option>' +
+    KAT_TARGET.map((k) => `<option value="${esc(k.id)}">${esc(k.nama)}</option>`).join('');
+  $('ps-kat-kel').value = kat.kel;
+  $('ps-kat-q').value = kat.q;
+  $('ps-kat-hanya').checked = kat.hanya;
+}
+
+function katRenderMeta() {
+  const shown = kat.list.length;
+  let t = kat.total > shown
+    ? `Menampilkan ${fmt(shown)} dari ${fmt(kat.total)} produk, diurutkan menurut jumlah RS. Persempit dengan pencarian atau kategori.`
+    : `${fmt(kat.total)} produk`;
+  if (kat.tanpaKode > 0) t += ` · ${fmt(kat.tanpaKode)} baris pesanan tanpa kode produk tidak bisa dikoreksi di sini.`;
+  $('ps-kat-meta').textContent = t;
+}
+
+function katRenderRows() {
+  const body = $('ps-kat-body');
+  if (!kat.list.length) {
+    body.innerHTML = `<tr><td colspan="5" class="ps-kat-empty">${esc(kat.hanya ? 'Belum ada koreksi yang cocok.' : 'Tidak ada produk yang cocok.')}</td></tr>`;
+    return;
+  }
+  body.innerHTML = kat.list.map((r, i) => {
+    const sekarang = r.kelompok || [];
+    const cur = sekarang.length === 1 ? sekarang[0] : '';
+    const ej = r.ejaan || [];
+    const ejHtml = (ej.length > 1 || (ej[0] && ej[0] !== r.kode_key))
+      ? `<span class="ps-kat-sub">Di sheet: ${ej.slice(0, 3).map((e) => '“' + esc(e) + '”').join(' · ')}${ej.length > 3 ? ' +' + (ej.length - 3) : ''}</span>`
+      : '';
+    const nm = (r.nama || []);
+    const namaHtml = esc(nm[0] || '—') + nm.slice(1, 3).map((n) => `<span class="ps-kat-sub">${esc(n)}</span>`).join('');
+    let kelHtml = esc(sekarang.map(katName).join(' / '));
+    if (r.dikoreksi) {
+      kelHtml += ` <span class="ps-kat-badge">dikoreksi</span><span class="ps-kat-sub">Label di sheet: ${esc(katAsal(r))}</span>`;
+    } else if (sekarang.length > 1) {
+      kelHtml += '<span class="ps-kat-warn" title="Baris-baris produk ini diberi label kategori berbeda di sheet. Menyimpan koreksi menyeragamkan semuanya.">Label di sheet tidak konsisten</span>';
+    }
+    return `<tr data-i="${i}">
+      <td><span class="kode-text">${esc(r.kode_key)}</span>${ejHtml}</td>
+      <td class="ps-kat-nama">${namaHtml}</td>
+      <td>${kelHtml}</td>
+      <td class="ps-kat-num">${esc(fmt(r.baris))} baris<span class="ps-kat-sub">${esc(fmt(r.qty))} pcs · ${esc(fmt(r.jumlah_rs))} RS</span></td>
+      <td class="ps-kat-act">
+        <div class="ps-kat-ctl">
+          <select class="filter-select ps-kat-sel" aria-label="Ubah kategori ${esc(r.kode_key)}">${katOptions(cur, !cur)}</select>
+          <button type="button" class="btn btn-accent ps-kat-btn" data-action="ps-kat-save" disabled>Simpan</button>
+          ${r.dikoreksi ? '<button type="button" class="btn btn-ghost ps-kat-btn" data-action="ps-kat-reset" title="Kembalikan ke kategori menurut label di sheet">Kembalikan</button>' : ''}
+        </div>
+        <div class="ps-kat-hint" role="status"></div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function katLoad() {
+  const my = ++katReq;
+  $('ps-kat-meta').textContent = 'Memuat…';
+  try {
+    const res = await rpc('get_produk_kelompok', {
+      p_cari: kat.q.trim() || null,
+      p_kelompok: kat.kel || null,
+      p_hanya_koreksi: !!kat.hanya,
+      p_batas: 200,
+    });
+    if (my !== katReq) return;
+    kat.list = (res && res.rows) || [];
+    kat.total = num(res && res.total);
+    kat.tanpaKode = num(res && res.tanpa_kode);
+    katRenderRows();
+    katRenderMeta();
+  } catch (e) {
+    if (my !== katReq || String(e.message).startsWith('unauthorized')) return;
+    const missing = e.code === 'PGRST202' || e.status === 404;
+    kat.list = [];
+    $('ps-kat-meta').textContent = '';
+    $('ps-kat-body').innerHTML = `<tr><td colspan="5" class="ps-kat-empty ps-kat-err">${esc(missing
+      ? 'RPC kategori produk belum terpasang. Jalankan 01_tabel_dan_rpc.sql di Supabase SQL Editor.'
+      : 'Gagal memuat: ' + e.message)}</td></tr>`;
+  }
+}
+
+function katOpen(opts = {}) {
+  const ov = $('ps-kat-overlay');
+  if (!ov) return;
+  kat.opener = document.activeElement;
+  kat.q = opts.q || '';
+  kat.kel = opts.kel || '';
+  kat.hanya = !!opts.hanya;
+  katRenderBar();
+  ov.classList.add('open');
+  katKeyHandler = (e) => { if (e.key === 'Escape') { e.stopPropagation(); katClose(); } };
+  ov.addEventListener('keydown', katKeyHandler);
+  setTimeout(() => { const q = $('ps-kat-q'); if (q) q.focus(); }, 30);
+  katLoad();
+}
+
+function katClose() {
+  const ov = $('ps-kat-overlay');
+  if (!ov) return;
+  ov.classList.remove('open');
+  if (katKeyHandler) { ov.removeEventListener('keydown', katKeyHandler); katKeyHandler = null; }
+  clearTimeout(katTimer);
+  katReq++;
+  const o = kat.opener;
+  kat.opener = null;
+  if (o && o.isConnected && o.focus) o.focus();
+}
+
+// Pilihan di dropdown baris: tampilkan dampaknya dulu, tombol Simpan baru aktif bila memang berubah.
+function katOnSel(sel) {
+  const tr = sel.closest('tr');
+  const r = tr && kat.list[+tr.dataset.i];
+  if (!r) return;
+  const cur = (r.kelompok || []).length === 1 ? r.kelompok[0] : '';
+  const changed = !!sel.value && sel.value !== cur;
+  tr.querySelector('[data-action="ps-kat-save"]').disabled = !changed;
+  const hint = tr.querySelector('.ps-kat-hint');
+  hint.classList.remove('err');
+  hint.textContent = changed
+    ? `Seluruh baris produk ini (${fmt(r.baris)} baris, ${fmt(r.qty)} pcs, ${fmt(r.jumlah_rs)} RS) akan masuk ke ${katName(sel.value)}.`
+    : '';
+}
+
+async function katSimpan(btn, reset) {
+  const tr = btn.closest('tr');
+  const r = tr && kat.list[+tr.dataset.i];
+  if (!r || btn.disabled) return;
+  const hint = tr.querySelector('.ps-kat-hint');
+  const sel = tr.querySelector('.ps-kat-sel');
+  const v = sel ? sel.value : '';
+  if (!reset && !v) return;
+  tr.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  hint.classList.remove('err');
+  hint.textContent = 'Menyimpan…';
+  try {
+    if (reset) await rpc('hapus_produk_kelompok', { p_kode: katKode(r) });
+    else await rpc('set_produk_kelompok', { p_kode: katKode(r), p_kelompok: v, p_catatan: null });
+    showToast(reset ? `${r.kode_key} dikembalikan ke kategori di sheet` : `${r.kode_key} dipindah ke ${katName(v)}`);
+    await katLoad();
+    load();                               // hasil Populasi di belakang panel ikut diperbarui
+  } catch (e) {
+    if (String(e.message).startsWith('unauthorized')) return;
+    hint.classList.add('err');
+    hint.textContent = e.message;
+    tr.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+  }
+}
+
+// Daftar koreksi (Excel) supaya yang meng-input di sheet bisa memperbaiki sumbernya.
+async function katUnduh(btn) {
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const res = await rpc('get_produk_kelompok', { p_cari: null, p_kelompok: null, p_hanya_koreksi: true, p_batas: 500 });
+    const list = (res && res.rows) || [];
+    if (!list.length) { showToast('Belum ada koreksi untuk diunduh', 'error'); return; }
+    await loadScript(EXCELJS_SRC);
+    if (!window.ExcelJS) throw new Error('library Excel tidak termuat');
+    const wb = new window.ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Koreksi kategori');
+    ws.columns = [
+      { header: 'Kode produk', key: 'kode', width: 24 },
+      { header: 'Ejaan kode di sheet', key: 'ejaan', width: 34 },
+      { header: 'Nama produk', key: 'nama', width: 48 },
+      { header: 'Kategori di sheet', key: 'asal', width: 26 },
+      { header: 'Dikoreksi menjadi', key: 'ke', width: 22 },
+      { header: 'Baris pesanan', key: 'baris', width: 14 },
+      { header: 'Jumlah (pcs)', key: 'qty', width: 14 },
+      { header: 'Jumlah RS', key: 'rs', width: 11 },
+      { header: 'Diubah oleh', key: 'oleh', width: 28 },
+      { header: 'Waktu ubah', key: 'pada', width: 20 },
+      { header: 'Catatan', key: 'catatan', width: 30 },
+    ];
+    list.forEach((r) => ws.addRow({
+      kode: r.kode_key,
+      ejaan: (r.ejaan || []).join(' | '),
+      nama: (r.nama || []).join(' | '),
+      asal: katAsal(r),
+      ke: katName(r.koreksi_ke),
+      baris: num(r.baris),
+      qty: num(r.qty),
+      rs: num(r.jumlah_rs),
+      oleh: r.oleh || '',
+      pada: r.pada ? new Date(r.pada).toLocaleString('id-ID') : '',
+      catatan: r.catatan || '',
+    }));
+    ws.getRow(1).font = { bold: true };
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const name = `koreksi-kategori-produk-${localISODate()}.xlsx`;
+    saveBlob(blob, name);
+    showToast(`${name} diunduh` + (num(res.total) > list.length ? ` (${fmt(list.length)} dari ${fmt(res.total)} koreksi)` : ''));
+  } catch (e) {
+    if (String(e.message).startsWith('unauthorized')) return;
+    showToast('Gagal membuat Excel: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── salin teks ───────────────────────────────────────────────────────────────
@@ -1343,6 +1581,7 @@ export async function mount(container) {
   });
   data = null; rows = []; unmapped = [];
   detailCache.clear();
+  Object.assign(kat, { q: '', kel: '', hanya: false, list: [], total: 0, tanpaKode: 0, opener: null });
 
   const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   const ACTIONS = {
@@ -1377,6 +1616,12 @@ export async function mount(container) {
     'ps-clear': (el) => clearFilter(el.dataset.k),
     'ps-copy': () => copyText(),
     'ps-xlsx': () => downloadXlsx(),
+    'ps-kat-open': () => katOpen(),
+    'ps-kat-close': () => katClose(),
+    'ps-kat-edit-row': (el) => katOpen({ q: el.dataset.kode || '' }),
+    'ps-kat-save': (el) => katSimpan(el, false),
+    'ps-kat-reset': (el) => katSimpan(el, true),
+    'ps-kat-unduh': (el) => katUnduh(el),
   };
   const CHANGE_BY_ID = {
     'ps-provinsi': (t) => { state.provinsi = t.value; lsSet(LS_PROV, t.value); load(); },
@@ -1384,19 +1629,29 @@ export async function mount(container) {
     'ps-dari': (t) => { state.dari = t.value; load(); },
     'ps-sampai': (t) => { state.sampai = t.value; load(); },
     'ps-isi-set': (t) => { state.isiSet = t.checked; load(); },
+    'ps-kat-kel': (t) => { kat.kel = t.value; katLoad(); },
+    'ps-kat-hanya': (t) => { kat.hanya = t.checked; katLoad(); },
   };
 
   function onClick(e) {
+    if (e.target.id === 'ps-kat-overlay') { katClose(); return; }   // klik di luar kartu = tutup
     const el = e.target.closest('[data-action]');
     if (!el || !container.contains(el)) return;
     if (hasOwn(ACTIONS, el.dataset.action)) ACTIONS[el.dataset.action](el, e);
   }
   function onChange(e) {
     const t = e.target;
+    if (t.classList && t.classList.contains('ps-kat-sel')) { katOnSel(t); return; }
     if (hasOwn(CHANGE_BY_ID, t.id)) CHANGE_BY_ID[t.id](t);
   }
   function onInput(e) {
     const id = e.target.id;
+    if (id === 'ps-kat-q') {
+      kat.q = e.target.value;
+      clearTimeout(katTimer);
+      katTimer = setTimeout(() => katLoad(), 300);
+      return;
+    }
     if (id !== 'ps-produk' && id !== 'ps-rs') return;
     const v = e.target.value;
     // state langsung diperbarui (dua kolom bisa diketik berurutan), hanya muat-ulang yang ditunda.
@@ -1425,6 +1680,10 @@ export function unmount() {
   handlers = null;
   clearTimeout(searchTimer);
   searchTimer = null;
+  clearTimeout(katTimer);
+  katTimer = null;
+  katKeyHandler = null;         // overlay ikut hilang bersama markup
+  katReq++;
   reqId++;                      // batalkan respons yang masih di jalan
   // pnm-universal.css TIDAK dilepas (permanent <link>, lihat dashboard/index.js unmount()).
   document.getElementById('page-populasi-style')?.remove();

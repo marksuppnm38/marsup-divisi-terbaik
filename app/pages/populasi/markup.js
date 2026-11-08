@@ -18,6 +18,7 @@ export const POPULASI_MARKUP = `
   <div class="pw-topbar-crumb"><strong>Populasi</strong></div>
   <div class="pw-topbar-actions">
     <span class="last-update" id="ps-data-per">Memuat…</span>
+    <button class="toggle-btn" type="button" data-action="ps-kat-open" title="Betulkan kategori produk yang salah tag di sheet (data sheet tidak berubah)"><i class="ti ti-tags" aria-hidden="true"></i> Kelola kategori produk</button>
     <button class="toggle-btn" type="button" data-action="ps-reload" title="Ambil ulang data dari database"><i class="ti ti-rotate-clockwise" aria-hidden="true"></i> Muat ulang</button>
   </div>
 </div>
@@ -150,6 +151,29 @@ export const POPULASI_MARKUP = `
     <div class="confirm-actions" style="margin-top:16px">
       <button class="btn btn-ghost" id="ps-wil-cancel" type="button">Batal</button>
       <button class="btn btn-accent" id="ps-wil-ok" type="button">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="ps-kat-overlay">
+  <div class="confirm-card ps-kat-card" role="dialog" aria-modal="true" aria-labelledby="ps-kat-title">
+    <div class="ps-kat-head">
+      <h3 id="ps-kat-title">Kelola kategori produk</h3>
+      <button type="button" class="ps-kat-x" data-action="ps-kat-close" aria-label="Tutup"><i class="ti ti-x" aria-hidden="true"></i></button>
+    </div>
+    <p class="ps-kat-note">Koreksi berlaku per produk (semua ejaan kodenya) dan langsung mengubah kategori di hasil Populasi, Excel, dan teks salinan. Data di Google Sheet tidak berubah. Angka di sini mengikuti cakupan &ldquo;semua non-sample&rdquo;, terkirim dan dalam proses.</p>
+    <div class="ps-kat-bar">
+      <input id="ps-kat-q" class="search-mini" type="search" placeholder="Cari kode atau nama produk" autocomplete="off" aria-label="Cari kode atau nama produk">
+      <select id="ps-kat-kel" class="filter-select" aria-label="Kategori sekarang"></select>
+      <label class="ps-kat-check"><input type="checkbox" id="ps-kat-hanya"><span>Hanya yang dikoreksi</span></label>
+      <button type="button" class="bulk-btn export ps-kat-unduh" data-action="ps-kat-unduh" title="Unduh daftar koreksi sebagai Excel, untuk memperbaiki sumbernya di Google Sheet"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> Unduh daftar koreksi</button>
+    </div>
+    <div class="ps-kat-meta" id="ps-kat-meta" aria-live="polite"></div>
+    <div class="ps-kat-scroll">
+      <table class="ps-kat-t">
+        <thead><tr><th>Kode</th><th>Produk</th><th>Kategori sekarang</th><th class="ps-kat-th-num">Data</th><th>Ubah ke</th></tr></thead>
+        <tbody id="ps-kat-body"></tbody>
+      </table>
     </div>
   </div>
 </div>
