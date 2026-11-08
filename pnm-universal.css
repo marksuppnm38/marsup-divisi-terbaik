@@ -6,6 +6,9 @@
    jadi SATU definisi kanonik (versi blur punya crud-produk), .open dan .show
    sekarang sama-sama trigger style yang sama. Efek visual ke modal konversian
    nyaris nol karena versi blur ini emang udah menang duluan sebelum fix ini. — Claude
+   2026-11-08: Fase A motion (transitions-dev) — token motion di :root, guard reduced-motion
+   global di akhir file, toast jadi satu sistem (transition + @starting-style, tanpa @keyframes
+   toastIn/toastOut), transition:all diganti properti eksplisit (--transition-state). — Claude
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ============================================================
@@ -111,6 +114,29 @@
   --font-mono:'SF Mono','JetBrains Mono',monospace;
   --ease:cubic-bezier(.4,0,.2,1);
   --transition-theme:background-color .25s var(--ease),border-color .25s var(--ease),color .2s var(--ease);
+  /* ── MOTION TOKENS (transitions-dev, Fase A 2026-11-08) ──────────────────
+     Skala bersama buat gerak masuk/keluar & loop. Sengaja HANYA durasi <= 250ms
+     (app dipakai seharian, gerak harus cepat & halus) — token 350/400/500ms
+     dari skill gak dibawa. --ease (di atas) TETAP buat hover/warna/state mikro
+     (skill gak punya token buat itu); --ease-smooth-out buat masuk/keluar
+     (modal, dropdown, toast, page-enter). Dua-duanya beda peran, bukan duplikat. */
+  --duration-stagger:40ms;
+  --duration-micro:80ms;
+  --duration-quick:150ms;   /* tutup modal/dropdown/toast, hover/state */
+  --duration-fast:250ms;    /* buka modal/dropdown/toast */
+  --ease-smooth-out:cubic-bezier(.22,1,.36,1);
+  --ease-linear:linear;     /* spinner, shimmer */
+  --distance-micro:4px;
+  --distance-small:6px;
+  --distance-base:8px;
+  --scale-large:.96;        /* modal */
+  --scale-medium:.97;       /* dropdown buka, toast */
+  --scale-small:.98;
+  --scale-tiny:.99;         /* dropdown tutup */
+  --toast-open:var(--duration-fast);
+  --toast-close:var(--duration-quick);
+  /* pengganti transition:all — cuma properti yang memang berubah di hover/active/disabled */
+  --transition-state:background-color var(--duration-quick),color var(--duration-quick),border-color var(--duration-quick),opacity var(--duration-quick);
 }
 /* toggle overrides the system pref. data-theme MUST be set on <html> only
    (see FIX NOTE above) — every page/module should write to
@@ -372,7 +398,7 @@ main{max-width:1280px;margin:0 auto;padding:32px 20px 44px}
 .table-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .table-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
 .filter-bar{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
-.filter-btn{height:28px;padding:0 11px;font-size:11.5px;font-family:inherit;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+.filter-btn{height:28px;padding:0 11px;font-size:11.5px;font-family:inherit;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;transition:var(--transition-state);display:inline-flex;align-items:center;gap:5px}
 .filter-btn:hover{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
 .filter-btn.active{font-weight:600;background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
 .filter-btn.f-noharga.active{background:var(--warning-bg);color:var(--warning);border-color:var(--warning-border)}
@@ -391,7 +417,7 @@ main{max-width:1280px;margin:0 auto;padding:32px 20px 44px}
 .search-history-clear:hover{color:var(--danger)}
 
 .preset-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.preset-chip{height:26px;padding:0 10px;font-size:11px;font-family:inherit;border:1px dashed var(--border-strong);border-radius:20px;background:transparent;color:var(--text-muted);cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s}
+.preset-chip{height:26px;padding:0 10px;font-size:11px;font-family:inherit;border:1px dashed var(--border-strong);border-radius:20px;background:transparent;color:var(--text-muted);cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:var(--transition-state)}
 .preset-chip:hover{border-color:var(--accent);color:var(--accent-text)}
 .preset-chip .preset-x{margin-left:2px;font-size:11px;opacity:.6}
 .preset-chip .preset-x:hover{opacity:1;color:var(--danger)}
@@ -459,7 +485,7 @@ main{max-width:1280px;margin:0 auto;padding:32px 20px 44px}
 .forecast-bar-wrap{display:flex;align-items:center;gap:6px}
 .forecast-bar-track{flex:1;height:5px;background:var(--surface-2);border-radius:20px;overflow:hidden}
 .forecast-bar-fill{height:100%;border-radius:20px}
-.forecast-period-btn{height:24px;padding:0 10px;font-size:11px;font-family:inherit;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;transition:all .15s}
+.forecast-period-btn{height:24px;padding:0 10px;font-size:11px;font-family:inherit;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;transition:var(--transition-state)}
 .forecast-period-btn.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);font-weight:600}
 
 @media(max-width:900px){ .insight-cards{grid-template-columns:1fr} }
@@ -487,7 +513,7 @@ tr.row-active td{background:var(--accent-bg)!important}
 .kode-text{font-family:var(--mono);font-size:11px;color:var(--text-muted)}
 .table-footer{padding:11px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--text-muted)}
 .pagination{display:flex;gap:4px}
-.page-btn{width:26px;height:26px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;font-size:11.5px;font-family:inherit;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.page-btn{width:26px;height:26px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text-secondary);cursor:pointer;font-size:11.5px;font-family:inherit;display:flex;align-items:center;justify-content:center;transition:var(--transition-state)}
 .page-btn:hover,.page-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .page-btn:disabled{opacity:.4;cursor:not-allowed}
 .empty-row td,.loading-row td{text-align:center;padding:30px;color:var(--text-muted);font-size:12.5px}
@@ -501,12 +527,9 @@ tr.row-active td{background:var(--accent-bg)!important}
 .err-banner.show{display:flex}
 
 .toast-container{position:fixed;bottom:20px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
-.toast{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12.5px;display:flex;align-items:center;gap:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);animation:toastIn .25s ease;min-width:200px}
+.toast{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12.5px;display:flex;align-items:center;gap:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);min-width:200px}
 .toast.success{border-color:var(--success-border);color:var(--success)}
 .toast.error{border-color:var(--danger-border);color:var(--danger)}
-.toast.fade-out{animation:toastOut .25s ease forwards}
-@keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateY(8px)}}
 .copy-kode-btn{background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:inline-flex;align-items:center;font-size:11px;margin-left:4px;border-radius:4px}
 .copy-kode-btn:hover{color:var(--accent);background:var(--accent-bg)}
 .bulk-bar{display:none;align-items:center;gap:10px;padding:9px 16px;background:var(--accent-bg);border-bottom:1px solid var(--border)}
@@ -577,7 +600,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:8
 .logo{height:32px;width:auto;object-fit:contain;flex-shrink:0}
 .logo-text{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .logo-sub{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.session-indicator{display:flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;border-radius:20px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;max-width:280px;min-width:0;flex-shrink:1;transition:all .18s var(--ease)}
+.session-indicator{display:flex;align-items:center;gap:7px;height:32px;padding:0 13px 0 11px;border-radius:20px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;max-width:280px;min-width:0;flex-shrink:1;transition:var(--transition-state)}
 .session-indicator:hover{border-color:var(--accent);color:var(--text)}
 .session-indicator i{font-size:14px;flex-shrink:0}
 .session-indicator span#session-indicator-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -682,7 +705,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:8
 .ac-code{font-size:11px;color:var(--text-muted);font-family:var(--mono)}
 .ac-badge{font-size:10px;padding:1px 6px;border-radius:20px;background:var(--accent-bg);color:var(--accent-text);font-weight:500}
 .subtab-row{display:flex;gap:4px;margin-bottom:8px;border-bottom:1px solid var(--border);align-items:center}
-.panel-collapse-btn{margin-left:auto;flex-shrink:0;background:none;border:1px solid var(--border-strong);border-radius:6px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);cursor:pointer;transition:all .15s;margin-bottom:6px}
+.panel-collapse-btn{margin-left:auto;flex-shrink:0;background:none;border:1px solid var(--border-strong);border-radius:6px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);cursor:pointer;transition:var(--transition-state);margin-bottom:6px}
 .panel-collapse-btn:hover{color:var(--text);background:var(--surface-2)}
 
 /* PANEL SEARCH: collapse to a slim rail so the clipboard/matching side can
@@ -761,7 +784,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:8
 #btn-butuh-bantuan.on{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-border);border-radius:6px}
 .filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .filter-select{height:30px;padding:0 8px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;outline:none}
-.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s;text-decoration:none;box-sizing:border-box}
+.toggle-btn{height:30px;padding:0 10px;font-size:12px;font-family:inherit;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:var(--transition-state);text-decoration:none;box-sizing:border-box}
 .toggle-btn.on{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent);font-weight:500}
 .panel-body{flex:1;overflow-y:auto;padding:8px 12px}
 #meta{font-size:12px;color:var(--text-muted);min-height:16px}
@@ -770,7 +793,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:8
 #results{display:flex;flex-direction:column;gap:6px}
 #pagination{display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 0 6px}
 #pagination.hidden{display:none}
-.page-btn{height:30px;min-width:30px;padding:0 8px;font-size:12.5px;font-family:inherit;font-weight:500;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;transition:all .15s}
+.page-btn{height:30px;min-width:30px;padding:0 8px;font-size:12.5px;font-family:inherit;font-weight:500;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-secondary);cursor:pointer;transition:var(--transition-state)}
 .page-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent-text)}
 .page-btn:disabled{opacity:.4;cursor:not-allowed}
 .page-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -819,7 +842,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:8
 .badge-katalog-yes{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--success);background:var(--success-bg);border:1px solid var(--success-border);padding:2px 8px;border-radius:20px;text-decoration:none;cursor:pointer;transition:filter .15s}
 .badge-katalog-yes:hover{filter:brightness(0.96);text-decoration:underline}
 .badge-katalog-no{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:20px}
-.btn-preview-gambar{font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-family:inherit;transition:all .15s}
+.btn-preview-gambar{font-size:11px;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:20px;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-family:inherit;transition:var(--transition-state)}
 .btn-preview-gambar:hover{border-color:var(--accent);color:var(--accent-text)}
 /* FIX (fundamental): hasil order dipindah dari badge auto-derived jadi
    <select> manual (lihat renderRiwayatCard()) — 3 state, .hasil-order-nunggu
@@ -1109,7 +1132,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:8
 .clip-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)}
 .clip-header-edit-btn{font-size:10.5px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 4px;display:flex;align-items:center;gap:3px}
 .clip-header-edit-btn:hover{text-decoration:underline}
-.clip-header-icon-btn{width:22px;height:22px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.clip-header-icon-btn{width:22px;height:22px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:var(--transition-state)}
 .clip-header-icon-btn:hover{background:var(--surface-2);color:var(--text);border-color:var(--border-strong)}
 .clip-header-icon-btn i{font-size:13px;transition:transform .2s ease}
 .clip-header.collapsed .clip-header-icon-btn i{transform:rotate(180deg)}
@@ -1256,13 +1279,13 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:8
 /* Selesaikan Sesi: kept as a distinct outline button (still a real, if
    secondary, action a user picks deliberately) but quieted down — smaller,
    lighter border — so it doesn't compete visually with .btn-record. */
-.btn-end-sesi{width:100%;height:32px;background:none;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
+.btn-end-sesi{width:100%;height:32px;background:none;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:var(--transition-state)}
 .btn-end-sesi:hover:not(:disabled){color:var(--success);border-color:var(--success-border);background:var(--success-bg)}
 .btn-end-sesi:disabled{opacity:.5;cursor:not-allowed}
 /* Beda dari .btn-end-sesi: ini gak nyentuh status sesi sama sekali (lihat
    handler-nya di konversian.js), jadi warnanya sengaja netral — bukan hijau
    "penyelesaian" kayak Selesaikan Sesi, biar gak kesan sama-sama nutup sesi. */
-.btn-leave-sesi{width:100%;height:32px;background:none;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
+.btn-leave-sesi{width:100%;height:32px;background:none;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:var(--transition-state)}
 .btn-leave-sesi:hover:not(:disabled){color:var(--accent-text);border-color:var(--accent);background:var(--accent-bg)}
 .btn-leave-sesi:disabled{opacity:.5;cursor:not-allowed}
 
@@ -1273,8 +1296,15 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:8
 
 /* TOAST */
 #toast-container{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
-.toast{background:var(--text);color:var(--bg);font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:20px;opacity:0;transform:translateY(8px);transition:opacity .25s ease,transform .25s ease;display:flex;align-items:center;gap:7px;white-space:nowrap}
-.toast.show{opacity:1;transform:translateY(0)}
+/* Gerak toast = SATU sistem buat dua skema container (#toast-container & .toast-container) dan
+   semua pembuat toast (PNMToast, showToast lokal dashboard/populasi). Masuk lewat @starting-style
+   (jalan walau elemen gak dikasih .show — dulu toast dashboard/populasi cuma kedip lalu hilang),
+   keluar lewat .fade-out. .show dibiarkan ada biar kompatibel sama PNMToast. Tanpa blur (hemat). */
+.toast{background:var(--text);color:var(--bg);font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:20px;opacity:1;transform:none;transition:opacity var(--toast-open) var(--ease-smooth-out),transform var(--toast-open) var(--ease-smooth-out);display:flex;align-items:center;gap:7px;white-space:nowrap}
+@starting-style{.toast{opacity:0;transform:translateY(var(--distance-base)) scale(var(--scale-medium))}}
+.toast.show{opacity:1;transform:none}
+.toast.fade-out{opacity:0;transform:translateY(var(--distance-base)) scale(var(--scale-medium));transition-duration:var(--toast-close)}
+@media(prefers-reduced-motion:reduce){.toast{transition:none}}
 .toast-success{background:var(--success);color:#fff}
 .toast-error{background:var(--danger);color:#fff}
 .toast-presence{background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border-strong)}
@@ -2015,7 +2045,7 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
   width:34px;height:34px;border-radius:9px;border:1px solid var(--border-strong);
   background:var(--surface-2);color:var(--text-secondary);cursor:pointer;
   display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;
-  transition:.15s var(--ease);
+  transition:var(--transition-state);
 }
 .theme-toggle:hover{border-color:var(--accent);color:var(--accent-text)}
 .theme-toggle i{pointer-events:none}
@@ -2119,7 +2149,7 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
 .file-row .finfo{flex:1;min-width:0}
 .file-row .fname{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .file-row .fmeta{font-size:11.5px;color:var(--text-muted);margin-top:1px}
-.file-row .fdel{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;transition:.15s var(--ease)}
+.file-row .fdel{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;transition:var(--transition-state)}
 .file-row .fdel:hover{color:var(--danger-text);border-color:var(--danger-text)}
 /* checking / progress */
 .checking-row{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--text-secondary);margin-top:14px}
@@ -2141,7 +2171,7 @@ html[data-theme="dark"] .theme-switch .knob{transform:translateX(23px);color:#ff
 .skip-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .skip-head-title{font-size:12.5px;font-weight:700;color:var(--warn-text);display:flex;align-items:center;gap:6px}
 .skip-actions{display:flex;gap:8px}
-.mini-btn{font-size:11.5px;font-weight:600;border:1px solid var(--border-strong);background:var(--surface);color:var(--text-secondary);border-radius:7px;padding:6px 11px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px;transition:.15s var(--ease)}
+.mini-btn{font-size:11.5px;font-weight:600;border:1px solid var(--border-strong);background:var(--surface);color:var(--text-secondary);border-radius:7px;padding:6px 11px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px;transition:var(--transition-state)}
 .mini-btn:hover{border-color:var(--accent);color:var(--accent-text)}
 .skip-search{width:100%;margin-top:10px;height:33px;padding:0 11px;font-size:12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-family:inherit}
 .skip-table-wrap{max-height:200px;overflow-y:auto;margin-top:10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface)}
@@ -2154,7 +2184,7 @@ table.skip-table tr:last-child td{border-bottom:none}
 .btn-primary-lg{width:100%;height:46px;border-radius:var(--radius-md);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;border:none;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:18px;transition:background .15s var(--ease)}
 .btn-primary-lg:hover:not(:disabled){background:var(--accent-hover)}
 .btn-primary-lg:disabled{background:var(--surface-3);color:var(--text-muted);cursor:not-allowed}
-.btn-secondary{flex:0 0 auto;height:46px;padding:0 18px;border-radius:var(--radius-md);font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;border:1px solid var(--border-strong);background:var(--surface);color:var(--text-secondary);margin-top:18px;transition:.15s var(--ease)}
+.btn-secondary{flex:0 0 auto;height:46px;padding:0 18px;border-radius:var(--radius-md);font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;border:1px solid var(--border-strong);background:var(--surface);color:var(--text-secondary);margin-top:18px;transition:var(--transition-state)}
 .btn-secondary:hover{border-color:var(--danger-text);color:var(--danger-text)}
 .actions-row{display:flex;gap:10px}
 .actions-row .btn-primary-lg{margin-top:0}
@@ -2179,7 +2209,7 @@ table.skip-table tr:last-child td{border-bottom:none}
 .act-num.green{color:var(--success-text)}
 .act-num.amber{color:var(--warn-text)}
 .act-file{color:var(--text-secondary);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.act-dl{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:.15s var(--ease)}
+.act-dl{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:var(--transition-state)}
 .act-dl:hover{color:var(--accent-text);border-color:var(--accent)}
 .act-dl:disabled{opacity:.4;cursor:not-allowed}
 .activity-empty{font-size:12.5px;color:var(--text-muted);text-align:center;padding:20px 0}
@@ -2302,7 +2332,7 @@ table.skip-table tr:last-child td{border-bottom:none}
 .conv-btn-secondary{
   height:38px;padding:0 16px;background:var(--surface);color:var(--text-secondary);
   border:1px solid var(--border-strong);border-radius:8px;font-size:13px;font-weight:600;
-  font-family:inherit;cursor:pointer;transition:all .15s;
+  font-family:inherit;cursor:pointer;transition:var(--transition-state);
 }
 .conv-btn-secondary:hover{background:var(--surface-2)}
 .conv-modal-actions:has(#conv-success-next[style*="flex"]) .conv-btn-secondary,
@@ -2316,7 +2346,7 @@ table.skip-table tr:last-child td{border-bottom:none}
 .conv-step-open{
   flex-shrink:0;width:40px;display:none;align-items:center;justify-content:center;
   border-radius:10px;border:1px solid var(--success-border);background:var(--success-bg);
-  color:var(--success);text-decoration:none;font-size:15px;transition:all .15s;
+  color:var(--success);text-decoration:none;font-size:15px;transition:var(--transition-state);
 }
 .conv-step-open.show{display:flex}
 .conv-step-open:hover{background:var(--success);color:#fff}
@@ -2338,10 +2368,30 @@ table.skip-table tr:last-child td{border-bottom:none}
 .conv-loc-btn{
   display:inline-flex;align-items:center;gap:5px;
   font-size:12px;font-weight:600;border-radius:7px;padding:6px 10px;
-  cursor:pointer;text-decoration:none;transition:all .15s;border:1px solid var(--border-strong);
+  cursor:pointer;text-decoration:none;transition:var(--transition-state);border:1px solid var(--border-strong);
   background:var(--surface);color:var(--text-secondary);
 }
 .conv-loc-btn:hover{background:var(--surface-3)}
 .conv-loc-btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .conv-loc-btn-primary:hover{background:var(--accent-hover)}
 .conv-loc-btn.copied{background:var(--success);border-color:var(--success);color:#fff}
+
+/* ═══ REDUCED MOTION — guard global (Fase A, 2026-11-08) ═══
+   Satu jaring buat SEMUA transition/animation (~190 aturan yang dulu gak punya guard).
+   Durasi dipangkas ke ~0 (event transitionend/animationend tetap nembak; gak ada listener
+   yang bergantung padanya, dicek 2026-11-08). Pengecualian: loop loading (spinner, shimmer,
+   titik pulse) tetap jalan tapi dilambatkan — kalau dibekukan, user gak tahu proses masih jalan. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+  [class*="spin"],[class*="skel"],[class*="shimmer"],.ti-loader-2,
+  .is-loading i,.loading i,.is-pending i,
+  .dot-saving,.dot-connecting,.dot-reconnecting{
+    animation-duration:2s !important;
+    animation-iteration-count:infinite !important;
+  }
+}

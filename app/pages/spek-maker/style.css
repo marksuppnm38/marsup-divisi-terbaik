@@ -312,8 +312,8 @@
   font-size: 12.5px;
   color: var(--text);
   opacity: 0;
-  transform: translateY(6px);
-  transition: opacity .15s, transform .15s;
+  transform: translateY(var(--distance-small));
+  transition: opacity var(--duration-quick) var(--ease-smooth-out), transform var(--duration-quick) var(--ease-smooth-out);
 }
 .sm-toast-root .toast.in { opacity: 1; transform: translateY(0); }
 .sm-toast-root .toast .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--text-muted); }
