@@ -378,7 +378,7 @@ function renderFreshness() {
 // dengan detail per RS dan Excel (status_hitung).
 const TIP = {
   cek: 'QTY di sheet tidak sepakat dengan isi set, atau ada item di luar isi set. Belum dihitung sebagai set.',
-  estimasi: 'Set ini tidak ada di daftar produk, jadi jumlahnya dihitung dari perkiraan QTY.',
+  estimasi: 'Jumlah set dihitung dari perkiraan QTY: set belum ada di daftar produk, atau isi di sheet tidak lengkap/berbeda dari isi set.',
   ok_beda: 'Dihitung dari item yang cocok dengan isi set. Ada item di sheet yang tidak ada di isi set (mis. substitusi produk).',
 };
 const TINJAU = {
@@ -583,7 +583,7 @@ const isiStat = (d) => {
 // Alasan satu pesanan, dalam kalimat biasa.
 function alasanText(d) {
   if (d.kind !== 'SET') return '';
-  if (d.status_hitung === 'estimasi') return 'Set tidak ada di daftar produk, jadi jumlahnya dihitung dari perkiraan QTY.';
+  if (d.status_hitung === 'estimasi') return d.set_kode ? 'Isi di sheet tidak lengkap atau berbeda dari isi set, jadi jumlahnya dihitung dari perkiraan QTY.' : 'Set tidak ada di daftar produk, jadi jumlahnya dihitung dari perkiraan QTY.';
   if (d.status_hitung === 'ok_beda') return 'Ada item di sheet yang tidak ada di isi set (mis. substitusi produk). Dihitung dari item yang cocok.';
   if (d.status_hitung === 'cek') {
     const st = isiStat(d);
@@ -1328,7 +1328,7 @@ function ketBaris(l) {
   if (l.kind !== 'SET') return '';
   if (l.status_hitung === 'cek') return 'Belum dihitung: jumlah item tidak sesuai isi set, perlu dicek';
   if (l.status_hitung === 'ok_beda') return 'Dihitung dari item yang sesuai isi set; ada item pengganti atau di luar isi set';
-  if (l.status_hitung === 'estimasi') return 'Perkiraan: isi set ini belum terdaftar di database produk';
+  if (l.status_hitung === 'estimasi') return l.set_kode ? 'Perkiraan: isi di sheet tidak lengkap atau berbeda dari isi set' : 'Perkiraan: isi set ini belum terdaftar di database produk';
   return '';
 }
 
@@ -1499,7 +1499,7 @@ async function buildWorkbook(ctx) {
   section('Cara membaca angka');
   const bullets = [];
   if (hasSet) bullets.push('Set = jumlah set instrumen utuh. Dihitung dari isi set di database produk: jumlah item yang dipesan dibagi jumlah item itu di dalam satu set.');
-  if (hasSet && num(s.set_estimasi) > 0) bullets.push(`${fmt(s.set_estimasi)} set berupa perkiraan karena isi setnya belum terdaftar di database produk. Baris terkait diberi keterangan.`);
+  if (hasSet && num(s.set_estimasi) > 0) bullets.push(`${fmt(s.set_estimasi)} set berupa perkiraan karena isi setnya belum terdaftar di database produk atau isi di sheet tidak lengkap. Baris terkait diberi keterangan.`);
   if (hasSet && num(s.set_cek) > 0) bullets.push(`${fmt(s.set_cek)} pesanan set belum dihitung karena jumlah itemnya tidak sesuai isi set. Pesanannya tetap tercantum di sheet “Rincian Pesanan” dengan keterangan.`);
   if (hasPcs) bullets.push('Unit/pcs = total jumlah barang satuan (instrumen satuan, elektromedis, alat laboratorium, dan sejenisnya).');
   bullets.push(st.cakupan === 'SEMUA'

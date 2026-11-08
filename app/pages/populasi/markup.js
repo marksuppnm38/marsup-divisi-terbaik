@@ -33,7 +33,7 @@ export const POPULASI_MARKUP = `
       </label>
       <label class="ps-field">
         <span class="ps-lbl">Nama set atau produk</span>
-        <input class="search-mini" type="search" id="ps-produk" placeholder="mis. drill, centrifuge, dental chair" autocomplete="off">
+        <input class="search-mini" type="search" id="ps-produk" placeholder="mis. drill, centrifuge, obgyn, tubectomy" autocomplete="off">
       </label>
       <label class="ps-field">
         <span class="ps-lbl">Rumah sakit</span>
