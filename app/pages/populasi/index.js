@@ -328,7 +328,7 @@ function renderActive() {
   const el = $('ps-active');
   if (!el) return;
   const a = [];
-  if (state.produk.trim()) a.push({ k: 'produk', t: `Produk: ${state.produk.trim()}` });
+  if (state.produk.trim()) a.push({ k: 'produk', t: `Cari: ${state.produk.trim()}` });
   if (state.produk.trim() && state.isiSet) a.push({ k: 'isi', t: 'Termasuk isi set' });
   if (state.rs.trim()) a.push({ k: 'rs', t: `RS: ${state.rs.trim()}` });
   if (state.dari || state.sampai) a.push({ k: 'periode', t: `Periode: ${periodeText()}` });
@@ -343,14 +343,17 @@ function renderHint() {
   const el = $('ps-hint');
   if (!el) return;
   const p = state.produk.trim();
-  let msg = '';
-  if (p && !state.isiSet) {
-    msg = `Yang dihitung hanya barang bernama “${p}” yang dijual sendiri. Yang ada di dalam set belum ikut; centang “Termasuk isi set” untuk menambahkannya.`;
-  } else if (p && state.isiSet) {
-    msg = 'Isi set dihitung per komponen (pcs), bukan per set.';
+  const msg = [];
+  if (p) {
+    msg.push(`Pencarian “${p}” mencakup nama set (spasi dan titik diabaikan) dan barang yang dijual sendiri.`);
+    msg.push(state.isiSet
+      ? 'Isi set dihitung per komponen (pcs), bukan per set.'
+      : 'Barang di dalam set belum ikut; centang “Termasuk isi set” untuk menambahkannya.');
+    if (state.kelompok.length) msg.push(`Hasil dibatasi ke kategori ${kategoriText()}; lepas pilihan kategori untuk mencari di semua.`);
+    if (state.provinsi) msg.push(`Hanya di ${state.provinsi}; pilih “Semua provinsi” untuk melihat semuanya.`);
   }
-  el.hidden = !msg;
-  el.textContent = msg;
+  el.hidden = !msg.length;
+  el.textContent = msg.join(' ');
 }
 
 // Data di DB bisa tertinggal dari Google Sheet (sinkron berjalan terpisah) -- jangan disembunyikan.
@@ -449,6 +452,7 @@ function emptyMessage() {
   const p = state.produk.trim();
   if (p && !state.isiSet) tips.push('Coba centang “Termasuk isi set”.');
   if (p) tips.push('Coba kata kunci yang lebih pendek.');
+  if (p && state.kelompok.length) tips.push('Coba lepas pilihan kategori.');
   if (state.status !== 'ALL') tips.push('Coba tambahkan pesanan yang masih dalam proses.');
   if (state.provinsi) tips.push('Coba pilih semua provinsi.');
   if (state.provinsi && unmapped.length) tips.push(`Ada ${fmt(unmapped.length)} RS yang wilayahnya belum diketahui (lihat bagian bawah).`);

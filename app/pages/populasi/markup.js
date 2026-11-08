@@ -44,8 +44,8 @@ export const POPULASI_MARKUP = `
         <select class="filter-select" id="ps-provinsi"><option value="">Semua provinsi</option></select>
       </label>
       <label class="ps-field">
-        <span class="ps-lbl">Nama produk mengandung</span>
-        <input class="search-mini" type="search" id="ps-produk" placeholder="mis. drill, centrifuge, dental chair" autocomplete="off">
+        <span class="ps-lbl">Nama produk atau set mengandung</span>
+        <input class="search-mini" type="search" id="ps-produk" placeholder="mis. minor s. 6, drill, dental chair" autocomplete="off">
       </label>
       <label class="ps-field">
         <span class="ps-lbl">Rumah sakit</span>
