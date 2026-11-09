@@ -1,6 +1,6 @@
 // app/pages/populasi/index.js -- mount(container) / unmount().
 // Halaman "Populasi": menjawab "kategori/produk apa, di RS mana saja, di provinsi X",
-// dan hasilnya bisa diunduh sebagai Excel (xlsx) yang siap dipakai.
+// dan hasilnya bisa diunduh sebagai Excel (xlsx) yang siap dipakai. Pembangun file Excel: export.js.
 //
 // DATA: RPC (definisi di populasi_v2.sql)
 //   get_populasi_v2         -> seluruh halaman dalam SATU panggilan (daftar RS, ringkasan,
@@ -24,6 +24,7 @@
 // sheet yang bisa diedit banyak orang, bukan input tepercaya.
 
 import { POPULASI_MARKUP } from './markup.js';
+import { buildWorkbook, xlCatalog, xlDefaultSel, xlInfo, XL_PRESETS, XL_GRUP, XL_GRUP_INTERNAL } from './export.js';
 
 const VENDOR_CHAIN = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
@@ -1818,515 +1819,177 @@ async function copyText() {
 }
 
 // ── unduh Excel ──────────────────────────────────────────────────────────────
-// File ini dibaca ORANG LUAR (calon pembeli), bukan tim internal. Jadi:
-//  - bahasa biasa, tanpa istilah internal (FPB, RMP, "item lepas", "ok_beda", dst);
-//  - sheet berurutan dari yang paling penting: Ringkasan -> Daftar RS -> Rincian Pesanan;
-//  - angka tetap angka (bisa difilter/dijumlah), 0 tampil "–", total mengikuti filter;
-//  - kolom teknis (kode RMP, sheet sumber, dst) dipisah ke kanan dengan header abu-abu;
-//  - siap cetak: landscape, lebar muat 1 halaman, header tabel berulang, nomor halaman.
+// Pembangun file ada di export.js (modul murni: ExcelJS + foto data + pilihan pembaca -> xlsx).
+// Di sini hanya: dialog pilihan (tujuan, sheet, kolom, keterangan), foto data, dan unduhan.
+// "Unduh Excel" membuka dialog; pilihan terakhir diingat (preset, kolom kustom, nama penyusun).
+const LS_XL = 'pnm_populasi_xl';
+const xlDlg = { sel: null, info: null, cat: [], opener: null, busy: false, keyHandler: null };
 
-// Tanggal ke sel Excel harus UTC tengah malam, kalau tidak bergeser sehari di zona WIB.
-function xlDate(s) {
-  const d = toDate(s);
-  return d ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) : null;
+function xlHelpers() {
+  return {
+    katName, spesNama, jenisNama, kategoriText, periodeText, fmtDate, fmt, toDate, localISODate,
+    urutKategori: KELOMPOK.map((k) => k.id),
+  };
 }
 
-const XL = {
-  navy: 'FF1B2A4A', ink: 'FF0B1220', soft: 'FF64748B', line: 'FFE2E4E9',
-  band: 'FFF5F6F8', hint: 'FFEAF2FF', warn: 'FFB45309', white: 'FFFFFFFF',
-};
-const XL_NUM = '#,##0';
-const XL_NUMZ = '#,##0;-#,##0;"–"';     // nol tampil strip, supaya angka yang ada langsung terlihat
-const XL_DATE = 'dd mmm yyyy';
-const xlFill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
-const xlLine = { style: 'thin', color: { argb: XL.line } };
-
-// Pesanan yang tidak ikut hitungan set (sama dengan aturan di sisi database).
-const dihitung = (l) => !(l.kind === 'SET' && l.status_hitung === 'cek');
-
-// Keterangan per baris pesanan, dalam bahasa yang bisa dipahami pembaca luar.
-function ketBaris(l) {
-  if (l.kind !== 'SET') return '';
-  if (l.status_hitung === 'cek') return 'Belum dihitung: jumlah item tidak sesuai isi set, perlu dicek';
-  if (l.status_hitung === 'ok_beda') return 'Dihitung dari item yang sesuai isi set; ada item pengganti atau di luar isi set';
-  if (l.status_hitung === 'estimasi') return l.set_kode ? 'Perkiraan: isi di sheet tidak lengkap atau berbeda dari isi set' : 'Perkiraan: isi set ini belum terdaftar di database produk';
-  return '';
+function xlPrefs() {
+  try { return JSON.parse(lsGet(LS_XL) || 'null') || {}; } catch (e) { return {}; }
+}
+function xlSavePrefs() {
+  const sel = xlDlg.sel;
+  if (!sel) return;
+  const old = xlPrefs();
+  lsSet(LS_XL, JSON.stringify({
+    preset: sel.preset,
+    oleh: sel.oleh || '',
+    kustom: sel.preset === 'kustom' ? { sheets: sel.sheets, cols: sel.cols } : (old.kustom || null),
+  }));
 }
 
-// Perkiraan jumlah baris teks setelah di-wrap, untuk menentukan tinggi baris secara eksplisit
-// (supaya tampilannya sama di Excel, LibreOffice, Google Sheets, dan Numbers).
-function wrapLines(text, width) {
-  return String(text == null ? '' : text).split('\n')
-    .reduce((a, p) => a + Math.max(1, Math.ceil(p.length / Math.max(1, width * 1.05))), 0);
+// Pilihan untuk satu preset pada filter aktif. 'kustom' memulihkan simpanan terakhir (disaring ke yang masih relevan).
+function xlSelFor(preset, pf) {
+  const sel = xlDefaultSel(preset, xlDlg.info);
+  if (preset === 'kustom' && pf && pf.kustom) {
+    const ada = new Map(xlDlg.cat.map((s) => [s.id, s]));
+    sel.sheets = (pf.kustom.sheets || []).filter((id) => ada.has(id) && !ada.get(id).lock);
+    Object.keys(sel.cols).forEach((sid) => {
+      const valid = new Set(((ada.get(sid) || {}).cols || []).map((c) => c.id));
+      if (Array.isArray((pf.kustom.cols || {})[sid])) sel.cols[sid] = pf.kustom.cols[sid].filter((id) => valid.has(id));
+    });
+  }
+  return sel;
 }
 
-async function buildWorkbook(ctx) {
-  const { rows: R, data: D, st, unmapped: U } = ctx;
-  // Provinsi/Kab-Kota ikut ke tiap baris pesanan supaya sheet Rincian bisa difilter per wilayah.
-  const wil = new Map(R.map((x) => [x.customer, x]));
-  const lines = ctx.lines.map((b) => {
-    const w = wil.get(b.customer) || {};
-    return Object.assign({}, b, { provinsi: b.provinsi || w.provinsi || '', kab_kota: b.kab_kota || w.kab_kota || '' });
-  });
-  const ExcelJS = window.ExcelJS;
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'Populasi PNM';
-  wb.created = new Date();
-  wb.title = `Populasi ${kategoriText(st)} - ${st.provinsi || 'Semua provinsi'}`;
+function xlOpen(opener) {
+  if (!data || !rows.length) { showToast('Belum ada data untuk diunduh', 'error'); return; }
+  const ov = $('ps-xl-overlay');
+  if (!ov) return;
+  xlDlg.opener = opener || null;
+  xlDlg.info = xlInfo({ data, unmapped, st: state, lines: null });
+  xlDlg.cat = xlCatalog(xlDlg.info);
+  const pf = xlPrefs();
+  const preset = XL_PRESETS.some((p) => p.id === pf.preset) ? pf.preset : 'sph';
+  xlDlg.sel = xlSelFor(preset, pf);
+  xlDlg.sel.oleh = pf.oleh || '';
+  $('ps-xl-untuk').value = '';
+  $('ps-xl-oleh').value = xlDlg.sel.oleh;
+  $('ps-xl-catatan').value = '';
+  $('ps-xl-tanpacek').checked = false;
+  $('ps-xl-cek-wrap').hidden = !(num((data.ringkasan || {}).set_cek) > 0);
+  xlRender();
+  ov.classList.add('open');
+  xlDlg.keyHandler = (e) => { if (e.key === 'Escape') { e.stopPropagation(); xlClose(); } };
+  ov.addEventListener('keydown', xlDlg.keyHandler);
+  setTimeout(() => { const f = ov.querySelector('input[name="ps-xl-preset"]:checked') || $('ps-xl-go'); if (f) f.focus(); }, 30);
+}
 
-  const s = D.ringkasan || {};
-  const hasSet = num(s.set_total) > 0 || num(s.set_cek) > 0;
-  const hasPcs = num(s.pcs_total) > 0;
-  const hasUnit = num(s.unit_total) > 0;
-  const semuaStatus = st.status === 'ALL';
-  const lokasi = st.provinsi || 'Semua provinsi';
-  const statusText = semuaStatus ? 'terkirim dan dalam proses' : 'terkirim saja';
-  const subLine = `${kategoriText(st)} · ${lokasi} · ${statusText} · data per ${fmtDate(D.data_per)}`;
-  const footTxt = `Populasi ${kategoriText(st)} - ${lokasi} - diunduh ${localISODate()}`.replace(/&/g, '&&');
-  const FOOT = { oddFooter: `&L&8${footTxt}&R&8Halaman &P dari &N` };
-  const page = (orientation) => ({
-    paperSize: 9, orientation, fitToPage: true, fitToWidth: 1, fitToHeight: 0,
-    margins: { left: 0.4, right: 0.4, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 },
-  });
+function xlClose() {
+  const ov = $('ps-xl-overlay');
+  if (!ov || xlDlg.busy) return;
+  ov.classList.remove('open');
+  if (xlDlg.keyHandler) { ov.removeEventListener('keydown', xlDlg.keyHandler); xlDlg.keyHandler = null; }
+  const o = xlDlg.opener;
+  xlDlg.opener = null;
+  if (o && o.isConnected && o.focus) o.focus();
+}
 
-  // Bahan sheet opsional, dihitung dulu supaya Ringkasan bisa menyebut sheet mana saja yang ada.
-  const urut = KELOMPOK.map((k) => k.id).concat('ISI SET');
-  const present = urut.filter((id) => lines.some((l) => l.kelompok === id && dihitung(l) && num(l.nilai) > 0));
-  const adaMatriks = present.length >= 2;
-  const adaBelumPeta = !!(st.provinsi && U.length);
+function xlRender() {
+  const sel = xlDlg.sel;
+  const ov = $('ps-xl-overlay');
+  if (!sel || !ov) return;
+  // Ingat detail kolom yang terbuka dan elemen yang sedang fokus, karena isi dirender ulang.
+  const terbuka = new Set(Array.from(ov.querySelectorAll('details.ps-xl-cols[open]')).map((d) => d.dataset.sheet));
+  const a = document.activeElement;
+  const fokus = a && ov.contains(a) && a.dataset && a.dataset.xl ? { xl: a.dataset.xl, sheet: a.dataset.sheet || '', v: a.dataset.v || a.value } : null;
 
-  // Perkiraan set per RS (dari rincian), untuk kolom Keterangan.
-  const estimasi = new Map();
-  lines.forEach((l) => {
-    if (l.kind === 'SET' && l.status_hitung === 'estimasi') {
-      estimasi.set(l.customer, (estimasi.get(l.customer) || 0) + num(l.nilai));
+  $('ps-xl-sub').textContent = `${kategoriText()} · ${state.provinsi || 'Semua provinsi'} · ${fmt(rows.length)} RS. Isi file mengikuti filter yang sedang aktif.`;
+  $('ps-xl-presets').innerHTML = XL_PRESETS.map((p) => {
+    const on = sel.preset === p.id;
+    return `<label class="ps-xl-preset${on ? ' on' : ''}"><input type="radio" name="ps-xl-preset" value="${esc(p.id)}" data-xl="preset"${on ? ' checked' : ''}>` +
+      `<span class="ps-xl-pn">${esc(p.nama)}</span><span class="ps-xl-pd">${esc(p.desc)}</span></label>`;
+  }).join('');
+
+  let internal = false;
+  $('ps-xl-sheets').innerHTML = xlDlg.cat.map((sh) => {
+    const on = sh.lock || sel.sheets.includes(sh.id);
+    let cols = '';
+    if (sh.cols && on) {
+      const dipilih = new Set(sel.cols[sh.id] || []);
+      const grups = Array.from(new Set(sh.cols.map((c) => c.grp)));
+      const jml = sh.cols.filter((c) => c.req || dipilih.has(c.id)).length;
+      if (sh.cols.some((c) => XL_GRUP_INTERNAL.includes(c.grp) && dipilih.has(c.id))) internal = true;
+      cols = `<details class="ps-xl-cols" data-sheet="${esc(sh.id)}"${terbuka.has(sh.id) ? ' open' : ''}><summary>Pilih kolom <span class="ps-hint">${jml} dari ${sh.cols.length}</span></summary><div class="ps-xl-colgrid">` +
+        grups.map((g) => `<div class="ps-xl-grp"><div class="ps-xl-gh">${esc(XL_GRUP[g] || g)}</div>` +
+          sh.cols.filter((c) => c.grp === g).map((c) =>
+            `<label class="ps-check"><input type="checkbox" data-xl="col" data-sheet="${esc(sh.id)}" data-v="${esc(c.id)}"${c.req || dipilih.has(c.id) ? ' checked' : ''}${c.req ? ' disabled' : ''}><span>${esc(c.h)}</span></label>`).join('') +
+          '</div>').join('') + '</div></details>';
     }
-  });
+    return `<div class="ps-xl-row"><label class="ps-xl-sheet"><input type="checkbox" data-xl="sheet" data-v="${esc(sh.id)}"${on ? ' checked' : ''}${sh.lock ? ' disabled' : ''}>` +
+      `<span class="ps-xl-sn">${esc(sh.nama)}</span><span class="ps-xl-sd">${esc(sh.desc)}</span></label>${cols}</div>`;
+  }).join('');
 
-  // ═══ 1) RINGKASAN ═══════════════════════════════════════════════════════════
-  const w0 = wb.addWorksheet('Ringkasan', { views: [{ showGridLines: false }], pageSetup: page('portrait'), headerFooter: FOOT });
-  w0.columns = [{ width: 46 }, { width: 22 }, { width: 16 }, { width: 16 }, { width: 16 }];
-  let r = 1;
+  const warn = $('ps-xl-warn');
+  warn.hidden = !internal;
+  warn.textContent = internal ? 'Berisi kolom internal (No. PO, No. RMP, atau data teknis). Jangan dikirim ke pihak luar.' : '';
 
-  function wide(text, o = {}) {
-    w0.mergeCells(r, 1, r, 5);
-    const c = w0.getCell(r, 1);
-    c.value = text;
-    c.font = { size: o.size || 11, bold: !!o.bold, color: { argb: o.color || XL.ink } };
-    c.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left', indent: o.indent || 0 };
-    if (o.fill) c.fill = xlFill(o.fill);
-    w0.getRow(r).height = o.height || Math.max(18, wrapLines(text, 105 / ((o.size || 11) / 11)) * 15 + 4);
-    r++;
+  if (fokus) {
+    const sel2 = fokus.xl === 'preset' ? `[data-xl="preset"][value="${fokus.v}"]` : `[data-xl="${fokus.xl}"]${fokus.sheet ? `[data-sheet="${fokus.sheet}"]` : ''}[data-v="${fokus.v}"]`;
+    const el = ov.querySelector(sel2);
+    if (el && !el.disabled) el.focus();
   }
-  function section(t) {
-    r++;
-    const row = w0.getRow(r);
-    for (let i = 1; i <= 5; i++) row.getCell(i).border = { bottom: { style: 'medium', color: { argb: XL.navy } } };
-    row.getCell(1).value = t;
-    row.getCell(1).font = { bold: true, size: 12, color: { argb: XL.navy } };
-    row.height = 22;
-    r++;
-  }
-  function kv(k, v, f, note) {
-    const row = w0.getRow(r++);
-    row.getCell(1).value = k;
-    row.getCell(1).font = { color: { argb: XL.soft } };
-    const c = row.getCell(2);
-    c.value = v;
-    c.font = { bold: true, color: { argb: XL.ink } };
-    c.alignment = { horizontal: 'left' };
-    if (f) c.numFmt = f;
-    if (note) { row.getCell(3).value = note; row.getCell(3).font = { size: 10, color: { argb: XL.soft } }; }
-    row.height = 18;
-  }
-  function miniTable(heads, aligns, body) {
-    const hr = w0.getRow(r++);
-    hr.height = 22;
-    heads.forEach((h, i) => {
-      const c = hr.getCell(i + 1);
-      c.value = h;
-      c.font = { bold: true, size: 10.5, color: { argb: XL.white } };
-      c.fill = xlFill(XL.navy);
-      c.alignment = { vertical: 'middle', horizontal: aligns[i] };
-    });
-    body.forEach((vals) => {
-      const row = w0.getRow(r++);
-      row.height = 18;
-      vals.forEach((v, i) => {
-        const c = row.getCell(i + 1);
-        c.value = v;
-        c.border = { bottom: xlLine };
-        c.alignment = { vertical: 'middle', horizontal: aligns[i] };
-        if (typeof v === 'number') c.numFmt = XL_NUMZ;
-      });
-    });
-  }
+}
 
-  // Judul + kalimat jawaban
-  w0.getCell(r, 1).value = `Populasi ${kategoriText(st)}`;
-  w0.getCell(r, 1).font = { bold: true, size: 18, color: { argb: XL.ink } };
-  w0.getRow(r++).height = 30;
-  w0.getCell(r, 1).value = `${lokasi}  ·  data per ${fmtDate(D.data_per)}  ·  diunduh ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`;
-  w0.getCell(r, 1).font = { size: 10.5, color: { argb: XL.soft } };
-  w0.getRow(r++).height = 18;
-  r++;
-
-  const angka = [];
-  if (hasSet) angka.push(`${fmt(s.set_total)} set`);
-  if (hasPcs) angka.push(`${fmt(s.pcs_total)} pcs`);
-  if (hasUnit) angka.push(`${fmt(s.unit_total)} unit`);
-  const jawaban = angka.length
-    ? `${angka.join(' dan ')} di ${fmt(s.jumlah_rs)} rumah sakit ${st.provinsi ? 'di ' + st.provinsi : 'di semua provinsi'}, ` +
-      (semuaStatus ? 'termasuk pesanan yang masih dalam proses.' : 'hanya pesanan yang sudah terkirim.')
-    : 'Tidak ada pesanan yang cocok dengan filter ini.';
-  wide(jawaban, { size: 13, bold: true, fill: XL.hint, height: Math.max(40, wrapLines(jawaban, 85) * 19 + 8) });
-
-  section('Hasil');
-  kv('Rumah sakit', num(s.jumlah_rs), XL_NUM);
-  if (hasSet) kv('Set', num(s.set_total), XL_NUM, num(s.set_estimasi) > 0 ? `${fmt(s.set_estimasi)} di antaranya perkiraan` : '');
-  if (hasSet && semuaStatus) { kv('   sudah terkirim', num(s.set_terkirim), XL_NUM); kv('   masih dalam proses', num(s.set_proses), XL_NUM); }
-  if (hasPcs) kv('Pcs (instrumen satuan)', num(s.pcs_total), XL_NUM);
-  if (hasPcs && semuaStatus) { kv('   sudah terkirim', num(s.pcs_terkirim), XL_NUM); kv('   masih dalam proses', num(s.pcs_proses), XL_NUM); }
-  if (hasUnit) kv('Unit (alat medis)', num(s.unit_total), XL_NUM);
-  if (hasUnit && semuaStatus) { kv('   sudah terkirim', num(s.unit_terkirim), XL_NUM); kv('   masih dalam proses', num(s.unit_proses), XL_NUM); }
-  kv('Jumlah pesanan', num(s.jumlah_pesanan), XL_NUM);
-  const terakhir = R.reduce((m, x) => (x.terakhir && x.terakhir > m ? x.terakhir : m), '');
-  if (terakhir) kv('Pesanan terakhir', xlDate(terakhir), XL_DATE);
-
-  if (R.length > 5) {
-    section(`${Math.min(10, R.length)} rumah sakit dengan jumlah terbanyak`);
-    const top = R.slice().sort((a, b) => b.total - a.total || a.customer.localeCompare(b.customer, 'id')).slice(0, 10);
-    miniTable(
-      ['Rumah sakit', 'Kab/Kota'].concat(hasSet ? ['Set'] : [], hasPcs ? ['Pcs'] : [], hasUnit ? ['Unit'] : []),
-      ['left', 'left'].concat(hasSet ? ['right'] : [], hasPcs ? ['right'] : [], hasUnit ? ['right'] : []),
-      top.map((x) => [x.customer, x.kab_kota || ''].concat(hasSet ? [x.set] : [], hasPcs ? [x.pcs] : [], hasUnit ? [x.unit] : [])));
-    wide('Daftar lengkap ada di sheet “Daftar RS”.', { size: 10, color: XL.soft });
-  }
-
-  if (!st.provinsi && R.length) {
-    section('Per provinsi');
-    const g = new Map();
-    R.forEach((x) => {
-      const k = x.provinsi || 'Belum diketahui';
-      const o = g.get(k) || { rs: 0, set: 0, pcs: 0, unit: 0 };
-      o.rs += 1; o.set += x.set; o.pcs += x.pcs; o.unit += x.unit;
-      g.set(k, o);
-    });
-    const body = Array.from(g.entries())
-      .sort((a, b) => (b[1].set + b[1].pcs + b[1].unit) - (a[1].set + a[1].pcs + a[1].unit))
-      .map(([k, o]) => [k, o.rs].concat(hasSet ? [o.set] : [], hasPcs ? [o.pcs] : [], hasUnit ? [o.unit] : []));
-    miniTable(
-      ['Provinsi', 'Jumlah RS'].concat(hasSet ? ['Set'] : [], hasPcs ? ['Pcs'] : [], hasUnit ? ['Unit'] : []),
-      ['left', 'right'].concat(hasSet ? ['right'] : [], hasPcs ? ['right'] : [], hasUnit ? ['right'] : []),
-      body);
-  }
-
-  section('Cara membaca angka');
-  const bullets = [];
-  if (hasSet) bullets.push('Set = jumlah set instrumen utuh. Dihitung dari isi set di database produk: jumlah item yang dipesan dibagi jumlah item itu di dalam satu set.');
-  if (hasSet && num(s.set_estimasi) > 0) bullets.push(`${fmt(s.set_estimasi)} set berupa perkiraan karena isi setnya belum terdaftar di database produk atau isi di sheet tidak lengkap. Baris terkait diberi keterangan.`);
-  if (hasSet && num(s.set_cek) > 0) bullets.push(`${fmt(s.set_cek)} pesanan set belum dihitung karena jumlah itemnya tidak sesuai isi set. Pesanannya tetap tercantum di sheet “Rincian Pesanan” dengan keterangan.`);
-  if (hasPcs) bullets.push('Pcs = jumlah instrumen satuan, dihitung per buah. Isi set yang dipesan terpisah dan BMHP juga masuk di sini.');
-  if (hasUnit) bullets.push('Unit = jumlah alat, dihitung per unit alat: unit medis, elektromedis, alat penunjang laboratorium, penunjang medis, dan unit lainnya.');
-  if ([hasSet, hasPcs, hasUnit].filter(Boolean).length > 1) bullets.push('Set, pcs, dan unit tidak dijumlahkan karena satuannya berbeda.');
-  bullets.push(st.cakupan === 'SEMUA'
-    ? 'Cakupan: semua pesanan non-sample, termasuk retail.'
-    : 'Cakupan: pesanan lewat INAPROC dan pembelian langsung. Retail, konsinyasi, dan sample tidak dihitung.');
-  bullets.push('Wilayah rumah sakit memakai koreksi manual bila ada. Bila tidak, wilayah dideteksi dari alamat pengiriman sehingga ada kemungkinan keliru.');
-  if (adaBelumPeta) bullets.push(`${fmt(U.length)} rumah sakit lain belum diketahui wilayahnya dan belum termasuk dalam angka ${st.provinsi}. Daftarnya ada di sheet “Wilayah Belum Diketahui”.`);
-  bullets.forEach((b) => wide('•  ' + b, { color: XL.ink }));
-
-  section('Filter yang dipakai');
-  kv('Provinsi', lokasi);
-  kv('Kategori', kategoriText(st));
-  if (st.spes.length) kv('Spesialisasi', st.spes.map(spesNama).join(', '));
-  if (st.jenis.length) kv('Jenis instrumen', st.jenis.map(jenisNama).join(', '));
-  if (st.mikro) kv('Hanya mikrosurgery', 'Ya');
-  if (st.produk.trim()) kv('Nama produk mengandung', st.produk.trim());
-  if (st.produk.trim()) kv('Isi set ikut dihitung', st.isiSet ? 'Ya' : 'Tidak');
-  if (st.rs.trim()) kv('Rumah sakit', st.rs.trim());
-  kv('Status pesanan', statusText.charAt(0).toUpperCase() + statusText.slice(1));
-  kv('Periode', periodeText(st));
-
-  section('Isi file ini');
-  const isi = [['Daftar RS', 'Satu baris per rumah sakit: wilayah, jumlah, dan jenis yang dipesan. Bisa difilter dan diurutkan; baris Total ikut berubah mengikuti filter.'],
-    ['Rincian Pesanan', 'Satu baris per pesanan: nomor PO, tanggal, dan status. Kolom abu-abu di kanan adalah data teknis untuk penelusuran.']];
-  if (adaMatriks) isi.push(['RS per Kategori', 'Perbandingan jumlah tiap rumah sakit per kategori produk.']);
-  if (adaBelumPeta) isi.push(['Wilayah Belum Diketahui', 'Rumah sakit yang provinsinya belum diketahui, sehingga belum masuk angka provinsi.']);
-  isi.forEach(([nama, desc]) => {
-    const row = w0.getRow(r);
-    row.getCell(1).value = nama;
-    row.getCell(1).font = { bold: true, color: { argb: XL.ink } };
-    row.getCell(1).alignment = { vertical: 'top' };
-    w0.mergeCells(r, 2, r, 5);
-    row.getCell(2).value = desc;
-    row.getCell(2).font = { color: { argb: XL.soft } };
-    row.getCell(2).alignment = { wrapText: true, vertical: 'top' };
-    row.height = Math.max(18, wrapLines(desc, 66) * 15 + 4);
-    r++;
-  });
-
-  // ═══ SHEET BERBENTUK TABEL ══════════════════════════════════════════════════
-  // Baris 1 judul, baris 2 keterangan, baris 4 header (beku), data mulai baris 5.
-  const HEAD = 4;
-  function tableSheet(name, o) {
-    const ws = wb.addWorksheet(name, {
-      views: [{ state: 'frozen', xSplit: o.freeze || 0, ySplit: HEAD, showGridLines: false }],
-      pageSetup: Object.assign({ printTitlesRow: `${HEAD}:${HEAD}` }, page('landscape')),
-      headerFooter: FOOT,
-    });
-    const cols = o.cols;
-    const alignOf = (c) => c.align || (c.fmt === XL_DATE ? 'center' : (c.fmt ? 'right' : 'left'));
-    cols.forEach((c, i) => { ws.getColumn(i + 1).width = c.w; });
-
-    ws.getCell(1, 1).value = o.title;
-    ws.getCell(1, 1).font = { bold: true, size: 14, color: { argb: XL.ink } };
-    ws.getRow(1).height = 24;
-    ws.getCell(2, 1).value = o.sub;
-    ws.getCell(2, 1).font = { size: 10, color: { argb: XL.soft } };
-
-    const hr = ws.getRow(HEAD);
-    hr.height = 32;
-    cols.forEach((c, i) => {
-      const cell = hr.getCell(i + 1);
-      cell.value = c.h;
-      cell.font = { bold: true, size: 10.5, color: { argb: c.tech ? XL.soft : XL.white } };
-      cell.fill = xlFill(c.tech ? XL.line : XL.navy);
-      cell.alignment = { vertical: 'middle', horizontal: alignOf(c), wrapText: true };
-    });
-
-    o.items.forEach((it, ri) => {
-      const row = ws.getRow(HEAD + 1 + ri);
-      let maxLines = 1;
-      cols.forEach((c, i) => {
-        const cell = row.getCell(i + 1);
-        const v = it[c.k];
-        cell.value = v === undefined ? null : v;
-        if (c.fmt) cell.numFmt = c.fmt;
-        cell.alignment = { vertical: 'middle', horizontal: alignOf(c), wrapText: !!c.wrap };
-        cell.border = { bottom: xlLine };
-        const muted = c.tech || it._dim;
-        cell.font = { color: { argb: c.warn && v ? XL.warn : (muted ? XL.soft : XL.ink) }, size: c.tech ? 10 : 11 };
-        if (c.wrap && v) maxLines = Math.max(maxLines, wrapLines(v, c.w));
-      });
-      row.height = Math.max(18, maxLines * 15 + 4);
-    });
-
-    const last = HEAD + o.items.length;
-    if (o.totals && o.items.length) {
-      const tr = ws.getRow(last + 1);
-      tr.height = 22;
-      cols.forEach((c, i) => {
-        const cell = tr.getCell(i + 1);
-        cell.fill = xlFill(XL.band);
-        cell.border = { top: { style: 'thin', color: { argb: XL.navy } } };
-        cell.font = { bold: true, color: { argb: XL.ink } };
-      });
-      tr.getCell(o.totalLabelCol || 1).value = 'Total (mengikuti filter)';
-      o.totals.forEach((k) => {
-        const idx = cols.findIndex((c) => c.k === k);
-        if (idx < 0) return;
-        const L = ws.getColumn(idx + 1).letter;
-        const cell = tr.getCell(idx + 1);
-        // SUBTOTAL(109) mengabaikan baris yang tersaring, jadi total ikut berubah saat pembaca memfilter.
-        cell.value = { formula: `SUBTOTAL(109,${L}${HEAD + 1}:${L}${last})`, result: o.items.reduce((a, it) => a + num(it[k]), 0) };
-        cell.numFmt = XL_NUMZ;
-        cell.alignment = { horizontal: 'right' };
-      });
+function xlChange(t) {
+  const sel = xlDlg.sel;
+  if (!sel) return;
+  const kind = t.dataset.xl;
+  if (kind === 'preset') {
+    if (t.value === 'kustom') sel.preset = 'kustom';     // mulai dari yang sedang tercentang
+    else {
+      const baru = xlSelFor(t.value, null);
+      Object.assign(baru, { untuk: sel.untuk, oleh: sel.oleh, catatan: sel.catatan, tanpaCek: sel.tanpaCek });
+      xlDlg.sel = baru;
     }
-    ws.autoFilter = { from: { row: HEAD, column: 1 }, to: { row: HEAD + Math.max(1, o.items.length), column: cols.length } };
-    return ws;
+  } else if (kind === 'sheet') {
+    const i = sel.sheets.indexOf(t.dataset.v);
+    if (t.checked && i < 0) sel.sheets.push(t.dataset.v);
+    if (!t.checked && i >= 0) sel.sheets.splice(i, 1);
+    sel.preset = 'kustom';
+  } else if (kind === 'col') {
+    const arr = sel.cols[t.dataset.sheet] || (sel.cols[t.dataset.sheet] = []);
+    const i = arr.indexOf(t.dataset.v);
+    if (t.checked && i < 0) arr.push(t.dataset.v);
+    if (!t.checked && i >= 0) arr.splice(i, 1);
+    sel.preset = 'kustom';
   }
+  xlRender();
+}
 
-  // ═══ 2) DAFTAR RS ═══════════════════════════════════════════════════════════
-  const perCols = [
-    { h: 'No', k: 'no', w: 5, fmt: XL_NUM, align: 'center' },
-    { h: 'Rumah sakit', k: 'customer', w: 44 },
-    { h: 'Kab/Kota', k: 'kab', w: 22 },
-    { h: 'Provinsi', k: 'provinsi', w: 20 },
-  ];
-  if (hasSet) {
-    if (semuaStatus) perCols.push({ h: 'Set terkirim', k: 'set_t', w: 11, fmt: XL_NUMZ }, { h: 'Set dalam proses', k: 'set_p', w: 11, fmt: XL_NUMZ });
-    perCols.push({ h: 'Jumlah set', k: 'set', w: 12, fmt: XL_NUMZ });
+function xlSetBusy(busy) {
+  xlDlg.busy = busy;
+  const go = $('ps-xl-go');
+  if (go) {
+    go.disabled = busy;
+    const ic = go.querySelector('i');
+    if (ic) ic.className = busy ? 'ti ti-loader-2 spinner' : 'ti ti-file-spreadsheet';
+    const lb = go.querySelector('span');
+    if (lb) lb.textContent = busy ? 'Menyiapkan…' : 'Unduh Excel';
   }
-  if (hasPcs) {
-    if (semuaStatus) perCols.push({ h: 'Pcs terkirim', k: 'pcs_t', w: 12, fmt: XL_NUMZ }, { h: 'Pcs dalam proses', k: 'pcs_p', w: 12, fmt: XL_NUMZ });
-    perCols.push({ h: 'Jumlah pcs', k: 'pcs', w: 12, fmt: XL_NUMZ });
-  }
-  if (hasUnit) {
-    if (semuaStatus) perCols.push({ h: 'Unit terkirim', k: 'unit_t', w: 12, fmt: XL_NUMZ }, { h: 'Unit dalam proses', k: 'unit_p', w: 12, fmt: XL_NUMZ });
-    perCols.push({ h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ });
-  }
-  perCols.push(
-    { h: 'Jumlah pesanan', k: 'pesanan', w: 11, fmt: XL_NUMZ },
-    { h: 'Pesanan terakhir', k: 'terakhir', w: 14, fmt: XL_DATE },
-    { h: 'Jenis yang dipesan', k: 'rincian', w: 62, wrap: true },
-    { h: 'Keterangan', k: 'ket', w: 40, wrap: true, warn: true },
-    { h: 'Dasar wilayah', k: 'sumber', w: 18, tech: true });
-  const perTotals = ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'unit_t', 'unit_p', 'unit', 'pesanan'];
-  const perTeknis = perCols.some((c) => c.tech);
-  tableSheet('Daftar RS', {
-    title: 'Daftar rumah sakit',
-    sub: subLine + (perTeknis ? '  ·  kolom abu-abu di kanan = data teknis' : ''),
-    cols: perCols,
-    freeze: 2,
-    totals: perTotals,
-    totalLabelCol: 2,
-    items: R.map((x, i) => {
-      const est = estimasi.get(x.customer) || 0;
-      const ket = [];
-      if (est > 0) ket.push(`${fmt(est)} set berupa perkiraan`);
-      if (num(x.set_cek) > 0) ket.push(`${fmt(x.set_cek)} pesanan set belum dihitung (perlu dicek)`);
-      if (!x.provinsi) ket.push('wilayah belum diketahui');
-      return {
-        no: i + 1,
-        customer: x.customer,
-        kab: x.kab_kota || '',
-        provinsi: x.provinsi || 'Belum diketahui',
-        set_t: num(x.set_terkirim), set_p: num(x.set_proses), set: x.set,
-        pcs_t: num(x.pcs_terkirim), pcs_p: num(x.pcs_proses), pcs: x.pcs,
-        unit_t: num(x.unit_terkirim), unit_p: num(x.unit_proses), unit: x.unit,
-        pesanan: num(x.jumlah_pesanan),
-        terakhir: xlDate(x.terakhir),
-        rincian: rincianText(x, '; '),
-        ket: ket.join('; '),
-        sumber: x.sumber_wilayah === 'manual' ? 'Koreksi manual' : (x.sumber_wilayah === 'alamat' ? 'Deteksi alamat' : ''),
-      };
-    }),
-  });
-
-  // ═══ 3) RINCIAN PESANAN ═════════════════════════════════════════════════════
-  const adaSet = lines.some((l) => l.kind === 'SET');
-  const adaPcs = lines.some((l) => satuanBaris(l) === 'pcs');
-  const adaUnit = lines.some((l) => satuanBaris(l) === 'unit');
-  const ord = new Map(R.map((x, i) => [x.customer, i]));
-  const L2 = lines.slice().sort((a, b) =>
-    ((ord.get(a.customer) || 0) - (ord.get(b.customer) || 0)) ||
-    String(b.tanggal || '').localeCompare(String(a.tanggal || '')) ||
-    String(a.kode_rmp || '').localeCompare(String(b.kode_rmp || ''), 'id'));
-  const linCols = [
-    { h: 'Rumah sakit', k: 'customer', w: 40 },
-    { h: 'Kab/Kota', k: 'kab', w: 20 },
-    { h: 'Provinsi', k: 'provinsi', w: 18 },
-    { h: 'Kategori', k: 'kategori', w: 18 },
-    { h: 'Produk / jenis set', k: 'jenis', w: 50, wrap: true },
-  ];
-  if (lines.some((l) => l.spes)) linCols.push({ h: 'Spesialisasi', k: 'spes', w: 20 });
-  if (lines.some((l) => l.jenis)) linCols.push({ h: 'Jenis instrumen', k: 'jenisInstr', w: 18 });
-  if (lines.some((l) => l.mikro)) linCols.push({ h: 'Mikro', k: 'mikro', w: 8 });
-  if (adaSet) linCols.push({ h: 'Jumlah set', k: 'set', w: 11, fmt: XL_NUMZ });
-  if (adaPcs) linCols.push({ h: 'Jumlah pcs', k: 'pcs', w: 12, fmt: XL_NUMZ });
-  if (adaUnit) linCols.push({ h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ });
-  linCols.push(
-    { h: 'Status', k: 'status', w: 14 },
-    { h: 'Tanggal pesanan', k: 'tanggal', w: 14, fmt: XL_DATE },
-    { h: 'No. RMP', k: 'rmp', w: 24 },
-    { h: 'Keterangan', k: 'ket', w: 44, wrap: true, warn: true },
-    { h: 'No. PO', k: 'po', w: 24, tech: true },
-    { h: 'Kode produk', k: 'kode', w: 16, tech: true },
-    { h: 'Family', k: 'family', w: 24, tech: true },
-    { h: 'Jumlah baris di FPB', k: 'baris', w: 12, fmt: XL_NUM, tech: true },
-    { h: 'Sheet sumber', k: 'sheet', w: 18, tech: true });
-  if (lines.some((l) => l.label_asli)) linCols.push({ h: 'Nama set di sheet', k: 'asli', w: 28, tech: true });
-  tableSheet('Rincian Pesanan', {
-    title: 'Rincian pesanan',
-    sub: `${subLine}  ·  kolom abu-abu di kanan = data teknis`,
-    cols: linCols,
-    freeze: 1,
-    totals: ['set', 'pcs', 'unit'],
-    items: L2.map((l) => {
-      const ok = dihitung(l);
-      return {
-        _dim: !ok,
-        customer: l.customer,
-        kab: l.kab_kota || '',
-        provinsi: l.provinsi || '',
-        kategori: katName(l.kelompok),
-        jenis: l.kind === 'SET' ? l.label : l.produk,
-        // Jumlah dikosongkan untuk pesanan yang tidak dihitung, supaya total kolom ini
-        // sama dengan angka di sheet Daftar RS.
-        set: l.kind === 'SET' && ok ? num(l.nilai) : null,
-        pcs: satuanBaris(l) === 'pcs' && ok ? num(l.nilai) : null,
-        unit: satuanBaris(l) === 'unit' && ok ? num(l.nilai) : null,
-        status: l.status === 'TERKIRIM' ? 'Terkirim' : 'Dalam proses',
-        tanggal: xlDate(l.tanggal),
-        po: l.po || '',
-        ket: ketBaris(l),
-        rmp: l.kode_rmp || '',
-        kode: l.kode_produk || '',
-        family: l.family || '',
-        baris: num(l.jumlah_baris),
-        sheet: l.sumber_sheet || '',
-        asli: l.label_asli || '',
-        spes: l.spes ? spesNama(l.spes) : '',
-        jenisInstr: l.jenis ? jenisNama(l.jenis) : '',
-        mikro: l.mikro ? 'Ya' : '',
-      };
-    }),
-  });
-
-  // ═══ 4) RS PER KATEGORI (hanya bila hasilnya memuat lebih dari satu kategori) ═══
-  if (adaMatriks) {
-    const by = new Map();
-    lines.forEach((l) => {
-      if (!dihitung(l)) return;
-      const o = by.get(l.customer) || { customer: l.customer, provinsi: l.provinsi || '', kab: l.kab_kota || '', v: {} };
-      o.v[l.kelompok] = (o.v[l.kelompok] || 0) + num(l.nilai);
-      by.set(l.customer, o);
-    });
-    const mCols = [
-      { h: 'Rumah sakit', k: 'customer', w: 44 },
-      { h: 'Kab/Kota', k: 'kab', w: 22 },
-      { h: 'Provinsi', k: 'provinsi', w: 20 },
-    ].concat(present.map((id, i) => ({ h: `${katName(id)} (${satuanKel(id)})`, k: 'c' + i, w: 18, fmt: XL_NUMZ })));
-    tableSheet('RS per Kategori', {
-      title: 'Jumlah per rumah sakit menurut kategori',
-      sub: subLine,
-      cols: mCols,
-      freeze: 1,
-      totals: present.map((id, i) => 'c' + i),
-      items: Array.from(by.values())
-        .sort((a, b) => a.customer.localeCompare(b.customer, 'id'))
-        .map((o) => {
-          const row = { customer: o.customer, kab: o.kab, provinsi: o.provinsi || 'Belum diketahui' };
-          present.forEach((id, i) => { row['c' + i] = o.v[id] || null; });
-          return row;
-        }),
-    });
-  }
-
-  // ═══ 5) RS YANG WILAYAHNYA BELUM DIKETAHUI ══════════════════════════════════
-  if (adaBelumPeta) {
-    tableSheet('Wilayah Belum Diketahui', {
-      title: 'Rumah sakit yang wilayahnya belum diketahui',
-      sub: `Belum termasuk dalam angka ${st.provinsi} di sheet lain  ·  data per ${fmtDate(D.data_per)}`,
-      cols: [
-        { h: 'Rumah sakit', k: 'customer', w: 48 },
-        { h: 'Jumlah set', k: 'set', w: 12, fmt: XL_NUMZ },
-        { h: 'Jumlah pcs', k: 'pcs', w: 14, fmt: XL_NUMZ },
-        { h: 'Jumlah unit', k: 'unit', w: 14, fmt: XL_NUMZ },
-        { h: 'Jumlah pesanan', k: 'pesanan', w: 14, fmt: XL_NUMZ },
-      ],
-      freeze: 1,
-      totals: ['set', 'pcs', 'unit', 'pesanan'],
-      items: U.map((u) => ({ customer: u.customer, set: num(u.set_total), pcs: num(u.pcs_total), unit: num(u.unit_total), pesanan: num(u.jumlah_pesanan) })),
-    });
-  }
-
-  const buf = await wb.xlsx.writeBuffer();
-  return new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const btn = document.querySelector('[data-action="ps-xlsx"]');
+  if (btn) btn.disabled = busy || !rows.length;
 }
 
 // Nama file yang langsung jelas isinya saat dikirim ke orang lain, mis.
-// "Populasi Set instrumen - Jawa Tengah - 2026-11-06.xlsx"
+// "Populasi Set instrumen - Jawa Tengah - 2026-11-06.xlsx". Versi internal diberi tanda supaya tidak terkirim tanpa sengaja.
 function bersihNama(s) {
   return String(s).replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
-function namaFile() {
+function namaFile(presetId) {
   let kat = state.produk.trim() ? `Produk ${state.produk.trim()}` : kategoriText();
   if (state.kelompok.length > 3) kat = 'Beberapa kategori';
   kat = bersihNama(kat).slice(0, 60);
-  return `Populasi ${kat} - ${bersihNama(state.provinsi || 'Semua provinsi')} - ${localISODate()}.xlsx`;
+  const suf = presetId === 'internal' ? ' - INTERNAL' : '';
+  return `Populasi ${kat} - ${bersihNama(state.provinsi || 'Semua provinsi')} - ${localISODate()}${suf}.xlsx`;
 }
 
 function saveBlob(blob, name) {
@@ -2340,43 +2003,42 @@ function saveBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function setXlsxBusy(btn, busy) {
-  if (!btn) return;
-  btn.disabled = busy || !rows.length;
-  const ic = btn.querySelector('i');
-  if (ic) ic.className = busy ? 'ti ti-loader-2 spinner' : 'ti ti-file-spreadsheet';
-  const lb = btn.querySelector('span');
-  if (lb) lb.textContent = busy ? 'Menyiapkan…' : 'Unduh Excel';
-}
-
 async function downloadXlsx() {
-  if (!data || !rows.length) { showToast('Belum ada data untuk diunduh', 'error'); return; }
-  const btn = document.querySelector('[data-action="ps-xlsx"]');
-  if (btn && btn.disabled) return;
-  setXlsxBusy(btn, true);
+  if (xlDlg.busy || !xlDlg.sel || !data || !rows.length) return;
+  const sel = JSON.parse(JSON.stringify(xlDlg.sel));
+  sel.untuk = $('ps-xl-untuk').value;
+  sel.oleh = $('ps-xl-oleh').value;
+  sel.catatan = $('ps-xl-catatan').value;
+  sel.tanpaCek = $('ps-xl-tanpacek').checked && !$('ps-xl-cek-wrap').hidden;
+  xlDlg.sel.oleh = sel.oleh;
+  xlSavePrefs();
   // Foto kondisi saat tombol ditekan; filter boleh berubah selagi file dibuat.
   const snap = {
     rows: rows.slice(),
     data,
     unmapped: unmapped.slice(),
     st: Object.assign({}, state, { kelompok: state.kelompok.slice(), spes: state.spes.slice(), jenis: state.jenis.slice() }),
+    h: xlHelpers(),
   };
   const params = filterParams();
-  const name = namaFile();
+  const name = namaFile(sel.preset);
+  xlSetBusy(true);
   try {
     await loadScript(EXCELJS_SRC);
     if (!window.ExcelJS) throw new Error('library Excel tidak termuat');
     const baris = await rpc('get_populasi_v2_baris', params, EXPORT_TIMEOUT_MS);
     const dipilih = new Set(snap.rows.map((x) => x.customer));
     const lines = (baris || []).filter((b) => dipilih.has(b.customer));
-    const blob = await buildWorkbook(Object.assign({ lines }, snap));
-    saveBlob(blob, name);
+    const buf = await buildWorkbook(window.ExcelJS, Object.assign({ lines }, snap), sel);
+    saveBlob(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name);
     showToast(`${name} diunduh`);
+    xlSetBusy(false);
+    xlClose();
   } catch (e) {
     if (String(e.message).startsWith('unauthorized')) return;
     showToast('Gagal membuat Excel: ' + e.message, 'error');
   } finally {
-    setXlsxBusy(btn, false);
+    if (xlDlg.busy) xlSetBusy(false);
   }
 }
 
@@ -2520,7 +2182,9 @@ export async function mount(container) {
     'ps-isi-on': () => { state.isiSet = true; syncControls(); load(); },
     'ps-prov-all': () => { state.provinsi = ''; lsSet(LS_PROV, ''); syncControls(); load(); },
     'ps-copy': () => copyText(),
-    'ps-xlsx': () => downloadXlsx(),
+    'ps-xlsx': (el) => xlOpen(el),
+    'ps-xl-close': () => xlClose(),
+    'ps-xl-go': () => downloadXlsx(),
     'ps-kel-open': () => kelOpen(),
     'ps-kel-close': () => kelClose(),
     'ps-kel-tab': (el) => kelSetTab(el.dataset.tab),
@@ -2562,16 +2226,23 @@ export async function mount(container) {
 
   function onClick(e) {
     if (e.target.id === 'ps-kel-overlay') { kelClose(); return; }   // klik di luar kartu = tutup
+    if (e.target.id === 'ps-xl-overlay') { xlClose(); return; }
     const el = e.target.closest('[data-action]');
     if (!el || !container.contains(el)) return;
     if (hasOwn(ACTIONS, el.dataset.action)) ACTIONS[el.dataset.action](el, e);
   }
   function onChange(e) {
     const t = e.target;
+    if (t.dataset && t.dataset.xl) { xlChange(t); return; }
     if (hasOwn(CHANGE_BY_ID, t.id)) CHANGE_BY_ID[t.id](t);
   }
   function onInput(e) {
     const id = e.target.id;
+    if (id === 'ps-xl-untuk' || id === 'ps-xl-oleh' || id === 'ps-xl-catatan') {
+      const k = { 'ps-xl-untuk': 'untuk', 'ps-xl-oleh': 'oleh', 'ps-xl-catatan': 'catatan' }[id];
+      if (xlDlg.sel) xlDlg.sel[k] = e.target.value;
+      return;
+    }
     if (id === 'ps-kel-q') {
       kel.q = e.target.value;
       clearTimeout(kelTimer);
@@ -2623,6 +2294,7 @@ export function unmount() {
   kelTimer = null;
   kelSaranTimer = null;
   kelKeyHandler = null;         // overlay ikut hilang bersama markup
+  xlDlg.keyHandler = null; xlDlg.sel = null; xlDlg.busy = false; xlDlg.opener = null;
   kelReq++;
   reqId++;                      // batalkan respons yang masih di jalan
   reviewReq++;
