@@ -1336,6 +1336,7 @@ S.getSetStokGap = getSetStokGap;
     #set-stok-pop .ssp-qty{white-space:nowrap;color:var(--text-muted,#999)}
     #set-stok-pop .ssp-muted{color:var(--text-muted,#999)}
     #set-stok-pop.ssp-ready{cursor:pointer}
+    #set-stok-pop::before{content:'';position:absolute;left:0;right:0;top:-10px;height:10px}
     #set-stok-pop.ssp-ready:hover{border-color:var(--warning,#b45309)}
     #set-stok-pop .ssp-copy{margin-top:8px;padding-top:6px;border-top:1px dashed var(--border,#333);font-size:11px;color:var(--text-muted,#999)}
     #set-stok-pop.ssp-copied .ssp-copy{color:var(--success,#16a34a);font-weight:600}
@@ -1365,9 +1366,18 @@ S.getSetStokGap = getSetStokGap;
     return out.join('\n');
   }
 
-  async function copyGap() {
-    if (!activeEl || !activeGap || activeGap.kosong) return;
-    const text = buildCopyText(activeEl, activeGap);
+  async function copyGap(el) {
+    el = el || activeEl;
+    if (!el) return;
+    let gap = (activeEl === el && activeGap) ? activeGap : null;
+    if (!gap) {
+      try { gap = await getSetStokGap(el.dataset.setKode); } catch (_) { gap = null; }
+    }
+    if (!gap || gap.kosong || (!gap.missing.length && !gap.kurang.length)) {
+      if (S.showToast) S.showToast('Tidak ada komponen kurang yang bisa disalin', 'error');
+      return;
+    }
+    const text = buildCopyText(el, gap);
     let ok = false;
     try { await navigator.clipboard.writeText(text); ok = true; } catch (_) {
       try {
@@ -1447,7 +1457,7 @@ S.getSetStokGap = getSetStokGap;
 
   function hide() {
     clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => { pop.style.display = 'none'; activeEl = null; seq++; }, 120);
+    hideTimer = setTimeout(() => { pop.style.display = 'none'; activeEl = null; seq++; }, 350);
   }
 
   // Kursor pindah dari badge ke popup (biar bisa diklik) -> jangan ditutup.
@@ -1465,7 +1475,7 @@ S.getSetStokGap = getSetStokGap;
   // Touch/mobile: tap badge buat buka, tap di luar buat nutup
   S.onGlobal(document, 'click', (e) => {
     const el = e.target.closest && e.target.closest('.mi.stok-warn[data-set-kode]');
-    if (el) { show(el); return; }
+    if (el) { show(el); copyGap(el); return; }   // klik badge: buka + langsung copy
     if (pop.contains(e.target)) { copyGap(); return; }
     if (!pop.contains(e.target)) { pop.style.display = 'none'; activeEl = null; seq++; }
   });
