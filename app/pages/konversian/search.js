@@ -116,9 +116,22 @@ async function mergeDictHits(q, args, dataRaw, mySeq) {
   if (S.onlyVerified) freshOk = freshOk.filter(S.isVerified);
   if (!flagged.length && !freshOk.length) return;
   freshOk.forEach(r => { r.stok_pending = true; });
-  if (S.rawCache && S.rawCache.q === q) S.rawCache.data = [...fresh, ...S.rawCache.data.filter(r => !hits.some(h => h.kode_produk === r.kode_produk))];
-  const top = new Set([...freshOk, ...flagged]);
-  S.lastResults = [...freshOk, ...flagged, ...S.lastResults.filter(r => !top.has(r))];
+  // Kalau pencarian biasa SUDAH punya kecocokan penuh (score >= 80 = semua kata ketemu; kecocokan sebagian
+  // kena penalti -200), hit Dictionary jangan menyalip ke atas: semuanya skor 1000 tanpa peduli nama produknya
+  // (mis. "minor" -> MAYOR S. dari riwayat customer menimpa "MINOR S."). Badge Dictionary tetap tampil,
+  // yang belum ada di hasil utama ditaruh di bawah. Dictionary hanya menyalip kalau hasil utama lemah/kosong
+  // (kasus "korentang" -> Forceps).
+  const mainStrong = !!(dataRaw && dataRaw.some(r => r.score >= 80));
+  if (S.rawCache && S.rawCache.q === q) {
+    const rest = S.rawCache.data.filter(r => !hits.some(h => h.kode_produk === r.kode_produk));
+    S.rawCache.data = mainStrong ? [...S.rawCache.data.filter(r => !fresh.includes(r)), ...fresh] : [...fresh, ...rest];
+  }
+  if (mainStrong) {
+    S.lastResults = [...S.lastResults, ...freshOk]; // flagged tetap di posisi skor aslinya
+  } else {
+    const top = new Set([...freshOk, ...flagged]);
+    S.lastResults = [...freshOk, ...flagged, ...S.lastResults.filter(r => !top.has(r))];
+  }
   applySort();
   S.currentPage = 1;
   renderResults(S.lastResults);
