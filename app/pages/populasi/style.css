@@ -80,6 +80,11 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 #app-root .ps-panel .filter-select,
 #app-root .ps-panel .search-mini{ width: 100%; height: 32px; box-sizing: border-box; font-size: var(--ps-fs); }
 #app-root .ps-seg{ display: flex; gap: 8px; flex-wrap: wrap; }
+#app-root .ps-searchbox{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#app-root .ps-searchbox .ps-seg{ flex-wrap: nowrap; flex-shrink: 0; }
+#app-root .ps-searchbox .search-mini{ width: auto; flex: 1 1 240px; min-width: 0; }
+/* titik kecil: cakupan yang tidak sedang tampil tetapi masih punya isi (juga tampil sebagai chip filter aktif) */
+#app-root .ps-scope-btn.has::after{ content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
 
 /* kategori: tombol toggle (boleh lebih dari satu). Kategori tanpa RS diredupkan lewat warna teks. */
 #app-root .ps-cats{ display: flex; flex-wrap: wrap; gap: 8px; }

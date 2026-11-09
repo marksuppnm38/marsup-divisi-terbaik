@@ -3,6 +3,7 @@
 // "kategori/produk apa, di RS mana saja, di provinsi X", dengan hasil yang bisa diunduh
 // sebagai Excel. Urutan halaman = urutan prioritas: judul + kesegaran data, filter ringkas,
 // hasil (judul, kartu angka, tabel), RS tanpa wilayah, lalu pengaturan (Kelola produk) di paling bawah.
+// Satu kotak cari (#ps-cari) dengan dua cakupan, Produk dan Rumah sakit/RMP; masing-masing isinya disimpan terpisah.
 // Memakai komponen bersama pnm-universal.css (stats-grid/stat-card, table-section/table-header,
 // filter-btn, filter-select, search-mini, bulk-btn, btn-clear-all); override khusus ada di style.css.
 // Semua id berawalan ps- kecuali err-banner/err-text/toast-container (kelas generik
@@ -28,18 +29,21 @@ export const POPULASI_MARKUP = `
   <div class="err-banner" id="err-banner" role="alert"><i class="ti ti-alert-circle"></i> <span id="err-text"></span></div>
 
   <section class="ps-panel" aria-label="Filter">
+    <div class="ps-field ps-search">
+      <span class="ps-lbl" id="ps-lbl-cari">Cari</span>
+      <div class="ps-searchbox">
+        <div class="ps-seg" role="group" aria-labelledby="ps-lbl-cari">
+          <button type="button" class="filter-btn ps-scope-btn active" data-action="ps-cari-scope" data-v="produk" aria-pressed="true">Produk</button>
+          <button type="button" class="filter-btn ps-scope-btn" data-action="ps-cari-scope" data-v="rs" aria-pressed="false">Rumah sakit</button>
+        </div>
+        <input class="search-mini" type="search" id="ps-cari" autocomplete="off" aria-label="Cari nama set atau produk">
+      </div>
+    </div>
+
     <div class="ps-grid">
       <label class="ps-field">
         <span class="ps-lbl">Provinsi</span>
         <select class="filter-select" id="ps-provinsi"><option value="">Semua provinsi</option></select>
-      </label>
-      <label class="ps-field">
-        <span class="ps-lbl">Nama set atau produk</span>
-        <input class="search-mini" type="search" id="ps-produk" placeholder="mis. drill, centrifuge, obgyn, tubectomy" autocomplete="off">
-      </label>
-      <label class="ps-field">
-        <span class="ps-lbl">Rumah sakit atau No. RMP</span>
-        <input class="search-mini" type="search" id="ps-rs" placeholder="mis. soetrasno atau RMP 25-054" autocomplete="off">
       </label>
       <div class="ps-field">
         <span class="ps-lbl">Status pesanan</span>

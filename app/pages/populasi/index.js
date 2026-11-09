@@ -113,7 +113,7 @@ let reqId = 0;
 
 const state = {
   provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI',
-  kelompok: ['SET'], produk: '', spes: [], jenis: [], mikro: false, rs: '', isiSet: false, dari: '', sampai: '',
+  kelompok: ['SET'], cari: 'produk', produk: '', spes: [], jenis: [], mikro: false, rs: '', isiSet: false, dari: '', sampai: '',
   sort: { k: 'total', dir: 'desc' },
   tinjau: '',                       // '' | 'cek' | 'estimasi' -> tabel berganti jadi daftar pesanan
 };
@@ -449,7 +449,7 @@ function renderActive() {
   if (state.spes.length) a.push({ k: 'spes', t: `Spesialisasi: ${state.spes.map(spesNama).join(', ')}` });
   if (state.jenis.length) a.push({ k: 'jenis', t: `Jenis: ${state.jenis.map(jenisNama).join(', ')}` });
   if (state.mikro) a.push({ k: 'mikro', t: 'Hanya mikrosurgery' });
-  if (state.produk.trim()) a.push({ k: 'produk', t: `Cari: ${state.produk.trim()}` });
+  if (state.produk.trim()) a.push({ k: 'produk', t: `Produk: ${state.produk.trim()}` });
   if (state.produk.trim() && state.isiSet) a.push({ k: 'isi', t: 'Termasuk isi set' });
   if (state.rs.trim()) a.push({ k: 'rs', t: `RS / RMP: ${state.rs.trim()}` });
   if (state.dari || state.sampai) a.push({ k: 'periode', t: `Periode: ${periodeText()}` });
@@ -585,7 +585,7 @@ function emptyHtml() {
   const p = state.produk.trim();
   const b = (label, attrs) => `<button type="button" class="btn btn-ghost" ${attrs}>${esc(label)}</button>`;
   const act = [];
-  if (p) act.push(b(`Lepas pencarian “${p.length > 24 ? p.slice(0, 24) + '…' : p}”`, 'data-action="ps-clear" data-k="produk"'));
+  if (p) act.push(b(`Lepas pencarian produk “${p.length > 24 ? p.slice(0, 24) + '…' : p}”`, 'data-action="ps-clear" data-k="produk"'));
   if (p && !state.isiSet) act.push(b('Cari juga di isi set', 'data-action="ps-isi-on"'));
   if (p && state.kelompok.length) act.push(b('Cari di semua kategori', 'data-action="ps-cat" data-k=""'));
   if (atributParam()) act.push(b('Lepas filter spesialisasi dan jenis', 'data-action="ps-clear" data-k="atribut"'));
@@ -2187,8 +2187,7 @@ function syncControls() {
     sel.add(new Option(state.provinsi, state.provinsi));
   }
   sel.value = state.provinsi;
-  $('ps-produk').value = state.produk;
-  $('ps-rs').value = state.rs;
+  syncCari();
   $('ps-isi-set').checked = state.isiSet;
   $('ps-isi-wrap').hidden = !state.produk.trim();
   $('ps-dari').value = state.dari;
@@ -2198,6 +2197,27 @@ function syncControls() {
   renderCats();
   renderAtribut();
   syncUrut();
+}
+
+// Satu kotak cari, dua cakupan. Isi tiap cakupan disimpan di state-nya sendiri (produk / rs);
+// kotak hanya menampilkan yang sedang dipilih. Titik pada tombol = cakupan lain masih punya isi.
+const CARI = {
+  produk: { ph: 'mis. drill, centrifuge, obgyn, tubectomy', aria: 'Cari nama set atau produk' },
+  rs: { ph: 'mis. soetrasno atau RMP 25-054', aria: 'Cari rumah sakit atau No. RMP' },
+};
+function syncCari() {
+  const input = $('ps-cari');
+  if (!input) return;
+  const sc = state.cari === 'rs' ? 'rs' : 'produk';
+  if (input.value !== state[sc]) input.value = state[sc];
+  input.placeholder = CARI[sc].ph;
+  input.setAttribute('aria-label', CARI[sc].aria);
+  document.querySelectorAll('[data-action="ps-cari-scope"]').forEach((b) => {
+    const on = b.dataset.v === sc;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+    b.classList.toggle('has', !on && !!state[b.dataset.v].trim());
+  });
 }
 
 // Dropdown Urutkan mengikuti state.sort (header kolom tetap bisa diklik juga).
@@ -2236,7 +2256,7 @@ export async function mount(container) {
   Object.assign(state, {
     provinsi: saved === null ? DEFAULT_PROV : saved,
     status: 'DELIVERED', cakupan: 'POPULASI', kelompok: ['SET'],
-    produk: '', spes: [], jenis: [], mikro: false, rs: '', isiSet: false, dari: '', sampai: '',
+    cari: 'produk', produk: '', spes: [], jenis: [], mikro: false, rs: '', isiSet: false, dari: '', sampai: '',
     sort: { k: 'total', dir: 'desc' }, tinjau: '',
   });
   data = null; rows = []; unmapped = [];
@@ -2282,6 +2302,11 @@ export async function mount(container) {
     'ps-edit-wil': (el) => { const r = rows[+el.dataset.idx]; if (r) editWilayah(r.customer, r.provinsi, r.kab_kota); },
     'ps-edit-unm': (el) => { const u = unmapped[+el.dataset.idx]; if (u) editWilayah(u.customer, '', ''); },
     'ps-clear': (el) => clearFilter(el.dataset.k),
+    'ps-cari-scope': (el) => {
+      state.cari = el.dataset.v === 'rs' ? 'rs' : 'produk';
+      syncCari();
+      $('ps-cari').focus();               // hasil tidak berubah; hanya isi kotak yang berganti
+    },
     'ps-isi-on': () => { state.isiSet = true; syncControls(); load(); },
     'ps-prov-all': () => { state.provinsi = ''; lsSet(LS_PROV, ''); syncControls(); load(); },
     'ps-copy': () => copyText(),
@@ -2347,13 +2372,12 @@ export async function mount(container) {
       kelSaranTimer = setTimeout(() => kelCariSaran(kel.draft), 250);
       return;
     }
-    if (id !== 'ps-produk' && id !== 'ps-rs') return;
+    if (id !== 'ps-cari') return;
     const v = e.target.value;
-    // state langsung diperbarui (dua kolom bisa diketik berurutan), hanya muat-ulang yang ditunda.
-    if (id === 'ps-produk') {
-      state.produk = v; $('ps-isi-wrap').hidden = !v.trim();
-    }
-    else state.rs = v;
+    // state langsung diperbarui, hanya muat-ulang yang ditunda.
+    if (state.cari === 'rs') state.rs = v;
+    else { state.produk = v; $('ps-isi-wrap').hidden = !v.trim(); }
+    syncCari();
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => load(), 300);
   }
