@@ -277,32 +277,36 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="content-head">
         <div>
           <div class="content-title">Bulk Edit</div>
-          <div class="content-sub">Paste data langsung dari Excel/Google Sheets, preview dulu sebelum diproses</div>
+          <div class="content-sub">Tempel data dari Excel atau Google Sheets, cek hasilnya, lalu proses.</div>
         </div>
+        <ol class="bk-steps" aria-label="Alur Bulk Edit">
+          <li class="bk-step s1">Tempel</li>
+          <li class="bk-step s2">Cek</li>
+          <li class="bk-step s3">Proses</li>
+        </ol>
       </div>
 
-      <div class="bulk-tabs">
-        <button class="bulk-tab active" data-bulk="harga">Harga Massal</button>
-        <button class="bulk-tab" data-bulk="link">Link V6 Massal</button>
-        <button class="bulk-tab" data-bulk="inaproc">INAPROC Tracker</button>
-        <button class="bulk-tab" data-bulk="verified">Verified Product</button>
+      <div class="bulk-tabs" role="tablist">
+        <button class="bulk-tab active" data-bulk="harga">Harga massal</button>
+        <button class="bulk-tab" data-bulk="link">Link V6 massal</button>
+        <button class="bulk-tab" data-bulk="inaproc">INAPROC tracker</button>
+        <button class="bulk-tab" data-bulk="verified">Verified product</button>
       </div>
 
-      <!-- BULK HARGA -->
       <div class="bulk-panel active" id="bulk-harga">
-        <div class="paste-hint">
-          Paste tanpa header, tab-separated, 3 kolom per baris: <code>kode_produk</code> — <code>tahun</code> — <code>harga_ekat</code>.
-          SWASTA (×1,3) &amp; UPLOAD (÷1,11) dihitung otomatis. Bisa langsung select+copy dari Excel/Sheets.
-        </div>
-        <textarea class="paste-area" id="bulkHargaPaste" placeholder="RB999-KE921-B99-U667&#9;2026&#9;1500000&#10;RB10-KE130-B003-U07&#9;2026&#9;250000"></textarea>
-        <div class="bulk-actions">
-          <button class="btn btn-ghost" id="bulkHargaPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
-          <button class="btn btn-accent" id="bulkHargaProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+        <div class="bk-compose">
+          <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>kode_produk</span><span class="bk-col"><b>B</b>tahun</span><span class="bk-col"><b>C</b>harga_ekat</span></div>
+          <textarea class="paste-area" id="bulkHargaPaste" placeholder="RB999-KE921-B99-U667&#9;2026&#9;1500000&#10;RB10-KE130-B003-U07&#9;2026&#9;250000"></textarea>
+          <div class="bulk-actions">
+            <span class="bk-note">Tanpa header, dipisah tab. SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung otomatis.</span>
+            <button class="btn btn-ghost" id="bulkHargaPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
+            <button class="btn btn-accent" id="bulkHargaProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
+          </div>
         </div>
         <div class="bulk-summary" id="bulkHargaSummary"></div>
         <div class="preview-table-wrap" id="bulkHargaPreviewWrap" style="display:none;">
           <table>
-            <thead><tr><th>Kode Produk</th><th>Nama</th><th>Tahun</th><th>EKATALOG</th><th>SWASTA (auto)</th><th>UPLOAD (auto)</th><th>Status</th></tr></thead>
+            <thead><tr><th>Kode produk</th><th>Nama</th><th>Tahun</th><th>EKATALOG</th><th>SWASTA (auto)</th><th>UPLOAD (auto)</th><th>Status</th></tr></thead>
             <tbody id="bulkHargaPreviewBody"></tbody>
           </table>
         </div>
@@ -310,46 +314,44 @@ export const CRUD_PRODUK_MARKUP = `
 
       <!-- BULK KOMPOSISI SET dipindah ke Set Management > tab Composition (per-set, gak lintas-set lagi) -->
 
-      <!-- BULK LINK V6 -->
       <div class="bulk-panel" id="bulk-link">
-        <div class="paste-hint">
-          Paste tanpa header, tab-separated, 2 kolom per baris: <code>kode_produk</code> — <code>link_v6</code> (URL e-katalog).
-        </div>
-        <textarea class="paste-area" id="bulkLinkPaste" placeholder="RB999-KE921-B99-U667&#9;https://e-katalog.lkpp.go.id/produk/xxxxx"></textarea>
-        <div class="bulk-actions">
-          <button class="btn btn-ghost" id="bulkLinkPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
-          <button class="btn btn-accent" id="bulkLinkProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+        <div class="bk-compose">
+          <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>kode_produk</span><span class="bk-col"><b>B</b>link_v6</span></div>
+          <textarea class="paste-area" id="bulkLinkPaste" placeholder="RB999-KE921-B99-U667&#9;https://e-katalog.lkpp.go.id/produk/xxxxx"></textarea>
+          <div class="bulk-actions">
+            <span class="bk-note">Tanpa header, dipisah tab. link_v6 berisi URL e-katalog.</span>
+            <button class="btn btn-ghost" id="bulkLinkPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
+            <button class="btn btn-accent" id="bulkLinkProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
+          </div>
         </div>
         <div class="bulk-summary" id="bulkLinkSummary"></div>
         <div class="preview-table-wrap" id="bulkLinkPreviewWrap" style="display:none;">
           <table>
-            <thead><tr><th>Kode Produk</th><th>Nama</th><th>Link Lama</th><th>Link Baru</th><th>Status</th></tr></thead>
+            <thead><tr><th>Kode produk</th><th>Nama</th><th>Link lama</th><th>Link baru</th><th>Status</th></tr></thead>
             <tbody id="bulkLinkPreviewBody"></tbody>
           </table>
         </div>
       </div>
 
-      <!-- BULK INAPROC TRACKER -->
       <div class="bulk-panel" id="bulk-inaproc">
-        <div class="paste-hint">
-          Paste tanpa header, tab-separated, 7 kolom persis hasil curl INAPROC kamu: <code>No</code> — <code>Nama</code> — <code>Kategori</code> — <code>Nomor Permohonan</code> — <code>Tgl Pengajuan</code> — <code>Status</code> — <code>Alasan Ditolak</code>.
-          Kode produk otomatis diambil dari dalam kurung di kolom Nama. Paste ulang aman — data lama (berdasarkan Nomor Permohonan) akan di-update, bukan dobel.
-        </div>
-        <textarea class="paste-area" id="bulkInaprocPaste" placeholder="1&#9;Dental operative unit (RB-KRC-DTC.07-U01, ROBUST)&#9;Alat Kesehatan&#9;33190423&#9;10 Juli 2026&#9;Menunggu Persetujuan&#9;"></textarea>
-        <div class="bulk-actions">
-          <button class="btn btn-ghost" id="bulkInaprocPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
-          <button class="btn btn-accent" id="bulkInaprocProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+        <div class="bk-compose">
+          <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>No</span><span class="bk-col"><b>B</b>Nama</span><span class="bk-col"><b>C</b>Kategori</span><span class="bk-col"><b>D</b>Nomor Permohonan</span><span class="bk-col"><b>E</b>Tgl Pengajuan</span><span class="bk-col"><b>F</b>Status</span><span class="bk-col"><b>G</b>Alasan Ditolak</span></div>
+          <textarea class="paste-area" id="bulkInaprocPaste" placeholder="1&#9;Dental operative unit (RB-KRC-DTC.07-U01, ROBUST)&#9;Alat Kesehatan&#9;33190423&#9;10 Juli 2026&#9;Menunggu Persetujuan&#9;"></textarea>
+          <div class="bulk-actions">
+            <span class="bk-note">Tanpa header, dipisah tab, persis hasil curl INAPROC. Kode produk diambil dari kurung di kolom Nama. Tempel ulang aman: data lama (per Nomor Permohonan) di-update, tidak dobel.</span>
+            <button class="btn btn-ghost" id="bulkInaprocPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
+            <button class="btn btn-accent" id="bulkInaprocProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
+          </div>
         </div>
         <div class="bulk-summary" id="bulkInaprocSummary"></div>
         <div class="preview-table-wrap" id="bulkInaprocPreviewWrap" style="display:none;">
           <table>
-            <thead><tr><th>No. Permohonan</th><th>Kode Terbaca</th><th>Nama</th><th>Tgl</th><th>Status</th><th>Match Produk</th></tr></thead>
+            <thead><tr><th>No. Permohonan</th><th>Kode terbaca</th><th>Nama</th><th>Tgl</th><th>Status</th><th>Match produk</th></tr></thead>
             <tbody id="bulkInaprocPreviewBody"></tbody>
           </table>
         </div>
       </div>
 
-      <!-- BULK VERIFIED PRODUCT (centang biru INAPROC) -->
       <div class="bulk-panel" id="bulk-verified">
         <div class="vp-hint">
           <i class="ti ti-info-circle"></i>
@@ -359,15 +361,19 @@ export const CRUD_PRODUK_MARKUP = `
             <li>Baris <b>Ambigu</b> (cocok ke &gt;1 produk) tidak diputuskan algoritma, kamu yang pilih lewat dropdown atau biarkan dilewati. Pilihanmu disimpan sebagai badge <i>manual</i> dan diingat di sync berikutnya.</li>
           </ul>
         </div>
-        <div class="vp-file">
-          <label class="btn btn-ghost vp-file-btn" for="bulkVerifiedFile"><i class="ti ti-file-upload"></i> Pilih file .tsv</label>
-          <span class="vp-file-name" id="bulkVerifiedFileName">Belum ada file</span>
-          <input type="file" id="bulkVerifiedFile" accept=".tsv,.txt,.csv" hidden/>
-        </div>
-        <textarea class="paste-area" id="bulkVerifiedPaste" placeholder="product_id&#9;name&#9;slug&#9;..."></textarea>
-        <div class="bulk-actions">
-          <button class="btn btn-ghost" id="bulkVerifiedPreviewBtn"><i class="ti ti-eye"></i> Preview</button>
-          <button class="btn btn-accent" id="bulkVerifiedProsesBtn" style="display:none;"><i class="ti ti-check"></i> Sinkronkan</button>
+        <div class="bk-compose">
+          <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>product_id</span><span class="bk-col"><b>B</b>name</span><span class="bk-col"><b>C</b>slug</span><span class="bk-col bk-col-more">kolom lain diabaikan</span></div>
+          <div class="vp-file">
+            <label class="btn btn-ghost vp-file-btn" for="bulkVerifiedFile"><i class="ti ti-file-upload"></i> Pilih file .tsv</label>
+            <span class="vp-file-name" id="bulkVerifiedFileName">Belum ada file</span>
+            <input type="file" id="bulkVerifiedFile" accept=".tsv,.txt,.csv" hidden/>
+          </div>
+          <textarea class="paste-area" id="bulkVerifiedPaste" placeholder="product_id&#9;name&#9;slug&#9;..."></textarea>
+          <div class="bulk-actions">
+            <span class="bk-note">Header boleh ada.</span>
+            <button class="btn btn-ghost" id="bulkVerifiedPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
+            <button class="btn btn-accent" id="bulkVerifiedProsesBtn" style="display:none;"><i class="ti ti-check"></i> Sinkronkan</button>
+          </div>
         </div>
         <div class="bulk-summary vs-stats" id="bulkVerifiedSummary"></div>
         <div class="preview-table-wrap" id="bulkVerifiedPreviewWrap" style="display:none;">

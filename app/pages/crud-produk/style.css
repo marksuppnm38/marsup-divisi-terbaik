@@ -290,3 +290,97 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 @media (max-width:560px){.orph-stats{grid-template-columns:1fr}.orph-fgroup{flex-wrap:wrap}}
 /* ---- Chip stok di baris Produk (v_produk_stok_ringkas). Pakai .status-pill dari pnm-universal.css, cuma dikecilin. ---- */
 .stok-pill{font-size:10.5px;padding:2px 8px;margin-right:6px;vertical-align:middle}
+/* ============================================================
+   BULK EDIT — redesign 2026-11-09 (tempel -> cek -> proses)
+   Semua di-scope ke #viewBulk supaya gak bocor ke modul lain yang
+   berbagi pnm-universal.css. Markup di markup.js; ID elemen yang
+   dipakai bulk.js TIDAK berubah. Status stepper murni CSS (:has):
+   textarea terisi -> "Tempel" selesai; tabel preview tampil -> "Cek" selesai.
+   ============================================================ */
+#viewBulk .content-head{align-items:center}
+
+/* stepper alur */
+#viewBulk .bk-steps{display:flex;align-items:center;list-style:none;margin:0;padding:0;counter-reset:bk;font-size:12.5px;color:var(--text-muted)}
+#viewBulk .bk-step{display:flex;align-items:center;gap:8px;counter-increment:bk;font-weight:500}
+#viewBulk .bk-step::before{content:counter(bk);width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border-strong);display:grid;place-items:center;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--text-muted);background:var(--surface)}
+#viewBulk .bk-step:not(:last-child)::after{content:"";width:26px;height:1.5px;background:var(--border-strong);margin:0 8px 0 2px}
+/* default: langkah 1 aktif */
+#viewBulk .bk-step.s1{color:var(--text)}
+#viewBulk .bk-step.s1::before{background:var(--accent);border-color:var(--accent);color:#fff}
+/* textarea terisi: 1 selesai, 2 aktif */
+#viewBulk:has(.bulk-panel.active .paste-area:not(:placeholder-shown)) .bk-step.s1{color:var(--text-muted)}
+#viewBulk:has(.bulk-panel.active .paste-area:not(:placeholder-shown)) .bk-step.s1::before{content:"\2713";background:var(--accent-soft);border-color:var(--accent-ring);color:var(--accent-text)}
+#viewBulk:has(.bulk-panel.active .paste-area:not(:placeholder-shown)) .bk-step.s2{color:var(--text)}
+#viewBulk:has(.bulk-panel.active .paste-area:not(:placeholder-shown)) .bk-step.s2::before{background:var(--accent);border-color:var(--accent);color:#fff}
+/* preview tampil: 1-2 selesai, 3 aktif */
+#viewBulk:has(.bulk-panel.active .preview-table-wrap[style*="display: block"]) .bk-step.s2{color:var(--text-muted)}
+#viewBulk:has(.bulk-panel.active .preview-table-wrap[style*="display: block"]) .bk-step.s2::before{content:"\2713";background:var(--accent-soft);border-color:var(--accent-ring);color:var(--accent-text)}
+#viewBulk:has(.bulk-panel.active .preview-table-wrap[style*="display: block"]) .bk-step.s3{color:var(--text)}
+#viewBulk:has(.bulk-panel.active .preview-table-wrap[style*="display: block"]) .bk-step.s3::before{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* tab = segmented control */
+#viewBulk .bulk-tabs{display:inline-flex;gap:2px;padding:3px;margin:0 0 18px;border:0;background:var(--surface-3);border-radius:var(--radius-md);max-width:100%;overflow-x:auto}
+#viewBulk .bulk-tab{padding:7px 14px;border:1px solid transparent;border-bottom:1px solid transparent;border-radius:calc(var(--radius-md) - 3px);font-size:13px;font-weight:500;color:var(--text-secondary);white-space:nowrap;transition:background .15s,color .15s}
+#viewBulk .bulk-tab:hover:not(.active){color:var(--text)}
+#viewBulk .bulk-tab.active{background:var(--surface);color:var(--text);font-weight:600;border-color:var(--border);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+#viewBulk .bulk-tab:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+/* composer: strip kolom + area tempel + bar aksi dalam satu kartu */
+#viewBulk .bk-compose{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-lg);overflow:hidden;transition:border-color .15s,box-shadow .15s}
+#viewBulk .bk-compose:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+#viewBulk .bk-cols{display:flex;background:var(--surface-2);border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary);overflow:hidden}
+#viewBulk .bk-col{flex:1 1 0;min-width:0;padding:8px 12px;border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#viewBulk .bk-col:last-child{border-right:0}
+#viewBulk .bk-col b{margin-right:8px;font-weight:600;color:var(--accent-text)}
+#viewBulk .bk-col-more{flex:0 0 auto;font-family:inherit;font-style:italic;color:var(--text-muted)}
+#viewBulk .bk-compose .paste-area{display:block;border:0;border-radius:0;background:transparent;min-height:176px;max-height:420px;padding:14px 16px;margin:0;font-size:12.5px;line-height:1.7;outline:none;tab-size:8}
+#viewBulk .bk-compose .paste-area:focus{border:0}
+#viewBulk .bk-compose .paste-area::placeholder{color:var(--text-muted);opacity:.55}
+#viewBulk .bk-compose .bulk-actions{margin:0;padding:10px 12px;border-top:1px solid var(--border);background:var(--surface-2);gap:8px;flex-wrap:wrap}
+#viewBulk .bk-note{flex:1 1 260px;min-width:0;font-size:12px;line-height:1.5;color:var(--text-muted)}
+#viewBulk .bk-compose .bulk-actions .btn{height:34px}
+
+/* verified: info + pilih file mengikuti kartu yang sama */
+#viewBulk #bulk-verified .vp-hint{margin:0 0 14px}
+#viewBulk #bulk-verified .vp-file{margin:0;padding:8px 12px;border-bottom:1px solid var(--border)}
+#viewBulk #bulk-verified .paste-area{min-height:120px;max-height:260px;margin:0}
+#viewBulk #bulk-verified .bk-compose .bulk-actions{margin:0}
+
+/* ringkasan hasil cek */
+#viewBulk .bulk-summary:not(.vs-stats){gap:8px;margin:18px 0 12px}
+#viewBulk .bulk-summary:empty{display:none}
+#viewBulk .bulk-summary:not(.vs-stats)>span{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:20px;font-size:12.5px;font-weight:500;border:1px solid transparent}
+#viewBulk .bulk-summary:not(.vs-stats)>span::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+#viewBulk .bulk-summary:not(.vs-stats)>.ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success-text)}
+#viewBulk .bulk-summary:not(.vs-stats)>.warn{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger-text)}
+#viewBulk .bk-compose + .vs-stats{margin-top:18px}
+
+/* tabel preview */
+#viewBulk .preview-table-wrap{max-height:460px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface)}
+#viewBulk .preview-table-wrap table{font-size:12.5px;width:100%}
+#viewBulk .preview-table-wrap th{background:var(--surface-2);padding:10px 14px;font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--text-secondary);text-align:left;white-space:nowrap;border-bottom:1px solid var(--border)}
+#viewBulk .preview-table-wrap td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+#viewBulk .preview-table-wrap tr:last-child td{border-bottom:0}
+#viewBulk .preview-table-wrap tbody tr:hover td{background:var(--surface-2)}
+#viewBulk .preview-table-wrap .kode-cell{font-family:var(--font-mono);font-size:12px;color:var(--text);white-space:nowrap}
+#viewBulk .preview-table-wrap tbody tr:has(.row-status.err) td{background:color-mix(in srgb,var(--danger-bg) 55%,transparent)}
+#viewBulk .preview-table-wrap tbody tr:has(.row-status.err) td:first-child{box-shadow:inset 3px 0 0 var(--danger-border)}
+#viewBulk .row-status{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:500;padding:2px 10px;border-radius:20px}
+#viewBulk .row-status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+#viewBulk .row-status.ok{background:var(--success-bg);color:var(--success-text)}
+#viewBulk .row-status.err{background:var(--danger-bg);color:var(--danger-text)}
+/* angka harga rata kanan (tabel Harga: kolom 4-6) */
+#bulkHargaPreviewWrap :is(th,td):nth-child(n+4):nth-child(-n+6){text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+#bulkHargaPreviewWrap td:nth-child(3){font-variant-numeric:tabular-nums}
+/* URL panjang (tabel Link V6: kolom 3-4) dipotong, bukan melebarkan tabel */
+#bulkLinkPreviewWrap td:nth-child(n+3):nth-child(-n+4){max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary)}
+
+@media (max-width:720px){
+  #viewBulk .bk-steps{width:100%}
+  #viewBulk .bk-cols{overflow-x:auto}
+  #viewBulk .bk-col{flex:0 0 auto}
+  #viewBulk .bk-compose .bulk-actions .btn{flex:1 1 auto;justify-content:center}
+}
+@media (prefers-reduced-motion:reduce){
+  #viewBulk .bulk-tab,#viewBulk .bk-compose{transition:none}
+}
