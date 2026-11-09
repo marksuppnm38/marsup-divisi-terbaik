@@ -8,7 +8,8 @@
 // Semua id berawalan ps- kecuali err-banner/err-text/toast-container (kelas generik
 // dari pnm-universal.css, sama seperti dashboard).
 //
-// Yang dirender lewat JS (bukan di sini): chip kategori (#ps-cats), kartu ringkasan (#ps-stats),
+// Yang dirender lewat JS (bukan di sini): chip kategori (#ps-cats), chip spesialisasi (#ps-spes) dan
+// jenis instrumen (#ps-jenis), kartu ringkasan (#ps-stats),
 // catatan hitungan (#ps-caveats), header tabel (#ps-thead), chip filter aktif (#ps-active),
 // bilah "Menampilkan N pesanan ..." (#ps-review-bar).
 // Ikon hanya dipakai untuk aksi yang juga punya label teks, atau yang artinya baku (tutup, urutkan).
@@ -53,9 +54,9 @@ export const POPULASI_MARKUP = `
       <div class="ps-cats" id="ps-cats" role="group" aria-labelledby="ps-lbl-kat"></div>
     </div>
 
-    <div class="ps-field" id="ps-rumpun-wrap" hidden>
-      <span class="ps-lbl" id="ps-lbl-rumpun">Kelompok set (pilih satu untuk menyaring)</span>
-      <div class="ps-cats" id="ps-rumpun" role="group" aria-labelledby="ps-lbl-rumpun"></div>
+    <div class="ps-field" id="ps-spes-wrap" hidden>
+      <span class="ps-lbl" id="ps-lbl-spes">Spesialisasi (boleh lebih dari satu; berlaku untuk set dan instrumen satuan)</span>
+      <div class="ps-cats" id="ps-spes" role="group" aria-labelledby="ps-lbl-spes"></div>
     </div>
 
     <div class="ps-opts">
@@ -63,6 +64,14 @@ export const POPULASI_MARKUP = `
         <input type="checkbox" id="ps-isi-set">
         <span>Termasuk isi set</span>
       </label>
+      <label class="ps-check" id="ps-mikro-wrap" hidden title="Instrumen mikro dari semua spesialisasi: gunting Vannas, forceps mikro, dan sejenisnya">
+        <input type="checkbox" id="ps-mikro">
+        <span id="ps-mikro-t">Hanya mikrosurgery</span>
+      </label>
+      <details class="ps-more-filters" id="ps-jenis-det" hidden>
+        <summary id="ps-jenis-sum">Jenis instrumen</summary>
+        <div class="ps-cats ps-more-body" id="ps-jenis" role="group" aria-label="Jenis instrumen"></div>
+      </details>
       <details class="ps-more-filters">
         <summary>Periode dan cakupan data</summary>
         <div class="ps-grid ps-more-body">

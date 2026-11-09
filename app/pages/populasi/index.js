@@ -112,7 +112,7 @@ let reqId = 0;
 
 const state = {
   provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI',
-  kelompok: ['SET'], produk: '', rumpun: '', rs: '', isiSet: false, dari: '', sampai: '',
+  kelompok: ['SET'], produk: '', spes: [], jenis: [], mikro: false, rs: '', isiSet: false, dari: '', sampai: '',
   sort: { k: 'total', dir: 'desc' },
   tinjau: '',                       // '' | 'cek' | 'estimasi' -> tabel berganti jadi daftar pesanan
 };
@@ -205,24 +205,54 @@ async function rpc(fn, params, timeoutMs = RPC_TIMEOUT_MS) {
   return out;
 }
 
+// Atribut produk (spesialisasi, jenis, mikro) -> satu parameter jsonb. null bila tidak ada pilihan.
+function atributParam(st = state) {
+  const a = {};
+  if (st.spes.length) a.spes = st.spes.slice();
+  if (st.jenis.length) a.jenis = st.jenis.slice();
+  if (st.mikro) a.mikro = true;
+  return Object.keys(a).length ? a : null;
+}
+function spesNama(s) { return rumpunNama(s); }
+function jenisNama(s) { return s === 'LAINNYA' ? 'Lainnya' : rumpunNama(s); }
+function atributText(st = state) {
+  const p = [];
+  if (st.spes.length) p.push(st.spes.map(spesNama).join(', '));
+  if (st.jenis.length) p.push(st.jenis.map(jenisNama).join(', '));
+  if (st.mikro) p.push('mikro');
+  return p.join(' · ');
+}
+function toggleAtribut(key, k) {
+  if (!k) state[key] = [];
+  else {
+    const i = state[key].indexOf(k);
+    if (i >= 0) state[key].splice(i, 1); else state[key].push(k);
+  }
+  load();
+}
+
 function filterParams() {
-  return {
+  const p = {
     p_provinsi: state.provinsi || null,
     p_status: state.status,
     p_cakupan: state.cakupan,
     p_dari: state.dari || null,
     p_sampai: state.sampai || null,
     p_kelompok: state.kelompok.length ? state.kelompok : null,
-    p_produk: state.rumpun ? 'rumpun:' + state.rumpun : (state.produk.trim() || null),
+    p_produk: state.produk.trim() || null,
     p_rs: state.rs.trim() || null,
-    p_isi_set: !!(state.isiSet && state.produk.trim() && !state.rumpun),
+    p_isi_set: !!(state.isiSet && state.produk.trim()),
   };
+  const at = atributParam();
+  if (at) p.p_atribut = at;        // hanya dikirim bila dipakai
+  return p;
 }
 
 function kategoriText(st = state) {
   const k = st.kelompok.map(katName);
   const base = k.length ? k.join(', ') : 'Semua kategori';
-  return st.rumpun ? `${base} (kelompok ${st.rumpun})` : base;
+  const at = atributText(st);
+  return at ? `${base} (${at})` : base;
 }
 function periodeText(st = state) {
   if (!st.dari && !st.sampai) return 'Semua tanggal';
@@ -236,6 +266,7 @@ async function load() {
   $('ps-stats').classList.add('ps-busy');
   clearError();
   renderCats();
+  renderAtribut();
   renderActive();
   try {
     const params = filterParams();
@@ -304,7 +335,7 @@ function render() {
   if (state.tinjau && angkaServer(state.tinjau) <= 0) state.tinjau = '';   // masalahnya sudah tidak ada pada filter ini
   renderProvinsi();
   renderCats();
-  renderRumpun();
+  renderAtribut();
   renderFreshness();
   renderSummary();
   renderTable();
@@ -342,25 +373,43 @@ function renderCats() {
   el.innerHTML = html;
 }
 
-// Chip kelompok set (rumpun): daftar yang SUDAH termap, angka = jumlah RS pada filter lain yang aktif.
-// Satu rumpun dipilih -> hanya set di rumpun itu (nama asli set tetap tampil di tabel).
-function renderRumpun() {
-  const wrap = $('ps-rumpun-wrap');
-  const el = $('ps-rumpun');
-  if (!wrap || !el) return;
-  const opsi = (data && data.opsi_rumpun) || [];
-  const kelompokSet = !state.kelompok.length || state.kelompok.includes('SET');
-  wrap.hidden = !opsi.length || !kelompokSet;
-  if (wrap.hidden) return;
-  const all = !state.rumpun;
-  let html = `<button type="button" class="filter-btn ps-cat${all ? ' active' : ''}" aria-pressed="${all}" data-action="ps-rumpun" data-k="">Semua</button>`;
-  html += opsi.map((o) => {
-    const on = state.rumpun === o.rumpun;
-    const tip = `${fmt(o.jumlah_rs)} RS · ${fmt(o.nilai)} set · ${fmt(o.jumlah_nama)} nama set`;
-    return `<button type="button" class="filter-btn ps-cat${on ? ' active' : ''}" aria-pressed="${on}" data-action="ps-rumpun" data-k="${esc(o.rumpun)}" title="${esc(tip)}">${esc(rumpunNama(o.rumpun))}<span class="ps-cat-n">${fmt(o.jumlah_rs)}</span></button>`;
+// Baris chip atribut (boleh lebih dari satu). Angka = jumlah RS pada filter lain yang aktif
+// (kategori, provinsi, dan atribut LAIN), bukan pada atribut itu sendiri. Pilihan yang hasilnya 0
+// tetap tampil (diredupkan) supaya bisa dilepas.
+function renderChipRow(wrapId, elId, opsi, key, terpilih, action, nama) {
+  const wrap = $(wrapId);
+  const el = $(elId);
+  if (!wrap || !el) return false;
+  const ada = new Set(opsi.map((o) => o[key]));
+  const semua = opsi.concat(terpilih.filter((s) => !ada.has(s)).map((s) => ({ [key]: s, jumlah_rs: 0 })));
+  wrap.hidden = !semua.length;
+  if (wrap.hidden) { el.innerHTML = ''; return false; }
+  const all = !terpilih.length;
+  let html = `<button type="button" class="filter-btn ps-cat${all ? ' active' : ''}" aria-pressed="${all}" data-action="${action}" data-k="">Semua</button>`;
+  html += semua.map((o) => {
+    const on = terpilih.includes(o[key]);
+    const n = num(o.jumlah_rs);
+    return `<button type="button" class="filter-btn ps-cat${on ? ' active' : ''}${n ? '' : ' dim'}" aria-pressed="${on}" data-action="${action}" data-k="${esc(o[key])}" title="${esc(fmt(n) + ' RS')}">${esc(nama(o[key]))}<span class="ps-cat-n">${fmt(n)}</span></button>`;
   }).join('');
   el.innerHTML = html;
+  return true;
 }
+
+function renderAtribut() {
+  const d = data || {};
+  renderChipRow('ps-spes-wrap', 'ps-spes', d.opsi_spes || [], 'spes', state.spes, 'ps-spes', spesNama);
+  const adaJenis = renderChipRow('ps-jenis-det', 'ps-jenis', d.opsi_jenis || [], 'jenis', state.jenis, 'ps-jenis', jenisNama);
+  const sum = $('ps-jenis-sum');
+  if (sum && adaJenis) sum.textContent = 'Jenis instrumen' + (state.jenis.length ? ` (${state.jenis.length} dipilih)` : '');
+  const w = $('ps-mikro-wrap');
+  if (w) {
+    const m = d.opsi_mikro || null;
+    w.hidden = !(state.mikro || (m && num(m.jumlah_kode) > 0));
+    $('ps-mikro').checked = state.mikro;
+    $('ps-mikro-t').textContent = m && num(m.jumlah_rs) ? `Hanya mikrosurgery (${fmt(m.jumlah_rs)} RS)` : 'Hanya mikrosurgery';
+  }
+}
+
 const rumpunNama = (r) => (r === 'LAINNYA' ? 'Belum dikelompokkan' : String(r || '').replace(/\w\S*/g, (w) => w.charAt(0) + w.slice(1).toLowerCase()).replace(/\bTht\b/, 'THT').replace(/\bObgyn\b/, 'OBGYN'));
 
 // Filter yang sedang aktif, masing-masing bisa dilepas (atau lepas semua sekaligus).
@@ -368,7 +417,9 @@ function renderActive() {
   const el = $('ps-active');
   if (!el) return;
   const a = [];
-  if (state.rumpun) a.push({ k: 'rumpun', t: `Kelompok set: ${rumpunNama(state.rumpun)}` });
+  if (state.spes.length) a.push({ k: 'spes', t: `Spesialisasi: ${state.spes.map(spesNama).join(', ')}` });
+  if (state.jenis.length) a.push({ k: 'jenis', t: `Jenis: ${state.jenis.map(jenisNama).join(', ')}` });
+  if (state.mikro) a.push({ k: 'mikro', t: 'Hanya mikrosurgery' });
   if (state.produk.trim()) a.push({ k: 'produk', t: `Cari: ${state.produk.trim()}` });
   if (state.produk.trim() && state.isiSet) a.push({ k: 'isi', t: 'Termasuk isi set' });
   if (state.rs.trim()) a.push({ k: 'rs', t: `RS / RMP: ${state.rs.trim()}` });
@@ -506,6 +557,7 @@ function emptyMessage() {
   if (p && !state.isiSet) tips.push('Coba centang “Termasuk isi set”.');
   if (p) tips.push('Coba kata kunci yang lebih pendek.');
   if (p && state.kelompok.length) tips.push('Coba lepas pilihan kategori.');
+  if (atributParam()) tips.push('Coba lepas filter spesialisasi, jenis, atau mikro.');
   if (state.status !== 'ALL') tips.push('Coba tambahkan pesanan yang masih dalam proses.');
   if (state.provinsi) tips.push('Coba pilih semua provinsi.');
   if (state.provinsi && unmapped.length) tips.push(`Ada ${fmt(unmapped.length)} RS yang wilayahnya belum diketahui (lihat bagian bawah).`);
@@ -782,6 +834,11 @@ function koreksiBtn(d, nama) {
   return '';
 }
 
+function atributSub(d) {
+  const p = [d.spes ? spesNama(d.spes) : '', d.jenis ? jenisNama(d.jenis) : '', d.mikro ? 'mikro' : ''].filter(Boolean);
+  return p.length ? `<span class="ps-sub">${esc(p.join(' · '))}</span>` : '';
+}
+
 function detailHtml(list) {
   if (!list || !list.length) return '<div class="ps-detail-empty">Tidak ada pesanan pada filter ini.</div>';
   return `
@@ -796,7 +853,7 @@ function detailHtml(list) {
           const isSet = d.kind === 'SET';
           const nama = isSet ? d.label : d.produk;
           const sub = !isSet && (d.family || d.kode_produk)
-            ? `<span class="ps-sub">${esc(d.family || d.kode_produk)}</span>`
+            ? `<span class="ps-sub">${esc(d.family || d.kode_produk)}</span>${atributSub(d)}`
             : (isSet ? [d.label_asli ? `Dialihkan dari: ${esc(d.label_asli)}` : '', d.rumpun ? `Kelompok: ${esc(rumpunNama(d.rumpun))}` : ''].filter(Boolean).map((t) => `<span class="ps-sub">${t}</span>`).join('') : '');
           const cek = isSet && d.status_hitung === 'cek';
           return `
@@ -1536,6 +1593,9 @@ async function buildWorkbook(ctx) {
   section('Filter yang dipakai');
   kv('Provinsi', lokasi);
   kv('Kategori', kategoriText(st));
+  if (st.spes.length) kv('Spesialisasi', st.spes.map(spesNama).join(', '));
+  if (st.jenis.length) kv('Jenis instrumen', st.jenis.map(jenisNama).join(', '));
+  if (st.mikro) kv('Hanya mikrosurgery', 'Ya');
   if (st.produk.trim()) kv('Nama produk mengandung', st.produk.trim());
   if (st.produk.trim()) kv('Isi set ikut dihitung', st.isiSet ? 'Ya' : 'Tidak');
   if (st.rs.trim()) kv('Rumah sakit', st.rs.trim());
@@ -1699,7 +1759,9 @@ async function buildWorkbook(ctx) {
     { h: 'Kategori', k: 'kategori', w: 18 },
     { h: 'Produk / jenis set', k: 'jenis', w: 50, wrap: true },
   ];
-  if (lines.some((l) => l.rumpun)) linCols.push({ h: 'Kelompok set', k: 'rumpun', w: 20 });
+  if (lines.some((l) => l.spes)) linCols.push({ h: 'Spesialisasi', k: 'spes', w: 20 });
+  if (lines.some((l) => l.jenis)) linCols.push({ h: 'Jenis instrumen', k: 'jenisInstr', w: 18 });
+  if (lines.some((l) => l.mikro)) linCols.push({ h: 'Mikro', k: 'mikro', w: 8 });
   if (adaSet) linCols.push({ h: 'Jumlah set', k: 'set', w: 11, fmt: XL_NUMZ });
   if (adaPcs) linCols.push({ h: 'Jumlah unit/pcs', k: 'pcs', w: 12, fmt: XL_NUMZ });
   linCols.push(
@@ -1742,7 +1804,9 @@ async function buildWorkbook(ctx) {
         baris: num(l.jumlah_baris),
         sheet: l.sumber_sheet || '',
         asli: l.label_asli || '',
-        rumpun: l.rumpun ? rumpunNama(l.rumpun) : '',
+        spes: l.spes ? spesNama(l.spes) : '',
+        jenisInstr: l.jenis ? jenisNama(l.jenis) : '',
+        mikro: l.mikro ? 'Ya' : '',
       };
     }),
   });
@@ -1840,7 +1904,7 @@ async function downloadXlsx() {
     rows: rows.slice(),
     data,
     unmapped: unmapped.slice(),
-    st: Object.assign({}, state, { kelompok: state.kelompok.slice() }),
+    st: Object.assign({}, state, { kelompok: state.kelompok.slice(), spes: state.spes.slice(), jenis: state.jenis.slice() }),
   };
   const params = filterParams();
   const name = namaFile();
@@ -1886,7 +1950,7 @@ function syncControls() {
   $('ps-cakupan').value = state.cakupan;
   syncStatusButtons();
   renderCats();
-  renderRumpun();
+  renderAtribut();
   syncUrut();
 }
 
@@ -1900,11 +1964,13 @@ function syncUrut() {
 
 function clearFilter(k) {
   if (k === 'semua') {
-    state.produk = ''; state.rumpun = ''; state.isiSet = false; state.rs = '';
+    state.produk = ''; state.spes = []; state.jenis = []; state.mikro = false; state.isiSet = false; state.rs = '';
     state.dari = ''; state.sampai = ''; state.cakupan = 'POPULASI';
   }
   else if (k === 'produk') { state.produk = ''; state.isiSet = false; }
-  else if (k === 'rumpun') state.rumpun = '';
+  else if (k === 'spes') state.spes = [];
+  else if (k === 'jenis') state.jenis = [];
+  else if (k === 'mikro') state.mikro = false;
   else if (k === 'isi') state.isiSet = false;
   else if (k === 'rs') state.rs = '';
   else if (k === 'periode') { state.dari = ''; state.sampai = ''; }
@@ -1923,7 +1989,7 @@ export async function mount(container) {
   Object.assign(state, {
     provinsi: saved === null ? DEFAULT_PROV : saved,
     status: 'DELIVERED', cakupan: 'POPULASI', kelompok: ['SET'],
-    produk: '', rumpun: '', rs: '', isiSet: false, dari: '', sampai: '',
+    produk: '', spes: [], jenis: [], mikro: false, rs: '', isiSet: false, dari: '', sampai: '',
     sort: { k: 'total', dir: 'desc' }, tinjau: '',
   });
   data = null; rows = []; unmapped = [];
@@ -1945,12 +2011,8 @@ export async function mount(container) {
       }
       load();
     },
-    'ps-rumpun': (el) => {
-      const k = el.dataset.k || '';
-      state.rumpun = state.rumpun === k ? '' : k;
-      if (state.rumpun) { state.produk = ''; state.isiSet = false; $('ps-produk').value = ''; $('ps-isi-wrap').hidden = true; }
-      load();
-    },
+    'ps-spes': (el) => toggleAtribut('spes', el.dataset.k || ''),
+    'ps-jenis': (el) => toggleAtribut('jenis', el.dataset.k || ''),
     'ps-status': (el) => { state.status = el.dataset.v === 'ALL' ? 'ALL' : 'DELIVERED'; syncStatusButtons(); load(); },
     'ps-sort': (el) => {
       const k = el.dataset.k;
@@ -1988,6 +2050,7 @@ export async function mount(container) {
     'ps-dari': (t) => { state.dari = t.value; load(); },
     'ps-sampai': (t) => { state.sampai = t.value; load(); },
     'ps-isi-set': (t) => { state.isiSet = t.checked; load(); },
+    'ps-mikro': (t) => { state.mikro = t.checked; load(); },
     'ps-urut': (t) => {
       const k = t.value;
       state.sort = { k, dir: k === 'customer' ? 'asc' : 'desc' };
@@ -2028,7 +2091,6 @@ export async function mount(container) {
     // state langsung diperbarui (dua kolom bisa diketik berurutan), hanya muat-ulang yang ditunda.
     if (id === 'ps-produk') {
       state.produk = v; $('ps-isi-wrap').hidden = !v.trim();
-      if (v.trim() && state.rumpun) state.rumpun = '';   // mengetik = cari bebas, lepas filter kelompok
     }
     else state.rs = v;
     clearTimeout(searchTimer);

@@ -104,6 +104,8 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 #app-root .ps-more-filters[open] > summary::before{ transform: rotate(90deg); }
 #app-root .ps-more-filters > summary:hover{ color: var(--text); }
 #app-root .ps-more-body{ margin-top: 6px; }
+#app-root .ps-field[hidden],
+#app-root .ps-more-filters[hidden]{ display: none; }
 
 /* filter aktif yang bisa dilepas satu per satu */
 #app-root .ps-active{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
