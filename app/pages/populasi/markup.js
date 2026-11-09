@@ -12,6 +12,7 @@
 // jenis instrumen (#ps-jenis), kartu ringkasan (#ps-stats),
 // catatan hitungan (#ps-caveats), header tabel (#ps-thead), chip filter aktif (#ps-active),
 // bilah "Menampilkan N pesanan ..." (#ps-review-bar).
+// Dialog Kelola produk punya tiga tab: Kategori produk, Atribut produk (spesialisasi, jenis, mikro), Alihkan set.
 // Ikon hanya dipakai untuk aksi yang juga punya label teks, atau yang artinya baku (tutup, urutkan).
 
 export const POPULASI_MARKUP = `
@@ -99,9 +100,10 @@ export const POPULASI_MARKUP = `
 
   <div class="ps-note" id="ps-stale" hidden role="status"></div>
 
-  <div class="ps-scope" aria-live="polite">
+  <div class="ps-scope" id="ps-scope" aria-live="polite">
     <div class="ps-sum-main" id="ps-sum-main">—</div>
     <div class="ps-caveats" id="ps-caveats" hidden></div>
+    <div class="ps-loadbar" aria-hidden="true"></div>
   </div>
   <div class="stats-grid ps-stats" id="ps-stats">
     <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
@@ -145,7 +147,7 @@ export const POPULASI_MARKUP = `
   </details>
 
   <div class="ps-foot">
-    <button type="button" class="btn btn-ghost" data-action="ps-kel-open" title="Betulkan kategori produk dan alihkan set custom ke populasi set lain. Data di Google Sheet tidak berubah."><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Kelola produk: kategori dan alihan set</button>
+    <button type="button" class="btn btn-ghost" data-action="ps-kel-open" title="Betulkan kategori dan atribut produk (spesialisasi, jenis, mikro), atau alihkan set custom ke populasi set lain. Data di Google Sheet tidak berubah."><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Kelola produk: kategori, atribut, dan alihan set</button>
   </div>
 </main>
 </div>
@@ -179,15 +181,21 @@ export const POPULASI_MARKUP = `
     </div>
     <div class="ps-kel-tabs" role="tablist">
       <button type="button" role="tab" class="ps-kel-tab" id="ps-kel-tab-kat" data-action="ps-kel-tab" data-tab="kat">Kategori produk</button>
+      <button type="button" role="tab" class="ps-kel-tab" id="ps-kel-tab-atr" data-action="ps-kel-tab" data-tab="atr">Atribut produk</button>
       <button type="button" role="tab" class="ps-kel-tab" id="ps-kel-tab-set" data-action="ps-kel-tab" data-tab="set">Alihkan set</button>
     </div>
     <div class="ps-kel-bar">
       <input id="ps-kel-q" class="field-input ps-kel-search" type="search" autocomplete="off" aria-label="Cari">
       <select id="ps-kel-kelompok" class="field-input ps-kel-sel" aria-label="Kategori"></select>
+      <select id="ps-kel-filter" class="field-input ps-kel-sel" aria-label="Tampilkan" hidden>
+        <option value="cek">Perlu dicek dan dikoreksi</option>
+        <option value="semua">Semua kode</option>
+        <option value="koreksi">Hanya yang dikoreksi</option>
+      </select>
       <label class="ps-kel-check"><input type="checkbox" id="ps-kel-hanya"><span id="ps-kel-hanya-t"></span></label>
       <span class="ps-kel-meta" id="ps-kel-meta" aria-live="polite"></span>
     </div>
-    <div class="ps-kel-scroll">
+    <div class="ps-kel-scroll" id="ps-kel-scroll">
       <table class="ps-kel-t">
         <thead id="ps-kel-thead"></thead>
         <tbody id="ps-kel-body"></tbody>

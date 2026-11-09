@@ -10,6 +10,7 @@
 //   set_rs_wilayah          -> simpan koreksi wilayah satu RS (tidak berubah)
 //   get_produk_kelompok / set_produk_kelompok / hapus_produk_kelompok -> koreksi kategori produk (sql/01)
 //   get_set_grup / set_set_grup / hapus_set_grup -> alihkan set custom ke populasi set lain (sql/07)
+//   get_produk_atribut / set_produk_atribut / hapus_produk_atribut -> spesialisasi, jenis, mikro per kode (patch 2a + 3b)
 //   (data sheet TIDAK disentuh; keduanya hanya mengubah nama/kategori yang dihitung)
 // Pola mount/unmount/auth/rpc() sama dengan dashboard/index.js (PNMAuth, token diambil
 // fresh tiap request, delegasi event di container).
@@ -263,7 +264,10 @@ function periodeText(st = state) {
 async function load() {
   const my = ++reqId;
   $('ps-table').classList.add('ps-busy');
+  $('ps-table').setAttribute('aria-busy', 'true');
   $('ps-stats').classList.add('ps-busy');
+  const scope = $('ps-scope');
+  if (scope) scope.classList.add('ps-loading');
   clearError();
   renderCats();
   renderAtribut();
@@ -306,7 +310,12 @@ async function load() {
       $('ps-body').innerHTML = `<tr><td colspan="5" class="ps-empty ps-empty-err">${esc(msg)}<br><button type="button" class="btn btn-ghost ps-retry" data-action="ps-reload">Coba lagi</button></td></tr>`;
     }
   } finally {
-    if (my === reqId) { $('ps-table').classList.remove('ps-busy'); $('ps-stats').classList.remove('ps-busy'); }
+    if (my === reqId) {
+      $('ps-table').classList.remove('ps-busy');
+      $('ps-table').removeAttribute('aria-busy');
+      $('ps-stats').classList.remove('ps-busy');
+      if (scope) scope.classList.remove('ps-loading');
+    }
   }
 }
 
@@ -355,43 +364,63 @@ function renderProvinsi() {
   sel.value = state.provinsi;
 }
 
+// Chip dirender ulang lewat innerHTML (elemen diganti), jadi fokus keyboard dipulihkan ke chip yang sama.
+function keepFocus(fn) {
+  const a = document.activeElement;
+  const act = a && a.dataset ? a.dataset.action : null;
+  const k = a && a.dataset ? a.dataset.k : undefined;
+  fn();
+  if (!act || k === undefined || !mountedContainer) return;
+  const el = mountedContainer.querySelector(`[data-action="${act}"][data-k="${CSS.escape(k)}"]`);
+  if (el && el !== document.activeElement) el.focus();
+}
+
 // Chip kategori: angka kecil = jumlah RS yang punya kategori itu pada filter lain yang aktif.
+// Kategori tanpa RS tidak ditawarkan (memilihnya hanya membawa ke hasil kosong), kecuali yang sedang dipilih
+// supaya tetap bisa dilepas.
 function renderCats() {
   const el = $('ps-cats');
   if (!el) return;
+  const opsi = (data && Array.isArray(data.opsi_kelompok) && data.opsi_kelompok.length) ? data.opsi_kelompok : null;
   const cnt = {};
-  ((data && data.opsi_kelompok) || []).forEach((o) => { cnt[o.kelompok] = o; });
+  (opsi || []).forEach((o) => { cnt[o.kelompok] = o; });
   const all = !state.kelompok.length;
-  let html = `<button type="button" class="filter-btn ps-cat${all ? ' active' : ''}" aria-pressed="${all}" data-action="ps-cat" data-k="">Semua</button>`;
-  html += KELOMPOK.map((k) => {
-    const on = state.kelompok.includes(k.id);
-    const n = cnt[k.id] ? num(cnt[k.id].jumlah_rs) : 0;
-    const dim = data && !n ? ' dim' : '';
-    const badge = data ? `<span class="ps-cat-n" title="${fmt(n)} RS">${fmt(n)}</span>` : '';
-    return `<button type="button" class="filter-btn ps-cat${on ? ' active' : ''}${dim}" aria-pressed="${on}" data-action="ps-cat" data-k="${esc(k.id)}">${esc(k.nama)}${badge}</button>`;
-  }).join('');
-  el.innerHTML = html;
+  keepFocus(() => {
+    let html = `<button type="button" class="filter-btn ps-cat${all ? ' active' : ''}" aria-pressed="${all}" data-action="ps-cat" data-k="">Semua</button>`;
+    html += KELOMPOK.map((k) => {
+      const on = state.kelompok.includes(k.id);
+      const n = cnt[k.id] ? num(cnt[k.id].jumlah_rs) : 0;
+      if (opsi && !n && !on) return '';
+      const dim = opsi && !n ? ' dim' : '';
+      const badge = data ? `<span class="ps-cat-n" title="${fmt(n)} RS">${fmt(n)}</span>` : '';
+      return `<button type="button" class="filter-btn ps-cat${on ? ' active' : ''}${dim}" aria-pressed="${on}" data-action="ps-cat" data-k="${esc(k.id)}">${esc(k.nama)}${badge}</button>`;
+    }).join('');
+    el.innerHTML = html;
+  });
 }
 
 // Baris chip atribut (boleh lebih dari satu). Angka = jumlah RS pada filter lain yang aktif
-// (kategori, provinsi, dan atribut LAIN), bukan pada atribut itu sendiri. Pilihan yang hasilnya 0
-// tetap tampil (diredupkan) supaya bisa dilepas.
+// (kategori, provinsi, dan atribut LAIN), bukan pada atribut itu sendiri, jadi pilihan bernilai > 0 tidak
+// pernah membawa ke hasil kosong. Pilihan bernilai 0 disembunyikan, kecuali yang sedang dipilih (agar bisa dilepas).
 function renderChipRow(wrapId, elId, opsi, key, terpilih, action, nama) {
   const wrap = $(wrapId);
   const el = $(elId);
   if (!wrap || !el) return false;
   const ada = new Set(opsi.map((o) => o[key]));
-  const semua = opsi.concat(terpilih.filter((s) => !ada.has(s)).map((s) => ({ [key]: s, jumlah_rs: 0 })));
+  const semua = opsi.concat(terpilih.filter((s) => !ada.has(s)).map((s) => ({ [key]: s, jumlah_rs: 0 })))
+    .filter((o) => num(o.jumlah_rs) > 0 || terpilih.includes(o[key]));
   wrap.hidden = !semua.length;
   if (wrap.hidden) { el.innerHTML = ''; return false; }
   const all = !terpilih.length;
-  let html = `<button type="button" class="filter-btn ps-cat${all ? ' active' : ''}" aria-pressed="${all}" data-action="${action}" data-k="">Semua</button>`;
-  html += semua.map((o) => {
-    const on = terpilih.includes(o[key]);
-    const n = num(o.jumlah_rs);
-    return `<button type="button" class="filter-btn ps-cat${on ? ' active' : ''}${n ? '' : ' dim'}" aria-pressed="${on}" data-action="${action}" data-k="${esc(o[key])}" title="${esc(fmt(n) + ' RS')}">${esc(nama(o[key]))}<span class="ps-cat-n">${fmt(n)}</span></button>`;
-  }).join('');
-  el.innerHTML = html;
+  keepFocus(() => {
+    let html = `<button type="button" class="filter-btn ps-cat${all ? ' active' : ''}" aria-pressed="${all}" data-action="${action}" data-k="">Semua</button>`;
+    html += semua.map((o) => {
+      const on = terpilih.includes(o[key]);
+      const n = num(o.jumlah_rs);
+      return `<button type="button" class="filter-btn ps-cat${on ? ' active' : ''}${n ? '' : ' dim'}" aria-pressed="${on}" data-action="${action}" data-k="${esc(o[key])}" title="${esc(fmt(n) + ' RS')}">${esc(nama(o[key]))}<span class="ps-cat-n">${fmt(n)}</span></button>`;
+    }).join('');
+    el.innerHTML = html;
+  });
   return true;
 }
 
@@ -551,17 +580,22 @@ function colsInfo() {
   return { set, pcs, n: 5 + (set ? 1 : 0) + (pcs ? 1 : 0) };
 }
 
-function emptyMessage() {
-  const tips = [];
+// Hasil kosong: jelaskan, lalu tawarkan hanya langkah yang berlaku pada filter saat ini. Tiap tombol melonggarkan satu filter.
+function emptyHtml() {
   const p = state.produk.trim();
-  if (p && !state.isiSet) tips.push('Coba centang “Termasuk isi set”.');
-  if (p) tips.push('Coba kata kunci yang lebih pendek.');
-  if (p && state.kelompok.length) tips.push('Coba lepas pilihan kategori.');
-  if (atributParam()) tips.push('Coba lepas filter spesialisasi, jenis, atau mikro.');
-  if (state.status !== 'ALL') tips.push('Coba tambahkan pesanan yang masih dalam proses.');
-  if (state.provinsi) tips.push('Coba pilih semua provinsi.');
-  if (state.provinsi && unmapped.length) tips.push(`Ada ${fmt(unmapped.length)} RS yang wilayahnya belum diketahui (lihat bagian bawah).`);
-  return 'Tidak ada RS yang cocok dengan filter ini.' + (tips.length ? '<br>' + esc(tips.join(' ')) : '');
+  const b = (label, attrs) => `<button type="button" class="btn btn-ghost" ${attrs}>${esc(label)}</button>`;
+  const act = [];
+  if (p) act.push(b(`Lepas pencarian “${p.length > 24 ? p.slice(0, 24) + '…' : p}”`, 'data-action="ps-clear" data-k="produk"'));
+  if (p && !state.isiSet) act.push(b('Cari juga di isi set', 'data-action="ps-isi-on"'));
+  if (p && state.kelompok.length) act.push(b('Cari di semua kategori', 'data-action="ps-cat" data-k=""'));
+  if (atributParam()) act.push(b('Lepas filter spesialisasi dan jenis', 'data-action="ps-clear" data-k="atribut"'));
+  if (state.rs.trim()) act.push(b('Lepas pencarian RS', 'data-action="ps-clear" data-k="rs"'));
+  if (state.dari || state.sampai) act.push(b('Lepas periode', 'data-action="ps-clear" data-k="periode"'));
+  if (state.status !== 'ALL') act.push(b('Tambahkan pesanan dalam proses', 'data-action="ps-status" data-v="ALL"'));
+  if (state.provinsi) act.push(b('Tampilkan semua provinsi', 'data-action="ps-prov-all"'));
+  const unm = state.provinsi && unmapped.length
+    ? `<br>${esc(`Ada ${fmt(unmapped.length)} RS yang wilayahnya belum diketahui (lihat bagian bawah).`)}` : '';
+  return 'Tidak ada RS yang cocok dengan filter ini.' + unm + (act.length ? `<div class="ps-empty-act">${act.join('')}</div>` : '');
 }
 
 // Penanda hitungan: SATU komponen (.ps-tag) dipakai di baris RS, baris pesanan, dan daftar tinjau.
@@ -582,9 +616,13 @@ function renderTable() {
   const cols = colsInfo();
   renderHead(cols);
   $('ps-tbl-title').textContent = rows.length ? `${fmt(rows.length)} rumah sakit` : 'Rumah sakit';
+  const cp = document.querySelector('[data-action="ps-copy"]');
+  if (cp) cp.disabled = !rows.length;                 // tidak ada yang bisa disalin
+  const ur = $('ps-urut');
+  if (ur) ur.disabled = rows.length < 2;              // mengurutkan satu baris tidak berarti apa-apa
   const body = $('ps-body');
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="${cols.n}" class="ps-empty">${emptyMessage()}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="${cols.n}" class="ps-empty">${emptyHtml()}</td></tr>`;
     return;
   }
   body.innerHTML = rows.map((r, i) => {
@@ -829,7 +867,12 @@ function koreksiBtn(d, nama) {
     return `<button type="button" class="ps-rowact" data-action="ps-kel-edit-row" data-tab="set" data-q="${esc(q)}" title="${esc(tip)}" aria-label="Alihkan set ${esc(q)}"><i class="ti ti-pencil" aria-hidden="true"></i> Alihkan set</button>`;
   }
   if (d.kind === 'PCS' && d.kelompok !== 'ISI SET' && d.kode_produk) {
-    return `<button type="button" class="ps-rowact" data-action="ps-kel-edit-row" data-tab="kat" data-q="${esc(d.kode_produk)}" title="Pindahkan produk ini ke kategori lain" aria-label="Ubah kategori ${esc(nama)}"><i class="ti ti-pencil" aria-hidden="true"></i> Ubah kategori</button>`;
+    const kat = `<button type="button" class="ps-rowact" data-action="ps-kel-edit-row" data-tab="kat" data-q="${esc(d.kode_produk)}" title="Pindahkan produk ini ke kategori lain" aria-label="Ubah kategori ${esc(nama)}"><i class="ti ti-pencil" aria-hidden="true"></i> Ubah kategori</button>`;
+    // Atribut (spesialisasi, jenis, mikro) hanya ada untuk instrumen satuan.
+    const atr = d.kelompok === 'INSTRUMEN SATUAN'
+      ? `<button type="button" class="ps-rowact" data-action="ps-kel-edit-row" data-tab="atr" data-q="${esc(d.kode_produk)}" title="Ubah spesialisasi, jenis, dan penanda mikro produk ini" aria-label="Ubah atribut ${esc(nama)}"><i class="ti ti-tag" aria-hidden="true"></i> Ubah atribut</button>`
+      : '';
+    return kat + atr;
   }
   return '';
 }
@@ -967,12 +1010,17 @@ function editWilayah(customer, provinsi, kab) {
 }
 
 // ── kelola produk: kategori produk + alihkan set ─────────────────────────────
-// Dua tab di satu dialog, pola yang sama: cari, daftar, pensil -> form di bawah baris, Simpan/Batal.
+// Tiga tab di satu dialog, pola yang sama: cari, daftar, pensil -> form di bawah baris, Simpan/Batal.
 //  • Kategori produk: koreksi kategori per PRODUK (kunci = kode tanpa spasi, nol di depan angka dibuang).
+//  • Atribut produk: spesialisasi, jenis, dan penanda mikro per KODE instrumen satuan (get_produk_atribut). Antrean awal =
+//    kode dugaan + yang masih LAINNYA; kode yang sudah dikoreksi tetap tampil di antrean supaya hasilnya terlihat.
 //  • Alihkan set: set custom yang sudah tidak dijual dihitung sebagai populasi set lain. Jumlah set tidak berubah.
 // Data Google Sheet tidak diubah. Semua nilai dari DB lewat esc() / textContent.
 const KAT_TARGET = KELOMPOK.filter((k) => k.id !== 'SET');
-const kel = { tab: 'kat', q: '', kelompok: '', hanya: false, list: [], total: 0, tanpaKode: 0, edit: -1, draft: '', saran: [], match: '', opener: null };
+const kel = {
+  tab: 'kat', q: '', kelompok: '', hanya: false, filter: 'cek', spesF: '', list: [], total: 0, tanpaKode: 0, edit: -1, draft: '',
+  at: null, opsiSpes: [], opsiJenis: [], saran: [], match: '', opener: null,
+};
 let kelTimer = null;
 let kelSaranTimer = null;
 let kelReq = 0;
@@ -983,11 +1031,35 @@ const kelIsKat = () => kel.tab === 'kat';
 const kelRow = () => kel.list[kel.edit];
 const kelKodeKat = (r) => (r.ejaan && r.ejaan[0]) || r.kode_key;   // ejaan nyata dari sheet; server menormalkannya lagi
 
+const KEL_TABS = ['kat', 'atr', 'set'];
+const kelIsAtr = () => kel.tab === 'atr';
+const up = (v) => String(v == null ? '' : v).toUpperCase();
+// Sumber atribut yang masih dugaan (kolom `sumber` get_produk_atribut). Selain tiga ini, atribut sudah pasti.
+const ATR_SUMBER = {
+  'peta?': 'Dugaan dari peta spesialisasi',
+  'rmp?': 'Dugaan dari No. RMP pesanan',
+  kosong: 'Belum ada petunjuk spesialisasi',
+};
+const ATR_FILTER = { cek: 'perlu dicek atau dikoreksi', semua: '', koreksi: 'dikoreksi' };
+const atrNama = (a) => [a.spes ? spesNama(a.spes) : '', a.jenis ? jenisNama(a.jenis) : '', a.mikro ? 'mikro' : ''].filter(Boolean).join(' · ');
+const atrSama = (x, y) => up(x.spes) === up(y.spes) && up(x.jenis) === up(y.jenis) && !!x.mikro === !!y.mikro;
+// Dugaan sistem yang masuk akal untuk "Benar, simpan" (bukan yang kosong atau masih LAINNYA).
+const atrDugaan = (r) => !r.dikoreksi && (r.sumber === 'peta?' || r.sumber === 'rmp?') && up(r.spes) !== 'LAINNYA' && up(r.jenis) !== 'LAINNYA';
+// Nama parameter mengikuti pola set_produk_kelompok. Bila patch 2a memakai nama lain, cukup ubah di sini.
+const atrRpcParams = (r, a) => ({
+  p_kode: kelKodeKat(r), p_spes: up(a.spes), p_jenis: up(a.jenis), p_mikro: !!a.mikro, p_catatan: String(a.catatan || '').trim() || null,
+});
+
 const KEL_TEKS = {
   kat: {
     sub: 'Betulkan kategori produk yang salah tag di sheet. Berlaku di hasil Populasi, Excel, dan teks salinan.',
     cari: 'Cari kode atau nama produk', hanya: 'Hanya yang dikoreksi',
     kosong: 'Tidak ada produk yang cocok.', kosongHanya: 'Belum ada koreksi.',
+  },
+  atr: {
+    sub: 'Betulkan spesialisasi, jenis, dan penanda mikro per kode instrumen satuan. Antrean berisi kode dugaan dan yang masih “Belum dikelompokkan”. Berlaku di filter Populasi, Excel, dan teks salinan.',
+    cari: 'Cari kode atau nama produk', hanya: '',
+    kosong: 'Tidak ada kode yang cocok.', kosongHanya: 'Tidak ada kode yang cocok.',
   },
   set: {
     sub: 'Set custom yang sudah tidak dijual bisa dihitung sebagai populasi set lain. Jumlah setnya tidak berubah; hanya nama set yang dihitung.',
@@ -1004,7 +1076,7 @@ function katOptions(selected, placeholder) {
 // Bagian dialog yang berubah menurut tab: judul tab, kolom, kotak cari, filter.
 function kelRenderChrome() {
   const t = KEL_TEKS[kel.tab];
-  ['kat', 'set'].forEach((k) => {
+  KEL_TABS.forEach((k) => {
     const b = $('ps-kel-tab-' + k);
     b.setAttribute('aria-selected', String(k === kel.tab));
     b.tabIndex = k === kel.tab ? 0 : -1;
@@ -1015,24 +1087,54 @@ function kelRenderChrome() {
   $('ps-kel-q').value = kel.q;
   $('ps-kel-hanya-t').textContent = t.hanya;
   $('ps-kel-hanya').checked = kel.hanya;
+  $('ps-kel-hanya').closest('label').hidden = kelIsAtr();
   const sel = $('ps-kel-kelompok');
-  sel.hidden = !kelIsKat();
+  sel.hidden = kel.tab === 'set';
   if (kelIsKat()) {
+    sel.setAttribute('aria-label', 'Kategori');
+    sel.dataset.sig = '';
     sel.innerHTML = '<option value="">Semua kategori</option>' +
       KAT_TARGET.map((k) => `<option value="${esc(k.id)}">${esc(k.nama)}</option>`).join('');
     sel.value = kel.kelompok;
+  } else if (kelIsAtr()) {
+    sel.setAttribute('aria-label', 'Spesialisasi');
+    kelIsiSpesFilter(true);
   }
+  const fl = $('ps-kel-filter');
+  fl.hidden = !kelIsAtr();
+  fl.value = kel.filter;
   $('ps-kel-thead').innerHTML = kelIsKat()
     ? '<tr><th>Produk</th><th>Kategori</th><th class="ps-kel-num">Pesanan</th><th class="ps-kel-act"><span class="ps-kel-sr">Ubah</span></th></tr>'
-    : '<tr><th>Set</th><th>Dihitung sebagai</th><th class="ps-kel-num">Populasi</th><th class="ps-kel-act"><span class="ps-kel-sr">Ubah</span></th></tr>';
+    : (kelIsAtr()
+      ? '<tr><th>Produk</th><th>Atribut</th><th class="ps-kel-num">Dipakai</th><th class="ps-kel-act"><span class="ps-kel-sr">Ubah</span></th></tr>'
+      : '<tr><th>Set</th><th>Dihitung sebagai</th><th class="ps-kel-num">Populasi</th><th class="ps-kel-act"><span class="ps-kel-sr">Ubah</span></th></tr>');
+}
+
+// Pilihan spesialisasi untuk filter di tab Atribut produk. Diisi ulang hanya bila daftarnya berubah (fokus tidak hilang).
+function kelIsiSpesFilter(paksa) {
+  const sel = $('ps-kel-kelompok');
+  const opsi = kel.opsiSpes.map(up).filter((s) => s !== 'LAINNYA');
+  opsi.push('LAINNYA');
+  if (kel.spesF && !opsi.includes(kel.spesF)) opsi.unshift(kel.spesF);
+  const sig = opsi.join('|');
+  if (!paksa && sel.dataset.sig === sig) { sel.value = kel.spesF; return; }
+  sel.dataset.sig = sig;
+  sel.innerHTML = '<option value="">Semua spesialisasi</option>' +
+    opsi.map((s) => `<option value="${esc(s)}">${esc(spesNama(s))}</option>`).join('');
+  sel.value = kel.spesF;
+}
+
+function kelRenderLoading() {
+  $('ps-kel-body').innerHTML = '<tr><td colspan="4" class="ps-kel-empty" role="status">Memuat…</td></tr>';
 }
 
 function kelRenderMeta() {
-  const unit = kelIsKat() ? 'produk' : 'set';
+  const unit = kelIsKat() ? 'produk' : (kelIsAtr() ? 'kode' : 'set');
+  const ket = kelIsAtr() && ATR_FILTER[kel.filter] ? ' ' + ATR_FILTER[kel.filter] : '';
   let t = kel.total > kel.list.length
-    ? `${fmt(kel.list.length)} dari ${fmt(kel.total)} ${unit}, urut menurut jumlah RS`
-    : `${fmt(kel.total)} ${unit}`;
-  if (kelIsKat() && kel.tanpaKode > 0) t += ` · ${fmt(kel.tanpaKode)} baris pesanan tanpa kode tidak bisa dikoreksi`;
+    ? `${fmt(kel.list.length)} dari ${fmt(kel.total)} ${unit}${ket}, urut menurut jumlah RS`
+    : `${fmt(kel.total)} ${unit}${ket}`;
+  if ((kelIsKat() || kelIsAtr()) && kel.tanpaKode > 0) t += ` · ${fmt(kel.tanpaKode)} baris pesanan tanpa kode tidak bisa dikoreksi`;
   $('ps-kel-meta').textContent = t;
 }
 
@@ -1071,7 +1173,67 @@ function kelRowSet(r, i, open) {
   </tr>`;
 }
 
+function atrOpsi(daftar, ...tambah) {
+  const s = [];
+  daftar.concat(tambah).map(up).forEach((v) => { if (v && v !== 'LAINNYA' && !s.includes(v)) s.push(v); });
+  s.push('LAINNYA');
+  return s;
+}
+
+function kelRowAtr(r, i, open) {
+  const ej = r.ejaan || [];
+  const ejHtml = (ej.length > 1 || (ej[0] && ej[0] !== r.kode_key))
+    ? `<span class="ps-kel-sub">Di sheet: ${ej.slice(0, 3).map((e) => '“' + esc(e) + '”').join(' · ')}${ej.length > 3 ? ' +' + (ej.length - 3) : ''}</span>` : '';
+  const nm = r.nama || [];
+  let status = '';
+  if (r.dikoreksi) {
+    status = `<span class="ps-kel-sub" title="${esc(r.oleh ? 'Diubah oleh ' + r.oleh : '')}">Dikoreksi · otomatis: ${esc(atrNama(r.auto || {}))}</span>`;
+  } else if (ATR_SUMBER[r.sumber]) {
+    status = `<span class="ps-kel-warn" title="Tebakan sistem yang belum dipastikan tim. Buka untuk memastikan atau mengubahnya.">${esc(ATR_SUMBER[r.sumber])}</span>`;
+  } else if (r.perlu_cek) {
+    status = '<span class="ps-kel-warn" title="Spesialisasi atau jenis produk ini belum masuk kelompok mana pun">Belum dikelompokkan</span>';
+  }
+  if (r.catatan) status += `<span class="ps-kel-sub">Catatan: ${esc(r.catatan)}</span>`;
+  return `<tr class="ps-kel-row${open ? ' is-open' : ''}" data-i="${i}">
+    <td><span class="ps-kel-strong">${esc(nm[0] || r.kode_key)}</span><span class="ps-kel-sub"><span class="kode-text">${esc(r.kode_key)}</span></span>${ejHtml}</td>
+    <td><span class="ps-kel-strong">${esc(atrNama(r))}</span>${status}</td>
+    <td class="ps-kel-num">${esc(fmt(r.jumlah_rs))} RS<span class="ps-kel-sub">${esc(fmt(r.baris))} baris · ${esc(fmt(r.qty))} pcs</span></td>
+    <td class="ps-kel-act"><button type="button" class="ps-rowact" data-action="ps-kel-edit" data-i="${i}" aria-expanded="${open}" title="${open ? 'Tutup' : 'Ubah spesialisasi, jenis, dan penanda mikro'}" aria-label="Ubah atribut ${esc(r.kode_key)}">${open ? 'Tutup' : '<i class="ti ti-pencil" aria-hidden="true"></i> Ubah atribut'}</button></td>
+  </tr>`;
+}
+
+function kelEditorAtr(r) {
+  const a = kel.at || {};
+  const auto = r.auto || {};
+  const opt = (daftar, pilih, nama) => daftar.map((v) => `<option value="${esc(v)}"${v === up(pilih) ? ' selected' : ''}>${esc(nama(v))}</option>`).join('');
+  const sp = atrOpsi(kel.opsiSpes, r.spes, auto.spes);
+  const jn = atrOpsi(kel.opsiJenis, r.jenis, auto.jenis);
+  return `<tr class="ps-kel-edit"><td colspan="4"><div class="ps-kel-form ps-kel-form-wide">
+    <div class="ps-kel-fields">
+      <div><label class="ps-kel-lbl" for="ps-kel-a-spes">Spesialisasi</label>
+        <select id="ps-kel-a-spes" class="field-input">${opt(sp, a.spes, spesNama)}</select></div>
+      <div><label class="ps-kel-lbl" for="ps-kel-a-jenis">Jenis instrumen</label>
+        <select id="ps-kel-a-jenis" class="field-input">${opt(jn, a.jenis, jenisNama)}</select></div>
+      <label class="ps-kel-check ps-kel-mikro"><input type="checkbox" id="ps-kel-a-mikro"${a.mikro ? ' checked' : ''}><span>Instrumen mikrosurgery</span></label>
+    </div>
+    <div class="ps-kel-catatan">
+      <label class="ps-kel-lbl" for="ps-kel-a-catatan">Catatan (opsional)</label>
+      <input id="ps-kel-a-catatan" class="field-input" type="text" maxlength="200" autocomplete="off" placeholder="mis. dicek dengan katalog" value="${esc(a.catatan || '')}">
+    </div>
+    <p class="ps-kel-auto">Hitungan otomatis: ${esc(atrNama(auto) || '—')}</p>
+    <p class="ps-kel-impact" id="ps-kel-impact"></p>
+    <p class="ps-kel-err" id="ps-kel-err" role="alert" hidden></p>
+    <div class="ps-kel-btns">
+      ${r.dikoreksi ? '<button type="button" class="btn btn-ghost" data-action="ps-kel-reset">Kembalikan ke otomatis</button>' : ''}
+      <span class="ps-kel-grow"></span>
+      <button type="button" class="btn btn-ghost" data-action="ps-kel-batal">Batal</button>
+      <button type="button" class="btn btn-accent" id="ps-kel-ok" data-action="ps-kel-save" disabled>Simpan</button>
+    </div>
+  </div></td></tr>`;
+}
+
 function kelEditor(r) {
+  if (kelIsAtr()) return kelEditorAtr(r);
   const kat = kelIsKat();
   const kontrol = kat
     ? `<label class="ps-kel-lbl" for="ps-kel-draft">Pindahkan ke kategori</label>
@@ -1101,13 +1263,25 @@ function kelRender() {
   const body = $('ps-kel-body');
   if (!kel.list.length) {
     const t = KEL_TEKS[kel.tab];
-    body.innerHTML = `<tr><td colspan="4" class="ps-kel-empty">${esc(kel.hanya && !kel.q.trim() ? t.kosongHanya : t.kosong)}</td></tr>`;
+    const polos = !kel.q.trim();
+    let msg = kel.hanya && polos ? t.kosongHanya : t.kosong;
+    let act = '';
+    if (kelIsAtr() && polos && !kel.spesF) {
+      if (kel.filter === 'cek') {
+        msg = 'Antrean kosong: tidak ada kode yang perlu dicek atau dikoreksi.';
+        act = '<br><button type="button" class="btn btn-ghost ps-kel-empty-act" data-action="ps-kel-semua">Lihat semua kode</button>';
+      } else if (kel.filter === 'koreksi') {
+        msg = 'Belum ada atribut yang dikoreksi.';
+      }
+    }
+    body.innerHTML = `<tr><td colspan="4" class="ps-kel-empty">${esc(msg)}${act}</td></tr>`;
     kelRenderMeta();
     return;
   }
   body.innerHTML = kel.list.map((r, i) => {
     const open = i === kel.edit;
-    return (kelIsKat() ? kelRowKat(r, i, open) : kelRowSet(r, i, open)) + (open ? kelEditor(r) : '');
+    const baris = kelIsKat() ? kelRowKat(r, i, open) : (kelIsAtr() ? kelRowAtr(r, i, open) : kelRowSet(r, i, open));
+    return baris + (open ? kelEditor(r) : '');
   }).join('');
   kelRenderMeta();
   if (kel.edit >= 0) kelEditSync();
@@ -1119,18 +1293,33 @@ function kelEditSync() {
   const ok = $('ps-kel-ok');
   const imp = $('ps-kel-impact');
   if (!r || !ok || !imp) return;
-  const d = kel.draft.trim();
   let changed = false;
   let teks = '';
-  if (kelIsKat()) {
-    const cur = (r.kelompok || []).length === 1 ? r.kelompok[0] : '';
-    changed = !!d && d !== cur;
-    if (changed) teks = `Seluruh baris produk ini (${fmt(r.baris)} baris, ${fmt(r.qty)} pcs, ${fmt(r.jumlah_rs)} RS) akan masuk ke ${katName(d)}.`;
+  let label = 'Simpan';
+  if (kelIsAtr()) {
+    const a = kel.at || {};
+    const beda = !atrSama(a, r);
+    const dugaan = atrDugaan(r);
+    const kembali = !!r.dikoreksi && atrSama(a, r.auto || {});     // isian sama dengan hitungan otomatis
+    const catatanBeda = !!r.dikoreksi && String(a.catatan || '').trim() !== String(r.catatan || '').trim();
+    changed = !kembali && (beda || catatanBeda || dugaan);
+    if (kembali) teks = 'Sama dengan hitungan otomatis. Pakai “Kembalikan ke otomatis” untuk melepas koreksi.';
+    else if (beda) teks = `Berlaku untuk seluruh baris kode ini (${fmt(r.baris)} baris, ${fmt(r.jumlah_rs)} RS): ${atrNama(a)}.`;
+    else if (dugaan) { teks = 'Dugaan sistem ini akan disimpan sebagai atribut tetap dan keluar dari daftar dugaan.'; label = 'Benar, simpan'; }
+    else if (catatanBeda) teks = 'Hanya catatan yang berubah.';
   } else {
-    changed = !!d && d.toLowerCase() !== String(r.target || '').toLowerCase();
-    if (changed) teks = `${fmt(r.jumlah_set)} set di ${fmt(r.jumlah_rs)} RS akan dihitung sebagai “${d}”. Jumlah set tidak berubah dan isi setnya tidak dibandingkan dengan set tujuan.`;
+    const d = kel.draft.trim();
+    if (kelIsKat()) {
+      const cur = (r.kelompok || []).length === 1 ? r.kelompok[0] : '';
+      changed = !!d && d !== cur;
+      if (changed) teks = `Seluruh baris produk ini (${fmt(r.baris)} baris, ${fmt(r.qty)} pcs, ${fmt(r.jumlah_rs)} RS) akan masuk ke ${katName(d)}.`;
+    } else {
+      changed = !!d && d.toLowerCase() !== String(r.target || '').toLowerCase();
+      if (changed) teks = `${fmt(r.jumlah_set)} set di ${fmt(r.jumlah_rs)} RS akan dihitung sebagai “${d}”. Jumlah set tidak berubah dan isi setnya tidak dibandingkan dengan set tujuan.`;
+    }
   }
   ok.disabled = !changed;
+  ok.textContent = label;
   imp.textContent = teks;
 }
 
@@ -1138,16 +1327,23 @@ function kelEditOpen(i, fokus) {
   const r = kel.list[i];
   if (!r) return;
   kel.edit = i;
-  kel.draft = kelIsKat() ? ((r.kelompok || []).length === 1 ? r.kelompok[0] : '') : (r.target || '');
+  if (kelIsAtr()) {
+    kel.at = { spes: up(r.spes), jenis: up(r.jenis), mikro: !!r.mikro, catatan: r.catatan || '' };
+    kel.draft = '';
+  } else {
+    kel.at = null;
+    kel.draft = kelIsKat() ? ((r.kelompok || []).length === 1 ? r.kelompok[0] : '') : (r.target || '');
+  }
   kel.saran = [];
   kelRender();
-  if (!kelIsKat()) kelCariSaran(kel.draft);
-  if (fokus) setTimeout(() => { const el = $('ps-kel-draft'); if (el) el.focus(); }, 0);
+  if (kel.tab === 'set') kelCariSaran(kel.draft);
+  if (fokus) setTimeout(() => { const el = $('ps-kel-draft') || $('ps-kel-a-spes'); if (el) el.focus(); }, 0);
 }
 
 function kelEditClose() {
   kel.edit = -1;
   kel.draft = '';
+  kel.at = null;
   clearTimeout(kelSaranTimer);
   kelRender();
 }
@@ -1155,7 +1351,7 @@ function kelEditClose() {
 // Saran set tujuan: set yang belum dialihkan, kecuali set ini sendiri. Memperbarui datalist tanpa merender ulang (fokus tetap).
 async function kelCariSaran(teks) {
   const r = kelRow();
-  if (!r || kelIsKat()) return;
+  if (!r || kel.tab !== 'set') return;
   const idx = kel.edit;
   try {
     const res = await rpc('get_set_grup', { p_cari: teks.trim() || null, p_hanya_alih: false, p_untuk_tujuan: true, p_batas: 8 });
@@ -1168,20 +1364,34 @@ async function kelCariSaran(teks) {
 
 async function kelLoad() {
   const my = ++kelReq;
+  const scroll = $('ps-kel-scroll');
+  if (scroll) { scroll.classList.add('is-busy'); scroll.setAttribute('aria-busy', 'true'); }
   $('ps-kel-meta').textContent = 'Memuat…';
   try {
-    const res = kelIsKat()
-      ? await rpc('get_produk_kelompok', { p_cari: kel.q.trim() || null, p_kelompok: kel.kelompok || null, p_hanya_koreksi: !!kel.hanya, p_batas: 200 })
-      : await rpc('get_set_grup', { p_cari: kel.q.trim() || null, p_hanya_alih: !!kel.hanya, p_untuk_tujuan: false, p_batas: 200 });
+    const cari = kel.q.trim() || null;
+    let res;
+    if (kelIsKat()) {
+      res = await rpc('get_produk_kelompok', { p_cari: cari, p_kelompok: kel.kelompok || null, p_hanya_koreksi: !!kel.hanya, p_batas: 200 });
+    } else if (kelIsAtr()) {
+      res = await rpc('get_produk_atribut', { p_cari: cari, p_spes: kel.spesF || null, p_filter: kel.filter, p_batas: 200 });
+    } else {
+      res = await rpc('get_set_grup', { p_cari: cari, p_hanya_alih: !!kel.hanya, p_untuk_tujuan: false, p_batas: 200 });
+    }
     if (my !== kelReq) return;
     kel.list = (res && res.rows) || [];
     kel.total = num(res && res.total);
     kel.tanpaKode = num(res && res.tanpa_kode);
+    if (kelIsAtr()) {
+      kel.opsiSpes = (res && res.opsi_spes) || [];
+      kel.opsiJenis = (res && res.opsi_jenis) || [];
+      kelIsiSpesFilter(false);
+    }
     kel.edit = -1;
     kel.draft = '';
+    kel.at = null;
     let buka = -1;
     if (kel.match) {
-      buka = kel.list.findIndex((r) => ((kelIsKat() ? r.ejaan : r.varian) || []).includes(kel.match));
+      buka = kel.list.findIndex((r) => ((kelIsKat() || kelIsAtr() ? r.ejaan : r.varian) || []).includes(kel.match));
       kel.match = '';
     }
     kelRender();
@@ -1191,10 +1401,15 @@ async function kelLoad() {
     const hilang = e.code === 'PGRST202' || e.status === 404;
     kel.list = [];
     $('ps-kel-meta').textContent = '';
-    const pesan = hilang
-      ? (kelIsKat() ? 'RPC kategori produk belum terpasang. Jalankan 01_tabel_dan_rpc.sql.' : 'RPC alihkan set belum terpasang. Jalankan 07_alihkan_set.sql.')
-      : 'Gagal memuat: ' + e.message;
+    let pesan = 'Gagal memuat: ' + e.message;
+    if (hilang) {
+      pesan = kelIsKat() ? 'RPC kategori produk belum terpasang. Jalankan 01_tabel_dan_rpc.sql.'
+        : (kelIsAtr() ? 'RPC atribut produk belum terpasang. Jalankan patch 3b (get_produk_atribut).'
+          : 'RPC alihkan set belum terpasang. Jalankan 07_alihkan_set.sql.');
+    }
     $('ps-kel-body').innerHTML = `<tr><td colspan="4" class="ps-kel-empty ps-kel-bad">${esc(pesan)}</td></tr>`;
+  } finally {
+    if (my === kelReq && scroll) { scroll.classList.remove('is-busy'); scroll.removeAttribute('aria-busy'); }
   }
 }
 
@@ -1202,14 +1417,20 @@ function kelOpen(opts = {}) {
   const ov = $('ps-kel-overlay');
   if (!ov) return;
   kel.opener = document.activeElement;
-  kel.tab = opts.tab === 'set' ? 'set' : 'kat';
+  kel.tab = opts.tab === 'set' ? 'set' : (opts.tab === 'atr' ? 'atr' : 'kat');
   kel.q = opts.q || '';
   kel.match = (opts.q || '').trim();
   kel.kelompok = '';
+  kel.spesF = '';
   kel.hanya = false;
+  kel.filter = kel.match ? 'semua' : 'cek';   // dibuka dari satu produk -> jangan tersaring antrean
   kel.edit = -1;
   kel.draft = '';
+  kel.at = null;
+  kel.list = [];
+  kel.total = 0;
   kelRenderChrome();
+  kelRenderLoading();
   ov.classList.add('open');
   kelKeyHandler = (e) => { if (e.key === 'Escape') { e.stopPropagation(); kelClose(); } };
   ov.addEventListener('keydown', kelKeyHandler);
@@ -1235,11 +1456,17 @@ function kelSetTab(tab) {
   kel.tab = tab;
   kel.q = '';
   kel.kelompok = '';
+  kel.spesF = '';
   kel.hanya = false;
+  kel.filter = 'cek';
   kel.match = '';
   kel.edit = -1;
   kel.draft = '';
+  kel.at = null;
+  kel.list = [];                // baris tab lama tidak boleh tampil di bawah kolom tab baru
+  kel.total = 0;
   kelRenderChrome();
+  kelRenderLoading();
   kelLoad();
 }
 
@@ -1256,7 +1483,7 @@ async function kelSimpan(reset) {
   const ok = $('ps-kel-ok');
   const tombol = document.querySelectorAll('#ps-kel-body .ps-kel-btns button');
   const d = kel.draft.trim();
-  if (!reset && !d) return;
+  if (!reset && !kelIsAtr() && !d) return;
   tombol.forEach((b) => { b.disabled = true; });
   kelError('');
   try {
@@ -1264,6 +1491,9 @@ async function kelSimpan(reset) {
     if (kelIsKat()) {
       if (reset) { await rpc('hapus_produk_kelompok', { p_kode: kelKodeKat(r) }); pesan = `${r.kode_key} dikembalikan ke kategori di sheet`; }
       else { await rpc('set_produk_kelompok', { p_kode: kelKodeKat(r), p_kelompok: d, p_catatan: null }); pesan = `${r.kode_key} dipindah ke ${katName(d)}`; }
+    } else if (kelIsAtr()) {
+      if (reset) { await rpc('hapus_produk_atribut', { p_kode: kelKodeKat(r) }); pesan = `${r.kode_key} dikembalikan ke atribut otomatis`; }
+      else { await rpc('set_produk_atribut', atrRpcParams(r, kel.at || {})); pesan = `Atribut ${r.kode_key} disimpan: ${atrNama(kel.at || {})}`; }
     } else if (reset) {
       await rpc('hapus_set_grup', { p_label: r.label }); pesan = `Alihan “${r.label}” dilepas`;
     } else {
@@ -1287,13 +1517,15 @@ async function kelUnduh(btn) {
   btn.disabled = true;
   try {
     const aman = (p) => p.catch((e) => { if (String(e.message).startsWith('unauthorized')) throw e; return null; });
-    const [rk, rs] = await Promise.all([
+    const [rk, rs, ra] = await Promise.all([
       aman(rpc('get_produk_kelompok', { p_cari: null, p_kelompok: null, p_hanya_koreksi: true, p_batas: 500 })),
       aman(rpc('get_set_grup', { p_cari: null, p_hanya_alih: true, p_untuk_tujuan: false, p_batas: 500 })),
+      aman(rpc('get_produk_atribut', { p_cari: null, p_spes: null, p_filter: 'koreksi', p_batas: 500 })),
     ]);
     const lk = (rk && rk.rows) || [];
     const ls = (rs && rs.rows) || [];
-    if (!lk.length && !ls.length) { showToast('Belum ada koreksi atau alihan untuk diunduh', 'error'); return; }
+    const la = (ra && ra.rows) || [];
+    if (!lk.length && !ls.length && !la.length) { showToast('Belum ada koreksi atau alihan untuk diunduh', 'error'); return; }
     await loadScript(EXCELJS_SRC);
     if (!window.ExcelJS) throw new Error('library Excel tidak termuat');
     const wb = new window.ExcelJS.Workbook();
@@ -1329,6 +1561,20 @@ async function kelUnduh(btn) {
       ], ls.map((r) => ({
         label: r.label, varian: (r.varian || []).filter((x) => x !== r.label).join(' | '), target: r.target,
         set: num(r.jumlah_set), rs: num(r.jumlah_rs), pesanan: num(r.pesanan),
+        oleh: r.oleh || '', pada: waktu(r.pada), catatan: r.catatan || '',
+      })));
+    }
+    if (la.length) {
+      lembar('Atribut produk', [
+        { header: 'Kode produk', key: 'kode', width: 24 }, { header: 'Ejaan kode di sheet', key: 'ejaan', width: 34 },
+        { header: 'Nama produk', key: 'nama', width: 48 }, { header: 'Hitungan otomatis', key: 'auto', width: 38 },
+        { header: 'Dikoreksi menjadi', key: 'ke', width: 38 }, { header: 'Baris pesanan', key: 'baris', width: 14 },
+        { header: 'Jumlah (pcs)', key: 'qty', width: 14 }, { header: 'Jumlah RS', key: 'rs', width: 11 },
+        { header: 'Diubah oleh', key: 'oleh', width: 28 }, { header: 'Waktu ubah', key: 'pada', width: 20 },
+        { header: 'Catatan', key: 'catatan', width: 30 },
+      ], la.map((r) => ({
+        kode: r.kode_key, ejaan: (r.ejaan || []).join(' | '), nama: (r.nama || []).join(' | '),
+        auto: atrNama(r.auto || {}), ke: atrNama(r), baris: num(r.baris), qty: num(r.qty), rs: num(r.jumlah_rs),
         oleh: r.oleh || '', pada: waktu(r.pada), catatan: r.catatan || '',
       })));
     }
@@ -1968,6 +2214,7 @@ function clearFilter(k) {
     state.dari = ''; state.sampai = ''; state.cakupan = 'POPULASI';
   }
   else if (k === 'produk') { state.produk = ''; state.isiSet = false; }
+  else if (k === 'atribut') { state.spes = []; state.jenis = []; state.mikro = false; }
   else if (k === 'spes') state.spes = [];
   else if (k === 'jenis') state.jenis = [];
   else if (k === 'mikro') state.mikro = false;
@@ -1995,7 +2242,10 @@ export async function mount(container) {
   data = null; rows = []; unmapped = [];
   detailCache.clear();
   linesAll = null; recon = {};
-  Object.assign(kel, { tab: 'kat', q: '', kelompok: '', hanya: false, list: [], total: 0, tanpaKode: 0, edit: -1, draft: '', saran: [], match: '', opener: null });
+  Object.assign(kel, {
+    tab: 'kat', q: '', kelompok: '', hanya: false, filter: 'cek', spesF: '', list: [], total: 0, tanpaKode: 0, edit: -1, draft: '',
+    at: null, opsiSpes: [], opsiJenis: [], saran: [], match: '', opener: null,
+  });
 
   const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   const ACTIONS = {
@@ -2032,6 +2282,8 @@ export async function mount(container) {
     'ps-edit-wil': (el) => { const r = rows[+el.dataset.idx]; if (r) editWilayah(r.customer, r.provinsi, r.kab_kota); },
     'ps-edit-unm': (el) => { const u = unmapped[+el.dataset.idx]; if (u) editWilayah(u.customer, '', ''); },
     'ps-clear': (el) => clearFilter(el.dataset.k),
+    'ps-isi-on': () => { state.isiSet = true; syncControls(); load(); },
+    'ps-prov-all': () => { state.provinsi = ''; lsSet(LS_PROV, ''); syncControls(); load(); },
     'ps-copy': () => copyText(),
     'ps-xlsx': () => downloadXlsx(),
     'ps-kel-open': () => kelOpen(),
@@ -2043,6 +2295,7 @@ export async function mount(container) {
     'ps-kel-save': () => kelSimpan(false),
     'ps-kel-reset': () => kelSimpan(true),
     'ps-kel-unduh': (el) => kelUnduh(el),
+    'ps-kel-semua': () => { kel.filter = 'semua'; const f = $('ps-kel-filter'); if (f) f.value = 'semua'; kelLoad(); },
   };
   const CHANGE_BY_ID = {
     'ps-provinsi': (t) => { state.provinsi = t.value; lsSet(LS_PROV, t.value); load(); },
@@ -2056,7 +2309,11 @@ export async function mount(container) {
       state.sort = { k, dir: k === 'customer' ? 'asc' : 'desc' };
       if (data) { applySort(); renderTable(); }
     },
-    'ps-kel-kelompok': (t) => { kel.kelompok = t.value; kelLoad(); },
+    'ps-kel-kelompok': (t) => { if (kelIsAtr()) kel.spesF = t.value; else kel.kelompok = t.value; kelLoad(); },
+    'ps-kel-filter': (t) => { kel.filter = (t.value === 'semua' || t.value === 'koreksi') ? t.value : 'cek'; kelLoad(); },
+    'ps-kel-a-spes': (t) => { if (kel.at) { kel.at.spes = t.value; kelEditSync(); } },
+    'ps-kel-a-jenis': (t) => { if (kel.at) { kel.at.jenis = t.value; kelEditSync(); } },
+    'ps-kel-a-mikro': (t) => { if (kel.at) { kel.at.mikro = t.checked; kelEditSync(); } },
     'ps-kel-hanya': (t) => { kel.hanya = t.checked; kelLoad(); },
     'ps-kel-draft': (t) => { kel.draft = t.value; kelEditSync(); },
   };
@@ -2079,7 +2336,11 @@ export async function mount(container) {
       kelTimer = setTimeout(() => kelLoad(), 300);
       return;
     }
-    if (id === 'ps-kel-draft' && !kelIsKat()) {
+    if (id === 'ps-kel-a-catatan') {
+      if (kel.at) { kel.at.catatan = e.target.value; kelEditSync(); }
+      return;
+    }
+    if (id === 'ps-kel-draft' && kel.tab === 'set') {
       kel.draft = e.target.value;
       kelEditSync();
       clearTimeout(kelSaranTimer);
