@@ -69,6 +69,9 @@ function ensureTurnstileScript() {
 // biar dedup otomatis kalau kebetulan udah ke-load duluan.
 const GATE_STYLE_LINKS = [
   { id: 'shared-google-fonts', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap' },
+  // Khusus judul gate (redesign 2026-11-09). Cuma 1 family, 1 weight range, display=swap -> kalau telat/gagal
+  // judul jatuh ke Inter, gate tetap kepakai.
+  { id: 'pw-gate-title-font', href: 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&display=swap' },
   { id: 'shared-pnm-universal-css', href: '/pnm-universal.css?v=20260813b' },
 ];
 
@@ -85,27 +88,129 @@ function loadLink(id, href) {
   });
 }
 
+const GATE_CSS = `
+#pw-gate{--g-panel:#e3e7ed;--g-tray:#eef1f5;--g-steel:#8a95a5;--g-steel-hi:#fbfcfd;--g-engrave:#7a8493;
+  font-family:'Inter',system-ui,sans-serif;color:var(--text);background:var(--bg);align-items:stretch;justify-content:stretch}
+html[data-theme="dark"] #pw-gate{--g-panel:#101112;--g-tray:#17191b;--g-steel:#626d7a;--g-steel-hi:#bcc6d1;--g-engrave:#6e7884}
+#pw-gate .pwg-shell{width:100%;height:100%;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);overflow:auto}
+#pw-gate .pwg-panel{background:var(--g-panel);border-right:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;padding:4vh 3vw}
+#pw-gate .pwg-tray{height:min(88vh,760px);aspect-ratio:3/4;max-width:100%;display:block}
+#pw-gate .pwg-main{display:flex;align-items:center;justify-content:center;padding:32px 24px}
+#pw-gate .pwg-card{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:stretch;text-align:left}
+#pw-gate .pwg-logo{height:30px;width:auto;align-self:flex-start;margin:0 0 44px;object-fit:contain}
+#pw-gate .pwg-logo-dark{display:none}
+html[data-theme="dark"] #pw-gate .pwg-logo-light{display:none}
+html[data-theme="dark"] #pw-gate .pwg-logo-dark{display:block}
+#pw-gate .pwg-title{margin:0;font-family:'Bricolage Grotesque','Inter',system-ui,sans-serif;font-size:36px;line-height:1.05;font-weight:700;letter-spacing:-.025em;text-align:left}
+#pw-gate .pwg-sub{margin:12px 0 28px;font-size:14px;line-height:1.5;color:var(--text-muted);text-align:left}
+#pw-gate .pwg-field{margin:0 0 16px}
+#pw-gate .pwg-field label{display:block;margin:0 0 6px;font-size:13px;font-weight:500;color:var(--text-secondary)}
+#pw-gate .pwg-input{position:relative}
+#pw-gate .pwg-field input{width:100%;height:44px;padding:0 14px;font:inherit;font-size:14px;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);border-radius:10px;outline:none;transition:border-color .15s,box-shadow .15s}
+#pw-gate .pwg-field input::placeholder{color:var(--text-muted);opacity:.7}
+#pw-gate .pwg-field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+#pw-gate #pw-gate-password{padding-right:84px}
+#pw-gate .pwg-peek{position:absolute;right:6px;top:50%;transform:translateY(-50%);height:32px;padding:0 10px;border:0;border-radius:7px;background:none;font:inherit;font-size:12.5px;font-weight:500;color:var(--accent-text);cursor:pointer}
+#pw-gate .pwg-peek:hover{background:var(--accent-soft)}
+#pw-gate .pwg-peek:focus-visible,#pw-gate .pwg-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#pw-gate #pw-gate-turnstile{margin:4px 0 14px;min-height:65px;display:flex;justify-content:center;align-items:center}
+#pw-gate .pwg-btn{width:100%;height:46px;border:0;border-radius:10px;background:var(--accent);color:#fff;font:inherit;font-size:15px;font-weight:600;cursor:pointer;transition:background .15s,transform .05s}
+#pw-gate .pwg-btn:hover:not(:disabled){background:var(--accent-hover)}
+#pw-gate .pwg-btn:active:not(:disabled){transform:translateY(1px)}
+#pw-gate .pwg-btn:disabled{background:var(--border-strong);color:var(--text-muted);cursor:not-allowed}
+#pw-gate .pwg-status{min-height:20px;margin:12px 0 0;font-size:13px;line-height:1.45;text-align:left;color:var(--text-muted)}
+#pw-gate .pwg-help{margin:22px 0 0;padding-top:18px;border-top:1px solid var(--border);font-size:13px;color:var(--text-muted)}
+#pw-gate .pwg-s{fill:none;stroke:var(--g-steel);stroke-linecap:round;stroke-linejoin:round}
+#pw-gate .pwg-hi{fill:none;stroke:var(--g-steel-hi);stroke-linecap:round;opacity:.85}
+#pw-gate .pwg-cut{fill:none;stroke:var(--g-tray);stroke-linecap:round}
+@keyframes pwgLay{from{opacity:0;transform:translateY(-24px) rotate(var(--r,0deg))}to{opacity:1;transform:none}}
+#pw-gate .pwg-inst{transform-box:fill-box;transform-origin:center;animation:pwgLay .75s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--i)*120ms + 150ms)}
+@media (max-width:860px){
+  #pw-gate .pwg-shell{grid-template-columns:minmax(0,1fr)}
+  #pw-gate .pwg-panel{display:none}
+  #pw-gate .pwg-logo{margin-bottom:32px}
+  #pw-gate .pwg-title{font-size:30px}
+}
+@media (prefers-reduced-motion:reduce){
+  #pw-gate .pwg-inst{animation:none}
+  #pw-gate .pwg-field input,#pw-gate .pwg-btn{transition:none}
+}
+`;
+
+function ensureGateCss() {
+  if (document.getElementById('pw-gate-css')) return;
+  const st = document.createElement('style');
+  st.id = 'pw-gate-css';
+  st.textContent = GATE_CSS;
+  document.head.appendChild(st); // sesudah <link> universal -> menang urutan; #pw-gate menang spesifisitas
+}
+
 function ensureGateStyles() {
+  ensureGateCss();
   return Promise.all(GATE_STYLE_LINKS.map(({ id, href }) => loadLink(id, href)));
 }
 
 const GATE_MARKUP = `
 <div id="pw-gate" class="auth-gate">
-  <div class="auth-gate-box">
-    <img src="/favicon/favicon-96x96.png" alt="PNM Logo" class="auth-gate-logo"/>
-    <div class="auth-gate-title">Pionir Workspaces</div>
-    <div class="auth-gate-sub">Masuk untuk melanjutkan.</div>
-    <div class="pr-field">
-      <label>Email</label>
-      <input type="email" id="pw-gate-email" placeholder="nama@email.com" autocomplete="email"/>
-    </div>
-    <div class="pr-field">
-      <label>Password</label>
-      <input type="password" id="pw-gate-password" placeholder="••••••••" autocomplete="current-password"/>
-    </div>
-    <div id="pw-gate-turnstile" style="margin:10px 0;display:flex;justify-content:center;"></div>
-    <button id="pw-gate-login-btn" class="auth-gate-btn">Masuk</button>
-    <div id="pw-gate-status" class="auth-gate-status"></div>
+  <div class="pwg-shell">
+    <aside class="pwg-panel" aria-hidden="true">
+      <svg class="pwg-tray" viewBox="0 0 480 640" focusable="false">
+        <g transform="rotate(-3 240 320)">
+          <rect x="40" y="40" width="400" height="560" rx="24" fill="var(--g-tray)" stroke="var(--border-strong)" stroke-width="2"/>
+          <rect x="58" y="58" width="364" height="524" rx="14" fill="none" stroke="var(--border-strong)" stroke-width="1" opacity=".6"/>
+          <g transform="rotate(2 96 380)"><g class="pwg-inst" style="--i:0;--r:-6deg">
+            <path class="pwg-s" stroke-width="14" d="M96 250V520"/>
+            <path class="pwg-hi" stroke-width="3" d="M92 262V508"/>
+            <path class="pwg-cut" stroke-width="1.5" d="M89 440h14M89 452h14M89 464h14M89 476h14M89 488h14"/>
+            <path class="pwg-s" stroke-width="7" d="M96 250V196"/>
+            <path d="M92.5 196H99.5V150Q99.5 112 94 92Q90 118 92.5 150Z" fill="var(--g-steel)"/>
+          </g></g>
+          <g transform="rotate(-1.5 170 330)"><g class="pwg-inst" style="--i:1;--r:5deg">
+            <path class="pwg-s" stroke-width="8" d="M170 540C158 400 152 260 166 120"/>
+            <path class="pwg-s" stroke-width="8" d="M170 540C182 400 188 260 174 120"/>
+            <path class="pwg-hi" stroke-width="2" d="M168 520C157 400 151 270 164 132"/>
+            <path class="pwg-hi" stroke-width="2" d="M172 520C183 400 189 270 176 132"/>
+            <path class="pwg-cut" stroke-width="1.5" d="M163 128h14M163 137h14M164 146h12"/>
+          </g></g>
+          <g transform="rotate(1 262 330)"><g class="pwg-inst" style="--i:2;--r:-4deg">
+            <path class="pwg-s" stroke-width="9" d="M246 96L262 330L294 452"/>
+            <path class="pwg-s" stroke-width="9" d="M278 96L262 330L230 452"/>
+            <path class="pwg-hi" stroke-width="2" d="M248 112L263 322"/>
+            <circle class="pwg-s" cx="302" cy="478" r="28" stroke-width="7"/>
+            <circle class="pwg-s" cx="222" cy="478" r="28" stroke-width="7"/>
+            <circle cx="262" cy="330" r="7" fill="var(--accent)" stroke="var(--g-steel-hi)" stroke-width="2"/>
+          </g></g>
+          <g transform="rotate(-1 370 380)"><g class="pwg-inst" style="--i:3;--r:6deg">
+            <path class="pwg-s" stroke-width="9" d="M370 540V196Q370 176 390 176H410V212"/>
+            <path class="pwg-hi" stroke-width="2" d="M366 520V204"/>
+          </g></g>
+          <text x="240" y="570" text-anchor="middle" font-family="'JetBrains Mono',ui-monospace,monospace" font-size="11" letter-spacing="1.4" fill="var(--g-engrave)">RB999-KE921-B99-U02</text>
+        </g>
+      </svg>
+    </aside>
+    <main class="pwg-main">
+      <div class="pwg-card">
+        <img src="/assets/logo-mark-pnm-sidebar.png" alt="PNM" class="pwg-logo pwg-logo-light"/>
+        <img src="/assets/logo-mark-pnm-sidebar-dark.png" alt="PNM" class="pwg-logo pwg-logo-dark"/>
+        <h1 class="pwg-title">Pionir Workspaces</h1>
+        <p class="pwg-sub">Masuk dengan email tim yang sudah terdaftar.</p>
+        <div class="pwg-field">
+          <label for="pw-gate-email">Email</label>
+          <input type="email" id="pw-gate-email" placeholder="nama@email.com" autocomplete="email"/>
+        </div>
+        <div class="pwg-field">
+          <label for="pw-gate-password">Password</label>
+          <div class="pwg-input">
+            <input type="password" id="pw-gate-password" placeholder="Password" autocomplete="current-password"/>
+            <button type="button" id="pw-gate-peek" class="pwg-peek" aria-label="Tampilkan password">Lihat</button>
+          </div>
+        </div>
+        <div id="pw-gate-turnstile"></div>
+        <button id="pw-gate-login-btn" class="pwg-btn">Masuk</button>
+        <div id="pw-gate-status" class="pwg-status" role="status" aria-live="polite"></div>
+        <p class="pwg-help">Belum bisa masuk? Minta admin menambahkan emailmu.</p>
+      </div>
+    </main>
   </div>
 </div>`;
 
@@ -159,7 +264,9 @@ function hideGate() {
   // yang perlu begitu login sukses. Email sengaja DIBIARKAN (bukan
   // rahasia, dan enak buat re-login cepat kalau logout lagi sebentar).
   const passwordInput = document.getElementById('pw-gate-password');
-  if (passwordInput) passwordInput.value = '';
+  if (passwordInput) { passwordInput.value = ''; passwordInput.type = 'password'; }
+  const peek = document.getElementById('pw-gate-peek');
+  if (peek) { peek.textContent = 'Lihat'; peek.setAttribute('aria-label', 'Tampilkan password'); }
   if (gateEl) {
     gateEl.style.display = 'none';
     if (gateEl.isConnected) gateEl.remove();
@@ -202,6 +309,7 @@ export async function initAuthGate({ onReady, onLoggedOut }) {
     if (!turnstileEl || !window.turnstile) return;
     turnstileWidgetId = window.turnstile.render(turnstileEl, {
       sitekey: TURNSTILE_SITE_KEY,
+      size: 'flexible', // lebar mengikuti kartu (bukan 300px tetap)
       callback: (token) => { turnstileToken = token; },
       'expired-callback': () => { turnstileToken = null; },
       'error-callback': () => { turnstileToken = null; },
@@ -225,10 +333,15 @@ export async function initAuthGate({ onReady, onLoggedOut }) {
       await window.PNMAuth.login(email, password, turnstileToken);
       // onAuthStateChange (di bawah) yang nanganin sisanya (whitelist check + onReady).
     } catch (error) {
+      const m = (error.message || '').toLowerCase();
       setStatus(
-        error.message.toLowerCase().includes('email not confirmed')
+        m.includes('email not confirmed')
           ? 'Email belum dikonfirmasi. Cek inbox kamu buat klik link konfirmasi dulu.'
-          : 'Gagal masuk: ' + error.message,
+          : m.includes('invalid login credentials')
+            ? 'Email atau password salah. Periksa lagi, lalu coba masuk.'
+            : m.includes('captcha')
+              ? 'Verifikasi keamanan gagal. Tunggu kotak verifikasi dimuat ulang, lalu coba masuk lagi.'
+              : 'Gagal masuk: ' + error.message,
         true
       );
     }
@@ -239,6 +352,14 @@ export async function initAuthGate({ onReady, onLoggedOut }) {
 
   loginBtn.addEventListener('click', attemptLogin);
   passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptLogin(); });
+  emailInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); passwordInput.focus(); } });
+  const peekBtn = document.getElementById('pw-gate-peek');
+  if (peekBtn) peekBtn.addEventListener('click', () => {
+    const show = passwordInput.type === 'password';
+    passwordInput.type = show ? 'text' : 'password';
+    peekBtn.textContent = show ? 'Sembunyikan' : 'Lihat';
+    peekBtn.setAttribute('aria-label', show ? 'Sembunyikan password' : 'Tampilkan password');
+  });
 
   let hasBeenReady = false;
 
