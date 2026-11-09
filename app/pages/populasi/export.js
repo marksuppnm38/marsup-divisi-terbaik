@@ -34,13 +34,13 @@ export const XL_PRESETS = [
   {
     id: 'sph', nama: 'Lampiran SPH',
     desc: 'Ringkas dan rapi untuk dikirim ke calon pembeli: daftar RS, populasi per produk, dan per provinsi. Tanpa nomor PO/RMP dan data teknis.',
-    sheets: ['rs', 'produk', 'provinsi'],
+    sheets: ['rs', 'rincianrs', 'produk', 'provinsi'],
     grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 0, tek: 0 },
   },
   {
     id: 'presentasi', nama: 'Presentasi dan diskusi',
     desc: 'Gambaran cepat untuk dibicarakan: per provinsi, per produk, per kategori, dan daftar RS. Tanpa data teknis.',
-    sheets: ['provinsi', 'produk', 'matriks', 'rs'],
+    sheets: ['provinsi', 'produk', 'matriks', 'rs', 'rincianrs'],
     grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 1, tek: 0 },
   },
   {
@@ -69,6 +69,8 @@ export const XL_SHEETS = [
     desc: 'Satu halaman: jawaban singkat, angka utama, RS dan produk terbanyak, filter yang dipakai.' },
   { id: 'rs', nama: 'Daftar RS', cols: true,
     desc: 'Satu baris per rumah sakit/instansi: wilayah, jumlah, dan produk yang dipesan.' },
+  { id: 'rincianrs', nama: 'Produk per RS',
+    desc: 'Satu baris per rumah sakit dan produk: jumlah yang dipesan. Bisa difilter per RS atau per produk.' },
   { id: 'produk', nama: 'Per Produk', cols: true,
     desc: 'Populasi per produk atau jenis set: jumlah, berapa RS, berapa provinsi.' },
   { id: 'provinsi', nama: 'Per Provinsi', when: (i) => !i.provinsiDipilih,
@@ -284,7 +286,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       set_t: n0(x.set_terkirim), set_p: n0(x.set_proses), set: x.set,
       pcs_t: n0(x.pcs_terkirim), pcs_p: n0(x.pcs_proses), pcs: x.pcs,
       pesanan: n0(x.jumlah_pesanan), pertama: xlDate(o.pertama), terakhir: xlDate(x.terakhir),
-      rincian: (x.rincian || []).map((j) => `${j.label} ×${fmt(j.nilai)}`).join('; '),
+      rincian: '', _rinc: x.rincian || [],
       ket: sph ? '' : ket.join('; '), sumber: sumberTxt(x),
     };
   });
@@ -385,8 +387,17 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     if (def.lock) return true;
     if (!pilih.has(id) || !sheetAvail(def, info)) return false;
     if (id === 'matriks' && present.length < 2) { dilewati.push('RS per Kategori: hasilnya hanya memuat satu kategori.'); return false; }
-    if ((id === 'pesanan' || id === 'produk') && !lines.length) { dilewati.push(`${def.nama}: tidak ada baris pesanan.`); return false; }
+    if ((id === 'pesanan' || id === 'produk' || id === 'rincianrs') && !lines.length) { dilewati.push(`${def.nama}: tidak ada baris pesanan.`); return false; }
     return true;
+  });
+
+  // "Jenis yang dipesan": satu produk per baris. Bila ada sheet "Produk per RS", cukup 5 teratas di sini supaya sel tidak jadi satu blok panjang.
+  const adaRincianRs = plan.includes('rincianrs');
+  itemsRs.forEach((it) => {
+    const r = it._rinc.map((j) => `${j.label} ×${fmt(j.nilai)}`);
+    it.rincian = adaRincianRs && r.length > 5
+      ? r.slice(0, 5).concat(`+ ${r.length - 5} jenis lainnya (lengkapnya di sheet “Produk per RS”)`).join('\n')
+      : r.join('\n');
   });
 
   const dibuang = [];              // kolom terpilih tetapi seluruhnya kosong
@@ -546,7 +557,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
         cell.font = { color: { argb: c.warn && v ? XL.warn : (muted ? XL.soft : XL.ink) }, size: c.tech ? 10 : 11, italic: tidakAda };
         if (c.wrap && v) maxLines = Math.max(maxLines, perkiraanBaris(v, c.w));
       });
-      row.height = Math.max(18, maxLines * 15 + 4);
+      row.height = Math.min(409, Math.max(18, maxLines * 15 + 4));
     });
 
     const last = HEAD + o.items.length;
@@ -685,6 +696,39 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       title: 'Daftar rumah sakit / instansi', sub: subLine + subTek(cols), note: NOTE_KOSONG,
       cols, freeze: 2, labelKey: 'customer',
       totals: sumTot(cols, ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'pesanan']), items: itemsRs,
+    });
+  }
+  if (plan.includes('rincianrs')) {
+    const pr = new Map();
+    lines.forEach((l) => {
+      if (!dihitung(l)) return;
+      const isSet = l.kind === 'SET';
+      const nama = isSet ? l.label : l.produk;
+      const key = `${l.customer}|${isSet ? 'S' : 'P'}|${isSet ? l.kelompok : (l.kode_produk || '')}|${nama}`;
+      const o = pr.get(key) || { customer: l.customer, nama: nama || '', kategori: katName(l.kelompok), set: 0, pcs: 0, isSet };
+      o[isSet ? 'set' : 'pcs'] += n0(l.nilai);
+      pr.set(key, o);
+    });
+    const items = Array.from(pr.values())
+      .sort((a, b) => ((ord.get(a.customer) || 0) - (ord.get(b.customer) || 0)) || (n0(b.set) + n0(b.pcs)) - (n0(a.set) + n0(a.pcs)) || String(a.nama).localeCompare(String(b.nama), 'id'))
+      .map((o) => {
+        const w = wil.get(o.customer) || {};
+        return { customer: o.customer, kab: w.kab_kota || '', provinsi: w.provinsi || (sph ? '' : BELUM), nama: o.nama, kategori: o.kategori, set: o.isSet ? o.set : null, pcs: o.isSet ? null : o.pcs };
+      });
+    const cols = [
+      { h: 'Rumah sakit / instansi', k: 'customer', w: 40, desc: 'Nama customer.' },
+      { h: 'Kab/Kota', k: 'kab', w: 20, na: 1, desc: 'Kabupaten/kota.' },
+      { h: 'Provinsi', k: 'provinsi', w: 18, desc: 'Provinsi.' },
+      { h: 'Produk / jenis set', k: 'nama', w: 52, wrap: 1, desc: 'Nama produk atau jenis set.' },
+      { h: 'Kategori', k: 'kategori', w: 18, desc: 'Kategori produk.' },
+      { h: 'Jumlah set', k: 'set', w: 11, fmt: XL_NUMZ, desc: 'Jumlah set.' },
+      { h: 'Jumlah unit/pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, desc: 'Jumlah barang satuan.' },
+    ].filter((c) => !((c.k === 'kab' || c.k === 'provinsi') && items.every((it) => kosong(it[c.k]))))
+     .filter((c) => !(c.k === 'set' && !items.some((it) => it.set !== null)) && !(c.k === 'pcs' && !items.some((it) => it.pcs !== null)));
+    tableSheet('Produk per RS', {
+      bersih: sph, title: 'Produk yang dipesan per rumah sakit / instansi', sub: subLine,
+      note: 'Satu baris per rumah sakit dan produk. Gunakan filter di judul kolom untuk melihat satu RS atau satu produk.',
+      cols, freeze: 1, labelKey: 'customer', totals: sumTot(cols, ['set', 'pcs']), items,
     });
   }
   if (plan.includes('produk')) {
