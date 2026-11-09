@@ -36,8 +36,8 @@ export const POPULASI_MARKUP = `
         <input class="search-mini" type="search" id="ps-produk" placeholder="mis. drill, centrifuge, obgyn, tubectomy" autocomplete="off">
       </label>
       <label class="ps-field">
-        <span class="ps-lbl">Rumah sakit</span>
-        <input class="search-mini" type="search" id="ps-rs" placeholder="mis. soetrasno" autocomplete="off">
+        <span class="ps-lbl">Rumah sakit atau No. RMP</span>
+        <input class="search-mini" type="search" id="ps-rs" placeholder="mis. soetrasno atau RMP 25-054" autocomplete="off">
       </label>
       <div class="ps-field">
         <span class="ps-lbl">Status pesanan</span>
@@ -51,6 +51,11 @@ export const POPULASI_MARKUP = `
     <div class="ps-field">
       <span class="ps-lbl" id="ps-lbl-kat">Kategori (boleh lebih dari satu)</span>
       <div class="ps-cats" id="ps-cats" role="group" aria-labelledby="ps-lbl-kat"></div>
+    </div>
+
+    <div class="ps-field" id="ps-rumpun-wrap" hidden>
+      <span class="ps-lbl" id="ps-lbl-rumpun">Kelompok set (pilih satu untuk menyaring)</span>
+      <div class="ps-cats" id="ps-rumpun" role="group" aria-labelledby="ps-lbl-rumpun"></div>
     </div>
 
     <div class="ps-opts">
@@ -101,6 +106,13 @@ export const POPULASI_MARKUP = `
     <div class="table-header">
       <div class="table-title"><span id="ps-tbl-title">Rumah sakit</span></div>
       <div class="filter-bar" id="ps-actions">
+        <label class="ps-sortsel"><span class="ps-sr">Urutkan</span>
+          <select class="filter-select" id="ps-urut" aria-label="Urutkan tabel">
+            <option value="total">Terbanyak</option>
+            <option value="terakhir">Pesanan terbaru</option>
+            <option value="customer">Nama A–Z</option>
+          </select>
+        </label>
         <button type="button" class="bulk-btn clear" data-action="ps-copy" title="Salin daftar sebagai teks untuk ditempel ke chat atau email"><i class="ti ti-copy" aria-hidden="true"></i> Salin teks</button>
         <button type="button" class="bulk-btn export ps-xlsx" data-action="ps-xlsx" title="Unduh Excel yang siap dikirim: ringkasan, daftar RS, dan rincian pesanan"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> <span>Unduh Excel</span></button>
       </div>

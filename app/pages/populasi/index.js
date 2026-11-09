@@ -112,7 +112,7 @@ let reqId = 0;
 
 const state = {
   provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI',
-  kelompok: ['SET'], produk: '', rs: '', isiSet: false, dari: '', sampai: '',
+  kelompok: ['SET'], produk: '', rumpun: '', rs: '', isiSet: false, dari: '', sampai: '',
   sort: { k: 'total', dir: 'desc' },
   tinjau: '',                       // '' | 'cek' | 'estimasi' -> tabel berganti jadi daftar pesanan
 };
@@ -213,15 +213,16 @@ function filterParams() {
     p_dari: state.dari || null,
     p_sampai: state.sampai || null,
     p_kelompok: state.kelompok.length ? state.kelompok : null,
-    p_produk: state.produk.trim() || null,
+    p_produk: state.rumpun ? 'rumpun:' + state.rumpun : (state.produk.trim() || null),
     p_rs: state.rs.trim() || null,
-    p_isi_set: !!(state.isiSet && state.produk.trim()),
+    p_isi_set: !!(state.isiSet && state.produk.trim() && !state.rumpun),
   };
 }
 
 function kategoriText(st = state) {
   const k = st.kelompok.map(katName);
-  return k.length ? k.join(', ') : 'Semua kategori';
+  const base = k.length ? k.join(', ') : 'Semua kategori';
+  return st.rumpun ? `${base} (kelompok ${st.rumpun})` : base;
 }
 function periodeText(st = state) {
   if (!st.dari && !st.sampai) return 'Semua tanggal';
@@ -303,6 +304,7 @@ function render() {
   if (state.tinjau && angkaServer(state.tinjau) <= 0) state.tinjau = '';   // masalahnya sudah tidak ada pada filter ini
   renderProvinsi();
   renderCats();
+  renderRumpun();
   renderFreshness();
   renderSummary();
   renderTable();
@@ -340,14 +342,36 @@ function renderCats() {
   el.innerHTML = html;
 }
 
+// Chip kelompok set (rumpun): daftar yang SUDAH termap, angka = jumlah RS pada filter lain yang aktif.
+// Satu rumpun dipilih -> hanya set di rumpun itu (nama asli set tetap tampil di tabel).
+function renderRumpun() {
+  const wrap = $('ps-rumpun-wrap');
+  const el = $('ps-rumpun');
+  if (!wrap || !el) return;
+  const opsi = (data && data.opsi_rumpun) || [];
+  const kelompokSet = !state.kelompok.length || state.kelompok.includes('SET');
+  wrap.hidden = !opsi.length || !kelompokSet;
+  if (wrap.hidden) return;
+  const all = !state.rumpun;
+  let html = `<button type="button" class="filter-btn ps-cat${all ? ' active' : ''}" aria-pressed="${all}" data-action="ps-rumpun" data-k="">Semua</button>`;
+  html += opsi.map((o) => {
+    const on = state.rumpun === o.rumpun;
+    const tip = `${fmt(o.jumlah_rs)} RS · ${fmt(o.nilai)} set · ${fmt(o.jumlah_nama)} nama set`;
+    return `<button type="button" class="filter-btn ps-cat${on ? ' active' : ''}" aria-pressed="${on}" data-action="ps-rumpun" data-k="${esc(o.rumpun)}" title="${esc(tip)}">${esc(rumpunNama(o.rumpun))}<span class="ps-cat-n">${fmt(o.jumlah_rs)}</span></button>`;
+  }).join('');
+  el.innerHTML = html;
+}
+const rumpunNama = (r) => (r === 'LAINNYA' ? 'Belum dikelompokkan' : String(r || '').replace(/\w\S*/g, (w) => w.charAt(0) + w.slice(1).toLowerCase()).replace(/\bTht\b/, 'THT').replace(/\bObgyn\b/, 'OBGYN'));
+
 // Filter yang sedang aktif, masing-masing bisa dilepas (atau lepas semua sekaligus).
 function renderActive() {
   const el = $('ps-active');
   if (!el) return;
   const a = [];
+  if (state.rumpun) a.push({ k: 'rumpun', t: `Kelompok set: ${rumpunNama(state.rumpun)}` });
   if (state.produk.trim()) a.push({ k: 'produk', t: `Cari: ${state.produk.trim()}` });
   if (state.produk.trim() && state.isiSet) a.push({ k: 'isi', t: 'Termasuk isi set' });
-  if (state.rs.trim()) a.push({ k: 'rs', t: `RS: ${state.rs.trim()}` });
+  if (state.rs.trim()) a.push({ k: 'rs', t: `RS / RMP: ${state.rs.trim()}` });
   if (state.dari || state.sampai) a.push({ k: 'periode', t: `Periode: ${periodeText()}` });
   if (state.cakupan === 'SEMUA') a.push({ k: 'cakupan', t: 'Termasuk retail' });
   el.hidden = !a.length;
@@ -773,7 +797,7 @@ function detailHtml(list) {
           const nama = isSet ? d.label : d.produk;
           const sub = !isSet && (d.family || d.kode_produk)
             ? `<span class="ps-sub">${esc(d.family || d.kode_produk)}</span>`
-            : (isSet && d.label_asli ? `<span class="ps-sub">Dialihkan dari: ${esc(d.label_asli)}</span>` : '');
+            : (isSet ? [d.label_asli ? `Dialihkan dari: ${esc(d.label_asli)}` : '', d.rumpun ? `Kelompok: ${esc(rumpunNama(d.rumpun))}` : ''].filter(Boolean).map((t) => `<span class="ps-sub">${t}</span>`).join('') : '');
           const cek = isSet && d.status_hitung === 'cek';
           return `
           <tr class="${cek ? 'is-cek' : ''}">
@@ -1675,6 +1699,7 @@ async function buildWorkbook(ctx) {
     { h: 'Kategori', k: 'kategori', w: 18 },
     { h: 'Produk / jenis set', k: 'jenis', w: 50, wrap: true },
   ];
+  if (lines.some((l) => l.rumpun)) linCols.push({ h: 'Kelompok set', k: 'rumpun', w: 20 });
   if (adaSet) linCols.push({ h: 'Jumlah set', k: 'set', w: 11, fmt: XL_NUMZ });
   if (adaPcs) linCols.push({ h: 'Jumlah unit/pcs', k: 'pcs', w: 12, fmt: XL_NUMZ });
   linCols.push(
@@ -1717,6 +1742,7 @@ async function buildWorkbook(ctx) {
         baris: num(l.jumlah_baris),
         sheet: l.sumber_sheet || '',
         asli: l.label_asli || '',
+        rumpun: l.rumpun ? rumpunNama(l.rumpun) : '',
       };
     }),
   });
@@ -1860,14 +1886,25 @@ function syncControls() {
   $('ps-cakupan').value = state.cakupan;
   syncStatusButtons();
   renderCats();
+  renderRumpun();
+  syncUrut();
+}
+
+// Dropdown Urutkan mengikuti state.sort (header kolom tetap bisa diklik juga).
+function syncUrut() {
+  const s = $('ps-urut');
+  if (!s) return;
+  const k = state.sort.k;
+  s.value = (k === 'terakhir' || k === 'customer') ? k : 'total';
 }
 
 function clearFilter(k) {
   if (k === 'semua') {
-    state.produk = ''; state.isiSet = false; state.rs = '';
+    state.produk = ''; state.rumpun = ''; state.isiSet = false; state.rs = '';
     state.dari = ''; state.sampai = ''; state.cakupan = 'POPULASI';
   }
   else if (k === 'produk') { state.produk = ''; state.isiSet = false; }
+  else if (k === 'rumpun') state.rumpun = '';
   else if (k === 'isi') state.isiSet = false;
   else if (k === 'rs') state.rs = '';
   else if (k === 'periode') { state.dari = ''; state.sampai = ''; }
@@ -1886,7 +1923,7 @@ export async function mount(container) {
   Object.assign(state, {
     provinsi: saved === null ? DEFAULT_PROV : saved,
     status: 'DELIVERED', cakupan: 'POPULASI', kelompok: ['SET'],
-    produk: '', rs: '', isiSet: false, dari: '', sampai: '',
+    produk: '', rumpun: '', rs: '', isiSet: false, dari: '', sampai: '',
     sort: { k: 'total', dir: 'desc' }, tinjau: '',
   });
   data = null; rows = []; unmapped = [];
@@ -1908,11 +1945,18 @@ export async function mount(container) {
       }
       load();
     },
+    'ps-rumpun': (el) => {
+      const k = el.dataset.k || '';
+      state.rumpun = state.rumpun === k ? '' : k;
+      if (state.rumpun) { state.produk = ''; state.isiSet = false; $('ps-produk').value = ''; $('ps-isi-wrap').hidden = true; }
+      load();
+    },
     'ps-status': (el) => { state.status = el.dataset.v === 'ALL' ? 'ALL' : 'DELIVERED'; syncStatusButtons(); load(); },
     'ps-sort': (el) => {
       const k = el.dataset.k;
       if (state.sort.k === k) state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
       else state.sort = { k, dir: (k === 'customer' || k === 'wilayah') ? 'asc' : 'desc' };
+      syncUrut();
       if (data) { applySort(); renderTable(); }
     },
     'ps-toggle': (el) => toggleDetail(+el.dataset.idx),
@@ -1944,6 +1988,11 @@ export async function mount(container) {
     'ps-dari': (t) => { state.dari = t.value; load(); },
     'ps-sampai': (t) => { state.sampai = t.value; load(); },
     'ps-isi-set': (t) => { state.isiSet = t.checked; load(); },
+    'ps-urut': (t) => {
+      const k = t.value;
+      state.sort = { k, dir: k === 'customer' ? 'asc' : 'desc' };
+      if (data) { applySort(); renderTable(); }
+    },
     'ps-kel-kelompok': (t) => { kel.kelompok = t.value; kelLoad(); },
     'ps-kel-hanya': (t) => { kel.hanya = t.checked; kelLoad(); },
     'ps-kel-draft': (t) => { kel.draft = t.value; kelEditSync(); },
@@ -1977,7 +2026,10 @@ export async function mount(container) {
     if (id !== 'ps-produk' && id !== 'ps-rs') return;
     const v = e.target.value;
     // state langsung diperbarui (dua kolom bisa diketik berurutan), hanya muat-ulang yang ditunda.
-    if (id === 'ps-produk') { state.produk = v; $('ps-isi-wrap').hidden = !v.trim(); }
+    if (id === 'ps-produk') {
+      state.produk = v; $('ps-isi-wrap').hidden = !v.trim();
+      if (v.trim() && state.rumpun) state.rumpun = '';   // mengetik = cari bebas, lepas filter kelompok
+    }
     else state.rs = v;
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => load(), 300);
