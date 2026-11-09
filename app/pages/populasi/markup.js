@@ -8,7 +8,7 @@
 //   2. Bilah cari (#ps-cari) selebar halaman, dengan dua cakupan: Produk dan Rumah sakit/RMP
 //      (masing-masing isinya disimpan terpisah).
 //   3. Dua kolom: kiri = rel filter (.ps-panel: provinsi, status, kategori, spesialisasi, opsi, periode),
-//      kanan = hasil (.ps-results: filter aktif, judul hasil, ringkasan satu baris, tabel, RS tanpa wilayah,
+//      kanan = hasil (.ps-results: filter aktif, judul hasil, ringkasan satu baris, tabel + paginasi (#ps-pager), RS tanpa wilayah,
 //      Kelola produk di paling bawah). Rel filter tetap terlihat saat tabel di-scroll.
 //   Di layar sempit (<= 1100px) kedua kolom menumpuk dan facet kembali jadi chip.
 //
@@ -19,7 +19,7 @@
 //
 // Yang dirender lewat JS (bukan di sini): facet kategori (#ps-cats), spesialisasi (#ps-spes) dan
 // jenis instrumen (#ps-jenis), ringkasan (#ps-stats),
-// catatan hitungan (#ps-caveats), header tabel (#ps-thead), chip filter aktif (#ps-active),
+// catatan hitungan (#ps-caveats), header tabel (#ps-thead), isi paginasi (#ps-pager), chip filter aktif (#ps-active),
 // bilah "Menampilkan N pesanan ..." (#ps-review-bar).
 // Dialog Kelola produk punya tiga tab: Kategori produk, Atribut produk (spesialisasi, jenis, mikro), Alihkan set.
 // Ikon hanya dipakai untuk aksi yang juga punya label teks, atau yang artinya baku (cari, tutup, urutkan).
@@ -153,6 +153,7 @@ export const POPULASI_MARKUP = `
             </tbody>
           </table>
         </div>
+        <nav class="ps-pager" id="ps-pager" aria-label="Halaman tabel" hidden></nav>
       </div>
 
       <details class="insight-card ps-unmapped" id="ps-unmapped" hidden>

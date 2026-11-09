@@ -305,6 +305,27 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 /* RS yang terbuka ditandai garis aksen di kiri; anaknya (detail) menyambung ke garis itu */
 #app-root .ps-row.open > td:first-child{ box-shadow: inset 3px 0 0 var(--accent); }
 
+/* ── paginasi: di bawah tabel; info kiri, nomor halaman tengah, baris per halaman kanan ── */
+#app-root #ps-table{ scroll-margin-top: var(--ps-sticky-top); }
+#app-root .ps-pager{
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px;
+  padding: 14px 0 0; border-top: 1px solid var(--border);
+  font-size: var(--ps-fs); color: var(--text-secondary);
+}
+#app-root .ps-pager[hidden]{ display: none; }
+#app-root .ps-pager-info b{ font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+#app-root .ps-pager-nav{ display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+#app-root .ps-pg{
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; padding: 0 10px;
+  font-variant-numeric: tabular-nums; color: var(--text-secondary); background: transparent; border-color: transparent;
+}
+#app-root .ps-pg:hover:not(:disabled){ color: var(--text); background: var(--surface-2); }
+#app-root .ps-pg.active{ font-weight: 600; color: var(--accent-text); background: var(--accent-bg); border-color: var(--accent); }
+#app-root .ps-pg:disabled{ opacity: .4; cursor: not-allowed; }
+#app-root .ps-pg-gap{ padding: 0 4px; color: var(--ps-muted); }
+#app-root .ps-pager-size{ display: inline-flex; align-items: center; gap: 8px; }
+#app-root .ps-pager-size .filter-select{ width: auto; height: 32px; font-size: var(--ps-fs); }
+
 /* nama RS = tombol sungguhan (keyboard + aria-expanded); seluruh baris tetap bisa diklik */
 #app-root .ps-rs{ font-size: var(--ps-fs-lg); font-weight: 600; color: var(--text); }
 #app-root .ps-rs-btn{

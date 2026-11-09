@@ -90,6 +90,8 @@ const RPC_TIMEOUT_MS = 25000;
 const EXPORT_TIMEOUT_MS = 60000;
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
 const LS_PROV = 'pnm_populasi_set_provinsi';
+const LS_PAGE = 'pnm_populasi_set_page_size';
+const PAGE_SIZES = [25, 50, 100];   // pilihan baris per halaman; halaman 1 selalu dimulai dari yang teratas
 const DEFAULT_PROV = 'Jawa Tengah';
 const STALE_DAYS = 7;     // lewat ini, tampilkan peringatan "data di DB tertinggal"
 
@@ -115,6 +117,8 @@ const state = {
   provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI',
   kelompok: ['SET'], cari: 'produk', produk: '', spes: [], jenis: [], mikro: false, rs: '', isiSet: false, dari: '', sampai: '',
   sort: { k: 'total', dir: 'desc' },
+  page: 1,                          // halaman tabel RS (mulai 1); kembali ke 1 saat data/filter/urutan berubah
+  pageSize: (() => { const v = Number(lsGet(LS_PAGE)); return PAGE_SIZES.includes(v) ? v : 50; })(),
   tinjau: '',                       // '' | 'cek' | 'estimasi' -> tabel berganti jadi daftar pesanan
 };
 
@@ -287,6 +291,7 @@ async function load() {
       detailCache.clear();
       linesAll = null;
       recon = {};
+      state.page = 1;
       applySort();
       render();
     };
@@ -609,6 +614,8 @@ function tagHitung(d) {
 }
 
 function renderTable() {
+  const pg = $('ps-pager');
+  if (pg) pg.hidden = true;                      // dinyalakan lagi oleh renderPager bila perlu
   if (state.tinjau) { renderReview(); return; }
   reviewReq++;                                  // batalkan daftar tinjau yang masih memuat
   $('ps-review-bar').hidden = true;
@@ -625,7 +632,12 @@ function renderTable() {
     body.innerHTML = `<tr><td colspan="${cols.n}" class="ps-empty">${emptyHtml()}</td></tr>`;
     return;
   }
-  body.innerHTML = rows.map((r, i) => {
+  const pages = Math.max(1, Math.ceil(rows.length / state.pageSize));
+  if (state.page > pages) state.page = pages;
+  if (state.page < 1) state.page = 1;
+  const start = (state.page - 1) * state.pageSize;
+  body.innerHTML = rows.slice(start, start + state.pageSize).map((r, j) => {
+    const i = start + j;                         // indeks global di `rows` (dipakai data-idx)
     // Wilayah hasil deteksi alamat adalah kondisi biasa (tanpa penanda); yang diberi penanda hanya
     // wilayah yang sudah dikoreksi manual dan wilayah yang belum diketahui.
     let wilayah;
@@ -664,6 +676,50 @@ function renderTable() {
         <td class="ps-col-act"><button type="button" class="ps-rowact" data-action="ps-edit-wil" data-idx="${i}" title="${esc(editTip)}" aria-label="Ubah wilayah ${esc(r.customer)}"><i class="ti ti-pencil" aria-hidden="true"></i> Ubah wilayah</button></td>
       </tr>`;
   }).join('');
+  renderPager();
+}
+
+// ── paginasi tabel RS ──────────────────────────────────────────────────
+// Daftar nomor halaman: 1, halaman sekitar yang aktif, dan terakhir; 0 = celah (…).
+function pageList(cur, last) {
+  const keep = new Set([1, last, cur - 1, cur, cur + 1]);
+  if (cur <= 3) { keep.add(2); keep.add(3); keep.add(4); }
+  if (cur >= last - 2) { keep.add(last - 1); keep.add(last - 2); keep.add(last - 3); }
+  const list = [...keep].filter((p) => p >= 1 && p <= last).sort((a, b) => a - b);
+  const out = [];
+  list.forEach((p, k) => { if (k && p - list[k - 1] > 1) out.push(0); out.push(p); });
+  return out;
+}
+
+function renderPager() {
+  const pg = $('ps-pager');
+  if (!pg) return;
+  const total = rows.length;
+  if (state.tinjau || total <= PAGE_SIZES[0]) { pg.hidden = true; pg.innerHTML = ''; return; }
+  const last = Math.max(1, Math.ceil(total / state.pageSize));
+  const cur = state.page;
+  const from = (cur - 1) * state.pageSize + 1;
+  const to = Math.min(total, cur * state.pageSize);
+  const btn = (label, p, o = {}) => `<button type="button" class="filter-btn ps-pg${o.on ? ' active' : ''}" data-action="ps-page" data-p="${p}"` +
+    `${o.on ? ' aria-current="page"' : ''}${o.off ? ' disabled' : ''}${o.aria ? ` aria-label="${o.aria}"` : ''}>${label}</button>`;
+  const nums = pageList(cur, last).map((p) => (p ? btn(p, p, { on: p === cur, aria: `Halaman ${p}` }) : '<span class="ps-pg-gap" aria-hidden="true">…</span>')).join('');
+  pg.hidden = false;
+  pg.innerHTML =
+    `<div class="ps-pager-info">Menampilkan <b>${fmt(from)}–${fmt(to)}</b> dari ${fmt(total)} rumah sakit</div>` +
+    `<div class="ps-pager-nav">${btn('<i class="ti ti-chevron-left" aria-hidden="true"></i> Sebelumnya', cur - 1, { off: cur <= 1 })}${nums}${btn('Berikutnya <i class="ti ti-chevron-right" aria-hidden="true"></i>', cur + 1, { off: cur >= last })}</div>` +
+    `<label class="ps-pager-size"><span>Baris per halaman</span><select class="filter-select" id="ps-page-size" aria-label="Baris per halaman">` +
+    PAGE_SIZES.map((n) => `<option value="${n}"${n === state.pageSize ? ' selected' : ''}>${n}</option>`).join('') + '</select></label>';
+}
+
+function goPage(p, keepFocus = true) {
+  const last = Math.max(1, Math.ceil(rows.length / state.pageSize));
+  const to = Math.min(last, Math.max(1, Math.floor(Number(p)) || 1));
+  if (to === state.page) return;
+  state.page = to;
+  renderTable();
+  const t = $('ps-table');
+  if (t && t.scrollIntoView) t.scrollIntoView({ block: 'start' });     // mulai dari atas daftar halaman baru
+  if (keepFocus) { const cur = document.querySelector('#ps-pager [aria-current="page"]'); if (cur) cur.focus({ preventScroll: true }); }
 }
 
 // ── daftar tinjau (mengganti tabel RS selama state.tinjau aktif) ─────────────
@@ -2289,9 +2345,10 @@ export async function mount(container) {
       if (state.sort.k === k) state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
       else state.sort = { k, dir: (k === 'customer' || k === 'wilayah') ? 'asc' : 'desc' };
       syncUrut();
-      if (data) { applySort(); renderTable(); }
+      if (data) { state.page = 1; applySort(); renderTable(); }
     },
     'ps-toggle': (el) => toggleDetail(+el.dataset.idx),
+    'ps-page': (el) => goPage(el.dataset.p),
     'ps-more': (el) => {
       const td = el.closest('td');
       const open = el.getAttribute('aria-expanded') !== 'true';
@@ -2324,6 +2381,13 @@ export async function mount(container) {
   };
   const CHANGE_BY_ID = {
     'ps-provinsi': (t) => { state.provinsi = t.value; lsSet(LS_PROV, t.value); load(); },
+    'ps-page-size': (t) => {
+      const n = Number(t.value);
+      state.pageSize = PAGE_SIZES.includes(n) ? n : 50;
+      lsSet(LS_PAGE, String(state.pageSize));
+      state.page = 1;
+      renderTable();
+    },
     'ps-cakupan': (t) => { state.cakupan = t.value === 'SEMUA' ? 'SEMUA' : 'POPULASI'; load(); },
     'ps-dari': (t) => { state.dari = t.value; load(); },
     'ps-sampai': (t) => { state.sampai = t.value; load(); },
@@ -2332,7 +2396,7 @@ export async function mount(container) {
     'ps-urut': (t) => {
       const k = t.value;
       state.sort = { k, dir: k === 'customer' ? 'asc' : 'desc' };
-      if (data) { applySort(); renderTable(); }
+      if (data) { state.page = 1; applySort(); renderTable(); }
     },
     'ps-kel-kelompok': (t) => { if (kelIsAtr()) kel.spesF = t.value; else kel.kelompok = t.value; kelLoad(); },
     'ps-kel-filter': (t) => { kel.filter = (t.value === 'semua' || t.value === 'koreksi') ? t.value : 'cek'; kelLoad(); },
