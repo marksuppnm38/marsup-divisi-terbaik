@@ -177,8 +177,49 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* abaika
 const SWR_MAX = 12;
 const swrCache = new Map(); // JSON(params) -> { res, json }
 
+// Cache persisten (localStorage): hasil terakhir tetap ada setelah tab ditutup / halaman di-refresh,
+// jadi pembukaan pertama (cache DB dingin, query paling lambat) tidak lagi layar kosong.
+// Hanya beberapa entri terakhir dan hanya bila ukurannya wajar; semua akses dibungkus try/catch.
+const PCACHE_KEY = 'pnm_populasi_swr_v1';
+const PCACHE_MAX = 4;
+const PCACHE_MAX_CHARS = 1500000;
+const PCACHE_TTL_MS = 3 * 24 * 3600 * 1000;   // lewat ini dibuang; tetap disegarkan di belakang selama dipakai
+function pcacheAll() {
+  try { return JSON.parse(lsGet(PCACHE_KEY) || '{}') || {}; } catch (e) { return {}; }
+}
+function pcacheGet(key) {
+  const o = pcacheAll()[key];
+  return o && o.res && Date.now() - (o.t || 0) < PCACHE_TTL_MS ? o.res : null;
+}
+function pcacheSet(key, res, json) {
+  if (json.length > PCACHE_MAX_CHARS) return;
+  const all = pcacheAll();
+  delete all[key];
+  all[key] = { t: Date.now(), res };
+  const keys = Object.keys(all);
+  while (keys.length > PCACHE_MAX) delete all[keys.shift()];
+  lsSet(PCACHE_KEY, JSON.stringify(all));
+}
+
+// Timeout di sisi database (statement_timeout, kode 57014). Biasanya hanya terjadi pada panggilan
+// pertama saat cache Postgres dingin; panggilan kedua jauh lebih cepat, jadi dicoba ulang otomatis.
+const isStmtTimeout = (e) => !!e && (e.code === '57014' || /statement timeout/i.test(String(e.message || '')));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function rpc(fn, params, timeoutMs = RPC_TIMEOUT_MS) {
-  if (!/^get_/.test(fn)) swrCache.clear();
+  const retries = /^get_/.test(fn) ? 2 : 0;       // hanya baca; tulis tidak pernah diulang otomatis
+  for (let i = 0; ; i++) {
+    try {
+      return await rpcOnce(fn, params, timeoutMs);
+    } catch (e) {
+      if (i >= retries || !isStmtTimeout(e)) throw e;
+      await sleep(600 * (i + 1));
+    }
+  }
+}
+
+async function rpcOnce(fn, params, timeoutMs = RPC_TIMEOUT_MS) {
+  if (!/^get_/.test(fn)) { swrCache.clear(); lsSet(PCACHE_KEY, '{}'); }
   const accessToken = await window.PNMAuth.getAccessToken();
   if (!accessToken) {
     window.PNMAuth.logout();
@@ -279,7 +320,11 @@ async function load() {
   try {
     const params = filterParams();
     const key = JSON.stringify(params);
-    const hit = swrCache.get(key);
+    let hit = swrCache.get(key);
+    if (!hit) {
+      const saved = pcacheGet(key);          // cache dari kunjungan sebelumnya
+      if (saved) hit = { res: saved, json: JSON.stringify(saved) };
+    }
     const applyResult = (res) => {
       data = res || {};
       rows = (data.rows || []).map((r) => {
@@ -301,14 +346,18 @@ async function load() {
     const json = JSON.stringify(res || {});
     swrCache.delete(key);
     swrCache.set(key, { res, json });
+    pcacheSet(key, res, json);
     while (swrCache.size > SWR_MAX) swrCache.delete(swrCache.keys().next().value);
     if (!hit || hit.json !== json) applyResult(res);   // data sama -> tidak render ulang (baris terbuka tetap)
   } catch (e) {
     if (my !== reqId || String(e.message).startsWith('unauthorized')) return;
     const missing = e.code === 'PGRST202' || e.status === 404;
-    const msg = missing
+    let msg = missing
       ? 'RPC get_populasi_v2 belum terpasang. Jalankan populasi_v2.sql di Supabase SQL Editor.'
-      : 'Gagal memuat data: ' + e.message;
+      : (isStmtTimeout(e)
+        ? 'Database terlalu lama menjawab (sudah dicoba 3 kali). Coba lagi sebentar, atau persempit filter (provinsi / kategori).'
+        : 'Gagal memuat data: ' + e.message);
+    if (data) msg = 'Gagal menyegarkan, yang tampil adalah hasil tersimpan sebelumnya. ' + msg;
     showError(msg);
     if (!data) {
       renderHead({ set: false, pcs: false, n: 5 });
