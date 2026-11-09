@@ -5,6 +5,7 @@
 // DATA: RPC (definisi di populasi_v2.sql)
 //   get_populasi_v2         -> seluruh halaman dalam SATU panggilan (daftar RS, ringkasan,
 //                              opsi provinsi/kategori, RS yang wilayahnya belum terpetakan, data_per)
+//   get_populasi_v2_unit    -> pemisahan Pcs (instrumen satuan) dan Unit (alat) per RS, filter sama (populasi_v2_unit.sql)
 //   get_populasi_v2_baris   -> baris per PO/produk: rincian satu RS (saat baris dibuka)
 //                              dan bahan seluruh sheet Excel
 //   set_rs_wilayah          -> simpan koreksi wilayah satu RS (tidak berubah)
@@ -108,6 +109,17 @@ const KELOMPOK = [
 const KEL = Object.fromEntries(KELOMPOK.map((k) => [k.id, k]));
 const katName = (id) => (id === 'ISI SET' ? 'Isi set' : (KEL[id] ? KEL[id].nama : (id || '—')));
 
+// Satuan hitung (sisi JS). Harus sama dengan public.fn_satuan_hitung di populasi_v2_unit.sql.
+//   set  = set instrumen utuh
+//   pcs  = instrumen satuan (termasuk isi set dan BMHP), dihitung per buah
+//   unit = alat: elektromedis, alat laboratorium, penunjang medis, unit lainnya, dihitung per unit alat
+const KEL_UNIT = ['ELEKTROMEDIS', 'ALAT LABORATORIUM', 'UNIT', 'PENUNJANG MEDIS'];
+const satuanKel = (id) => (id === 'SET' ? 'set' : (KEL_UNIT.includes(id) ? 'unit' : 'pcs'));
+const satuanBaris = (l) => (l.kind === 'SET' ? 'set' : satuanKel(l.kelompok));
+const satuanList = (arr) => { const a = Array.from(new Set((arr || []).map(satuanKel))); return a.length === 1 ? a[0] : 'pcs/unit'; };
+const TIP_PCS = 'Pcs = instrumen satuan, dihitung per buah (termasuk isi set yang dipesan terpisah dan BMHP).';
+const TIP_UNIT = 'Unit = alat medis, elektromedis, dan alat penunjang laboratorium, dihitung per unit alat.';
+
 let mountedContainer = null;
 let handlers = null;
 let searchTimer = null;
@@ -205,6 +217,44 @@ function pcacheSet(key, res, json) {
 // pertama saat cache Postgres dingin; panggilan kedua jauh lebih cepat, jadi dicoba ulang otomatis.
 const isStmtTimeout = (e) => !!e && (e.code === '57014' || /statement timeout/i.test(String(e.message || '')));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// get_populasi_v2 mengembalikan pcs_* gabungan. Pemisahan Pcs (instrumen satuan) dan Unit (alat) diambil dari
+// get_populasi_v2_unit (populasi_v2_unit.sql) dengan filter yang sama, lalu digabung per customer.
+const SPLIT_KEYS = ['pcs_terkirim', 'pcs_proses', 'unit_terkirim', 'unit_proses'];
+function gabungUnit(res, sp) {
+  if (!res) return res;
+  const by = new Map(((sp && sp.rows) || []).map((x) => [x.customer, x]));
+  const isi = (r) => {
+    const src = by.get(r.customer) || {};
+    const o = {};
+    SPLIT_KEYS.forEach((k) => { o[k] = Number(src[k]) || 0; });
+    o.pcs_total = o.pcs_terkirim + o.pcs_proses;
+    o.unit_total = o.unit_terkirim + o.unit_proses;
+    return Object.assign({}, r, o);
+  };
+  const out = Object.assign({}, res);
+  out.rows = (res.rows || []).map(isi);
+  out.belum_terpetakan = (res.belum_terpetakan || []).map(isi);
+  const rg = Object.assign({}, res.ringkasan);
+  SPLIT_KEYS.forEach((k) => { rg[k] = out.rows.reduce((a, r) => a + (Number(r[k]) || 0), 0); });
+  rg.pcs_total = rg.pcs_terkirim + rg.pcs_proses;
+  rg.unit_total = rg.unit_terkirim + rg.unit_proses;
+  if (Number(res.ringkasan && res.ringkasan.pcs_total) !== rg.pcs_total + rg.unit_total) {
+    console.warn('Populasi: pcs + unit (' + (rg.pcs_total + rg.unit_total) + ') berbeda dari pcs_total server (' + (res.ringkasan && res.ringkasan.pcs_total) + ')');
+  }
+  out.ringkasan = rg;
+  return out;
+}
+async function ambilPopulasi(params) {
+  const [res, sp] = await Promise.all([
+    rpc('get_populasi_v2', params),
+    rpc('get_populasi_v2_unit', params).catch((e) => {
+      if (e && (e.code === 'PGRST202' || e.status === 404)) throw new Error('RPC get_populasi_v2_unit belum terpasang. Jalankan populasi_v2_unit.sql di Supabase SQL Editor.');
+      throw e;
+    }),
+  ]);
+  return gabungUnit(res, sp);
+}
 
 async function rpc(fn, params, timeoutMs = RPC_TIMEOUT_MS) {
   // Hanya baca, dan hanya SEKALI: bila querynya memang berat (bukan cache dingin), mengulang cuma melipatgandakan beban.
@@ -320,7 +370,7 @@ async function load() {
   renderActive();
   try {
     const params = filterParams();
-    const key = JSON.stringify(params);
+    const key = 'u2|' + JSON.stringify(params);   // 'u2' = hasil sudah memuat pemisahan pcs/unit; cache lama tidak dipakai
     let hit = swrCache.get(key);
     if (!hit) {
       const saved = pcacheGet(key);          // cache dari kunjungan sebelumnya
@@ -331,7 +381,8 @@ async function load() {
       rows = (data.rows || []).map((r) => {
         const set = num(r.set_terkirim) + num(r.set_proses);
         const pcs = num(r.pcs_terkirim) + num(r.pcs_proses);
-        return Object.assign({}, r, { set, pcs, total: set + pcs });
+        const unit = num(r.unit_terkirim) + num(r.unit_proses);
+        return Object.assign({}, r, { set, pcs, unit, total: set + pcs + unit });
       });
       unmapped = data.belum_terpetakan || [];
       detailCache.clear();
@@ -342,7 +393,7 @@ async function load() {
       render();
     };
     if (hit) applyResult(hit.res);      // tampilkan hasil terakhir seketika, lalu segarkan di belakang
-    const res = await rpc('get_populasi_v2', params);
+    const res = await ambilPopulasi(params);
     if (my !== reqId) return;           // respons telat tidak boleh menimpa yang lebih baru
     const json = JSON.stringify(res || {});
     swrCache.delete(key);
@@ -361,7 +412,7 @@ async function load() {
     if (data) msg = 'Gagal menyegarkan, yang tampil adalah hasil tersimpan sebelumnya. ' + msg;
     showError(msg);
     if (!data) {
-      renderHead({ set: false, pcs: false, n: 5 });
+      renderHead({ set: false, pcs: false, unit: false, n: 5 });
       $('ps-body').innerHTML = `<tr><td colspan="5" class="ps-empty ps-empty-err">${esc(msg)}<br><button type="button" class="btn btn-ghost ps-retry" data-action="ps-reload">Coba lagi</button></td></tr>`;
     }
   } finally {
@@ -405,6 +456,7 @@ function applySort() {
     if (k === 'terakhir') return r.terakhir || '';
     if (k === 'set') return r.set;
     if (k === 'pcs') return r.pcs;
+    if (k === 'unit') return r.unit;
     return r.total;
   };
   rows.sort((a, b) => {
@@ -576,12 +628,13 @@ const angka = (k) => (recon[k] !== undefined ? recon[k] : angkaServer(k));
 // Kartu ringkasan. Kartu yang bisa diklik adalah <button> sungguhan (o.tinjau = daftar yang dibuka);
 // kartu lain murni angka dan tidak diberi gaya klik.
 function statCard(val, label, o = {}) {
+  const tip = o.title ? ` title="${esc(o.title)}"` : '';
   const sub = o.sub ? `<div class="stat-sub">${esc(o.sub)}</div>` : '';
   const inner = `<div class="stat-val">${val}</div><div class="stat-label">${esc(label)}</div>${sub}${o.subHtml || ''}`;
   if (o.tinjau) {
     return `<button type="button" class="stat-card ps-stat-act${o.warn ? ' ps-stat-warn' : ''}${o.on ? ' on' : ''}" data-action="ps-tinjau" data-k="${o.tinjau}" aria-pressed="${!!o.on}" title="${esc(TIP[o.tinjau])}">${inner}<div class="ps-stat-go">${o.on ? 'Sedang ditampilkan' : 'Lihat daftar'}</div></button>`;
   }
-  return `<div class="stat-card">${inner}</div>`;
+  return `<div class="stat-card"${tip}>${inner}</div>`;
 }
 
 function linkBtn(k, teks) {
@@ -593,6 +646,7 @@ function renderSummary() {
   const s = data.ringkasan || {};
   const hasSet = num(s.set_total) > 0 || num(s.set_cek) > 0;
   const hasPcs = num(s.pcs_total) > 0;
+  const hasUnit = num(s.unit_total) > 0;
   const lokasi = state.provinsi || 'Semua provinsi';
   const status = state.status === 'ALL';
 
@@ -607,9 +661,12 @@ function renderSummary() {
     }));
   }
   if (hasPcs) {
-    cards.push(statCard(fmt(s.pcs_total), 'Unit/pcs', { sub: status ? `${fmt(s.pcs_terkirim)} terkirim · ${fmt(s.pcs_proses)} proses` : '' }));
+    cards.push(statCard(fmt(s.pcs_total), 'Pcs', { sub: status ? `${fmt(s.pcs_terkirim)} terkirim · ${fmt(s.pcs_proses)} proses` : '', title: TIP_PCS }));
   }
-  if (hasSet || hasPcs) {
+  if (hasUnit) {
+    cards.push(statCard(fmt(s.unit_total), 'Unit', { sub: status ? `${fmt(s.unit_terkirim)} terkirim · ${fmt(s.unit_proses)} proses` : '', title: TIP_UNIT }));
+  }
+  if (hasSet || hasPcs || hasUnit) {
     const last = rows.reduce((m, r) => (r.terakhir && r.terakhir > m ? r.terakhir : m), '');
     cards.push(statCard(fmt(s.jumlah_pesanan), 'Pesanan', { sub: last ? 'terakhir ' + fmtDate(last) : '' }));
   }
@@ -618,9 +675,13 @@ function renderSummary() {
   $('ps-stats').innerHTML = cards.join('');
 
   // Tidak ada catatan hitungan tambahan: semua pesanan masuk hitungan atau tampil sebagai "perlu dicek".
+  // Satu baris keterangan satuan, hanya untuk satuan yang tampil, supaya tidak ada angka yang artinya menggantung.
   const cv = $('ps-caveats');
-  cv.hidden = true;
-  cv.innerHTML = '';
+  const ket = [].concat(
+    hasPcs ? ['<b>Pcs</b> = instrumen satuan, per buah.'] : [],
+    hasUnit ? ['<b>Unit</b> = alat medis, elektromedis, dan alat penunjang lab, per unit alat.'] : []);
+  cv.hidden = !ket.length;
+  cv.innerHTML = ket.length ? `<span class="ps-muted">${ket.join(' ')}</span>` : '';
 
   const xl = document.querySelector('[data-action="ps-xlsx"]');
   if (xl) xl.disabled = !rows.length;
@@ -630,11 +691,11 @@ function rincianText(r, sep = ', ') {
   return (r.rincian || []).map((j) => `${j.label} ×${fmt(j.nilai)}`).join(sep);
 }
 
-function sortTh(key, label, cls) {
+function sortTh(key, label, cls, tip) {
   const on = state.sort.k === key;
   const aria = on ? (state.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
   const icon = on ? (state.sort.dir === 'asc' ? 'ti-sort-ascending' : 'ti-sort-descending') : 'ti-arrows-sort';
-  return `<th class="${cls}" aria-sort="${aria}"><button type="button" class="ps-sort${on ? ' on' : ''}" data-action="ps-sort" data-k="${key}" title="Urutkan menurut ${esc(label.toLowerCase())}">${esc(label)}<i class="ti ${icon}" aria-hidden="true"></i></button></th>`;
+  return `<th class="${cls}" aria-sort="${aria}"><button type="button" class="ps-sort${on ? ' on' : ''}" data-action="ps-sort" data-k="${key}" title="${esc(tip || ('Urutkan menurut ' + label.toLowerCase()))}">${esc(label)}<i class="ti ${icon}" aria-hidden="true"></i></button></th>`;
 }
 
 function renderHead(cols) {
@@ -642,7 +703,8 @@ function renderHead(cols) {
     sortTh('customer', 'Rumah sakit', '') +
     sortTh('wilayah', 'Wilayah', '') +
     (cols.set ? sortTh('set', 'Set', 'ps-th-num') : '') +
-    (cols.pcs ? sortTh('pcs', 'Unit/pcs', 'ps-th-num') : '') +
+    (cols.pcs ? sortTh('pcs', 'Pcs', 'ps-th-num', TIP_PCS + ' Klik untuk mengurutkan.') : '') +
+    (cols.unit ? sortTh('unit', 'Unit', 'ps-th-num', TIP_UNIT + ' Klik untuk mengurutkan.') : '') +
     '<th>Rincian</th>' +
     sortTh('terakhir', 'Terakhir', '') +
     '<th class="ps-col-act"><span class="ps-sr">Aksi</span></th>' +
@@ -653,7 +715,8 @@ function colsInfo() {
   const s = (data && data.ringkasan) || {};
   const set = num(s.set_total) > 0 || num(s.set_cek) > 0;
   const pcs = num(s.pcs_total) > 0;
-  return { set, pcs, n: 5 + (set ? 1 : 0) + (pcs ? 1 : 0) };
+  const unit = num(s.unit_total) > 0;
+  return { set, pcs, unit, n: 5 + (set ? 1 : 0) + (pcs ? 1 : 0) + (unit ? 1 : 0) };
 }
 
 // Hasil kosong: jelaskan, lalu tawarkan hanya langkah yang berlaku pada filter saat ini. Tiap tombol melonggarkan satu filter.
@@ -735,6 +798,7 @@ function renderTable() {
     const subCek = num(r.set_cek) > 0
       ? `<span class="ps-tag warn" title="${esc(TIP.cek + ' Buka baris untuk memeriksa isinya.')}">${fmt(r.set_cek)} perlu dicek</span>` : '';
     const subPcs = num(r.pcs_proses) > 0 ? `<span class="ps-sub">${fmt(r.pcs_terkirim)} terkirim, ${fmt(r.pcs_proses)} proses</span>` : '';
+    const subUnit = num(r.unit_proses) > 0 ? `<span class="ps-sub">${fmt(r.unit_terkirim)} terkirim, ${fmt(r.unit_proses)} proses</span>` : '';
     const cell = (v, sub) => (v ? `<b>${fmt(v)}</b>${sub}` : '<span class="ps-muted">—</span>');
     return `
       <tr class="ps-row${num(r.set_cek) > 0 ? ' has-cek' : ''}" data-action="ps-toggle" data-idx="${i}">
@@ -742,6 +806,7 @@ function renderTable() {
         <td class="ps-col-wil">${wilayah}</td>
         ${cols.set ? `<td class="ps-num">${cell(r.set, subSet)}${subCek}</td>` : ''}
         ${cols.pcs ? `<td class="ps-num">${cell(r.pcs, subPcs)}</td>` : ''}
+        ${cols.unit ? `<td class="ps-num">${cell(r.unit, subUnit)}</td>` : ''}
         <td class="ps-jenis"><div class="ps-jenis-list">${items}</div>${more}</td>
         <td class="ps-date">${esc(fmtDate(r.terakhir))}</td>
         <td class="ps-col-act"><button type="button" class="ps-rowact" data-action="ps-edit-wil" data-idx="${i}" title="${esc(editTip)}" aria-label="Ubah wilayah ${esc(r.customer)}"><i class="ti ti-pencil" aria-hidden="true"></i> Ubah wilayah</button></td>
@@ -841,7 +906,7 @@ function alasanText(d) {
 function jmlText(d) {
   const isSet = d.kind === 'SET';
   const sh = isSet ? d.status_hitung : '';
-  return isSet ? ((sh === 'cek') ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} pcs`;
+  return isSet ? ((sh === 'cek') ? '—' : `${fmt(d.nilai)} set`) : `${fmt(d.nilai)} ${satuanKel(d.kelompok)}`;
 }
 
 function setTinjau(k) {
@@ -922,7 +987,8 @@ function renderUnmapped() {
   if (!unmapped.length || !state.provinsi) { box.hidden = true; return; }
   const totSet = unmapped.reduce((a, u) => a + num(u.set_total), 0);
   const totPcs = unmapped.reduce((a, u) => a + num(u.pcs_total), 0);
-  const tot = [totSet ? `${fmt(totSet)} set` : '', totPcs ? `${fmt(totPcs)} unit/pcs` : ''].filter(Boolean).join(' + ');
+  const totUnit = unmapped.reduce((a, u) => a + num(u.unit_total), 0);
+  const tot = [totSet ? `${fmt(totSet)} set` : '', totPcs ? `${fmt(totPcs)} pcs` : '', totUnit ? `${fmt(totUnit)} unit` : ''].filter(Boolean).join(' + ');
   box.hidden = false;
   $('ps-unm-title').innerHTML =
     `${fmt(unmapped.length)} RS belum diketahui wilayahnya ` +
@@ -930,7 +996,7 @@ function renderUnmapped() {
   $('ps-unm-list').innerHTML = `
     <table class="ps-unm-table"><tbody>
       ${unmapped.map((u, i) => {
-        const v = [num(u.set_total) ? `${fmt(u.set_total)} set` : '', num(u.pcs_total) ? `${fmt(u.pcs_total)} unit/pcs` : ''].filter(Boolean).join(' + ');
+        const v = [num(u.set_total) ? `${fmt(u.set_total)} set` : '', num(u.pcs_total) ? `${fmt(u.pcs_total)} pcs` : '', num(u.unit_total) ? `${fmt(u.unit_total)} unit` : ''].filter(Boolean).join(' + ');
         return `
         <tr>
           <td>${esc(u.customer)}</td>
@@ -1277,7 +1343,7 @@ function kelRowKat(r, i, open) {
   return `<tr class="ps-kel-row${open ? ' is-open' : ''}" data-i="${i}">
     <td><span class="ps-kel-strong">${esc(nm[0] || r.kode_key)}</span><span class="ps-kel-sub"><span class="kode-text">${esc(r.kode_key)}</span></span>${ejHtml}</td>
     <td>${kelHtml}</td>
-    <td class="ps-kel-num">${esc(fmt(r.baris))} baris<span class="ps-kel-sub">${esc(fmt(r.qty))} pcs · ${esc(fmt(r.jumlah_rs))} RS</span></td>
+    <td class="ps-kel-num">${esc(fmt(r.baris))} baris<span class="ps-kel-sub">${esc(fmt(r.qty))} ${satuanList(r.kelompok)} · ${esc(fmt(r.jumlah_rs))} RS</span></td>
     <td class="ps-kel-act"><button type="button" class="ps-rowact" data-action="ps-kel-edit" data-i="${i}" aria-expanded="${open}" title="${open ? 'Tutup' : 'Pindahkan produk ini ke kategori lain'}" aria-label="Ubah kategori ${esc(r.kode_key)}">${open ? 'Tutup' : '<i class="ti ti-pencil" aria-hidden="true"></i> Ubah kategori'}</button></td>
   </tr>`;
 }
@@ -1439,7 +1505,7 @@ function kelEditSync() {
     if (kelIsKat()) {
       const cur = (r.kelompok || []).length === 1 ? r.kelompok[0] : '';
       changed = !!d && d !== cur;
-      if (changed) teks = `Seluruh baris produk ini (${fmt(r.baris)} baris, ${fmt(r.qty)} pcs, ${fmt(r.jumlah_rs)} RS) akan masuk ke ${katName(d)}.`;
+      if (changed) teks = `Seluruh baris produk ini (${fmt(r.baris)} baris, ${fmt(r.qty)} ${satuanKel(d)}, ${fmt(r.jumlah_rs)} RS) akan masuk ke ${katName(d)}.`;
     } else {
       changed = !!d && d.toLowerCase() !== String(r.target || '').toLowerCase();
       if (changed) teks = `${fmt(r.jumlah_set)} set di ${fmt(r.jumlah_rs)} RS akan dihitung sebagai “${d}”. Jumlah set tidak berubah dan isi setnya tidak dibandingkan dengan set tujuan.`;
@@ -1670,12 +1736,12 @@ async function kelUnduh(btn) {
         { header: 'Kode produk', key: 'kode', width: 24 }, { header: 'Ejaan kode di sheet', key: 'ejaan', width: 34 },
         { header: 'Nama produk', key: 'nama', width: 48 }, { header: 'Kategori di sheet', key: 'asal', width: 26 },
         { header: 'Dikoreksi menjadi', key: 'ke', width: 22 }, { header: 'Baris pesanan', key: 'baris', width: 14 },
-        { header: 'Jumlah (pcs)', key: 'qty', width: 14 }, { header: 'Jumlah RS', key: 'rs', width: 11 },
+        { header: 'Jumlah', key: 'qty', width: 12 }, { header: 'Satuan', key: 'sat', width: 9 }, { header: 'Jumlah RS', key: 'rs', width: 11 },
         { header: 'Diubah oleh', key: 'oleh', width: 28 }, { header: 'Waktu ubah', key: 'pada', width: 20 },
         { header: 'Catatan', key: 'catatan', width: 30 },
       ], lk.map((r) => ({
         kode: r.kode_key, ejaan: (r.ejaan || []).join(' | '), nama: (r.nama || []).join(' | '), asal: katAsal(r),
-        ke: katName(r.koreksi_ke), baris: num(r.baris), qty: num(r.qty), rs: num(r.jumlah_rs),
+        ke: katName(r.koreksi_ke), baris: num(r.baris), qty: num(r.qty), sat: satuanKel(r.koreksi_ke), rs: num(r.jumlah_rs),
         oleh: r.oleh || '', pada: waktu(r.pada), catatan: r.catatan || '',
       })));
     }
@@ -1730,11 +1796,11 @@ function buildText() {
   sub += `, data per ${fmtDate(data.data_per)}`;
   lines.push(sub, '');
   rows.forEach((r, i) => {
-    const jml = [r.set ? `${fmt(r.set)} set` : '', r.pcs ? `${fmt(r.pcs)} pcs` : ''].filter(Boolean).join(' + ');
+    const jml = [r.set ? `${fmt(r.set)} set` : '', r.pcs ? `${fmt(r.pcs)} pcs` : '', r.unit ? `${fmt(r.unit)} unit` : ''].filter(Boolean).join(' + ');
     const rinci = rincianText(r);
     lines.push(`${i + 1}. ${r.customer}${r.kab_kota ? ` (${r.kab_kota})` : ''}${state.provinsi ? '' : ` [${r.provinsi || 'wilayah belum diketahui'}]`} — ${jml}${rinci ? ` (${rinci})` : ''}`);
   });
-  const tot = [num(s.set_total) ? `${fmt(s.set_total)} set${num(s.set_estimasi) > 0 ? ` (${fmt(s.set_estimasi)} di antaranya estimasi)` : ''}` : '', num(s.pcs_total) ? `${fmt(s.pcs_total)} unit/pcs` : ''].filter(Boolean).join(' + ');
+  const tot = [num(s.set_total) ? `${fmt(s.set_total)} set${num(s.set_estimasi) > 0 ? ` (${fmt(s.set_estimasi)} di antaranya estimasi)` : ''}` : '', num(s.pcs_total) ? `${fmt(s.pcs_total)} pcs` : '', num(s.unit_total) ? `${fmt(s.unit_total)} unit` : ''].filter(Boolean).join(' + ');
   lines.push('', `Total: ${fmt(s.jumlah_rs)} RS, ${tot}`);
   if (num(s.set_cek) > 0) lines.push(`Catatan: ${fmt(s.set_cek)} pesanan set perlu dicek dan belum dihitung.`);
   if (state.provinsi && unmapped.length) lines.push(`Catatan: ${fmt(unmapped.length)} RS lain belum diketahui wilayahnya, belum termasuk.`);
@@ -1811,6 +1877,7 @@ async function buildWorkbook(ctx) {
   const s = D.ringkasan || {};
   const hasSet = num(s.set_total) > 0 || num(s.set_cek) > 0;
   const hasPcs = num(s.pcs_total) > 0;
+  const hasUnit = num(s.unit_total) > 0;
   const semuaStatus = st.status === 'ALL';
   const lokasi = st.provinsi || 'Semua provinsi';
   const statusText = semuaStatus ? 'terkirim dan dalam proses' : 'terkirim saja';
@@ -1906,7 +1973,8 @@ async function buildWorkbook(ctx) {
 
   const angka = [];
   if (hasSet) angka.push(`${fmt(s.set_total)} set`);
-  if (hasPcs) angka.push(`${fmt(s.pcs_total)} unit/pcs`);
+  if (hasPcs) angka.push(`${fmt(s.pcs_total)} pcs`);
+  if (hasUnit) angka.push(`${fmt(s.unit_total)} unit`);
   const jawaban = angka.length
     ? `${angka.join(' dan ')} di ${fmt(s.jumlah_rs)} rumah sakit ${st.provinsi ? 'di ' + st.provinsi : 'di semua provinsi'}, ` +
       (semuaStatus ? 'termasuk pesanan yang masih dalam proses.' : 'hanya pesanan yang sudah terkirim.')
@@ -1917,8 +1985,10 @@ async function buildWorkbook(ctx) {
   kv('Rumah sakit', num(s.jumlah_rs), XL_NUM);
   if (hasSet) kv('Set', num(s.set_total), XL_NUM, num(s.set_estimasi) > 0 ? `${fmt(s.set_estimasi)} di antaranya perkiraan` : '');
   if (hasSet && semuaStatus) { kv('   sudah terkirim', num(s.set_terkirim), XL_NUM); kv('   masih dalam proses', num(s.set_proses), XL_NUM); }
-  if (hasPcs) kv('Unit/pcs', num(s.pcs_total), XL_NUM);
+  if (hasPcs) kv('Pcs (instrumen satuan)', num(s.pcs_total), XL_NUM);
   if (hasPcs && semuaStatus) { kv('   sudah terkirim', num(s.pcs_terkirim), XL_NUM); kv('   masih dalam proses', num(s.pcs_proses), XL_NUM); }
+  if (hasUnit) kv('Unit (alat medis)', num(s.unit_total), XL_NUM);
+  if (hasUnit && semuaStatus) { kv('   sudah terkirim', num(s.unit_terkirim), XL_NUM); kv('   masih dalam proses', num(s.unit_proses), XL_NUM); }
   kv('Jumlah pesanan', num(s.jumlah_pesanan), XL_NUM);
   const terakhir = R.reduce((m, x) => (x.terakhir && x.terakhir > m ? x.terakhir : m), '');
   if (terakhir) kv('Pesanan terakhir', xlDate(terakhir), XL_DATE);
@@ -1927,9 +1997,9 @@ async function buildWorkbook(ctx) {
     section(`${Math.min(10, R.length)} rumah sakit dengan jumlah terbanyak`);
     const top = R.slice().sort((a, b) => b.total - a.total || a.customer.localeCompare(b.customer, 'id')).slice(0, 10);
     miniTable(
-      ['Rumah sakit', 'Kab/Kota'].concat(hasSet ? ['Set'] : [], hasPcs ? ['Unit/pcs'] : []),
-      ['left', 'left'].concat(hasSet ? ['right'] : [], hasPcs ? ['right'] : []),
-      top.map((x) => [x.customer, x.kab_kota || ''].concat(hasSet ? [x.set] : [], hasPcs ? [x.pcs] : [])));
+      ['Rumah sakit', 'Kab/Kota'].concat(hasSet ? ['Set'] : [], hasPcs ? ['Pcs'] : [], hasUnit ? ['Unit'] : []),
+      ['left', 'left'].concat(hasSet ? ['right'] : [], hasPcs ? ['right'] : [], hasUnit ? ['right'] : []),
+      top.map((x) => [x.customer, x.kab_kota || ''].concat(hasSet ? [x.set] : [], hasPcs ? [x.pcs] : [], hasUnit ? [x.unit] : [])));
     wide('Daftar lengkap ada di sheet “Daftar RS”.', { size: 10, color: XL.soft });
   }
 
@@ -1938,16 +2008,16 @@ async function buildWorkbook(ctx) {
     const g = new Map();
     R.forEach((x) => {
       const k = x.provinsi || 'Belum diketahui';
-      const o = g.get(k) || { rs: 0, set: 0, pcs: 0 };
-      o.rs += 1; o.set += x.set; o.pcs += x.pcs;
+      const o = g.get(k) || { rs: 0, set: 0, pcs: 0, unit: 0 };
+      o.rs += 1; o.set += x.set; o.pcs += x.pcs; o.unit += x.unit;
       g.set(k, o);
     });
     const body = Array.from(g.entries())
-      .sort((a, b) => (b[1].set + b[1].pcs) - (a[1].set + a[1].pcs))
-      .map(([k, o]) => [k, o.rs].concat(hasSet ? [o.set] : [], hasPcs ? [o.pcs] : []));
+      .sort((a, b) => (b[1].set + b[1].pcs + b[1].unit) - (a[1].set + a[1].pcs + a[1].unit))
+      .map(([k, o]) => [k, o.rs].concat(hasSet ? [o.set] : [], hasPcs ? [o.pcs] : [], hasUnit ? [o.unit] : []));
     miniTable(
-      ['Provinsi', 'Jumlah RS'].concat(hasSet ? ['Set'] : [], hasPcs ? ['Unit/pcs'] : []),
-      ['left', 'right'].concat(hasSet ? ['right'] : [], hasPcs ? ['right'] : []),
+      ['Provinsi', 'Jumlah RS'].concat(hasSet ? ['Set'] : [], hasPcs ? ['Pcs'] : [], hasUnit ? ['Unit'] : []),
+      ['left', 'right'].concat(hasSet ? ['right'] : [], hasPcs ? ['right'] : [], hasUnit ? ['right'] : []),
       body);
   }
 
@@ -1956,7 +2026,9 @@ async function buildWorkbook(ctx) {
   if (hasSet) bullets.push('Set = jumlah set instrumen utuh. Dihitung dari isi set di database produk: jumlah item yang dipesan dibagi jumlah item itu di dalam satu set.');
   if (hasSet && num(s.set_estimasi) > 0) bullets.push(`${fmt(s.set_estimasi)} set berupa perkiraan karena isi setnya belum terdaftar di database produk atau isi di sheet tidak lengkap. Baris terkait diberi keterangan.`);
   if (hasSet && num(s.set_cek) > 0) bullets.push(`${fmt(s.set_cek)} pesanan set belum dihitung karena jumlah itemnya tidak sesuai isi set. Pesanannya tetap tercantum di sheet “Rincian Pesanan” dengan keterangan.`);
-  if (hasPcs) bullets.push('Unit/pcs = total jumlah barang satuan (instrumen satuan, elektromedis, alat laboratorium, dan sejenisnya).');
+  if (hasPcs) bullets.push('Pcs = jumlah instrumen satuan, dihitung per buah. Isi set yang dipesan terpisah dan BMHP juga masuk di sini.');
+  if (hasUnit) bullets.push('Unit = jumlah alat, dihitung per unit alat: unit medis, elektromedis, alat penunjang laboratorium, penunjang medis, dan unit lainnya.');
+  if ([hasSet, hasPcs, hasUnit].filter(Boolean).length > 1) bullets.push('Set, pcs, dan unit tidak dijumlahkan karena satuannya berbeda.');
   bullets.push(st.cakupan === 'SEMUA'
     ? 'Cakupan: semua pesanan non-sample, termasuk retail.'
     : 'Cakupan: pesanan lewat INAPROC dan pembelian langsung. Retail, konsinyasi, dan sample tidak dihitung.');
@@ -2078,8 +2150,12 @@ async function buildWorkbook(ctx) {
     perCols.push({ h: 'Jumlah set', k: 'set', w: 12, fmt: XL_NUMZ });
   }
   if (hasPcs) {
-    if (semuaStatus) perCols.push({ h: 'Unit/pcs terkirim', k: 'pcs_t', w: 12, fmt: XL_NUMZ }, { h: 'Unit/pcs dalam proses', k: 'pcs_p', w: 12, fmt: XL_NUMZ });
-    perCols.push({ h: 'Jumlah unit/pcs', k: 'pcs', w: 12, fmt: XL_NUMZ });
+    if (semuaStatus) perCols.push({ h: 'Pcs terkirim', k: 'pcs_t', w: 12, fmt: XL_NUMZ }, { h: 'Pcs dalam proses', k: 'pcs_p', w: 12, fmt: XL_NUMZ });
+    perCols.push({ h: 'Jumlah pcs', k: 'pcs', w: 12, fmt: XL_NUMZ });
+  }
+  if (hasUnit) {
+    if (semuaStatus) perCols.push({ h: 'Unit terkirim', k: 'unit_t', w: 12, fmt: XL_NUMZ }, { h: 'Unit dalam proses', k: 'unit_p', w: 12, fmt: XL_NUMZ });
+    perCols.push({ h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ });
   }
   perCols.push(
     { h: 'Jumlah pesanan', k: 'pesanan', w: 11, fmt: XL_NUMZ },
@@ -2087,7 +2163,7 @@ async function buildWorkbook(ctx) {
     { h: 'Jenis yang dipesan', k: 'rincian', w: 62, wrap: true },
     { h: 'Keterangan', k: 'ket', w: 40, wrap: true, warn: true },
     { h: 'Dasar wilayah', k: 'sumber', w: 18, tech: true });
-  const perTotals = ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'pesanan'];
+  const perTotals = ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'unit_t', 'unit_p', 'unit', 'pesanan'];
   const perTeknis = perCols.some((c) => c.tech);
   tableSheet('Daftar RS', {
     title: 'Daftar rumah sakit',
@@ -2109,6 +2185,7 @@ async function buildWorkbook(ctx) {
         provinsi: x.provinsi || 'Belum diketahui',
         set_t: num(x.set_terkirim), set_p: num(x.set_proses), set: x.set,
         pcs_t: num(x.pcs_terkirim), pcs_p: num(x.pcs_proses), pcs: x.pcs,
+        unit_t: num(x.unit_terkirim), unit_p: num(x.unit_proses), unit: x.unit,
         pesanan: num(x.jumlah_pesanan),
         terakhir: xlDate(x.terakhir),
         rincian: rincianText(x, '; '),
@@ -2120,7 +2197,8 @@ async function buildWorkbook(ctx) {
 
   // ═══ 3) RINCIAN PESANAN ═════════════════════════════════════════════════════
   const adaSet = lines.some((l) => l.kind === 'SET');
-  const adaPcs = lines.some((l) => l.kind !== 'SET');
+  const adaPcs = lines.some((l) => satuanBaris(l) === 'pcs');
+  const adaUnit = lines.some((l) => satuanBaris(l) === 'unit');
   const ord = new Map(R.map((x, i) => [x.customer, i]));
   const L2 = lines.slice().sort((a, b) =>
     ((ord.get(a.customer) || 0) - (ord.get(b.customer) || 0)) ||
@@ -2137,7 +2215,8 @@ async function buildWorkbook(ctx) {
   if (lines.some((l) => l.jenis)) linCols.push({ h: 'Jenis instrumen', k: 'jenisInstr', w: 18 });
   if (lines.some((l) => l.mikro)) linCols.push({ h: 'Mikro', k: 'mikro', w: 8 });
   if (adaSet) linCols.push({ h: 'Jumlah set', k: 'set', w: 11, fmt: XL_NUMZ });
-  if (adaPcs) linCols.push({ h: 'Jumlah unit/pcs', k: 'pcs', w: 12, fmt: XL_NUMZ });
+  if (adaPcs) linCols.push({ h: 'Jumlah pcs', k: 'pcs', w: 12, fmt: XL_NUMZ });
+  if (adaUnit) linCols.push({ h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ });
   linCols.push(
     { h: 'Status', k: 'status', w: 14 },
     { h: 'Tanggal pesanan', k: 'tanggal', w: 14, fmt: XL_DATE },
@@ -2154,7 +2233,7 @@ async function buildWorkbook(ctx) {
     sub: `${subLine}  ·  kolom abu-abu di kanan = data teknis`,
     cols: linCols,
     freeze: 1,
-    totals: ['set', 'pcs'],
+    totals: ['set', 'pcs', 'unit'],
     items: L2.map((l) => {
       const ok = dihitung(l);
       return {
@@ -2167,7 +2246,8 @@ async function buildWorkbook(ctx) {
         // Jumlah dikosongkan untuk pesanan yang tidak dihitung, supaya total kolom ini
         // sama dengan angka di sheet Daftar RS.
         set: l.kind === 'SET' && ok ? num(l.nilai) : null,
-        pcs: l.kind !== 'SET' && ok ? num(l.nilai) : null,
+        pcs: satuanBaris(l) === 'pcs' && ok ? num(l.nilai) : null,
+        unit: satuanBaris(l) === 'unit' && ok ? num(l.nilai) : null,
         status: l.status === 'TERKIRIM' ? 'Terkirim' : 'Dalam proses',
         tanggal: xlDate(l.tanggal),
         po: l.po || '',
@@ -2198,7 +2278,7 @@ async function buildWorkbook(ctx) {
       { h: 'Rumah sakit', k: 'customer', w: 44 },
       { h: 'Kab/Kota', k: 'kab', w: 22 },
       { h: 'Provinsi', k: 'provinsi', w: 20 },
-    ].concat(present.map((id, i) => ({ h: `${katName(id)} (${id === 'SET' ? 'set' : 'unit/pcs'})`, k: 'c' + i, w: 18, fmt: XL_NUMZ })));
+    ].concat(present.map((id, i) => ({ h: `${katName(id)} (${satuanKel(id)})`, k: 'c' + i, w: 18, fmt: XL_NUMZ })));
     tableSheet('RS per Kategori', {
       title: 'Jumlah per rumah sakit menurut kategori',
       sub: subLine,
@@ -2223,12 +2303,13 @@ async function buildWorkbook(ctx) {
       cols: [
         { h: 'Rumah sakit', k: 'customer', w: 48 },
         { h: 'Jumlah set', k: 'set', w: 12, fmt: XL_NUMZ },
-        { h: 'Jumlah unit/pcs', k: 'pcs', w: 14, fmt: XL_NUMZ },
+        { h: 'Jumlah pcs', k: 'pcs', w: 14, fmt: XL_NUMZ },
+        { h: 'Jumlah unit', k: 'unit', w: 14, fmt: XL_NUMZ },
         { h: 'Jumlah pesanan', k: 'pesanan', w: 14, fmt: XL_NUMZ },
       ],
       freeze: 1,
-      totals: ['set', 'pcs', 'pesanan'],
-      items: U.map((u) => ({ customer: u.customer, set: num(u.set_total), pcs: num(u.pcs_total), pesanan: num(u.jumlah_pesanan) })),
+      totals: ['set', 'pcs', 'unit', 'pesanan'],
+      items: U.map((u) => ({ customer: u.customer, set: num(u.set_total), pcs: num(u.pcs_total), unit: num(u.unit_total), pesanan: num(u.jumlah_pesanan) })),
     });
   }
 
@@ -2524,7 +2605,7 @@ export async function mount(container) {
   $('ps-provinsi').innerHTML = `<option value="">Semua provinsi</option>` +
     (state.provinsi ? `<option value="${esc(state.provinsi)}">${esc(state.provinsi)}</option>` : '');
   syncControls();
-  renderHead({ set: true, pcs: false, n: 6 });
+  renderHead({ set: true, pcs: false, unit: false, n: 6 });
 
   // dipanggil paling akhir, setelah semua let/const modul terinisialisasi (hindari TDZ)
   load();

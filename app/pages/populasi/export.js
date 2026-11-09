@@ -29,6 +29,15 @@ const xlFill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb }
 const xlLine = { style: 'thin', color: { argb: XL.line } };
 const n0 = (v) => Number(v) || 0;
 
+// Satuan hitung (satu-satunya tempat yang menentukan di sisi JS):
+//   set  = set instrumen utuh
+//   pcs  = instrumen satuan (termasuk isi set dan BMHP), dihitung per buah
+//   unit = alat: elektromedis, alat laboratorium, penunjang medis, unit lainnya, dihitung per unit alat
+// Harus sama dengan public.fn_satuan_hitung di populasi_v2_unit.sql.
+export const KEL_UNIT = ['ELEKTROMEDIS', 'ALAT LABORATORIUM', 'UNIT', 'PENUNJANG MEDIS'];
+export const satuanBaris = (l) => (l.kind === 'SET' ? 'set' : (KEL_UNIT.includes(l.kelompok) ? 'unit' : 'pcs'));
+const satuanKel = (id) => (id === 'SET' ? 'set' : (KEL_UNIT.includes(id) ? 'unit' : 'pcs'));
+
 // ── katalog: preset, sheet, kelompok kolom ───────────────────────────────────
 export const XL_PRESETS = [
   {
@@ -74,7 +83,7 @@ export const XL_SHEETS = [
   { id: 'produk', nama: 'Per Produk', cols: true,
     desc: 'Populasi per produk atau jenis set: jumlah, berapa RS, berapa provinsi.' },
   { id: 'provinsi', nama: 'Per Provinsi', when: (i) => !i.provinsiDipilih,
-    desc: 'Jumlah RS dan unit per provinsi.' },
+    desc: 'Jumlah RS, set, pcs, dan unit per provinsi.' },
   { id: 'matriks', nama: 'RS per Kategori', when: (i) => i.multiKategori,
     desc: 'Perbandingan jumlah tiap RS per kategori produk.' },
   { id: 'pesanan', nama: 'Rincian Pesanan', cols: true,
@@ -97,9 +106,12 @@ const COLS = {
     { id: 'set_t', h: 'Set terkirim', k: 'set_t', w: 11, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasSet && i.semuaStatus, desc: 'Jumlah set pada pesanan yang sudah terkirim.' },
     { id: 'set_p', h: 'Set dalam proses', k: 'set_p', w: 11, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasSet && i.semuaStatus, desc: 'Jumlah set pada pesanan yang masih dalam proses.' },
     { id: 'set', h: 'Jumlah set', k: 'set', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.hasSet, desc: 'Jumlah set instrumen utuh. Pesanan set yang belum dihitung tidak termasuk.' },
-    { id: 'pcs_t', h: 'Unit/pcs terkirim', k: 'pcs_t', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasPcs && i.semuaStatus, desc: 'Jumlah barang satuan pada pesanan yang sudah terkirim.' },
-    { id: 'pcs_p', h: 'Unit/pcs dalam proses', k: 'pcs_p', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasPcs && i.semuaStatus, desc: 'Jumlah barang satuan pada pesanan yang masih dalam proses.' },
-    { id: 'pcs', h: 'Jumlah unit/pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.hasPcs, desc: 'Jumlah barang satuan (instrumen satuan, elektromedis, alat laboratorium, dan sejenisnya).' },
+    { id: 'pcs_t', h: 'Pcs terkirim', k: 'pcs_t', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasPcs && i.semuaStatus, desc: 'Jumlah pcs (instrumen satuan, termasuk isi set dan BMHP) pada pesanan yang sudah terkirim.' },
+    { id: 'pcs_p', h: 'Pcs dalam proses', k: 'pcs_p', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasPcs && i.semuaStatus, desc: 'Jumlah pcs (instrumen satuan, termasuk isi set dan BMHP) pada pesanan yang masih dalam proses.' },
+    { id: 'pcs', h: 'Jumlah pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.hasPcs, desc: 'Jumlah pcs (instrumen satuan, termasuk isi set dan BMHP).' },
+    { id: 'unit_t', h: 'Unit terkirim', k: 'unit_t', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasUnit && i.semuaStatus, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya) pada pesanan yang sudah terkirim.' },
+    { id: 'unit_p', h: 'Unit dalam proses', k: 'unit_p', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasUnit && i.semuaStatus, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya) pada pesanan yang masih dalam proses.' },
+    { id: 'unit', h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.hasUnit, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya).' },
     { id: 'pesanan', h: 'Jumlah pesanan', k: 'pesanan', w: 11, fmt: XL_NUMZ, grp: 'jml', desc: 'Jumlah pesanan dari RS ini menurut aplikasi.' },
     { id: 'pertama', h: 'Pesanan pertama', k: 'pertama', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan paling awal pada hasil ini. Kosong bila tidak ada tanggal tercatat.' },
     { id: 'terakhir', h: 'Pesanan terakhir', k: 'terakhir', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan paling baru. Kosong bila tidak ada tanggal tercatat.' },
@@ -116,9 +128,12 @@ const COLS = {
     { id: 'set_t', h: 'Set terkirim', k: 'set_t', w: 11, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasSet && i.semuaStatus, desc: 'Jumlah set pada pesanan yang sudah terkirim.' },
     { id: 'set_p', h: 'Set dalam proses', k: 'set_p', w: 11, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasSet && i.semuaStatus, desc: 'Jumlah set pada pesanan yang masih dalam proses.' },
     { id: 'set', h: 'Jumlah set', k: 'set', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.adaSet, desc: 'Jumlah set untuk produk ini. Pesanan yang belum dihitung tidak termasuk.' },
-    { id: 'pcs_t', h: 'Unit/pcs terkirim', k: 'pcs_t', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasPcs && i.semuaStatus, desc: 'Jumlah barang satuan pada pesanan yang sudah terkirim.' },
-    { id: 'pcs_p', h: 'Unit/pcs dalam proses', k: 'pcs_p', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasPcs && i.semuaStatus, desc: 'Jumlah barang satuan pada pesanan yang masih dalam proses.' },
-    { id: 'pcs', h: 'Jumlah unit/pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.adaPcs, desc: 'Jumlah barang satuan untuk produk ini. Pesanan yang belum dihitung tidak termasuk.' },
+    { id: 'pcs_t', h: 'Pcs terkirim', k: 'pcs_t', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasPcs && i.semuaStatus, desc: 'Jumlah pcs (instrumen satuan, termasuk isi set dan BMHP) pada pesanan yang sudah terkirim.' },
+    { id: 'pcs_p', h: 'Pcs dalam proses', k: 'pcs_p', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasPcs && i.semuaStatus, desc: 'Jumlah pcs (instrumen satuan, termasuk isi set dan BMHP) pada pesanan yang masih dalam proses.' },
+    { id: 'pcs', h: 'Jumlah pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.adaPcs, desc: 'Jumlah pcs (instrumen satuan, termasuk isi set dan BMHP) untuk produk ini. Pesanan yang belum dihitung tidak termasuk.' },
+    { id: 'unit_t', h: 'Unit terkirim', k: 'unit_t', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasUnit && i.semuaStatus, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya) pada pesanan yang sudah terkirim.' },
+    { id: 'unit_p', h: 'Unit dalam proses', k: 'unit_p', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasUnit && i.semuaStatus, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya) pada pesanan yang masih dalam proses.' },
+    { id: 'unit', h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.adaUnit, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya) untuk produk ini. Pesanan yang belum dihitung tidak termasuk.' },
     { id: 'rs', h: 'Jumlah RS', k: 'rs', w: 10, fmt: XL_NUMZ, grp: 'jml', desc: 'Berapa RS/instansi berbeda yang memesan produk ini (hanya pesanan yang dihitung).' },
     { id: 'prov', h: 'Jumlah provinsi', k: 'prov', w: 11, fmt: XL_NUMZ, grp: 'wil', when: (i) => !i.provinsiDipilih, desc: 'Berapa provinsi berbeda; RS yang wilayahnya belum diketahui tidak dihitung.' },
     { id: 'pesanan', h: 'Jumlah pesanan', k: 'pesanan', w: 11, fmt: XL_NUMZ, grp: 'jml', desc: 'Jumlah baris pesanan (kombinasi PO dan produk) di sheet Rincian Pesanan untuk produk ini, termasuk yang belum dihitung.' },
@@ -137,7 +152,8 @@ const COLS = {
     { id: 'jenisInstr', h: 'Jenis instrumen', k: 'jenisInstr', w: 18, grp: 'produk', drop: 1, desc: 'Jenis instrumen, bila tercatat.' },
     { id: 'mikro', h: 'Mikro', k: 'mikro', w: 8, grp: 'produk', drop: 1, desc: '“Ya” bila instrumen ditandai mikrosurgery.' },
     { id: 'set', h: 'Jumlah set', k: 'set', w: 11, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.adaSet, desc: 'Jumlah set pada baris ini. Kosong bila pesanan belum dihitung.' },
-    { id: 'pcs', h: 'Jumlah unit/pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.adaPcs, desc: 'Jumlah barang satuan pada baris ini. Kosong bila pesanan belum dihitung.' },
+    { id: 'pcs', h: 'Jumlah pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.adaPcs, desc: 'Jumlah pcs (instrumen satuan, termasuk isi set dan BMHP) pada baris ini. Kosong bila pesanan belum dihitung.' },
+    { id: 'unit', h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.adaUnit, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya) pada baris ini. Kosong bila pesanan belum dihitung.' },
     { id: 'status', h: 'Status', k: 'status', w: 14, grp: 'waktu', desc: 'Terkirim atau Dalam proses.' },
     { id: 'tanggal', h: 'Tanggal pesanan', k: 'tanggal', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan seperti tercatat. Kosong bila tidak tercatat.' },
     { id: 'rmp', h: 'No. RMP', k: 'rmp', w: 24, grp: 'dok', drop: 1, desc: 'Nomor RMP internal.' },
@@ -156,7 +172,8 @@ const COLS_PROV = [
   { id: 'provinsi', h: 'Provinsi', k: 'provinsi', w: 28, desc: 'Provinsi. “Belum diketahui” = wilayah RS belum bisa ditentukan.' },
   { id: 'rs', h: 'Jumlah RS', k: 'rs', w: 11, fmt: XL_NUMZ, desc: 'Jumlah RS/instansi di provinsi ini.' },
   { id: 'set', h: 'Jumlah set', k: 'set', w: 12, fmt: XL_NUMZ, when: (i) => i.hasSet, desc: 'Jumlah set.' },
-  { id: 'pcs', h: 'Jumlah unit/pcs', k: 'pcs', w: 14, fmt: XL_NUMZ, when: (i) => i.hasPcs, desc: 'Jumlah barang satuan.' },
+  { id: 'pcs', h: 'Jumlah pcs', k: 'pcs', w: 14, fmt: XL_NUMZ, when: (i) => i.hasPcs, desc: 'Jumlah pcs (instrumen satuan, termasuk isi set dan BMHP).' },
+  { id: 'unit', h: 'Jumlah unit', k: 'unit', w: 14, fmt: XL_NUMZ, when: (i) => i.hasUnit, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya).' },
   { id: 'pesanan', h: 'Jumlah pesanan', k: 'pesanan', w: 12, fmt: XL_NUMZ, desc: 'Jumlah pesanan menurut aplikasi.' },
   { id: 'terakhir', h: 'Pesanan terakhir', k: 'terakhir', w: 14, fmt: XL_DATE, desc: 'Tanggal pesanan paling baru. Kosong bila tidak ada tanggal tercatat.' },
 ];
@@ -177,10 +194,12 @@ export function xlInfo({ data, unmapped, st, lines }) {
   const s = (data && data.ringkasan) || {};
   const hasSet = n0(s.set_total) > 0 || n0(s.set_cek) > 0;
   const hasPcs = n0(s.pcs_total) > 0;
+  const hasUnit = n0(s.unit_total) > 0;
   return {
-    hasSet, hasPcs,
+    hasSet, hasPcs, hasUnit,
     adaSet: lines ? lines.some((l) => l.kind === 'SET') : hasSet,
-    adaPcs: lines ? lines.some((l) => l.kind !== 'SET') : hasPcs,
+    adaPcs: lines ? lines.some((l) => satuanBaris(l) === 'pcs') : hasPcs,
+    adaUnit: lines ? lines.some((l) => satuanBaris(l) === 'unit') : hasUnit,
     semuaStatus: st.status === 'ALL',
     provinsiDipilih: !!st.provinsi,
     multiKategori: st.kelompok.length !== 1,
@@ -246,7 +265,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   const info = xlInfo({ data: D, unmapped: U, st, lines });
 
   const s = D.ringkasan || {};
-  const { hasSet, hasPcs, semuaStatus, provinsiDipilih } = info;
+  const { hasSet, hasPcs, hasUnit, semuaStatus, provinsiDipilih } = info;
   const lokasi = st.provinsi || 'Semua provinsi';
   const kategori = h.kategoriText(st);
   const statusText = semuaStatus ? 'terkirim dan dalam proses' : 'terkirim saja';
@@ -285,6 +304,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       no: i + 1, customer: x.customer, kab: x.kab_kota || '', provinsi: x.provinsi || (sph ? '' : BELUM),
       set_t: n0(x.set_terkirim), set_p: n0(x.set_proses), set: x.set,
       pcs_t: n0(x.pcs_terkirim), pcs_p: n0(x.pcs_proses), pcs: x.pcs,
+      unit_t: n0(x.unit_terkirim), unit_p: n0(x.unit_proses), unit: x.unit,
       pesanan: n0(x.jumlah_pesanan), pertama: xlDate(o.pertama), terakhir: xlDate(x.terakhir),
       rincian: '', _rinc: x.rincian || [],
       ket: sph ? '' : ket.join('; '), sumber: sumberTxt(x),
@@ -299,7 +319,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     const key = isSet ? `S|${l.kelompok}|${nama}` : `P|${l.kode_produk || ''}|${nama}`;
     const o = pm.get(key) || {
       nama: nama || '', kode: isSet ? '' : (l.kode_produk || ''), kategori: katName(l.kelompok),
-      spes: new Set(), set_t: 0, set_p: 0, pcs_t: 0, pcs_p: 0, rs: new Set(), prov: new Set(),
+      spes: new Set(), set_t: 0, set_p: 0, pcs_t: 0, pcs_p: 0, unit_t: 0, unit_p: 0, rs: new Set(), prov: new Set(), sat: satuanBaris(l),
       pesanan: 0, pertama: '', terakhir: '', est: 0, cek: 0, isSet,
     };
     if (l.spes) o.spes.add(spesNama(l.spes));
@@ -311,7 +331,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     if (dihitung(l)) {
       const v = n0(l.nilai);
       const kirim = l.status === 'TERKIRIM';
-      const f = (isSet ? 'set' : 'pcs') + (kirim ? '_t' : '_p');
+      const f = satuanBaris(l) + (kirim ? '_t' : '_p');
       o[f] += v;
       o.rs.add(l.customer);
       if (l.provinsi) o.prov.add(l.provinsi);
@@ -326,25 +346,26 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     return {
       nama: o.nama, kode: o.kode, kategori: o.kategori, spes: Array.from(o.spes).join(' / '),
       set_t: o.isSet ? o.set_t : null, set_p: o.isSet ? o.set_p : null, set: o.isSet ? o.set_t + o.set_p : null,
-      pcs_t: o.isSet ? null : o.pcs_t, pcs_p: o.isSet ? null : o.pcs_p, pcs: o.isSet ? null : o.pcs_t + o.pcs_p,
+      pcs_t: o.sat === 'pcs' ? o.pcs_t : null, pcs_p: o.sat === 'pcs' ? o.pcs_p : null, pcs: o.sat === 'pcs' ? o.pcs_t + o.pcs_p : null,
+      unit_t: o.sat === 'unit' ? o.unit_t : null, unit_p: o.sat === 'unit' ? o.unit_p : null, unit: o.sat === 'unit' ? o.unit_t + o.unit_p : null,
       rs: o.rs.size, prov: o.prov.size, pesanan: o.pesanan,
       pertama: xlDate(o.pertama), terakhir: xlDate(o.terakhir), ket: sph ? '' : ket.join('; '),
     };
-  }).sort((a, b) => (n0(b.set) + n0(b.pcs)) - (n0(a.set) + n0(a.pcs)) || String(a.nama).localeCompare(String(b.nama), 'id'))
-    .filter((o) => !sph || n0(o.set) + n0(o.pcs) > 0)   // SPH: produk yang tidak punya angka tidak ditampilkan
+  }).sort((a, b) => (n0(b.set) + n0(b.pcs) + n0(b.unit)) - (n0(a.set) + n0(a.pcs) + n0(a.unit)) || String(a.nama).localeCompare(String(b.nama), 'id'))
+    .filter((o) => !sph || n0(o.set) + n0(o.pcs) + n0(o.unit) > 0)   // SPH: produk yang tidak punya angka tidak ditampilkan
     .map((o, i) => Object.assign(o, { no: i + 1 }));
 
   // Per provinsi (dari baris RS dari server, supaya angkanya sama dengan Daftar RS).
   const gp = new Map();
   R.forEach((x) => {
     const k = x.provinsi || belumLabel;
-    const o = gp.get(k) || { provinsi: k, rs: 0, set: 0, pcs: 0, pesanan: 0, terakhir: '' };
-    o.rs += 1; o.set += x.set; o.pcs += x.pcs; o.pesanan += n0(x.jumlah_pesanan);
+    const o = gp.get(k) || { provinsi: k, rs: 0, set: 0, pcs: 0, unit: 0, pesanan: 0, terakhir: '' };
+    o.rs += 1; o.set += x.set; o.pcs += x.pcs; o.unit += x.unit; o.pesanan += n0(x.jumlah_pesanan);
     if (x.terakhir && x.terakhir > o.terakhir) o.terakhir = x.terakhir;
     gp.set(k, o);
   });
   const itemsProv = Array.from(gp.values())
-    .sort((a, b) => ((a.provinsi === belumLabel) - (b.provinsi === belumLabel)) || (b.set + b.pcs) - (a.set + a.pcs) || a.provinsi.localeCompare(b.provinsi, 'id'))
+    .sort((a, b) => ((a.provinsi === belumLabel) - (b.provinsi === belumLabel)) || (b.set + b.pcs + b.unit) - (a.set + a.pcs + a.unit) || a.provinsi.localeCompare(b.provinsi, 'id'))
     .map((o, i) => Object.assign({}, o, { no: i + 1, terakhir: xlDate(o.terakhir) }));
 
   // Rincian pesanan
@@ -361,7 +382,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       jenis: l.kind === 'SET' ? l.label : l.produk, kode: l.kind === 'SET' ? '' : (l.kode_produk || ''),
       spes: l.spes ? spesNama(l.spes) : '', jenisInstr: l.jenis ? jenisNama(l.jenis) : '', mikro: l.mikro ? 'Ya' : '',
       // Jumlah dikosongkan untuk pesanan yang tidak dihitung, supaya total kolom sama dengan Daftar RS.
-      set: l.kind === 'SET' && ok ? n0(l.nilai) : null, pcs: l.kind !== 'SET' && ok ? n0(l.nilai) : null,
+      set: l.kind === 'SET' && ok ? n0(l.nilai) : null, pcs: satuanBaris(l) === 'pcs' && ok ? n0(l.nilai) : null, unit: satuanBaris(l) === 'unit' && ok ? n0(l.nilai) : null,
       status: l.status === 'TERKIRIM' ? 'Terkirim' : 'Dalam proses', tanggal: xlDate(l.tanggal),
       rmp: l.kode_rmp || '', po: l.po || '', shitung: labelHitung(l), ket: ketBaris(l),
       family: l.family || '', baris: n0(l.jumlah_baris), sheet: l.sumber_sheet || '', asli: l.label_asli || '',
@@ -616,7 +637,8 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
 
   const angka = [];
   if (hasSet) angka.push(`${fmt(s.set_total)} set`);
-  if (hasPcs) angka.push(`${fmt(s.pcs_total)} unit/pcs`);
+  if (hasPcs) angka.push(`${fmt(s.pcs_total)} pcs`);
+  if (hasUnit) angka.push(`${fmt(s.unit_total)} unit`);
   const jawaban = angka.length
     ? `${angka.join(' dan ')} di ${fmt(s.jumlah_rs)} rumah sakit/instansi ${provinsiDipilih ? 'di ' + st.provinsi : 'di semua provinsi'}, ` +
       (semuaStatus ? 'termasuk pesanan yang masih dalam proses.' : 'hanya pesanan yang sudah terkirim.')
@@ -638,33 +660,35 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   d0.kv('Rumah sakit / instansi', n0(s.jumlah_rs), XL_NUM);
   if (hasSet) d0.kv('Set', n0(s.set_total), XL_NUM, !sph && n0(s.set_estimasi) > 0 ? `${fmt(s.set_estimasi)} di antaranya perkiraan` : '');
   if (hasSet && semuaStatus) { d0.kv('   sudah terkirim', n0(s.set_terkirim), XL_NUM); d0.kv('   masih dalam proses', n0(s.set_proses), XL_NUM); }
-  if (hasPcs) d0.kv('Unit/pcs', n0(s.pcs_total), XL_NUM);
+  if (hasPcs) d0.kv('Pcs (instrumen satuan)', n0(s.pcs_total), XL_NUM);
   if (hasPcs && semuaStatus) { d0.kv('   sudah terkirim', n0(s.pcs_terkirim), XL_NUM); d0.kv('   masih dalam proses', n0(s.pcs_proses), XL_NUM); }
+  if (hasUnit) d0.kv('Unit (alat medis)', n0(s.unit_total), XL_NUM);
+  if (hasUnit && semuaStatus) { d0.kv('   sudah terkirim', n0(s.unit_terkirim), XL_NUM); d0.kv('   masih dalam proses', n0(s.unit_proses), XL_NUM); }
   d0.kv('Jumlah pesanan', n0(s.jumlah_pesanan), XL_NUM);
   if (itemsProduk.length) d0.kv('Jumlah produk / jenis set', itemsProduk.length, XL_NUM);
   const terakhir = R.reduce((m, x) => (x.terakhir && x.terakhir > m ? x.terakhir : m), '');
   if (terakhir) d0.kv('Pesanan terakhir', xlDate(terakhir), XL_DATE);
 
-  const kolUnit = (hSet, hPcs) => [].concat(hasSet ? [hSet] : [], hasPcs ? [hPcs] : []);
-  const alUnit = [].concat(hasSet ? ['right'] : [], hasPcs ? ['right'] : []);
+  const kolUnit = () => [].concat(hasSet ? ['Set'] : [], hasPcs ? ['Pcs'] : [], hasUnit ? ['Unit'] : []);
+  const alUnit = [].concat(hasSet ? ['right'] : [], hasPcs ? ['right'] : [], hasUnit ? ['right'] : []);
   if (R.length > 5) {
     d0.section(`${Math.min(10, R.length)} rumah sakit/instansi dengan jumlah terbanyak`);
     const top = R.slice().sort((a, b) => b.total - a.total || a.customer.localeCompare(b.customer, 'id')).slice(0, 10);
     const adaKab = top.some((x) => x.kab_kota);   // kolom kosong total dibuang; sebagian kosong = "Tidak tersedia"
-    d0.table(['Rumah sakit / instansi'].concat(adaKab ? ['Kab/Kota'] : [], kolUnit('Set', 'Unit/pcs')), ['left'].concat(adaKab ? ['left'] : [], alUnit),
-      top.map((x) => [x.customer].concat(adaKab ? [x.kab_kota || (sph ? '' : NA)] : [], hasSet ? [x.set] : [], hasPcs ? [x.pcs] : [])));
+    d0.table(['Rumah sakit / instansi'].concat(adaKab ? ['Kab/Kota'] : [], kolUnit()), ['left'].concat(adaKab ? ['left'] : [], alUnit),
+      top.map((x) => [x.customer].concat(adaKab ? [x.kab_kota || (sph ? '' : NA)] : [], hasSet ? [x.set] : [], hasPcs ? [x.pcs] : [], hasUnit ? [x.unit] : [])));
     if (plan.includes('rs')) d0.wide('Daftar lengkap ada di sheet “Daftar RS”.', { size: 10, color: XL.soft });
   }
   if (itemsProduk.length > 1) {
     d0.section(`${Math.min(10, itemsProduk.length)} produk / jenis set terbanyak`);
-    d0.table(['Produk / jenis set', 'Kategori'].concat(kolUnit('Set', 'Unit/pcs')), ['left', 'left'].concat(alUnit),
-      itemsProduk.slice(0, 10).map((x) => [x.nama, x.kategori].concat(hasSet ? [x.set] : [], hasPcs ? [x.pcs] : [])));
+    d0.table(['Produk / jenis set', 'Kategori'].concat(kolUnit()), ['left', 'left'].concat(alUnit),
+      itemsProduk.slice(0, 10).map((x) => [x.nama, x.kategori].concat(hasSet ? [x.set] : [], hasPcs ? [x.pcs] : [], hasUnit ? [x.unit] : [])));
     if (plan.includes('produk')) d0.wide('Daftar lengkap ada di sheet “Per Produk”.', { size: 10, color: XL.soft });
   }
   if (!provinsiDipilih && R.length && !plan.includes('provinsi')) {
     d0.section('Per provinsi');
-    d0.table(['Provinsi', 'Jumlah RS'].concat(kolUnit('Set', 'Unit/pcs')), ['left', 'right'].concat(alUnit),
-      itemsProv.map((o) => [o.provinsi, o.rs].concat(hasSet ? [o.set] : [], hasPcs ? [o.pcs] : [])));
+    d0.table(['Provinsi', 'Jumlah RS'].concat(kolUnit()), ['left', 'right'].concat(alUnit),
+      itemsProv.map((o) => [o.provinsi, o.rs].concat(hasSet ? [o.set] : [], hasPcs ? [o.pcs] : [], hasUnit ? [o.unit] : [])));
   }
 
   d0.section('Filter yang dipakai');
@@ -695,7 +719,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       bersih: sph,
       title: 'Daftar rumah sakit / instansi', sub: subLine + subTek(cols), note: NOTE_KOSONG,
       cols, freeze: 2, labelKey: 'customer',
-      totals: sumTot(cols, ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'pesanan']), items: itemsRs,
+      totals: sumTot(cols, ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'unit_t', 'unit_p', 'unit', 'pesanan']), items: itemsRs,
     });
   }
   if (plan.includes('rincianrs')) {
@@ -705,15 +729,15 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       const isSet = l.kind === 'SET';
       const nama = isSet ? l.label : l.produk;
       const key = `${l.customer}|${isSet ? 'S' : 'P'}|${isSet ? l.kelompok : (l.kode_produk || '')}|${nama}`;
-      const o = pr.get(key) || { customer: l.customer, nama: nama || '', kategori: katName(l.kelompok), set: 0, pcs: 0, isSet };
-      o[isSet ? 'set' : 'pcs'] += n0(l.nilai);
+      const o = pr.get(key) || { customer: l.customer, nama: nama || '', kategori: katName(l.kelompok), set: 0, pcs: 0, unit: 0, sat: satuanBaris(l) };
+      o[satuanBaris(l)] += n0(l.nilai);
       pr.set(key, o);
     });
     const items = Array.from(pr.values())
-      .sort((a, b) => ((ord.get(a.customer) || 0) - (ord.get(b.customer) || 0)) || (n0(b.set) + n0(b.pcs)) - (n0(a.set) + n0(a.pcs)) || String(a.nama).localeCompare(String(b.nama), 'id'))
+      .sort((a, b) => ((ord.get(a.customer) || 0) - (ord.get(b.customer) || 0)) || (n0(b.set) + n0(b.pcs) + n0(b.unit)) - (n0(a.set) + n0(a.pcs) + n0(a.unit)) || String(a.nama).localeCompare(String(b.nama), 'id'))
       .map((o) => {
         const w = wil.get(o.customer) || {};
-        return { customer: o.customer, kab: w.kab_kota || '', provinsi: w.provinsi || (sph ? '' : BELUM), nama: o.nama, kategori: o.kategori, set: o.isSet ? o.set : null, pcs: o.isSet ? null : o.pcs };
+        return { customer: o.customer, kab: w.kab_kota || '', provinsi: w.provinsi || (sph ? '' : BELUM), nama: o.nama, kategori: o.kategori, set: o.sat === 'set' ? o.set : null, pcs: o.sat === 'pcs' ? o.pcs : null, unit: o.sat === 'unit' ? o.unit : null };
       });
     const cols = [
       { h: 'Rumah sakit / instansi', k: 'customer', w: 40, desc: 'Nama customer.' },
@@ -722,13 +746,14 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       { h: 'Produk / jenis set', k: 'nama', w: 52, wrap: 1, desc: 'Nama produk atau jenis set.' },
       { h: 'Kategori', k: 'kategori', w: 18, desc: 'Kategori produk.' },
       { h: 'Jumlah set', k: 'set', w: 11, fmt: XL_NUMZ, desc: 'Jumlah set.' },
-      { h: 'Jumlah unit/pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, desc: 'Jumlah barang satuan.' },
+      { h: 'Jumlah pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, desc: 'Jumlah pcs (instrumen satuan).' },
+      { h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ, desc: 'Jumlah unit (alat medis, elektromedis, alat laboratorium).' },
     ].filter((c) => !((c.k === 'kab' || c.k === 'provinsi') && items.every((it) => kosong(it[c.k]))))
-     .filter((c) => !(c.k === 'set' && !items.some((it) => it.set !== null)) && !(c.k === 'pcs' && !items.some((it) => it.pcs !== null)));
+     .filter((c) => !(c.k === 'set' && !items.some((it) => it.set !== null)) && !(c.k === 'pcs' && !items.some((it) => it.pcs !== null)) && !(c.k === 'unit' && !items.some((it) => it.unit !== null)));
     tableSheet('Produk per RS', {
       bersih: sph, title: 'Produk yang dipesan per rumah sakit / instansi', sub: subLine,
       note: 'Satu baris per rumah sakit dan produk. Gunakan filter di judul kolom untuk melihat satu RS atau satu produk.',
-      cols, freeze: 1, labelKey: 'customer', totals: sumTot(cols, ['set', 'pcs']), items,
+      cols, freeze: 1, labelKey: 'customer', totals: sumTot(cols, ['set', 'pcs', 'unit']), items,
     });
   }
   if (plan.includes('produk')) {
@@ -736,9 +761,9 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     tableSheet('Per Produk', {
       bersih: sph,
       title: 'Populasi per produk / jenis set', sub: subLine + subTek(cols),
-      note: sph ? 'Jumlah set dan unit/pcs dipisah karena satuannya berbeda.' : 'Hanya pesanan yang dihitung; jumlah set dan unit/pcs dipisah karena satuannya berbeda. ' + NOTE_KOSONG,
+      note: sph ? 'Set, pcs, dan unit dihitung terpisah karena satuannya berbeda.' : 'Hanya pesanan yang dihitung; set, pcs, dan unit dihitung terpisah karena satuannya berbeda. ' + NOTE_KOSONG,
       cols, freeze: 2, labelKey: 'nama',
-      totals: sumTot(cols, ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs']), items: itemsProduk,   // 'Jumlah pesanan' tidak dijumlah: satu PO berisi beberapa produk
+      totals: sumTot(cols, ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'unit_t', 'unit_p', 'unit']), items: itemsProduk,   // 'Jumlah pesanan' tidak dijumlah: satu PO berisi beberapa produk
     });
   }
   if (plan.includes('provinsi')) {
@@ -747,7 +772,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       bersih: sph,
       title: 'Populasi per provinsi', sub: subLine,
       note: sph ? '' : 'Provinsi mengikuti data wilayah RS (koreksi manual, atau deteksi dari alamat bila belum dikoreksi). ' + NOTE_KOSONG,
-      cols, freeze: 2, labelKey: 'provinsi', totals: sumTot(cols, ['rs', 'set', 'pcs', 'pesanan']), items: itemsProv,
+      cols, freeze: 2, labelKey: 'provinsi', totals: sumTot(cols, ['rs', 'set', 'pcs', 'unit', 'pesanan']), items: itemsProv,
     });
   }
   if (plan.includes('matriks')) {
@@ -756,8 +781,8 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       { h: 'Kab/Kota', k: 'kab', w: 22, na: 1, desc: 'Kabupaten/kota; “Tidak tersedia” bila tidak tercatat.' },
       { h: 'Provinsi', k: 'provinsi', w: 20, desc: 'Provinsi; “Belum diketahui” bila wilayah belum bisa ditentukan.' },
     ].concat(present.map((id, i) => ({
-      h: `${katName(id)} (${id === 'SET' ? 'set' : 'unit/pcs'})`, k: 'c' + i, w: 18, fmt: XL_NUMZ,
-      desc: `Jumlah ${id === 'SET' ? 'set' : 'unit/pcs'} kategori ${katName(id)} pada RS ini (hanya pesanan yang dihitung).`,
+      h: `${katName(id)} (${satuanKel(id)})`, k: 'c' + i, w: 18, fmt: XL_NUMZ,
+      desc: `Jumlah ${satuanKel(id)} kategori ${katName(id)} pada RS ini (hanya pesanan yang dihitung).`,
     })));
     const items = Array.from(by.values()).sort((a, b) => a.customer.localeCompare(b.customer, 'id')).map((o) => {
       const row = { customer: o.customer, kab: o.kab, provinsi: o.provinsi || BELUM };
@@ -776,7 +801,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     tableSheet('Rincian Pesanan', {
       bersih: sph,
       title: 'Rincian pesanan', sub: subLine + subTek(cols), note: NOTE_KOSONG,
-      cols, freeze: 1, labelKey: 'customer', totals: sumTot(cols, ['set', 'pcs']), items: itemsPesanan,
+      cols, freeze: 1, labelKey: 'customer', totals: sumTot(cols, ['set', 'pcs', 'unit']), items: itemsPesanan,
     });
   }
   if (plan.includes('belum')) {
@@ -787,11 +812,12 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       cols: [
         { h: 'Rumah sakit / instansi', k: 'customer', w: 48, desc: 'Nama customer.' },
         { h: 'Jumlah set', k: 'set', w: 12, fmt: XL_NUMZ, desc: 'Jumlah set.' },
-        { h: 'Jumlah unit/pcs', k: 'pcs', w: 14, fmt: XL_NUMZ, desc: 'Jumlah barang satuan.' },
+        { h: 'Jumlah pcs', k: 'pcs', w: 14, fmt: XL_NUMZ, desc: 'Jumlah pcs (instrumen satuan).' },
+        { h: 'Jumlah unit', k: 'unit', w: 14, fmt: XL_NUMZ, desc: 'Jumlah unit (alat medis, elektromedis, alat laboratorium).' },
         { h: 'Jumlah pesanan', k: 'pesanan', w: 14, fmt: XL_NUMZ, desc: 'Jumlah pesanan menurut aplikasi.' },
       ],
-      freeze: 1, labelKey: 'customer', totals: ['set', 'pcs', 'pesanan'],
-      items: U.map((u) => ({ customer: u.customer, set: n0(u.set_total), pcs: n0(u.pcs_total), pesanan: n0(u.jumlah_pesanan) })),
+      freeze: 1, labelKey: 'customer', totals: ['set', 'pcs', 'unit', 'pesanan'],
+      items: U.map((u) => ({ customer: u.customer, set: n0(u.set_total), pcs: n0(u.pcs_total), unit: n0(u.unit_total), pesanan: n0(u.jumlah_pesanan) })),
     });
   }
 
@@ -816,8 +842,9 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     dc.section('Cara membaca angka');
     const bacaan = [];
     if (hasSet) bacaan.push('Set = jumlah set instrumen lengkap.');
-    if (hasPcs) bacaan.push('Unit/pcs = jumlah barang satuan (instrumen satuan, elektromedis, alat laboratorium, dan sejenisnya).');
-    if (hasSet && hasPcs) bacaan.push('Jumlah set dan unit/pcs tidak dijumlahkan karena satuannya berbeda.');
+    if (hasPcs) bacaan.push('Pcs = jumlah instrumen satuan, dihitung per buah (termasuk isi set dan BMHP).');
+    if (hasUnit) bacaan.push('Unit = jumlah alat medis, elektromedis, dan alat penunjang laboratorium, dihitung per unit alat.');
+    if ([hasSet, hasPcs, hasUnit].filter(Boolean).length > 1) bacaan.push('Set, pcs, dan unit tidak dijumlahkan karena satuannya berbeda.');
     bacaan.push(st.cakupan === 'SEMUA' ? 'Data mencakup seluruh pesanan.' : 'Data mencakup pesanan melalui INAPROC dan pembelian langsung.');
     bacaan.forEach((t) => dc.wide('•  ' + t));
     return wb.xlsx.writeBuffer();
@@ -847,7 +874,9 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   if (hasSet && n0(s.set_cek) > 0) cara.push(`${fmt(s.set_cek)} pesanan set belum dihitung karena jumlah itemnya tidak sesuai isi set, jadi tidak masuk angka set.` +
     (sel.tanpaCek ? ' Pesanan tersebut sengaja tidak dicantumkan di file ini.'
       : (plan.includes('pesanan') ? ' Pesanannya tetap tercantum di Rincian Pesanan dengan keterangan.' : ' Pesanannya tidak dirinci di file ini; jumlahnya dicatat di Per Produk dan Daftar RS pada kolom Keterangan.')));
-  if (hasPcs) cara.push('Unit/pcs = total jumlah barang satuan (instrumen satuan, elektromedis, alat laboratorium, dan sejenisnya). Jumlah set dan unit/pcs tidak dijumlahkan karena satuannya berbeda.');
+  if (hasPcs) cara.push('Pcs = jumlah instrumen satuan, dihitung per buah. Isi set yang dipesan terpisah dan BMHP juga masuk di sini.');
+  if (hasUnit) cara.push('Unit = jumlah alat, dihitung per unit alat: unit medis, elektromedis, alat penunjang laboratorium, penunjang medis, dan unit lainnya.');
+  if ([hasSet, hasPcs, hasUnit].filter(Boolean).length > 1) cara.push('Set, pcs, dan unit tidak dijumlahkan karena satuannya berbeda.');
   cara.push(st.cakupan === 'SEMUA'
     ? 'Cakupan: semua pesanan non-sample, termasuk retail.'
     : 'Cakupan: pesanan lewat INAPROC dan pembelian langsung. Retail, konsinyasi, dan sample tidak dihitung.');
