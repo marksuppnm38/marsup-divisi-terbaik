@@ -20,7 +20,8 @@
 
 #app-root,
 #ps-wil-overlay,
-#ps-kel-overlay{
+#ps-kel-overlay,
+#ps-xl-overlay{
   --ps-fs-cap: 12px;
   --ps-fs: 13px;
   --ps-fs-lg: 14px;
@@ -610,4 +611,82 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
   #ps-kel-overlay .ps-kel-card{ max-height: 94vh; }
   #ps-kel-overlay .ps-kel-head, #ps-kel-overlay .ps-kel-tabs, #ps-kel-overlay .ps-kel-bar, #ps-kel-overlay .ps-kel-foot{ padding-left: 16px; padding-right: 16px; }
   #ps-kel-overlay .ps-kel-meta{ margin-left: 0; width: 100%; }
+}
+
+/* ── dialog "Unduh Excel" (memakai .confirm-overlay/.confirm-card generik; bahasa visual sama dengan Kelola produk) ── */
+#ps-xl-overlay .ps-xl-card{
+  max-width: 760px; width: 100%; max-height: 90vh; padding: 0;
+  display: flex; flex-direction: column; overflow: hidden; text-align: left;
+}
+#ps-xl-overlay .ps-xl-head{ display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 12px; }
+#ps-xl-overlay .ps-xl-head h3{ margin: 0; }
+#ps-xl-overlay .ps-xl-lede{ margin: 4px 0 0; font-size: var(--ps-fs); line-height: 1.5; color: var(--text-secondary); }
+#ps-xl-overlay .ps-xl-x{
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
+  color: var(--text-secondary); background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer;
+}
+#ps-xl-overlay .ps-xl-x:hover{ color: var(--text); border-color: var(--border-strong); background: var(--surface-2); }
+#ps-xl-overlay .ps-xl-scroll{ flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 24px 8px; }
+#ps-xl-overlay .ps-xl-sec{ margin: 0; padding: 14px 0; border: 0; border-top: 1px solid var(--border); min-width: 0; }
+#ps-xl-overlay .ps-xl-h{ padding: 0; margin: 0 0 10px; font-size: var(--ps-fs-cap); font-weight: 600; color: var(--text); }
+#ps-xl-overlay .ps-hint{ font-weight: 400; color: var(--ps-muted); }
+#ps-xl-overlay .ps-hint::before{ content: '– '; }
+#ps-xl-overlay .ps-lbl{ display: block; margin-bottom: 4px; font-size: var(--ps-fs-cap); font-weight: 500; color: var(--text-muted); }
+#ps-xl-overlay .ps-field{ display: block; }
+#ps-xl-overlay .ps-xl-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+#ps-xl-overlay .ps-xl-grid .ps-span{ grid-column: 1 / -1; }
+#ps-xl-overlay .ps-xl-grid textarea{ resize: vertical; font-family: inherit; }
+#ps-xl-overlay .ps-xl-cek{ margin-top: 12px; }
+#ps-xl-overlay .ps-xl-cek[hidden]{ display: none; }
+
+#ps-xl-overlay .ps-xl-presets{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#ps-xl-overlay .ps-xl-preset{
+  position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px 10px 34px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
+}
+#ps-xl-overlay .ps-xl-preset:hover{ background: var(--surface-2); }
+#ps-xl-overlay .ps-xl-preset.on{ border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+#ps-xl-overlay .ps-xl-preset input{ position: absolute; left: 12px; top: 13px; width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+#ps-xl-overlay .ps-xl-preset:focus-within{ outline: 2px solid var(--accent); outline-offset: 2px; }
+#ps-xl-overlay .ps-xl-pn{ font-size: var(--ps-fs-lg); font-weight: 600; color: var(--text); }
+#ps-xl-overlay .ps-xl-pd{ font-size: var(--ps-fs-cap); line-height: 1.45; color: var(--text-secondary); }
+
+#ps-xl-overlay .ps-xl-row{ padding: 6px 0; border-bottom: 1px solid var(--border); }
+#ps-xl-overlay .ps-xl-row:last-child{ border-bottom: 0; }
+#ps-xl-overlay .ps-xl-sheet{ display: grid; grid-template-columns: 15px 150px 1fr; align-items: baseline; gap: 4px 10px; cursor: pointer; }
+#ps-xl-overlay .ps-xl-sheet input{ width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; align-self: center; }
+#ps-xl-overlay .ps-xl-sheet input:disabled{ cursor: default; }
+#ps-xl-overlay .ps-xl-sn{ font-size: var(--ps-fs); font-weight: 600; color: var(--text); }
+#ps-xl-overlay .ps-xl-sd{ font-size: var(--ps-fs-cap); line-height: 1.45; color: var(--text-secondary); }
+#ps-xl-overlay .ps-xl-cols{ margin: 4px 0 2px 25px; }
+#ps-xl-overlay .ps-xl-cols > summary{
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; margin-left: -6px; font-size: var(--ps-fs-cap);
+  color: var(--text-secondary); cursor: pointer; list-style: none; border-radius: var(--radius-sm);
+}
+#ps-xl-overlay .ps-xl-cols > summary::-webkit-details-marker{ display: none; }
+#ps-xl-overlay .ps-xl-cols > summary::before{ content: '\203A'; display: inline-block; width: 10px; font-size: 15px; line-height: 1; transition: transform .15s; }
+#ps-xl-overlay .ps-xl-cols[open] > summary::before{ transform: rotate(90deg); }
+#ps-xl-overlay .ps-xl-cols > summary:hover{ color: var(--text); background: var(--surface-2); }
+#ps-xl-overlay .ps-xl-colgrid{ display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 16px; padding: 8px 0 4px; }
+#ps-xl-overlay .ps-xl-gh{ margin-bottom: 4px; font-size: var(--ps-fs-cap); font-weight: 600; color: var(--text-muted); }
+#ps-xl-overlay .ps-check{ display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: var(--ps-fs); color: var(--text-secondary); cursor: pointer; }
+#ps-xl-overlay .ps-check input{ width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+#ps-xl-overlay .ps-check input:disabled{ cursor: default; }
+
+#ps-xl-overlay .ps-xl-foot{ display: flex; align-items: center; gap: 10px; padding: 12px 24px; border-top: 1px solid var(--border); }
+#ps-xl-overlay .ps-xl-grow{ flex: 1; }
+#ps-xl-overlay .ps-xl-warn{ font-size: var(--ps-fs-cap); line-height: 1.4; color: var(--warn-text); }
+#ps-xl-overlay .ps-xl-warn[hidden]{ display: none; }
+#ps-xl-overlay .btn:disabled{ opacity: .6; cursor: progress; }
+
+@media (max-width: 640px){
+  #ps-xl-overlay .ps-xl-card{ max-height: 94vh; }
+  #ps-xl-overlay .ps-xl-head, #ps-xl-overlay .ps-xl-scroll, #ps-xl-overlay .ps-xl-foot{ padding-left: 16px; padding-right: 16px; }
+  #ps-xl-overlay .ps-xl-presets, #ps-xl-overlay .ps-xl-grid{ grid-template-columns: 1fr; }
+  #ps-xl-overlay .ps-xl-sheet{ grid-template-columns: 15px 1fr; }
+  #ps-xl-overlay .ps-xl-sd{ grid-column: 2; }
+  #ps-xl-overlay .ps-xl-foot{ flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce){
+  #ps-xl-overlay .ps-xl-cols > summary::before{ transition: none; }
 }

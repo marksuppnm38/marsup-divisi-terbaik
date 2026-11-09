@@ -22,6 +22,8 @@
 // catatan hitungan (#ps-caveats), header tabel (#ps-thead), isi paginasi (#ps-pager), chip filter aktif (#ps-active),
 // bilah "Menampilkan N pesanan ..." (#ps-review-bar).
 // Dialog Kelola produk punya tiga tab: Kategori produk, Atribut produk (spesialisasi, jenis, mikro), Alihkan set.
+// Dialog Unduh Excel (#ps-xl-overlay): tujuan file (preset), sheet dan kolom (dirender JS di #ps-xl-presets / #ps-xl-sheets),
+// serta keterangan opsional (untuk siapa, oleh siapa, catatan). Logikanya di index.js; pembangun file di export.js.
 // Ikon hanya dipakai untuk aksi yang juga punya label teks, atau yang artinya baku (cari, tutup, urutkan).
 
 export const POPULASI_MARKUP = `
@@ -139,7 +141,7 @@ export const POPULASI_MARKUP = `
               </select>
             </label>
             <button type="button" class="bulk-btn clear" data-action="ps-copy" title="Salin daftar sebagai teks untuk ditempel ke chat atau email"><i class="ti ti-copy" aria-hidden="true"></i> Salin teks</button>
-            <button type="button" class="bulk-btn export ps-xlsx" data-action="ps-xlsx" title="Unduh Excel yang siap dikirim: ringkasan, daftar RS, dan rincian pesanan"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> <span>Unduh Excel</span></button>
+            <button type="button" class="bulk-btn export ps-xlsx" data-action="ps-xlsx" title="Pilih tujuan file (lampiran SPH, presentasi, atau internal), lalu unduh Excel dengan sheet dan kolom yang sesuai"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> <span>Unduh Excel</span></button>
           </div>
         </div>
         <div class="table-scroll">
@@ -221,6 +223,46 @@ export const POPULASI_MARKUP = `
     <div class="ps-kel-foot">
       <span>Data di Google Sheet tidak berubah.</span>
       <button type="button" class="btn btn-ghost" data-action="ps-kel-unduh">Unduh daftar koreksi</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="ps-xl-overlay">
+  <div class="confirm-card ps-xl-card" role="dialog" aria-modal="true" aria-labelledby="ps-xl-title">
+    <div class="ps-xl-head">
+      <div>
+        <h3 id="ps-xl-title">Unduh Excel</h3>
+        <p class="ps-xl-lede" id="ps-xl-sub"></p>
+      </div>
+      <button type="button" class="ps-xl-x" data-action="ps-xl-close" aria-label="Tutup" title="Tutup"><i class="ti ti-x" aria-hidden="true"></i></button>
+    </div>
+    <div class="ps-xl-scroll">
+      <fieldset class="ps-xl-sec">
+        <legend class="ps-xl-h">File ini untuk apa?</legend>
+        <div class="ps-xl-presets" id="ps-xl-presets"></div>
+      </fieldset>
+      <div class="ps-xl-sec">
+        <div class="ps-xl-h">Isi file <span class="ps-hint">centang sheet yang diperlukan; kolom bisa dipilih per sheet</span></div>
+        <div class="ps-xl-sheets" id="ps-xl-sheets"></div>
+      </div>
+      <div class="ps-xl-sec">
+        <div class="ps-xl-h">Keterangan di file <span class="ps-hint">opsional, tampil di Ringkasan dan Catatan</span></div>
+        <div class="ps-xl-grid">
+          <label class="ps-field"><span class="ps-lbl">Disiapkan untuk</span><input class="field-input" id="ps-xl-untuk" maxlength="120" placeholder="mis. RSUD Contoh, SPH No. 123/2026" autocomplete="off"></label>
+          <label class="ps-field"><span class="ps-lbl">Disiapkan oleh</span><input class="field-input" id="ps-xl-oleh" maxlength="80" placeholder="nama atau tim" autocomplete="off"></label>
+          <label class="ps-field ps-span"><span class="ps-lbl">Catatan tambahan</span><textarea class="field-input" id="ps-xl-catatan" rows="2" maxlength="400" placeholder="mis. data populasi sebagai referensi penggunaan produk"></textarea></label>
+        </div>
+        <label class="ps-check ps-xl-cek" id="ps-xl-cek-wrap" hidden title="Pesanan set yang jumlah itemnya tidak sesuai isi set tidak masuk hitungan. Bila dicentang, barisnya juga tidak dicantumkan di Rincian Pesanan dan Per Produk; jumlahnya tetap dicatat di Catatan &amp; Kamus.">
+          <input type="checkbox" id="ps-xl-tanpacek">
+          <span>Jangan cantumkan pesanan set yang belum dihitung</span>
+        </label>
+      </div>
+    </div>
+    <div class="ps-xl-foot">
+      <span class="ps-xl-warn" id="ps-xl-warn" role="status" hidden></span>
+      <span class="ps-xl-grow"></span>
+      <button type="button" class="btn btn-ghost" data-action="ps-xl-close">Batal</button>
+      <button type="button" class="btn btn-accent" id="ps-xl-go" data-action="ps-xl-go"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> <span>Unduh Excel</span></button>
     </div>
   </div>
 </div>
