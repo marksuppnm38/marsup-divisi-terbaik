@@ -1,20 +1,28 @@
 // app/pages/populasi/markup.js
 // Markup halaman "Populasi" -- SATU layar untuk SATU pertanyaan:
 // "kategori/produk apa, di RS mana saja, di provinsi X", dengan hasil yang bisa diunduh
-// sebagai Excel. Urutan halaman = urutan prioritas: judul + kesegaran data, filter ringkas,
-// hasil (judul, kartu angka, tabel), RS tanpa wilayah, lalu pengaturan (Kelola produk) di paling bawah.
-// Satu kotak cari (#ps-cari) dengan dua cakupan, Produk dan Rumah sakit/RMP; masing-masing isinya disimpan terpisah.
+// sebagai Excel.
+//
+// TATA LETAK (urutan = urutan prioritas):
+//   1. Topbar: judul + kesegaran data.
+//   2. Bilah cari (#ps-cari) selebar halaman, dengan dua cakupan: Produk dan Rumah sakit/RMP
+//      (masing-masing isinya disimpan terpisah).
+//   3. Dua kolom: kiri = rel filter (.ps-panel: provinsi, status, kategori, spesialisasi, opsi, periode),
+//      kanan = hasil (.ps-results: filter aktif, judul hasil, ringkasan satu baris, tabel, RS tanpa wilayah,
+//      Kelola produk di paling bawah). Rel filter tetap terlihat saat tabel di-scroll.
+//   Di layar sempit (<= 1100px) kedua kolom menumpuk dan facet kembali jadi chip.
+//
 // Memakai komponen bersama pnm-universal.css (stats-grid/stat-card, table-section/table-header,
 // filter-btn, filter-select, search-mini, bulk-btn, btn-clear-all); override khusus ada di style.css.
 // Semua id berawalan ps- kecuali err-banner/err-text/toast-container (kelas generik
 // dari pnm-universal.css, sama seperti dashboard).
 //
-// Yang dirender lewat JS (bukan di sini): chip kategori (#ps-cats), chip spesialisasi (#ps-spes) dan
-// jenis instrumen (#ps-jenis), kartu ringkasan (#ps-stats),
+// Yang dirender lewat JS (bukan di sini): facet kategori (#ps-cats), spesialisasi (#ps-spes) dan
+// jenis instrumen (#ps-jenis), ringkasan (#ps-stats),
 // catatan hitungan (#ps-caveats), header tabel (#ps-thead), chip filter aktif (#ps-active),
 // bilah "Menampilkan N pesanan ..." (#ps-review-bar).
 // Dialog Kelola produk punya tiga tab: Kategori produk, Atribut produk (spesialisasi, jenis, mikro), Alihkan set.
-// Ikon hanya dipakai untuk aksi yang juga punya label teks, atau yang artinya baku (tutup, urutkan).
+// Ikon hanya dipakai untuk aksi yang juga punya label teks, atau yang artinya baku (cari, tutup, urutkan).
 
 export const POPULASI_MARKUP = `
 <div id="app-root">
@@ -28,130 +36,134 @@ export const POPULASI_MARKUP = `
 <main>
   <div class="err-banner" id="err-banner" role="alert"><i class="ti ti-alert-circle"></i> <span id="err-text"></span></div>
 
-  <section class="ps-panel" aria-label="Filter">
-    <div class="ps-field ps-search">
-      <span class="ps-lbl" id="ps-lbl-cari">Cari</span>
-      <div class="ps-searchbox">
-        <div class="ps-seg" role="group" aria-labelledby="ps-lbl-cari">
-          <button type="button" class="filter-btn ps-scope-btn active" data-action="ps-cari-scope" data-v="produk" aria-pressed="true">Produk</button>
-          <button type="button" class="filter-btn ps-scope-btn" data-action="ps-cari-scope" data-v="rs" aria-pressed="false">Rumah sakit</button>
-        </div>
-        <input class="search-mini" type="search" id="ps-cari" autocomplete="off" aria-label="Cari nama set atau produk">
-      </div>
+  <section class="ps-command" aria-label="Pencarian">
+    <span class="ps-sr" id="ps-lbl-cari">Cari</span>
+    <div class="ps-seg" role="group" aria-labelledby="ps-lbl-cari">
+      <button type="button" class="filter-btn ps-scope-btn active" data-action="ps-cari-scope" data-v="produk" aria-pressed="true">Produk</button>
+      <button type="button" class="filter-btn ps-scope-btn" data-action="ps-cari-scope" data-v="rs" aria-pressed="false">Rumah sakit</button>
     </div>
+    <div class="ps-searchfield">
+      <i class="ti ti-search" aria-hidden="true"></i>
+      <input class="search-mini" type="search" id="ps-cari" autocomplete="off" aria-label="Cari nama set atau produk">
+    </div>
+  </section>
 
-    <div class="ps-grid">
+  <div class="ps-layout">
+    <aside class="ps-panel" aria-label="Filter">
       <label class="ps-field">
         <span class="ps-lbl">Provinsi</span>
         <select class="filter-select" id="ps-provinsi"><option value="">Semua provinsi</option></select>
       </label>
+
       <div class="ps-field">
-        <span class="ps-lbl">Status pesanan</span>
-        <div class="ps-seg" role="group" aria-label="Status pesanan">
+        <span class="ps-lbl" id="ps-lbl-status">Status pesanan</span>
+        <div class="ps-seg" role="group" aria-labelledby="ps-lbl-status">
           <button type="button" class="filter-btn active" data-action="ps-status" data-v="DELIVERED">Terkirim</button>
           <button type="button" class="filter-btn" data-action="ps-status" data-v="ALL">+ Dalam proses</button>
         </div>
       </div>
-    </div>
 
-    <div class="ps-field">
-      <span class="ps-lbl" id="ps-lbl-kat">Kategori (boleh lebih dari satu)</span>
-      <div class="ps-cats" id="ps-cats" role="group" aria-labelledby="ps-lbl-kat"></div>
-    </div>
+      <div class="ps-field">
+        <span class="ps-lbl" id="ps-lbl-kat">Kategori <span class="ps-hint">pilih satu atau lebih</span></span>
+        <div class="ps-cats" id="ps-cats" role="group" aria-labelledby="ps-lbl-kat"></div>
+      </div>
 
-    <div class="ps-field" id="ps-spes-wrap" hidden>
-      <span class="ps-lbl" id="ps-lbl-spes">Spesialisasi (boleh lebih dari satu; berlaku untuk set dan instrumen satuan)</span>
-      <div class="ps-cats" id="ps-spes" role="group" aria-labelledby="ps-lbl-spes"></div>
-    </div>
+      <div class="ps-field" id="ps-spes-wrap" hidden>
+        <span class="ps-lbl" id="ps-lbl-spes">Spesialisasi <span class="ps-hint">untuk set dan instrumen satuan</span></span>
+        <div class="ps-cats" id="ps-spes" role="group" aria-labelledby="ps-lbl-spes"></div>
+      </div>
 
-    <div class="ps-opts">
-      <label class="ps-check" id="ps-isi-wrap" hidden title="Isi set dihitung per komponen (pcs), bukan per set">
-        <input type="checkbox" id="ps-isi-set">
-        <span>Termasuk isi set</span>
-      </label>
-      <label class="ps-check" id="ps-mikro-wrap" hidden title="Instrumen mikro dari semua spesialisasi: gunting Vannas, forceps mikro, dan sejenisnya">
-        <input type="checkbox" id="ps-mikro">
-        <span id="ps-mikro-t">Hanya mikrosurgery</span>
-      </label>
-      <details class="ps-more-filters" id="ps-jenis-det" hidden>
-        <summary id="ps-jenis-sum">Jenis instrumen</summary>
-        <div class="ps-cats ps-more-body" id="ps-jenis" role="group" aria-label="Jenis instrumen"></div>
-      </details>
-      <details class="ps-more-filters">
-        <summary>Periode dan cakupan data</summary>
-        <div class="ps-grid ps-more-body">
-          <label class="ps-field">
-            <span class="ps-lbl">Dari tanggal</span>
-            <input class="search-mini" type="date" id="ps-dari">
-          </label>
-          <label class="ps-field">
-            <span class="ps-lbl">Sampai</span>
-            <input class="search-mini" type="date" id="ps-sampai">
-          </label>
-          <label class="ps-field">
-            <span class="ps-lbl">Cakupan</span>
-            <select class="filter-select" id="ps-cakupan">
-              <option value="POPULASI">Populasi (INAPROC &amp; beli langsung)</option>
-              <option value="SEMUA">Semua non-sample (termasuk retail)</option>
-            </select>
-          </label>
-        </div>
-      </details>
-    </div>
-
-    <div class="ps-active" id="ps-active" hidden></div>
-  </section>
-
-  <div class="ps-note" id="ps-stale" hidden role="status"></div>
-
-  <div class="ps-scope" id="ps-scope" aria-live="polite">
-    <div class="ps-sum-main" id="ps-sum-main">—</div>
-    <div class="ps-caveats" id="ps-caveats" hidden></div>
-    <div class="ps-loadbar" aria-hidden="true"></div>
-  </div>
-  <div class="stats-grid ps-stats" id="ps-stats">
-    <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
-    <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
-    <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
-  </div>
-
-  <div class="ps-review-bar" id="ps-review-bar" hidden role="status" aria-live="polite"></div>
-
-  <div class="table-section" id="ps-table">
-    <div class="table-header">
-      <div class="table-title"><span id="ps-tbl-title">Rumah sakit</span></div>
-      <div class="filter-bar" id="ps-actions">
-        <label class="ps-sortsel"><span class="ps-sr">Urutkan</span>
-          <select class="filter-select" id="ps-urut" aria-label="Urutkan tabel">
-            <option value="total">Terbanyak</option>
-            <option value="terakhir">Pesanan terbaru</option>
-            <option value="customer">Nama A–Z</option>
-          </select>
+      <div class="ps-opts">
+        <label class="ps-check" id="ps-isi-wrap" hidden title="Isi set dihitung per komponen (pcs), bukan per set">
+          <input type="checkbox" id="ps-isi-set">
+          <span>Termasuk isi set</span>
         </label>
-        <button type="button" class="bulk-btn clear" data-action="ps-copy" title="Salin daftar sebagai teks untuk ditempel ke chat atau email"><i class="ti ti-copy" aria-hidden="true"></i> Salin teks</button>
-        <button type="button" class="bulk-btn export ps-xlsx" data-action="ps-xlsx" title="Unduh Excel yang siap dikirim: ringkasan, daftar RS, dan rincian pesanan"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> <span>Unduh Excel</span></button>
+        <label class="ps-check" id="ps-mikro-wrap" hidden title="Instrumen mikro dari semua spesialisasi: gunting Vannas, forceps mikro, dan sejenisnya">
+          <input type="checkbox" id="ps-mikro">
+          <span id="ps-mikro-t">Hanya mikrosurgery</span>
+        </label>
+        <details class="ps-more-filters" id="ps-jenis-det" hidden>
+          <summary id="ps-jenis-sum">Jenis instrumen</summary>
+          <div class="ps-cats ps-more-body" id="ps-jenis" role="group" aria-label="Jenis instrumen"></div>
+        </details>
+        <details class="ps-more-filters">
+          <summary>Periode dan cakupan data</summary>
+          <div class="ps-grid ps-more-body">
+            <label class="ps-field">
+              <span class="ps-lbl">Dari tanggal</span>
+              <input class="search-mini" type="date" id="ps-dari">
+            </label>
+            <label class="ps-field">
+              <span class="ps-lbl">Sampai</span>
+              <input class="search-mini" type="date" id="ps-sampai">
+            </label>
+            <label class="ps-field ps-span">
+              <span class="ps-lbl">Cakupan</span>
+              <select class="filter-select" id="ps-cakupan">
+                <option value="POPULASI">Populasi (INAPROC &amp; beli langsung)</option>
+                <option value="SEMUA">Semua non-sample (termasuk retail)</option>
+              </select>
+            </label>
+          </div>
+        </details>
+      </div>
+    </aside>
+
+    <div class="ps-results">
+      <div class="ps-active" id="ps-active" hidden></div>
+
+      <div class="ps-note" id="ps-stale" hidden role="status"></div>
+
+      <div class="ps-scope" id="ps-scope" aria-live="polite">
+        <div class="ps-sum-main" id="ps-sum-main">—</div>
+        <div class="ps-caveats" id="ps-caveats" hidden></div>
+        <div class="ps-loadbar" aria-hidden="true"></div>
+      </div>
+      <div class="stats-grid ps-stats" id="ps-stats">
+        <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
+        <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
+        <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
+      </div>
+
+      <div class="ps-review-bar" id="ps-review-bar" hidden role="status" aria-live="polite"></div>
+
+      <div class="table-section" id="ps-table">
+        <div class="table-header">
+          <div class="table-title"><span id="ps-tbl-title">Rumah sakit</span></div>
+          <div class="filter-bar" id="ps-actions">
+            <label class="ps-sortsel"><span class="ps-sr">Urutkan</span>
+              <select class="filter-select" id="ps-urut" aria-label="Urutkan tabel">
+                <option value="total">Terbanyak</option>
+                <option value="terakhir">Pesanan terbaru</option>
+                <option value="customer">Nama A–Z</option>
+              </select>
+            </label>
+            <button type="button" class="bulk-btn clear" data-action="ps-copy" title="Salin daftar sebagai teks untuk ditempel ke chat atau email"><i class="ti ti-copy" aria-hidden="true"></i> Salin teks</button>
+            <button type="button" class="bulk-btn export ps-xlsx" data-action="ps-xlsx" title="Unduh Excel yang siap dikirim: ringkasan, daftar RS, dan rincian pesanan"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> <span>Unduh Excel</span></button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead id="ps-thead"></thead>
+            <tbody id="ps-body">
+              <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:70%;height:13px"></div></td><td><div class="skeleton" style="width:55%"></div></td><td class="ps-num"><div class="skeleton" style="width:24px;margin-left:auto"></div></td><td><div class="skeleton" style="width:80%"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
+              <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:60%;height:13px"></div></td><td><div class="skeleton" style="width:45%"></div></td><td class="ps-num"><div class="skeleton" style="width:24px;margin-left:auto"></div></td><td><div class="skeleton" style="width:65%"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
+              <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:75%;height:13px"></div></td><td><div class="skeleton" style="width:50%"></div></td><td class="ps-num"><div class="skeleton" style="width:24px;margin-left:auto"></div></td><td><div class="skeleton" style="width:72%"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
+              <tr class="ps-skel-note"><td colspan="6"><span class="ps-sr" role="status">Memuat data…</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <details class="insight-card ps-unmapped" id="ps-unmapped" hidden>
+        <summary class="insight-card-title" id="ps-unm-title">—</summary>
+        <div id="ps-unm-list"></div>
+      </details>
+
+      <div class="ps-foot">
+        <button type="button" class="btn btn-ghost" data-action="ps-kel-open" title="Betulkan kategori dan atribut produk (spesialisasi, jenis, mikro), atau alihkan set custom ke populasi set lain. Data di Google Sheet tidak berubah."><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Kelola produk: kategori, atribut, dan alihan set</button>
       </div>
     </div>
-    <div class="table-scroll">
-      <table>
-        <thead id="ps-thead"></thead>
-        <tbody id="ps-body">
-          <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:70%;height:13px"></div></td><td><div class="skeleton" style="width:55%"></div></td><td class="ps-num"><div class="skeleton" style="width:24px;margin-left:auto"></div></td><td><div class="skeleton" style="width:80%"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
-          <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:60%;height:13px"></div></td><td><div class="skeleton" style="width:45%"></div></td><td class="ps-num"><div class="skeleton" style="width:24px;margin-left:auto"></div></td><td><div class="skeleton" style="width:65%"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
-          <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:75%;height:13px"></div></td><td><div class="skeleton" style="width:50%"></div></td><td class="ps-num"><div class="skeleton" style="width:24px;margin-left:auto"></div></td><td><div class="skeleton" style="width:72%"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
-          <tr class="ps-skel-note"><td colspan="6"><span class="ps-sr" role="status">Memuat data…</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <details class="insight-card ps-unmapped" id="ps-unmapped" hidden>
-    <summary class="insight-card-title" id="ps-unm-title">—</summary>
-    <div id="ps-unm-list"></div>
-  </details>
-
-  <div class="ps-foot">
-    <button type="button" class="btn btn-ghost" data-action="ps-kel-open" title="Betulkan kategori dan atribut produk (spesialisasi, jenis, mikro), atau alihkan set custom ke populasi set lain. Data di Google Sheet tidak berubah."><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Kelola produk: kategori, atribut, dan alihan set</button>
   </div>
 </main>
 </div>
