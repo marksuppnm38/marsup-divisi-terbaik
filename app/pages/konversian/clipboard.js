@@ -1335,6 +1335,10 @@ S.getSetStokGap = getSetStokGap;
     #set-stok-pop .ssp-nama{flex:1}
     #set-stok-pop .ssp-qty{white-space:nowrap;color:var(--text-muted,#999)}
     #set-stok-pop .ssp-muted{color:var(--text-muted,#999)}
+    #set-stok-pop.ssp-ready{cursor:pointer}
+    #set-stok-pop.ssp-ready:hover{border-color:var(--warning,#b45309)}
+    #set-stok-pop .ssp-copy{margin-top:8px;padding-top:6px;border-top:1px dashed var(--border,#333);font-size:11px;color:var(--text-muted,#999)}
+    #set-stok-pop.ssp-copied .ssp-copy{color:var(--success,#16a34a);font-weight:600}
   `;
   document.head.appendChild(st);
 
@@ -1344,6 +1348,42 @@ S.getSetStokGap = getSetStokGap;
 
   const esc = (v) => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   let activeEl = null, hideTimer = null, seq = 0;
+  let activeGap = null; // rincian komponen yg lagi tampil -> sumber teks buat di-copy
+
+  // Teks siap tempel ke chat/WA: nama set + daftar komponen yang belum ada stok / kurang.
+  function buildCopyText(el, gap) {
+    const kode = el.dataset.setKode || '';
+    const nama = (el.closest('.rcard, .conv-row, .clip-item')?.querySelector('.rcard-name')?.textContent || '').trim();
+    const line = (it, withStok) => {
+      const k = it.kode_asli || it.kode_produk;
+      const butuh = `butuh ${it.qty ?? 1}`;
+      return `- ${k} ${it.nama_produk || ''} (${withStok ? 'stok ' + (it._stok_qty ?? 0) + ', ' : ''}${butuh})`;
+    };
+    const out = [`${nama ? nama + ' ' : ''}(${kode}) — ${headText(el)}`];
+    if (gap.missing.length) out.push('', `Belum ada data stok (${gap.missing.length}):`, ...gap.missing.map(it => line(it, false)));
+    if (gap.kurang.length) out.push('', `Stok kurang dari kebutuhan set (${gap.kurang.length}):`, ...gap.kurang.map(it => line(it, true)));
+    return out.join('\n');
+  }
+
+  async function copyGap() {
+    if (!activeEl || !activeGap || activeGap.kosong) return;
+    const text = buildCopyText(activeEl, activeGap);
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (_) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta); ta.select();
+        ok = document.execCommand('copy'); ta.remove();
+      } catch (_) { ok = false; }
+    }
+    if (ok) {
+      pop.classList.add('ssp-copied');
+      const c = pop.querySelector('.ssp-copy');
+      if (c) c.textContent = '✓ Tersalin — tinggal paste ke chat';
+      if (S.showToast) S.showToast('Daftar komponen kurang disalin ✓');
+    } else if (S.showToast) S.showToast('Gagal menyalin ke clipboard', 'error');
+  }
 
   function place(el) {
     const r = el.getBoundingClientRect();
@@ -1376,6 +1416,11 @@ S.getSetStokGap = getSetStokGap;
       if (gap.kurang.length) html += `<div class="ssp-sec indent">Stok kurang dari kebutuhan set (${gap.kurang.length})</div>${rows(gap.kurang, true)}`;
       if (!gap.missing.length && !gap.kurang.length) html += `<div class="ssp-muted">Semua komponen sudah punya data stok — coba muat ulang hasil pencarian.</div>`;
     }
+    const canCopy = !gap.kosong && (gap.missing.length || gap.kurang.length);
+    if (canCopy) html += `<div class="ssp-copy">📋 Klik untuk copy daftar ini</div>`;
+    pop.classList.remove('ssp-copied');
+    pop.classList.toggle('ssp-ready', !!canCopy);
+    activeGap = gap;
     pop.innerHTML = html;
   }
 
@@ -1383,6 +1428,8 @@ S.getSetStokGap = getSetStokGap;
     clearTimeout(hideTimer);
     if (activeEl === el && pop.style.display === 'block') return;
     activeEl = el;
+    activeGap = null;
+    pop.classList.remove('ssp-ready', 'ssp-copied');
     const mySeq = ++seq;
     const kode = el.dataset.setKode;
     pop.innerHTML = `<div class="ssp-head">${esc(headText(el))}</div><div class="ssp-muted">Memuat komponen yang kosong…</div>`;
@@ -1403,6 +1450,10 @@ S.getSetStokGap = getSetStokGap;
     hideTimer = setTimeout(() => { pop.style.display = 'none'; activeEl = null; seq++; }, 120);
   }
 
+  // Kursor pindah dari badge ke popup (biar bisa diklik) -> jangan ditutup.
+  pop.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+  pop.addEventListener('mouseleave', () => hide());
+
   S.onGlobal(document, 'mouseover', (e) => {
     const el = e.target.closest && e.target.closest('.mi.stok-warn[data-set-kode]');
     if (el) show(el);
@@ -1415,6 +1466,7 @@ S.getSetStokGap = getSetStokGap;
   S.onGlobal(document, 'click', (e) => {
     const el = e.target.closest && e.target.closest('.mi.stok-warn[data-set-kode]');
     if (el) { show(el); return; }
+    if (pop.contains(e.target)) { copyGap(); return; }
     if (!pop.contains(e.target)) { pop.style.display = 'none'; activeEl = null; seq++; }
   });
   S.onGlobal(document, 'scroll', () => { if (pop.style.display === 'none') return; pop.style.display = 'none'; activeEl = null; seq++; }, true);
