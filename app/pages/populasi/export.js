@@ -35,7 +35,7 @@ export const XL_PRESETS = [
     id: 'sph', nama: 'Lampiran SPH',
     desc: 'Ringkas dan rapi untuk dikirim ke calon pembeli: daftar RS, populasi per produk, dan per provinsi. Tanpa nomor PO/RMP dan data teknis.',
     sheets: ['rs', 'produk', 'provinsi'],
-    grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 1, tek: 0 },
+    grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 0, tek: 0 },
   },
   {
     id: 'presentasi', nama: 'Presentasi dan diskusi',
@@ -227,6 +227,10 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   const { katName, spesNama, jenisNama, fmt, fmtDate } = h;
   const now = ctx.now || new Date();
   const preset = XL_PRESETS.find((p) => p.id === sel.preset) || XL_PRESETS[3];
+  // Preset SPH dibaca pembeli: tanpa istilah teknis (perkiraan, deteksi alamat, belum dihitung, "Tidak tersedia", nama aplikasi).
+  // Angka tetap sama; hanya cara menyampaikannya yang dibersihkan.
+  const sph = preset.id === 'sph';
+  const belumLabel = sph ? 'Lainnya' : BELUM;
   const xlDate = (s) => { const d = h.toDate(s); return d ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) : null; };
 
   // Provinsi/Kab-Kota ikut ke tiap baris pesanan supaya sheet Rincian bisa difilter per wilayah.
@@ -258,7 +262,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   wb.created = now;
   wb.title = `Populasi ${kategori} - ${lokasi}`;
   wb.subject = `${preset.nama} · ${subLine}`;
-  wb.description = 'Dibuat dari aplikasi Populasi. Arti kolom dan cara membaca angka ada di sheet "Catatan & Kamus".';
+  wb.description = sph ? 'Lampiran populasi produk.' : 'Dibuat dari aplikasi Populasi. Arti kolom dan cara membaca angka ada di sheet "Catatan & Kamus".';
 
   // ═══ BAHAN TURUNAN ═══════════════════════════════════════════════════════════
   const peta = {};                 // customer -> {pertama, estimasi}
@@ -276,12 +280,12 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     if (n0(x.set_cek) > 0) ket.push(`${fmt(x.set_cek)} pesanan set belum dihitung (perlu dicek)`);
     if (!x.provinsi) ket.push('wilayah belum diketahui');
     return {
-      no: i + 1, customer: x.customer, kab: x.kab_kota || '', provinsi: x.provinsi || BELUM,
+      no: i + 1, customer: x.customer, kab: x.kab_kota || '', provinsi: x.provinsi || (sph ? '' : BELUM),
       set_t: n0(x.set_terkirim), set_p: n0(x.set_proses), set: x.set,
       pcs_t: n0(x.pcs_terkirim), pcs_p: n0(x.pcs_proses), pcs: x.pcs,
       pesanan: n0(x.jumlah_pesanan), pertama: xlDate(o.pertama), terakhir: xlDate(x.terakhir),
       rincian: (x.rincian || []).map((j) => `${j.label} ×${fmt(j.nilai)}`).join('; '),
-      ket: ket.join('; '), sumber: sumberTxt(x),
+      ket: sph ? '' : ket.join('; '), sumber: sumberTxt(x),
     };
   });
 
@@ -322,22 +326,23 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       set_t: o.isSet ? o.set_t : null, set_p: o.isSet ? o.set_p : null, set: o.isSet ? o.set_t + o.set_p : null,
       pcs_t: o.isSet ? null : o.pcs_t, pcs_p: o.isSet ? null : o.pcs_p, pcs: o.isSet ? null : o.pcs_t + o.pcs_p,
       rs: o.rs.size, prov: o.prov.size, pesanan: o.pesanan,
-      pertama: xlDate(o.pertama), terakhir: xlDate(o.terakhir), ket: ket.join('; '),
+      pertama: xlDate(o.pertama), terakhir: xlDate(o.terakhir), ket: sph ? '' : ket.join('; '),
     };
   }).sort((a, b) => (n0(b.set) + n0(b.pcs)) - (n0(a.set) + n0(a.pcs)) || String(a.nama).localeCompare(String(b.nama), 'id'))
+    .filter((o) => !sph || n0(o.set) + n0(o.pcs) > 0)   // SPH: produk yang tidak punya angka tidak ditampilkan
     .map((o, i) => Object.assign(o, { no: i + 1 }));
 
   // Per provinsi (dari baris RS dari server, supaya angkanya sama dengan Daftar RS).
   const gp = new Map();
   R.forEach((x) => {
-    const k = x.provinsi || BELUM;
+    const k = x.provinsi || belumLabel;
     const o = gp.get(k) || { provinsi: k, rs: 0, set: 0, pcs: 0, pesanan: 0, terakhir: '' };
     o.rs += 1; o.set += x.set; o.pcs += x.pcs; o.pesanan += n0(x.jumlah_pesanan);
     if (x.terakhir && x.terakhir > o.terakhir) o.terakhir = x.terakhir;
     gp.set(k, o);
   });
   const itemsProv = Array.from(gp.values())
-    .sort((a, b) => ((a.provinsi === BELUM) - (b.provinsi === BELUM)) || (b.set + b.pcs) - (a.set + a.pcs) || a.provinsi.localeCompare(b.provinsi, 'id'))
+    .sort((a, b) => ((a.provinsi === belumLabel) - (b.provinsi === belumLabel)) || (b.set + b.pcs) - (a.set + a.pcs) || a.provinsi.localeCompare(b.provinsi, 'id'))
     .map((o, i) => Object.assign({}, o, { no: i + 1, terakhir: xlDate(o.terakhir) }));
 
   // Rincian pesanan
@@ -531,7 +536,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       cols.forEach((c, i) => {
         const cell = row.getCell(i + 1);
         let v = it[c.k];
-        const tidakAda = c.na && kosong(v);
+        const tidakAda = !o.bersih && c.na && kosong(v);
         if (tidakAda) v = NA;
         cell.value = v === undefined ? null : v;
         if (c.fmt) cell.numFmt = c.fmt;
@@ -555,7 +560,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
         cell.font = { bold: true, color: { argb: XL.ink } };
       });
       const labelCol = Math.max(1, cols.findIndex((c) => c.k === o.labelKey) + 1);
-      tr.getCell(labelCol).value = 'Total (mengikuti filter)';
+      tr.getCell(labelCol).value = o.bersih ? 'Total' : 'Total (mengikuti filter)';
       o.totals.forEach((k) => {
         const idx = cols.findIndex((c) => c.k === k);
         if (idx < 0) return;
@@ -575,7 +580,8 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   const sumTot = (cols, ks) => ks.filter((k) => cols.some((c) => c.k === k));
   const teknisAda = (cols) => cols.some((c) => c.tech);
   const subTek = (cols) => (teknisAda(cols) ? '  ·  kolom abu-abu di kanan = data teknis' : '');
-  const NOTE_KOSONG = 'Sel kosong = tidak tercatat di sumber data. “–” = nol. “Tidak tersedia” / “Belum diketahui” = data belum ada. Arti kolom: sheet “Catatan & Kamus”.';
+  const NOTE_KOSONG0 = 'Sel kosong = tidak tercatat di sumber data. “–” = nol. “Tidak tersedia” / “Belum diketahui” = data belum ada. Arti kolom: sheet “Catatan & Kamus”.';
+  const NOTE_KOSONG = sph ? '' : NOTE_KOSONG0;
 
   // ═══ 1) RINGKASAN ════════════════════════════════════════════════════════════
   const w0 = wb.addWorksheet('Ringkasan', {
@@ -609,9 +615,9 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
 
   // Perhatian: hal yang mengubah cara membaca angka, ditaruh di halaman pertama.
   const perhatian = [];
-  if (hasSet && n0(s.set_estimasi) > 0) perhatian.push(`${fmt(s.set_estimasi)} set berupa perkiraan (isi set belum terdaftar atau isi di sheet tidak lengkap).`);
-  if (hasSet && n0(s.set_cek) > 0) perhatian.push(`${fmt(s.set_cek)} pesanan set belum dihitung karena jumlah itemnya tidak sesuai isi set.`);
-  if (info.adaBelum) perhatian.push(`${fmt(U.length)} RS lain belum diketahui wilayahnya dan belum termasuk dalam angka ${st.provinsi}.`);
+  if (!sph && hasSet && n0(s.set_estimasi) > 0) perhatian.push(`${fmt(s.set_estimasi)} set berupa perkiraan (isi set belum terdaftar atau isi di sheet tidak lengkap).`);
+  if (!sph && hasSet && n0(s.set_cek) > 0) perhatian.push(`${fmt(s.set_cek)} pesanan set belum dihitung karena jumlah itemnya tidak sesuai isi set.`);
+  if (!sph && info.adaBelum) perhatian.push(`${fmt(U.length)} RS lain belum diketahui wilayahnya dan belum termasuk dalam angka ${st.provinsi}.`);
   if (perhatian.length) {
     d0.skip();
     perhatian.forEach((t) => d0.wide('⚠  ' + t, { size: 10.5, color: XL.warn, fill: XL.warnBg }));
@@ -619,7 +625,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
 
   d0.section('Hasil');
   d0.kv('Rumah sakit / instansi', n0(s.jumlah_rs), XL_NUM);
-  if (hasSet) d0.kv('Set', n0(s.set_total), XL_NUM, n0(s.set_estimasi) > 0 ? `${fmt(s.set_estimasi)} di antaranya perkiraan` : '');
+  if (hasSet) d0.kv('Set', n0(s.set_total), XL_NUM, !sph && n0(s.set_estimasi) > 0 ? `${fmt(s.set_estimasi)} di antaranya perkiraan` : '');
   if (hasSet && semuaStatus) { d0.kv('   sudah terkirim', n0(s.set_terkirim), XL_NUM); d0.kv('   masih dalam proses', n0(s.set_proses), XL_NUM); }
   if (hasPcs) d0.kv('Unit/pcs', n0(s.pcs_total), XL_NUM);
   if (hasPcs && semuaStatus) { d0.kv('   sudah terkirim', n0(s.pcs_terkirim), XL_NUM); d0.kv('   masih dalam proses', n0(s.pcs_proses), XL_NUM); }
@@ -635,7 +641,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     const top = R.slice().sort((a, b) => b.total - a.total || a.customer.localeCompare(b.customer, 'id')).slice(0, 10);
     const adaKab = top.some((x) => x.kab_kota);   // kolom kosong total dibuang; sebagian kosong = "Tidak tersedia"
     d0.table(['Rumah sakit / instansi'].concat(adaKab ? ['Kab/Kota'] : [], kolUnit('Set', 'Unit/pcs')), ['left'].concat(adaKab ? ['left'] : [], alUnit),
-      top.map((x) => [x.customer].concat(adaKab ? [x.kab_kota || NA] : [], hasSet ? [x.set] : [], hasPcs ? [x.pcs] : [])));
+      top.map((x) => [x.customer].concat(adaKab ? [x.kab_kota || (sph ? '' : NA)] : [], hasSet ? [x.set] : [], hasPcs ? [x.pcs] : [])));
     if (plan.includes('rs')) d0.wide('Daftar lengkap ada di sheet “Daftar RS”.', { size: 10, color: XL.soft });
   }
   if (itemsProduk.length > 1) {
@@ -657,22 +663,25 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   if (st.jenis.length) d0.kv('Jenis instrumen', st.jenis.map(jenisNama).join(', '));
   if (st.mikro) d0.kv('Hanya mikrosurgery', 'Ya');
   if (st.produk.trim()) d0.kv('Nama produk mengandung', st.produk.trim());
-  if (st.produk.trim()) d0.kv('Isi set ikut dihitung', st.isiSet ? 'Ya' : 'Tidak');
+  if (st.produk.trim() && !sph) d0.kv('Isi set ikut dihitung', st.isiSet ? 'Ya' : 'Tidak');
   if (st.rs.trim()) d0.kv('Rumah sakit', st.rs.trim());
   d0.kv('Status pesanan', statusText.charAt(0).toUpperCase() + statusText.slice(1));
   d0.kv('Periode', h.periodeText(st));
-  d0.kv('Cakupan data', st.cakupan === 'SEMUA' ? 'Semua pesanan non-sample (termasuk retail)' : 'INAPROC dan pembelian langsung (tanpa retail, konsinyasi, sample)');
+  if (!sph) d0.kv('Cakupan data', st.cakupan === 'SEMUA' ? 'Semua pesanan non-sample (termasuk retail)' : 'INAPROC dan pembelian langsung (tanpa retail, konsinyasi, sample)');
+  else if (st.cakupan !== 'SEMUA') d0.kv('Cakupan data', 'INAPROC dan pembelian langsung');
 
   d0.section('Isi file ini');
   plan.filter((id) => id !== 'ringkasan').forEach((id) => {
     const def = XL_SHEETS.find((x) => x.id === id);
-    d0.item(def.nama, def.desc);
+    if (sph && id === 'catatan') d0.item('Catatan', 'Cara membaca angka.');
+    else d0.item(def.nama, def.desc);
   });
 
   // ═══ 2-7) SHEET DATA ═════════════════════════════════════════════════════════
   if (plan.includes('rs')) {
     const cols = pickCols('rs', itemsRs);
     tableSheet('Daftar RS', {
+      bersih: sph,
       title: 'Daftar rumah sakit / instansi', sub: subLine + subTek(cols), note: NOTE_KOSONG,
       cols, freeze: 2, labelKey: 'customer',
       totals: sumTot(cols, ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'pesanan']), items: itemsRs,
@@ -681,8 +690,9 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   if (plan.includes('produk')) {
     const cols = pickCols('produk', itemsProduk);
     tableSheet('Per Produk', {
+      bersih: sph,
       title: 'Populasi per produk / jenis set', sub: subLine + subTek(cols),
-      note: 'Hanya pesanan yang dihitung; jumlah set dan unit/pcs dipisah karena satuannya berbeda. ' + NOTE_KOSONG,
+      note: sph ? 'Jumlah set dan unit/pcs dipisah karena satuannya berbeda.' : 'Hanya pesanan yang dihitung; jumlah set dan unit/pcs dipisah karena satuannya berbeda. ' + NOTE_KOSONG,
       cols, freeze: 2, labelKey: 'nama',
       totals: sumTot(cols, ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs']), items: itemsProduk,   // 'Jumlah pesanan' tidak dijumlah: satu PO berisi beberapa produk
     });
@@ -690,8 +700,9 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   if (plan.includes('provinsi')) {
     const cols = COLS_PROV.filter((c) => usable(c, info));
     tableSheet('Per Provinsi', {
+      bersih: sph,
       title: 'Populasi per provinsi', sub: subLine,
-      note: 'Provinsi mengikuti data wilayah RS (koreksi manual, atau deteksi dari alamat bila belum dikoreksi). ' + NOTE_KOSONG,
+      note: sph ? '' : 'Provinsi mengikuti data wilayah RS (koreksi manual, atau deteksi dari alamat bila belum dikoreksi). ' + NOTE_KOSONG,
       cols, freeze: 2, labelKey: 'provinsi', totals: sumTot(cols, ['rs', 'set', 'pcs', 'pesanan']), items: itemsProv,
     });
   }
@@ -711,6 +722,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     });
     const cols = mCols.filter((c) => !(c.k === 'kab' && items.every((it) => kosong(it.kab))));
     tableSheet('RS per Kategori', {
+      bersih: sph,
       title: 'Jumlah per rumah sakit / instansi menurut kategori', sub: subLine, note: NOTE_KOSONG,
       cols, freeze: 1, labelKey: 'customer', totals: present.map((id, i) => 'c' + i), items,
     });
@@ -718,12 +730,14 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   if (plan.includes('pesanan')) {
     const cols = pickCols('pesanan', itemsPesanan);
     tableSheet('Rincian Pesanan', {
+      bersih: sph,
       title: 'Rincian pesanan', sub: subLine + subTek(cols), note: NOTE_KOSONG,
       cols, freeze: 1, labelKey: 'customer', totals: sumTot(cols, ['set', 'pcs']), items: itemsPesanan,
     });
   }
   if (plan.includes('belum')) {
     tableSheet('Wilayah Belum Diketahui', {
+      bersih: sph,
       title: 'Rumah sakit / instansi yang wilayahnya belum diketahui',
       sub: `Belum termasuk dalam angka ${st.provinsi} di sheet lain  ·  data per ${fmtDate(D.data_per)}`, note: NOTE_KOSONG,
       cols: [
@@ -738,11 +752,32 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   }
 
   // ═══ 8) CATATAN & KAMUS ══════════════════════════════════════════════════════
-  const wc = wb.addWorksheet('Catatan & Kamus', {
+  const wc = wb.addWorksheet(sph ? 'Catatan' : 'Catatan & Kamus', {
     views: [{ showGridLines: false }], pageSetup: page('landscape'), headerFooter: FOOT,
     properties: { tabColor: { argb: XL.tabRef } },
   });
   const dc = docWriter(wc, [34, 30, 92]);
+  if (sph) {
+    // Versi untuk pembaca luar: singkat, tanpa asal-usul data atau kualitas data internal.
+    dc.cell(1).value = 'Catatan';
+    dc.cell(1).font = { bold: true, size: 16, color: { argb: XL.ink } };
+    wc.getRow(1).height = 28;
+    dc.skip(); dc.skip();
+    dc.section('Tentang file ini');
+    dc.kv('Judul', `Populasi ${kategori}`, null, null, true);
+    dc.kv('Data per', fmtDate(D.data_per), null, null, true);
+    if (sel.untuk && sel.untuk.trim()) dc.kv('Disiapkan untuk', sel.untuk.trim(), null, null, true);
+    if (sel.oleh && sel.oleh.trim()) dc.kv('Disiapkan oleh', sel.oleh.trim(), null, null, true);
+    if (sel.catatan && sel.catatan.trim()) dc.kv('Catatan', sel.catatan.trim(), null, null, true);
+    dc.section('Cara membaca angka');
+    const bacaan = [];
+    if (hasSet) bacaan.push('Set = jumlah set instrumen lengkap.');
+    if (hasPcs) bacaan.push('Unit/pcs = jumlah barang satuan (instrumen satuan, elektromedis, alat laboratorium, dan sejenisnya).');
+    if (hasSet && hasPcs) bacaan.push('Jumlah set dan unit/pcs tidak dijumlahkan karena satuannya berbeda.');
+    bacaan.push(st.cakupan === 'SEMUA' ? 'Data mencakup seluruh pesanan.' : 'Data mencakup pesanan melalui INAPROC dan pembelian langsung.');
+    bacaan.forEach((t) => dc.wide('•  ' + t));
+    return wb.xlsx.writeBuffer();
+  }
   dc.cell(1).value = 'Catatan dan kamus kolom';
   dc.cell(1).font = { bold: true, size: 16, color: { argb: XL.ink } };
   wc.getRow(1).height = 28;
