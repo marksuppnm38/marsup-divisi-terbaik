@@ -128,7 +128,7 @@ let reqId = 0;
 
 const state = {
   provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI',
-  kelompok: ['SET'], cari: 'produk', produk: '', spes: [], jenis: [], mikro: false, rs: '', isiSet: false, dari: '', sampai: '',
+  kelompok: ['SET'], cari: 'produk', produk: '', spes: [], jenis: [], mikro: false, rs: '', rmp: '', isiSet: false, dari: '', sampai: '',
   sort: { k: 'total', dir: 'desc' },
   page: 1,                          // halaman tabel RS (mulai 1); kembali ke 1 saat data/filter/urutan berubah
   pageSize: (() => { const v = Number(lsGet(LS_PAGE)); return PAGE_SIZES.includes(v) ? v : 50; })(),
@@ -581,6 +581,7 @@ function renderActive() {
   if (state.produk.trim()) a.push({ k: 'produk', t: `Produk: ${state.produk.trim()}` });
   if (state.produk.trim() && state.isiSet) a.push({ k: 'isi', t: 'Termasuk isi set' });
   if (state.rs.trim()) a.push({ k: 'rs', t: `RS / RMP: ${state.rs.trim()}` });
+  if (state.rmp.trim()) a.push({ k: 'rmp', t: `No. RMP: ${state.rmp.trim()}` });
   if (state.dari || state.sampai) a.push({ k: 'periode', t: `Periode: ${periodeText()}` });
   if (state.cakupan === 'SEMUA') a.push({ k: 'cakupan', t: 'Termasuk retail' });
   el.hidden = !a.length;
@@ -752,6 +753,7 @@ function renderTable() {
   const pg = $('ps-pager');
   if (pg) pg.hidden = true;                      // dinyalakan lagi oleh renderPager bila perlu
   if (state.tinjau) { renderReview(); return; }
+  if (rmpAktif()) { renderRmp(); return; }       // cari No. RMP: tabel RS berganti jadi daftar pesanan
   reviewReq++;                                  // batalkan daftar tinjau yang masih memuat
   $('ps-review-bar').hidden = true;
   $('ps-actions').hidden = false;
@@ -918,6 +920,105 @@ function setTinjau(k) {
   if (state.tinjau) { const bar = $('ps-review-bar'); if (bar && bar.scrollIntoView) bar.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
 }
 
+// ── cari No. RMP ─────────────────────────────────────────────────────────────
+// Cakupan ketiga di kotak cari. Dikerjakan di sisi klien dari get_populasi_v2_baris (baris pesanan, sama dengan
+// bahan Excel dan daftar tinjau) pada filter yang sedang aktif, jadi tidak butuh RPC baru. Hasilnya daftar
+// PESANAN (RS, No. RMP, No. PO, produk, jumlah, status), bukan tabel RS, karena yang dicari satu nomor RMP.
+// Pencocokan longgar: huruf besar/kecil, spasi, tanda hubung dan garis miring diabaikan ("25-054" cocok dengan
+// "RMP/25/054"); awalan "RMP" di ketikan boleh ada boleh tidak. Beberapa nomor dipisah koma, titik koma, atau baris baru.
+const RMP_MAX = 300;      // batas baris yang digambar; sisanya diminta dipersempit
+const rmpNorm = (s) => String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, '');
+function rmpTerms(q = state.rmp) {
+  return String(q || '').split(/[,;|\n]+/).map(rmpNorm).filter(Boolean);
+}
+const rmpAktif = () => rmpTerms().length > 0;
+function rmpSaring(list) {
+  const t = rmpTerms();
+  if (!t.length) return list;
+  return list.filter((l) => {
+    const hay = rmpNorm(l.kode_rmp);
+    return !!hay && t.some((x) => hay.includes(x) || (x.length > 3 && x.startsWith('rmp') && hay.includes(x.slice(3))));
+  });
+}
+
+// Dipanggil setelah ketikan di cakupan RMP (sudah di-debounce). Data RS sudah ada; cukup gambar ulang tabel.
+function terapkanRmp() {
+  if (!data) return;               // data belum datang: load() akan merender sesuai state.rmp
+  renderActive();
+  renderTable();
+}
+
+function rmpEmptyHtml() {
+  const b = (label, attrs) => `<button type="button" class="btn btn-ghost" ${attrs}>${esc(label)}</button>`;
+  const sempit = state.kelompok.length || state.provinsi || state.status !== 'ALL' || atributParam() ||
+    state.produk.trim() || state.rs.trim() || state.dari || state.sampai;
+  const act = [];
+  if (sempit) act.push(b('Cari di semua provinsi, kategori, dan status', 'data-action="ps-rmp-lebar"'));
+  act.push(b('Lepas pencarian RMP', 'data-action="ps-clear" data-k="rmp"'));
+  return `Tidak ada pesanan dengan No. RMP “${esc(state.rmp.trim())}” pada filter ini.` +
+    '<br>Spasi, tanda hubung, dan garis miring tidak berpengaruh. Pesanan di provinsi, kategori, atau status lain tidak ikut dicari.' +
+    `<div class="ps-empty-act">${act.join('')}</div>`;
+}
+
+async function renderRmp() {
+  const my = ++reviewReq;
+  const q = state.rmp.trim();
+  const lepas = '<button type="button" class="btn btn-ghost" data-action="ps-clear" data-k="rmp">Lepas pencarian RMP</button>';
+  const bar = $('ps-review-bar');
+  const body = $('ps-body');
+  $('ps-actions').hidden = true;
+  $('ps-tbl-title').textContent = 'Pesanan menurut No. RMP';
+  $('ps-thead').innerHTML = '<tr><th>Rumah sakit</th><th>No. RMP</th><th>No. PO</th><th>Set / produk</th><th class="ps-th-num">Jumlah</th><th>Status</th><th>Tanggal</th></tr>';
+  bar.hidden = false;
+  bar.innerHTML = `<span class="ps-review-msg">Mencari No. RMP “${esc(q)}”…</span>${lepas}`;
+  body.innerHTML = '<tr><td colspan="7" class="ps-empty" role="status">Memuat pesanan…</td></tr>';
+
+  let list;
+  try {
+    list = await fetchLines();
+  } catch (e) {
+    if (my !== reviewReq || String(e.message).startsWith('unauthorized')) return;
+    bar.innerHTML = `<span class="ps-review-msg">Gagal memuat daftar pesanan.</span>${lepas}`;
+    body.innerHTML = `<tr><td colspan="7" class="ps-empty ps-empty-err">Gagal memuat daftar: ${esc(e.message)}</td></tr>`;
+    return;
+  }
+  if (my !== reviewReq || !rmpAktif()) return;     // ketikan berubah / tampilan berganti selagi memuat
+
+  const hasil = rmpSaring(list).sort((a, b) =>
+    String(b.tanggal || '').localeCompare(String(a.tanggal || '')) ||
+    String(a.kode_rmp || '').localeCompare(String(b.kode_rmp || ''), 'id', { numeric: true }) ||
+    String(a.customer).localeCompare(String(b.customer), 'id'));
+  if (!hasil.length) {
+    bar.innerHTML = `<span class="ps-review-msg">Tidak ada pesanan dengan No. RMP “${esc(q)}”.</span>${lepas}`;
+    body.innerHTML = `<tr><td colspan="7" class="ps-empty">${rmpEmptyHtml()}</td></tr>`;
+    return;
+  }
+  const tampil = hasil.slice(0, RMP_MAX);
+  const nRmp = new Set(hasil.map((l) => rmpNorm(l.kode_rmp))).size;
+  const nRs = new Set(hasil.map((l) => l.customer)).size;
+  const potong = hasil.length > tampil.length
+    ? `<span class="ps-review-note">Hanya ${fmt(tampil.length)} baris pertama yang ditampilkan. Ketik nomor lebih lengkap untuk mempersempit.</span>` : '';
+  bar.innerHTML = `<span class="ps-review-msg"><b>${fmt(nRmp)}</b> No. RMP · <b>${fmt(nRs)}</b> rumah sakit · ${fmt(hasil.length)} baris pesanan</span>${potong}${lepas}`;
+
+  const wil = new Map(rows.map((x) => [x.customer, x]));
+  body.innerHTML = tampil.map((l) => {
+    const w = wil.get(l.customer) || {};
+    const lokasi = [w.kab_kota || l.kab_kota, state.provinsi ? '' : (w.provinsi || l.provinsi)].filter(Boolean).join(' · ');
+    const nama = l.kind === 'SET' ? l.label : l.produk;
+    const asal = l.kind === 'SET' && l.label_asli ? `<span class="ps-sub">Dialihkan dari: ${esc(l.label_asli)}</span>` : '';
+    return `
+      <tr class="ps-rev-row">
+        <td class="ps-col-rs"><span class="ps-rs">${esc(l.customer)}</span>${lokasi ? `<span class="ps-sub">${esc(lokasi)}</span>` : ''}</td>
+        <td><span class="kode-text">${esc(l.kode_rmp || '—')}</span></td>
+        <td>${esc(l.po || '—')}</td>
+        <td>${esc(nama)}${asal}</td>
+        <td class="ps-num">${esc(jmlText(l))}</td>
+        <td><span class="ps-st">${l.status === 'TERKIRIM' ? 'Terkirim' : 'Proses'}</span> ${tagHitung(l)}</td>
+        <td class="ps-date">${esc(fmtDate(l.tanggal))}</td>
+      </tr>`;
+  }).join('');
+}
+
 async function renderReview() {
   const k = state.tinjau;
   const cfg = TINJAU[k];
@@ -953,19 +1054,23 @@ async function renderReview() {
   if (hitung !== server) recon[k] = hitung; else delete recon[k];
   if (angka(k) !== sebelum) renderSummary();
 
+  // Pencarian No. RMP hanya menyaring TAMPILAN; angka kartu (recon di atas) tetap dari daftar penuh.
+  const tampil = rmpAktif() ? rmpSaring(items) : items;
+  const hitungTampil = k === 'estimasi' ? tampil.reduce((a, l) => a + num(l.nilai), 0) : tampil.length;
+  const saring = rmpAktif() ? ` dengan No. RMP “${esc(state.rmp.trim())}” (dari ${fmt(items.length)})` : '';
   const msg = k === 'estimasi'
-    ? `Menampilkan <b>${fmt(items.length)}</b> pesanan ${esc(cfg.frasa)} · <b>${fmt(hitung)}</b> set`
-    : `Menampilkan <b>${fmt(items.length)}</b> pesanan ${esc(cfg.frasa)}`;
+    ? `Menampilkan <b>${fmt(tampil.length)}</b> pesanan ${esc(cfg.frasa)}${saring} · <b>${fmt(hitungTampil)}</b> set`
+    : `Menampilkan <b>${fmt(tampil.length)}</b> pesanan ${esc(cfg.frasa)}${saring}`;
   const note = hitung !== server
     ? `<span class="ps-review-note">Ringkasan awal menyebut ${fmt(server)}; angka kartu sudah disesuaikan dengan daftar ini.</span>` : '';
   bar.innerHTML = `<span class="ps-review-msg">${msg}</span>${note}${reset}`;
 
-  if (!items.length) {
+  if (!tampil.length) {
     body.innerHTML = '<tr><td colspan="6" class="ps-empty">Tidak ada pesanan yang cocok pada filter ini.</td></tr>';
     return;
   }
   const wil = new Map(rows.map((x) => [x.customer, x]));
-  body.innerHTML = items.map((l) => {
+  body.innerHTML = tampil.map((l) => {
     const w = wil.get(l.customer) || {};
     const lokasi = [w.kab_kota || l.kab_kota, state.provinsi ? '' : (w.provinsi || l.provinsi)].filter(Boolean).join(' · ');
     const nama = l.kind === 'SET' ? l.label : l.produk;
@@ -2070,16 +2175,18 @@ function syncControls() {
   syncUrut();
 }
 
-// Satu kotak cari, dua cakupan. Isi tiap cakupan disimpan di state-nya sendiri (produk / rs);
+// Satu kotak cari, tiga cakupan (produk, rs, rmp). Isi tiap cakupan disimpan di state-nya sendiri (produk / rs);
 // kotak hanya menampilkan yang sedang dipilih. Titik pada tombol = cakupan lain masih punya isi.
 const CARI = {
   produk: { ph: 'mis. drill, centrifuge, obgyn, tubectomy', aria: 'Cari nama set atau produk' },
   rs: { ph: 'mis. soetrasno atau RMP 25-054', aria: 'Cari rumah sakit atau No. RMP' },
+  rmp: { ph: 'mis. 25-054 (beberapa nomor: pisahkan dengan koma)', aria: 'Cari No. RMP' },
 };
+const scopeOf = (v) => (v === 'rs' || v === 'rmp' ? v : 'produk');
 function syncCari() {
   const input = $('ps-cari');
   if (!input) return;
-  const sc = state.cari === 'rs' ? 'rs' : 'produk';
+  const sc = scopeOf(state.cari);
   if (input.value !== state[sc]) input.value = state[sc];
   input.placeholder = CARI[sc].ph;
   input.setAttribute('aria-label', CARI[sc].aria);
@@ -2100,8 +2207,15 @@ function syncUrut() {
 }
 
 function clearFilter(k) {
+  if (k === 'rmp') {                 // hanya mengubah tampilan; data server tidak perlu dimuat ulang
+    state.rmp = '';
+    syncCari();
+    renderActive();
+    if (data) renderTable();
+    return;
+  }
   if (k === 'semua') {
-    state.produk = ''; state.spes = []; state.jenis = []; state.mikro = false; state.isiSet = false; state.rs = '';
+    state.produk = ''; state.spes = []; state.jenis = []; state.mikro = false; state.isiSet = false; state.rs = ''; state.rmp = '';
     state.dari = ''; state.sampai = ''; state.cakupan = 'POPULASI';
   }
   else if (k === 'produk') { state.produk = ''; state.isiSet = false; }
@@ -2127,7 +2241,7 @@ export async function mount(container) {
   Object.assign(state, {
     provinsi: saved === null ? DEFAULT_PROV : saved,
     status: 'DELIVERED', cakupan: 'POPULASI', kelompok: ['SET'],
-    cari: 'produk', produk: '', spes: [], jenis: [], mikro: false, rs: '', isiSet: false, dari: '', sampai: '',
+    cari: 'produk', produk: '', spes: [], jenis: [], mikro: false, rs: '', rmp: '', isiSet: false, dari: '', sampai: '',
     sort: { k: 'total', dir: 'desc' }, tinjau: '',
   });
   data = null; rows = []; unmapped = [];
@@ -2175,12 +2289,18 @@ export async function mount(container) {
     'ps-edit-unm': (el) => { const u = unmapped[+el.dataset.idx]; if (u) editWilayah(u.customer, '', ''); },
     'ps-clear': (el) => clearFilter(el.dataset.k),
     'ps-cari-scope': (el) => {
-      state.cari = el.dataset.v === 'rs' ? 'rs' : 'produk';
+      state.cari = scopeOf(el.dataset.v);
       syncCari();
       $('ps-cari').focus();               // hasil tidak berubah; hanya isi kotak yang berganti
     },
     'ps-isi-on': () => { state.isiSet = true; syncControls(); load(); },
     'ps-prov-all': () => { state.provinsi = ''; lsSet(LS_PROV, ''); syncControls(); load(); },
+    'ps-rmp-lebar': () => {          // dari hasil RMP kosong: longgarkan semua filter selain pencarian RMP
+      Object.assign(state, { kelompok: [], provinsi: '', status: 'ALL', produk: '', rs: '', isiSet: false, spes: [], jenis: [], mikro: false, dari: '', sampai: '' });
+      lsSet(LS_PROV, '');
+      syncControls();
+      load();
+    },
     'ps-copy': () => copyText(),
     'ps-xlsx': (el) => xlOpen(el),
     'ps-xl-close': () => xlClose(),
@@ -2263,11 +2383,14 @@ export async function mount(container) {
     if (id !== 'ps-cari') return;
     const v = e.target.value;
     // state langsung diperbarui, hanya muat-ulang yang ditunda.
-    if (state.cari === 'rs') state.rs = v;
+    const sc = state.cari;             // cakupan saat mengetik (bukan saat timer berbunyi)
+    if (sc === 'rs') state.rs = v;
+    else if (sc === 'rmp') state.rmp = v;
     else { state.produk = v; $('ps-isi-wrap').hidden = !v.trim(); }
     syncCari();
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => load(), 300);
+    // RMP disaring di klien (tanpa muat ulang dari server); produk dan RS tetap lewat load().
+    searchTimer = setTimeout(() => (sc === 'rmp' ? terapkanRmp() : load()), 300);
   }
   handlers = { click: onClick, change: onChange, input: onInput };
   Object.entries(handlers).forEach(([type, fn]) => container.addEventListener(type, fn));
