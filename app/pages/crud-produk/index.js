@@ -45,6 +45,7 @@ import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
 import { installOrphan } from './orphan.js';
+import { installKategori } from './kategori.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared, selectPricelistRows, writePricelistXlsx } from '../../../shared/exports/pricelist.js';
 
@@ -323,9 +324,10 @@ const CRUD_VIEW_LABELS = {
   bulk: 'Bulk Edit',
   sync: 'Sync dari Sheet',
   orphan: 'Orphan / Drift',
+  kategori: 'Kategori & Spesialisasi',
 };
 function switchView(view){
-  ['produk','set','akd','kfa','bulk','sync','orphan'].forEach(v => {
+  ['produk','set','akd','kfa','bulk','sync','orphan','kategori'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
   const crumbEl = document.getElementById('pw-topbar-crumb-text');
@@ -342,6 +344,8 @@ function switchView(view){
   if (view === 'sync') S.loadSyncUnmatched();
   // 'orphan' juga RELOAD tiap masuk: snapshot manifest diperbarui tiap jam di background.
   if (view === 'orphan') S.loadOrphan();
+  // 'kategori' dimuat SEKALI per mount (hitungan seluruh katalog agak berat); tombol "Muat ulang" di halamannya untuk refresh.
+  if (view === 'kategori' && !kategoriLoadedOnce) { kategoriLoadedOnce = true; S.loadKategori(); }
   // 'set' punya semantik beda dari akd/kfa's "sekali doang" -- dipindah
   // dari listener terpisah yang tadinya nempel di tombol sidebar sendiri
   // (`.sb-item[data-view="set"]`, gak ada lagi): reload SETIAP kali masuk
@@ -355,6 +359,7 @@ function switchView(view){
 let produkLoadedOnce = false;
 let akdLoadedOnce = false;
 let kfaLoadedOnce = false;
+let kategoriLoadedOnce = false;
 _switchView = switchView; // expose to the real top-level setSubroute() far below
 
 // ---- Auth ----
@@ -3265,6 +3270,10 @@ deleteBtn.addEventListener('click', async () => {
   S.openAdd = openAdd;
   installKfa(S);
   installOrphan(S);
+  // Tab Kategori & Spesialisasi (kategori.js): klik baris membuka modal produk / detail set yang sudah ada di sini.
+  S.openEdit = openEdit;
+  S.goToSetDetail = goToSetDetail;
+  installKategori(S);
 
   // Kick off the initial data load now -- moved here from near the top of
   // mount() (see the long comment by the old spot, near the auth section)

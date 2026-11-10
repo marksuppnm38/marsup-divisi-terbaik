@@ -479,6 +479,26 @@ export const CRUD_PRODUK_MARKUP = `
       <div id="orphanBody"></div>
       <div class="pg-bar" id="orphanPagination" style="display:none;"></div>
     </div>
+
+    <div class="content" id="viewKategori" style="display:none;">
+      <div class="content-head">
+        <div>
+          <div class="content-title">Kategori &amp; Spesialisasi</div>
+          <div class="content-sub" id="katCount">Memuat...</div>
+        </div>
+        <button class="btn btn-sm" id="katRefreshBtn" title="Hitung ulang dari database"><i class="ti ti-refresh"></i> Muat ulang</button>
+      </div>
+      <div class="orph-tabs" id="katModeBar"></div>
+      <div class="akd-toolbar" id="katToolbar" style="display:none;">
+        <div class="akd-search-box">
+          <i class="ti ti-search"></i>
+          <input type="text" id="katSearchInput" placeholder="Cari kode, nama, golongan..."/>
+        </div>
+      </div>
+      <div class="kat-filters" id="katChips"></div>
+      <div id="katBody"></div>
+      <div class="pg-bar" id="katPagination" style="display:none;"></div>
+    </div>
   </main>
 </div>
 

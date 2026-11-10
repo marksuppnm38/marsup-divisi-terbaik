@@ -374,3 +374,13 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 @media (prefers-reduced-motion:reduce){
   #viewBulk .bulk-tab,#viewBulk .bk-compose{transition:none}
 }
+
+/* ---- Tab Kategori & Spesialisasi (kategori.js). Pakai ulang .orph-tab/.orph-seg/.orph-stat dari tab Orphan. ---- */
+#viewKategori .orph-seg{flex-wrap:wrap}
+#viewKategori .kat-filters{display:flex;flex-wrap:wrap;gap:10px 18px;margin:0 0 12px}
+#viewKategori th.num,#viewKategori td.num{text-align:right}
+#viewKategori .kat-cell{appearance:none;background:none;border:0;font:inherit;color:inherit;cursor:pointer;padding:4px 8px;border-radius:var(--radius);font-family:var(--font-mono);font-size:12.5px}
+#viewKategori .kat-cell:hover{background:var(--accent-soft);color:var(--accent-text)}
+#viewKategori .kat-warn{color:var(--amber);font-size:10.5px;margin-left:4px}
+#viewKategori .kat-zero{color:var(--text-muted)}
+#viewKategori .kat-note{font-size:12px;color:var(--text-muted);margin-top:10px}
