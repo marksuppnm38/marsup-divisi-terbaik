@@ -147,14 +147,15 @@ export const CRUD_PRODUK_MARKUP = `
           </div>
           <div class="akd-hint" style="margin-top:10px;"><i class="ti ti-device-floppy"></i> Perubahan (tambah/hapus item, ubah qty) tersimpan otomatis ke database — tidak ada tombol Simpan terpisah.</div>
 
-          <div class="sec-label" style="margin-top:22px;">Atau Paste Rincian Set</div>
+          <details class="comp-paste">
+          <summary><i class="ti ti-chevron-right"></i> Paste rincian dari sheet</summary>
           <div class="paste-hint">
             Paste langsung dari sheet Rincian Set kamu apa adanya (kode_set, nama_set, kode_item, nama_item, qty — kolom kode_set/nama_set diabaikan karena udah jelas set-nya set ini), atau cukup 2 kolom <code>kode_item</code> — <code>qty</code>.
           </div>
           <textarea class="paste-area" id="compPasteArea" placeholder="RB999-KE921-B99-U667&#9;BASIC SPINE LAMINECTOMY S.&#9;RB10-KE130-B003-U07&#9;SCALPEL HANDLE, NO. 3, 12 CM&#9;1"></textarea>
           <div class="bulk-actions">
             <button class="btn btn-ghost" id="compPastePreviewBtn" type="button"><i class="ti ti-eye"></i> Preview</button>
-            <label class="check-row-inline"><input type="checkbox" id="compPasteTimpaMode"/> Mode Timpa Total (hapus item lama yang tidak disebut di paste ini)</label>
+            <label class="check-row-inline is-destructive"><input type="checkbox" id="compPasteTimpaMode"/> Mode Timpa Total (hapus item lama yang tidak disebut di paste ini)</label>
             <button class="btn btn-accent" id="compPasteProsesBtn" type="button" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
           </div>
           <div class="bulk-summary" id="compPasteSummary"></div>
@@ -164,6 +165,7 @@ export const CRUD_PRODUK_MARKUP = `
               <tbody id="compPastePreviewBody"></tbody>
             </table>
           </div>
+          </details>
         </div>
 
         <div class="set-tab-panel" id="tab-pricing">
@@ -484,13 +486,9 @@ export const CRUD_PRODUK_MARKUP = `
 <div class="cmdk-overlay" id="cmdkOverlay">
   <div class="cmdk-box">
     <div class="cmdk-input-wrap">
-      <div class="mac-traffic" style="margin-bottom:0;">
-        <button class="mac-dot red" id="cmdkCloseBtn" title="Tutup"></button>
-        <span class="mac-dot yellow"></span>
-        <span class="mac-dot green"></span>
-      </div>
       <i class="ti ti-search"></i>
       <input type="text" class="cmdk-input" id="cmdkInput" placeholder="Cari kode produk atau nama..."/>
+      <button class="modal-close" id="cmdkCloseBtn" type="button" title="Tutup (Esc)" aria-label="Tutup"><i class="ti ti-x"></i></button>
     </div>
     <div class="cmdk-list" id="cmdkList">
       <div class="cmdk-empty">Ketik untuk mencari produk...</div>
@@ -506,16 +504,12 @@ export const CRUD_PRODUK_MARKUP = `
 <!-- MODAL FORM -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal-card">
-    <div class="mac-traffic">
-      <button class="mac-dot red" id="modalCloseBtn" title="Tutup"></button>
-      <span class="mac-dot yellow"></span>
-      <span class="mac-dot green"></span>
-    </div>
     <div class="modal-head">
       <div>
         <div class="modal-title" id="modalTitle">Tambah Produk</div>
         <div class="modal-sub" id="modalSub">Isi data produk baru</div>
       </div>
+      <button class="modal-close" id="modalCloseBtn" type="button" title="Tutup" aria-label="Tutup"><i class="ti ti-x"></i></button>
     </div>
 
     <div class="prod-tabs" id="prodTabs">
@@ -719,16 +713,12 @@ export const CRUD_PRODUK_MARKUP = `
 <!-- LOG AKTIVITAS MODAL -->
 <div class="modal-overlay" id="logModalOverlay">
   <div class="modal-card log-modal">
-    <div class="mac-traffic">
-      <button class="mac-dot red" id="logModalCloseBtn" title="Tutup"></button>
-      <span class="mac-dot yellow"></span>
-      <span class="mac-dot green"></span>
-    </div>
     <div class="modal-head">
       <div>
         <div class="modal-title">Log Aktivitas</div>
         <div class="modal-sub">Riwayat tambah/ubah/hapus di produk, harga, media, AKD & set</div>
       </div>
+      <button class="modal-close" id="logModalCloseBtn" type="button" title="Tutup" aria-label="Tutup"><i class="ti ti-x"></i></button>
     </div>
 
     <div class="log-toolbar">
@@ -768,16 +758,12 @@ export const CRUD_PRODUK_MARKUP = `
 <!-- AKD ADD/EDIT MODAL -->
 <div class="modal-overlay" id="akdModalOverlay">
   <div class="modal-card">
-    <div class="mac-traffic">
-      <button class="mac-dot red" id="akdModalCloseBtn" title="Tutup"></button>
-      <span class="mac-dot yellow"></span>
-      <span class="mac-dot green"></span>
-    </div>
     <div class="modal-head">
       <div>
         <div class="modal-title" id="akdModalTitle">Tambah AKD</div>
         <div class="modal-sub" id="akdModalSub">Isi data AKD baru</div>
       </div>
+      <button class="modal-close" id="akdModalCloseBtn" type="button" title="Tutup" aria-label="Tutup"><i class="ti ti-x"></i></button>
     </div>
 
     <div class="sec-label">Identitas AKD</div>
@@ -824,16 +810,12 @@ export const CRUD_PRODUK_MARKUP = `
 
 <div class="modal-overlay" id="kfaModalOverlay">
   <div class="modal-card">
-    <div class="mac-traffic">
-      <button class="mac-dot red" id="kfaModalCloseBtn" title="Tutup"></button>
-      <span class="mac-dot yellow"></span>
-      <span class="mac-dot green"></span>
-    </div>
     <div class="modal-head">
       <div>
         <div class="modal-title" id="kfaModalTitle">Detail KFA</div>
         <div class="modal-sub" id="kfaModalSub">—</div>
       </div>
+      <button class="modal-close" id="kfaModalCloseBtn" type="button" title="Tutup" aria-label="Tutup"><i class="ti ti-x"></i></button>
     </div>
 
     <div class="sec-label">Data KFA</div>

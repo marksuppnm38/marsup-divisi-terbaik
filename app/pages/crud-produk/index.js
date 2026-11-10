@@ -329,6 +329,7 @@ function switchView(view){
   });
   const crumbEl = document.getElementById('pw-topbar-crumb-text');
   if (crumbEl && CRUD_VIEW_LABELS[view]) crumbEl.textContent = CRUD_VIEW_LABELS[view];
+  document.getElementById('appWrap').dataset.view = view;  // CSS: search topbar cuma relevan di view Produk
   document.getElementById('addBtn').style.display = (view === 'produk') ? '' : 'none';
   document.querySelector('.view-toggle').style.display = (view === 'produk') ? '' : 'none';
   if (view === 'produk' && !produkLoadedOnce) { produkLoadedOnce = true; loadProduk(''); refreshProdukFilterCounts(); }
