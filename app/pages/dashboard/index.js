@@ -1,42 +1,21 @@
-// dashboard page module: mount(container) / unmount().
-// Halaman pertama yang dibangun langsung memakai shared nav + topbar
-// (app/pages/nav/), lalu diretrofit style-nya (lihat style.css di folder ini: warna
-// stat-card/stat-icon tidak lagi per-item, chip/days-pill berbentuk dot+label, badge
-// jadi neutral bordered pill, spacing 16px, mono). Charts (SVG trend/line/donut/
-// wordtree/forecast, semua di file ini) SENGAJA belum diretrofit -- lihat catatan
-// di style.css kenapa.
+// Halaman dashboard: mount(container) / unmount().
 //
-// AUTH: file asli (dashboard.js) SAMA SEKALI GAK PAKAI SDK Supabase --
-// murni raw fetch() manual ke endpoint /auth/v1/token, token disimpan
-// manual di localStorage, didekode manual dari JWT. Ini beda dari
-// konversian (udah PNMAuth penuh dari awal) DAN crud-produk (udah pakai
-// SDK, cuma salah panggil sb.auth.* langsung) -- di sini SELURUH auth
-// layer diganti ke PNMAuth.*, perubahan yang jauh lebih besar dari
-// sekadar swap panggilan. Lihat komentar "SPA migration" di titik-titik
-// auth di bawah buat detail masing-masing.
+// Data disegarkan otomatis, tanpa tombol "Muat ulang":
+//   - tiap 5 menit selama tab terlihat,
+//   - saat tab kembali aktif setelah lebih dari 3 menit,
+//   - penyegaran berjalan diam-diam: isi lama tetap tampil sampai data baru siap.
+// Teks "Diperbarui ..." di topbar hanya menjadi tautan "Coba lagi" bila ada bagian yang gagal.
+// Tiap bagian (panel) dimuat sendiri-sendiri; satu RPC gagal tidak menjatuhkan bagian lain.
 //
-// document.getElementById(...) TIDAK di-rescope ke container.querySelector
-// (sama kayak konversian/crud-produk) -- aman selama cuma satu halaman yang
-// termount di satu waktu, dijamin router.js.
+// Sumber data (tanpa RPC baru):
+//   Perlu dikerjakan : get_dashboard_summary, get_produk_filter_counts, plus hitungan langsung
+//                      dari tabel akd (masa_berlaku) dan sesi_konversi (status, updated_at)
+//                      lewat RLS allowed_users.
+//   Populasi         : get_populasi_v2 (semua provinsi, kategori SET, terkirim), diringkas di sini.
+//   Lainnya          : get_dashboard_*, get_wordtree_*.
 //
-// BUG NYATA yang ketemu & difix selama port (bukan disengaja dibikin,
-// ketemu pas baca kode buat portingnya):
-//   1. Theme toggle baca/tulis document.body, tapi pnm-universal.css cuma
-//      react ke <html> -- tombol nampak "jalan" (icon ganti) tapi warna
-//      GAK PERNAH beneran berubah. Sekarang moot: toggle-nya dihapus
-//      total, digantiin toggle di shared nav yang udah bener.
-//   2. Detail-modal wiring dibungkus document.addEventListener(
-//      'DOMContentLoaded', ...) -- event itu cuma nembak SEKALI per real
-//      page load, jadi bakal gak pernah jalan lagi tiap user hash-navigate
-//      balik ke #dashboard (kunjungan ke-2+). Fix: dijalanin langsung.
-//
-// 24 FUNGSI di-expose ke window.* di akhir mount() (dan di-delete di
-// unmount()) -- markup lama penuh inline onclick="..."/onchange="..." yang
-// nunjuk fungsi-fungsi ini; di classic script (dashboard.js asli) mereka
-// otomatis jadi window.* lewat top-level function declaration, tapi begitu
-// dibungkus mount() (function scope, bukan lagi top-level classic-script
-// scope), alias otomatis itu hilang -- sama kelas fix kayak window.openEdit
-// di crud-produk, cuma jauh lebih banyak titiknya di sini.
+// Event: satu set listener delegasi di container (data-action / data-nav / data-open-kode),
+// tanpa handler inline dan tanpa fungsi di window.*.
 
 import { DASHBOARD_MARKUP } from './markup.js';
 import { KONVERSIAN_SUBNAV } from '../konversian/subnav.js';
@@ -112,21 +91,20 @@ function ensureStyle() {
 
 let mountedContainer = null;
 let dashKeydownHandler = null;
-let dashClickHandler = null;
-let dashContainerHandlers = null;   // listener delegasi di container -- dilepas di unmount()
+let dashContainerHandlers = null;   // listener delegasi di container, dilepas di unmount()
+let visibilityHandler = null;
+const timers = { fresh: null, poll: null };
 
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
 const RPC_TIMEOUT_MS = 25000;
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
 
-// ── Stale-while-revalidate untuk RPC baca (get_*) yang dipanggil oleh loadEverything() ──
-// Module-scope supaya selamat dari unmount/mount: kembali ke dashboard menampilkan hasil
-// terakhir SEKETIKA (9 RPC paralel tidak lagi ditunggu), lalu semua yang tadi disajikan dari
-// cache disegarkan di belakang; kalau ada yang berubah, dashboard dimuat ulang sekali dari
-// cache yang sudah segar. Tombol "Muat ulang" mengosongkan cache -> perilaku tetap seperti dulu.
+// Stale-while-revalidate untuk RPC baca. Module-scope supaya selamat dari unmount/mount: kembali
+// ke dashboard menampilkan hasil terakhir seketika, lalu yang tadi disajikan dari cache disegarkan
+// di belakang dan dashboard dimuat ulang sekali bila ada yang berubah.
 const rpcMemo = new Map();   // fn|JSON(params) -> data
-let dashMountSeq = 0;        // penanda mount aktif (unmount menaikkannya -> revalidasi lama berhenti)
-let bulkLoading = false;     // true hanya selama loadEverything() berjalan
+let dashMountSeq = 0;        // penanda mount aktif (unmount menaikkannya -> pekerjaan lama berhenti)
+let bulkLoading = false;     // true hanya selama loadAll() berjalan
 let staleServed = [];        // { fn, params, key, data } yang disajikan dari cache pada pemuatan ini
 
 export async function mount(container) {
@@ -135,45 +113,6 @@ export async function mount(container) {
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.innerHTML = DASHBOARD_MARKUP;
 
-  // theme-init: DIHAPUS dari halaman ini. Tema dipasang sekali, sinkron di
-  // <head>, oleh shared/theme-init.js (window.PNMTheme) -- halaman cukup
-  // membaca <html data-theme>, tidak menyetelnya sendiri.
-
-// ══════════════════════════════════════════
-// AUTH — sesi kesembilan belas: per-page gate (auth-gate/gate-email/
-// gate-password/gate-login-btn, showApp()/showGate(), onAuthStateChange
-// subscription) DIHAPUS SELURUHNYA. router.js sekarang gak pernah
-// mount() modul ini sampai shared/auth-gate.js konfirmasi sesi valid +
-// whitelisted duluan (lihat shared/auth-gate.js) -- jadi begitu mount()
-// jalan, sesi SUDAH PASTI ada, tinggal langsung loadEverything(), gak
-// perlu nunggu event/gate lokal apapun lagi. accessToken tetap diambil
-// fresh tiap request lewat PNMAuth.getAccessToken() di rpc() (gak
-// berubah dari sesi kelima belas -- itu bukan bagian dari gate, itu fix
-// token-basi terpisah, lihat komentar rpc() di bawah).
-//
-// PERUBAHAN PERILAKU yang perlu dicatat (lihat juga shared/auth-gate.js):
-// dashboard.html ASLI gak pernah ngecek allowed_users sama sekali --
-// siapapun yang berhasil login (kredensial valid) langsung dapet akses.
-// Sekarang halaman ini mount() di belakang SATU gate yang sama dengan
-// modul lain, dan gate itu SELALU cek whitelist -- jadi dashboard
-// SEKARANG ikut ke-whitelist-check juga, bukan lagi pengecualian. Efek
-// samping yang gak terhindarkan dari "satu gate buat semua", bukan
-// keputusan diam-diam.
-// loadEverything() SENGAJA dipanggil di paling akhir mount() (setelah semua
-// let/const modul ini terinisialisasi) -- dulu dipanggil di sini dan langsung
-// kena TDZ ('Cannot access currentPage before initialization') di loadTable().
-
-// DETAIL MODAL
-// SPA migration BUGFIX: ini dulu dibungkus document.addEventListener(
-// 'DOMContentLoaded', ...) -- event itu cuma nembak SEKALI per real page
-// load. Di SPA ini, mount() bisa kepanggil berkali-kali sepanjang satu page
-// load yang sama (tiap kali user hash-navigate balik ke #dashboard) --
-// DOMContentLoaded udah lama nembak duluan, gak akan pernah nembak lagi,
-// jadi listener ini gak akan PERNAH jalan lagi di kunjungan ke-2+ dan
-// detailOverlay bakal tetap undefined selamanya, closeDetailModal() gak
-// kepasang ke mana-mana. Fix: jalanin LANGSUNG (bukan nunggu event) --
-// container.innerHTML udah di-set sebelum baris ini jalan, jadi DOM-nya
-// udah pasti ada, gak perlu nunggu apa-apa lagi.
 let detailOverlay = document.getElementById('detail-modal-overlay');
 let activeDetailKode = null;
 let detailReqId = 0;            // token: respons detail yang telat gak boleh nimpa yang lebih baru
@@ -337,50 +276,8 @@ function copyKode(e, kode){
 }
 function row(k,v){ return `<div class="detail-row"><span class="detail-key">${k}</span><span class="detail-val">${v}</span></div>`; }
 
-// THEME
-// SPA migration (the design spec structural step 1): dashboard's OWN theme
-// toggle button/logic REMOVED entirely (not just fixed) -- the design spec's
-// shared nav (app/pages/nav/) now owns theming globally for every page
-// that adopts it, so a second per-page toggle would just be redundant UI
-// fighting over the same <html data-theme> attribute. File asli juga
-// ternyata punya BUG (baca/tulis document.body, tapi pnm-universal.css cuma
-// react ke <html>, jadi tombol itu keliatan "kerja" tapi warna gak pernah
-// berubah) plus SATU LAGI toggle dobel di inline <script> standalone HTML
-// yang gak diport sama sekali ke sini -- baik bug maupun duplikasinya jadi
-// moot sekarang karena keduanya dihapus, bukan diwariskan.
-// FIX: "Muat ulang" dulu gak pernah refetch tabel produk (halaman yang sama diambil dari pageCache).
-document.getElementById('reload-btn').addEventListener('click', () => { clearPageCache(); rpcMemo.clear(); loadEverything({ revalidate: false }); });
 
-function fmt(n){ return Number(n||0).toLocaleString('id-ID'); }
-function pct(a,b){ return b ? Math.round(a/b*100) : 0; }
-function pctClass(p){ return p>=80?'pct-good':p>=50?'pct-warn':'pct-bad'; }
-// 0 itu angka valid ("Rp 0"), bukan "tidak ada data" -- dulu keduanya tampil '—'.
-function rupiah(n){ return (n === null || n === undefined || n === '') ? '—' : 'Rp ' + Number(n).toLocaleString('id-ID'); }
-function fmt1(n){ return Number(n||0).toLocaleString('id-ID', { maximumFractionDigits: 1 }); }
-// Semua nilai dari DB yang masuk ke innerHTML WAJIB lewat esc() -- data orderan
-// datang dari sheet yang di-sync (bisa diedit banyak orang), bukan input tepercaya.
-function esc(s){ return escapeHtmlAttr(s); }
-// Tanggal LOKAL (WIB) -- toISOString() itu UTC, jadi jam 00:00-06:59 WIB masih
-// dianggap "kemarin" (bar trend "hari ini" salah highlight, nama file export beda hari).
-function localISODate(d = new Date()){
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
-}
-// CSV: quote sel yang butuh, dan netralkan formula injection (=,+,-,@) untuk Excel.
-function csvCell(v){
-  if (v === null || v === undefined) return '';
-  let t = String(v);
-  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(t)) t = "'" + t;
-  return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
-}
-
-function showError(msg){
-  const b = document.getElementById('err-banner');
-  document.getElementById('err-text').textContent = msg;
-  b.classList.add('show');
-}
-function clearError(){ document.getElementById('err-banner').classList.remove('show'); }
-
+  // ══ RPC ══
 // Semua RPC call di dashboard ini butuh role 'authenticated' (bukan
 // cuma anon key) supaya RLS produk/produk_harga konsisten dengan
 // tools lain. Kalau token expired di tengah jalan, lempar ke gate lagi.
@@ -437,7 +334,7 @@ async function rpcNet(fn, params){
 }
 
 async function rpc(fn, params){
-  if (!bulkLoading || !/^get_(dashboard_|wordtree_)/.test(fn)) return rpcNet(fn, params);
+  if (!bulkLoading || !/^get_(dashboard_|wordtree_|populasi_v2$)/.test(fn)) return rpcNet(fn, params);
   const key = fn + '|' + JSON.stringify(params || {});
   if (rpcMemo.has(key)) {
     const data = rpcMemo.get(key);
@@ -449,58 +346,425 @@ async function rpc(fn, params){
   return data;
 }
 
-// Segarkan di belakang semua hasil yang tadi disajikan dari cache; muat ulang SEKALI kalau ada yang beda.
-async function revalidateStale(list, seq){
-  let changed = false;
-  await Promise.all(list.map(async (it) => {
+
+  // ══════════════════════════════════════════
+  // UTIL
+  // ══════════════════════════════════════════
+  const $ = (id) => document.getElementById(id);
+  const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const fmt = (n) => Number(n || 0).toLocaleString('id-ID');
+  const fmt1 = (n) => Number(n || 0).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+  const pct = (a, b) => (b ? Math.round(a / b * 100) : 0);
+  // 0 itu angka valid ("Rp 0"), bukan "tidak ada data".
+  const rupiah = (n) => ((n === null || n === undefined || n === '') ? '—' : 'Rp ' + Number(n).toLocaleString('id-ID'));
+  function compact(n) {
+    n = Number(n || 0);
+    const a = Math.abs(n);
+    if (a >= 1e9) return fmt1(n / 1e9) + ' M';
+    if (a >= 1e6) return fmt1(n / 1e6) + ' jt';
+    if (a >= 1e3) return fmt1(n / 1e3) + ' rb';
+    return fmt(n);
+  }
+  const rupiahShort = (n) => 'Rp ' + compact(n);
+  function esc(s) { return escapeHtmlAttr(s); }
+  // Tanggal LOKAL (WIB): toISOString() itu UTC, jadi jam 00:00-06:59 WIB dianggap "kemarin".
+  function localISODate(d = new Date()) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+  const DAY_NAMES = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+  const busyHtml = () => '<div class="db-busy">Memuat…</div>';
+  const emptyHtml = (msg) => `<div class="db-empty">${esc(msg)}</div>`;
+  const errorHtml = (id, msg) => `<div class="db-empty db-error" title="${esc(msg)}">Bagian ini belum bisa dimuat. <button type="button" class="db-textbtn" data-action="retry" data-panel="${esc(id)}">Coba lagi</button></div>`;
+  function setPressed(btn) {
+    btn.parentElement.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+  }
+
+  // ══════════════════════════════════════════
+  // PERLU DIKERJAKAN
+  // Urutan tetap dari yang paling mendesak (bukan dari angka terbesar: satuannya berbeda-beda).
+  // Yang sudah 0 tidak dibuat baris sendiri, cukup disebut di baris "Sudah beres".
+  // Tiap sumber berdiri sendiri; satu gagal hanya menghilangkan barisnya.
+  // ══════════════════════════════════════════
+  async function loadWorklist(el) {
+    const sb = window.pnmSupabase;
+    const hariIni = localISODate();
+    const batas30 = localISODate(new Date(Date.now() + 30 * 86400000));
+    const idleCut = new Date(Date.now() - 2 * 86400000).toISOString(); // sama dengan MANDEK_MIN konversian (2 hari)
+    const hitung = async (q) => { const { count, error } = await q; if (error) throw new Error(error.message); return count || 0; };
+    const sumber = await Promise.allSettled([
+      rpc('get_dashboard_summary', {}),
+      rpc('get_produk_filter_counts', {}),
+      hitung(sb.from('akd').select('id', { count: 'exact', head: true }).lt('masa_berlaku', hariIni)),
+      hitung(sb.from('akd').select('id', { count: 'exact', head: true }).gte('masa_berlaku', hariIni).lte('masa_berlaku', batas30)),
+      hitung(sb.from('sesi_konversi').select('id', { count: 'exact', head: true }).eq('status', 'berjalan').lt('updated_at', idleCut)),
+    ]);
+    sumber.forEach((r) => { if (r.status === 'rejected' && String(r.reason && r.reason.message).startsWith('unauthorized')) throw r.reason; });
+    const [rSum, rCnt, rExp, rSoon, rSesi] = sumber;
+    const ok = (r) => r.status === 'fulfilled';
+    const items = [];
+    if (ok(rExp)) items.push({ n: rExp.value, urgent: true, label: 'AKD sudah kadaluarsa', detail: 'Masa berlakunya sudah lewat', act: 'Buka AKD', nav: '/crud-produk/akd' });
+    if (ok(rSesi)) items.push({ n: rSesi.value, urgent: true, label: 'Sesi konversi mandek', detail: 'Tidak ada aktivitas selama 2 hari atau lebih', act: 'Buka sesi', nav: '/konversian/sesi' });
+    if (ok(rSoon)) items.push({ n: rSoon.value, label: 'AKD kadaluarsa dalam 30 hari', detail: 'Siapkan perpanjangan sebelum masa berlakunya lewat', act: 'Buka AKD', nav: '/crud-produk/akd' });
+    if (ok(rCnt)) {
+      items.push({ n: Number(rCnt.value.disetujui_tanpa_link) || 0, label: 'Disetujui INAPROC, belum ada Link V6', detail: 'Belum masuk pricelist sampai Link V6 terisi', act: 'Isi Link V6', nav: '/crud-produk/produk' });
+      items.push({ n: Number(rCnt.value.belum_diajukan) || 0, label: 'Produk belum diajukan ke INAPROC', detail: 'Belum punya AKD', act: 'Buka produk', nav: '/crud-produk/produk' });
+    }
+    if (ok(rSum)) {
+      const s = rSum.value || {};
+      const total = Number(s.total) || 0, n = total - (Number(s.punya_harga) || 0);
+      const sisa = (a, b) => fmt((Number(s[a]) || 0) - (Number(s[b]) || 0));
+      items.push({ n, label: 'Produk tanpa harga e-Katalog',
+        detail: `${pct(total - n, total)}% produk sudah punya harga. Belum ada: Instrumen ${sisa('instrument', 'instrument_punya_harga')}, Set ${sisa('set', 'set_punya_harga')}, Unit ${sisa('unit', 'unit_punya_harga')}.`,
+        act: 'Buka produk', nav: '/crud-produk/produk' });
+    }
+    const gagal = sumber.filter((r) => !ok(r));
+    gagal.forEach((r) => console.warn('worklist: sumber gagal:', r.reason && r.reason.message));
+    if (!items.length) throw new Error('Semua sumber daftar kerja gagal dimuat');
+
+    const todo = items.filter((i) => i.n > 0), done = items.filter((i) => !(i.n > 0));
+    const count = $('wl-count');
+    if (count) count.textContent = todo.length ? `${fmt(todo.length)} hal perlu tindakan` : '';
+    const wlRow = (it) => `<a class="wl-row" href="${it.nav}" data-nav="${it.nav}">
+      <div class="wl-n${it.urgent ? ' is-urgent' : ''}">${fmt(it.n)}</div>
+      <div><div class="wl-label">${esc(it.label)}</div><div class="wl-detail">${esc(it.detail)}</div></div>
+      <span class="wl-act">${esc(it.act)}</span></a>`;
+    el.innerHTML =
+      (todo.length ? todo.map(wlRow).join('') : '<div class="wl-allclear">Tidak ada yang perlu dikerjakan sekarang.</div>')
+      + (done.length ? `<div class="wl-foot">${todo.length ? 'Sudah beres' : 'Yang dicek'}: ${done.map((i) => esc(i.label)).join(', ')}.</div>` : '')
+      + (gagal.length ? `<div class="wl-foot">${fmt(gagal.length)} sumber data belum bisa dimuat, jadi sebagian baris tidak tampil. <button type="button" class="db-textbtn" data-action="retry" data-panel="worklist">Coba lagi</button></div>` : '');
+  }
+
+  // ══════════════════════════════════════════
+  // KONVERSI HARI INI
+  // "Selesai" di-dedup per sesi di server (revisi terakhir saja).
+  // ══════════════════════════════════════════
+  async function loadToday(el) {
+    const k = await rpc('get_dashboard_konversi_today', {}) || {};
+    el.innerHTML = `
+      <div class="hi-figs">
+        <div><div class="hi-n">${fmt(k.selesai_count)}</div><div class="hi-l">order selesai</div></div>
+        <div><div class="hi-n" title="${esc(rupiah(k.selesai_value))}">${rupiahShort(k.selesai_value)}</div><div class="hi-l">total nilai</div></div>
+      </div>
+      <dl class="hi-list">
+        <div class="hi-li"><dt>Rata-rata per order</dt><dd>${Number(k.selesai_count) ? rupiah(k.selesai_avg) : '—'}</dd></div>
+        <div class="hi-li"><dt><a href="/konversian/sesi" data-nav="/konversian/sesi">Sesi sedang berjalan</a></dt>
+          <dd>${fmt(k.berjalan_count)}${Number(k.berjalan_baru_count) ? `<small>${fmt(k.berjalan_baru_count)} dibuka hari ini</small>` : ''}</dd></div>
+      </dl>`;
+  }
+
+  // ══════════════════════════════════════════
+  // TUJUH HARI TERAKHIR (satu grafik, ukuran bisa diganti Order/Nilai)
+  // ══════════════════════════════════════════
+  let trendData = null;
+  let trendMetric = 'jumlah';
+  async function loadTrend(el) {
+    trendData = await rpc('get_dashboard_trend_7hari', {}) || [];
+    renderTrend(el);
+  }
+  function renderTrend(el) {
+    const data = trendData || [];
+    if (!data.length) { el.innerHTML = emptyHtml('Belum ada konversi dalam 7 hari terakhir.'); return; }
+    const byNilai = trendMetric === 'nilai';
+    const val = (d) => Number(byNilai ? d.total_value : d.jumlah) || 0;
+    const max = Math.max(...data.map(val), 1);
+    const totJ = data.reduce((s, d) => s + (Number(d.jumlah) || 0), 0);
+    const totV = data.reduce((s, d) => s + (Number(d.total_value) || 0), 0);
+    const today = localISODate();
+    const cols = data.map((d) => {
+      const dt = new Date(d.tanggal + 'T00:00:00');
+      const v = val(d);
+      return `<li class="tr-col${d.tanggal === today ? ' is-today' : ''}">
+        <a class="tr-link" href="/konversian/riwayat" data-nav="/konversian/riwayat" title="${esc(`${DAY_NAMES[dt.getDay()]}, ${d.tanggal}: ${fmt(d.jumlah)} order, ${rupiah(d.total_value)}`)}">
+          <span class="tr-val">${byNilai ? compact(v) : fmt(v)}</span>
+          <span class="tr-track"><span class="tr-bar" style="height:${Math.round(v / max * 100)}%"></span></span>
+          <span class="tr-day">${DAY_NAMES[dt.getDay()]} ${dt.getDate()}</span>
+        </a></li>`;
+    }).join('');
+    el.innerHTML = `
+      <dl class="tr-totals">
+        <div><dt>order</dt><dd>${fmt(totJ)}</dd></div>
+        <div><dt>total nilai</dt><dd title="${esc(rupiah(totV))}">${rupiahShort(totV)}</dd></div>
+      </dl>
+      <ol class="tr-cols" aria-label="${byNilai ? 'Nilai konversi' : 'Jumlah konversi'} per hari, 7 hari terakhir">${cols}</ol>`;
+  }
+
+  // ══════════════════════════════════════════
+  // LEADERBOARD SALES + KATEGORI
+  // lbDays juga dibawa ke tab Riwayat saat baris diklik (lihat RIWAYAT_PENDING_FILTER_KEY).
+  // ══════════════════════════════════════════
+  let lbDays = 30;
+  // Key sessionStorage ini HARUS sama persis dengan yang dibaca applyPendingRiwayatFilter()
+  // di app/pages/konversian/index.js.
+  const RIWAYAT_PENDING_FILTER_KEY = 'pnm_riwayat_pending_filter';
+  const daysToRiwayatPeriodKey = (d) => (d === 7 ? '7hari' : d === 30 ? '30hari' : d === 90 ? '90hari' : 'semua');
+  async function loadLeaderboard(el) {
+    const data = await rpc('get_dashboard_leaderboard_sales', { p_days: lbDays });
+    if (!data || !data.length) { el.innerHTML = emptyHtml('Belum ada data sales untuk periode ini.'); return; }
+    el.innerHTML = `<ol class="rk">${data.slice(0, 8).map((r, i) => `
+      <li><button type="button" class="rk-row" data-action="goto-riwayat-sales" data-sales="${esc(r.nama)}" title="Lihat konversi ${esc(r.nama)}">
+        <span class="rk-pos">${i + 1}</span>
+        <span class="rk-name">${esc(r.nama)}<span class="rk-sub">${fmt(r.jumlah_order)} order</span></span>
+        <span class="rk-val" title="${esc(rupiah(r.total_value))}">${rupiahShort(r.total_value)}</span>
+      </button></li>`).join('')}</ol>`;
+  }
+  async function loadKategori(el) {
+    const data = await rpc('get_dashboard_kategori_distribusi', { p_days: 30 });
+    if (!data || !data.length) { el.innerHTML = emptyHtml('Belum ada data kategori.'); return; }
+    const total = data.reduce((s, d) => s + (Number(d.jumlah) || 0), 0) || 1;
+    el.innerHTML = `<ol class="rk rk--plain">${data.map((d) => `
+      <li><a class="rk-row" href="/konversian/riwayat" data-nav="/konversian/riwayat">
+        <span class="rk-name">${esc(d.kategori)}</span>
+        <span class="rk-val">${fmt(d.jumlah)}<small>${Math.round((Number(d.jumlah) || 0) / total * 100)}%</small></span>
+      </a></li>`).join('')}</ol>`;
+  }
+
+  // ══════════════════════════════════════════
+  // STOK BERISIKO HABIS
+  // ══════════════════════════════════════════
+  const FC_INITIAL = 6;
+  let fcDays = 30, fcData = [], fcAll = false;
+  async function loadStok(el) {
+    fcData = await rpc('get_dashboard_forecast_stok', { p_days: fcDays, p_limit: 15 }) || [];
+    renderStok(el);
+  }
+  function renderStok(el) {
+    if (!el) return;
+    if (!fcData.length) { el.innerHTML = emptyHtml(`Tidak ada produk yang diperkirakan habis berdasarkan konversi ${fcDays} hari terakhir.`); return; }
+    const rows = fcAll ? fcData : fcData.slice(0, FC_INITIAL);
+    const habis = (v) => {
+      const d = (v === null || v === undefined || !Number.isFinite(Number(v))) ? null : Number(v);
+      if (d === null) return '<span class="fc-d is-aman">—</span>';
+      const c = d <= 7 ? 'is-kritis' : d <= 30 ? 'is-waspada' : 'is-aman';
+      return `<span class="fc-d ${c}">${fmt(d)} hari</span>${d <= 7 ? '<span class="fc-flag">Segera</span>' : ''}`;
+    };
+    el.innerHTML = `
+      <div class="tb-wrap"><table class="tb">
+        <thead><tr><th>Produk</th><th class="num">Stok</th><th class="num">Terpakai ${fcDays} hari</th><th class="num">Rata-rata per hari</th><th class="num">Perkiraan habis</th></tr></thead>
+        <tbody>${rows.map((d) => `
+          <tr data-open-kode="${esc(d.kode_produk)}" tabindex="0" title="Lihat detail produk">
+            <td><span class="tb-name">${esc(d.nama_produk)}</span><span class="tb-kode">${esc(d.kode_produk)}</span></td>
+            <td class="num">${fmt(d.stok_sekarang)}</td>
+            <td class="num">${fmt(d.terpakai_periode)}</td>
+            <td class="num">${fmt1(d.rata_harian)}</td>
+            <td class="num">${habis(d.perkiraan_habis_hari)}</td>
+          </tr>`).join('')}</tbody>
+      </table></div>
+      <div class="tb-foot">
+        <span>Merah: habis dalam 7 hari atau kurang. Oranye: sampai 30 hari.</span>
+        ${fcData.length > FC_INITIAL ? `<button type="button" class="db-textbtn" data-action="forecast-more">${fcAll ? 'Ringkas' : `Tampilkan ${fcData.length - FC_INITIAL} lainnya`}</button>` : ''}
+      </div>`;
+  }
+
+  // ══════════════════════════════════════════
+  // POPULASI SET: satu panggilan get_populasi_v2 (semua provinsi), diringkas per provinsi di sini.
+  // Parameter dan nama kolom disalin dari populasi/index.js. Provinsi bawaan = Jawa Tengah.
+  // ══════════════════════════════════════════
+  let popData = null, popSel = '';
+  async function loadPopulasi(el) {
+    const res = await rpc('get_populasi_v2', {
+      p_provinsi: null, p_status: 'DELIVERED', p_cakupan: 'POPULASI', p_dari: null, p_sampai: null,
+      p_kelompok: ['SET'], p_produk: null, p_rs: null, p_isi_set: false,
+    });
+    const rows = ((res && res.rows) || [])
+      .map((r) => ({ nama: r.customer, prov: r.provinsi || '', set: Number(r.set_terkirim) || 0 }))
+      .filter((r) => r.set > 0);
+    if (!rows.length) { popData = null; el.innerHTML = emptyHtml('Belum ada set terkirim.'); return; }
+    const by = new Map();
+    let unmapped = 0;
+    rows.forEach((r) => {
+      if (!r.prov) { unmapped++; return; }
+      const p = by.get(r.prov) || { prov: r.prov, set: 0, rs: [] };
+      p.set += r.set; p.rs.push(r); by.set(r.prov, p);
+    });
+    const provs = [...by.values()].sort((a, b) => b.set - a.set);
+    provs.forEach((p) => p.rs.sort((a, b) => b.set - a.set));
+    popData = { provs, unmapped, totalSet: rows.reduce((s, r) => s + r.set, 0), totalRs: rows.length };
+    if (!provs.length) { el.innerHTML = emptyHtml('Wilayah rumah sakit belum terpetakan. Atur di halaman Populasi.'); return; }
+    if (!by.has(popSel)) popSel = by.has('Jawa Tengah') ? 'Jawa Tengah' : provs[0].prov;
+    renderPopulasi(el);
+  }
+  function renderPopulasi(el) {
+    if (!el || !popData) return;
+    const { provs, unmapped, totalSet, totalRs } = popData;
+    let shown = provs.slice(0, 6);
+    const cur = provs.find((p) => p.prov === popSel);
+    if (cur && !shown.includes(cur)) shown.push(cur);
+    const rs = cur ? cur.rs.slice(0, 5) : [];
+    el.innerHTML = `
+      <p class="pop-lead"><strong>${fmt(totalSet)}</strong> set terkirim ke <strong>${fmt(totalRs)}</strong> rumah sakit di <strong>${fmt(provs.length)}</strong> provinsi.</p>
+      <div class="pop-cols">
+        <div>
+          <h3 class="db-sub">Wilayah teratas</h3>
+          <ul class="pv">${shown.map((p) => `
+            <li><button type="button" class="pv-btn" data-action="pop-prov" data-prov="${esc(p.prov)}" aria-pressed="${p.prov === popSel}">
+              <span class="pv-name">${esc(p.prov)}</span><span class="pv-rs">${fmt(p.rs.length)} RS</span><span class="pv-n">${fmt(p.set)}</span>
+            </button></li>`).join('')}</ul>
+        </div>
+        <div>
+          <h3 class="db-sub">Rumah sakit terbanyak di ${esc(popSel)}</h3>
+          <ol class="rs-list">${rs.map((r) => `<li class="rs-li"><span title="${esc(r.nama)}">${esc(r.nama)}</span><span>${fmt(r.set)} set</span></li>`).join('')}</ol>
+        </div>
+      </div>
+      ${unmapped ? `<p class="pop-note">${fmt(unmapped)} rumah sakit belum punya provinsi, jadi belum masuk hitungan wilayah.</p>` : ''}`;
+  }
+
+  // ══════════════════════════════════════════
+  // KEBUTUHAN CUSTOMER -> SKU
+  // Sumber: permintaan_item_produk (terisi otomatis saat Kebutuhan RS ditandai "Bisa Dipenuhi").
+  // Kiri: istilah yang dipakai customer. Kanan: SKU yang dipakai untuk memenuhinya.
+  // ══════════════════════════════════════════
+  const WT_KEY = 'pnm_wordtree_last_istilah';
+  let wtRoots = [], wtRootsJson = '', wtSel = '', wtReq = 0;
+  async function loadKebutuhan(el) {
+    let roots = [];
+    try { roots = await rpc('get_wordtree_roots', { p_limit: 40 }) || []; } catch (e) {
+      if (String(e.message).startsWith('unauthorized')) throw e;
+    }
+    if (!roots.length) {
+      wtRoots = []; wtRootsJson = '';
+      el.innerHTML = emptyHtml('Belum ada kebutuhan yang tersambung ke SKU. Bagian ini terisi otomatis begitu Kebutuhan RS ditandai “Bisa Dipenuhi”.');
+      return;
+    }
+    let saved = null;
+    try { saved = localStorage.getItem(WT_KEY); } catch (e) { /* private mode: abaikan */ }
+    const has = (v) => roots.some((r) => r.istilah_customer === v);
+    wtSel = has(wtSel) ? wtSel : (has(saved) ? saved : roots[0].istilah_customer);
+    const json = JSON.stringify(roots);
+    if (json !== wtRootsJson || !$('wt-list')) {   // daftar sama -> jangan bangun ulang (posisi scroll tetap)
+      wtRoots = roots; wtRootsJson = json;
+      el.innerHTML = `<div class="wt">
+        <div class="wt-list" id="wt-list">${roots.map((r) => `
+          <button type="button" class="wt-item" data-action="wt-pick" data-istilah="${esc(r.istilah_customer)}" aria-pressed="${r.istilah_customer === wtSel}" title="${fmt(r.jumlah_sku_unik)} SKU berbeda">
+            <span>${esc(r.istilah_customer)}</span><span>${fmt(r.frekuensi)}×</span></button>`).join('')}</div>
+        <div id="wt-detail">${busyHtml()}</div></div>`;
+    } else {
+      markWt();
+    }
+    await loadWtBranches(wtSel);
+  }
+  function markWt() {
+    document.querySelectorAll('#wt-list .wt-item').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.istilah === wtSel)));
+  }
+  async function pickIstilah(istilah) {
+    wtSel = istilah;
+    try { localStorage.setItem(WT_KEY, istilah); } catch (e) { /* abaikan */ }
+    markWt();
+    await loadWtBranches(istilah);
+  }
+  async function loadWtBranches(istilah) {
+    const box = $('wt-detail');
+    if (!box) return;
+    const my = ++wtReq;
+    box.setAttribute('aria-busy', 'true');
     try {
-      const fresh = await rpcNet(it.fn, it.params);
-      rpcMemo.set(it.key, fresh);
-      if (JSON.stringify(fresh) !== JSON.stringify(it.data)) changed = true;
-    } catch (e) { /* gagal menyegarkan -> biarkan yang tampil */ }
-  }));
-  if (changed && seq === dashMountSeq) await loadEverything({ revalidate: false });
-}
+      const branches = await rpc('get_wordtree_branches', { p_istilah: istilah }) || [];
+      if (my !== wtReq) return;
+      box.innerHTML = branches.length ? `
+        <h3 class="db-sub">Untuk “${esc(istilah)}”, SKU yang dipakai</h3>
+        <ul class="sku">${branches.map((b) => `
+          <li><button type="button" class="sku-btn" data-open-kode="${esc(b.kode_produk)}" title="Lihat detail produk">
+            <span class="sku-name"><span class="sku-kode">${esc(b.kode_produk)}</span>${esc(b.nama_produk || '')}</span>
+            <span class="sku-n">${fmt(b.frekuensi)}×</span>
+            <span class="sku-p">${b.persentase != null ? esc(fmt1(b.persentase)) + '%' : ''}</span>
+          </button></li>`).join('')}</ul>`
+        : emptyHtml('Belum ada SKU tersambung untuk istilah ini.');
+    } catch (e) {
+      if (my !== wtReq || String(e.message).startsWith('unauthorized')) return;
+      box.innerHTML = '<div class="db-empty db-error">SKU untuk istilah ini belum bisa dimuat.</div>';
+    } finally {
+      if (my === wtReq) box.removeAttribute('aria-busy');
+    }
+  }
 
-// ══════════════════════════════════════════
-// KONVERSI HARI INI — snapshot operasional cepat: berapa sesi lagi jalan
-// SEKARANG (bukan cuma yang dibuka hari ini, karena sesi bisa nginep
-// berhari-hari), dan berapa yang beres hari ini + total valuenya.
-// "Beres" di-dedup per sesi (ambil revisi terakhir aja) biar sesi yang
-// direvisi 2x hari ini gak ke-count 2 kali.
-// ══════════════════════════════════════════
-async function loadKonversiToday(){
-  const k = await rpc('get_dashboard_konversi_today', {});
-  document.getElementById('stats-grid-konversi').innerHTML = `
-    <div class="stat-card blue" data-nav="/konversian/sesi" role="button" tabindex="0" title="Buka Konversi Berjalan">
-      <div class="stat-icon blue"><i class="ti ti-hourglass"></i></div>
-      <div class="stat-val">${fmt(k.berjalan_count)}</div>
-      <div class="stat-label">Konversi Sedang Berjalan</div>
-      <div class="stat-sub"><i class="ti ti-circle-plus"></i> ${fmt(k.berjalan_baru_count)} sesi baru dibuka hari ini</div>
-    </div>
-    <div class="stat-card green" data-nav="/konversian/riwayat" role="button" tabindex="0" title="Buka Riwayat konversi">
-      <div class="stat-icon green"><i class="ti ti-circle-check"></i></div>
-      <div class="stat-val">${fmt(k.selesai_count)}</div>
-      <div class="stat-label">Konversi Selesai Hari Ini</div>
-      <div class="stat-sub"><i class="ti ti-cash"></i> Total ${rupiah(k.selesai_value)}</div>
-    </div>
-    <div class="stat-card purple" data-nav="/konversian/riwayat" role="button" tabindex="0" title="Buka Riwayat konversi">
-      <div class="stat-icon purple"><i class="ti ti-trending-up"></i></div>
-      <div class="stat-val">${rupiah(k.selesai_avg)}</div>
-      <div class="stat-label">Rata-rata Value / Order</div>
-      <div class="stat-sub"><i class="ti ti-info-circle"></i> Dari ${fmt(k.selesai_count)} order hari ini</div>
-    </div>
-  `;
-}
+  // ══════════════════════════════════════════
+  // PANEL: tiap bagian dimuat dan gagal sendiri-sendiri
+  // ══════════════════════════════════════════
+  const PANELS = {
+    worklist:    { el: 'db-worklist',    load: loadWorklist },
+    today:       { el: 'db-today',       load: loadToday },
+    trend:       { el: 'db-trend',       load: loadTrend },
+    leaderboard: { el: 'db-leaderboard', load: loadLeaderboard },
+    stok:        { el: 'db-stok',        load: loadStok },
+    populasi:    { el: 'db-populasi',    load: loadPopulasi },
+    kategori:    { el: 'db-kategori',    load: loadKategori },
+    kebutuhan:   { el: 'db-kebutuhan',   load: loadKebutuhan },
+  };
+  const rendered = new Set();   // panel yang pernah berhasil tampil
+  const failed = new Set();     // panel yang terakhir gagal
+  let loadingAll = false;
+  let lastOkAt = 0;
 
-// ══════════════════════════════════════════
-// RINGKASAN — satu panggilan RPC (get_dashboard_summary), dihitung
-// penuh di Postgres. Gantinya fetch produk + produk_harga mentah
-// dengan limit=20000 yang kemarin bikin angka undercount.
-// ══════════════════════════════════════════
-// ══════════════════════════════════════════
-// LAPORAN: Pricelist sales (logic di shared/exports/pricelist.js, dipakai juga crud-produk)
-// ══════════════════════════════════════════
+  async function runPanel(id, silent) {
+    const p = hasOwn(PANELS, id) ? PANELS[id] : null;
+    const el = p && $(p.el);
+    if (!el) return true;
+    if (!rendered.has(id)) el.innerHTML = busyHtml();
+    else if (!silent) el.setAttribute('aria-busy', 'true');   // isi lama tetap terlihat, hanya diredupkan
+    try {
+      await p.load(el);
+      rendered.add(id); failed.delete(id);
+      return true;
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      if (msg.startsWith('unauthorized')) return true;
+      console.error('Dashboard: bagian "' + id + '" gagal:', msg);
+      failed.add(id);
+      if (!silent || !rendered.has(id)) { el.innerHTML = errorHtml(id, msg); rendered.delete(id); }
+      return false;
+    } finally {
+      el.removeAttribute('aria-busy');
+    }
+  }
+
+  async function loadAll({ silent = false, revalidate = true, ids = null } = {}) {
+    if (loadingAll) return;
+    loadingAll = true; bulkLoading = true; staleServed = [];
+    let results;
+    try { results = await Promise.all((ids || Object.keys(PANELS)).map((id) => runPanel(id, silent))); }
+    finally { bulkLoading = false; loadingAll = false; }
+    const served = staleServed;
+    staleServed = [];
+    if (results.some(Boolean)) lastOkAt = Date.now();
+    renderFresh();
+    if (revalidate && served.length && myMount === dashMountSeq) revalidateStale(served);
+  }
+
+  // Yang tadi disajikan dari cache disegarkan di belakang; kalau ada yang berubah, muat ulang sekali.
+  async function revalidateStale(list) {
+    let changed = false;
+    await Promise.all(list.map(async (it) => {
+      try {
+        const fresh = await rpcNet(it.fn, it.params);
+        rpcMemo.set(it.key, fresh);
+        if (JSON.stringify(fresh) !== JSON.stringify(it.data)) changed = true;
+      } catch (e) { /* gagal menyegarkan -> biarkan yang tampil */ }
+    }));
+    if (changed && myMount === dashMountSeq) await loadAll({ silent: true, revalidate: false });
+  }
+
+  // ── Penyegaran otomatis ──
+  const POLL_MS = 5 * 60 * 1000;
+  const STALE_MS = 3 * 60 * 1000;
+  function refreshQuietly() {
+    if (document.hidden || myMount !== dashMountSeq) return;
+    rpcMemo.clear();
+    loadAll({ silent: true, revalidate: false });
+  }
+  function renderFresh() {
+    const el = $('db-fresh');
+    if (!el) return;
+    if (failed.size) { el.innerHTML = 'Sebagian data belum termuat. <button type="button" class="db-textbtn" data-action="refresh">Coba lagi</button>'; return; }
+    if (!lastOkAt) { el.textContent = 'Memuat…'; return; }
+    const m = Math.floor((Date.now() - lastOkAt) / 60000);
+    el.textContent = m < 1 ? 'Diperbarui baru saja'
+      : m < 60 ? `Diperbarui ${m} menit lalu`
+      : 'Diperbarui ' + new Date(lastOkAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // ══════════════════════════════════════════
+  // PRICELIST (logika di shared/exports/pricelist.js, dipakai juga crud-produk)
+  // ══════════════════════════════════════════
 const XLSX_SRC = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
 async function unduhPricelist(btn){
   if (btn.disabled) return;
@@ -536,700 +800,6 @@ async function unduhPricelist(btn){
   }
 }
 
-// Perlu dikerjakan: urutan TETAP dari yang paling mendesak (bukan dari angka terbesar --
-// satuannya beda-beda: sesi, AKD, produk). Tiap sumber berdiri sendiri; satu gagal
-// cuma menghilangkan barisnya + catatan kecil, bukan seluruh daftar.
-async function loadStats(){
-  const sb = window.pnmSupabase;
-  const hariIni = localISODate();
-  const batas30 = localISODate(new Date(Date.now() + 30 * 86400000)); // sama dengan pill AKD (<= 30 hari = akan expired)
-  const idleCut = new Date(Date.now() - 2 * 86400000).toISOString();   // sama dengan MANDEK_MIN konversian (2 hari)
-  const hitung = async (q) => { const { count, error } = await q; if (error) throw new Error(error.message); return count || 0; };
-  const [rSum, rCnt, rExp, rSoon, rSesi] = await Promise.allSettled([
-    rpc('get_dashboard_summary', {}),
-    rpc('get_produk_filter_counts', {}),
-    hitung(sb.from('akd').select('id', { count: 'exact', head: true }).lt('masa_berlaku', hariIni)),
-    hitung(sb.from('akd').select('id', { count: 'exact', head: true }).gte('masa_berlaku', hariIni).lte('masa_berlaku', batas30)),
-    hitung(sb.from('sesi_konversi').select('id', { count: 'exact', head: true }).eq('status', 'berjalan').lt('updated_at', idleCut)),
-  ]);
-  [rSum, rCnt, rExp, rSoon, rSesi].forEach(r => { if (r.status === 'rejected' && String(r.reason && r.reason.message).startsWith('unauthorized')) throw r.reason; });
-  const ok = (r) => r.status === 'fulfilled';
-  const items = [];
-  if (ok(rSesi)) items.push({ n: rSesi.value, unit: 'sesi', label: 'Sesi konversi mandek', detail: 'Tidak ada aktivitas 2 hari atau lebih', nav: '/konversian/sesi' });
-  if (ok(rExp) && ok(rSoon)) items.push({ n: rExp.value + rSoon.value, unit: 'AKD', label: 'AKD kadaluarsa atau segera kadaluarsa', detail: `Sudah lewat ${fmt(rExp.value)} · dalam 30 hari ${fmt(rSoon.value)}`, nav: '/crud-produk/akd' });
-  if (ok(rCnt)) {
-    items.push({ n: Number(rCnt.value.disetujui_tanpa_link) || 0, unit: 'produk', label: 'Disetujui INAPROC, belum ada Link V6', detail: 'Isi Link V6 di CRUD Produk', nav: '/crud-produk/produk' });
-    items.push({ n: Number(rCnt.value.belum_diajukan) || 0, unit: 'produk', label: 'Perlu AKD', detail: 'Belum diajukan', nav: '/crud-produk/produk' });
-  }
-  if (ok(rSum)) {
-    const s = rSum.value, total = s.total || 0, n = total - s.punya_harga;
-    items.push({ n, unit: 'produk', label: 'Tanpa harga e-Katalog',
-      detail: `Instrumen ${fmt(s.instrument - s.instrument_punya_harga)} · Set ${fmt(s.set - s.set_punya_harga)} · Unit ${fmt(s.unit - s.unit_punya_harga)} · ${pct(total - n, total)}% lengkap`,
-      nav: '/crud-produk/produk', of: total });
-  }
-  const box = document.getElementById('worklist');
-  if (!box) return;
-  const gagal = [rSum, rCnt, rExp, rSoon, rSesi].filter(r => !ok(r));
-  gagal.forEach(r => console.warn('worklist: sumber gagal:', r.reason && r.reason.message));
-  box.innerHTML = items.map(it => it.n <= 0
-    ? `<div class="wl-row wl-done"><div class="wl-n">0</div><div class="wl-body"><div class="wl-label">${it.label}</div><div class="wl-detail">Sudah beres</div></div></div>`
-    : `<a class="wl-row" href="${it.nav}" data-nav="${it.nav}">
-         <div class="wl-n">${fmt(it.n)}<span class="wl-unit">${it.unit}</span></div>
-         <div class="wl-body">
-           <div class="wl-label">${it.label}</div>
-           <div class="wl-detail">${it.detail}</div>
-           ${it.of ? `<div class="wl-bar" aria-hidden="true"><span style="width:${pct(it.n, it.of)}%"></span></div>` : ''}
-         </div>
-         <i class="ti ti-chevron-right wl-go" aria-hidden="true"></i>
-       </a>`).join('')
-    + (gagal.length ? `<div class="wl-row wl-note"><div></div><div class="wl-detail">${gagal.length} sumber data tidak bisa dimuat, jadi sebagian baris tidak tampil. Klik "Muat ulang" untuk mencoba lagi.</div><div></div></div>` : '');
-  if (!items.length) throw new Error('Semua sumber daftar kerja gagal dimuat');
-}
-
-// Populasi: ringkasan dengan filter bawaan halaman Populasi (Jawa Tengah, terkirim, kategori SET).
-// Parameter dan nama kolom disalin dari populasi/index.js (filterParams + applyResult).
-async function loadPopulasi(){
-  const box = document.getElementById('populasi-box');
-  if (!box) return;
-  const res = await rpc('get_populasi_v2', {
-    p_provinsi: 'Jawa Tengah', p_status: 'DELIVERED', p_cakupan: 'POPULASI', p_dari: null, p_sampai: null,
-    p_kelompok: ['SET'], p_produk: null, p_rs: null, p_isi_set: false,
-  });
-  const list = ((res && res.rows) || [])
-    .map(r => ({ nama: r.customer, set: Number(r.set_terkirim) || 0 }))
-    .filter(r => r.set > 0).sort((a, b) => b.set - a.set);
-  if (!list.length) { box.innerHTML = '<div class="insight-empty">Belum ada set terkirim untuk filter ini.</div>'; return; }
-  const totalSet = list.reduce((a, r) => a + r.set, 0);
-  const top = list.slice(0, 5), max = top[0].set;
-  box.innerHTML = `
-    <div class="pop-head"><span class="pop-n">${fmt(totalSet)}</span> set terkirim di <strong>${fmt(list.length)}</strong> rumah sakit
-      <span class="pop-scope">Jawa Tengah</span></div>
-    <div class="pop-list">${top.map(r => `
-      <div class="pop-row"><span class="pop-name" title="${esc(r.nama)}">${esc(r.nama)}</span>
-        <span class="pop-bar" aria-hidden="true"><span style="width:${Math.max(4, Math.round(r.set / max * 100))}%"></span></span>
-        <span class="pop-val">${fmt(r.set)}</span></div>`).join('')}</div>`;
-}
-
-function progItem(name, val, total, color, go){
-  const p = pct(val, total);
-  const attrs = !go ? '' : (go.nav
-    ? ` data-nav="${esc(go.nav)}" role="button" tabindex="0" title="${esc(go.title)}"`
-    : ` data-action="filter-goto" data-f="${esc(go.f)}"${go.tipe ? ` data-tipe="${esc(go.tipe)}"` : ''} role="button" tabindex="0" title="${esc(go.title)}"`);
-  return `<div class="prog-item"${attrs}>
-    <div class="prog-meta">
-      <span class="prog-name">${name}</span>
-      <span class="prog-num">${fmt(val)} / ${fmt(total)}</span>
-    </div>
-    <div class="prog-track"><div class="prog-fill" style="width:${p}%;background:${color}"></div></div>
-    <div class="prog-pct">${p}%</div>
-  </div>`;
-}
-
-// ══════════════════════════════════════════
-// TABEL — filter, search, tipe, dan pagination SEMUA dilakukan di
-// server lewat RPC get_dashboard_produk. Browser cuma pernah pegang
-// satu halaman (25 baris), bukan seluruh tabel produk.
-// ══════════════════════════════════════════
-const PAGE_SIZE = 25;
-let currentTipe = '';
-let currentSearch = '';
-let currentPage = 1;
-let searchDebounce = null;
-let pageCache = {};
-
-function cacheKey(page){
-  return `${Array.from(activeFilters).sort().join(',')}|${currentTipe}|${currentSearch}|${page}`;
-}
-function clearPageCache(){ pageCache = {}; }
-
-let currentRows = [];   // baris halaman yang lagi tampil -- dirujuk lewat data-idx (bukan JSON di attribute)
-let tableReqId = 0;     // token: respons lama gak boleh nimpa respons yang lebih baru (search cepat, klik halaman)
-
-// FIX: prefetchNextPage dulu ngirim `p_filter: currentFilter` (parameter yang gak ada di RPC,
-// nama yang benar p_filters) -> gagal diam-diam / hasilnya bisa salah masuk cache. Sekarang
-// pakai fetchPage() yang sama persis dengan halaman utama.
-function prefetchNextPage(total){
-  const pages = Math.ceil(total / PAGE_SIZE);
-  if (currentPage < pages) fetchPage(currentPage + 1).catch(() => {});
-}
-
-async function loadTable(){
-  if (!document.getElementById('tbl-body')) return; // tabel produk sudah dipindah ke CRUD Produk
-  const myReq = ++tableReqId;
-  const key = cacheKey(currentPage);
-  if (!pageCache[key]) {
-    document.getElementById('tbl-body').innerHTML = '<tr class="loading-row"><td colspan="7"><i class="ti ti-loader-2 spinner"></i> Memuat data…</td></tr>';
-  }
-  const result = await fetchPage(currentPage);
-  if (myReq !== tableReqId) return; // sudah ada permintaan yang lebih baru
-  renderTable(result.total || 0, result.rows || []);
-  prefetchNextPage(result.total || 0);
-}
-
-async function fetchPage(page){
-  const key = cacheKey(page);
-  if (pageCache[key]) return pageCache[key];
-  const result = await rpc('get_dashboard_produk', {
-    p_filters: Array.from(activeFilters),
-    p_tipe: currentTipe || null,
-    p_search: currentSearch || null,
-    p_page: page,
-    p_page_size: PAGE_SIZE
-  });
-  pageCache[key] = result;
-  return result;
-}
-
-let activeFilters = new Set(['all']);
-
-function syncFilterButtons(){
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', activeFilters.has(b.dataset.f)));
-}
-// Lompat ke tabel produk dengan filter (+ tipe) tertentu -- dipakai kartu statistik &
-// baris "Kelengkapan Data": angka di dashboard jadi pintu masuk ke daftar produknya.
-function applyFilterGoto(f, tipe){
-  activeFilters = new Set([f || 'all']);
-  currentTipe = tipe || '';
-  currentSearch = '';
-  const tipeSel = document.getElementById('tipe-filter');
-  if (tipeSel) tipeSel.value = currentTipe;
-  const searchEl = document.getElementById('tbl-search');
-  if (searchEl) searchEl.value = '';
-  currentPage = 1;
-  clearPageCache();
-  syncFilterButtons();
-  loadTable().catch(handleLoadError);
-  document.querySelector('.table-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function setFilter(f, el){
-  if (f === 'all') {
-    activeFilters = new Set(['all']);
-  } else {
-    activeFilters.delete('all');
-    if (activeFilters.has(f)) activeFilters.delete(f);
-    else activeFilters.add(f);
-    if (activeFilters.size === 0) activeFilters.add('all');
-  }
-  currentPage = 1;
-  clearPageCache();
-  syncFilterButtons();
-  loadTable().catch(handleLoadError);
-}
-function setTipe(v){ currentTipe = v; currentPage = 1; clearPageCache(); loadTable().catch(handleLoadError); }
-let searchToken = 0;
-function onSearch(){
-  clearTimeout(searchDebounce);
-  const spinner = document.getElementById('search-spinner');
-  spinner.classList.add('show');
-  const myToken = ++searchToken;
-  searchDebounce = setTimeout(async () => {
-    currentSearch = document.getElementById('tbl-search').value.trim();
-    currentPage = 1;
-    clearPageCache();
-    try {
-      await loadTable();
-      if (currentSearch) addSearchHistory(currentSearch);
-    } catch(err) {
-      handleLoadError(err);
-    } finally {
-      if (myToken === searchToken) spinner.classList.remove('show');
-    }
-  }, 300);
-}
-
-function renderTable(total, rows){
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  currentPage = Math.min(currentPage, pages);
-
-  document.getElementById('tbl-info').textContent =
-    total === 0 ? '—' : `Menampilkan ${fmt((currentPage-1)*PAGE_SIZE+1)}–${fmt(Math.min(currentPage*PAGE_SIZE, total))} dari ${fmt(total)} produk`;
-
-  const tipeClass = {INSTRUMENT:'badge-instrument', SET:'badge-set', UNIT:'badge-unit'};
-
-  if (!rows.length){
-    currentRows = [];
-    // FIX: dulu string ber-kutip tunggal berisi `${r.kode_produk}` mentah + onclick ke openDetail
-    // (klik = ReferenceError) dan colspan 6 padahal tabel punya 7 kolom.
-    document.getElementById('tbl-body').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)"><i class="ti ti-search" style="font-size:28px;display:block;margin-bottom:6px"></i>Tidak ada produk yang cocok.</td></tr>';
-  } else {
-    currentRows = rows;
-    document.getElementById('tbl-body').innerHTML = rows.map((r, idx) => `
-  <tr style="cursor:pointer" tabindex="0" data-idx="${idx}" data-kode="${esc(r.kode_produk)}" data-open-kode="${esc(r.kode_produk)}">
-    <td class="checkbox-col"><input type="checkbox" class="row-checkbox" data-idx="${idx}" aria-label="Pilih ${esc(r.kode_produk)}" ${selectedRows.has(r.kode_produk)?'checked':''}/></td>
-    <td><span class="kode-text">${esc(r.kode_produk) || '—'}</span><button type="button" class="copy-kode-btn" data-action="copy-kode" data-kode="${esc(r.kode_produk)}" title="Salin kode" aria-label="Salin kode ${esc(r.kode_produk)}"><i class="ti ti-copy"></i></button><a class="copy-kode-btn" href="/crud-produk?edit=${encodeURIComponent(r.kode_produk || '')}" title="Edit di CRUD Produk" aria-label="Edit ${esc(r.kode_produk)} di CRUD Produk"><i class="ti ti-pencil"></i></a></td>
-        <td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.nama_produk || '—')}</td>
-        <td><span class="badge ${tipeClass[r.tipe] || ''}">${esc(r.tipe) || '—'}</span></td>
-        <td>${r.harga ? `<span style="font-family:var(--mono);font-size:11.5px;color:var(--success);font-weight:600">${rupiah(r.harga)}</span>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum ada</span>`}</td>
-        <td>${(r.link_v6 && isSafeHttpUrl(r.link_v6)) ? `<a href="${escapeHtmlAttr(r.link_v6)}" target="_blank" rel="noopener noreferrer" class="chip chip-yes" style="text-decoration:none"><i class="ti ti-external-link"></i> Ada</a>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum</span>`}</td>
-        <td>${r.no_akd ? `<span class="chip chip-yes" style="font-family:var(--mono)">${esc(r.no_akd)}</span>` : `<span class="chip chip-no"><i class="ti ti-x"></i> Belum</span>`}</td>
-      </tr>
-    `).join('');
-  }
-  // checkbox "pilih semua" harus ikut kondisi halaman yang baru dirender
-  const selAll = document.getElementById('select-all-checkbox');
-  if (selAll) selAll.checked = rows.length > 0 && rows.every(r => selectedRows.has(r.kode_produk));
-
-  const pg = document.getElementById('pagination');
-  const btns = [];
-  const range = 2;
-  for (let i=1; i<=pages; i++){
-    if (i===1 || i===pages || Math.abs(i-currentPage)<=range){
-      btns.push(`<button class="page-btn${i===currentPage?' active':''}" data-action="go-page" data-page="${i}">${i}</button>`);
-    } else if (btns[btns.length-1] !== '…'){
-      btns.push('…');
-    }
-  }
-  pg.innerHTML = btns.map(b => b==='…' ? `<span style="padding:0 4px;color:var(--text-muted);font-size:11.5px">…</span>` : b).join('');
-}
-
-function goPage(p){
-  currentPage = p;
-  loadTable().catch(handleLoadError);
-  window.scrollTo({ top: document.querySelector('.table-section').offsetTop - 80, behavior: 'smooth' });
-}
-
-function handleLoadError(err){
-  if (String(err && err.message).startsWith('unauthorized')) return;
-  showToast('Gagal memuat data: ' + (err && err.message), 'error');
-}
-
-async function loadEverything(opts){
-  const doRevalidate = !opts || opts.revalidate !== false;
-  staleServed = [];
-  bulkLoading = true;
-  clearError();
-  const lu = document.getElementById('last-update-text');
-  if (lu) lu.textContent = 'Memuat…';
-  // get_dashboard_trend_7hari dulu dipanggil 2x (bar chart + line chart) -- sekarang 1x, dipakai berdua.
-  const trendP = rpc('get_dashboard_trend_7hari', {});
-  trendP.catch(() => {}); // rejection ditangani per-panel di bawah
-  const jobs = [
-    ['stats-grid-konversi', loadKonversiToday()],
-    ['worklist', loadStats()],
-    ['trend-chart-box', trendP.then(renderTrend)],
-    ['linechart-box', trendP.then(renderValueLineChart)],
-    ['leaderboard-box', loadLeaderboard()],
-    ['donut-chart-box', loadKategoriDonut()],
-    ['populasi-box', loadPopulasi()],
-    ['(word tree)', loadWordtree()],
-    ['(forecast)', loadForecastStok()],
-  ];
-  // allSettled: dulu Promise.all -- satu RPC gagal = satu toast, sisanya skeleton selamanya.
-  let results;
-  try { results = await Promise.allSettled(jobs.map(j => j[1])); }
-  finally { bulkLoading = false; }
-  const served = staleServed;
-  staleServed = [];
-  let failed = 0;
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled') return;
-    const msg = String((r.reason && r.reason.message) || r.reason);
-    if (msg.startsWith('unauthorized')) return;
-    failed++;
-    const id = jobs[i][0];
-    const html = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat: ${esc(msg)}</div>`;
-        if (id.startsWith('(')) {
-      console.error('bagian dashboard gagal:', id, msg);
-    } else {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = html;
-    }
-  });
-  if (failed) showError(`${failed} bagian dashboard gagal dimuat. Klik "Muat ulang" untuk mencoba lagi.`);
-  if (lu) lu.textContent = (failed ? 'Sebagian gagal — ' : 'Diperbarui ') + new Date().toLocaleTimeString('id-ID');
-  if (doRevalidate && served.length && myMount === dashMountSeq) revalidateStale(served, myMount);
-}
-// SPA migration: di-nama-in + ditangkep ke var module-scope biar unmount()
-// bisa removeEventListener -- listener document-level ini gak otomatis
-// ke-GC pas container.innerHTML dikosongin (beda dari listener yang nempel
-// ke elemen DALAM container).
-dashKeydownHandler = (e) => {
-  const isTyping = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
-
-  // Esc: tutup modal detail
-  if (e.key === 'Escape' && detailOverlay.classList.contains('show')) {
-    closeDetailModal();
-    return;
-  }
-
-  // Panah kiri/kanan: ganti halaman pagination (kalau modal tidak terbuka & tidak sedang mengetik)
-  if (!isTyping && !detailOverlay.classList.contains('show')) {
-    if (e.key === 'ArrowRight') {
-      const nextBtn = document.querySelector('.page-btn.active')?.nextElementSibling;
-      if (nextBtn && nextBtn.classList.contains('page-btn')) nextBtn.click();
-    } else if (e.key === 'ArrowLeft') {
-      const activeBtn = document.querySelector('.page-btn.active');
-      const prevBtn = activeBtn?.previousElementSibling;
-      if (prevBtn && prevBtn.classList.contains('page-btn')) prevBtn.click();
-    }
-  }
-};
-document.addEventListener('keydown', dashKeydownHandler);
-// ══════════════════════════════════════════
-// RIWAYAT PENCARIAN
-// ══════════════════════════════════════════
-const SEARCH_HISTORY_KEY = 'pnm_dashboard_search_history';
-function getSearchHistory(){
-  try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]'); } catch { return []; }
-}
-function addSearchHistory(term){
-  if (!term || term.length < 2) return;
-  let hist = getSearchHistory().filter(t => t.toLowerCase() !== term.toLowerCase());
-  hist.unshift(term);
-  hist = hist.slice(0, 5);
-  try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(hist)); } catch { /* private mode/quota -- gak fatal */ }
-}
-function clearSearchHistory(){
-  localStorage.removeItem(SEARCH_HISTORY_KEY);
-  document.getElementById('search-history').classList.remove('show');
-}
-function showSearchHistory(){
-  const hist = getSearchHistory();
-  const box = document.getElementById('search-history');
-  if (!hist.length) { box.classList.remove('show'); return; }
-  box.innerHTML = hist.map(t => `<div class="search-history-item" data-term="${esc(t)}" data-action="apply-history"><i class="ti ti-history"></i> ${esc(t)}</div>`).join('')
-    + `<div class="search-history-clear" data-action="clear-history">Hapus riwayat</div>`;
-  box.classList.add('show');
-}
-function applySearchHistory(term){
-  document.getElementById('tbl-search').value = term;
-  document.getElementById('search-history').classList.remove('show');
-  currentSearch = term;
-  currentPage = 1;
-  clearPageCache();
-  loadTable().catch(handleLoadError);
-}
-dashClickHandler = (e) => {
-  const box = document.getElementById('search-history');
-  if (box && !e.target.closest('.search-wrap-mini')) box.classList.remove('show');
-};
-document.addEventListener('click', dashClickHandler);
-
-// ══════════════════════════════════════════
-// PRESET FILTER TERSIMPAN
-// ══════════════════════════════════════════
-const PRESET_KEY = 'pnm_dashboard_presets';
-function getPresets(){
-  try { return JSON.parse(localStorage.getItem(PRESET_KEY) || '[]'); } catch { return []; }
-}
-// Modal nama preset -- pengganti prompt() bawaan browser, pola sama kayak
-// showSectionNameModal-nya konversian (Escape=batal, Enter=submit, validasi
-// inline "gak boleh kosong" sebelum resolve, listener dilepas tiap panggilan).
-function promptPresetName() {
-  return new Promise((resolve) => {
-    const overlay = document.getElementById('presetNameOverlay');
-    const input = document.getElementById('presetNameInput');
-    const errorEl = document.getElementById('presetNameError');
-    const okBtn = document.getElementById('presetNameOkBtn');
-    const cancelBtn = document.getElementById('presetNameCancelBtn');
-
-    input.value = '';
-    errorEl.style.display = 'none';
-    errorEl.textContent = '';
-
-    function cleanup(result) {
-      overlay.classList.remove('open');
-      okBtn.removeEventListener('click', onOk);
-      cancelBtn.removeEventListener('click', onCancel);
-      overlay.removeEventListener('click', onOverlay);
-      input.removeEventListener('keydown', onKey);
-      resolve(result);
-    }
-    function onOk() {
-      const label = input.value.trim();
-      if (!label) { errorEl.textContent = 'Nama preset gak boleh kosong.'; errorEl.style.display = 'block'; input.focus(); return; }
-      cleanup(label);
-    }
-    function onCancel() { cleanup(null); }
-    function onOverlay(e) { if (e.target === overlay) cleanup(null); }
-    function onKey(e) {
-      if (e.key === 'Escape') { cleanup(null); return; }
-      if (e.key === 'Enter') { e.preventDefault(); onOk(); }
-    }
-
-    okBtn.addEventListener('click', onOk);
-    cancelBtn.addEventListener('click', onCancel);
-    overlay.addEventListener('click', onOverlay);
-    input.addEventListener('keydown', onKey);
-    overlay.classList.add('open');
-    setTimeout(() => input.focus(), 30); // biar transisi .open kelar dulu sebelum fokus
-  });
-}
-async function savePreset(){
-  const label = await promptPresetName();
-  if (!label) return;
-  const presets = getPresets();
-  presets.push({
-    label: label.trim(),
-    filters: Array.from(activeFilters),
-    tipe: currentTipe,
-    search: currentSearch
-  });
-  localStorage.setItem(PRESET_KEY, JSON.stringify(presets));
-  renderPresets();
-  showToast(`Preset "${label.trim()}" tersimpan`);
-}
-function applyPreset(idx){
-  const presets = getPresets();
-  const p = presets[idx];
-  if (!p) return;
-  // FIX: dulu preset nyimpen `currentFilter` (variabel yang gak pernah diubah -> selalu 'all') sementara
-  // filter yang beneran dipakai tabel itu `activeFilters` -- jadi "Simpan Filter Ini" gak pernah nyimpen filternya.
-  // Preset lama (format `filter` tunggal) tetap kebaca.
-  const f = Array.isArray(p.filters) ? p.filters : (p.filter ? [p.filter] : ['all']);
-  activeFilters = new Set(f.length ? f : ['all']);
-  currentTipe = p.tipe || '';
-  currentSearch = p.search || '';
-  currentPage = 1;
-  clearPageCache();
-
-  syncFilterButtons();
-  document.getElementById('tipe-filter').value = p.tipe || '';
-  document.getElementById('tbl-search').value = p.search || '';
-
-  loadTable().catch(handleLoadError);
-}
-function deletePreset(e, idx){
-  e.stopPropagation();
-  const presets = getPresets();
-  presets.splice(idx, 1);
-  localStorage.setItem(PRESET_KEY, JSON.stringify(presets));
-  renderPresets();
-}
-function renderPresets(){
-  const presets = getPresets();
-  const bar = document.getElementById('preset-bar');
-  if (!presets.length) { bar.innerHTML = `<span style="font-size:11px;color:var(--text-muted)">Belum ada preset tersimpan</span>`; return; }
-  bar.innerHTML = presets.map((p, i) => `
-    <button type="button" class="preset-chip" data-action="apply-preset" data-idx="${i}">
-      <i class="ti ti-bookmark"></i> ${esc(p.label)}
-      <span class="preset-x" data-action="delete-preset" data-idx="${i}" role="button" aria-label="Hapus preset ${esc(p.label)}"><i class="ti ti-x"></i></span>
-    </button>
-  `).join('');
-}
-// ══════════════════════════════════════════
-// BULK SELECTION & EXPORT CSV
-// ══════════════════════════════════════════
-let selectedRows = new Map(); // kode_produk -> row data
-
-function toggleRowSelect(cb, kode, rowData){
-  if (cb.checked) selectedRows.set(kode, rowData);
-  else selectedRows.delete(kode);
-  updateBulkBar();
-  document.getElementById('select-all-checkbox').checked =
-    document.querySelectorAll('.row-checkbox:not(#select-all-checkbox)').length > 0 &&
-    document.querySelectorAll('.row-checkbox:not(#select-all-checkbox):checked').length === document.querySelectorAll('.row-checkbox:not(#select-all-checkbox)').length;
-}
-function toggleSelectAll(masterCb){
-  document.querySelectorAll('#tbl-body .row-checkbox').forEach(cb => {
-    cb.checked = masterCb.checked;
-    const rowData = currentRows[+cb.dataset.idx];
-    if (!rowData) return;
-    if (masterCb.checked) selectedRows.set(rowData.kode_produk, rowData);
-    else selectedRows.delete(rowData.kode_produk);
-  });
-  updateBulkBar();
-}
-function updateBulkBar(){
-  const bar = document.getElementById('bulk-bar');
-  const count = selectedRows.size;
-  document.getElementById('bulk-count').textContent = count;
-  bar.classList.toggle('show', count > 0);
-}
-function clearSelection(){
-  selectedRows.clear();
-  document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
-  updateBulkBar();
-}
-function exportSelected(){
-  if (!selectedRows.size) return;
-  const rows = Array.from(selectedRows.values());
-  const headers = ['Kode Produk','Nama Produk','Tipe','Harga e-Kat','Link v6','No. AKD'];
-  const csvRows = [headers.join(',')];
-  rows.forEach(r => {
-    csvRows.push([r.kode_produk, r.nama_produk, r.tipe, r.harga, r.link_v6, r.no_akd].map(csvCell).join(','));
-  });
-  const csvContent = '\uFEFF' + csvRows.join('\n'); // BOM biar Excel baca UTF-8 dengan benar
-  const blob = new Blob([csvContent], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `produk-export-${localISODate()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast(`${rows.length} produk berhasil di-export`);
-}
-// ══════════════════════════════════════════
-// TREND 7 HARI + LEADERBOARD SALES
-// ══════════════════════════════════════════
-function renderTrend(data){
-  const box = document.getElementById('trend-chart-box');
-  if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data konversi.</div>`; return; }
-
-  const maxVal = Math.max(...data.map(d=>d.jumlah), 1);
-  const todayStr = localISODate();
-  const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
-
-  box.innerHTML = `<div class="trend-chart" role="img" aria-label="Jumlah konversi per hari, 7 hari terakhir: ${esc(data.map(d => (dayNames[new Date(d.tanggal + 'T00:00:00').getDay()]) + ' ' + d.jumlah).join(', '))}">
-    ${data.map(d => {
-      const h = Math.round((d.jumlah / maxVal) * 100);
-      const isToday = d.tanggal === todayStr;
-      const dt = new Date(d.tanggal + 'T00:00:00');
-      const label = dayNames[dt.getDay()];
-      return `<div class="trend-bar-wrap" data-nav="/konversian/riwayat" title="Buka riwayat konversi">
-        <div class="trend-bar" style="height:${Math.max(h,3)}%">
-          <div class="trend-bar-tooltip">${fmt(d.jumlah)} order<br>${rupiah(d.total_value)}</div>
-        </div>
-        <div class="trend-bar-label${isToday?' today':''}">${label}</div>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
-
-// Sesi Claude (2026-09-23): filter periode leaderboard + drill-down "apa
-// aja yang dikonversi sales ini". leaderboardDays disimpan di module scope
-// (bukan cuma di select-nya) karena dipakai juga pas klik lb-item, buat
-// nentuin periode apa yang dibawa ke tab Riwayat (lihat RIWAYAT_PENDING_FILTER_KEY
-// & daysToRiwayatPeriodKey di bawah — sengaja gak nambah RPC baru, cuma
-// numpang p_days yang sudah ada di get_dashboard_leaderboard_sales).
-let leaderboardDays = 30;
-function setLeaderboardPeriod(days) {
-  leaderboardDays = +days || 30;
-  loadLeaderboard();
-}
-
-// Key sessionStorage buat "titip" filter sales+periode dari sini ke tab
-// Riwayat konversian (dibaca oleh applyPendingRiwayatFilter() di
-// app/pages/konversian/index.js — string key ini sengaja disamain persis
-// di kedua file, pola yang sama kayak ?edit=/?return_to= antara konversian
-// <-> crud-produk, cuma medianya sessionStorage bukan query param karena
-// nav antar-module di sini SPA push-state, bukan full reload).
-const RIWAYAT_PENDING_FILTER_KEY = 'pnm_riwayat_pending_filter';
-function daysToRiwayatPeriodKey(days) {
-  if (days === 7) return '7hari';
-  if (days === 30) return '30hari';
-  if (days === 90) return '90hari';
-  return 'semua';
-}
-
-async function loadLeaderboard(){
-  const data = await rpc('get_dashboard_leaderboard_sales', {p_days: leaderboardDays});
-  const box = document.getElementById('leaderboard-box');
-  if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data sales.</div>`; return; }
-
-  const rankClass = (i) => i===0?'r1':i===1?'r2':i===2?'r3':'rn';
-  box.innerHTML = `<div class="leaderboard-list">
-    ${data.map((r,i) => `
-      <div class="lb-item" data-action="goto-riwayat-sales" data-sales="${esc(r.nama)}" role="button" tabindex="0" title="Lihat apa aja yang dikonversi ${esc(r.nama)}">
-        <div class="lb-rank ${rankClass(i)}">${i+1}</div>
-        <div class="lb-info">
-          <div class="lb-name">${esc(r.nama)}</div>
-          <div class="lb-sub">${fmt(r.jumlah_order)} order</div>
-        </div>
-        <div class="lb-value">${rupiah(r.total_value)}</div>
-      </div>
-    `).join('')}
-  </div>`;
-}
-// ══════════════════════════════════════════
-// WORD TREE: KEBUTUHAN CUSTOMER -> SKU
-// Sumbernya permintaan_item_produk (junction table dari fitur multi-SKU
-// di Kebutuhan RS) — otomatis nambah sendiri tiap staff nyentang "Bisa
-// Dipenuhi", gak ada langkah manual terpisah. Normalisasi istilahnya
-// dibikin niru pola yang dipakai tab Dictionary (lihat catatan di
-// wordtree_rpc.sql kalau ternyata beda).
-// ══════════════════════════════════════════
-const WORDTREE_COLORS = ['#2563eb','#16a34a','#7c3aed','#d97706','#dc2626','#0d9488','#be185d','#4338ca'];
-const WORDTREE_LAST_KEY = 'pnm_wordtree_last_istilah';
-let wordtreeRoots = [];
-
-async function loadWordtree(){
-  const select = document.getElementById('wordtree-root-select');
-  const box = document.getElementById('wordtree-box');
-  try {
-    wordtreeRoots = await rpc('get_wordtree_roots', { p_limit: 40 }) || [];
-  } catch {
-    wordtreeRoots = [];
-  }
-  if (!wordtreeRoots.length){
-    select.innerHTML = '<option value="">Belum ada data</option>';
-    box.innerHTML = `<div class="insight-empty">Belum ada kebutuhan yang tersambung ke SKU. Peta ini kepakai otomatis begitu Kebutuhan RS mulai ditandai "Bisa Dipenuhi".</div>`;
-    return;
-  }
-  const saved = localStorage.getItem(WORDTREE_LAST_KEY);
-  const initial = wordtreeRoots.some(r => r.istilah_customer === saved) ? saved : wordtreeRoots[0].istilah_customer;
-  select.innerHTML = wordtreeRoots.map(r => {
-    const val = escapeHtmlAttr(r.istilah_customer);
-    const sel = r.istilah_customer === initial ? ' selected' : '';
-    return `<option value="${val}"${sel}>${escapeHtmlAttr(r.istilah_customer)} (${fmt(r.frekuensi)}×, ${fmt(r.jumlah_sku_unik)} SKU)</option>`;
-  }).join('');
-  await loadWordtreeBranches(initial);
-}
-
-async function onWordtreeRootChange(istilah){
-  localStorage.setItem(WORDTREE_LAST_KEY, istilah);
-  await loadWordtreeBranches(istilah);
-}
-
-async function loadWordtreeBranches(istilah){
-  const box = document.getElementById('wordtree-box');
-  if (!istilah) { box.innerHTML = `<div class="insight-empty">Pilih istilah dulu.</div>`; return; }
-  box.innerHTML = `<div class="skeleton" style="height:260px"></div>`;
-  let branches;
-  try {
-    branches = await rpc('get_wordtree_branches', { p_istilah: istilah }) || [];
-  } catch {
-    box.innerHTML = `<div class="insight-empty">Gagal memuat word tree.</div>`;
-    return;
-  }
-  if (!branches.length){ box.innerHTML = `<div class="insight-empty">Belum ada SKU tersambung buat istilah ini.</div>`; return; }
-  box.innerHTML = renderWordtreeSvg(istilah, branches);
-}
-
-// Node kiri (root) = istilah customer, cabang di kanan = tiap SKU yang
-// pernah dipakai buat penuhi istilah itu. Ketebalan & warna kabel ngikutin
-// frekuensi, jadi kombinasi SKU paling sering kepakai langsung menonjol —
-// bundle (mis. "Set Pacho" + "Cataract Minor Set" buat "All Set Mata")
-// kelihatan sebagai beberapa cabang tebal dari satu root yang sama.
-function renderWordtreeSvg(istilah, branches){
-  const W = 720, rowH = 34, PAD_TOP = 20;
-  const H = PAD_TOP * 2 + branches.length * rowH;
-  const rootX = 170, rootY = H / 2;
-  const branchX = W - 210;
-  const maxFrek = Math.max(...branches.map(b => b.frekuensi), 1);
-
-  const wires = branches.map((b, i) => {
-    const by = PAD_TOP + i * rowH + rowH / 2;
-    const strokeW = (1.5 + (b.frekuensi / maxFrek) * 5).toFixed(1);
-    const color = WORDTREE_COLORS[i % WORDTREE_COLORS.length];
-    const dx = (branchX - rootX) * 0.5;
-    return `<path d="M ${rootX} ${rootY} C ${rootX + dx} ${rootY}, ${branchX - dx} ${by}, ${branchX} ${by}"
-      stroke="${color}" stroke-width="${strokeW}" fill="none" opacity="0.55"/>`;
-  }).join('');
-
-  const branchNodes = branches.map((b, i) => {
-    const by = PAD_TOP + i * rowH + rowH / 2;
-    const color = WORDTREE_COLORS[i % WORDTREE_COLORS.length];
-    return `
-      <g class="wt-node" data-open-kode="${escapeXml(b.kode_produk)}" role="button" tabindex="0" aria-label="Buka detail ${escapeXml(b.kode_produk)}">
-        <rect x="${branchX - 10}" y="${by - rowH / 2 + 2}" width="${W - branchX + 10}" height="${rowH - 4}" fill="transparent"/>
-        <circle cx="${branchX}" cy="${by}" r="5" fill="${color}"/>
-        <text x="${branchX + 12}" y="${by + 4}" font-size="12" fill="var(--text)">${escapeXml(b.kode_produk)}${b.nama_produk ? ' — ' + escapeXml(b.nama_produk) : ''}</text>
-        <text x="${W - 6}" y="${by + 4}" font-size="11" text-anchor="end" fill="var(--text-muted)">${escapeXml(b.frekuensi)}×${b.persentase != null ? ' · ' + escapeXml(b.persentase) + '%' : ''}</text>
-      </g>
-    `;
-  }).join('');
-
-  return `<div class="wordtree-wrap">
-    <svg width="100%" viewBox="0 0 ${W} ${H}">
-      ${wires}
-      <circle cx="${rootX}" cy="${rootY}" r="7" fill="var(--accent)"/>
-      <text x="${rootX - 14}" y="${rootY + 4}" font-size="13" font-weight="700" text-anchor="end" fill="var(--text)">${escapeXml(istilah)}</text>
-      ${branchNodes}
-    </svg>
-  </div>`;
-}
 
 function escapeXml(s){
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1243,235 +813,47 @@ function isSafeHttpUrl(u){
   return /^https?:\/\//i.test(String(u == null ? '' : u).trim());
 }
 
-// ══════════════════════════════════════════
-// DONUT CHART KATEGORI + LINE CHART VALUE
-// ══════════════════════════════════════════
-const DONUT_COLORS = ['#2563eb','#16a34a','#7c3aed','#d97706','#dc2626','#0d9488'];
 
-async function loadKategoriDonut(){
-  const data = await rpc('get_dashboard_kategori_distribusi', {p_days: 30});
-  const box = document.getElementById('donut-chart-box');
-  if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data kategori.</div>`; return; }
-
-  const total = data.reduce((s,d)=>s+d.jumlah,0);
-  const R = 45, CX = 55, CY = 55, STROKE = 18;
-  const circumference = 2 * Math.PI * R;
-  let offset = 0;
-
-  const segments = data.map((d, i) => {
-    const pct = d.jumlah / total;
-    const dash = pct * circumference;
-    const seg = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${DONUT_COLORS[i % DONUT_COLORS.length]}" stroke-width="${STROKE}"
-      stroke-dasharray="${dash} ${circumference-dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${CX} ${CY})"
-      style="transition:stroke-dasharray .6s ease"><title>${esc(d.kategori)}: ${fmt(d.jumlah)} (${Math.round(pct*100)}%)</title></circle>`;
-    offset += dash;
-    return seg;
-  }).join('');
-
-  const legend = data.map((d,i) => `
-    <div class="donut-legend-item" data-nav="/konversian/riwayat" title="Buka riwayat konversi">
-      <span class="donut-legend-dot" style="background:${DONUT_COLORS[i % DONUT_COLORS.length]}"></span>
-      <span class="donut-legend-label">${esc(d.kategori)}</span>
-      <span class="donut-legend-val">${fmt(d.jumlah)}</span>
-      <span class="donut-legend-pct">${Math.round(d.jumlah/total*100)}%</span>
-    </div>
-  `).join('');
-
-  box.innerHTML = `<div class="donut-wrap-flex">
-    <svg class="donut-svg" role="img" aria-label="Distribusi kategori konversi 30 hari" width="110" height="110" viewBox="0 0 110 110">${segments}</svg>
-    <div class="donut-legend-list">${legend}</div>
-  </div>`;
-}
-
-function renderValueLineChart(data){
-  const box = document.getElementById('linechart-box');
-  if (!data || !data.length){ box.innerHTML = `<div class="insight-empty">Belum ada data konversi.</div>`; return; }
-
-  const W = 600, H = 140, PAD = 24;
-  const maxVal = Math.max(...data.map(d=>d.total_value), 1);
-  const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
-  const n = data.length;
-  const stepX = (W - PAD*2) / (n - 1 || 1);
-
-  const points = data.map((d,i) => {
-    const x = PAD + i * stepX;
-    const y = H - PAD - ((d.total_value / maxVal) * (H - PAD*2));
-    return {x, y, ...d};
-  });
-
-  const pathD = points.map((p,i) => `${i===0?'M':'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-  const areaD = pathD + ` L ${points[points.length-1].x.toFixed(1)} ${H-PAD} L ${points[0].x.toFixed(1)} ${H-PAD} Z`;
-
-  const dots = points.map(p => {
-    const dt = new Date(p.tanggal + 'T00:00:00');
-    const label = dayNames[dt.getDay()];
-    return `<g>
-      <circle class="linechart-tooltip-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="var(--success)">
-        <title>${esc(label)}, ${esc(p.tanggal)}: ${rupiah(p.total_value)}</title>
-      </circle>
-      <text x="${p.x.toFixed(1)}" y="${H-4}" font-size="9.5" fill="var(--text-muted)" text-anchor="middle">${label}</text>
-    </g>`;
-  }).join('');
-
-  box.innerHTML = `<svg class="linechart-svg" role="img" aria-label="Tren nilai konversi harian, 7 hari terakhir" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
-    <defs>
-      <linearGradient id="lineFade" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="var(--success)" stop-opacity="0.25"/>
-        <stop offset="100%" stop-color="var(--success)" stop-opacity="0"/>
-      </linearGradient>
-    </defs>
-    <path d="${areaD}" fill="url(#lineFade)"/>
-    <path d="${pathD}" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-    ${dots}
-  </svg>`;
-}
-// ══════════════════════════════════════════
-// FORECASTING STOK
-// ══════════════════════════════════════════
-let forecastDays = 30;
-
-function setForecastPeriod(days, el){
-  forecastDays = days;
-  document.querySelectorAll('.forecast-period-btn').forEach(b => b.classList.toggle('active', +b.dataset.days === days));
-  loadForecastStok();
-}
-
-let forecastReqId = 0;
-async function loadForecastStok(){
-  const myReq = ++forecastReqId;
-  const box = document.getElementById('forecast-box');
-  box.innerHTML = '<div class="skeleton" style="height:200px"></div>';
-  try {
-    const data = await rpc('get_dashboard_forecast_stok', {p_days: forecastDays, p_limit: 15});
-    if (myReq !== forecastReqId) return;
-    if (!data || !data.length){
-      box.innerHTML = `<div class="insight-empty"><i class="ti ti-circle-check" style="font-size:28px;display:block;margin-bottom:6px;color:var(--success)"></i>Tidak ada produk berisiko habis berdasarkan data ${forecastDays} hari terakhir.</div>`;
-      return;
-    }
-
-    const maxDays = Math.max(...data.map(d => d.perkiraan_habis_hari || 0), 1);
-
-    function daysPill(d){
-      d = (d === null || d === undefined || !Number.isFinite(Number(d))) ? null : Number(d); // nilai non-numerik jangan pernah sampai ke innerHTML
-      if (d === null) return '<span class="days-pill days-aman">—</span>';
-      if (d <= 7)  return `<span class="days-pill days-kritis">⚠ ${d} hari</span>`;
-      if (d <= 30) return `<span class="days-pill days-warn">${d} hari</span>`;
-      return `<span class="days-pill days-aman">${d} hari</span>`;
-    }
-
-    function barColor(d){
-      if (!d) return 'var(--border)';
-      if (d <= 7)  return 'var(--danger)';
-      if (d <= 30) return 'var(--warning)';
-      return 'var(--success)';
-    }
-
-    box.innerHTML = `
-      <div style="overflow-x:auto">
-      <table class="forecast-table">
-        <thead>
-          <tr>
-            <th>Kode Produk</th>
-            <th>Nama Produk</th>
-            <th style="text-align:right">Stok</th>
-            <th style="text-align:right">Pakai/${forecastDays}hr</th>
-            <th style="text-align:right">Rata/Hari</th>
-            <th>Perkiraan Habis</th>
-            <th style="min-width:100px">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${data.map(d => `
-            <tr data-open-kode="${esc(d.kode_produk)}" tabindex="0" style="cursor:pointer" title="Klik untuk lihat detail produk">
-              <td><span class="kode-text">${esc(d.kode_produk)}</span></td>
-              <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtmlAttr(d.nama_produk)}</td>
-              <td style="text-align:right;font-family:var(--mono);font-weight:600">${fmt(d.stok_sekarang)}</td>
-              <td style="text-align:right;font-family:var(--mono)">${fmt(d.terpakai_periode)}</td>
-              <td style="text-align:right;font-family:var(--mono)">${fmt1(d.rata_harian)}</td>
-              <td>${daysPill(d.perkiraan_habis_hari)}</td>
-              <td>
-                <div class="forecast-bar-wrap">
-                  <div class="forecast-bar-track">
-                    <div class="forecast-bar-fill" style="width:${Math.min(100, Math.round((d.perkiraan_habis_hari||0)/maxDays*100))}%;background:${barColor(d.perkiraan_habis_hari)}"></div>
-                  </div>
-                  <span style="font-size:10px;color:var(--text-muted);white-space:nowrap">${esc(d.perkiraan_habis_hari||'—')}h</span>
-                </div>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      </div>
-      <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
-  <i class="ti ti-info-circle"></i> Berdasarkan laju pemakaian ${forecastDays} hari terakhir dari data konversi. Dihitung saat halaman dimuat: <b>${new Date().toLocaleString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</b> (RPC belum mengirim tanggal sinkron data stok)
-        <span style="margin-left:12px"><span class="days-pill days-kritis" style="font-size:10px">≤7 hari</span> kritis &nbsp;
-        <span class="days-pill days-warn" style="font-size:10px">≤30 hari</span> waspada &nbsp;
-        <span class="days-pill days-aman" style="font-size:10px">&gt;30 hari</span> aman</span>
-      </div>
-    `;
-  } catch(e) {
-    box.innerHTML = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat: ${esc(e.message)}</div>`;
-  }
-}
-
-  // (Fix sesi lanjutan: stray `initAuth();` call di sini DIHAPUS -- gak ada
-  // fungsi bernama itu di file ini sama sekali, cuma leftover dari refactor
-  // auth sebelum sesi ini [dashboard sekarang pakai window.PNMAuth langsung
-  // di mana-mana, lihat komentar atas file]. Setiap panggilan ke fungsi yang
-  // gak pernah didefinisikan langsung throw ReferenceError SEBELUM baris
-  // apa pun sesudahnya sempet jalan -- jadi mount() dashboard selalu gagal
-  // total dari titik ini, user baru laporan lewat console error beneran.)
-  // ── DELEGASI EVENT (pengganti inline onclick/onchange + Object.assign(window, ...)) ──
-  // Tidak ada lagi handler inline di markup maupun template, dan tidak ada lagi 26 fungsi
-  // yang nongol di window.*. Konsekuensinya: dashboard ini tidak butuh CSP 'unsafe-inline'
-  // untuk script, dan XSS tidak bisa lagi "memanggil" fungsi dashboard lewat window.
+  // ══════════════════════════════════════════
+  // NAVIGASI + EVENT DELEGASI
+  // ══════════════════════════════════════════
+  // Tujuan yang tidak dikenal router = 404 + auto-logout (lihat router.js), jadi divalidasi dulu
+  // terhadap registry sub-route yang sama dengan yang dipakai nav/router.
   const NAV_SUBS = {
     'stok': [],
-    'crud-produk': CRUD_PRODUK_SUBNAV.map(s => s.id),
-    'konversian': KONVERSIAN_SUBNAV.map(s => s.id),
+    'populasi': [],
+    'crud-produk': CRUD_PRODUK_SUBNAV.map((s) => s.id),
+    'konversian': KONVERSIAN_SUBNAV.map((s) => s.id),
   };
-  const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-  // Tujuan yang tidak dikenal router = 404 + auto-logout (lihat router.js), jadi divalidasi
-  // dulu terhadap registry sub-route yang sama dengan yang dipakai nav/router.
-  function isValidNavPath(p){
+  function isValidNavPath(p) {
     const m = /^\/([a-z-]+)(?:\/([a-z-]+))?$/.exec(String(p || ''));
     if (!m || !hasOwn(NAV_SUBS, m[1])) return false;
     return !m[2] || NAV_SUBS[m[1]].includes(m[2]);
   }
-  function goTo(path){
+  function goTo(path) {
     if (!isValidNavPath(path)) { console.warn('Tujuan navigasi tidak valid:', path); showToast('Tujuan navigasi tidak valid', 'error'); return; }
     window.dispatchEvent(new CustomEvent('pnm:navigate', { detail: { path } }));
   }
+
   const ACTIONS = {
     'goto-riwayat-sales': (el) => {
-      sessionStorage.setItem(RIWAYAT_PENDING_FILTER_KEY, JSON.stringify({
-        sales: el.dataset.sales || '',
-        period: daysToRiwayatPeriodKey(leaderboardDays),
-      }));
+      try {
+        sessionStorage.setItem(RIWAYAT_PENDING_FILTER_KEY, JSON.stringify({ sales: el.dataset.sales || '', period: daysToRiwayatPeriodKey(lbDays) }));
+      } catch (e) { /* abaikan: tab Riwayat dibuka tanpa filter */ }
       goTo('/konversian/riwayat');
     },
-    'set-filter':      (el) => setFilter(el.dataset.f, el),
-    'filter-goto':     (el) => applyFilterGoto(el.dataset.f, el.dataset.tipe),
-    'go-page':         (el) => goPage(+el.dataset.page),
-    'apply-history':   (el) => applySearchHistory(el.dataset.term),
-    'clear-history':   () => clearSearchHistory(),
-    'save-preset':     () => savePreset(),
-    'apply-preset':    (el) => applyPreset(+el.dataset.idx),
-    'delete-preset':   (el, e) => deletePreset(e, +el.dataset.idx),
-    'export-selected': () => exportSelected(),
-    'clear-selection': () => clearSelection(),
+    'trend-metric':    (el) => { trendMetric = el.dataset.m === 'nilai' ? 'nilai' : 'jumlah'; setPressed(el); renderTrend($('db-trend')); },
+    'lb-period':       (el) => { lbDays = +el.dataset.days || 30; setPressed(el); runPanel('leaderboard', false); },
+    'forecast-period': (el) => { fcDays = +el.dataset.days || 30; fcAll = false; setPressed(el); runPanel('stok', false); },
+    'forecast-more':   () => { fcAll = !fcAll; renderStok($('db-stok')); },
+    'pop-prov':        (el) => { popSel = el.dataset.prov || popSel; renderPopulasi($('db-populasi')); },
+    'wt-pick':         (el) => pickIstilah(el.dataset.istilah),
+    'retry':           (el) => runPanel(el.dataset.panel, false).then(renderFresh),
+    'refresh':         () => loadAll({ ids: [...failed], revalidate: false }),
     'pricelist-unduh': (el) => unduhPricelist(el),
-    'forecast-period': (el) => setForecastPeriod(+el.dataset.days, el),
     'copy-kode':       (el, e) => copyKode(e, el.dataset.kode),
   };
-  const CHANGE_BY_ID = {
-    'tipe-filter':          (t) => setTipe(t.value),
-    'wordtree-root-select': (t) => onWordtreeRootChange(t.value),
-    'leaderboard-period-filter': (t) => setLeaderboardPeriod(t.value),
-    'select-all-checkbox':  (t) => toggleSelectAll(t),
-  };
-  function onContainerClick(e){
-    if (e.target.closest('.checkbox-col')) return; // checkbox ditangani event 'change'
+  function onContainerClick(e) {
     const el = e.target.closest('[data-action],[data-nav],[data-open-kode]');
     if (!el || !container.contains(el)) return;
     if (el.dataset.nav) {
@@ -1487,60 +869,53 @@ async function loadForecastStok(){
     }
     if (el.dataset.openKode) {
       const inner = e.target.closest('a,button');
-      if (inner && inner !== el && el.contains(inner)) return; // link/tombol di dalam baris punya aksinya sendiri
+      if (inner && inner !== el && el.contains(inner)) return;   // link/tombol di dalam baris punya aksinya sendiri
       openDetail(el.dataset.openKode);
     }
   }
-  function onContainerChange(e){
-    const t = e.target;
-    if (t.matches('#tbl-body .row-checkbox')) {
-      const r = currentRows[+t.dataset.idx];
-      if (r) toggleRowSelect(t, r.kode_produk, r);
-      return;
-    }
-    if (hasOwn(CHANGE_BY_ID, t.id)) CHANGE_BY_ID[t.id](t);
-  }
-  function onContainerInput(e){
-    if (e.target.id === 'tbl-search') onSearch();
-  }
-  function onContainerFocusIn(e){
-    if (e.target.id === 'tbl-search') showSearchHistory();
-  }
-  function onContainerKeydown(e){
+  function onContainerKeydown(e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const t = e.target;
-    if (t.matches('input, select, textarea, button, a')) return; // kontrol native menangani sendiri
-    if (t.matches('[role="button"], tr[data-idx], tr[data-open-kode], tr[data-action]')) {
+    if (t.matches('input, select, textarea, button, a')) return;   // kontrol native menangani sendiri
+    if (t.matches('tr[data-open-kode]')) {
       e.preventDefault();
-      // dispatchEvent, bukan t.click(): <g>/<svg> (node word tree) gak punya .click() di browser
       t.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     }
   }
-  dashContainerHandlers = { click: onContainerClick, change: onContainerChange, input: onContainerInput, focusin: onContainerFocusIn, keydown: onContainerKeydown };
+  dashContainerHandlers = { click: onContainerClick, keydown: onContainerKeydown };
   Object.entries(dashContainerHandlers).forEach(([type, fn]) => container.addEventListener(type, fn));
+  dashKeydownHandler = (e) => {
+    if (e.key === 'Escape' && detailOverlay && detailOverlay.classList.contains('show')) closeDetailModal();
+  };
+  document.addEventListener('keydown', dashKeydownHandler);
 
-  loadEverything();
+  // ── Mulai ──
+  const dateEl = $('db-date');
+  if (dateEl) dateEl.textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  renderFresh();
+  timers.fresh = setInterval(renderFresh, 30000);
+  timers.poll = setInterval(refreshQuietly, POLL_MS);
+  visibilityHandler = () => { if (!document.hidden && lastOkAt && Date.now() - lastOkAt > STALE_MS) refreshQuietly(); };
+  document.addEventListener('visibilitychange', visibilityHandler);
+  loadAll();
 }
 
 export function unmount() {
   dashMountSeq++;
   if (dashKeydownHandler) document.removeEventListener('keydown', dashKeydownHandler);
-  if (dashClickHandler) document.removeEventListener('click', dashClickHandler);
+  if (visibilityHandler) document.removeEventListener('visibilitychange', visibilityHandler);
+  clearInterval(timers.fresh);
+  clearInterval(timers.poll);
   dashKeydownHandler = null;
-  dashClickHandler = null;
+  visibilityHandler = null;
 
-  // shared-pnm-universal-css NO LONGER removed here (jank fix, see the
-  // shared-pnm-universal-css comment in index.html) -- it's now a
-  // permanent <link> loaded once by index.html, same treatment
-  // Google Fonts already got. Tearing it down on every unmount() was
-  // causing a brief unstyled flash on every module navigation (read as a
-  // slight "zoom" jump) while the next module's mount() reloaded it.
+  // shared-pnm-universal-css TIDAK dilepas di sini (link permanen; melepasnya tiap pindah modul
+  // menyebabkan kilatan tanpa-gaya).
   document.getElementById('page-dashboard-style')?.remove();
 
   if (dashContainerHandlers && mountedContainer) {
     Object.entries(dashContainerHandlers).forEach(([type, fn]) => mountedContainer.removeEventListener(type, fn));
   }
   dashContainerHandlers = null;
-
   mountedContainer = null;
 }

@@ -1,190 +1,215 @@
 /* app/pages/dashboard/style.css
-   Page-scoped OVERRIDE dari class dashboard-only di pnm-universal.css
-   (.stat-card.blue dst, .chip-yes/no, .badge-instrument/set/unit,
-   .days-kritis/warn/aman) -- bukan edit pnm-universal.css itu sendiri.
-   Semua selector diawali #app-root (mount root halaman ini), sehingga:
-     (a) specificity (1 id + 1 class) menang lawan rule 2-class un-prefixed di
-         pnm-universal.css (mis. `.stat-card.blue::before`) tanpa !important;
-     (b) nol selector bare/unscoped (disiplin yang sama dengan konversian/style.css);
-     (c) tidak ada yang di luar halaman ini terpengaruh.
-   Di-load di mount() / dilepas di unmount() lewat ensureStyle(), pola sama seperti
-   style.css halaman lain -- lihat index.js.
+   Desain ulang dashboard. Prinsipnya:
+   - Satu-satunya elemen berbingkai adalah daftar "Perlu dikerjakan" (pekerjaan utama halaman ini).
+     Bagian lain berupa teks dan tabel di atas permukaan polos, dipisah garis tipis antar baris.
+   - Status dibedakan lewat kata, bobot huruf, dan warna teks. Tanpa titik status, tanpa loading
+     bar, tanpa skeleton berkilau, tanpa gradasi, tanpa efek angkat saat hover.
+   - Angka memakai tabular-nums supaya kolom rapi. Warna hanya dari token tema (mode gelap ikut).
+   - Class memakai prefix sendiri, jadi tidak menimpa class universal (.btn, .chip, .badge, dst).
+     Yang dipasang ke elemen shell (main) di-scope ke #app-root. Toast dan modal detail tetap
+     memakai gaya universal. */
 
-   BELUM diretrofit: chart (trend bar / line / donut / wordtree / forecast bars)
-   menggambar SVG mentah dengan fill var(--accent)/var(--success)/var(--warning)/
-   var(--purple) di index.js. Itu warna per-series/semantik, bukan pola "hex beda
-   tiap card", jadi dibiarkan.
-
-   TOKEN STATUS: --success-dot/--warning-dot/--danger-dot (nama/nilai berbeda dari
-   --success/--warning/--danger lama) didefinisikan lokal di bawah, ter-scope
-   #app-root, tanpa menyentuh :root pnm-universal.css, supaya blok ini mudah
-   dihapus kalau token kedua file itu disatukan. */
-
-#app-root{
-  --success-dot: #3BA55D;
-  --warning-dot: #C99A2C;
-  --danger-dot: #E5484D;
-}
-
-/* Same seam bug fixed on konversian/crud-produk (see those pages' style.css
-   files): .pw-topbar carries background:var(--surface) (white, nav.css),
-   but its sibling <main> (pnm-universal.css line ~326) has no background of
-   its own and falls through to body's var(--bg) (#f0f2f5 gray) -- so the
-   topbar reads as a white slab against a visibly greyer canvas right below
-   it. .stat-card/.prog-card/.insight-card already have their own white
-   bordered surface *inside* main, so this isn't about removing that
-   grouping -- it's about the topbar no longer looking like a floating card
-   against main itself.
-   FULLBLEED PASS: that same bare `main{}` rule also carries
-   max-width:1280px + margin:0 auto (pnm-universal.css line ~326) -- an
-   intentional centered-canvas contract for pages with a plain <main>, but
-   the user wants every module edge-to-edge like konversian/crud-produk now,
-   not just crud-produk's accidental case of it. Neutralizing max-width/
-   margin here (keeping the rule's own padding for breathing room -- this
-   page's direct children have no side padding of their own, unlike crud-
-   produk's, so padding:0 would run content into the viewport edge). */
 #app-root main{
-  max-width: none;
-  margin: 0;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 28px clamp(20px, 3vw, 40px) 72px;
   background: var(--surface);
 }
+#app-root :focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ---- Step 2/3: stat cards -- kill the per-item color stripe + icon tint,
-   replace with the neutral bordered-square icon treatment. ---- */
-#app-root .stat-card::before{
-  content: none; /* removes the .blue/.green/.purple/.warning/.danger top stripe entirely */
+/* ── Kepala halaman ── */
+.db-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:28px; }
+.db-title{ font-size:22px; font-weight:600; letter-spacing:-.02em; line-height:1.2; }
+.db-date{ font-size:13px; color:var(--text-muted); }
+.db-fresh{ font-size:12px; color:var(--text-muted); }
+
+/* ── Grid 12 kolom; tiap baris dipisah satu garis ── */
+.db-row{
+  display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr);
+  column-gap:56px; row-gap:40px;
+  padding:32px 0; border-top:1px solid var(--border);
 }
-#app-root .stat-icon{
-  background: transparent;
-  color: var(--text-secondary);
-  border: 0.5px solid var(--border);
-  border-radius: 7px;
-  margin-bottom: 8px; /* was 10px in pnm-universal.css -- not on the 8pt scale */
+.db-head + .db-row{ border-top:0; padding-top:0; }
+.db-c7,.db-c5{ min-width:0; }
+.db-c12{ grid-column:1 / -1; min-width:0; }
+@media (max-width:1100px){ .db-row{ grid-template-columns:minmax(0,1fr); } }
+
+.db-sec-head{ display:flex; align-items:baseline; gap:4px 12px; flex-wrap:wrap; margin-bottom:14px; min-height:32px; }
+.db-sec-title{ font-size:15px; font-weight:600; letter-spacing:-.01em; }
+.db-sec-sub{ font-size:12.5px; color:var(--text-muted); }
+.db-sec-tools{ margin-left:auto; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.db-sub{ font-size:12.5px; font-weight:600; color:var(--text-secondary); margin-bottom:8px; }
+
+/* ── Kontrol bersama ── */
+.db-link{ font-size:12.5px; color:var(--text-muted); text-decoration:none; border-bottom:1px solid transparent; }
+.db-link:hover{ color:var(--accent-text); border-bottom-color:currentColor; }
+.db-textbtn{ border:0; background:none; padding:0; font:inherit; font-size:12.5px; color:var(--accent-text); cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+.db-btn{
+  height:32px; padding:0 14px; display:inline-flex; align-items:center; gap:6px;
+  border:1px solid var(--border-strong); border-radius:7px; background:var(--surface); color:var(--text);
+  font:inherit; font-size:13px; font-weight:500; text-decoration:none; cursor:pointer; white-space:nowrap;
+  transition:var(--transition-state);
+}
+.db-btn:hover{ background:var(--surface-2); }
+.db-btn--primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
+.db-btn--primary:hover{ background:var(--accent-strong); border-color:var(--accent-strong); }
+.db-btn:disabled{ opacity:.6; cursor:default; }
+.db-select{
+  height:32px; padding:0 28px 0 10px; border:1px solid var(--border-strong); border-radius:7px;
+  background:var(--surface); color:var(--text); font:inherit; font-size:13px;
+}
+.seg{ display:inline-flex; gap:2px; padding:2px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); }
+.seg button{
+  border:0; background:transparent; color:var(--text-secondary); font:inherit; font-size:12px;
+  padding:4px 10px; border-radius:6px; cursor:pointer; transition:var(--transition-state);
+}
+.seg button:hover{ color:var(--text); }
+.seg button[aria-pressed="true"]{ background:var(--surface); color:var(--text); font-weight:600; box-shadow:0 0 0 1px var(--border-strong); }
+
+/* ── Status muat, kosong, gagal: teks biasa ── */
+.db-busy,.db-empty{ padding:18px 0; font-size:13px; color:var(--text-muted); line-height:1.5; }
+.db-error{ color:var(--danger); }
+[aria-busy="true"]{ opacity:.6; }
+
+/* ── Perlu dikerjakan ── */
+.wl{ border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface); }
+.wl-row{
+  display:grid; grid-template-columns:52px minmax(0,1fr) auto; gap:18px; align-items:center;
+  padding:14px 18px; color:inherit; text-decoration:none;
+}
+.wl-row + .wl-row{ border-top:1px solid var(--border); }
+a.wl-row:hover{ background:var(--surface-2); }
+a.wl-row:focus-visible{ outline-offset:-2px; }
+.wl-n{ font-size:26px; font-weight:600; letter-spacing:-.02em; line-height:1; text-align:right; font-variant-numeric:tabular-nums; }
+.wl-n.is-urgent{ color:var(--danger); }
+.wl-label{ font-size:14px; font-weight:600; }
+.wl-detail{ font-size:12.5px; color:var(--text-muted); margin-top:2px; }
+.wl-act{ font-size:12.5px; font-weight:500; color:var(--accent-text); white-space:nowrap; }
+.wl-foot{ padding:11px 18px; border-top:1px solid var(--border); background:var(--surface-2); font-size:12.5px; color:var(--text-muted); line-height:1.5; }
+.wl-allclear{ padding:22px 18px; font-size:14px; font-weight:600; }
+.wl-foot:first-child{ border-top:0; }
+@media (max-width:640px){
+  .wl-row{ grid-template-columns:40px minmax(0,1fr); gap:12px; padding:12px 14px; }
+  .wl-act{ display:none; }
+  .wl-n{ font-size:22px; }
 }
 
-/* prog-card-title / insight-card-title icons carry inline per-instance
-   color (style="color:var(--success)" / var(--accent) / var(--warning) /
-   var(--purple), set directly in markup.js) -- inline styles win over any
-   class-based override here, so those are neutralized in markup.js itself
-   (see that file's diff) rather than fought with CSS specificity tricks. */
+/* ── Konversi hari ini ── */
+.hi-figs{ display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+.hi-n{ font-size:32px; font-weight:600; letter-spacing:-.025em; line-height:1.1; font-variant-numeric:tabular-nums; }
+.hi-l{ font-size:12.5px; color:var(--text-muted); margin-top:4px; }
+.hi-list{ margin-top:22px; border-top:1px solid var(--border); }
+.hi-li{ display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.hi-li dt{ color:var(--text-secondary); }
+.hi-li dd{ font-variant-numeric:tabular-nums; text-align:right; }
+.hi-li dd small{ display:block; font-size:12px; color:var(--text-muted); }
+.hi-li a{ color:inherit; text-decoration:none; border-bottom:1px solid var(--border-strong); }
+.hi-li a:hover{ color:var(--accent-text); border-bottom-color:currentColor; }
 
-/* ---- Step 4: status -- dot + label, not a colored pill background. ----
-   .chip (Ada/Belum -- harga/link_v6/no_akd presence) and .days-pill (stok
-   risk level) are genuine status, so they get the dot. .badge
-   (Tipe/Entitas/Channel) is a plain category label, not a status, so it
-   gets the design spec's neutral hairline-bordered pill instead -- no dot
-   (a dot would wrongly imply a good/bad axis these values don't have). */
-#app-root .badge{
-  background: transparent !important;
-  color: var(--text-secondary) !important;
-  border: 0.5px solid var(--border-strong) !important;
-  border-radius: 4px !important;
-  padding: 1px 6px !important;
-  font-weight: 500;
+/* ── Tujuh hari terakhir ── */
+.tr-totals{ display:flex; gap:40px; margin-bottom:20px; }
+.tr-totals dd{ font-size:22px; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums; line-height:1.15; }
+.tr-totals dt{ font-size:12.5px; color:var(--text-muted); margin-top:2px; order:2; }
+.tr-totals > div{ display:flex; flex-direction:column; }
+.tr-cols{ list-style:none; display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:10px; }
+.tr-link{ display:flex; flex-direction:column; align-items:center; gap:6px; color:inherit; text-decoration:none; padding:4px 0; border-radius:6px; }
+.tr-link:hover .tr-bar{ background:var(--text-muted); }
+.tr-val{ font-size:12px; font-variant-numeric:tabular-nums; color:var(--text-secondary); white-space:nowrap; }
+.tr-track{ width:100%; height:128px; display:flex; align-items:flex-end; justify-content:center; border-bottom:1px solid var(--border-strong); }
+.tr-bar{ width:min(100%,36px); min-height:2px; background:var(--border-strong); border-radius:3px 3px 0 0; }
+.tr-col.is-today .tr-bar{ background:var(--accent); }
+.tr-day{ font-size:12px; color:var(--text-muted); }
+.tr-col.is-today .tr-day{ color:var(--text); font-weight:600; }
+
+/* ── Daftar berperingkat (leaderboard, kategori) ── */
+.rk{ list-style:none; }
+.rk-row{
+  width:100%; display:grid; grid-template-columns:24px minmax(0,1fr) auto; gap:12px; align-items:center;
+  padding:10px 0; border:0; border-bottom:1px solid var(--border); background:none; color:inherit;
+  font:inherit; text-align:left; text-decoration:none; cursor:pointer;
 }
+.rk-row:hover .rk-name{ color:var(--accent-text); }
+.rk-pos{ font-size:12.5px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.rk-name{ font-size:13.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rk-sub{ display:block; font-size:12px; font-weight:400; color:var(--text-muted); }
+.rk-val{ font-size:13px; font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+.rk-val small{ display:block; font-size:12px; color:var(--text-muted); }
+.rk--plain .rk-row{ grid-template-columns:minmax(0,1fr) auto; }
 
-#app-root .chip,
-#app-root .days-pill{
-  background: transparent !important;
-  border: none !important;
-  padding: 0 !important;
-  border-radius: 0 !important;
-  color: var(--text-secondary) !important;
-  font-weight: 500;
-  gap: 5px;
+/* ── Tabel (stok) ── */
+.tb-wrap{ overflow-x:auto; }
+.tb{ width:100%; border-collapse:collapse; font-size:13px; }
+.tb th{ padding:8px 12px; text-align:left; font-size:12px; font-weight:500; color:var(--text-muted); border-bottom:1px solid var(--border-strong); white-space:nowrap; }
+.tb td{ padding:11px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.tb th:first-child,.tb td:first-child{ padding-left:0; }
+.tb th:last-child,.tb td:last-child{ padding-right:0; }
+.tb .num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; width:132px; }
+.tb th.num:last-child{ width:168px; }
+.tb tbody tr{ cursor:pointer; }
+.tb tbody tr:hover td{ background:var(--surface-2); }
+.tb-name{ display:block; max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+.tb-kode{ display:block; font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); }
+.fc-d{ font-weight:600; }
+.fc-d.is-kritis{ color:var(--danger); }
+.fc-d.is-waspada{ color:var(--warning); }
+.fc-d.is-aman{ color:var(--text-secondary); font-weight:400; }
+.fc-flag{ margin-left:8px; font-size:12px; font-weight:500; color:var(--danger); }
+.tb-foot{ display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin-top:12px; font-size:12.5px; color:var(--text-muted); }
+
+/* ── Populasi ── */
+.pop-lead{ font-size:14px; color:var(--text-secondary); margin-bottom:20px; line-height:1.5; }
+.pop-lead strong{ font-size:22px; font-weight:600; letter-spacing:-.02em; color:var(--text); font-variant-numeric:tabular-nums; }
+.pop-cols{ display:grid; grid-template-columns:1fr 1fr; gap:32px; }
+@media (max-width:760px){ .pop-cols{ grid-template-columns:1fr; } }
+.pv{ list-style:none; }
+.pv-btn{
+  width:100%; display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:14px; align-items:baseline;
+  padding:9px 10px; border:0; border-bottom:1px solid var(--border); background:none; color:inherit; font:inherit; font-size:13px;
+  text-align:left; cursor:pointer;
 }
-#app-root .chip::before,
-#app-root .days-pill::before{
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--text-muted);
+.pv-btn:hover{ background:var(--surface-2); }
+.pv-btn[aria-pressed="true"]{ background:var(--surface-2); box-shadow:inset 2px 0 0 var(--accent); font-weight:600; }
+.pv-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pv-rs{ font-size:12px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.pv-n{ font-variant-numeric:tabular-nums; min-width:44px; text-align:right; }
+.rs-list{ list-style:none; }
+.rs-li{ display:flex; justify-content:space-between; gap:16px; padding:9px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.rs-li span:first-child{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rs-li span:last-child{ font-variant-numeric:tabular-nums; }
+.pop-note{ margin-top:14px; font-size:12.5px; color:var(--text-muted); }
+
+/* ── Kebutuhan customer ke SKU ── */
+.wt{ display:grid; grid-template-columns:minmax(220px,320px) minmax(0,1fr); gap:40px; }
+@media (max-width:820px){ .wt{ grid-template-columns:1fr; gap:24px; } }
+.wt-list{ max-height:340px; overflow-y:auto; border:1px solid var(--border); border-radius:10px; }
+.wt-item{
+  width:100%; display:flex; justify-content:space-between; gap:12px; align-items:baseline; padding:9px 14px;
+  border:0; border-bottom:1px solid var(--border); background:none; color:inherit; font:inherit; font-size:13px; text-align:left; cursor:pointer;
 }
-#app-root .chip-yes::before,
-#app-root .days-aman::before{ background: var(--success-dot); }
-#app-root .chip-no::before,
-#app-root .days-kritis::before{ background: var(--danger-dot); }
-#app-root .days-warn::before{ background: var(--warning-dot); }
-/* the icons inside .chip (originally ph-x / ph-arrow-square-out, now
-   ti-x / ti-external-link after the icon-library convergence pass) are
-   redundant with the dot (the design spec: status conveyed by the dot, not an
-   icon) */
-#app-root .chip i{ display: none; }
-
-/* ---- Step 5: spacing -- 18px paddings weren't on the 8pt scale ---- */
-#app-root .prog-card,
-#app-root .insight-card{ padding: 16px; }
-
-/* ---- Step 6: mono for tabular/numeric text ----
-   kode-text/stat-val/harga/qty/customer/dokumen columns already use
-   var(--font-mono) (either via their own pnm-universal.css class or an
-   inline style already present in index.js) -- verified by grep before
-   writing this file, nothing left to add there. The one gap found:
-   Populasi table's "Order Terakhir" (date) column had no mono -- fixed in
-   index.js directly (single inline-style addition, not worth a CSS hook
-   for one column) rather than here. */
-
-/* Kartu statistik yang bisa diklik (Belum Ada Harga / Belum di e-Katalog -> filter tabel produk).
-   Sengaja cuma border+outline, gak nambah warna baru (lihat catatan the design spec di atas). */
-#app-root .stat-card[data-goto]{cursor:pointer}
-#app-root .stat-card[data-goto]:hover{border-color:var(--accent)}
-#app-root .stat-card[data-goto]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-
-/* ── Navigasi dari dashboard (round 2) ──
-   Semua elemen [data-nav]/[data-action]/[data-open-kode] itu pintu ke tempat lain. Cuma cursor,
-   hover border, dan focus ring -- tanpa warna baru (lihat catatan the design spec di atas). */
-#app-root [data-nav], #app-root [data-action], #app-root [data-open-kode]{cursor:pointer}
-#app-root .stat-card[data-nav]:hover, #app-root .stat-card[data-action]:hover{border-color:var(--accent)}
-#app-root [role="button"]:focus-visible, #app-root tr[data-open-kode]:focus-visible, #app-root tr[data-action]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-#app-root .prog-item[data-nav], #app-root .prog-item[data-action]{border-radius:8px;padding:4px 6px;margin:-4px -6px 7px} /* padding 4px dikompensasi margin negatif: jarak antar-baris tetap 11px */
-#app-root .prog-item[data-nav]:last-child, #app-root .prog-item[data-action]:last-child{margin-bottom:-4px}
-#app-root .prog-item[data-nav]:hover, #app-root .prog-item[data-action]:hover{background:var(--surface-2)}
-#app-root .lb-item[data-nav]:hover, #app-root .donut-legend-item[data-nav]:hover{filter:brightness(.96)}
-#app-root .trend-bar-wrap[data-nav]:hover .trend-bar{filter:brightness(.92)}
-#app-root .insight-link{margin-left:auto;font-size:11px;font-weight:500;color:var(--text-muted);text-decoration:none;display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
-#app-root .insight-link:hover{color:var(--accent-text)}
-#app-root a.copy-kode-btn, #app-root a.btn{text-decoration:none}
-#app-root .wt-node{cursor:pointer}
-#app-root .wt-node:hover text{text-decoration:underline}
-.detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
-.detail-actions .btn{text-decoration:none}
-
-/* ── Worklist: antrian kerja berurutan (angka terbesar di atas). Netral: tanpa warna per item. ── */
-#app-root .worklist{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);margin-bottom:26px;overflow:hidden}
-#app-root .wl-row{display:grid;grid-template-columns:minmax(84px,128px) 1fr auto;align-items:center;gap:16px;padding:14px 18px;color:inherit;text-decoration:none}
-#app-root .wl-row + .wl-row{border-top:1px solid var(--border)}
-#app-root a.wl-row:hover{background:var(--surface-2)}
-#app-root a.wl-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-#app-root .wl-n{font-size:30px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
-#app-root .wl-label{font-size:13.5px;font-weight:600}
-#app-root .wl-detail{font-size:12px;color:var(--text-muted);margin-top:2px}
-#app-root .wl-bar{height:3px;border-radius:2px;background:var(--surface-2);margin-top:9px;overflow:hidden;max-width:420px}
-#app-root .wl-bar span{display:block;height:100%;background:var(--text-secondary);border-radius:2px}
-#app-root .wl-go{color:var(--text-muted);font-size:16px}
-#app-root .wl-done .wl-n{color:var(--text-muted)}
-@media (max-width:640px){#app-root .wl-row{grid-template-columns:72px 1fr auto;gap:12px;padding:12px 14px}#app-root .wl-n{font-size:24px}}
+.wt-item:last-child{ border-bottom:0; }
+.wt-item:hover{ background:var(--surface-2); }
+.wt-item[aria-pressed="true"]{ background:var(--surface-2); box-shadow:inset 2px 0 0 var(--accent); font-weight:600; }
+.wt-item span:first-child{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wt-item span:last-child{ font-size:12px; font-weight:400; color:var(--text-muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.sku{ list-style:none; }
+.sku-btn{
+  width:100%; display:grid; grid-template-columns:minmax(0,1fr) 56px 48px; gap:14px; align-items:baseline;
+  padding:10px 0; border:0; border-bottom:1px solid var(--border); background:none; color:inherit; font:inherit; font-size:13px; text-align:left; cursor:pointer;
+}
+.sku-btn:hover .sku-name{ color:var(--accent-text); }
+.sku-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+.sku-kode{ font-family:var(--font-mono); font-size:11.5px; font-weight:400; color:var(--text-muted); margin-right:8px; }
+.sku-n,.sku-p{ text-align:right; font-variant-numeric:tabular-nums; color:var(--text-secondary); }
+.sku-p{ color:var(--text-muted); font-size:12px; }
 
 /* ── Laporan dan unduhan ── */
-#app-root .out-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:26px}
-#app-root .out-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;display:flex;flex-direction:column;gap:8px}
-#app-root .out-title{font-size:13.5px;font-weight:600}
-#app-root .out-desc{font-size:12.5px;color:var(--text-secondary);margin:0;line-height:1.5;flex:1}
-#app-root .out-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
-#app-root .out-more{font-size:12px;color:var(--text-muted);text-decoration:none}
-#app-root .out-more:hover{color:var(--accent-text);text-decoration:underline}
+.out{ display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:32px; }
+.out-title{ font-size:14px; font-weight:600; }
+.out-desc{ font-size:13px; color:var(--text-secondary); line-height:1.55; margin:4px 0 14px; max-width:46ch; }
+.out-actions{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 
-#app-root .wl-unit{font-size:11.5px;font-weight:500;color:var(--text-muted);letter-spacing:0;margin-left:6px}
-#app-root .wl-note{background:var(--surface-2)}
-/* Populasi: peringkat RS, batang netral */
-#app-root .pop-head{font-size:13px;color:var(--text-secondary);margin-bottom:12px}
-#app-root .pop-n{font-size:26px;font-weight:600;color:var(--text);letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-right:4px}
-#app-root .pop-scope{margin-left:8px;font-size:12px;color:var(--text-muted)}
-#app-root .pop-list{display:flex;flex-direction:column;gap:8px}
-#app-root .pop-row{display:grid;grid-template-columns:minmax(120px,260px) 1fr 48px;gap:12px;align-items:center;font-size:12.5px}
-#app-root .pop-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#app-root .pop-bar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden}
-#app-root .pop-bar span{display:block;height:100%;background:var(--text-secondary);border-radius:3px}
-#app-root .pop-val{text-align:right;font-variant-numeric:tabular-nums;color:var(--text-secondary)}
-@media (max-width:640px){#app-root .pop-row{grid-template-columns:1fr 48px}#app-root .pop-bar{display:none}}
+/* ── Aksi di modal detail produk ── */
+.detail-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+.detail-actions .btn{ text-decoration:none; }
+
+@media (prefers-reduced-motion:reduce){ #app-root *{ transition:none !important; } }

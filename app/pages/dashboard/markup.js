@@ -1,146 +1,154 @@
-// dashboard page markup: the original dashboard.html body content
-// (auth-gate through detail-modal-overlay), ported with the structural
-// change of swapping the old per-page <header> for the shared
-// pw-topbar.
-//
-// UPDATE (style retrofit): color/spacing/icon/status tokens done --
-// see style.css in this folder for the full
-// rationale. The only markup.js change needed for that was stripping the
-// per-instance inline `style="color:var(--success/accent/warning/purple)"`
-// on prog-card-title/insight-card-title icons (icon color
-// shouldn't carry per-card meaning) -- everything else (stat-card/chip/
-// badge/days-pill color removal) is handled purely via CSS specificity in
-// style.css, no other markup change needed.
-//
-// Theme-init <script> from the original <head> is NOT here -- <script>
-// elements inside HTML assigned via innerHTML don't execute (DOM quirk),
-// so that logic moved into index.js's mount() as real JS instead.
+// Markup dashboard. Susunan halaman:
+//   1. Perlu dikerjakan (daftar kerja, elemen utama) + Konversi hari ini
+//   2. Tujuh hari terakhir + Leaderboard sales
+//   3. Stok berisiko habis
+//   4. Populasi set + Kategori konversi
+//   5. Kebutuhan customer ke SKU
+//   6. Laporan dan unduhan
+// Tidak ada tombol "Muat ulang": data disegarkan otomatis (lihat index.js). Status bagian yang
+// sedang dimuat berupa teks biasa, bukan skeleton/loading bar. Semua isi dinamis diisi index.js
+// ke elemen ber-id db-* dan #wl-count.
+
+const BUSY = '<div class="db-busy">Memuat…</div>';
 
 export const DASHBOARD_MARKUP = `
-<!-- Sesi kesembilan belas: per-page auth-gate DIHAPUS -- router.js sekarang
-     gak pernah mount() halaman ini kecuali shared/auth-gate.js sudah
-     konfirmasi sesi valid + whitelisted, jadi #app-root gak perlu lagi
-     nunggu/nge-toggle display:none -- always visible dari awal. -->
 <div id="app-root">
 <div class="pw-topbar">
   <div class="pw-topbar-crumb"><strong>Dashboard Produk</strong></div>
-  <div class="pw-topbar-actions">
-    <span class="last-update"><i class="ti ti-refresh" id="refresh-icon"></i> <span id="last-update-text">Memuat…</span></span>
-    <button class="toggle-btn" id="reload-btn" title="Muat ulang"><i class="ti ti-rotate-clockwise"></i> Muat ulang</button>
-  </div>
+  <div class="pw-topbar-actions"><span class="db-fresh" id="db-fresh" aria-live="polite"></span></div>
 </div>
 
 <main>
-
-  <div class="err-banner" id="err-banner" role="alert"><i class="ti ti-alert-circle"></i> <span id="err-text"></span></div>
-
-  <div class="section-label">Perlu dikerjakan</div>
-  <div class="worklist" id="worklist">
-    <div class="skeleton" style="height:64px"></div>
-    <div class="skeleton" style="height:64px"></div>
-    <div class="skeleton" style="height:64px"></div>
+  <div class="db-head">
+    <h1 class="db-title">Ringkasan</h1>
+    <span class="db-date" id="db-date"></span>
   </div>
 
-  <div class="section-label">Konversi hari ini</div>
-  <div class="stats-grid" id="stats-grid-konversi">
-    <div class="stat-card"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-    <div class="stat-card"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-    <div class="stat-card"><div class="skeleton" style="width:60%;height:25px;margin-bottom:8px"></div><div class="skeleton" style="width:40%"></div></div>
-  </div>
+  <section class="db-row">
+    <div class="db-c7">
+      <div class="db-sec-head">
+        <h2 class="db-sec-title">Perlu dikerjakan</h2>
+        <span class="db-sec-sub" id="wl-count"></span>
+      </div>
+      <div class="wl" id="db-worklist">${BUSY}</div>
+    </div>
+    <div class="db-c5">
+      <div class="db-sec-head">
+        <h2 class="db-sec-title">Konversi hari ini</h2>
+        <div class="db-sec-tools"><a class="db-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Buka riwayat</a></div>
+      </div>
+      <div id="db-today">${BUSY}</div>
+    </div>
+  </section>
 
-<div class="section-label">Tren konversi</div>
-  <div class="insight-cards">
-<div class="insight-grid">
-    <div class="insight-col-left">
-      <div class="insight-card">
-        <div class="insight-card-title"><i class="ti ti-chart-bar"></i> Trend 7 Hari Terakhir <a class="insight-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Riwayat <i class="ti ti-arrow-right"></i></a></div>
-        <div id="trend-chart-box"><div class="skeleton" style="height:120px"></div></div>
+  <section class="db-row">
+    <div class="db-c7">
+      <div class="db-sec-head">
+        <h2 class="db-sec-title">Tujuh hari terakhir</h2>
+        <div class="db-sec-tools">
+          <div class="seg" role="group" aria-label="Ukuran grafik">
+            <button type="button" data-action="trend-metric" data-m="jumlah" aria-pressed="true">Order</button>
+            <button type="button" data-action="trend-metric" data-m="nilai" aria-pressed="false">Nilai</button>
+          </div>
+        </div>
       </div>
-      <div class="insight-card">
-        <div class="insight-card-title"><i class="ti ti-chart-line"></i> Trend Value Harian (7 hari) <a class="insight-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Riwayat <i class="ti ti-arrow-right"></i></a></div>
-        <div id="linechart-box"><div class="skeleton" style="height:150px"></div></div>
-      </div>
-      <div class="insight-card">
-        <div class="insight-card-title"><i class="ti ti-chart-donut"></i> Distribusi Kategori (30 hari) <a class="insight-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Riwayat <i class="ti ti-arrow-right"></i></a></div>
-        <div id="donut-chart-box"><div class="skeleton" style="height:140px"></div></div>
-      </div>
+      <div id="db-trend">${BUSY}</div>
     </div>
-    <div class="insight-card insight-card-tall">
-      <div class="insight-card-title"><i class="ti ti-trophy"></i> Leaderboard Sales
-        <select class="filter-select" id="leaderboard-period-filter" style="margin-left:6px;min-width:0;font-size:11.5px;padding:2px 20px 2px 8px" title="Periode leaderboard">
-          <option value="7">7 Hari</option>
-          <option value="30" selected>30 Hari</option>
-          <option value="90">90 Hari</option>
-          <option value="365">Semua (1 Thn)</option>
-        </select>
-        <a class="insight-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Riwayat <i class="ti ti-arrow-right"></i></a></div>
-      <div id="leaderboard-box">
-        <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
-        <div class="skeleton" style="height:38px;margin-bottom:8px"></div>
-        <div class="skeleton" style="height:38px"></div>
+    <div class="db-c5">
+      <div class="db-sec-head">
+        <h2 class="db-sec-title">Leaderboard sales</h2>
+        <div class="db-sec-tools">
+          <div class="seg" role="group" aria-label="Periode leaderboard">
+            <button type="button" data-action="lb-period" data-days="7" aria-pressed="false">7 hari</button>
+            <button type="button" data-action="lb-period" data-days="30" aria-pressed="true">30 hari</button>
+            <button type="button" data-action="lb-period" data-days="90" aria-pressed="false">90 hari</button>
+            <button type="button" data-action="lb-period" data-days="365" aria-pressed="false">1 tahun</button>
+          </div>
+        </div>
       </div>
+      <div id="db-leaderboard">${BUSY}</div>
     </div>
-  </div>
-  <div class="section-label">Populasi set</div>
-  <div class="insight-card" style="margin-bottom:26px">
-    <div class="insight-card-title">Rumah sakit dengan set terkirim terbanyak <a class="insight-link" href="/populasi" data-nav="/populasi">Populasi <i class="ti ti-arrow-right"></i></a></div>
-    <div id="populasi-box"><div class="skeleton" style="height:150px"></div></div>
-  </div>
-  <div class="section-label">Kebutuhan customer ke SKU</div>
-  <div class="insight-card" style="margin-bottom:26px">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-      <div class="insight-card-title" style="margin-bottom:0"><i class="ti ti-share"></i> Istilah customer dan SKU yang cocok <a class="insight-link" href="/konversian/dictionary" data-nav="/konversian/dictionary">Dictionary <i class="ti ti-arrow-right"></i></a></div>
-      <select class="filter-select" id="wordtree-root-select" style="min-width:220px"></select>
-    </div>
-    <div id="wordtree-box"><div class="skeleton" style="height:260px"></div></div>
-  </div>
-  <div class="section-label">Stok berisiko habis</div>
-  <div class="insight-card" style="margin-bottom:26px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <div class="insight-card-title" style="margin-bottom:0"><i class="ti ti-alert-triangle"></i> Berdasarkan laju konversi <a class="insight-link" href="/stok" data-nav="/stok">Stok <i class="ti ti-arrow-right"></i></a></div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <span style="font-size:11px;color:var(--text-muted)">Periode analisis:</span>
-        <button class="forecast-period-btn" data-days="7" data-action="forecast-period">7 hari</button>
-        <button class="forecast-period-btn active" data-days="30" data-action="forecast-period">30 hari</button>
-        <button class="forecast-period-btn" data-days="90" data-action="forecast-period">90 hari</button>
-      </div>
-    </div>
-    <div id="forecast-box"><div class="skeleton" style="height:200px"></div></div>
-  </div>
-  <div class="section-label">Laporan dan unduhan</div>
-  <div class="out-grid">
-    <div class="out-card">
-      <div class="out-title">Pricelist sales</div>
-      <p class="out-desc">Produk yang sudah punya Link V6 dan harga e-Katalog, siap dikirim ke sales.</p>
-      <div class="out-actions">
-        <select class="filter-select" id="pricelist-tipe" aria-label="Tipe produk pricelist">
-          <option value="">Semua tipe</option>
-          <option value="INSTRUMENT">Instrumen</option>
-          <option value="SET">Set</option>
-          <option value="UNIT">Unit</option>
-        </select>
-        <button type="button" class="btn btn-accent" id="pricelist-btn" data-action="pricelist-unduh"><i class="ti ti-file-spreadsheet"></i> Unduh Excel</button>
-      </div>
-      <a class="out-more" href="/crud-produk/produk" data-nav="/crud-produk/produk">Filter lebih detail di CRUD Produk</a>
-    </div>
-    <div class="out-card">
-      <div class="out-title">Populasi set per rumah sakit</div>
-      <p class="out-desc">Unduh Excel untuk lampiran SPH, presentasi, atau internal, atau salin sebagai teks. Filter wilayah dan periode diatur di halamannya.</p>
-      <div class="out-actions">
-        <a class="btn btn-ghost" href="/populasi" data-nav="/populasi">Buka Populasi</a>
-      </div>
-    </div>
-    <div class="out-card">
-      <div class="out-title">Export produk lengkap</div>
-      <p class="out-desc">Semua kolom plus stok, AKD, dan status INAPROC. Ikut filter berlapis yang diatur di CRUD Produk.</p>
-      <div class="out-actions">
-        <a class="btn btn-ghost" href="/crud-produk/produk" data-nav="/crud-produk/produk">Buka CRUD Produk</a>
-      </div>
-    </div>
-  </div>
+  </section>
 
+  <section class="db-row">
+    <div class="db-c12">
+      <div class="db-sec-head">
+        <h2 class="db-sec-title">Stok berisiko habis</h2>
+        <span class="db-sec-sub">Dihitung dari laju konversi</span>
+        <div class="db-sec-tools">
+          <div class="seg" role="group" aria-label="Periode analisis stok">
+            <button type="button" data-action="forecast-period" data-days="7" aria-pressed="false">7 hari</button>
+            <button type="button" data-action="forecast-period" data-days="30" aria-pressed="true">30 hari</button>
+            <button type="button" data-action="forecast-period" data-days="90" aria-pressed="false">90 hari</button>
+          </div>
+          <a class="db-link" href="/stok" data-nav="/stok">Buka stok</a>
+        </div>
+      </div>
+      <div id="db-stok">${BUSY}</div>
+    </div>
+  </section>
+
+  <section class="db-row">
+    <div class="db-c7">
+      <div class="db-sec-head">
+        <h2 class="db-sec-title">Populasi set terkirim</h2>
+        <div class="db-sec-tools"><a class="db-link" href="/populasi" data-nav="/populasi">Buka populasi</a></div>
+      </div>
+      <div id="db-populasi">${BUSY}</div>
+    </div>
+    <div class="db-c5">
+      <div class="db-sec-head">
+        <h2 class="db-sec-title">Kategori konversi</h2>
+        <span class="db-sec-sub">30 hari terakhir</span>
+      </div>
+      <div id="db-kategori">${BUSY}</div>
+    </div>
+  </section>
+
+  <section class="db-row">
+    <div class="db-c12">
+      <div class="db-sec-head">
+        <h2 class="db-sec-title">Kebutuhan customer ke SKU</h2>
+        <span class="db-sec-sub">Istilah yang dipakai customer dan SKU yang akhirnya dipakai untuk memenuhinya</span>
+        <div class="db-sec-tools"><a class="db-link" href="/konversian/dictionary" data-nav="/konversian/dictionary">Buka dictionary</a></div>
+      </div>
+      <div id="db-kebutuhan">${BUSY}</div>
+    </div>
+  </section>
+
+  <section class="db-row">
+    <div class="db-c12">
+      <div class="db-sec-head"><h2 class="db-sec-title">Laporan dan unduhan</h2></div>
+      <div class="out">
+        <div class="out-item">
+          <h3 class="out-title">Pricelist sales</h3>
+          <p class="out-desc">Produk yang sudah punya Link V6 dan harga e-Katalog, siap dikirim ke sales.</p>
+          <div class="out-actions">
+            <select class="db-select" id="pricelist-tipe" aria-label="Tipe produk pricelist">
+              <option value="">Semua tipe</option>
+              <option value="INSTRUMENT">Instrumen</option>
+              <option value="SET">Set</option>
+              <option value="UNIT">Unit</option>
+            </select>
+            <button type="button" class="db-btn db-btn--primary" data-action="pricelist-unduh"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> Unduh Excel</button>
+          </div>
+        </div>
+        <div class="out-item">
+          <h3 class="out-title">Populasi per rumah sakit</h3>
+          <p class="out-desc">Excel untuk lampiran SPH, presentasi, atau internal. Filter wilayah dan periode diatur di halaman Populasi.</p>
+          <div class="out-actions"><a class="db-btn" href="/populasi" data-nav="/populasi">Buka Populasi</a></div>
+        </div>
+        <div class="out-item">
+          <h3 class="out-title">Export produk lengkap</h3>
+          <p class="out-desc">Semua kolom beserta stok, AKD, dan status INAPROC. Mengikuti filter yang diatur di CRUD Produk.</p>
+          <div class="out-actions"><a class="db-btn" href="/crud-produk/produk" data-nav="/crud-produk/produk">Buka CRUD Produk</a></div>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 </div>
+
 <div class="toast-container" id="toast-container" aria-live="polite"></div>
 <div class="detail-modal-overlay" id="detail-modal-overlay">
   <div class="detail-modal" id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="dm-title">
@@ -152,7 +160,7 @@ export const DASHBOARD_MARKUP = `
       <button type="button" class="detail-modal-close" id="dm-close" aria-label="Tutup">&times;</button>
     </div>
     <div class="detail-modal-body" id="dm-body">
-      <div class="detail-loading"><i class="ti ti-loader-2 spinner"></i> Memuat detail…</div>
+      <div class="detail-loading">Memuat detail…</div>
     </div>
   </div>
 </div>
