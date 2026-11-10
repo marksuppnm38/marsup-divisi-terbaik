@@ -41,6 +41,8 @@
 import { DASHBOARD_MARKUP } from './markup.js';
 import { KONVERSIAN_SUBNAV } from '../konversian/subnav.js';
 import { CRUD_PRODUK_SUBNAV } from '../crud-produk/subnav.js';
+import { parseLinkV6 } from '../crud-produk/ui-utils.js';
+import { fetchHargaLatestMap, selectPricelistRows, writePricelistXlsx } from '../../../shared/exports/pricelist.js';
 
 const VENDOR_CHAIN = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
@@ -496,68 +498,118 @@ async function loadKonversiToday(){
 // penuh di Postgres. Gantinya fetch produk + produk_harga mentah
 // dengan limit=20000 yang kemarin bikin angka undercount.
 // ══════════════════════════════════════════
-async function loadStats(){
-  const s = await rpc('get_dashboard_summary', {});
-  const total = s.total || 0;
-  document.querySelector('[data-f="all"]').innerHTML = `<i class="ti ti-layout-grid"></i> Semua <span class="filter-count">(${fmt(total)})</span>`;
-  document.querySelector('[data-f="noharga"]').innerHTML = `<i class="ti ti-currency-dollar"></i> Tanpa Harga <span class="filter-count">(${fmt(total - s.punya_harga)})</span>`;
-  document.querySelector('[data-f="nolink"]').innerHTML = `<i class="ti ti-unlink"></i> Tanpa Link <span class="filter-count">(${fmt(total - s.punya_link)})</span>`;
-  document.querySelector('[data-f="noakd"]').innerHTML = `<i class="ti ti-shield-off"></i> Tanpa AKD <span class="filter-count">(${fmt(total - s.punya_akd)})</span>`;
-
-  document.getElementById('stats-grid').innerHTML = `
-    <div class="stat-card blue" data-action="filter-goto" data-f="all" role="button" tabindex="0" title="Lihat semua produk di tabel">
-      <div class="stat-icon blue"><i class="ti ti-database"></i></div>
-      <div class="stat-val">${fmt(total)}</div>
-      <div class="stat-label">Total Produk</div>
-      <div class="stat-sub"><i class="ti ti-circle-check" style="color:var(--success)"></i> Semua aktif di database</div>
-    </div>
-    <div class="stat-card green" data-nav="/crud-produk/produk" role="button" tabindex="0" title="Kelola harga di CRUD Produk">
-      <div class="stat-icon green"><i class="ti ti-cash"></i></div>
-      <div class="stat-val">${fmt(s.punya_harga)}</div>
-      <div class="stat-label">Punya Harga e-Katalog</div>
-      <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_harga,total))}">${pct(s.punya_harga,total)}%</span> dari total produk</div>
-    </div>
-    <div class="stat-card warning" data-action="filter-goto" data-f="noharga" role="button" tabindex="0" title="Lihat produk yang belum punya harga">
-      <div class="stat-icon warning"><i class="ti ti-currency-dollar"></i></div>
-      <div class="stat-val">${fmt(total - s.punya_harga)}</div>
-      <div class="stat-label">Belum Ada Harga</div>
-      <div class="stat-sub"><span class="stat-pct pct-bad">${pct(total - s.punya_harga, total)}%</span> perlu dilengkapi</div>
-    </div>
-    <div class="stat-card blue" data-nav="/crud-produk/produk" role="button" tabindex="0" title="Kelola link e-Katalog di CRUD Produk">
-      <div class="stat-icon blue"><i class="ti ti-link"></i></div>
-      <div class="stat-val">${fmt(s.punya_link)}</div>
-      <div class="stat-label">Ada di e-Katalog v6</div>
-      <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_link,total))}">${pct(s.punya_link,total)}%</span> dari total produk</div>
-    </div>
-    <div class="stat-card purple" data-nav="/crud-produk/akd" role="button" tabindex="0" title="Buka AKD di CRUD Produk">
-      <div class="stat-icon purple"><i class="ti ti-rosette-discount-check"></i></div>
-      <div class="stat-val">${fmt(s.punya_akd)}</div>
-      <div class="stat-label">Punya Nomor AKD</div>
-      <div class="stat-sub"><span class="stat-pct ${pctClass(pct(s.punya_akd,total))}">${pct(s.punya_akd,total)}%</span> dari total produk</div>
-    </div>
-    <div class="stat-card danger" data-action="filter-goto" data-f="nolink" role="button" tabindex="0" title="Lihat produk yang belum ada di e-Katalog">
-      <div class="stat-icon danger"><i class="ti ti-unlink"></i></div>
-      <div class="stat-val">${fmt(total - s.punya_link)}</div>
-      <div class="stat-label">Belum di e-Katalog</div>
-      <div class="stat-sub"><span class="stat-pct pct-bad">${pct(total - s.punya_link, total)}%</span> belum terdaftar</div>
-    </div>
-  `;
-
-  document.getElementById('prog-harga').innerHTML =
-    progItem('Instrumen', s.instrument_punya_harga, s.instrument, 'var(--accent)', { f: 'noharga', tipe: 'INSTRUMENT', title: 'Lihat Instrumen yang belum punya harga' }) +
-    progItem('Set', s.set_punya_harga, s.set, 'var(--success)', { f: 'noharga', tipe: 'SET', title: 'Lihat Set yang belum punya harga' }) +
-    progItem('Unit', s.unit_punya_harga, s.unit, 'var(--purple)', { f: 'noharga', tipe: 'UNIT', title: 'Lihat Unit yang belum punya harga' });
-
-  document.getElementById('prog-link').innerHTML =
-    progItem('Punya Link v6', s.punya_link, total, 'var(--accent)', { nav: '/crud-produk/produk', title: 'Kelola link e-Katalog di CRUD Produk' }) +
-    progItem('Belum Ada Link', total - s.punya_link, total, 'var(--danger)', { f: 'nolink', title: 'Lihat produk yang belum punya link v6' });
-
-  document.getElementById('prog-akd').innerHTML =
-    progItem('Punya AKD', s.punya_akd, total, 'var(--warning)', { nav: '/crud-produk/akd', title: 'Buka AKD di CRUD Produk' }) +
-    progItem('Tanpa AKD', total - s.punya_akd, total, 'var(--danger)', { f: 'noakd', title: 'Lihat produk yang belum punya AKD' });
+// ══════════════════════════════════════════
+// LAPORAN: Pricelist sales (logic di shared/exports/pricelist.js, dipakai juga crud-produk)
+// ══════════════════════════════════════════
+const XLSX_SRC = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+async function unduhPricelist(btn){
+  if (btn.disabled) return;
+  const tipe = document.getElementById('pricelist-tipe')?.value || '';
+  const html0 = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2 spinner"></i> Menyiapkan…';
+  try {
+    if (!window.XLSX) await loadScript(XLSX_SRC);
+    const sb = window.pnmSupabase;
+    const { data, error } = await sb.rpc('get_produk_list', {
+      p_status_filter: 'all', p_tipe: tipe ? [tipe] : null, p_golongan: null, p_is_active: null,
+      p_status_inaproc: null, p_harga: null, p_link_v6: null, p_page: 1, p_page_size: null,
+    });
+    if (error) throw new Error(error.message);
+    const rows = data?.rows || [];
+    const hargaMap = await fetchHargaLatestMap(sb, rows.map(r => r.id));
+    const { priced, skippedNoLink, skippedNoHarga } =
+      selectPricelistRows(rows, hargaMap, r => parseLinkV6(r.link_v6).state === 'bersih');
+    if (!priced.length) { showToast('Belum ada produk yang punya Link V6 dan harga e-Katalog untuk pilihan ini.', 'error'); return; }
+    const label = { INSTRUMENT: 'Instrumen', SET: 'Set', UNIT: 'Unit' }[tipe];
+    writePricelistXlsx(window.XLSX, priced, hargaMap, {
+      subtitle: label ? `Tipe: ${label}` : 'Semua produk',
+      fileTag: tipe ? `_${tipe.toLowerCase()}` : '_semua',
+    });
+    const skip = skippedNoLink + skippedNoHarga;
+    showToast(`Pricelist terunduh: ${fmt(priced.length)} produk` + (skip ? ` · ${fmt(skip)} dilewati (belum siap jual)` : ''));
+  } catch (e) {
+    showToast('Gagal membuat pricelist: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = html0;
+  }
 }
 
-// `go` (opsional): {f, tipe} = lompat ke tabel produk dengan filter itu, {nav} = buka halaman lain.
+// Perlu dikerjakan: urutan TETAP dari yang paling mendesak (bukan dari angka terbesar --
+// satuannya beda-beda: sesi, AKD, produk). Tiap sumber berdiri sendiri; satu gagal
+// cuma menghilangkan barisnya + catatan kecil, bukan seluruh daftar.
+async function loadStats(){
+  const sb = window.pnmSupabase;
+  const hariIni = localISODate();
+  const batas30 = localISODate(new Date(Date.now() + 30 * 86400000)); // sama dengan pill AKD (<= 30 hari = akan expired)
+  const idleCut = new Date(Date.now() - 2 * 86400000).toISOString();   // sama dengan MANDEK_MIN konversian (2 hari)
+  const hitung = async (q) => { const { count, error } = await q; if (error) throw new Error(error.message); return count || 0; };
+  const [rSum, rCnt, rExp, rSoon, rSesi] = await Promise.allSettled([
+    rpc('get_dashboard_summary', {}),
+    rpc('get_produk_filter_counts', {}),
+    hitung(sb.from('akd').select('id', { count: 'exact', head: true }).lt('masa_berlaku', hariIni)),
+    hitung(sb.from('akd').select('id', { count: 'exact', head: true }).gte('masa_berlaku', hariIni).lte('masa_berlaku', batas30)),
+    hitung(sb.from('sesi_konversi').select('id', { count: 'exact', head: true }).eq('status', 'berjalan').lt('updated_at', idleCut)),
+  ]);
+  [rSum, rCnt, rExp, rSoon, rSesi].forEach(r => { if (r.status === 'rejected' && String(r.reason && r.reason.message).startsWith('unauthorized')) throw r.reason; });
+  const ok = (r) => r.status === 'fulfilled';
+  const items = [];
+  if (ok(rSesi)) items.push({ n: rSesi.value, unit: 'sesi', label: 'Sesi konversi mandek', detail: 'Tidak ada aktivitas 2 hari atau lebih', nav: '/konversian/sesi' });
+  if (ok(rExp) && ok(rSoon)) items.push({ n: rExp.value + rSoon.value, unit: 'AKD', label: 'AKD kadaluarsa atau segera kadaluarsa', detail: `Sudah lewat ${fmt(rExp.value)} · dalam 30 hari ${fmt(rSoon.value)}`, nav: '/crud-produk/akd' });
+  if (ok(rCnt)) {
+    items.push({ n: Number(rCnt.value.disetujui_tanpa_link) || 0, unit: 'produk', label: 'Disetujui INAPROC, belum ada Link V6', detail: 'Isi Link V6 di CRUD Produk', nav: '/crud-produk/produk' });
+    items.push({ n: Number(rCnt.value.belum_diajukan) || 0, unit: 'produk', label: 'Perlu AKD', detail: 'Belum diajukan', nav: '/crud-produk/produk' });
+  }
+  if (ok(rSum)) {
+    const s = rSum.value, total = s.total || 0, n = total - s.punya_harga;
+    items.push({ n, unit: 'produk', label: 'Tanpa harga e-Katalog',
+      detail: `Instrumen ${fmt(s.instrument - s.instrument_punya_harga)} · Set ${fmt(s.set - s.set_punya_harga)} · Unit ${fmt(s.unit - s.unit_punya_harga)} · ${pct(total - n, total)}% lengkap`,
+      nav: '/crud-produk/produk', of: total });
+  }
+  const box = document.getElementById('worklist');
+  if (!box) return;
+  const gagal = [rSum, rCnt, rExp, rSoon, rSesi].filter(r => !ok(r));
+  gagal.forEach(r => console.warn('worklist: sumber gagal:', r.reason && r.reason.message));
+  box.innerHTML = items.map(it => it.n <= 0
+    ? `<div class="wl-row wl-done"><div class="wl-n">0</div><div class="wl-body"><div class="wl-label">${it.label}</div><div class="wl-detail">Sudah beres</div></div></div>`
+    : `<a class="wl-row" href="${it.nav}" data-nav="${it.nav}">
+         <div class="wl-n">${fmt(it.n)}<span class="wl-unit">${it.unit}</span></div>
+         <div class="wl-body">
+           <div class="wl-label">${it.label}</div>
+           <div class="wl-detail">${it.detail}</div>
+           ${it.of ? `<div class="wl-bar" aria-hidden="true"><span style="width:${pct(it.n, it.of)}%"></span></div>` : ''}
+         </div>
+         <i class="ti ti-chevron-right wl-go" aria-hidden="true"></i>
+       </a>`).join('')
+    + (gagal.length ? `<div class="wl-row wl-note"><div></div><div class="wl-detail">${gagal.length} sumber data tidak bisa dimuat, jadi sebagian baris tidak tampil. Klik "Muat ulang" untuk mencoba lagi.</div><div></div></div>` : '');
+  if (!items.length) throw new Error('Semua sumber daftar kerja gagal dimuat');
+}
+
+// Populasi: ringkasan dengan filter bawaan halaman Populasi (Jawa Tengah, terkirim, kategori SET).
+// Parameter dan nama kolom disalin dari populasi/index.js (filterParams + applyResult).
+async function loadPopulasi(){
+  const box = document.getElementById('populasi-box');
+  if (!box) return;
+  const res = await rpc('get_populasi_v2', {
+    p_provinsi: 'Jawa Tengah', p_status: 'DELIVERED', p_cakupan: 'POPULASI', p_dari: null, p_sampai: null,
+    p_kelompok: ['SET'], p_produk: null, p_rs: null, p_isi_set: false,
+  });
+  const list = ((res && res.rows) || [])
+    .map(r => ({ nama: r.customer, set: Number(r.set_terkirim) || 0 }))
+    .filter(r => r.set > 0).sort((a, b) => b.set - a.set);
+  if (!list.length) { box.innerHTML = '<div class="insight-empty">Belum ada set terkirim untuk filter ini.</div>'; return; }
+  const totalSet = list.reduce((a, r) => a + r.set, 0);
+  const top = list.slice(0, 5), max = top[0].set;
+  box.innerHTML = `
+    <div class="pop-head"><span class="pop-n">${fmt(totalSet)}</span> set terkirim di <strong>${fmt(list.length)}</strong> rumah sakit
+      <span class="pop-scope">Jawa Tengah</span></div>
+    <div class="pop-list">${top.map(r => `
+      <div class="pop-row"><span class="pop-name" title="${esc(r.nama)}">${esc(r.nama)}</span>
+        <span class="pop-bar" aria-hidden="true"><span style="width:${Math.max(4, Math.round(r.set / max * 100))}%"></span></span>
+        <span class="pop-val">${fmt(r.set)}</span></div>`).join('')}</div>`;
+}
+
 function progItem(name, val, total, color, go){
   const p = pct(val, total);
   const attrs = !go ? '' : (go.nav
@@ -602,6 +654,7 @@ function prefetchNextPage(total){
 }
 
 async function loadTable(){
+  if (!document.getElementById('tbl-body')) return; // tabel produk sudah dipindah ke CRUD Produk
   const myReq = ++tableReqId;
   const key = cacheKey(currentPage);
   if (!pageCache[key]) {
@@ -753,12 +806,12 @@ async function loadEverything(opts){
   trendP.catch(() => {}); // rejection ditangani per-panel di bawah
   const jobs = [
     ['stats-grid-konversi', loadKonversiToday()],
-    ['stats-grid', loadStats()],
+    ['worklist', loadStats()],
     ['trend-chart-box', trendP.then(renderTrend)],
     ['linechart-box', trendP.then(renderValueLineChart)],
     ['leaderboard-box', loadLeaderboard()],
     ['donut-chart-box', loadKategoriDonut()],
-    ['(tabel produk)', loadTable()],
+    ['populasi-box', loadPopulasi()],
     ['(word tree)', loadWordtree()],
     ['(forecast)', loadForecastStok()],
   ];
@@ -776,10 +829,7 @@ async function loadEverything(opts){
     failed++;
     const id = jobs[i][0];
     const html = `<div class="insight-empty" style="color:var(--danger)">Gagal memuat: ${esc(msg)}</div>`;
-    if (id === '(tabel produk)') handleLoadError(r.reason);
-    if (id === 'stats-grid') {
-      ['stats-grid', 'prog-harga', 'prog-link', 'prog-akd'].forEach(x => { const el = document.getElementById(x); if (el) el.innerHTML = html; });
-    } else if (id.startsWith('(')) {
+        if (id.startsWith('(')) {
       console.error('bagian dashboard gagal:', id, msg);
     } else {
       const el = document.getElementById(id);
@@ -800,13 +850,6 @@ dashKeydownHandler = (e) => {
   // Esc: tutup modal detail
   if (e.key === 'Escape' && detailOverlay.classList.contains('show')) {
     closeDetailModal();
-    return;
-  }
-
-  // "/" fokus ke search (kalau tidak sedang mengetik di field lain)
-  if (e.key === '/' && !isTyping) {
-    e.preventDefault();
-    document.getElementById('tbl-search').focus();
     return;
   }
 
@@ -965,7 +1008,6 @@ function renderPresets(){
     </button>
   `).join('');
 }
-renderPresets();
 // ══════════════════════════════════════════
 // BULK SELECTION & EXPORT CSV
 // ══════════════════════════════════════════
@@ -1418,6 +1460,7 @@ async function loadForecastStok(){
     'delete-preset':   (el, e) => deletePreset(e, +el.dataset.idx),
     'export-selected': () => exportSelected(),
     'clear-selection': () => clearSelection(),
+    'pricelist-unduh': (el) => unduhPricelist(el),
     'forecast-period': (el) => setForecastPeriod(+el.dataset.days, el),
     'copy-kode':       (el, e) => copyKode(e, el.dataset.kode),
   };

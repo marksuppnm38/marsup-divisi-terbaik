@@ -46,6 +46,7 @@ import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
 import { installOrphan } from './orphan.js';
 import { orIlike } from '../../../shared/api.js';
+import { fetchHargaLatestMap as fetchHargaLatestMapShared, selectPricelistRows, writePricelistXlsx } from '../../../shared/exports/pricelist.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -1258,30 +1259,8 @@ function buildFilterFilenameTag(){
 // produk_id sekaligus. Dipecah per-chunk (bukan satu .in() raksasa) biar gak
 // kena limit panjang query PostgREST kalau id-nya ratusan/ribuan.
 async function fetchHargaLatestMap(produkIds){
-  const map = new Map(); // produk_id -> {tahun, ekatalog, swasta}
-  const CHUNK = 300;
-  for (let i = 0; i < produkIds.length; i += CHUNK) {
-    const chunk = produkIds.slice(i, i + CHUNK);
-    const { data, error } = await sb.from('produk_harga')
-      .select('produk_id,tahun,jenis,harga')
-      .in('produk_id', chunk);
-    if (error) { showToast('Gagal ambil data harga: ' + error.message, true); return null; }
-    (data || []).forEach(h => {
-      const existing = map.get(h.produk_id);
-      // EKATALOG adalah harga input manual (lihat upsertHargaDariEkat) -- SWASTA/UPLOAD
-      // cuma turunan rumus di tahun yang sama, jadi "tahun terbaru" ditentukan dari
-      // baris EKATALOG-nya. Kalau produk punya >1 tahun, ambil yang paling baru.
-      if (!existing || h.tahun > existing.tahun) {
-        map.set(h.produk_id, { tahun: h.tahun, ekatalog: null, swasta: null });
-      }
-      const entry = map.get(h.produk_id);
-      if (h.tahun === entry.tahun) {
-        if (h.jenis === 'EKATALOG') entry.ekatalog = h.harga;
-        if (h.jenis === 'SWASTA') entry.swasta = h.harga;
-      }
-    });
-  }
-  return map;
+  try { return await fetchHargaLatestMapShared(sb, produkIds); }
+  catch (e) { showToast(e.message, true); return null; }
 }
 
 // ---- Ambil No. AKD per produk (bisa >1 AKD per produk -> digabung koma).
@@ -1529,102 +1508,22 @@ async function exportPricelistSales(){
   if (rowsToExport === null) return;
   if (!rowsToExport.length) { showToast('Tidak ada data untuk diexport', true); return; }
 
-  const hargaMap = await fetchHargaLatestMap(rowsToExport.map(r => r.id));
-  if (hargaMap === null) return;
+  let hargaMap;
+  try { hargaMap = await fetchHargaLatestMapShared(sb, rowsToExport.map(r => r.id)); }
+  catch (e) { showToast(e.message, true); return; }
 
-  const withLink = rowsToExport.filter(r => parseLinkV6(r.link_v6).state === 'bersih');
-  const priced = withLink.filter(r => {
-    const h = hargaMap.get(r.id);
-    return h && h.ekatalog != null;
-  });
-  const skippedNoLink = rowsToExport.length - withLink.length;
-  const skippedNoHarga = withLink.length - priced.length;
-
+  // Logic seleksi + format file ada di shared/exports/pricelist.js (dipakai juga dashboard).
+  const { priced, skippedNoLink, skippedNoHarga } =
+    selectPricelistRows(rowsToExport, hargaMap, r => parseLinkV6(r.link_v6).state === 'bersih');
   if (!priced.length) {
     showToast('Gak ada produk yang sekaligus punya Link V6 & harga EKATALOG di hasil filter ini — gak ada yang bisa di-pricelist-kan.', true);
     return;
   }
-
-  // Urut per Golongan lalu Nama Produk -- lebih enak dipakai sales nyari barang
-  // per kategori daripada urutan kode produk mentah.
-  priced.sort((a, b) => {
-    const g = (a.golongan || '').localeCompare(b.golongan || '', 'id');
-    if (g !== 0) return g;
-    return (a.nama_produk || '').localeCompare(b.nama_produk || '', 'id');
-  });
-
-  const HEADER = ['No', 'Kode Produk', 'Nama Produk', 'Golongan', 'Harga EKATALOG', 'Harga SWASTA', 'Tahun Harga', 'Link Katalog'];
-  const dateStr = new Date().toISOString().slice(0, 10);
   const filterParts = describeActiveFilters();
-  const subtitle = (filterParts.length ? filterParts.join(' · ') + ' — ' : 'Semua produk — ') + `per ${dateStr} — ${priced.length} produk`;
-
-  const aoa = [['PRICELIST PRODUK'], [subtitle], HEADER];
-  priced.forEach((r, idx) => {
-    const h = hargaMap.get(r.id);
-    aoa.push([idx + 1, r.kode_produk || '', r.nama_produk || '', r.golongan || '', h.ekatalog, h.swasta != null ? h.swasta : '', h.tahun, r.link_v6 || '']);
+  writePricelistXlsx(XLSX, priced, hargaMap, {
+    subtitle: filterParts.length ? filterParts.join(' · ') : 'Semua produk',
+    fileTag: buildFilterFilenameTag() || '_semua',
   });
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  const lastCol = HEADER.length - 1; // 0-based, kolom H
-  const lastRow = aoa.length - 1;    // 0-based
-
-  // Judul + subjudul: merge sepanjang kolom.
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } },
-  ];
-  ws['A1'].s = { font: { bold: true, sz: 15 } };
-  ws['A2'].s = { font: { italic: true, sz: 10.5, color: { rgb: '666666' } } };
-
-  // Header kolom (baris index 2 / row Excel ke-3): bold, teks putih, background
-  // biru, border tipis, + autofilter (dropdown sort/filter bawaan Excel) biar
-  // sales sendiri bisa sortir/filter lanjut di Excel tanpa balik minta ke kita.
-  const thinBorder = { style: 'thin', color: { rgb: 'D9D9D9' } };
-  const headerStyle = {
-    font: { bold: true, color: { rgb: 'FFFFFF' } },
-    fill: { fgColor: { rgb: '2F5496' } },
-    alignment: { vertical: 'center', horizontal: 'center' },
-    border: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder },
-  };
-  HEADER.forEach((_, c) => {
-    const addr = XLSX.utils.encode_cell({ r: 2, c });
-    if (ws[addr]) ws[addr].s = headerStyle;
-  });
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: 2, c: lastCol } }) };
-
-  // Baris data: border tipis di semua sel + selang-seling warna (zebra) biar
-  // enak dibaca pas barisnya panjang, format Rp di kolom harga, rata tengah
-  // buat kolom No & Tahun.
-  for (let r = 3; r <= lastRow; r++) {
-    const isEven = (r - 3) % 2 === 1;
-    for (let c = 0; c <= lastCol; c++) {
-      const addr = XLSX.utils.encode_cell({ r, c });
-      const cell = ws[addr];
-      if (!cell) continue;
-      const style = { border: { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder } };
-      if (isEven) style.fill = { fgColor: { rgb: 'F2F2F2' } };
-      if (c === 0 || c === 6) style.alignment = { horizontal: 'center' }; // No, Tahun Harga
-      if ((c === 4 || c === 5) && typeof cell.v === 'number') cell.z = '"Rp" #,##0'; // Harga EKATALOG/SWASTA
-      cell.s = style;
-    }
-  }
-
-  ws['!cols'] = [
-    { wch: 5 },   // No
-    { wch: 22 },  // Kode Produk
-    { wch: 45 },  // Nama Produk
-    { wch: 18 },  // Golongan
-    { wch: 16 },  // Harga EKATALOG
-    { wch: 16 },  // Harga SWASTA
-    { wch: 12 },  // Tahun Harga
-    { wch: 45 },  // Link Katalog
-  ];
-  ws['!rows'] = [{ hpt: 22 }, { hpt: 16 }, { hpt: 18 }]; // judul, subjudul, header dikasih tinggi lebih pas
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Pricelist');
-  const filterTag = buildFilterFilenameTag();
-  XLSX.writeFile(wb, `pricelist_sales_${dateStr}${filterTag || '_semua'}.xlsx`);
 
   let msg = `Pricelist terdownload — ${priced.length} produk`;
   const skippedNote = [];
