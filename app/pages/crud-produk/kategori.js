@@ -21,7 +21,7 @@ export function installKategori(S) {
   const SPES_SUMBER = {
     peta: ['Peta kode', ''], rmp: ['Kode RMP', ''], kata: ['Kata kunci', ''], dasar: ['Dasar', ''], manual: ['Dikoreksi', ''],
     'peta?': ['Dugaan (peta)', 'warn'], 'rmp?': ['Dugaan (RMP)', 'warn'], kosong: ['Belum ada petunjuk', 'bad'],
-    label: ['Label set', ''], isi: ['Dari isi set', ''],
+    label: ['Label set', ''], isi: ['Dugaan dari isi set', 'warn'],
   };
   const st = { mode: 'ringkasan', page: 1, q: '', spes: '', kat: '', cek: false, ring: null, req: 0 };
 
