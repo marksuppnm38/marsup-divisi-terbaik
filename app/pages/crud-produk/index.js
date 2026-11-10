@@ -3273,6 +3273,7 @@ deleteBtn.addEventListener('click', async () => {
   // Tab Kategori & Spesialisasi (kategori.js): klik baris membuka modal produk / detail set yang sudah ada di sini.
   S.openEdit = openEdit;
   S.goToSetDetail = goToSetDetail;
+  S.ensureXlsx = ensureXlsx; // export Excel di kategori.js (xlsx-js-style lazy, sama dengan Export Pricelist)
   installKategori(S);
 
   // Kick off the initial data load now -- moved here from near the top of

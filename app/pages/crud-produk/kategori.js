@@ -66,6 +66,7 @@ export function installKategori(S) {
     const ringkasan = st.mode === 'ringkasan';
     $('katToolbar').style.display = ringkasan ? 'none' : '';
     $('katChips').style.display = ringkasan ? 'none' : '';
+    $('katExportViewBtn').style.display = ringkasan ? 'none' : '';
     if (!st.ring) return;
     if (!st.ring.dihitung_at) return belumDihitung();
     const tot = Number(st.ring.total || 0), cek = Number(st.ring.perlu_cek || 0);
@@ -193,6 +194,163 @@ export function installKategori(S) {
     renderPgBar($('katPagination'), { page: st.page, pageSize: PAGE_SIZE, total, onPageChange: (p) => { st.page = p; loadList(); } });
   }
 
+
+  // ---- Export Excel: dasar pengajuan nomor izin edar per spesialisasi & kategori ----
+  // Memakai xlsx-js-style yang dimuat lazy oleh index.js (S.ensureXlsx) -- sama dengan Export Pricelist.
+  // Data diambil lewat RPC daftar yang sama dengan tabel (per 1000 baris), jadi angkanya identik dengan layar.
+  const EXPORT_BATCH = 1000;
+  const WARN_SUMBER = new Set(Object.keys(SPES_SUMBER).filter((k) => SPES_SUMBER[k][1]));
+  const EXPORT_HEADER = ['No', 'Kode', 'Nama', 'Kategori', 'Spesialisasi', 'Jenis', 'Golongan', 'Sumber klasifikasi', 'Perlu dicek'];
+  const EXPORT_WIDTHS = [6, 24, 52, 20, 24, 18, 18, 24, 12];
+  let exporting = false;
+
+  // Sama dengan penanda ⚠ di layar: dugaan sistem / belum ada petunjuk / golongan belum dipetakan.
+  const perluCek = (r) => WARN_SUMBER.has(r.spes_sumber) || r.kategori_sumber === 'bawaan';
+  const sumberLabel = (r) => {
+    if (ALAT.includes(r.kategori)) {
+      return r.kategori_sumber === 'bawaan' ? 'Golongan belum dipetakan' : r.kategori_sumber === 'koreksi' ? 'Dikoreksi' : 'Golongan';
+    }
+    const s = SPES_SUMBER[r.spes_sumber];
+    return s ? s[0] : (r.spes_sumber || '');
+  };
+  const namaSheet = (nama, dipakai) => {
+    const base = String(nama).replace(/[\\\/?*\[\]:]/g, ' ').trim().slice(0, 28) || 'Sheet';
+    let n = base, i = 2;
+    while (dipakai.has(n.toLowerCase())) n = `${base.slice(0, 26)} ${i++}`;
+    dipakai.add(n.toLowerCase());
+    return n;
+  };
+
+  async function fetchSemua(kategori, { spes = null, cari = null, cek = false } = {}) {
+    const byId = new Map();
+    let off = 0, total = Infinity;
+    while (off < total) {
+      const { data, error } = await S.sb.rpc('get_katalog_kategori_daftar', {
+        p_kategori: kategori, p_spes: spes, p_cari: cari, p_perlu_cek: cek, p_batas: EXPORT_BATCH, p_offset: off,
+      });
+      if (error) throw error;
+      const rows = data.rows || [];
+      total = Number(data.total || 0);
+      if (!rows.length) break;
+      rows.forEach((r) => byId.set(r.tipe + ':' + r.produk_id, r));
+      off += rows.length; // pakai jumlah baris yang benar-benar kembali (jaga-jaga kalau server membatasi p_batas)
+    }
+    return [...byId.values()];
+  }
+
+  // Satu sheet per spesialisasi (set & instrumen satuan) + satu sheet per kategori alat.
+  function kelompokkan(rows) {
+    const g = new Map();
+    rows.forEach((r) => {
+      const alat = ALAT.includes(r.kategori);
+      const key = alat ? 'A:' + r.kategori : 'S:' + String(r.spes);
+      const o = g.get(key) || { alat, nama: alat ? katNama(r.kategori) : spesNama(r.spes), urut: alat ? ALAT.indexOf(r.kategori) : 0, spes: r.spes, rows: [] };
+      o.rows.push(r); g.set(key, o);
+    });
+    return [...g.values()].sort((a, b) =>
+      (a.alat - b.alat) || (a.alat ? a.urut - b.urut
+        : ((a.spes === 'LAINNYA') - (b.spes === 'LAINNYA')) || ((a.spes == null) - (b.spes == null)) || b.rows.length - a.rows.length));
+  }
+
+  function buatSheet(XLSX, judul, subjudul, header, body, { widths, flagCol = -1, totalRow = false } = {}) {
+    const aoa = [[judul], [subjudul], header, ...body];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const lastCol = header.length - 1, lastRow = aoa.length - 1;
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } }, { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } }];
+    ws['A1'].s = { font: { bold: true, sz: 14 } };
+    ws['A2'].s = { font: { italic: true, sz: 10, color: { rgb: '666666' } } };
+    const thin = { style: 'thin', color: { rgb: 'D9D9D9' } };
+    const border = { top: thin, bottom: thin, left: thin, right: thin };
+    const head = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '2F5496' } },
+      alignment: { vertical: 'center', horizontal: 'center', wrapText: true }, border };
+    header.forEach((_, c) => { const a = XLSX.utils.encode_cell({ r: 2, c }); if (ws[a]) ws[a].s = head; });
+    for (let r = 3; r <= lastRow; r++) {
+      const isTotal = totalRow && r === lastRow;
+      const flagged = flagCol >= 0 && aoa[r][flagCol] === 'Ya';
+      for (let c = 0; c <= lastCol; c++) {
+        const a = XLSX.utils.encode_cell({ r, c });
+        if (!ws[a]) continue;
+        ws[a].s = { border, ...(isTotal ? { font: { bold: true }, fill: { fgColor: { rgb: 'E7ECF6' } } } : {}),
+          ...(flagged ? { fill: { fgColor: { rgb: 'FFF1D6' } } } : {}) };
+      }
+    }
+    if (widths) ws['!cols'] = widths.map((wch) => ({ wch }));
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: Math.max(lastRow, 2), c: lastCol } }) };
+    ws['!freeze'] = { xSplit: 0, ySplit: 3 };
+    ws['!views'] = [{ state: 'frozen', xSplit: 0, ySplit: 3 }];
+    return ws;
+  }
+
+  function sheetRingkasan(XLSX, kapan) {
+    const by = new Map();
+    matriks().forEach((r) => {
+      const key = r.spes == null ? '\u0000' : r.spes;
+      const o = by.get(key) || { spes: r.spes, per: {}, cek: 0 };
+      o.per[r.kategori] = (o.per[r.kategori] || 0) + Number(r.jumlah);
+      o.cek += Number(r.perlu_cek); by.set(key, o);
+    });
+    const tot = (o) => Object.values(o.per).reduce((a, b) => a + b, 0);
+    const list = [...by.values()].sort((a, b) =>
+      ((a.spes == null) - (b.spes == null)) || ((a.spes === 'LAINNYA') - (b.spes === 'LAINNYA')) || tot(b) - tot(a));
+    const kats = KAT_ORDER.filter((k) => list.some((o) => o.per[k]));
+    const body = list.map((o) => [spesNama(o.spes), ...kats.map((k) => o.per[k] || ''), tot(o), o.cek || '']);
+    const kolomTotal = [...kats.map((k) => list.reduce((a, o) => a + (o.per[k] || 0), 0)), list.reduce((a, o) => a + tot(o), 0), list.reduce((a, o) => a + o.cek, 0)];
+    body.push(['Total', ...kolomTotal]);
+    const ws = buatSheet(XLSX, 'Ringkasan kategori & spesialisasi katalog',
+      `Dihitung ${kapan} · ${fmt(st.ring.total)} produk aktif · ${fmt(st.ring.perlu_cek)} perlu dicek`,
+      ['Spesialisasi', ...kats.map(katNama), 'Total', 'Perlu dicek'], body,
+      { widths: [28, ...kats.map(() => 16), 10, 12], totalRow: true });
+    const note = body.length + 4;
+    XLSX.utils.sheet_add_aoa(ws, [['Perlu dicek = dugaan sistem, belum ada petunjuk, atau golongan belum dipetakan. Baris tersebut berwarna kuning di sheet rinci.']], { origin: { r: note, c: 0 } });
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: note, c: kats.length + 2 } });
+    return ws;
+  }
+
+  async function exportExcel(scope) {
+    if (exporting) return;
+    if (!st.ring || !st.ring.dihitung_at) { showToast('Klasifikasi belum dihitung, belum ada yang bisa diexport', true); return; }
+    if (!S.ensureXlsx) { showToast('Library Excel belum terpasang (S.ensureXlsx)', true); return; }
+    exporting = true;
+    const btns = [$('katExportAllBtn'), $('katExportViewBtn')];
+    btns.forEach((b) => { b.disabled = true; });
+    showToast('Menyiapkan Excel, mengambil data katalog...');
+    try {
+      await S.ensureXlsx();
+      const XLSX = window.XLSX;
+      const now = new Date();
+      const tgl = now.toISOString().slice(0, 10);
+      const kapan = new Date(st.ring.dihitung_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const semua = scope === 'semua';
+      const m = modeDef(st.mode);
+      const opt = semua ? {} : { spes: st.spes || null, cari: st.q.trim() || null, cek: st.cek };
+      const kategori = semua ? KAT_ORDER : (st.kat ? [st.kat] : m.kat);
+      const rows = await fetchSemua(kategori, opt);
+      if (!rows.length) { showToast('Tidak ada produk untuk diexport', true); return; }
+
+      const cakupan = semua ? 'Seluruh katalog aktif'
+        : [m.label, st.spes && 'spesialisasi ' + spesNama(st.spes), st.kat && katNama(st.kat), st.cek && 'hanya yang perlu dicek', st.q.trim() && `cari "${st.q.trim()}"`].filter(Boolean).join(' · ');
+      const wb = XLSX.utils.book_new();
+      const dipakai = new Set();
+      if (semua) XLSX.utils.book_append_sheet(wb, sheetRingkasan(XLSX, kapan), namaSheet('Ringkasan', dipakai));
+      kelompokkan(rows).forEach((g) => {
+        const body = g.rows.map((r, i) => [
+          i + 1, r.kode_produk, r.nama_produk || '', katNama(r.kategori),
+          ALAT.includes(r.kategori) ? '—' : spesNama(r.spes),
+          r.jenis ? spesNama(r.jenis) : '', r.golongan || '', sumberLabel(r), perluCek(r) ? 'Ya' : '']);
+        const sub = `${cakupan} · ${fmt(g.rows.length)} produk · klasifikasi dihitung ${kapan} · diexport ${tgl}`;
+        XLSX.utils.book_append_sheet(wb, buatSheet(XLSX, g.nama, sub, EXPORT_HEADER, body, { widths: EXPORT_WIDTHS, flagCol: 8 }), namaSheet(g.nama, dipakai));
+      });
+      const tag = semua ? 'semua' : [m.id, st.spes && st.spes.toLowerCase().replace(/[^a-z0-9]+/g, '-'), st.kat && st.kat.toLowerCase().replace(/[^a-z0-9]+/g, '-')].filter(Boolean).join('_');
+      XLSX.writeFile(wb, `katalog_kategori_spesialisasi_${tag}_${tgl}.xlsx`);
+      showToast(`Export selesai: ${fmt(rows.length)} produk, ${wb.SheetNames.length} sheet`);
+    } catch (e) {
+      showToast('Gagal export: ' + (e.message || e), true);
+    } finally {
+      exporting = false;
+      btns.forEach((b) => { b.disabled = false; });
+    }
+  }
+
   // ---- navigasi & event (delegasi di #viewKategori) ----
   function go(mode, { spes = '', kat = '' } = {}) {
     Object.assign(st, { mode, page: 1, spes, kat, cek: false, q: '' });
@@ -205,6 +363,8 @@ export function installKategori(S) {
     debounce = setTimeout(() => { st.q = e.target.value; st.page = 1; loadList(); }, 300);
   });
   $('katRefreshBtn').addEventListener('click', loadRingkasan);
+  $('katExportAllBtn').addEventListener('click', () => exportExcel('semua'));
+  $('katExportViewBtn').addEventListener('click', () => exportExcel('tampilan'));
   $('viewKategori').addEventListener('click', (e) => {
     const t = e.target.closest('button, tr[data-kid]');
     if (!t) return;

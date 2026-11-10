@@ -384,3 +384,4 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 #viewKategori .kat-warn{color:var(--amber);font-size:10.5px;margin-left:4px}
 #viewKategori .kat-zero{color:var(--text-muted)}
 #viewKategori .kat-note{font-size:12px;color:var(--text-muted);margin-top:10px}
+#viewKategori .produk-head-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;align-items:center}

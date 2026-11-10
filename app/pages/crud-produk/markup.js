@@ -486,7 +486,11 @@ export const CRUD_PRODUK_MARKUP = `
           <div class="content-title">Kategori &amp; Spesialisasi</div>
           <div class="content-sub" id="katCount">Memuat...</div>
         </div>
-        <button class="btn btn-sm" id="katRefreshBtn" title="Muat ulang hasil terakhir (bukan hitung ulang; lihat refresh_katalog_klasifikasi)"><i class="ti ti-refresh"></i> Muat ulang</button>
+        <div class="produk-head-actions">
+          <button class="btn btn-ghost excel-export-btn" id="katExportViewBtn" style="display:none;" title="Export produk sesuai tab, filter, dan pencarian yang sedang aktif"><i class="ti ti-file-spreadsheet"></i> Export tampilan ini</button>
+          <button class="btn btn-accent excel-export-btn" id="katExportAllBtn" title="Satu workbook: Ringkasan + satu sheet per spesialisasi (set &amp; instrumen) + satu sheet per kategori alat. Untuk dasar pengajuan nomor izin edar."><i class="ti ti-file-spreadsheet"></i> Export Excel (izin edar)</button>
+          <button class="btn btn-sm" id="katRefreshBtn" title="Muat ulang hasil terakhir (bukan hitung ulang; lihat refresh_katalog_klasifikasi)"><i class="ti ti-refresh"></i> Muat ulang</button>
+        </div>
       </div>
       <div class="orph-tabs" id="katModeBar"></div>
       <div class="akd-toolbar" id="katToolbar" style="display:none;">
