@@ -486,7 +486,7 @@ export const CRUD_PRODUK_MARKUP = `
           <div class="content-title">Kategori &amp; Spesialisasi</div>
           <div class="content-sub" id="katCount">Memuat...</div>
         </div>
-        <button class="btn btn-sm" id="katRefreshBtn" title="Hitung ulang dari database"><i class="ti ti-refresh"></i> Muat ulang</button>
+        <button class="btn btn-sm" id="katRefreshBtn" title="Muat ulang hasil terakhir (bukan hitung ulang; lihat refresh_katalog_klasifikasi)"><i class="ti ti-refresh"></i> Muat ulang</button>
       </div>
       <div class="orph-tabs" id="katModeBar"></div>
       <div class="akd-toolbar" id="katToolbar" style="display:none;">

@@ -67,10 +67,21 @@ export function installKategori(S) {
     $('katToolbar').style.display = ringkasan ? 'none' : '';
     $('katChips').style.display = ringkasan ? 'none' : '';
     if (!st.ring) return;
+    if (!st.ring.dihitung_at) return belumDihitung();
     const tot = Number(st.ring.total || 0), cek = Number(st.ring.perlu_cek || 0);
-    $('katCount').textContent = `${fmt(tot)} produk aktif · ${fmt(cek)} perlu dicek`;
+    const kapan = new Date(st.ring.dihitung_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    $('katCount').textContent = `${fmt(tot)} produk aktif · ${fmt(cek)} perlu dicek · dihitung ${kapan}`;
     if (ringkasan) { $('katPagination').style.display = 'none'; renderRingkasan(); }
     else { renderChips(); loadList(); }
+  }
+
+  // Hasil klasifikasi disimpan di tabel cache (menghitung ulang per request kena statement timeout role API).
+  function belumDihitung() {
+    $('katCount').textContent = 'Belum dihitung';
+    $('katPagination').style.display = 'none';
+    $('katToolbar').style.display = 'none';
+    $('katChips').style.display = 'none';
+    $('katBody').innerHTML = '<div class="orph-alert"><i class="ti ti-info-circle"></i><div>Cache klasifikasi masih kosong. Jalankan di SQL Editor Supabase: <code>set statement_timeout = \'5min\'; select public.refresh_katalog_klasifikasi();</code> lalu klik Muat ulang.</div></div>';
   }
 
   function renderModeBar() {
