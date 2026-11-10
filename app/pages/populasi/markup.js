@@ -5,8 +5,8 @@
 //
 // TATA LETAK (urutan = urutan prioritas):
 //   1. Topbar: judul + kesegaran data.
-//   2. Bilah cari (#ps-cari) selebar halaman, dengan dua cakupan: Produk dan Rumah sakit/RMP
-//      (masing-masing isinya disimpan terpisah).
+//   2. Bilah cari (#ps-cari) selebar halaman, dengan tiga cakupan: Produk, Rumah sakit, dan No. RMP
+//      (masing-masing isinya disimpan terpisah; No. RMP mengganti tabel RS jadi daftar pesanan).
 //   3. Dua kolom: kiri = rel filter (.ps-panel: provinsi, status, kategori, spesialisasi, opsi, periode),
 //      kanan = hasil (.ps-results: filter aktif, judul hasil, ringkasan satu baris, tabel + paginasi (#ps-pager), RS tanpa wilayah,
 //      Kelola produk di paling bawah). Rel filter tetap terlihat saat tabel di-scroll.
@@ -43,6 +43,7 @@ export const POPULASI_MARKUP = `
     <div class="ps-seg" role="group" aria-labelledby="ps-lbl-cari">
       <button type="button" class="filter-btn ps-scope-btn active" data-action="ps-cari-scope" data-v="produk" aria-pressed="true">Produk</button>
       <button type="button" class="filter-btn ps-scope-btn" data-action="ps-cari-scope" data-v="rs" aria-pressed="false">Rumah sakit</button>
+      <button type="button" class="filter-btn ps-scope-btn" data-action="ps-cari-scope" data-v="rmp" aria-pressed="false">No. RMP</button>
     </div>
     <div class="ps-searchfield">
       <i class="ti ti-search" aria-hidden="true"></i>
