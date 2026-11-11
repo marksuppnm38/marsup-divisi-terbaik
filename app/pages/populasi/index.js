@@ -16,6 +16,10 @@
 // Pola mount/unmount/auth/rpc() sama dengan dashboard/index.js (PNMAuth, token diambil
 // fresh tiap request, delegasi event di container).
 //
+// MODE "Progress order" (progress.js): daftar semua project (No. RMP) yang berjalan + rekap per sales, lewat RPC
+//   get_progress_order (populasi_progress_order.sql). Berdiri sendiri; index.js hanya mengganti mode dan meneruskan
+//   klik/ubah/ketik berawalan pg- ke progress.js.
+//
 // "Perlu dicek" / "perkiraan" (state.tinjau): kartu angka itu membuka DAFTAR PESANAN-nya
 // (dari get_populasi_v2_baris, filter yang sama dengan tabel) lengkap dengan alasan per pesanan.
 // Angka kartu selalu disamakan dengan daftar yang tampil (lihat renderReview).
@@ -25,6 +29,7 @@
 
 import { POPULASI_MARKUP } from './markup.js';
 import { buildWorkbook, xlCatalog, xlDefaultSel, xlInfo, XL_PRESETS, XL_GRUP, XL_GRUP_INTERNAL } from './export.js';
+import { createProgress } from './progress.js';
 
 const VENDOR_CHAIN = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
@@ -93,6 +98,7 @@ const EXPORT_TIMEOUT_MS = 60000;
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2tic2VtaWhjeW5kaXNqb29yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5ODA0MzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo';
 const LS_PROV = 'pnm_populasi_set_provinsi';
 const LS_PAGE = 'pnm_populasi_set_page_size';
+const LS_MODE = 'pnm_populasi_mode';          // 'populasi' | 'progress' (mode terakhir dipakai)
 const PAGE_SIZES = [25, 50, 100];   // pilihan baris per halaman; halaman 1 selalu dimulai dari yang teratas
 const DEFAULT_PROV = 'Jawa Tengah';
 const STALE_DAYS = 7;     // lewat ini, tampilkan peringatan "data di DB tertinggal"
@@ -123,6 +129,7 @@ const TIP_UNIT = 'Unit = alat medis, elektromedis, dan alat penunjang laboratori
 
 let mountedContainer = null;
 let handlers = null;
+let progress = null;                // pengendali mode Progress order (progress.js)
 let searchTimer = null;
 let reqId = 0;
 
@@ -133,6 +140,7 @@ const state = {
   page: 1,                          // halaman tabel RS (mulai 1); kembali ke 1 saat data/filter/urutan berubah
   pageSize: (() => { const v = Number(lsGet(LS_PAGE)); return PAGE_SIZES.includes(v) ? v : 50; })(),
   tinjau: '',                       // '' | 'cek' | 'estimasi' -> tabel berganti jadi daftar pesanan
+  mode: 'populasi',                 // 'populasi' | 'progress'
 };
 
 let data = null;                    // respons get_populasi_v2 terakhir
@@ -2196,6 +2204,27 @@ async function downloadXlsx() {
 }
 
 // ── kontrol ──────────────────────────────────────────────────────────────────
+// Dua mode, satu halaman. Panel Populasi hanya disembunyikan (state dan hasilnya tetap), Progress order memuat ulang tiap dibuka.
+function setMode(m) {
+  const next = m === 'progress' ? 'progress' : 'populasi';
+  if (next === state.mode && ($('pg-root').hidden === (next === 'populasi'))) return;
+  state.mode = next;
+  lsSet(LS_MODE, next);
+  clearError();
+  document.querySelectorAll('[data-action="ps-mode"]').forEach((b) => {
+    const on = b.dataset.v === next;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  $('ps-pop-root').hidden = next !== 'populasi';
+  if (next === 'progress') {
+    if (progress) progress.show();
+    return;
+  }
+  if (progress) progress.hide();
+  if (data) renderFreshness(); else load();
+}
+
 function syncStatusButtons() {
   document.querySelectorAll('[data-action="ps-status"]').forEach((b) => {
     const on = b.dataset.v === state.status;
@@ -2302,10 +2331,18 @@ export async function mount(container) {
     provinsi: saved === null ? DEFAULT_PROV : saved,
     status: 'DELIVERED', cakupan: 'POPULASI', kelompok: ['SET'],
     cari: 'produk', produk: '', pic: '', spes: [], jenis: [], mikro: false, rs: '', rmp: '', isiSet: false, dari: '', sampai: '',
-    sort: { k: 'total', dir: 'desc' }, tinjau: '',
+    sort: { k: 'total', dir: 'desc' }, tinjau: '', mode: 'populasi',
   });
   data = null; rows = []; unmapped = [];
   picOpsi.clear();
+  progress = createProgress({
+    $, rpc, esc, fmt, fmtDate, toDate, num, showToast, showError, clearError, localISODate, periodeBulan, saveBlob, bersihNama,
+    ensureExcel: async () => {
+      await loadScript(EXCELJS_SRC);
+      if (!window.ExcelJS) throw new Error('library Excel tidak termuat');
+      return window.ExcelJS;
+    },
+  });
   detailCache.clear();
   linesAll = null; recon = {};
   Object.assign(kel, {
@@ -2316,6 +2353,7 @@ export async function mount(container) {
   const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   const ACTIONS = {
     'ps-reload': () => load(),
+    'ps-mode': (el) => setMode(el.dataset.v),
     'ps-tinjau': (el) => setTinjau(el.dataset.k),
     'ps-tinjau-reset': () => setTinjau(''),
     'ps-cat': (el) => {
@@ -2418,14 +2456,17 @@ export async function mount(container) {
     const el = e.target.closest('[data-action]');
     if (!el || !container.contains(el)) return;
     if (hasOwn(ACTIONS, el.dataset.action)) ACTIONS[el.dataset.action](el, e);
+    else if (progress && el.dataset.action.startsWith('pg-')) progress.onClick(el);
   }
   function onChange(e) {
     const t = e.target;
     if (t.dataset && t.dataset.xl) { xlChange(t); return; }
+    if (progress && t.id && t.id.startsWith('pg-')) { progress.onChange(t); return; }
     if (hasOwn(CHANGE_BY_ID, t.id)) CHANGE_BY_ID[t.id](t);
   }
   function onInput(e) {
     const id = e.target.id;
+    if (id === 'pg-cari') { if (progress) progress.onInput(e.target); return; }
     if (id === 'ps-xl-untuk' || id === 'ps-xl-oleh' || id === 'ps-xl-catatan') {
       const k = { 'ps-xl-untuk': 'untuk', 'ps-xl-oleh': 'oleh', 'ps-xl-catatan': 'catatan' }[id];
       if (xlDlg.sel) xlDlg.sel[k] = e.target.value;
@@ -2471,6 +2512,7 @@ export async function mount(container) {
 
   // dipanggil paling akhir, setelah semua let/const modul terinisialisasi (hindari TDZ)
   load();
+  if (lsGet(LS_MODE) === 'progress') setMode('progress');     // mode terakhir dipakai; data Populasi tetap dimuat di belakang
 }
 
 export function unmount() {
@@ -2478,6 +2520,8 @@ export function unmount() {
     Object.entries(handlers).forEach(([type, fn]) => mountedContainer.removeEventListener(type, fn));
   }
   handlers = null;
+  if (progress) progress.destroy();
+  progress = null;
   clearTimeout(searchTimer);
   searchTimer = null;
   clearTimeout(kelTimer);
@@ -2496,5 +2540,6 @@ export function unmount() {
   detailCache.clear();
   linesAll = null; recon = {};
   state.tinjau = '';
+  state.mode = 'populasi';
   snapKotor = false;
 }

@@ -24,6 +24,8 @@
 // Dialog Kelola produk punya tiga tab: Kategori produk, Atribut produk (spesialisasi, jenis, mikro), Alihkan set.
 // Dialog Unduh Excel (#ps-xl-overlay): tujuan file (preset), sheet dan kolom (dirender JS di #ps-xl-presets / #ps-xl-sheets),
 // serta keterangan opsional (untuk siapa, oleh siapa, catatan). Logikanya di index.js; pembangun file di export.js.
+// MODE: topbar punya dua mode, Populasi (default) dan Progress order. Progress order = daftar SEMUA project (No. RMP) yang berjalan,
+// termasuk yang belum firm; isinya (#pg-root) dirender oleh progress.js. Panel Populasi dibungkus #ps-pop-root dan hanya disembunyikan.
 // Ikon hanya dipakai untuk aksi yang juga punya label teks, atau yang artinya baku (cari, tutup, urutkan).
 
 export const POPULASI_MARKUP = `
@@ -31,6 +33,10 @@ export const POPULASI_MARKUP = `
 <div class="pw-topbar">
   <div class="pw-topbar-crumb"><strong>Populasi</strong></div>
   <div class="pw-topbar-actions">
+    <div class="ps-seg ps-modeseg" role="group" aria-label="Mode halaman">
+      <button type="button" class="filter-btn active" data-action="ps-mode" data-v="populasi" aria-pressed="true">Populasi</button>
+      <button type="button" class="filter-btn" data-action="ps-mode" data-v="progress" aria-pressed="false">Progress order</button>
+    </div>
     <span class="last-update" id="ps-data-per">Memuat…</span>
   </div>
 </div>
@@ -38,6 +44,7 @@ export const POPULASI_MARKUP = `
 <main>
   <div class="err-banner" id="err-banner" role="alert"><i class="ti ti-alert-circle"></i> <span id="err-text"></span></div>
 
+  <div id="ps-pop-root">
   <section class="ps-command" aria-label="Pencarian">
     <span class="ps-sr" id="ps-lbl-cari">Cari</span>
     <div class="ps-seg" role="group" aria-labelledby="ps-lbl-cari">
@@ -181,6 +188,93 @@ export const POPULASI_MARKUP = `
       </div>
     </div>
   </div>
+  </div>
+
+  <section class="pg-root" id="pg-root" hidden aria-label="Progress order">
+    <p class="pg-intro">Semua project (No. RMP) yang tercatat, termasuk yang belum firm atau bukan populasi. Satu baris per rumah sakit dan No. RMP. Periode memakai tanggal PO.</p>
+
+    <section class="ps-command" aria-label="Pencarian progress order">
+      <div class="ps-searchfield">
+        <i class="ti ti-search" aria-hidden="true"></i>
+        <input class="search-mini" type="search" id="pg-cari" autocomplete="off" placeholder="mis. 26-105, nama RS, nomor PO, atau produk" aria-label="Cari No. RMP, rumah sakit, PO, atau produk">
+      </div>
+    </section>
+
+    <div class="pg-filters">
+      <div class="ps-field">
+        <span class="ps-lbl" id="pg-lbl-periode">Periode</span>
+        <div class="ps-seg" role="group" aria-labelledby="pg-lbl-periode">
+          <button type="button" class="filter-btn active" data-action="pg-periode" data-v="bulan-ini" aria-pressed="true">Bulan ini</button>
+          <button type="button" class="filter-btn" data-action="pg-periode" data-v="bulan-lalu" aria-pressed="false">Bulan lalu</button>
+          <button type="button" class="filter-btn" data-action="pg-periode" data-v="semua" aria-pressed="false">Semua tanggal</button>
+        </div>
+      </div>
+      <label class="ps-field pg-date">
+        <span class="ps-lbl">Dari</span>
+        <input class="search-mini" type="date" id="pg-dari">
+      </label>
+      <label class="ps-field pg-date">
+        <span class="ps-lbl">Sampai</span>
+        <input class="search-mini" type="date" id="pg-sampai">
+      </label>
+      <div class="ps-field">
+        <span class="ps-lbl" id="pg-lbl-status">Status</span>
+        <div class="ps-seg" role="group" aria-labelledby="pg-lbl-status">
+          <button type="button" class="filter-btn active" data-action="pg-status" data-v="IN_PIPELINE" aria-pressed="true">Berjalan</button>
+          <button type="button" class="filter-btn" data-action="pg-status" data-v="SEMUA" aria-pressed="false">Semua status</button>
+        </div>
+      </div>
+      <label class="ps-field pg-sel">
+        <span class="ps-lbl">Sales</span>
+        <select class="filter-select" id="pg-pic"><option value="">Semua sales</option></select>
+      </label>
+      <label class="ps-field pg-sel">
+        <span class="ps-lbl">Provinsi</span>
+        <select class="filter-select" id="pg-provinsi"><option value="">Semua provinsi</option></select>
+      </label>
+      <label class="ps-check pg-check" title="Sembunyikan pesanan yang ditandai sample">
+        <input type="checkbox" id="pg-sample">
+        <span>Tanpa sample</span>
+      </label>
+      <button type="button" class="btn btn-ghost pg-reset" id="pg-reset" data-action="pg-reset" hidden>Atur ulang filter</button>
+    </div>
+
+    <div class="ps-scope" id="pg-scope" aria-live="polite">
+      <div class="ps-sum-main" id="pg-sum-main">—</div>
+      <div class="ps-loadbar" aria-hidden="true"></div>
+    </div>
+    <div class="stats-grid ps-stats" id="pg-stats">
+      <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
+      <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
+      <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
+    </div>
+
+    <div class="pg-recap" id="pg-recap" hidden></div>
+
+    <div class="table-section pg-table" id="pg-table">
+      <div class="table-header">
+        <div class="table-title"><span id="pg-tbl-title">Daftar project</span></div>
+        <div class="filter-bar">
+          <label class="ps-sortsel"><span class="ps-sr">Urutkan</span>
+            <select class="filter-select" id="pg-urut" aria-label="Urutkan daftar"></select>
+          </label>
+          <button type="button" class="bulk-btn clear" data-action="pg-copy" title="Salin rekap dan daftar sebagai teks untuk ditempel ke chat atau email"><i class="ti ti-copy" aria-hidden="true"></i> Salin teks</button>
+          <button type="button" class="bulk-btn export ps-xlsx" data-action="pg-xlsx" title="Unduh Excel: rekap per sales, daftar RMP, dan rincian item"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> <span>Unduh Excel</span></button>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>No. RMP</th><th>Rumah sakit</th><th>Sales</th><th>Status</th><th class="ps-th-num">Jumlah</th><th>Tgl PO</th><th>Diperbarui</th></tr></thead>
+          <tbody id="pg-body">
+            <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:70%;height:13px"></div></td><td><div class="skeleton" style="width:80%"></div></td><td><div class="skeleton" style="width:50%"></div></td><td><div class="skeleton" style="width:70%"></div></td><td><div class="skeleton" style="width:40px;margin-left:auto"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
+            <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:60%;height:13px"></div></td><td><div class="skeleton" style="width:70%"></div></td><td><div class="skeleton" style="width:45%"></div></td><td><div class="skeleton" style="width:65%"></div></td><td><div class="skeleton" style="width:40px;margin-left:auto"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
+            <tr class="ps-skel-note"><td colspan="7"><span class="ps-sr" role="status">Memuat data…</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pg-more" id="pg-more" hidden></div>
+    </div>
+  </section>
 </main>
 </div>
 

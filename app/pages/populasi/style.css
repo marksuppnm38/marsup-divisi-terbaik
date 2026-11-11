@@ -690,3 +690,103 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 @media (prefers-reduced-motion: reduce){
   #ps-xl-overlay .ps-xl-cols > summary::before{ transition: none; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MODE "PROGRESS ORDER" (progress.js)
+   Memakai ulang komponen Populasi (ps-seg, ps-stats, ps-row, ps-detail, ps-dt, ps-tag...). Di bawah ini hanya yang baru:
+   saklar mode di topbar, baris filter horizontal, rekap per sales, dan tabel daftar RMP.
+   ═══════════════════════════════════════════════════════════════════════════ */
+#app-root .ps-modeseg{ margin-right: 14px; }
+#app-root .ps-modeseg .filter-btn{ min-height: 30px; }
+#app-root .pw-topbar-actions{ display: flex; align-items: center; }
+#app-root #ps-pop-root[hidden],
+#app-root .pg-root[hidden],
+#app-root .pg-recap[hidden],
+#app-root .pg-more[hidden],
+#app-root .pg-reset[hidden]{ display: none; }
+
+#app-root .pg-intro{ margin: 0 0 14px; max-width: 78ch; font-size: var(--ps-fs); line-height: 20px; color: var(--ps-muted); }
+
+/* baris filter: satu baris yang membungkus; label di atas tiap kontrol */
+#app-root .pg-filters{
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 20px;
+  margin: 0 0 22px; padding: 0 0 18px; border-bottom: 1px solid var(--border);
+}
+#app-root .pg-filters .ps-seg{ display: inline-flex; }
+#app-root .pg-filters .filter-select,
+#app-root .pg-filters .search-mini{ height: 34px; box-sizing: border-box; font-size: var(--ps-fs); }
+#app-root .pg-sel{ width: 200px; }
+#app-root .pg-sel .filter-select{ width: 100%; }
+#app-root .pg-date{ width: 140px; }
+#app-root .pg-date .search-mini{ width: 100%; }
+#app-root .pg-check{ align-self: flex-end; min-height: 34px; }
+#app-root .pg-reset{ align-self: flex-end; min-height: 34px; font-size: var(--ps-fs); }
+
+/* rekap per sales */
+#app-root .pg-recap{ margin: 0 0 26px; }
+#app-root .pg-sec-h{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 0 0 10px; }
+#app-root .pg-sec-note{ font-size: var(--ps-fs-cap); }
+#app-root .pg-recap-scroll{ overflow-x: auto; border-top: 1px solid var(--border-strong); }
+#app-root .pg-recap-t{ width: 100%; min-width: 560px; border-collapse: collapse; }
+#app-root .pg-recap-t th{
+  padding: 10px 12px; text-align: left; white-space: nowrap;
+  font-size: var(--ps-fs-cap); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ps-muted);
+  background: transparent; border-bottom: 1px solid var(--border);
+}
+#app-root .pg-recap-t th.ps-th-num{ text-align: right; }
+#app-root .pg-recap-t td{ padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: var(--ps-fs); line-height: 20px; vertical-align: top; }
+#app-root .pg-recap-t td:first-child,
+#app-root .pg-recap-t th:first-child{ padding-left: 14px; }
+#app-root .pg-recap-row:hover > td{ background: var(--surface-2); }
+#app-root .pg-recap-t .ps-rs-btn{ min-height: 20px; }
+#app-root .pg-recap-total > td{ border-bottom: 0; font-weight: 600; background: var(--surface-2); }
+#app-root .pg-recap-total .ps-sub{ font-weight: 400; }
+#app-root .pg-recap-load{ padding: 22px 12px; border-top: 1px solid var(--border-strong); }
+
+/* daftar RMP */
+#app-root .pg-table{
+  margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; transition: opacity .15s;
+}
+#app-root .pg-table:hover{ transform: none; box-shadow: none; }
+#app-root .pg-table.ps-busy{ opacity: .6; pointer-events: none; }
+#app-root .pg-table .table-header{
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 12px;
+  margin: 0; padding: 12px 0; background: none; border: 0;
+}
+#app-root .pg-table .filter-bar{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+#app-root .pg-table .table-scroll{ min-height: 200px; overflow-x: auto; border-top: 1px solid var(--border-strong); }
+#app-root .pg-table .table-scroll > table{ width: 100%; min-width: 860px; border-collapse: collapse; }
+#app-root .pg-table thead th{
+  padding: 10px 12px; text-align: left; white-space: nowrap;
+  font-size: var(--ps-fs-cap); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ps-muted);
+  background: transparent; border-bottom: 1px solid var(--border);
+}
+#app-root .pg-table thead th.ps-th-num{ text-align: right; }
+#app-root .pg-table tbody > tr > td{ border-bottom: 1px solid var(--border); }
+#app-root .pg-table tbody > tr > td:first-child{ padding-left: 14px; }
+#app-root .pg-table tbody > tr.ps-detail-row > td{ padding-left: 0; }
+#app-root .pg-table tbody > tr.ps-skel-note > td{ border-bottom: 0; padding-left: 0; }
+#app-root .pg-row > td{ vertical-align: top; padding-top: 11px; padding-bottom: 11px; line-height: 20px; font-size: var(--ps-fs); }
+#app-root .pg-col-rmp{ white-space: nowrap; }
+#app-root .pg-col-rmp .kode-text{ font-size: var(--ps-fs); }
+#app-root .pg-col-status{ max-width: 280px; }
+#app-root .pg-col-status .ps-st{ display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#app-root .pg-row > td.ps-num{ min-width: 96px; }
+#app-root .pg-more{ display: flex; justify-content: center; padding: 16px 0 4px; }
+#app-root .pg-more .btn{ min-height: 32px; font-size: var(--ps-fs); }
+
+/* rincian: info PO di atas daftar item */
+#app-root .pg-meta{ display: flex; flex-wrap: wrap; gap: 6px 28px; margin: 6px 0 8px; padding: 0; }
+#app-root .pg-meta > div{ min-width: 0; }
+#app-root .pg-meta dt{ font-size: var(--ps-fs-cap); line-height: 16px; color: var(--ps-muted); }
+#app-root .pg-meta dd{ margin: 0; max-width: 46ch; font-size: var(--ps-fs); line-height: 18px; color: var(--text); overflow-wrap: anywhere; }
+
+@media (max-width: 1100px){
+  #app-root .pg-filters{ gap: 12px 14px; }
+}
+@media (max-width: 640px){
+  #app-root .pg-sel{ width: 100%; }
+  #app-root .pg-date{ width: calc(50% - 7px); }
+  #app-root .ps-modeseg{ margin-right: 8px; }
+}
