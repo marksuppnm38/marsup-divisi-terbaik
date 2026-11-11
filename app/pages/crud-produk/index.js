@@ -208,6 +208,23 @@ function verifiedBadgeHtml(isVerified){
   return isVerified ? ' <i class="ti ti-rosette-discount-check-filled vbadge" title="Verified Product — tayang di INAPROC"></i>' : '';
 }
 
+// Penanda "baru diubah" (<24 jam): teks kecil dengan waktu relatif, bukan titik biru.
+// Titik tanpa label gak ngasih tau apa-apa sampai di-hover; teks langsung kebaca.
+function updatedAgoText(iso){
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return 'baru saja';
+  const mnt = Math.floor(ms / 60000);
+  if (mnt < 2) return 'baru saja';
+  if (mnt < 60) return mnt + ' menit lalu';
+  return Math.floor(mnt / 60) + ' jam lalu';
+}
+function recentBadgeHtml(updatedAt){
+  if (!updatedAt) return '';
+  const ms = Date.now() - new Date(updatedAt).getTime();
+  if (!(ms < 24 * 60 * 60 * 1000)) return '';
+  return `<span class="tag-baru" title="Diubah ${escapeHtml(updatedAgoText(updatedAt))}">Baru diubah</span>`;
+}
+
 // BUGFIX (sesi keamanan, 15 September 2026): escapeHtml() dulu cuma
 // dideklarasikan di dalam mount()'s closure (baris jauh di bawah), padahal
 // renderInaprocIndikator() ini -- pemanggilnya -- ada di scope MODUL (luar
@@ -241,9 +258,9 @@ function renderLinkV6Hint(){
 function renderInaprocIndikator(statusInaproc, linkV6, isVerified){
   const el = document.getElementById('inaprocIndikator');
   if (!statusInaproc && !isVerified) { el.style.display = 'none'; return; }
-  el.style.display = 'block';
+  el.style.display = 'flex';
   if (!statusInaproc) {
-    el.innerHTML = `<span style="font-size:11px;color:var(--text-muted);">Status INAPROC:</span> <span class="seal seal-terhubung">Verified Product</span>${verifiedBadgeHtml(true)}`;
+    el.innerHTML = `<span class="ind-label">Status pengajuan</span><span class="seal seal-terhubung">Verified Product</span>`;
     return;
   }
   let cls = 'seal-null', label = statusInaproc;
@@ -252,9 +269,9 @@ function renderInaprocIndikator(statusInaproc, linkV6, isVerified){
   else if (statusInaproc === 'Menunggu Persetujuan') cls = 'seal-belum_firm';
   let extra = '';
   if (statusInaproc === 'Disetujui' && !linkV6) {
-    extra = ' <span style="color:var(--rust-text);font-size:11.5px;">— sudah disetujui INAPROC, belum ada Link V6, siap dibuatkan!</span>';
+    extra = '<span class="ind-note">Sudah disetujui INAPROC, tinggal isi Link V6.</span>';
   }
-  el.innerHTML = `<span style="font-size:11px;color:var(--text-muted);">Status INAPROC:</span> <span class="seal ${cls}">${escapeHtml(label)}</span>${verifiedBadgeHtml(isVerified)}${extra}`;
+  el.innerHTML = `<span class="ind-label">Status pengajuan</span><span class="seal ${cls}">${escapeHtml(label)}</span>${extra}`;
 }
 
 export async function mount(container, initialSub) {
@@ -666,16 +683,35 @@ async function ensureStokForIds(ids){
   });
   return ok;
 }
+function stokTitle(sk){
+  const qty = Number(sk.qty);
+  const showQty = sk.status === 'READY' && Number.isFinite(qty);
+  return sk.status === 'READY' ? 'Stok siap' + (showQty ? ': ' + qty.toLocaleString('id-ID') : '')
+    : sk.status === 'INDENT' ? 'Stok kosong / belum tercatat di file stok'
+    : 'Data stok sebagian komponen set belum ada';
+}
+// Isi sel kolom "Stok" di tabel: READY = angka (tabular, rata kanan), INDENT / data kurang = teks.
+function stokCellHtml(id){
+  const sk = produkStokCache.get(id);
+  if (!sk || !STOK_LABEL[sk.status]) return '<span class="stok stok-none">—</span>';
+  const qty = Number(sk.qty);
+  const title = escapeHtml(stokTitle(sk));
+  if (sk.status === 'READY') {
+    return Number.isFinite(qty)
+      ? `<span class="stok stok-ready" title="${title}"><b>${qty.toLocaleString('id-ID')}</b> siap</span>`
+      : `<span class="stok stok-ready" title="${title}">Siap</span>`;
+  }
+  if (sk.status === 'INDENT') return `<span class="stok stok-indent" title="${title}">Indent</span>`;
+  return `<span class="stok stok-warn" title="${title}">Data kurang</span>`;
+}
+// Versi satu baris buat kartu (tampilan grid).
 function stokPillHtml(id){
   const sk = produkStokCache.get(id);
   if (!sk || !STOK_LABEL[sk.status]) return '';
   const qty = Number(sk.qty);
   const showQty = sk.status === 'READY' && Number.isFinite(qty);
-  const title = sk.status === 'READY' ? 'Stok siap' + (showQty ? ': ' + qty.toLocaleString('id-ID') : '')
-    : sk.status === 'INDENT' ? 'Stok kosong / belum tercatat di file stok'
-    : 'Data stok sebagian komponen set belum ada';
-  const text = sk.status === 'DATA_TIDAK_LENGKAP' ? 'Set tdk lengkap' : STOK_LABEL[sk.status] + (showQty ? ' · ' + qty.toLocaleString('id-ID') : '');
-  return `<span class="status-pill stok-pill ${STOK_PILL[sk.status]}" title="${escapeHtml(title)}">${escapeHtml(text)}</span>`;
+  const text = sk.status === 'DATA_TIDAK_LENGKAP' ? 'Data stok kurang' : (showQty ? qty.toLocaleString('id-ID') + ' siap' : STOK_LABEL[sk.status]);
+  return `<span class="stok stok-${sk.status === 'READY' ? 'ready' : sk.status === 'INDENT' ? 'indent' : 'warn'}" title="${escapeHtml(stokTitle(sk))}">Stok: ${escapeHtml(text)}</span>`;
 }
 
 // ---- Cache kecil di sessionStorage (hemat IO DB free tier) ----
@@ -862,7 +898,7 @@ async function loadProduk(q, page){
   produkPage = searchChanged ? 1 : (page || produkPage || 1);
   const qq = newQ;
 
-  tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Memuat data...</td></tr>`;
+  tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Memuat data...</td></tr>`;
   cardWrap.innerHTML = '';
   produkCount.textContent = 'Memuat...';
 
@@ -892,14 +928,14 @@ async function loadProduk(q, page){
       if (!fastSearchOk) {
       if (listErr) console.warn('search_produk_list gagal, fallback ke 2 langkah:', listErr.message);
       const { data: rpcData, error: rpcErr } = await sb.rpc('search_produk_dengan_harga', { q: qq, p_tipe: null, only_akd: false, only_kfa: false });
-      if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
+      if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
       const kodeList = (rpcData || []).map(r => r.kode_produk);
       if (kodeList.length === 0) { produkSearchRawRows = []; }
       else {
         const { data: fullRows, error: fullErr } = await sb.from('produk')
           .select(PRODUK_LIST_COLUMNS)
           .in('kode_produk', kodeList);
-        if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
+        if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
         const byKode = Object.fromEntries((fullRows || []).map(r => [r.kode_produk, r]));
         produkSearchRawRows = kodeList.map(k => byKode[k]).filter(Boolean);
       }
@@ -920,7 +956,7 @@ async function loadProduk(q, page){
     // ("+ Tambah Filter") dipasang di client pakai produkRowMatchesFilter yang sama dgn jalur
     // search — get_produk_list sengaja TIDAK dipakai (gak kenal status "verified").
     const all = await ensureVerifiedRows();
-    if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat produk Verified.</td></tr>`; return; }
+    if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal memuat produk Verified.</td></tr>`; return; }
     let filtered = all;
     if (needsStok && !(await ensureStokForIds(all.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
@@ -943,7 +979,7 @@ async function loadProduk(q, page){
     });
     if (error) {
       const stokBelumMigrasi = needsStok && (error.code === 'PGRST202' || /p_stok/.test(error.message || ''));
-      tableBody.innerHTML = `<tr class="state-row"><td colspan="5">${stokBelumMigrasi
+      tableBody.innerHTML = `<tr class="state-row"><td colspan="6">${stokBelumMigrasi
         ? 'Filter Stok belum aktif di database. Jalankan <code>sql/01_stok_filter_produk.sql</code> di Supabase SQL Editor, lalu muat ulang.'
         : 'Gagal memuat: ' + escapeHtml(error.message)}</td></tr>`;
       return;
@@ -961,7 +997,7 @@ async function loadProduk(q, page){
     const { data, error, count } = await query
       .order('updated_at', { ascending: false })
       .range(from, to);
-    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
     rows = data || [];
     total = count || 0;
   }
@@ -976,15 +1012,15 @@ async function loadProduk(q, page){
   // renderPgBar(null, ...) throw. Bail out di sini daripada nunggu ketauan di
   // renderPgBar.
   if (!mountedContainer) return;
-  produkCount.textContent = total + ' produk' + (qq ? ` untuk "${qq}"` : '') +
-    (produkActiveFilters.length ? ` · ${produkActiveFilters.length} filter tambahan aktif` : '');
+  produkCount.textContent = Number(total).toLocaleString('id-ID') + ' produk' + (qq ? ` untuk "${qq}"` : '') +
+    (produkActiveFilters.length ? `, ${produkActiveFilters.length} filter tambahan aktif` : '');
   renderPgBar(document.getElementById('produkPagination'), {
     page: produkPage, pageSize: PRODUK_PAGE_SIZE, total,
     onPageChange: (p) => loadProduk(qq, p)
   });
 
   if (rows.length === 0) {
-    tableBody.innerHTML = `<tr class="state-row"><td colspan="5">Tidak ada produk ditemukan.</td></tr>`;
+    tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Tidak ada produk ditemukan.</td></tr>`;
     cardWrap.innerHTML = `<div class="stub-box" style="grid-column:1/-1;">Tidak ada produk ditemukan.</div>`;
     return;
   }
@@ -1006,37 +1042,46 @@ async function loadProduk(q, page){
   // RPC) -- just never applied here. Reusing that same cached, RPC-backed
   // Set instead of a fresh row-limited query fixes it the same way.
   const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id))]);
-  const ONE_DAY = 24 * 60 * 60 * 1000;
   function attentionMeta(p){
     const noHarga = !hargaExistIds.has(p.id);
     const noLink = p.status_inaproc === 'Disetujui' && !p.link_v6;
-    const recentlyUpdated = p.updated_at && (Date.now() - new Date(p.updated_at).getTime()) < ONE_DAY;
-    return { noHarga, noLink, recentlyUpdated };
+    return { noHarga, noLink };
   }
 
   tableBody.innerHTML = '';
   cardWrap.innerHTML = '';
   rows.forEach(p => {
-    const { noHarga, noLink, recentlyUpdated } = attentionMeta(p);
-    const noLinkIcon = noLink ? '<i class="ti ti-link-off" title="Disetujui INAPROC, belum ada Link V6" style="color:var(--rust-text);"></i>' : '';
+    const { noHarga, noLink } = attentionMeta(p);
+    // "Perlu dicek": teks berwarna, bukan ikon tanpa label. Satu kata kerja per masalah.
+    const flags = [];
+    if (noLink) flags.push('<span class="flag flag-bad" title="Sudah disetujui INAPROC tapi belum ada Link V6">Belum ada link V6</span>');
+    if (noHarga) flags.push('<span class="flag flag-warn" title="Belum ada harga EKATALOG">Tanpa harga</span>');
+    if (!p.is_active) flags.push('<span class="flag flag-mute" title="Produk nonaktif">Nonaktif</span>');
+    const flagsHtml = flags.join('');
     const tr = document.createElement('tr');
-    tr.className = 'clickable' + (noHarga || noLink ? ' row-attention' : '');
+    tr.className = 'clickable';
+    tr.tabIndex = 0; // bisa dijangkau keyboard: Tab lalu Enter/Spasi buka produk
     tr.innerHTML = `
-      <td class="kode-cell">${escapeHtml(p.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</td>
-      <td>${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</td>
-      <td><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span></td>
-      <td>${sealHtml(p.status_akd)} ${noLinkIcon}</td>
-      <td style="text-align:right;color:var(--text-muted);white-space:nowrap;">${stokPillHtml(p.id)}${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga"></i>' : ''}${p.is_active ? '' : ' <i class="ti ti-eye-off" title="Nonaktif"></i>'}</td>
+      <td class="kode-cell">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</td>
+      <td class="nama-cell">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</td>
+      <td class="tipe-cell">${escapeHtml(p.tipe || '—')}</td>
+      <td>${sealHtml(p.status_akd)}</td>
+      <td class="num">${stokCellHtml(p.id)}</td>
+      <td class="flag-cell">${flagsHtml}</td>
     `;
     tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tr.click(); }
+    });
     tableBody.appendChild(tr);
 
     const card = document.createElement('div');
-    card.className = 'prod-card' + (noHarga || noLink ? ' row-attention' : '');
+    card.className = 'prod-card';
     card.innerHTML = `
-      <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</div>
+      <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</div>
       <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</div>
-      <div class="pc-foot"><span class="tipe-chip">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}${stokPillHtml(p.id)}${noLinkIcon}${noHarga ? '<i class="ti ti-currency-dollar-off" title="Belum ada harga" style="color:var(--amber);margin-left:4px;"></i>' : ''}</div>
+      <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}</div>
+      <div class="pc-foot">${stokPillHtml(p.id)}${flagsHtml}</div>
     `;
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     cardWrap.appendChild(card);
@@ -1547,7 +1592,7 @@ let _fcTimer = null;
 function paintProdukFilterCounts(data){
   FILTER_COUNT_KEYS.forEach(key => {
     const el = document.getElementById('fc-' + key);
-    if (el) el.textContent = data[key] == null ? '' : ` · ${data[key]}`;
+    if (el) el.textContent = data[key] == null ? '' : Number(data[key]).toLocaleString('id-ID');
   });
 }
 // force=true dipakai setelah simpan/hapus produk (angka memang berubah). Tanpa force:
@@ -1596,11 +1641,11 @@ async function refreshProdukFilterCountsLegacy(){
   ));
   results.forEach(([key, count]) => {
     const el = document.getElementById('fc-' + key);
-    if (el) el.textContent = count === null ? '' : ` · ${count}`;
+    if (el) el.textContent = count === null ? '' : Number(count).toLocaleString('id-ID');
   });
   await ensureVerifiedSet();
   const fv = document.getElementById('fc-verified');
-  if (fv) fv.textContent = ` · ${produkVerifiedIdSet.size}`;
+  if (fv) fv.textContent = produkVerifiedIdSet.size.toLocaleString('id-ID');
 }
 
 // debounce search dari topbar? -> topbar sekarang cuma trigger command palette,
@@ -1748,7 +1793,7 @@ window.addEventListener('beforeunload', beforeUnloadHandler);
 // sampai Info Dasar tersimpan pertama kali, biar form gak kerasa numpuk) ----
 document.querySelectorAll('.prod-tab').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (btn.classList.contains('locked')) { showToast('Simpan Info Dasar dulu, baru bagian ini kebuka'); return; }
+    if (btn.classList.contains('locked')) { showToast('Simpan produk dulu, baru bagian ini terbuka'); return; }
     switchProdTab(btn.dataset.tab);
   });
 });
@@ -1759,8 +1804,10 @@ function switchProdTab(tab){
 function setProdTabsLocked(locked){
   document.querySelectorAll('.prod-tab[data-tab]:not([data-tab="dasar"])').forEach(b => {
     b.classList.toggle('locked', locked);
-    b.title = locked ? 'Simpan Info Dasar dulu' : '';
+    b.title = locked ? 'Simpan produk dulu' : '';
   });
+  const hint = document.getElementById('prodTabsHint');
+  if (hint) hint.style.display = locked ? '' : 'none';
   if (locked) switchProdTab('dasar'); // kalau lagi buka tab yang baru dikunci, balik ke Info Dasar
 }
 
@@ -1769,8 +1816,8 @@ function resetForm(){
   document.querySelectorAll('.prod-tab.hidden-for-set').forEach(b => b.classList.remove('hidden-for-set'));
   document.getElementById('inaprocIndikator').style.display = 'none';
   ['f_kode_asli','f_kode_produk','f_nama_produk','f_no_akd','f_masa_berlaku','f_golongan',
-   'f_kode_kfa','f_kode_cangkang','f_nama_cangkang','f_berat_gram','f_status_v6','f_link_v6',
-   'f_spesifikasi','m_deskripsi_vendor','m_family','m_sub_family','m_manufacturer','m_capital'
+   'f_kode_kfa','f_kode_cangkang','f_nama_cangkang','f_berat_gram','f_link_v6',
+   'f_spesifikasi','m_deskripsi_vendor','m_family'
   ].forEach(id => document.getElementById(id).value = '');
   // f_kode_kfa/f_kode_cangkang/f_nama_cangkang sekarang read-only (disabled),
   // sumber datanya produk_kfa -- lihat loadKfaInfoForProduk().
@@ -1812,8 +1859,7 @@ function openAdd(prefill){
   modalTitle.textContent = 'Tambah Produk';
   modalSub.textContent = 'Isi data produk baru';
   setProdTabsLocked(true);
-  document.getElementById('prodTabDasarCheck').style.display = 'none';
-  document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan &amp; Lanjut';
+  document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
   deleteBtn.style.display = 'none';
   document.getElementById('toggleAkdBoxBtn').style.display = 'none';
   document.getElementById('akdHint').textContent = 'Simpan produk dulu sebelum mengelola relasi AKD.';
@@ -1841,7 +1887,6 @@ async function openEdit(produkId){
   modalTitle.textContent = 'Edit Produk';
   modalSub.textContent = 'Memuat data...';
   setProdTabsLocked(false);
-  document.getElementById('prodTabDasarCheck').style.display = 'inline';
   document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
   deleteBtn.style.display = 'inline-flex';
   document.getElementById('toggleAkdBoxBtn').style.display = 'inline-flex';
@@ -1859,7 +1904,6 @@ async function openEdit(produkId){
   document.getElementById('f_golongan').value = p.golongan || '';
   loadKfaInfoForProduk(produkId, p.kode_produk);
   document.getElementById('f_berat_gram').value = p.berat_gram ?? '';
-  document.getElementById('f_status_v6').value = p.status_v6 || '';
   document.getElementById('f_link_v6').value = p.link_v6 || '';
   renderLinkV6Hint();
   modalInaprocCtx = { status: p.status_inaproc, link: p.link_v6 };
@@ -1912,9 +1956,6 @@ async function cekMaster(kodeAsli, silent){
     masterExists = true;
     document.getElementById('m_deskripsi_vendor').value = data.deskripsi_vendor || '';
     document.getElementById('m_family').value = data.family || '';
-    document.getElementById('m_sub_family').value = data.sub_family || '';
-    document.getElementById('m_manufacturer').value = data.manufacturer || '';
-    document.getElementById('m_capital').value = data.capital || '';
     msgEl.innerHTML = `<div class="lookup-msg found"><i class="ti ti-check"></i> Ditemukan di master_produk, data terisi otomatis.</div>`;
   } else {
     masterExists = false;
@@ -2358,10 +2399,9 @@ async function saveProdukInner(){
     const { error: mErr } = await sb.from('master_produk').upsert({
       kode_asli: kodeAsli,
       deskripsi_vendor: document.getElementById('m_deskripsi_vendor').value || null,
-      family: document.getElementById('m_family').value || null,
-      sub_family: document.getElementById('m_sub_family').value || null,
-      manufacturer: document.getElementById('m_manufacturer').value || null,
-      capital: document.getElementById('m_capital').value || null
+      family: document.getElementById('m_family').value || null
+      // manufacturer / sub_family / capital sengaja TIDAK dikirim: field-nya sudah dibuang dari form.
+      // Upsert cuma menimpa kolom yang dikirim, jadi isi lama di database tetap utuh.
     }, { onConflict: 'kode_asli' });
     if (mErr) { showToast('Gagal menyimpan master_produk: ' + mErr.message, true); return false; }
   }
@@ -2378,7 +2418,7 @@ async function saveProdukInner(){
     // adalah modal KFA Management (tabel produk_kfa). Trigger DB yang nyinkron
     // kode_kfa balik ke produk.kode_kfa jalan otomatis dari sana.
     berat_gram: document.getElementById('f_berat_gram').value || null,
-    status_v6: document.getElementById('f_status_v6').value || null,
+    // status_v6 sengaja TIDAK dikirim (field dibuang dari form, tidak ada pembacanya) -> nilai lama tetap utuh.
     link_v6: document.getElementById('f_link_v6').value || null,
     spesifikasi: document.getElementById('f_spesifikasi').value || null,
     is_active: document.getElementById('f_is_active').checked
@@ -2439,11 +2479,10 @@ async function saveProdukInner(){
   }
 
   setProdTabsLocked(false);
-  document.getElementById('prodTabDasarCheck').style.display = 'inline';
   document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
   deleteBtn.style.display = 'inline-flex';
   toggleAkdBoxBtn.style.display = 'inline-flex';
-  document.getElementById('akdHint').textContent = 'Simpan berhasil — sekarang kamu bisa hubungkan AKD.';
+  document.getElementById('akdHint').textContent = '';
   modalTitle.textContent = 'Edit Produk';
   modalSub.textContent = 'Kode: ' + result.data.kode_produk;
   await loadHarga(currentProdukId);
@@ -2541,7 +2580,7 @@ async function loadSetList(page){
     const row = document.createElement('div');
     row.className = 'set-list-row' + ((noHarga || noItem) ? ' row-attention' : '');
     row.innerHTML = `
-      <span class="sl-kode">${escapeHtml(s.kode_produk)}${recentlyUpdated ? '<span class="dot-updated" title="Diubah dalam 24 jam terakhir"></span>' : ''}</span>
+      <span class="sl-kode">${escapeHtml(s.kode_produk)}${recentlyUpdated ? recentBadgeHtml(s.updated_at) : ''}</span>
       <span class="sl-nama">${escapeHtml(s.nama_produk || '—')}</span>
       <span class="sl-meta">${noItem ? '<span style="color:var(--amber);">Belum ada item</span>' : `${s.jumlah_jenis_item} item · qty ${s.total_qty || 0}`}${noHarga ? ' · <span style="color:var(--amber);">belum ada harga</span>' : ''}</span>
       ${sealHtml(s.status_akd)}

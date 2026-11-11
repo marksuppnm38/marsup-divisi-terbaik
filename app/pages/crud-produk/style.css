@@ -155,7 +155,6 @@ td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle
 
 /* Penanda filter aktif: header kolom, input/dropdown, bar ringkasan, chip status/tipe */
 .sync-th-active{color:var(--accent-text)!important;box-shadow:inset 0 -2px 0 var(--accent)}
-.sync-th-active::after{content:'';display:inline-block;width:6px;height:6px;margin-left:6px;border-radius:50%;background:var(--accent);vertical-align:middle}
 .sync-col-input.is-active,.sync-col-select.is-active{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
 #syncActiveBar{align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin:0 0 12px;background:var(--accent-soft);border:1px solid var(--accent-ring);border-radius:var(--radius-md);font-size:12px}
 #syncActiveBar .saf-label{display:inline-flex;align-items:center;gap:5px;font-weight:700;color:var(--accent-text)}
@@ -197,7 +196,7 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 .orph-stat.is-snap.is-ok::before{background:var(--teal-ok)}
 .orph-stat.is-snap.is-warn::before{background:var(--amber)}
 .orph-stat.is-snap.is-bad::before{background:var(--danger,#b91c1c)}
-.orph-stat-top{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}
+.orph-stat-top{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-muted)}
 .orph-stat-top .ti{font-size:14px}
 .orph-stat-val{font-size:24px;font-weight:700;line-height:1.2;color:var(--text);font-variant-numeric:tabular-nums}
 .orph-stat-time{font-size:17px;font-weight:700}
@@ -227,7 +226,7 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 /* filter segmented */
 .orph-filters{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 12px}
 .orph-fgroup{display:flex;align-items:center;gap:8px}
-.orph-flabel{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted)}
+.orph-flabel{font-size:12px;font-weight:600;color:var(--text-muted)}
 .orph-seg{display:inline-flex;padding:2px;background:var(--surface-3);border-radius:var(--radius);gap:2px}
 .orph-seg button{appearance:none;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:0;background:none;border-radius:6px;color:var(--text-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s}
 .orph-seg button:hover{color:var(--text)}
@@ -260,14 +259,11 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 .orph-asal.is-deleted{padding:2px 9px;border-radius:20px;background:var(--rust-bg);color:var(--rust-text);font-weight:600;font-size:11px}
 .orph-when{white-space:nowrap;font-size:12px}
 
-/* indikator progres konfirmasi */
-.orph-status{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;white-space:nowrap}
+/* progres konfirmasi: teks "Menunggu 2/3", bukan deretan titik */
+.orph-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap}
 .orph-status.is-pending{color:var(--amber-text)}
 .orph-status.is-confirmed{color:var(--rust-text)}
-.orph-dots{display:inline-flex;gap:3px;vertical-align:middle}
-.orph-dots i{width:8px;height:8px;border-radius:50%;background:var(--border-strong);display:block}
-.orph-dots i.on{background:var(--amber)}
-.orph-dots.is-confirmed i.on{background:var(--rust)}
+.orph-n{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 
 /* skeleton + empty */
 .orph-skel-row{display:flex;gap:16px;align-items:center;padding:16px 14px;border-bottom:1px solid var(--border)}
@@ -278,8 +274,6 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 
 @media (max-width:900px){.orph-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:560px){.orph-stats{grid-template-columns:1fr}.orph-fgroup{flex-wrap:wrap}}
-/* ---- Chip stok di baris Produk (v_produk_stok_ringkas). Pakai .status-pill dari pnm-universal.css, cuma dikecilin. ---- */
-.stok-pill{font-size:10.5px;padding:2px 8px;margin-right:6px;vertical-align:middle}
 /* ============================================================
    BULK EDIT — redesign 2026-11-09 (tempel -> cek -> proses)
    Semua di-scope ke #viewBulk supaya gak bocor ke modul lain yang
@@ -288,25 +282,6 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
    textarea terisi -> "Tempel" selesai; tabel preview tampil -> "Cek" selesai.
    ============================================================ */
 #viewBulk .content-head{align-items:center}
-
-/* stepper alur */
-#viewBulk .bk-steps{display:flex;align-items:center;list-style:none;margin:0;padding:0;counter-reset:bk;font-size:12.5px;color:var(--text-muted)}
-#viewBulk .bk-step{display:flex;align-items:center;gap:8px;counter-increment:bk;font-weight:500}
-#viewBulk .bk-step::before{content:counter(bk);width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border-strong);display:grid;place-items:center;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--text-muted);background:var(--surface)}
-#viewBulk .bk-step:not(:last-child)::after{content:"";width:26px;height:1.5px;background:var(--border-strong);margin:0 8px 0 2px}
-/* default: langkah 1 aktif */
-#viewBulk .bk-step.s1{color:var(--text)}
-#viewBulk .bk-step.s1::before{background:var(--accent);border-color:var(--accent);color:#fff}
-/* textarea terisi: 1 selesai, 2 aktif */
-#viewBulk:has(.bulk-panel.active .paste-area:not(:placeholder-shown)) .bk-step.s1{color:var(--text-muted)}
-#viewBulk:has(.bulk-panel.active .paste-area:not(:placeholder-shown)) .bk-step.s1::before{content:"\2713";background:var(--accent-soft);border-color:var(--accent-ring);color:var(--accent-text)}
-#viewBulk:has(.bulk-panel.active .paste-area:not(:placeholder-shown)) .bk-step.s2{color:var(--text)}
-#viewBulk:has(.bulk-panel.active .paste-area:not(:placeholder-shown)) .bk-step.s2::before{background:var(--accent);border-color:var(--accent);color:#fff}
-/* preview tampil: 1-2 selesai, 3 aktif */
-#viewBulk:has(.bulk-panel.active .preview-table-wrap[style*="display: block"]) .bk-step.s2{color:var(--text-muted)}
-#viewBulk:has(.bulk-panel.active .preview-table-wrap[style*="display: block"]) .bk-step.s2::before{content:"\2713";background:var(--accent-soft);border-color:var(--accent-ring);color:var(--accent-text)}
-#viewBulk:has(.bulk-panel.active .preview-table-wrap[style*="display: block"]) .bk-step.s3{color:var(--text)}
-#viewBulk:has(.bulk-panel.active .preview-table-wrap[style*="display: block"]) .bk-step.s3::before{background:var(--accent);border-color:var(--accent);color:#fff}
 
 /* tab = segmented control */
 #viewBulk .bulk-tabs{display:inline-flex;gap:2px;padding:3px;margin:0 0 18px;border:0;background:var(--surface-3);border-radius:var(--radius-md);max-width:100%;overflow-x:auto}
@@ -366,7 +341,6 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 #bulkLinkPreviewWrap td:nth-child(n+3):nth-child(-n+4){max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary)}
 
 @media (max-width:720px){
-  #viewBulk .bk-steps{width:100%}
   #viewBulk .bk-cols{overflow-x:auto}
   #viewBulk .bk-col{flex:0 0 auto}
   #viewBulk .bk-compose .bulk-actions .btn{flex:1 1 auto;justify-content:center}
@@ -385,3 +359,152 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 #viewKategori .kat-zero{color:var(--text-muted)}
 #viewKategori .kat-note{font-size:12px;color:var(--text-muted);margin-top:10px}
 #viewKategori .produk-head-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;align-items:center}
+
+/* ============================================================
+   REDESIGN 2026-11-11 -- modul CRUD Produk
+   Arah: tenang, padat, mudah dipindai untuk kerja seharian (laptop 1366-1536px).
+   - Status = teks berwarna, bukan pill + titik. Warna cuma buat arti (hijau siap / amber perlu dicek / rust bermasalah).
+   - Angka = tabular, rata kanan. Satu aksen biru sistem, hanya untuk yang aktif/bisa diklik.
+   - Tidak ada titik, stepper, atau bar progres dekoratif; progres ditulis sebagai teks.
+   Semua di-scope ke #appWrap / #modalOverlay supaya tidak bocor ke modul lain.
+   Token warna & radius tetap dari pnm-universal.css (tidak didefinisikan ulang).
+   ============================================================ */
+
+/* ---- Status AKD: teks berwarna, tanpa pill dan titik ---- */
+#appWrap .seal,#modalOverlay .seal{padding:0;gap:0;border:0;border-radius:0;background:none;font-size:12.5px;font-weight:500}
+#appWrap .seal::before,#modalOverlay .seal::before{display:none}
+#appWrap .seal-null,#appWrap .seal-di_luar_cakupan{font-weight:400}
+
+/* ---- Kepala halaman ---- */
+#viewProduk .content-head{align-items:center;margin-bottom:14px}
+#viewProduk .content-title{font-size:22px;font-weight:700;letter-spacing:-.01em}
+#viewProduk .content-sub{font-variant-numeric:tabular-nums}
+
+/* ---- Filter status: tab bergaris bawah (bukan deretan pill berwarna) ---- */
+#produkFilterBar,#kfaFilterBar{display:flex;flex-wrap:wrap;gap:0 4px;margin:0 0 12px;border-bottom:1px solid var(--border)}
+#produkFilterBar .filter-chip,#kfaFilterBar .filter-chip{gap:7px;padding:9px 12px;margin-bottom:-1px;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--text-muted);font-size:13px;font-weight:500}
+#produkFilterBar .filter-chip:hover,#kfaFilterBar .filter-chip:hover{background:none;color:var(--text)}
+#produkFilterBar .filter-chip.active,#kfaFilterBar .filter-chip.active{background:none;border-color:transparent;border-bottom-color:var(--accent);color:var(--text);font-weight:600}
+#produkFilterBar .filter-chip .fc-count,#kfaFilterBar .filter-chip .fc-count{font-family:var(--font-body);font-size:12px;font-variant-numeric:tabular-nums;opacity:1;color:var(--text-muted)}
+#produkFilterBar .filter-chip.active .fc-count,#kfaFilterBar .filter-chip.active .fc-count{color:var(--accent-text)}
+#produkFilterBar .filter-chip:focus-visible,#kfaFilterBar .filter-chip:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--radius-sm)}
+
+/* ---- Filter tambahan ---- */
+#appWrap .stacked-filters-row{margin-bottom:12px}
+#appWrap .add-filter-btn{padding:5px 10px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text-secondary)}
+#appWrap .add-filter-btn:hover{border-color:var(--accent);color:var(--accent-text)}
+
+/* ---- Tabel produk ---- */
+#tableWrap{overflow:clip;border-radius:var(--radius-md)}
+#tableWrap th{position:sticky;top:0;z-index:1;padding:10px 14px;background:var(--surface-2);border-bottom:0;box-shadow:inset 0 -1px 0 var(--border);font-size:12px;font-weight:600;color:var(--text-muted);white-space:nowrap}
+#tableWrap td{padding:11px 14px}
+#tableBody tr:last-child td{border-bottom:0}
+#tableBody tr.clickable{cursor:pointer}
+#tableBody tr.clickable:hover td,#tableBody tr.clickable:focus-visible td{background:var(--surface-2)}
+#tableBody tr.clickable:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#appWrap tbody tr.row-attention td:first-child{box-shadow:none}
+#appWrap tbody tr.row-attention:hover{background:none}
+#tableBody .kode-cell{white-space:nowrap;color:var(--text);font-size:12px}
+#tableBody .nama-cell{color:var(--text);line-height:1.4}
+#tableBody .tipe-cell,.prod-card .tipe-cell{font-size:12px;color:var(--text-muted);white-space:nowrap}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+#tableBody .flag-cell{min-width:150px}
+
+/* Stok */
+.stok{font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.stok b{font-weight:600;color:var(--text)}
+.stok-ready{color:var(--teal-ok-text)}
+.stok-indent{color:var(--text-muted)}
+.stok-warn{color:var(--amber-text)}
+.stok-none{color:var(--border-strong)}
+
+/* Perlu dicek: kata berwarna, bukan ikon tanpa label */
+.flag{display:inline-block;margin-right:12px;font-size:12px;font-weight:500;white-space:nowrap}
+.flag:last-child{margin-right:0}
+.flag-bad{color:var(--rust-text)}
+.flag-warn{color:var(--amber-text)}
+.flag-mute{color:var(--text-muted)}
+
+/* Baru diubah (<24 jam): teks, bukan titik biru */
+.tag-baru{margin-left:8px;font-family:var(--font-body);font-size:11px;font-weight:600;color:var(--accent-text);white-space:nowrap}
+
+/* Verified: ikon centang INAPROC dipertahankan (itu memang lencananya), tanpa gaya tambahan */
+#tableBody .vbadge{margin-left:4px}
+
+/* ---- Tampilan kartu ---- */
+#appWrap .prod-card{gap:6px;border-radius:var(--radius-md);transition:border-color .15s var(--ease)}
+#appWrap .prod-card.row-attention{border-left:1px solid var(--border)}
+#appWrap .prod-card .pc-meta{display:flex;align-items:center;gap:12px}
+#appWrap .prod-card .pc-foot{flex-wrap:wrap;justify-content:flex-start;gap:4px 12px;margin-top:auto;padding-top:6px}
+#appWrap .prod-card .flag{margin-right:0}
+
+/* ============================================================
+   MODAL PRODUK -- header & footer tetap, isi yang scroll.
+   Urutan: Identitas -> Master -> Fisik -> INAPROC (urutan kerja, wajib di atas).
+   ============================================================ */
+#modalOverlay{align-items:center;padding:24px 16px}
+.prod-modal{display:flex;flex-direction:column;max-width:760px;max-height:calc(100vh - 48px);padding:0;overflow:hidden}
+.prod-modal .modal-head{margin:0;padding:22px 28px 0}
+.prod-modal .modal-title{font-size:17px;letter-spacing:-.01em}
+.prod-modal .modal-sub{font-size:12.5px}
+.prod-modal .modal-close{margin:-4px -8px 0 0}
+.prod-modal .prod-tabs{margin:16px 0 0;padding:0 28px;flex-wrap:nowrap;overflow-x:auto}
+.prod-modal .prod-tab{padding:10px 14px;font-size:13px;font-weight:500;white-space:nowrap;margin-bottom:-1px}
+.prod-modal .prod-tab.active{font-weight:600}
+.prod-modal .prod-tab.locked{opacity:.5}
+.prod-modal .prod-tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--radius-sm)}
+.prod-tabs-hint{padding:10px 28px 0;font-size:12.5px;color:var(--text-muted)}
+.prod-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:22px 28px 10px}
+.prod-modal .modal-actions{flex-shrink:0;margin:0;padding:14px 28px;border-top:1px solid var(--border);background:var(--surface)}
+
+/* bagian form */
+.prod-modal .fs{margin:0 0 26px}
+.prod-modal .fs-head{display:flex;align-items:center;gap:10px;margin:0 0 12px;min-height:26px}
+.prod-modal .fs-head h4{margin:0;font-size:13.5px;font-weight:650;color:var(--text)}
+.prod-modal .fs-note{font-size:12px;color:var(--text-muted)}
+.prod-modal .fs-head .fs-toggle,.prod-modal .fs-head .fs-action,.prod-modal .fs-head .fs-link{margin-left:auto}
+.prod-modal .fs-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-secondary);cursor:pointer}
+.prod-modal .fs-link{font-size:12.5px;color:var(--accent-text);text-decoration:none;cursor:pointer}
+.prod-modal .fs-link:hover{text-decoration:underline}
+
+/* kolom isian */
+.prod-modal .grid2{gap:14px}
+.prod-modal .f{gap:5px}
+.prod-modal .f label{font-size:12px;font-weight:500;color:var(--text-secondary)}
+.prod-modal .f input,.prod-modal .f select,.prod-modal .f textarea{padding:9px 11px;border-radius:var(--radius);transition:border-color .15s var(--ease),box-shadow .15s var(--ease)}
+.prod-modal .f input:focus,.prod-modal .f select:focus,.prod-modal .f textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+.prod-modal .f textarea{min-height:84px}
+.prod-modal #f_kode_produk,.prod-modal #f_kode_asli,.prod-modal #f_link_v6{font-family:var(--font-mono);font-size:12.5px}
+.prod-modal .f-row{align-items:stretch}
+.prod-modal .f-row .btn{padding:0 12px}
+.prod-modal .lookup-msg{margin-top:2px}
+
+/* nilai read-only: teks biasa, bukan kotak isian yang tidak bisa diisi */
+.prod-modal .ro-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 20px;margin:0}
+.prod-modal .ro-grid dt{margin:0 0 3px;font-size:12px;color:var(--text-muted)}
+.prod-modal .ro-grid dd{margin:0}
+.prod-modal .ro-grid output{display:block;font-size:13px;color:var(--text);overflow-wrap:anywhere}
+.prod-modal .ro-grid output:empty::before{content:'Belum ada';color:var(--text-muted)}
+
+/* Tayang di INAPROC: link, status, dan Verified dalam satu blok */
+.prod-modal .inaproc-status{align-items:center;flex-wrap:wrap;gap:6px 12px;margin-top:12px;font-size:12.5px}
+.prod-modal .ind-label{color:var(--text-muted)}
+.prod-modal .ind-note{color:var(--rust-text)}
+.prod-modal .verified-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:13px}
+.prod-modal .verified-row label{display:inline-flex;align-items:center;color:var(--text);cursor:pointer}
+.prod-modal .verified-src{font-size:12px;color:var(--text-muted)}
+
+/* gambar instrumen */
+.prod-modal .img-box{display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-2)}
+.prod-modal .img-box img{display:block;width:56px;height:56px;object-fit:cover;border-radius:var(--radius);border:1px solid var(--border-strong)}
+.prod-modal .img-box-info{flex:1;min-width:0}
+
+@media (max-width:720px){
+  #modalOverlay{padding:0;align-items:stretch}
+  .prod-modal{max-width:none;max-height:none;height:100%;border-radius:0}
+  .prod-modal .modal-head,.prod-modal .prod-tabs,.prod-tabs-hint,.prod-body,.prod-modal .modal-actions{padding-left:18px;padding-right:18px}
+  .prod-modal .ro-grid{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  .prod-modal .f input,.prod-modal .f select,.prod-modal .f textarea,#appWrap .prod-card{transition:none}
+}

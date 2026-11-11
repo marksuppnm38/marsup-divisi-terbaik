@@ -210,10 +210,10 @@ export function installOrphan(S) {
       if (r.n_komposisi) notes.push(`punya ${r.n_komposisi} item komposisi`);
       if (r.n_inaproc) notes.push(`${r.n_inaproc} riwayat pengajuan INAPROC`);
       const n = Math.min(Number(r.missing_runs) || 0, CONFIRM_AFTER);
-      const dots = Array.from({ length: CONFIRM_AFTER }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
+      // Progres konfirmasi = teks "n/3" (kebaca langsung), bukan deretan titik yang harus dihitung mata.
       const status = r.status === 'confirmed'
-        ? `<span class="orph-status is-confirmed" title="Hilang di ${CONFIRM_AFTER} snapshot berturut-turut"><span class="orph-dots is-confirmed">${dots}</span>Terkonfirmasi</span>`
-        : `<span class="orph-status is-pending" title="${n} dari ${CONFIRM_AFTER} snapshot. Belum cukup berturut-turut; mungkin sheet sempat loading"><span class="orph-dots">${dots}</span>${n}/${CONFIRM_AFTER}</span>`;
+        ? `<span class="orph-status is-confirmed" title="Hilang di ${CONFIRM_AFTER} snapshot berturut-turut">Terkonfirmasi</span>`
+        : `<span class="orph-status is-pending" title="${n} dari ${CONFIRM_AFTER} snapshot. Belum cukup berturut-turut; mungkin sheet sempat loading">Menunggu <span class="orph-n">${n}/${CONFIRM_AFTER}</span></span>`;
       const asal = r.pernah_di_sheet
         ? '<span class="orph-asal is-deleted" title="Pernah terpantau di sheet, sekarang hilang"><i class="ti ti-trash-x"></i> Dihapus dari sheet</span>'
         : '<span class="orph-asal" title="Tak pernah terpantau di sheet (kemungkinan dibuat dari sumber lain)"><i class="ti ti-history"></i></span>';

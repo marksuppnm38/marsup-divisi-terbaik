@@ -83,10 +83,10 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="table-card" id="tableWrap">
         <table>
           <thead>
-            <tr><th>Kode Produk</th><th>Nama Produk</th><th>Tipe</th><th>Status AKD</th><th></th></tr>
+            <tr><th>Kode Produk</th><th>Nama Produk</th><th>Tipe</th><th>Status AKD</th><th class="num">Stok</th><th>Perlu dicek</th></tr>
           </thead>
           <tbody id="tableBody">
-            <tr class="state-row"><td colspan="5">Memuat data...</td></tr>
+            <tr class="state-row"><td colspan="6">Memuat data...</td></tr>
           </tbody>
         </table>
       </div>
@@ -281,11 +281,6 @@ export const CRUD_PRODUK_MARKUP = `
           <div class="content-title">Bulk Edit</div>
           <div class="content-sub">Tempel data dari Excel atau Google Sheets, cek hasilnya, lalu proses.</div>
         </div>
-        <ol class="bk-steps" aria-label="Alur Bulk Edit">
-          <li class="bk-step s1">Tempel</li>
-          <li class="bk-step s2">Cek</li>
-          <li class="bk-step s3">Proses</li>
-        </ol>
       </div>
 
       <div class="bulk-tabs" role="tablist">
@@ -457,7 +452,7 @@ export const CRUD_PRODUK_MARKUP = `
           Kebalikan tab Sync: item yang <b>masih ada di database tapi sudah tidak ada / beda di Google Sheets</b>.
           Halaman ini <b>hanya memberi informasi</b> &mdash; tidak ada yang diubah atau dihapus otomatis.
           Status <b>terkonfirmasi</b> berarti item hilang di 3 snapshot berturut-turut (antisipasi sheet sedang loading).
-          Titik <span class="orph-dots"><i class="on"></i><i class="on"></i><i></i></span> menunjukkan progres menuju konfirmasi.
+          Angka seperti <b>2/3</b> di kolom Status berarti item sudah hilang di 2 dari 3 snapshot yang dibutuhkan untuk terkonfirmasi.
         </div>
       </details>
       <div class="orph-tabs" id="orphanSectionBar"></div>
@@ -525,9 +520,13 @@ export const CRUD_PRODUK_MARKUP = `
   </div>
 </div>
 
-<!-- MODAL FORM -->
+<!-- MODAL FORM PRODUK
+     Urutan Info Dasar mengikuti urutan kerja: identitas (wajib) -> master/kode asli -> fisik -> tayang di INAPROC.
+     Dibuang dari form (tidak ada pembaca di aplikasi): Manufacturer, Capital, Sub Family, Status V6.
+     Field read-only (No. AKD, Masa Berlaku, Golongan, Kode KFA, Kode Cangkang, Nama Cangkang) pakai <output>
+     -- .value tetap jalan seperti <input>, tapi tampil sebagai teks biasa, bukan kotak isian yang tidak bisa diisi. -->
 <div class="modal-overlay" id="modalOverlay">
-  <div class="modal-card">
+  <div class="modal-card prod-modal">
     <div class="modal-head">
       <div>
         <div class="modal-title" id="modalTitle">Tambah Produk</div>
@@ -536,167 +535,194 @@ export const CRUD_PRODUK_MARKUP = `
       <button class="modal-close" id="modalCloseBtn" type="button" title="Tutup" aria-label="Tutup"><i class="ti ti-x"></i></button>
     </div>
 
-    <div class="prod-tabs" id="prodTabs">
-      <button class="prod-tab active" data-tab="dasar" type="button">Info Dasar <i class="ti ti-circle-check prod-step-check" id="prodTabDasarCheck" style="display:none;"></i></button>
-      <button class="prod-tab locked" data-tab="akd" type="button" title="Simpan Info Dasar dulu">Legalitas AKD</button>
-      <button class="prod-tab locked" data-tab="harga" type="button" title="Simpan Info Dasar dulu">Harga</button>
-      <button class="prod-tab locked" data-tab="media" type="button" title="Simpan Info Dasar dulu">Media</button>
-      <button class="prod-tab locked" data-tab="lanjutan" type="button" title="Simpan Info Dasar dulu">Lanjutan</button>
+    <div class="prod-tabs" id="prodTabs" role="tablist">
+      <button class="prod-tab active" data-tab="dasar" type="button">Info dasar</button>
+      <button class="prod-tab locked" data-tab="akd" type="button" title="Simpan produk dulu">Legalitas AKD</button>
+      <button class="prod-tab locked" data-tab="harga" type="button" title="Simpan produk dulu">Harga</button>
+      <button class="prod-tab locked" data-tab="media" type="button" title="Simpan produk dulu">Media</button>
     </div>
+    <div class="prod-tabs-hint" id="prodTabsHint">Legalitas AKD, harga, dan media terbuka setelah produk pertama kali disimpan.</div>
 
-    <div class="prod-tab-panel active" id="ptab-dasar">
-      <div class="sec-label">Kode Asli / Master Produk</div>
-      <div class="f full">
-        <label>Kode Asli</label>
-        <div class="f-row">
-          <input type="text" id="f_kode_asli" placeholder="Ketik kode_asli..."/>
-          <button class="btn btn-ghost btn-sm" id="cekMasterBtn" type="button"><i class="ti ti-search"></i> Cek</button>
-        </div>
-        <div id="masterLookupMsg"></div>
-      </div>
-      <div id="masterFields" style="display:none;margin-top:10px;">
-        <div class="grid2">
-          <div class="f full"><label>Deskripsi Vendor</label><input type="text" id="m_deskripsi_vendor"/></div>
-          <div class="f"><label>Family</label><input type="text" id="m_family"/></div>
-          <div class="f"><label>Sub Family</label><input type="text" id="m_sub_family"/></div>
-          <div class="f"><label>Manufacturer</label><input type="text" id="m_manufacturer"/></div>
-          <div class="f"><label>Capital</label><input type="text" id="m_capital"/></div>
-        </div>
-      </div>
+    <div class="prod-body">
+      <div class="prod-tab-panel active" id="ptab-dasar">
 
-      <div class="sec-label">Data Produk</div>
-      <div class="grid2">
-        <div class="f"><label>Kode Produk *</label><input type="text" id="f_kode_produk"/></div>
-        <div class="f"><label>Tipe *</label>
-          <select id="f_tipe">
-            <option value="">— pilih —</option>
-            <option value="UNIT">UNIT</option>
-            <option value="INSTRUMENT">INSTRUMENT</option>
-            <option value="SET">SET</option>
-          </select>
-        </div>
-        <div class="f full"><label>Nama Produk</label><input type="text" id="f_nama_produk"/></div>
-        <div class="f"><label>Kode KFA</label><input type="text" id="f_kode_kfa" disabled placeholder="—"/></div>
-        <div class="f"><label>Kode Cangkang</label><input type="text" id="f_kode_cangkang" disabled placeholder="—"/></div>
-        <div class="f"><label>Nama Cangkang</label><input type="text" id="f_nama_cangkang" disabled placeholder="—"/></div>
-        <div class="f full akd-hint" style="margin-top:-4px;"><i class="ti ti-info-circle"></i> Kode KFA &amp; Cangkang dikelola di menu <a href="javascript:void(0)" id="jumpToKfaLink">KFA Management</a>, bukan di sini.</div>
-        <div class="f"><label>Berat (gram)</label><input type="number" step="any" id="f_berat_gram"/></div>
-        <div class="f"><label>Link V6</label><input type="text" id="f_link_v6"/></div>
-        <div class="f full akd-hint" id="linkV6Hint" style="display:none;margin-top:-4px;color:var(--amber-text);"></div>
-        <div class="f full" id="inaprocIndikator" style="display:none;"></div>
-        <div class="f full check-row" id="verifiedRow" style="display:none;">
-          <input type="checkbox" id="f_verified" disabled/>
-          <label for="f_verified"><i class="ti ti-rosette-discount-check-filled vbadge" style="margin:0 4px 0 0;"></i>Verified Product (centang biru INAPROC)</label>
-          <span id="verifiedSrc" style="font-size:11.5px;color:var(--text-muted);margin-left:6px;"></span>
-        </div>
-        <div class="f full"><label>Spesifikasi</label><textarea id="f_spesifikasi"></textarea></div>
-        <div class="f full check-row">
-          <input type="checkbox" id="f_is_active" checked/>
-          <label for="f_is_active">Produk aktif</label>
-        </div>
-      </div>
-
-      <div id="gambarInstrumenSection" style="display:none;">
-        <div class="sec-label">Gambar Instrumen (Bucket)</div>
-        <div class="akd-box" style="display:flex;align-items:center;gap:12px;">
-          <div id="gambarInstrumenPreviewWrap" style="display:none;flex-shrink:0;">
-            <img id="gambarInstrumenPreview" alt="Preview gambar instrumen" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);display:block;"/>
+        <section class="fs">
+          <div class="fs-head">
+            <h4>Identitas produk</h4>
+            <label class="fs-toggle" for="f_is_active"><input type="checkbox" id="f_is_active" checked/> Produk aktif</label>
           </div>
-          <div style="flex:1;min-width:0;">
-            <span id="gambarInstrumenBadge" class="status-pill neutral">Mengecek...</span>
-            <div id="gambarInstrumenHint" class="akd-hint" style="margin-top:4px;"></div>
+          <div class="grid2">
+            <div class="f"><label for="f_kode_produk">Kode produk *</label><input type="text" id="f_kode_produk" autocomplete="off" spellcheck="false"/></div>
+            <div class="f"><label for="f_tipe">Tipe *</label>
+              <select id="f_tipe">
+                <option value="">Pilih tipe</option>
+                <option value="UNIT">UNIT</option>
+                <option value="INSTRUMENT">INSTRUMENT</option>
+                <option value="SET">SET</option>
+              </select>
+            </div>
+            <div class="f full"><label for="f_nama_produk">Nama produk</label><input type="text" id="f_nama_produk"/></div>
           </div>
-          <div style="flex-shrink:0;">
-            <input type="file" id="gambarInstrumenFileInput" accept="image/png" style="display:none;"/>
-            <button class="btn btn-ghost btn-sm" id="gambarInstrumenUploadBtn" type="button"><i class="ti ti-upload"></i> Upload Gambar</button>
+        </section>
+
+        <section class="fs">
+          <div class="fs-head">
+            <h4>Master produk</h4>
+            <span class="fs-note">Data vendor, dicari lewat kode asli</span>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="prod-tab-panel" id="ptab-akd">
-      <div class="sec-label">Status Legalitas (AKD) <span id="akdSealHolder"></span></div>
-      <div class="grid2" style="margin-bottom:10px;">
-        <div class="f"><label>No. AKD</label><input type="text" id="f_no_akd" readonly placeholder="Otomatis dari relasi AKD"/></div>
-        <div class="f"><label>Masa Berlaku</label><input type="text" id="f_masa_berlaku" readonly/></div>
-        <div class="f"><label>Golongan</label><input type="text" id="f_golongan" readonly/></div>
-        <div class="f" style="justify-content:flex-end;">
-          <button class="btn btn-ghost btn-sm" id="toggleAkdBoxBtn" type="button"><i class="ti ti-link"></i> Kelola AKD</button>
-        </div>
-      </div>
-      <div class="akd-box" id="akdBox" style="display:none;">
-        <div class="akd-current" id="akdCurrentList"></div>
-        <div class="akd-search-wrap">
-          <input type="text" class="field-input" id="akdSearchInput" placeholder="Cari nomor AKD atau nama..." style="padding:8px 10px;font-size:12.5px;"/>
-          <div class="akd-results" id="akdResults"></div>
-        </div>
-        <div class="akd-hint" id="akdHint"></div>
-      </div>
-    </div>
-
-    <div class="prod-tab-panel" id="ptab-harga">
-      <div id="hargaSection">
-        <div class="sec-label">Harga</div>
-        <div class="table-card">
-          <table>
-            <thead><tr><th>Tahun</th><th>Harga EKATALOG</th><th>Turunan (otomatis)</th><th></th></tr></thead>
-            <tbody id="hargaTableBody">
-              <tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="harga-add">
-          <div class="f"><label>Tahun</label><input type="number" id="h_tahun" placeholder="2026"/></div>
-          <div class="f"><label>Harga EKATALOG (Rp)</label><input type="number" step="any" id="h_harga" placeholder="0"/></div>
-          <button class="btn btn-ghost" id="addHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
-        </div>
-        <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG.</div>
-      </div>
-    </div>
-
-    <div class="prod-tab-panel" id="ptab-media">
-      <div id="mediaSection">
-        <div class="sec-label">Brosur & Gambar</div>
-        <div class="table-card">
-          <table>
-            <thead><tr><th>Jenis</th><th>Judul</th><th>URL</th><th>Utama</th><th></th></tr></thead>
-            <tbody id="mediaTableBody">
-              <tr><td colspan="5" style="color:var(--text-muted);padding:14px;">Belum ada media</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="media-add">
-          <div class="f"><label>Jenis</label>
-            <select id="md_jenis">
-              <option value="brosur">Brosur</option>
-              <option value="gambar">Gambar</option>
-            </select>
+          <div class="f">
+            <label for="f_kode_asli">Kode asli</label>
+            <div class="f-row">
+              <input type="text" id="f_kode_asli" placeholder="mis. 35-133-06-07" autocomplete="off" spellcheck="false"/>
+              <button class="btn btn-ghost btn-sm" id="cekMasterBtn" type="button"><i class="ti ti-search"></i> Cek</button>
+            </div>
+            <div id="masterLookupMsg"></div>
           </div>
-          <div class="f"><label>Judul</label><input type="text" id="md_judul" placeholder="Judul singkat"/></div>
-          <div class="f full"><label>URL</label><input type="text" id="md_url" placeholder="https://..."/></div>
-          <div class="f"><label>Urutan</label><input type="number" id="md_urutan" value="1" min="1"/></div>
-          <div class="check-row" style="margin-top:20px;">
-            <input type="checkbox" id="md_primary"/>
-            <label for="md_primary">Jadikan utama</label>
+          <div id="masterFields" style="display:none;">
+            <div class="grid2">
+              <div class="f full"><label for="m_deskripsi_vendor">Deskripsi vendor</label><input type="text" id="m_deskripsi_vendor"/></div>
+              <div class="f"><label for="m_family">Family</label><input type="text" id="m_family"/></div>
+            </div>
           </div>
-          <button class="btn btn-ghost" id="addMediaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
+        </section>
+
+        <section class="fs">
+          <div class="fs-head"><h4>Fisik &amp; spesifikasi</h4></div>
+          <div class="grid2">
+            <div class="f"><label for="f_berat_gram">Berat (gram)</label><input type="number" step="any" id="f_berat_gram" inputmode="decimal"/></div>
+            <div class="f full"><label for="f_spesifikasi">Spesifikasi</label><textarea id="f_spesifikasi"></textarea></div>
+          </div>
+        </section>
+
+        <section class="fs">
+          <div class="fs-head"><h4>Tayang di INAPROC</h4></div>
+          <div class="f">
+            <label for="f_link_v6">Link V6</label>
+            <input type="text" id="f_link_v6" placeholder="https://katalog.inaproc.id/..." autocomplete="off" spellcheck="false"/>
+          </div>
+          <div class="akd-hint" id="linkV6Hint" style="display:none;color:var(--amber-text);"></div>
+          <div class="inaproc-status" id="inaprocIndikator" style="display:none;"></div>
+          <div class="verified-row" id="verifiedRow" style="display:none;">
+            <input type="checkbox" id="f_verified" disabled/>
+            <label for="f_verified"><i class="ti ti-rosette-discount-check-filled vbadge" style="margin:0 6px 0 0;"></i>Verified Product (centang biru INAPROC)</label>
+            <span id="verifiedSrc" class="verified-src"></span>
+          </div>
+        </section>
+
+        <div id="gambarInstrumenSection" style="display:none;">
+          <section class="fs">
+            <div class="fs-head"><h4>Gambar instrumen</h4><span class="fs-note">Bucket thumbnails</span></div>
+            <div class="img-box">
+              <div id="gambarInstrumenPreviewWrap" style="display:none;flex-shrink:0;">
+                <img id="gambarInstrumenPreview" alt="Preview gambar instrumen"/>
+              </div>
+              <div class="img-box-info">
+                <span id="gambarInstrumenBadge" class="status-pill neutral">Mengecek...</span>
+                <div id="gambarInstrumenHint" class="akd-hint"></div>
+              </div>
+              <div style="flex-shrink:0;">
+                <input type="file" id="gambarInstrumenFileInput" accept="image/png" style="display:none;"/>
+                <button class="btn btn-ghost btn-sm" id="gambarInstrumenUploadBtn" type="button"><i class="ti ti-upload"></i> Upload gambar</button>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
-    </div>
 
-    <div class="prod-tab-panel" id="ptab-lanjutan">
-      <div class="sec-label">Field Lanjutan</div>
-      <div class="akd-hint" style="margin-bottom:10px;">Jarang dipakai — belum terhubung ke query/filter mana pun saat ini.</div>
-      <div class="grid2">
-        <div class="f"><label>Status V6</label><input type="text" id="f_status_v6"/></div>
+      <div class="prod-tab-panel" id="ptab-akd">
+        <section class="fs">
+          <div class="fs-head">
+            <h4>Legalitas AKD</h4><span id="akdSealHolder"></span>
+            <button class="btn btn-ghost btn-sm fs-action" id="toggleAkdBoxBtn" type="button"><i class="ti ti-link"></i> Kelola AKD</button>
+          </div>
+          <dl class="ro-grid">
+            <div><dt>No. AKD</dt><dd><output id="f_no_akd"></output></dd></div>
+            <div><dt>Masa berlaku</dt><dd><output id="f_masa_berlaku"></output></dd></div>
+            <div><dt>Golongan</dt><dd><output id="f_golongan"></output></dd></div>
+          </dl>
+          <div class="akd-box" id="akdBox" style="display:none;">
+            <div class="akd-current" id="akdCurrentList"></div>
+            <div class="akd-search-wrap">
+              <input type="text" class="field-input" id="akdSearchInput" placeholder="Cari nomor AKD atau nama..." style="padding:8px 10px;font-size:12.5px;"/>
+              <div class="akd-results" id="akdResults"></div>
+            </div>
+            <div class="akd-hint" id="akdHint"></div>
+          </div>
+        </section>
+
+        <section class="fs">
+          <div class="fs-head">
+            <h4>KFA</h4>
+            <a href="javascript:void(0)" class="fs-link" id="jumpToKfaLink">Kelola di KFA Management</a>
+          </div>
+          <dl class="ro-grid">
+            <div><dt>Kode KFA</dt><dd><output id="f_kode_kfa"></output></dd></div>
+            <div><dt>Kode cangkang</dt><dd><output id="f_kode_cangkang"></output></dd></div>
+            <div><dt>Nama cangkang</dt><dd><output id="f_nama_cangkang"></output></dd></div>
+          </dl>
+        </section>
+      </div>
+
+      <div class="prod-tab-panel" id="ptab-harga">
+        <div id="hargaSection">
+          <section class="fs">
+            <div class="fs-head"><h4>Harga</h4></div>
+            <div class="table-card">
+              <table>
+                <thead><tr><th>Tahun</th><th>Harga EKATALOG</th><th>Turunan (otomatis)</th><th></th></tr></thead>
+                <tbody id="hargaTableBody">
+                  <tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="harga-add">
+              <div class="f"><label>Tahun</label><input type="number" id="h_tahun" placeholder="2026"/></div>
+              <div class="f"><label>Harga EKATALOG (Rp)</label><input type="number" step="any" id="h_harga" placeholder="0"/></div>
+              <button class="btn btn-ghost" id="addHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
+            </div>
+            <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG.</div>
+          </section>
+        </div>
+      </div>
+
+      <div class="prod-tab-panel" id="ptab-media">
+        <div id="mediaSection">
+          <section class="fs">
+            <div class="fs-head"><h4>Brosur &amp; gambar</h4></div>
+            <div class="table-card">
+              <table>
+                <thead><tr><th>Jenis</th><th>Judul</th><th>URL</th><th>Utama</th><th></th></tr></thead>
+                <tbody id="mediaTableBody">
+                  <tr><td colspan="5" style="color:var(--text-muted);padding:14px;">Belum ada media</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="media-add">
+              <div class="f"><label>Jenis</label>
+                <select id="md_jenis">
+                  <option value="brosur">Brosur</option>
+                  <option value="gambar">Gambar</option>
+                </select>
+              </div>
+              <div class="f"><label>Judul</label><input type="text" id="md_judul" placeholder="Judul singkat"/></div>
+              <div class="f full"><label>URL</label><input type="text" id="md_url" placeholder="https://..."/></div>
+              <div class="f"><label>Urutan</label><input type="number" id="md_urutan" value="1" min="1"/></div>
+              <div class="check-row" style="margin-top:20px;">
+                <input type="checkbox" id="md_primary"/>
+                <label for="md_primary">Jadikan utama</label>
+              </div>
+              <button class="btn btn-ghost" id="addMediaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
 
     <div class="modal-actions">
-      <button class="btn btn-danger-ghost" id="deleteBtn" style="display:none;"><i class="ti ti-trash"></i> Hapus Produk</button>
+      <button class="btn btn-danger-ghost" id="deleteBtn" style="display:none;"><i class="ti ti-trash"></i> Hapus produk</button>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-ghost" id="cancelBtn">Batal</button>
-        <button class="btn btn-accent" id="saveBtn"><i class="ti ti-check"></i> Simpan &amp; Lanjut</button>
+        <button class="btn btn-accent" id="saveBtn"><i class="ti ti-check"></i> Simpan</button>
       </div>
     </div>
   </div>
