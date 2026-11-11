@@ -2561,6 +2561,8 @@ document.getElementById('addSetBtn').addEventListener('click', () => {
 });
 
 let setListPage = 1;
+let setListQuery = '';   // kata kunci pencarian Set Management (kode / nama set)
+let setListReq = 0;      // penanda request terbaru, supaya hasil lama yang telat tiba tidak menimpa
 const SET_LIST_PAGE_SIZE = 30;
 
 async function loadSetList(page){
@@ -2574,8 +2576,13 @@ async function loadSetList(page){
   // tipe), lalu minta view HANYA untuk id itu (filter set_id di-push ke dalam agregat). Kalau
   // jalur cepat gagal, jatuh ke query lama.
   let data = null, error = null, count = 0;
-  const idRes = await sb.from('produk').select('id', { count: 'exact' })
-    .eq('tipe', 'SET').order('kode_produk').range(from, to);
+  const my = ++setListReq;
+  // Karakter yang punya arti khusus di filter .or() PostgREST dibuang dari kata kunci.
+  const q = (setListQuery || '').replace(/[,()%*\\]/g, ' ').trim();
+  const orFilter = q ? `kode_produk.ilike.%${q}%,nama_produk.ilike.%${q}%` : '';
+  let idQ = sb.from('produk').select('id', { count: 'exact' }).eq('tipe', 'SET');
+  if (orFilter) idQ = idQ.or(orFilter);
+  const idRes = await idQ.order('kode_produk').range(from, to);
   if (!idRes.error) {
     const ids = (idRes.data || []).map(r => r.id);
     if (!ids.length) { data = []; count = idRes.count || 0; }
@@ -2589,19 +2596,24 @@ async function loadSetList(page){
     }
   }
   if (data === null) {
-    ({ data, error, count } = await sb.from('produk_set_ringkasan')
-      .select('*', { count: 'exact' })
-      .order('kode_produk')
-      .range(from, to));
+    let fbQ = sb.from('produk_set_ringkasan').select('*', { count: 'exact' });
+    if (orFilter) fbQ = fbQ.or(orFilter);
+    ({ data, error, count } = await fbQ.order('kode_produk').range(from, to));
   }
+  if (my !== setListReq) return; // sudah ada pencarian/halaman yang lebih baru
   if (error) { wrap.innerHTML = `<div style="color:var(--rust);padding:14px;">Gagal memuat: ${escapeHtml(error.message)}</div>`; return; }
   const total = count || 0;
-  document.getElementById('setListCount').textContent = total + ' set produk';
+  document.getElementById('setListCount').textContent = q ? `${total} set cocok dengan "${q}"` : `${total} set produk`;
   renderPgBar(document.getElementById('setListPagination'), {
     page: setListPage, pageSize: SET_LIST_PAGE_SIZE, total,
     onPageChange: (p) => loadSetList(p)
   });
-  if (!data || data.length === 0) { wrap.innerHTML = '<div class="stub-box">Belum ada produk tipe SET.</div>'; return; }
+  if (!data || data.length === 0) {
+    wrap.innerHTML = q
+      ? `<div class="sl-state">Tidak ada set yang cocok dengan "${escapeHtml(q)}". Coba sebagian kode atau nama set.</div>`
+      : '<div class="sl-state">Belum ada produk tipe SET. Klik Set Baru untuk membuat yang pertama.</div>';
+    return;
+  }
 
   // FIX (urgent — same row-limit truncation bug as loadProduk() above, see
   // its comment): was a raw .select('produk_id').in('produk_id', ...) query
@@ -2618,16 +2630,32 @@ async function loadSetList(page){
     const recentlyUpdated = s.updated_at && (Date.now() - new Date(s.updated_at).getTime()) < ONE_DAY;
     const row = document.createElement('div');
     row.className = 'set-list-row' + ((noHarga || noItem) ? ' row-attention' : '');
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
     row.innerHTML = `
-      <span class="sl-kode">${escapeHtml(s.kode_produk)}${recentlyUpdated ? recentBadgeHtml(s.updated_at) : ''}</span>
+      <span class="sl-kode"><span>${escapeHtml(s.kode_produk)}</span>${recentlyUpdated ? recentBadgeHtml(s.updated_at) : ''}</span>
       <span class="sl-nama">${escapeHtml(s.nama_produk || '—')}</span>
-      <span class="sl-meta">${noItem ? '<span style="color:var(--amber);">Belum ada item</span>' : `${s.jumlah_jenis_item} item · qty ${s.total_qty || 0}`}${noHarga ? ' · <span style="color:var(--amber);">belum ada harga</span>' : ''}</span>
+      <span class="num">${noItem ? '<span class="sl-warn">Kosong</span>' : s.jumlah_jenis_item}</span>
+      <span class="num">${noItem ? '<span class="sl-dash">–</span>' : (s.total_qty || 0)}</span>
+      <span>${noHarga ? '<span class="sl-warn">Belum ada</span>' : 'Ada'}</span>
       ${sealHtml(s.status_akd)}
     `;
-    row.addEventListener('click', () => openSetDetail(s.set_id, s.kode_produk));
+    const openRow = () => openSetDetail(s.set_id, s.kode_produk);
+    row.addEventListener('click', openRow);
+    row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRow(); } });
     wrap.appendChild(row);
   });
 }
+
+(function wireSetSearch(){
+  const inp = document.getElementById('setSearchInput');
+  if (!inp) return;
+  let t = null;
+  inp.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => { setListQuery = inp.value; loadSetList(1); }, 300);
+  });
+})();
 
 document.getElementById('setBackBtn').addEventListener('click', () => {
   document.getElementById('setDetailWrap').style.display = 'none';

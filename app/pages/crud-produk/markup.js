@@ -25,376 +25,409 @@ export const CRUD_PRODUK_MARKUP = `
 <!-- AUTH: tidak ada gate per-halaman; router.js gak mount() halaman ini kecuali
      shared/auth-gate.js sudah lolos. -->
 
-<!-- APP SHELL -->
+<!-- APP SHELL
+     Satu lapis kepala saja: .pw-topbar (breadcrumb + aksi global) -> .content-head (judul + aksi halaman)
+     -> .vtools (cari/filter) -> .vbody (satu-satunya area yang scroll) -> .pg-bar (nempel di bawah).
+     Dulu ada .topbar kedua yang berisi search + tombol; di view selain Produk isinya cuma "Log Aktivitas"
+     sehingga terlihat kosong dan melayang. Semua id lama dipertahankan. -->
 <div class="shell" id="appWrap">
   <main class="main">
     <div class="pw-topbar">
       <div class="pw-topbar-crumb">CRUD Produk <span class="pw-topbar-crumb-sep">/</span> <strong id="pw-topbar-crumb-text">Produk</strong></div>
-    </div>
-    <div class="topbar">
-      <div class="top-search">
-        <i class="ti ti-search"></i>
-        <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama... (filter langsung di daftar)"/>
-        <button class="clear-btn" id="topSearchClear" title="Bersihkan"><i class="ti ti-x"></i></button>
-      </div>
-      <div class="topbar-actions">
-        <div class="view-toggle">
-          <button id="viewTableBtn" class="active" title="Tampilan tabel"><i class="ti ti-list"></i></button>
-          <button id="viewCardBtn" title="Tampilan kartu"><i class="ti ti-layout-grid"></i></button>
-        </div>
-        <button class="btn" id="logToggle" title="Log Aktivitas"><i class="ti ti-history"></i> Log Aktivitas</button>
-        <button class="btn btn-accent" id="addBtn"><i class="ti ti-plus"></i> Tambah Produk</button>
+      <div class="pw-topbar-actions">
         <button class="btn" id="btnKembaliKonversi" style="display:none;border:1px solid var(--accent-text);color:var(--accent-text);background:var(--accent-bg)" title="Balik ke Conversion Workspace"><i class="ti ti-arrow-back"></i> Kembali ke Konversi</button>
+        <button class="btn" id="logToggle" title="Log Aktivitas"><i class="ti ti-history"></i> Log Aktivitas</button>
       </div>
     </div>
 
     <!-- PRODUK VIEW -->
     <div class="content" id="viewProduk">
-      <div class="content-head">
-        <div>
-          <div class="content-title">Produk</div>
-          <div class="content-sub" id="produkCount">Memuat...</div>
-        </div>
-        <div class="produk-head-actions">
-          <!-- Dua tombol export (audit & pricelist) digabung jadi satu menu: dua-duanya ngikut filter aktif,
-               yang beda cuma isi file-nya. ID tombol lama dipertahankan di item menu. -->
-          <div class="export-menu" id="produkExportMenu">
-            <button class="btn btn-accent" id="produkExportToggle" type="button" aria-haspopup="menu" aria-expanded="false"><i class="ti ti-download"></i> Export <i class="ti ti-chevron-down export-chev"></i></button>
-            <div class="export-pop" id="produkExportPop" role="menu" hidden>
-              <button class="export-item" id="produkExportBtn" type="button" role="menuitem">
-                <i class="ti ti-file-spreadsheet"></i>
-                <span><b>Excel, hasil filter</b><small>Semua kolom untuk cek data, mengikuti filter dan pencarian yang aktif</small></span>
-              </button>
-              <button class="export-item" id="produkExportPricelistBtn" type="button" role="menuitem">
-                <i class="ti ti-currency-dollar"></i>
-                <span><b>Pricelist untuk sales</b><small>Hanya produk yang sudah punya Link V6 dan harga EKATALOG, harga berupa angka</small></span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="filter-bar" id="produkFilterBar">
-        <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-all"></span></button>
-        <button class="filter-chip" data-filter="belum_diajukan">Perlu AKD<span class="fc-count" id="fc-belum_diajukan"></span></button>
-        <button class="filter-chip" data-filter="belum_firm">Belum Firm<span class="fc-count" id="fc-belum_firm"></span></button>
-        <button class="filter-chip" data-filter="di_luar_cakupan">Di Luar Cakupan<span class="fc-count" id="fc-di_luar_cakupan"></span></button>
-        <button class="filter-chip" data-filter="terhubung">Terhubung<span class="fc-count" id="fc-terhubung"></span></button>
-        <button class="filter-chip" data-filter="disetujui_tanpa_link">Disetujui, Belum Ada Link<span class="fc-count" id="fc-disetujui_tanpa_link"></span></button>
-        <button class="filter-chip" data-filter="verified"><i class="ti ti-rosette-discount-check-filled vbadge vbadge-chip"></i>Verified<span class="fc-count" id="fc-verified"></span></button>
-      </div>
-
-      <div class="stacked-filters-row">
-        <div class="stacked-filter-chips" id="produkFilterChips"></div>
-        <div class="add-filter-wrap">
-          <button class="add-filter-btn" id="produkAddFilterBtn"><i class="ti ti-plus"></i> Tambah Filter</button>
-          <div class="add-filter-pop" id="produkAddFilterPop"></div>
-        </div>
-      </div>
-
-      <div class="table-card" id="tableWrap">
-        <table>
-          <thead>
-            <tr><th>Kode Produk</th><th>Nama Produk</th><th>Tipe</th><th>Status AKD</th><th class="num">Stok</th><th>Perlu dicek</th></tr>
-          </thead>
-          <tbody id="tableBody">
-            <tr class="state-row"><td colspan="6">Memuat data...</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="card-grid" id="cardWrap" style="display:none;"></div>
-      <div class="pg-bar" id="produkPagination" style="display:none;"></div>
-    </div>
-
-    <!-- STUB VIEWS -->
-    <!-- SET MANAGEMENT VIEW -->
-    <div class="content" id="viewSet" style="display:none;">
-      <div id="setListWrap">
+      <div class="vwrap">
         <div class="content-head">
           <div>
-            <div class="content-title">Set Management</div>
-            <div class="content-sub" id="setListCount">Memuat...</div>
+            <div class="content-title">Produk</div>
+            <div class="content-sub" id="produkCount">Memuat...</div>
           </div>
-          <button class="btn btn-accent" id="addSetBtn"><i class="ti ti-plus"></i> Set Baru</button>
-        </div>
-        <div id="setListBody"></div>
-        <div class="pg-bar" id="setListPagination" style="display:none;"></div>
-      </div>
-
-      <div id="setDetailWrap" style="display:none;">
-        <div class="set-back" id="setBackBtn"><i class="ti ti-arrow-left"></i> Kembali ke daftar set</div>
-        <div class="set-detail-head">
-          <div>
-            <div class="set-detail-title" id="setDetailNama">—</div>
-            <div class="set-detail-meta">
-              <span class="kode-cell" id="setDetailKode"></span>
-              <span><b id="setDetailJumlahItem">0</b> item</span>
-              <span><b id="setDetailQty">0</b> total qty</span>
-              <span id="setDetailHarga">Belum ada harga</span>
-              <span id="setDetailSeal"></span>
+          <div class="produk-head-actions">
+            <!-- Dua export (audit & pricelist) digabung jadi satu menu; dua-duanya ngikut filter aktif. -->
+<div class="export-menu" id="produkExportMenu">
+              <button class="btn btn-accent" id="produkExportToggle" type="button" aria-haspopup="menu" aria-expanded="false"><i class="ti ti-download"></i> Export <i class="ti ti-chevron-down export-chev"></i></button>
+              <div class="export-pop" id="produkExportPop" role="menu" hidden>
+                <button class="export-item" id="produkExportBtn" type="button" role="menuitem">
+                  <i class="ti ti-file-spreadsheet"></i>
+                  <span><b>Excel, hasil filter</b><small>Semua kolom untuk cek data, mengikuti filter dan pencarian yang aktif</small></span>
+                </button>
+                <button class="export-item" id="produkExportPricelistBtn" type="button" role="menuitem">
+                  <i class="ti ti-currency-dollar"></i>
+                  <span><b>Pricelist untuk sales</b><small>Hanya produk yang sudah punya Link V6 dan harga EKATALOG, harga berupa angka</small></span>
+                </button>
+              </div>
             </div>
+            <button class="btn btn-accent" id="addBtn"><i class="ti ti-plus"></i> Tambah Produk</button>
           </div>
-          <button class="btn btn-ghost" id="editSetOverviewBtn"><i class="ti ti-pencil"></i> Edit Info Dasar</button>
         </div>
 
-        <div class="set-tabs">
-          <button class="set-tab active" data-tab="composition">Composition</button>
-          <button class="set-tab" data-tab="pricing">Pricing</button>
-          <button class="set-tab" data-tab="akd">AKD</button>
-          <button class="set-tab" data-tab="history">History</button>
-        </div>
-
-        <div class="set-tab-panel active" id="tab-composition">
-          <div class="comp-summary">
-            <span>Jenis item: <b id="compJumlahJenis">0</b></span>
-            <span>Total qty: <b id="compTotalQty">0</b></span>
-            <span>Estimasi berat: <b id="compEstBerat">0 g</b></span>
+        <div class="vtools">
+          <div class="top-search">
+            <i class="ti ti-search"></i>
+            <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama..."/>
+            <button class="clear-btn" id="topSearchClear" title="Bersihkan"><i class="ti ti-x"></i></button>
           </div>
-          <div id="compList"></div>
-          <div id="compMissing"></div>
-          <div class="comp-add">
-            <label class="field-label">Tambah item (cari instrumen/unit)</label>
-            <input type="text" class="field-input" id="compSearchInput" placeholder="Ketik nama atau kode produk..."/>
-            <div class="akd-results" id="compSearchResults"></div>
-          </div>
-          <div class="akd-hint" style="margin-top:10px;"><i class="ti ti-device-floppy"></i> Perubahan (tambah/hapus item, ubah qty) tersimpan otomatis ke database — tidak ada tombol Simpan terpisah.</div>
-
-          <details class="comp-paste">
-          <summary><i class="ti ti-chevron-right"></i> Paste rincian dari sheet</summary>
-          <div class="paste-hint">
-            Paste langsung dari sheet Rincian Set kamu apa adanya (kode_set, nama_set, kode_item, nama_item, qty — kolom kode_set/nama_set diabaikan karena udah jelas set-nya set ini), atau cukup 2 kolom <code>kode_item</code> — <code>qty</code>.
-          </div>
-          <textarea class="paste-area" id="compPasteArea" placeholder="RB999-KE921-B99-U667&#9;BASIC SPINE LAMINECTOMY S.&#9;RB10-KE130-B003-U07&#9;SCALPEL HANDLE, NO. 3, 12 CM&#9;1"></textarea>
-          <div class="bulk-actions">
-            <button class="btn btn-ghost" id="compPastePreviewBtn" type="button"><i class="ti ti-eye"></i> Preview</button>
-            <label class="check-row-inline is-destructive"><input type="checkbox" id="compPasteTimpaMode"/> Mode Timpa Total (hapus item lama yang tidak disebut di paste ini)</label>
-            <button class="btn btn-accent" id="compPasteProsesBtn" type="button" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
-          </div>
-          <div class="bulk-summary" id="compPasteSummary"></div>
-          <div class="preview-table-wrap" id="compPastePreviewWrap" style="display:none;">
-            <table>
-              <thead><tr><th>Kode Item</th><th>Nama Item</th><th>Qty</th><th>Status</th></tr></thead>
-              <tbody id="compPastePreviewBody"></tbody>
-            </table>
-          </div>
-          </details>
-        </div>
-
-        <div class="set-tab-panel" id="tab-pricing">
-          <div class="table-card">
-            <table>
-              <thead><tr><th>Tahun</th><th>Harga EKATALOG</th><th>Turunan (otomatis)</th><th></th></tr></thead>
-              <tbody id="setHargaTableBody"><tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr></tbody>
-            </table>
-          </div>
-          <div class="harga-add harga-add-set">
-            <div class="f"><label>Tahun</label><input type="number" id="sh_tahun" placeholder="2026"/></div>
-            <div class="f"><label>Harga EKATALOG (Rp)</label><input type="number" step="any" id="sh_harga" placeholder="0"/></div>
-            <button class="btn btn-ghost" id="hitungKomposisiBtn" type="button" title="Isi otomatis dari jumlah (harga item × qty)"><i class="ti ti-calculator"></i> Hitung dari Komposisi</button>
-            <button class="btn btn-ghost" id="addSetHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
-          </div>
-          <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG. "Hitung dari Komposisi" cuma mengisi kotak — kamu tetap bisa timpa manual (mis. buat pas-kan pagu) sebelum klik Tambah.</div>
-        </div>
-
-        <div class="set-tab-panel" id="tab-akd">
-          <div class="akd-box" style="display:block;">
-            <div class="akd-current" id="setAkdCurrentList"></div>
-            <div class="akd-search-wrap">
-              <input type="text" class="field-input" id="setAkdSearchInput" placeholder="Cari nomor AKD atau nama set..." style="padding:8px 10px;font-size:12.5px;"/>
-              <div class="akd-results" id="setAkdResults"></div>
+      <div class="stacked-filters-row">
+              <div class="stacked-filter-chips" id="produkFilterChips"></div>
+              <div class="add-filter-wrap">
+                <button class="add-filter-btn" id="produkAddFilterBtn"><i class="ti ti-plus"></i> Tambah Filter</button>
+                <div class="add-filter-pop" id="produkAddFilterPop"></div>
+              </div>
             </div>
-            <div class="akd-hint">Pencarian dibatasi ke AKD tipe "set".</div>
+          <div class="view-toggle">
+            <button id="viewTableBtn" class="active" title="Tampilan tabel"><i class="ti ti-list"></i></button>
+            <button id="viewCardBtn" title="Tampilan kartu"><i class="ti ti-layout-grid"></i></button>
           </div>
         </div>
 
-        <div class="set-tab-panel" id="tab-history">
-          <div id="setHistoryList" style="display:flex;flex-direction:column;gap:8px;"></div>
-          <button class="btn btn-ghost btn-sm" id="openFullLogFromSetBtn" style="margin-top:10px;"><i class="ti ti-external-link"></i> Buka Log Aktivitas Lengkap</button>
+        <div class="filter-bar" id="produkFilterBar">
+                <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-all"></span></button>
+                <button class="filter-chip" data-filter="belum_diajukan">Perlu AKD<span class="fc-count" id="fc-belum_diajukan"></span></button>
+                <button class="filter-chip" data-filter="belum_firm">Belum Firm<span class="fc-count" id="fc-belum_firm"></span></button>
+                <button class="filter-chip" data-filter="di_luar_cakupan">Di Luar Cakupan<span class="fc-count" id="fc-di_luar_cakupan"></span></button>
+                <button class="filter-chip" data-filter="terhubung">Terhubung<span class="fc-count" id="fc-terhubung"></span></button>
+                <button class="filter-chip" data-filter="disetujui_tanpa_link">Disetujui, Belum Ada Link<span class="fc-count" id="fc-disetujui_tanpa_link"></span></button>
+                <button class="filter-chip" data-filter="verified"><i class="ti ti-rosette-discount-check-filled vbadge vbadge-chip"></i>Verified<span class="fc-count" id="fc-verified"></span></button>
+              </div>
+
+        <div class="vbody">
+          <div class="table-card" id="tableWrap">
+                  <table>
+                    <thead>
+                      <tr><th>Kode Produk</th><th>Nama Produk</th><th>Tipe</th><th>Status AKD</th><th class="num">Stok</th><th>Perlu dicek</th></tr>
+                    </thead>
+                    <tbody id="tableBody">
+                      <tr class="state-row"><td colspan="6">Memuat data...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+          <div class="card-grid" id="cardWrap" style="display:none;"></div>
         </div>
+        <div class="pg-bar" id="produkPagination" style="display:none;"></div>
       </div>
     </div>
 
+    <!-- SET MANAGEMENT VIEW -->
+    <div class="content" id="viewSet" style="display:none;">
+      <div class="vwrap">
+        <div id="setListWrap">
+          <div class="vcol">
+            <div class="content-head">
+              <div>
+                <div class="content-title">Set Management</div>
+                <div class="content-sub" id="setListCount">Memuat...</div>
+                <div class="content-hint">Satu set adalah satu paket instrumen untuk satu jenis tindakan. Buka set untuk mengatur isi, harga, dan AKD-nya.</div>
+              </div>
+              <button class="btn btn-accent" id="addSetBtn"><i class="ti ti-plus"></i> Set Baru</button>
+            </div>
+            <div class="vtools">
+              <div class="akd-search-box">
+                <i class="ti ti-search"></i>
+                <input type="text" id="setSearchInput" placeholder="Cari kode atau nama set..." autocomplete="off"/>
+              </div>
+            </div>
+            <div class="vbody">
+              <div class="set-cols" role="presentation">
+                <span>Kode set</span><span>Nama set</span><span class="num">Jenis item</span><span class="num">Total qty</span><span>Harga</span><span>Status AKD</span>
+              </div>
+              <div id="setListBody"></div>
+            </div>
+            <div class="pg-bar" id="setListPagination" style="display:none;"></div>
+          </div>
+        </div>
+
+        <div id="setDetailWrap" style="display:none;">
+                <div class="set-back" id="setBackBtn"><i class="ti ti-arrow-left"></i> Kembali ke daftar set</div>
+                <div class="set-detail-head">
+                  <div>
+                    <div class="set-detail-title" id="setDetailNama">—</div>
+                    <div class="set-detail-meta">
+                      <span class="kode-cell" id="setDetailKode"></span>
+                      <span><b id="setDetailJumlahItem">0</b> item</span>
+                      <span><b id="setDetailQty">0</b> total qty</span>
+                      <span id="setDetailHarga">Belum ada harga</span>
+                      <span id="setDetailSeal"></span>
+                    </div>
+                  </div>
+                  <button class="btn btn-ghost" id="editSetOverviewBtn"><i class="ti ti-pencil"></i> Edit Info Dasar</button>
+                </div>
+
+                <div class="set-tabs">
+                  <button class="set-tab active" data-tab="composition">Composition</button>
+                  <button class="set-tab" data-tab="pricing">Pricing</button>
+                  <button class="set-tab" data-tab="akd">AKD</button>
+                  <button class="set-tab" data-tab="history">History</button>
+                </div>
+
+                <div class="set-tab-panel active" id="tab-composition">
+                  <div class="comp-summary">
+                    <span>Jenis item: <b id="compJumlahJenis">0</b></span>
+                    <span>Total qty: <b id="compTotalQty">0</b></span>
+                    <span>Estimasi berat: <b id="compEstBerat">0 g</b></span>
+                  </div>
+                  <div id="compList"></div>
+                  <div id="compMissing"></div>
+                  <div class="comp-add">
+                    <label class="field-label">Tambah item (cari instrumen/unit)</label>
+                    <input type="text" class="field-input" id="compSearchInput" placeholder="Ketik nama atau kode produk..."/>
+                    <div class="akd-results" id="compSearchResults"></div>
+                  </div>
+                  <div class="akd-hint" style="margin-top:10px;"><i class="ti ti-device-floppy"></i> Perubahan (tambah/hapus item, ubah qty) tersimpan otomatis ke database — tidak ada tombol Simpan terpisah.</div>
+
+                  <details class="comp-paste">
+                  <summary><i class="ti ti-chevron-right"></i> Paste rincian dari sheet</summary>
+                  <div class="paste-hint">
+                    Paste langsung dari sheet Rincian Set kamu apa adanya (kode_set, nama_set, kode_item, nama_item, qty — kolom kode_set/nama_set diabaikan karena udah jelas set-nya set ini), atau cukup 2 kolom <code>kode_item</code> — <code>qty</code>.
+                  </div>
+                  <textarea class="paste-area" id="compPasteArea" placeholder="RB999-KE921-B99-U667&#9;BASIC SPINE LAMINECTOMY S.&#9;RB10-KE130-B003-U07&#9;SCALPEL HANDLE, NO. 3, 12 CM&#9;1"></textarea>
+                  <div class="bulk-actions">
+                    <button class="btn btn-ghost" id="compPastePreviewBtn" type="button"><i class="ti ti-eye"></i> Preview</button>
+                    <label class="check-row-inline is-destructive"><input type="checkbox" id="compPasteTimpaMode"/> Mode Timpa Total (hapus item lama yang tidak disebut di paste ini)</label>
+                    <button class="btn btn-accent" id="compPasteProsesBtn" type="button" style="display:none;"><i class="ti ti-check"></i> Proses Semua</button>
+                  </div>
+                  <div class="bulk-summary" id="compPasteSummary"></div>
+                  <div class="preview-table-wrap" id="compPastePreviewWrap" style="display:none;">
+                    <table>
+                      <thead><tr><th>Kode Item</th><th>Nama Item</th><th>Qty</th><th>Status</th></tr></thead>
+                      <tbody id="compPastePreviewBody"></tbody>
+                    </table>
+                  </div>
+                  </details>
+                </div>
+
+                <div class="set-tab-panel" id="tab-pricing">
+                  <div class="table-card">
+                    <table>
+                      <thead><tr><th>Tahun</th><th>Harga EKATALOG</th><th>Turunan (otomatis)</th><th></th></tr></thead>
+                      <tbody id="setHargaTableBody"><tr><td colspan="4" style="color:var(--text-muted);padding:14px;">Belum ada data harga</td></tr></tbody>
+                    </table>
+                  </div>
+                  <div class="harga-add harga-add-set">
+                    <div class="f"><label>Tahun</label><input type="number" id="sh_tahun" placeholder="2026"/></div>
+                    <div class="f"><label>Harga EKATALOG (Rp)</label><input type="number" step="any" id="sh_harga" placeholder="0"/></div>
+                    <button class="btn btn-ghost" id="hitungKomposisiBtn" type="button" title="Isi otomatis dari jumlah (harga item × qty)"><i class="ti ti-calculator"></i> Hitung dari Komposisi</button>
+                    <button class="btn btn-ghost" id="addSetHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
+                  </div>
+                  <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG. "Hitung dari Komposisi" cuma mengisi kotak — kamu tetap bisa timpa manual (mis. buat pas-kan pagu) sebelum klik Tambah.</div>
+                </div>
+
+                <div class="set-tab-panel" id="tab-akd">
+                  <div class="akd-box" style="display:block;">
+                    <div class="akd-current" id="setAkdCurrentList"></div>
+                    <div class="akd-search-wrap">
+                      <input type="text" class="field-input" id="setAkdSearchInput" placeholder="Cari nomor AKD atau nama set..." style="padding:8px 10px;font-size:12.5px;"/>
+                      <div class="akd-results" id="setAkdResults"></div>
+                    </div>
+                    <div class="akd-hint">Pencarian dibatasi ke AKD tipe "set".</div>
+                  </div>
+                </div>
+
+                <div class="set-tab-panel" id="tab-history">
+                  <div id="setHistoryList" style="display:flex;flex-direction:column;gap:8px;"></div>
+                  <button class="btn btn-ghost btn-sm" id="openFullLogFromSetBtn" style="margin-top:10px;"><i class="ti ti-external-link"></i> Buka Log Aktivitas Lengkap</button>
+                </div>
+              </div>
+      </div>
+    </div>
+
+    <!-- AKD VIEW -->
     <div class="content" id="viewAkd" style="display:none;">
-      <div class="content-head">
-        <div>
-          <div class="content-title">AKD Management</div>
-          <div class="content-sub" id="akdCount">Memuat...</div>
+      <div class="vwrap">
+        <div class="content-head">
+          <div>
+            <div class="content-title">AKD Management</div>
+            <div class="content-sub" id="akdCount">Memuat...</div>
+          </div>
+          <div class="produk-head-actions">
+            <button class="btn btn-accent" id="addAkdBtn"><i class="ti ti-plus"></i> Tambah AKD</button>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-accent" id="addAkdBtn"><i class="ti ti-plus"></i> Tambah AKD</button>
+        <div class="vtools">
+          <div class="akd-search-box">
+            <i class="ti ti-search"></i>
+            <input type="text" id="akdSearchBoxInput" placeholder="Cari no. AKD, nama AKD, kode set..."/>
+          </div>
         </div>
-      </div>
-
-      <div class="akd-toolbar">
-        <div class="akd-search-box">
-          <i class="ti ti-search"></i>
-          <input type="text" id="akdSearchBoxInput" placeholder="Cari no. AKD, nama AKD, kode set..."/>
+        <div class="vbody">
+          <div class="table-card akd-table-scroll">
+                  <table>
+                    <thead>
+                      <tr><th>No. AKD</th><th>Nama AKD</th><th>Tipe</th><th>Golongan</th><th>Kategori Set</th><th>Masa Berlaku</th><th>Status Terupdate</th><th>Link Dok.</th><th>Produk Terhubung</th></tr>
+                    </thead>
+                    <tbody id="akdTableBody">
+                      <tr class="state-row"><td colspan="9">Memuat data...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
         </div>
+        <div class="pg-bar" id="akdPagination" style="display:none;"></div>
       </div>
-
-      <div class="table-card akd-table-scroll">
-        <table>
-          <thead>
-            <tr><th>No. AKD</th><th>Nama AKD</th><th>Tipe</th><th>Golongan</th><th>Kategori Set</th><th>Masa Berlaku</th><th>Status Terupdate</th><th>Link Dok.</th><th>Produk Terhubung</th></tr>
-          </thead>
-          <tbody id="akdTableBody">
-            <tr class="state-row"><td colspan="9">Memuat data...</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="pg-bar" id="akdPagination" style="display:none;"></div>
     </div>
+
+    <!-- KFA VIEW -->
     <div class="content" id="viewKfa" style="display:none;">
-      <div class="content-head">
-        <div>
-          <div class="content-title">KFA Management</div>
-          <div class="content-sub" id="kfaCount">Memuat...</div>
+      <div class="vwrap">
+        <div class="content-head">
+          <div>
+            <div class="content-title">KFA Management</div>
+            <div class="content-sub" id="kfaCount">Memuat...</div>
+          </div>
+          <div class="produk-head-actions">
+            <button class="btn btn-accent" id="addKfaBtn"><i class="ti ti-plus"></i> Tambah Produk ke KFA</button>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-accent" id="addKfaBtn"><i class="ti ti-plus"></i> Tambah Produk ke KFA</button>
+        <div id="kfaAddBox" class="akd-box" style="display:none;margin-bottom:14px;">
+                <div class="akd-search-wrap">
+                  <input type="text" class="field-input" id="kfaAddSearchInput" placeholder="Cari kode/nama produk yang belum ada record KFA-nya..." style="padding:8px 10px;font-size:12.5px;"/>
+                  <div class="akd-results" id="kfaAddResults"></div>
+                </div>
+              </div>
+        <div class="vtools">
+          <div class="akd-search-box">
+            <i class="ti ti-search"></i>
+            <input type="text" id="kfaSearchBoxInput" placeholder="Cari kode/nama produk atau kode KFA..."/>
+          </div>
         </div>
-      </div>
-
-      <div id="kfaAddBox" class="akd-box" style="display:none;margin-bottom:14px;">
-        <div class="akd-search-wrap">
-          <input type="text" class="field-input" id="kfaAddSearchInput" placeholder="Cari kode/nama produk yang belum ada record KFA-nya..." style="padding:8px 10px;font-size:12.5px;"/>
-          <div class="akd-results" id="kfaAddResults"></div>
+        <div class="filter-bar" id="kfaFilterBar">
+                <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-kfa-all"></span></button>
+                <button class="filter-chip" data-filter="ada">Sudah Ada Kode<span class="fc-count" id="fc-kfa-ada"></span></button>
+                <button class="filter-chip" data-filter="belum">Belum Ada Kode<span class="fc-count" id="fc-kfa-belum"></span></button>
+              </div>
+        <div class="vbody">
+          <div class="table-card akd-table-scroll">
+                  <table>
+                    <thead>
+                      <tr><th>Kode Produk</th><th>Nama Produk</th><th>Kode KFA</th><th>Kode Cangkang</th><th>Nama Cangkang</th><th>No. AKD Rujukan</th><th>Tgl Verifikasi</th><th>Catatan</th></tr>
+                    </thead>
+                    <tbody id="kfaTableBody">
+                      <tr class="state-row"><td colspan="8">Memuat data...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
         </div>
+        <div class="pg-bar" id="kfaPagination" style="display:none;"></div>
       </div>
-
-      <div class="filter-bar" id="kfaFilterBar">
-        <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-kfa-all"></span></button>
-        <button class="filter-chip" data-filter="ada">Sudah Ada Kode<span class="fc-count" id="fc-kfa-ada"></span></button>
-        <button class="filter-chip" data-filter="belum">Belum Ada Kode<span class="fc-count" id="fc-kfa-belum"></span></button>
-      </div>
-
-      <div class="akd-toolbar">
-        <div class="akd-search-box">
-          <i class="ti ti-search"></i>
-          <input type="text" id="kfaSearchBoxInput" placeholder="Cari kode/nama produk atau kode KFA..."/>
-        </div>
-      </div>
-
-      <div class="table-card akd-table-scroll">
-        <table>
-          <thead>
-            <tr><th>Kode Produk</th><th>Nama Produk</th><th>Kode KFA</th><th>Kode Cangkang</th><th>Nama Cangkang</th><th>No. AKD Rujukan</th><th>Tgl Verifikasi</th><th>Catatan</th></tr>
-          </thead>
-          <tbody id="kfaTableBody">
-            <tr class="state-row"><td colspan="8">Memuat data...</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="pg-bar" id="kfaPagination" style="display:none;"></div>
     </div>
+
+    <!-- BULK EDIT VIEW -->
     <div class="content" id="viewBulk" style="display:none;">
-      <div class="content-head">
-        <div>
-          <div class="content-title">Bulk Edit</div>
-          <div class="content-sub">Tempel data dari Excel atau Google Sheets, cek hasilnya, lalu proses.</div>
-        </div>
-      </div>
-
-      <div class="bulk-tabs" role="tablist">
-        <button class="bulk-tab active" data-bulk="harga">Harga massal</button>
-        <button class="bulk-tab" data-bulk="link">Link V6 massal</button>
-        <button class="bulk-tab" data-bulk="inaproc">INAPROC tracker</button>
-        <button class="bulk-tab" data-bulk="verified">Verified product</button>
-      </div>
-
-      <div class="bulk-panel active" id="bulk-harga">
-        <div class="bk-compose">
-          <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>kode_produk</span><span class="bk-col"><b>B</b>tahun</span><span class="bk-col"><b>C</b>harga_ekat</span></div>
-          <textarea class="paste-area" id="bulkHargaPaste" placeholder="RB999-KE921-B99-U667&#9;2026&#9;1500000&#10;RB10-KE130-B003-U07&#9;2026&#9;250000"></textarea>
-          <div class="bulk-actions">
-            <span class="bk-note">Tanpa header, dipisah tab. SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung otomatis.</span>
-            <button class="btn btn-ghost" id="bulkHargaPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
-            <button class="btn btn-accent" id="bulkHargaProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
+      <div class="vwrap">
+        <div class="content-head">
+          <div>
+            <div class="content-title">Bulk Edit</div>
+            <div class="content-sub">Tempel data dari Excel atau Google Sheets, cek hasilnya, lalu proses.</div>
           </div>
         </div>
-        <div class="bulk-summary" id="bulkHargaSummary"></div>
-        <div class="preview-table-wrap" id="bulkHargaPreviewWrap" style="display:none;">
-          <table>
-            <thead><tr><th>Kode produk</th><th>Nama</th><th>Tahun</th><th>EKATALOG</th><th>SWASTA (auto)</th><th>UPLOAD (auto)</th><th>Status</th></tr></thead>
-            <tbody id="bulkHargaPreviewBody"></tbody>
-          </table>
-        </div>
-      </div>
+        <div class="vbody pad">
+          <div class="bulk-tabs" role="tablist">
+                  <button class="bulk-tab active" data-bulk="harga">Harga massal</button>
+                  <button class="bulk-tab" data-bulk="link">Link V6 massal</button>
+                  <button class="bulk-tab" data-bulk="inaproc">INAPROC tracker</button>
+                  <button class="bulk-tab" data-bulk="verified">Verified product</button>
+                </div>
 
-      <!-- BULK KOMPOSISI SET dipindah ke Set Management > tab Composition (per-set, gak lintas-set lagi) -->
+                <div class="bulk-panel active" id="bulk-harga">
+                  <div class="bk-compose">
+                    <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>kode_produk</span><span class="bk-col"><b>B</b>tahun</span><span class="bk-col"><b>C</b>harga_ekat</span></div>
+                    <textarea class="paste-area" id="bulkHargaPaste" placeholder="RB999-KE921-B99-U667&#9;2026&#9;1500000&#10;RB10-KE130-B003-U07&#9;2026&#9;250000"></textarea>
+                    <div class="bulk-actions">
+                      <span class="bk-note">Tanpa header, dipisah tab. SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung otomatis.</span>
+                      <button class="btn btn-ghost" id="bulkHargaPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
+                      <button class="btn btn-accent" id="bulkHargaProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
+                    </div>
+                  </div>
+                  <div class="bulk-summary" id="bulkHargaSummary"></div>
+                  <div class="preview-table-wrap" id="bulkHargaPreviewWrap" style="display:none;">
+                    <table>
+                      <thead><tr><th>Kode produk</th><th>Nama</th><th>Tahun</th><th>EKATALOG</th><th>SWASTA (auto)</th><th>UPLOAD (auto)</th><th>Status</th></tr></thead>
+                      <tbody id="bulkHargaPreviewBody"></tbody>
+                    </table>
+                  </div>
+                </div>
 
-      <div class="bulk-panel" id="bulk-link">
-        <div class="bk-compose">
-          <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>kode_produk</span><span class="bk-col"><b>B</b>link_v6</span></div>
-          <textarea class="paste-area" id="bulkLinkPaste" placeholder="RB999-KE921-B99-U667&#9;https://e-katalog.lkpp.go.id/produk/xxxxx"></textarea>
-          <div class="bulk-actions">
-            <span class="bk-note">Tanpa header, dipisah tab. link_v6 berisi URL e-katalog.</span>
-            <button class="btn btn-ghost" id="bulkLinkPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
-            <button class="btn btn-accent" id="bulkLinkProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
-          </div>
-        </div>
-        <div class="bulk-summary" id="bulkLinkSummary"></div>
-        <div class="preview-table-wrap" id="bulkLinkPreviewWrap" style="display:none;">
-          <table>
-            <thead><tr><th>Kode produk</th><th>Nama</th><th>Link lama</th><th>Link baru</th><th>Status</th></tr></thead>
-            <tbody id="bulkLinkPreviewBody"></tbody>
-          </table>
-        </div>
-      </div>
+                <!-- BULK KOMPOSISI SET dipindah ke Set Management > tab Composition (per-set, gak lintas-set lagi) -->
 
-      <div class="bulk-panel" id="bulk-inaproc">
-        <div class="bk-compose">
-          <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>No</span><span class="bk-col"><b>B</b>Nama</span><span class="bk-col"><b>C</b>Kategori</span><span class="bk-col"><b>D</b>Nomor Permohonan</span><span class="bk-col"><b>E</b>Tgl Pengajuan</span><span class="bk-col"><b>F</b>Status</span><span class="bk-col"><b>G</b>Alasan Ditolak</span></div>
-          <textarea class="paste-area" id="bulkInaprocPaste" placeholder="1&#9;Dental operative unit (RB-KRC-DTC.07-U01, ROBUST)&#9;Alat Kesehatan&#9;33190423&#9;10 Juli 2026&#9;Menunggu Persetujuan&#9;"></textarea>
-          <div class="bulk-actions">
-            <span class="bk-note">Tanpa header, dipisah tab, persis hasil curl INAPROC. Kode produk diambil dari kurung di kolom Nama. Tempel ulang aman: data lama (per Nomor Permohonan) di-update, tidak dobel.</span>
-            <button class="btn btn-ghost" id="bulkInaprocPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
-            <button class="btn btn-accent" id="bulkInaprocProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
-          </div>
-        </div>
-        <div class="bulk-summary" id="bulkInaprocSummary"></div>
-        <div class="preview-table-wrap" id="bulkInaprocPreviewWrap" style="display:none;">
-          <table>
-            <thead><tr><th>No. Permohonan</th><th>Kode terbaca</th><th>Nama</th><th>Tgl</th><th>Status</th><th>Match produk</th></tr></thead>
-            <tbody id="bulkInaprocPreviewBody"></tbody>
-          </table>
-        </div>
-      </div>
+                <div class="bulk-panel" id="bulk-link">
+                  <div class="bk-compose">
+                    <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>kode_produk</span><span class="bk-col"><b>B</b>link_v6</span></div>
+                    <textarea class="paste-area" id="bulkLinkPaste" placeholder="RB999-KE921-B99-U667&#9;https://e-katalog.lkpp.go.id/produk/xxxxx"></textarea>
+                    <div class="bulk-actions">
+                      <span class="bk-note">Tanpa header, dipisah tab. link_v6 berisi URL e-katalog.</span>
+                      <button class="btn btn-ghost" id="bulkLinkPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
+                      <button class="btn btn-accent" id="bulkLinkProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
+                    </div>
+                  </div>
+                  <div class="bulk-summary" id="bulkLinkSummary"></div>
+                  <div class="preview-table-wrap" id="bulkLinkPreviewWrap" style="display:none;">
+                    <table>
+                      <thead><tr><th>Kode produk</th><th>Nama</th><th>Link lama</th><th>Link baru</th><th>Status</th></tr></thead>
+                      <tbody id="bulkLinkPreviewBody"></tbody>
+                    </table>
+                  </div>
+                </div>
 
-      <div class="bulk-panel" id="bulk-verified">
-        <div class="vp-hint">
-          <i class="ti ti-info-circle"></i>
-          <ul>
-            <li>Paste hasil console script <code>semua-produk-tayang.js</code> (TSV, header boleh) atau pilih file <code>.tsv</code>-nya. Yang dipakai cuma <code>product_id</code>, <code>name</code>, <code>slug</code>.</li>
-            <li>Dicocokkan otomatis: UUID INAPROC &rarr; slug di Link V6 &rarr; nama. Ini <b>snapshot lengkap</b>: produk berbadge yang tidak ada di data ini kehilangan badge. Paste ulang aman.</li>
-            <li>Baris <b>Ambigu</b> (cocok ke &gt;1 produk) tidak diputuskan algoritma, kamu yang pilih lewat dropdown atau biarkan dilewati. Pilihanmu disimpan sebagai badge <i>manual</i> dan diingat di sync berikutnya.</li>
-          </ul>
-        </div>
-        <div class="bk-compose">
-          <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>product_id</span><span class="bk-col"><b>B</b>name</span><span class="bk-col"><b>C</b>slug</span><span class="bk-col bk-col-more">kolom lain diabaikan</span></div>
-          <div class="vp-file">
-            <label class="btn btn-ghost vp-file-btn" for="bulkVerifiedFile"><i class="ti ti-file-upload"></i> Pilih file .tsv</label>
-            <span class="vp-file-name" id="bulkVerifiedFileName">Belum ada file</span>
-            <input type="file" id="bulkVerifiedFile" accept=".tsv,.txt,.csv" hidden/>
-          </div>
-          <textarea class="paste-area" id="bulkVerifiedPaste" placeholder="product_id&#9;name&#9;slug&#9;..."></textarea>
-          <div class="bulk-actions">
-            <span class="bk-note">Header boleh ada.</span>
-            <button class="btn btn-ghost" id="bulkVerifiedPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
-            <button class="btn btn-accent" id="bulkVerifiedProsesBtn" style="display:none;"><i class="ti ti-check"></i> Sinkronkan</button>
-          </div>
-        </div>
-        <div class="bulk-summary vs-stats" id="bulkVerifiedSummary"></div>
-        <div class="preview-table-wrap" id="bulkVerifiedPreviewWrap" style="display:none;">
-          <table>
-            <colgroup><col style="width:44%"><col></colgroup>
-            <thead><tr><th>Listing INAPROC</th><th>Keputusan / catatan</th></tr></thead>
-            <tbody id="bulkVerifiedPreviewBody"></tbody>
-          </table>
+                <div class="bulk-panel" id="bulk-inaproc">
+                  <div class="bk-compose">
+                    <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>No</span><span class="bk-col"><b>B</b>Nama</span><span class="bk-col"><b>C</b>Kategori</span><span class="bk-col"><b>D</b>Nomor Permohonan</span><span class="bk-col"><b>E</b>Tgl Pengajuan</span><span class="bk-col"><b>F</b>Status</span><span class="bk-col"><b>G</b>Alasan Ditolak</span></div>
+                    <textarea class="paste-area" id="bulkInaprocPaste" placeholder="1&#9;Dental operative unit (RB-KRC-DTC.07-U01, ROBUST)&#9;Alat Kesehatan&#9;33190423&#9;10 Juli 2026&#9;Menunggu Persetujuan&#9;"></textarea>
+                    <div class="bulk-actions">
+                      <span class="bk-note">Tanpa header, dipisah tab, persis hasil curl INAPROC. Kode produk diambil dari kurung di kolom Nama. Tempel ulang aman: data lama (per Nomor Permohonan) di-update, tidak dobel.</span>
+                      <button class="btn btn-ghost" id="bulkInaprocPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
+                      <button class="btn btn-accent" id="bulkInaprocProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
+                    </div>
+                  </div>
+                  <div class="bulk-summary" id="bulkInaprocSummary"></div>
+                  <div class="preview-table-wrap" id="bulkInaprocPreviewWrap" style="display:none;">
+                    <table>
+                      <thead><tr><th>No. Permohonan</th><th>Kode terbaca</th><th>Nama</th><th>Tgl</th><th>Status</th><th>Match produk</th></tr></thead>
+                      <tbody id="bulkInaprocPreviewBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="bulk-panel" id="bulk-verified">
+                  <div class="vp-hint">
+                    <i class="ti ti-info-circle"></i>
+                    <ul>
+                      <li>Paste hasil console script <code>semua-produk-tayang.js</code> (TSV, header boleh) atau pilih file <code>.tsv</code>-nya. Yang dipakai cuma <code>product_id</code>, <code>name</code>, <code>slug</code>.</li>
+                      <li>Dicocokkan otomatis: UUID INAPROC &rarr; slug di Link V6 &rarr; nama. Ini <b>snapshot lengkap</b>: produk berbadge yang tidak ada di data ini kehilangan badge. Paste ulang aman.</li>
+                      <li>Baris <b>Ambigu</b> (cocok ke &gt;1 produk) tidak diputuskan algoritma, kamu yang pilih lewat dropdown atau biarkan dilewati. Pilihanmu disimpan sebagai badge <i>manual</i> dan diingat di sync berikutnya.</li>
+                    </ul>
+                  </div>
+                  <div class="bk-compose">
+                    <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>product_id</span><span class="bk-col"><b>B</b>name</span><span class="bk-col"><b>C</b>slug</span><span class="bk-col bk-col-more">kolom lain diabaikan</span></div>
+                    <div class="vp-file">
+                      <label class="btn btn-ghost vp-file-btn" for="bulkVerifiedFile"><i class="ti ti-file-upload"></i> Pilih file .tsv</label>
+                      <span class="vp-file-name" id="bulkVerifiedFileName">Belum ada file</span>
+                      <input type="file" id="bulkVerifiedFile" accept=".tsv,.txt,.csv" hidden/>
+                    </div>
+                    <textarea class="paste-area" id="bulkVerifiedPaste" placeholder="product_id&#9;name&#9;slug&#9;..."></textarea>
+                    <div class="bulk-actions">
+                      <span class="bk-note">Header boleh ada.</span>
+                      <button class="btn btn-ghost" id="bulkVerifiedPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
+                      <button class="btn btn-accent" id="bulkVerifiedProsesBtn" style="display:none;"><i class="ti ti-check"></i> Sinkronkan</button>
+                    </div>
+                  </div>
+                  <div class="bulk-summary vs-stats" id="bulkVerifiedSummary"></div>
+                  <div class="preview-table-wrap" id="bulkVerifiedPreviewWrap" style="display:none;">
+                    <table>
+                      <colgroup><col style="width:44%"><col></colgroup>
+                      <thead><tr><th>Listing INAPROC</th><th>Keputusan / catatan</th></tr></thead>
+                      <tbody id="bulkVerifiedPreviewBody"></tbody>
+                    </table>
+                  </div>
+                </div>
         </div>
       </div>
     </div>
 
+    <!-- BULK KOMPOSISI SET dipindah ke Set Management > tab Composition (per-set, gak lintas-set lagi) -->
     <!-- (panel Verified Product disisipkan di bawah, di dalam #viewBulk) -->
     <!-- SYNC DARI SHEET VIEW: kode_produk yang kepantau di Google Sheets
          (lewat Apps Script pollAndSync -> Edge Function sync-sheet) tapi
@@ -402,40 +435,44 @@ export const CRUD_PRODUK_MARKUP = `
          sync_unmatched_produk tiap poll, baris hilang sendiri dari sini
          begitu produknya dibuat. -->
     <div class="content" id="viewSync" style="display:none;">
-      <div class="content-head">
-        <div>
-          <div class="content-title">Sync dari Sheet</div>
-          <div class="content-sub" id="syncCount">Memuat...</div>
+      <div class="vwrap">
+        <div class="content-head">
+          <div>
+            <div class="content-title">Sync dari Sheet</div>
+            <div class="content-sub" id="syncCount">Memuat...</div>
+          </div>
+        </div>
+        <div class="vbody pad">
+          <div class="paste-hint">
+                  Kode produk ini muncul di Google Sheets (lewat sync otomatis) tapi belum ada di database.
+                  Klik <b>Tambah Produk</b> (satu-satu) atau centang beberapa baris berstatus siap lalu <b>Tambah terpilih</b>. Produknya — kode, deskripsi (jadi Nama Produk) &amp; link V6-nya udah otomatis keisi di form.
+                </div>
+                <div class="akd-toolbar">
+                  <div class="akd-search-box">
+                    <i class="ti ti-search"></i>
+                    <input type="text" id="syncSearchInput" placeholder="Cari kode produk, deskripsi, sumber sheet, kode set..."/>
+                  </div>
+                </div>
+                <div class="filter-bar" id="syncStatusBar"></div>
+                <div class="filter-bar" id="syncTipeBar" style="margin-top:-4px;"></div>
+                <div id="syncBulkBar" class="paste-hint" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;">
+                  <span id="syncBulkInfo" style="flex:1;min-width:200px;"></span>
+                  <button class="btn btn-sm" id="syncBulkClearBtn">Kosongkan</button>
+                  <button class="btn btn-sm btn-accent" id="syncBulkAddBtn"><i class="ti ti-plus"></i> Tambah terpilih</button>
+                </div>
+                <div class="table-card">
+                  <table>
+                    <thead>
+                      <tr><th style="width:34px;"><input type="checkbox" id="syncSelectAll" title="Pilih semua yang siap (sesuai filter)"/></th><th>Kode Produk</th><th>Deskripsi</th><th>Link V6</th><th>Harga E-KAT</th><th>Sumber</th><th>Status</th><th></th></tr>
+                    </thead>
+                    <tbody id="syncTableBody">
+                      <tr class="state-row"><td colspan="8">Memuat data...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="pg-bar" id="syncPagination" style="display:none;"></div>
         </div>
       </div>
-      <div class="paste-hint">
-        Kode produk ini muncul di Google Sheets (lewat sync otomatis) tapi belum ada di database.
-        Klik <b>Tambah Produk</b> (satu-satu) atau centang beberapa baris berstatus siap lalu <b>Tambah terpilih</b>. Produknya — kode, deskripsi (jadi Nama Produk) &amp; link V6-nya udah otomatis keisi di form.
-      </div>
-      <div class="akd-toolbar">
-        <div class="akd-search-box">
-          <i class="ti ti-search"></i>
-          <input type="text" id="syncSearchInput" placeholder="Cari kode produk, deskripsi, sumber sheet, kode set..."/>
-        </div>
-      </div>
-      <div class="filter-bar" id="syncStatusBar"></div>
-      <div class="filter-bar" id="syncTipeBar" style="margin-top:-4px;"></div>
-      <div id="syncBulkBar" class="paste-hint" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span id="syncBulkInfo" style="flex:1;min-width:200px;"></span>
-        <button class="btn btn-sm" id="syncBulkClearBtn">Kosongkan</button>
-        <button class="btn btn-sm btn-accent" id="syncBulkAddBtn"><i class="ti ti-plus"></i> Tambah terpilih</button>
-      </div>
-      <div class="table-card">
-        <table>
-          <thead>
-            <tr><th style="width:34px;"><input type="checkbox" id="syncSelectAll" title="Pilih semua yang siap (sesuai filter)"/></th><th>Kode Produk</th><th>Deskripsi</th><th>Link V6</th><th>Harga E-KAT</th><th>Sumber</th><th>Status</th><th></th></tr>
-          </thead>
-          <tbody id="syncTableBody">
-            <tr class="state-row"><td colspan="8">Memuat data...</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="pg-bar" id="syncPagination" style="display:none;"></div>
     </div>
 
     <!-- ORPHAN / DRIFT VIEW (INFORMASI SAJA, tanpa aksi tulis): arah SEBALIKNYA dari Sync dari Sheet --
@@ -443,72 +480,81 @@ export const CRUD_PRODUK_MARKUP = `
          Sumber: view v_sync_* + sync_orphan_produk, diisi pushManifest (Apps Script) ->
          edge function -> reverse_check_commit. -->
     <div class="content" id="viewOrphan" style="display:none;">
-      <div class="content-head">
-        <div>
-          <div class="content-title">Orphan / Drift</div>
-          <div class="content-sub" id="orphanCount">Memuat...</div>
-        </div>
-        <div class="orph-actions">
-          <div class="orph-btn-group">
-            <button class="btn btn-sm" id="orphanCopyBtn" title="Salin kode yang sedang tampil (sesuai filter)"><i class="ti ti-copy"></i> Salin kode</button>
-            <button class="btn btn-sm" id="orphanCsvBtn" title="Unduh hasil yang sedang tampil sebagai CSV"><i class="ti ti-download"></i> Unduh CSV</button>
+      <div class="vwrap">
+        <div class="content-head">
+          <div>
+            <div class="content-title">Orphan / Drift</div>
+            <div class="content-sub" id="orphanCount">Memuat...</div>
           </div>
-          <button class="btn btn-sm" id="orphanRefreshBtn" title="Muat ulang data"><i class="ti ti-refresh"></i> Muat ulang</button>
+      <div class="orph-actions">
+                <div class="orph-btn-group">
+                  <button class="btn btn-sm" id="orphanCopyBtn" title="Salin kode yang sedang tampil (sesuai filter)"><i class="ti ti-copy"></i> Salin kode</button>
+                  <button class="btn btn-sm" id="orphanCsvBtn" title="Unduh hasil yang sedang tampil sebagai CSV"><i class="ti ti-download"></i> Unduh CSV</button>
+                </div>
+                <button class="btn btn-sm" id="orphanRefreshBtn" title="Muat ulang data"><i class="ti ti-refresh"></i> Muat ulang</button>
+              </div>
+        </div>
+        <div class="vbody pad">
+          <div id="orphanRunInfo"></div>
+                <div class="orph-stats" id="orphanStats"></div>
+                <details class="orph-info">
+                  <summary><i class="ti ti-info-circle"></i> Cara membaca halaman ini</summary>
+                  <div class="orph-info-body">
+                    Kebalikan tab Sync: item yang <b>masih ada di database tapi sudah tidak ada / beda di Google Sheets</b>.
+                    Halaman ini <b>hanya memberi informasi</b> &mdash; tidak ada yang diubah atau dihapus otomatis.
+                    Status <b>terkonfirmasi</b> berarti item hilang di 3 snapshot berturut-turut (antisipasi sheet sedang loading).
+                    Angka seperti <b>2/3</b> di kolom Status berarti item sudah hilang di 2 dari 3 snapshot yang dibutuhkan untuk terkonfirmasi.
+                  </div>
+                </details>
+                <div class="orph-tabs" id="orphanSectionBar"></div>
+                <div class="akd-toolbar">
+                  <div class="akd-search-box">
+                    <i class="ti ti-search"></i>
+                    <input type="text" id="orphanSearchInput" placeholder="Cari kode produk, nama, no AKD, kode set..."/>
+                  </div>
+                </div>
+                <div class="orph-filters" id="orphanFilterBar"></div>
+                <div class="orph-bulk" id="orphanBulkBar" style="display:none;">
+                  <span id="orphanBulkInfo"></span>
+                  <span class="orph-bulk-actions">
+                    <button class="btn btn-sm" id="orphanBulkClear">Kosongkan</button>
+                    <button class="btn btn-sm" id="orphanBulkCopy"><i class="ti ti-copy"></i> Salin terpilih</button>
+                    <button class="btn btn-sm btn-accent" id="orphanBulkCsv"><i class="ti ti-download"></i> CSV terpilih</button>
+                  </span>
+                </div>
+                <div id="orphanBody"></div>
+                <div class="pg-bar" id="orphanPagination" style="display:none;"></div>
         </div>
       </div>
-      <div id="orphanRunInfo"></div>
-      <div class="orph-stats" id="orphanStats"></div>
-      <details class="orph-info">
-        <summary><i class="ti ti-info-circle"></i> Cara membaca halaman ini</summary>
-        <div class="orph-info-body">
-          Kebalikan tab Sync: item yang <b>masih ada di database tapi sudah tidak ada / beda di Google Sheets</b>.
-          Halaman ini <b>hanya memberi informasi</b> &mdash; tidak ada yang diubah atau dihapus otomatis.
-          Status <b>terkonfirmasi</b> berarti item hilang di 3 snapshot berturut-turut (antisipasi sheet sedang loading).
-          Angka seperti <b>2/3</b> di kolom Status berarti item sudah hilang di 2 dari 3 snapshot yang dibutuhkan untuk terkonfirmasi.
-        </div>
-      </details>
-      <div class="orph-tabs" id="orphanSectionBar"></div>
-      <div class="akd-toolbar">
-        <div class="akd-search-box">
-          <i class="ti ti-search"></i>
-          <input type="text" id="orphanSearchInput" placeholder="Cari kode produk, nama, no AKD, kode set..."/>
-        </div>
-      </div>
-      <div class="orph-filters" id="orphanFilterBar"></div>
-      <div class="orph-bulk" id="orphanBulkBar" style="display:none;">
-        <span id="orphanBulkInfo"></span>
-        <span class="orph-bulk-actions">
-          <button class="btn btn-sm" id="orphanBulkClear">Kosongkan</button>
-          <button class="btn btn-sm" id="orphanBulkCopy"><i class="ti ti-copy"></i> Salin terpilih</button>
-          <button class="btn btn-sm btn-accent" id="orphanBulkCsv"><i class="ti ti-download"></i> CSV terpilih</button>
-        </span>
-      </div>
-      <div id="orphanBody"></div>
-      <div class="pg-bar" id="orphanPagination" style="display:none;"></div>
     </div>
 
+    <!-- KATEGORI & SPESIALISASI VIEW -->
     <div class="content" id="viewKategori" style="display:none;">
-      <div class="content-head">
-        <div>
-          <div class="content-title">Kategori &amp; Spesialisasi</div>
-          <div class="content-sub" id="katCount">Memuat...</div>
+      <div class="vwrap">
+        <div class="content-head">
+          <div>
+            <div class="content-title">Kategori &amp; Spesialisasi</div>
+            <div class="content-sub" id="katCount">Memuat...</div>
+          </div>
+          <div class="produk-head-actions">
+            <button class="icon-btn" id="katRefreshBtn" type="button" title="Muat ulang hasil terakhir (bukan hitung ulang; lihat refresh_katalog_klasifikasi)" aria-label="Muat ulang"><i class="ti ti-refresh"></i></button>
+            <button class="btn excel-export-btn" id="katExportViewBtn" style="display:none;" title="Export produk sesuai tab, filter, dan pencarian yang sedang aktif"><i class="ti ti-file-spreadsheet"></i> Export tampilan ini</button>
+            <button class="btn btn-accent excel-export-btn" id="katExportAllBtn" title="Satu workbook: Ringkasan + satu sheet per spesialisasi (set &amp; instrumen) + satu sheet per kategori alat. Untuk dasar pengajuan nomor izin edar."><i class="ti ti-file-spreadsheet"></i> Export Excel (izin edar)</button>
+          </div>
         </div>
-        <div class="produk-head-actions">
-          <button class="btn btn-ghost excel-export-btn" id="katExportViewBtn" style="display:none;" title="Export produk sesuai tab, filter, dan pencarian yang sedang aktif"><i class="ti ti-file-spreadsheet"></i> Export tampilan ini</button>
-          <button class="btn btn-accent excel-export-btn" id="katExportAllBtn" title="Satu workbook: Ringkasan + satu sheet per spesialisasi (set &amp; instrumen) + satu sheet per kategori alat. Untuk dasar pengajuan nomor izin edar."><i class="ti ti-file-spreadsheet"></i> Export Excel (izin edar)</button>
-          <button class="btn btn-sm" id="katRefreshBtn" title="Muat ulang hasil terakhir (bukan hitung ulang; lihat refresh_katalog_klasifikasi)"><i class="ti ti-refresh"></i> Muat ulang</button>
+        <div class="orph-tabs" id="katModeBar"></div>
+        <div class="akd-toolbar" id="katToolbar" style="display:none;">
+          <div class="akd-search-box">
+            <i class="ti ti-search"></i>
+            <input type="text" id="katSearchInput" placeholder="Cari kode, nama, golongan..."/>
+          </div>
         </div>
+        <div class="kat-filters" id="katChips"></div>
+        <div class="vbody">
+          <div id="katBody"></div>
+        </div>
+        <div class="pg-bar" id="katPagination" style="display:none;"></div>
       </div>
-      <div class="orph-tabs" id="katModeBar"></div>
-      <div class="akd-toolbar" id="katToolbar" style="display:none;">
-        <div class="akd-search-box">
-          <i class="ti ti-search"></i>
-          <input type="text" id="katSearchInput" placeholder="Cari kode, nama, golongan..."/>
-        </div>
-      </div>
-      <div class="kat-filters" id="katChips"></div>
-      <div id="katBody"></div>
-      <div class="pg-bar" id="katPagination" style="display:none;"></div>
     </div>
   </main>
 </div>

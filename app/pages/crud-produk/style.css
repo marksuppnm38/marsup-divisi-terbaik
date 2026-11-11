@@ -395,7 +395,7 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 #appWrap .add-filter-btn:hover{border-color:var(--accent);color:var(--accent-text)}
 
 /* ---- Tabel produk ---- */
-#tableWrap{overflow:clip;border-radius:var(--radius-md)}
+/* (v2) #tableWrap tidak lagi overflow:clip + rounded: itu yang bikin header sticky nyangkut di bawah padding .content. Lihat blok "SHELL v2" di paling bawah. */
 #tableWrap th{position:sticky;top:0;z-index:1;padding:10px 14px;background:var(--surface-2);border-bottom:0;box-shadow:inset 0 -1px 0 var(--border);font-size:12px;font-weight:600;color:var(--text-muted);white-space:nowrap}
 #tableWrap td{padding:11px 14px}
 #tableBody tr:last-child td{border-bottom:0}
@@ -532,3 +532,114 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .export-item>i{margin-top:1px;font-size:18px;color:var(--text-muted);flex-shrink:0}
 .export-item b{display:block;font-size:13px;font-weight:600}
 .export-item small{display:block;margin-top:2px;font-size:12px;line-height:1.45;color:var(--text-muted)}
+
+/* ============================================================
+   SHELL v2 -- 2026-11-11
+   Masalah yang dibereskan:
+   1. Dua bar header bertumpuk (.pw-topbar + .topbar). Di view selain Produk, bar kedua cuma berisi satu
+      tombol -> terlihat kosong dan melayang. Sekarang satu lapis: breadcrumb + aksi global di .pw-topbar,
+      judul + aksi halaman di .content-head, cari/filter di .vtools.
+   2. Header tabel "melayang": .content punya padding 22px dan menjadi area scroll, jadi <th sticky top:0>
+      berhenti 22px di bawah topbar dan baris lama kelihatan di celah itu. Sekarang hanya .vbody yang scroll,
+      tanpa padding atas, dan thead menempel persis di tepinya.
+   3. Pagination ikut ter-scroll. Sekarang .pg-bar nempel di dasar view.
+   Susunan tiap view:  .vwrap > .content-head, .vtools, (tab/filter), .vbody (scroll), .pg-bar
+   Semua di-scope ke #appWrap. Token warna/radius tetap dari pnm-universal.css.
+   ============================================================ */
+#appWrap{--gutter:24px}
+
+#appWrap .content{position:relative;flex:1;min-height:0;padding:0;overflow:hidden;background:var(--surface)}
+#appWrap .vwrap{position:absolute;inset:0;display:flex;flex-direction:column;min-height:0}
+
+/* kepala halaman */
+#appWrap .content-head{flex:none;position:relative;z-index:6;align-items:center;margin:0;padding:20px var(--gutter) 14px;gap:10px 16px}
+#appWrap .content-title{font-family:var(--font-display);font-size:20px;font-weight:700;letter-spacing:-.012em;line-height:1.25}
+#appWrap .content-sub{margin-top:2px;font-size:12.5px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+#appWrap .content-hint{margin-top:6px;max-width:64ch;font-size:12.5px;line-height:1.55;color:var(--text-secondary)}
+
+/* baris cari + filter tambahan */
+#appWrap .vtools{flex:none;position:relative;z-index:5;display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:0 var(--gutter) 12px}
+#appWrap .vtools .top-search,#appWrap .vtools .akd-search-box{flex:1 1 300px;max-width:440px;margin:0}
+#appWrap .vtools .view-toggle{margin-left:auto}
+#appWrap .vtools .stacked-filters-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0}
+#appWrap .akd-search-box{padding:8px 12px;border-radius:9px;background:var(--surface-2);transition:border-color .15s var(--ease)}
+#appWrap .akd-search-box:focus-within{border-color:var(--accent)}
+#appWrap .akd-toolbar{flex:none;margin:0;padding:12px var(--gutter) 0}
+#appWrap .akd-toolbar .akd-search-box{max-width:440px}
+
+/* tab status (Produk, KFA): garis bawah penuh selebar view */
+#appWrap #produkFilterBar,#appWrap #kfaFilterBar{flex:none;margin:0;padding:0 calc(var(--gutter) - 12px)}
+
+/* area scroll tunggal */
+#appWrap .vbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;background:var(--surface)}
+#appWrap .vbody.pad{padding:16px var(--gutter) 28px}
+#appWrap .vbody:not(.pad) .table-card{border:0;border-radius:0;background:transparent;overflow:visible}
+#appWrap .vbody > .card-grid{padding:4px var(--gutter) 24px}
+
+/* tabel: header menempel di tepi atas .vbody; border tetap kelihatan saat scroll (border-collapse:separate) */
+#appWrap .vbody:not(.pad) table{border-collapse:separate;border-spacing:0}
+#appWrap .vbody:not(.pad) thead th{position:sticky;top:0;z-index:3;padding:9px 14px;background:var(--surface-2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);box-shadow:none;font-size:12px;font-weight:600;color:var(--text-muted);white-space:nowrap}
+#appWrap .vbody:not(.pad) th:first-child,#appWrap .vbody:not(.pad) td:first-child{padding-left:var(--gutter)}
+#appWrap .vbody:not(.pad) th:last-child,#appWrap .vbody:not(.pad) td:last-child{padding-right:var(--gutter)}
+#appWrap .vbody:not(.pad) tbody tr:hover td{background:var(--surface-2)}
+#appWrap .vbody:not(.pad) tfoot td{position:sticky;bottom:0;z-index:2;background:var(--surface-2);border-top:1px solid var(--border-strong);border-bottom:0;font-variant-numeric:tabular-nums}
+
+/* pagination nempel di dasar */
+#appWrap .pg-bar{flex:none;padding:9px var(--gutter);border-top:1px solid var(--border);background:var(--surface)}
+
+/* panel tambah produk KFA */
+#appWrap #kfaAddBox{flex:none;margin:0 var(--gutter) 12px!important}
+
+/* ---- Set Management: daftar sebagai register berkolom ---- */
+#appWrap #setListWrap{flex:1;min-height:0;position:relative}
+#appWrap .vcol{position:absolute;inset:0;display:flex;flex-direction:column;min-height:0}
+#appWrap #setDetailWrap{flex:1;min-height:0;overflow:auto;padding:16px var(--gutter) 32px}
+#appWrap .set-cols,#appWrap .set-list-row{display:grid;grid-template-columns:minmax(150px,210px) minmax(200px,1fr) 84px 84px 112px minmax(104px,132px);align-items:center;column-gap:14px;padding:0 var(--gutter)}
+#appWrap .set-cols{position:sticky;top:0;z-index:3;min-height:36px;background:var(--surface-2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--text-muted);white-space:nowrap}
+#appWrap .set-cols .num,#appWrap .set-list-row .num{text-align:right;font-variant-numeric:tabular-nums}
+#appWrap .set-list-row{margin:0;min-height:46px;padding-top:9px;padding-bottom:9px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:none;font-size:13px;cursor:pointer}
+#appWrap .set-list-row:hover,#appWrap .set-list-row.row-attention:hover{background:var(--surface-2);border-bottom-color:var(--border)}
+#appWrap .set-list-row.row-attention{border-left:0}
+#appWrap .set-list-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#appWrap .set-list-row .sl-kode{min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:1px 8px;font-size:12px;color:var(--text-muted)}
+#appWrap .set-list-row .sl-nama{min-width:0;font-size:13.5px;font-weight:600;line-height:1.35;overflow-wrap:anywhere}
+#appWrap .set-list-row .sl-warn{color:var(--amber-text)}
+#appWrap .set-list-row .sl-dash{color:var(--text-muted)}
+#appWrap #setListBody > .stub-box,#appWrap #setListBody > .sl-state{margin:20px var(--gutter);color:var(--text-muted);font-size:13px}
+
+/* ---- Kategori & Spesialisasi ---- */
+#viewKategori .orph-tabs{flex:none;margin:0;padding:0 calc(var(--gutter) - 12px)}
+#viewKategori #katToolbar{padding-top:12px}
+#viewKategori .kat-filters{flex:none;margin:0;padding:10px var(--gutter) 12px;gap:8px 22px}
+#viewKategori .kat-filters:empty{display:none}
+#viewKategori .orph-flabel{font-size:12px;font-weight:500;color:var(--text-muted)}
+#viewKategori .orph-seg{padding:0;background:none;gap:6px;flex-wrap:wrap}
+#viewKategori .orph-seg button{padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-secondary);font-weight:500}
+#viewKategori .orph-seg button:hover{border-color:var(--border-strong);color:var(--text)}
+#viewKategori .orph-seg button.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-text);box-shadow:none;font-weight:600}
+#viewKategori .orph-seg .fc-count{font-family:var(--font-body);font-size:11.5px;opacity:.8;font-variant-numeric:tabular-nums}
+#viewKategori .orph-alert{margin:16px var(--gutter)}
+#viewKategori .kat-note{margin:12px 0 28px;padding:0 var(--gutter);line-height:1.55;max-width:none}
+/* ringkasan: satu strip terpadu, bukan deretan kartu */
+#katBody > .orph-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;margin:18px var(--gutter) 20px;border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;background:var(--border)}
+#katBody > .orph-stats .orph-stat{padding:13px 16px;border:0;border-radius:0;background:var(--surface);box-shadow:none}
+#katBody > .orph-stats .orph-stat::before{display:none}
+#katBody > .orph-stats button.orph-stat:hover{background:var(--surface-2);box-shadow:none}
+#katBody > .orph-stats button.orph-stat:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#katBody > .orph-stats .orph-stat-val{font-size:22px}
+#katBody > .orph-stats .is-pending .orph-stat-sub{color:var(--amber-text)}
+#viewKategori .kat-cell{min-width:44px;text-align:right}
+#viewKategori td.num,#viewKategori th.num{text-align:right}
+
+@media (max-width:900px){
+  #appWrap .set-cols{display:none}
+  #appWrap .set-list-row{grid-template-columns:1fr 1fr 1fr;row-gap:3px;padding-top:11px;padding-bottom:11px}
+  #appWrap .set-list-row .sl-kode,#appWrap .set-list-row .sl-nama{grid-column:1/-1}
+  #appWrap .set-list-row .num{text-align:left}
+}
+@media (max-width:720px){
+  #appWrap{--gutter:14px}
+  #appWrap .vtools .view-toggle{margin-left:0}
+}
+/* matriks Kategori: kolom angka selebar tetap supaya tidak terpisah jauh dari labelnya */
+#katBody > .table-card th.num,#katBody > .table-card td.num{width:150px}
