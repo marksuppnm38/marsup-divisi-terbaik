@@ -191,12 +191,12 @@ export const POPULASI_MARKUP = `
   </div>
 
   <section class="pg-root" id="pg-root" hidden aria-label="Progress order">
-    <p class="pg-intro">Semua project (No. RMP) yang tercatat, termasuk yang belum firm atau bukan populasi. Satu baris per rumah sakit dan No. RMP. Periode memakai tanggal PO.</p>
+    <p class="pg-intro">Semua project (No. RMP) yang tercatat, termasuk yang belum firm atau bukan populasi. Satu baris per rumah sakit dan No. RMP, lengkap dengan nomor EP. Periode memakai tanggal PO.</p>
 
     <section class="ps-command" aria-label="Pencarian progress order">
       <div class="ps-searchfield">
         <i class="ti ti-search" aria-hidden="true"></i>
-        <input class="search-mini" type="search" id="pg-cari" autocomplete="off" placeholder="mis. 26-105, nama RS, nomor PO, atau produk" aria-label="Cari No. RMP, rumah sakit, PO, atau produk">
+        <input class="search-mini" type="search" id="pg-cari" autocomplete="off" placeholder="mis. 26-105, nama RS, nomor EP/PO, atau produk" aria-label="Cari No. RMP, rumah sakit, nomor EP/PO, atau produk">
       </div>
     </section>
 
@@ -224,10 +224,16 @@ export const POPULASI_MARKUP = `
           <button type="button" class="filter-btn" data-action="pg-status" data-v="SEMUA" aria-pressed="false">Semua status</button>
         </div>
       </div>
-      <label class="ps-field pg-sel">
-        <span class="ps-lbl">Sales</span>
-        <select class="filter-select" id="pg-pic"><option value="">Semua sales</option></select>
-      </label>
+      <div class="ps-field pg-sel">
+        <span class="ps-lbl" id="pg-lbl-pic">Sales <span class="ps-hint">bisa lebih dari satu</span></span>
+        <details class="pg-multi" id="pg-pic-det">
+          <summary class="filter-select" id="pg-pic-sum" aria-labelledby="pg-lbl-pic">Semua sales</summary>
+          <div class="pg-multi-body">
+            <button type="button" class="btn btn-ghost pg-multi-clear" data-action="pg-pic" data-pic="">Semua sales</button>
+            <div id="pg-pic-list" role="group" aria-labelledby="pg-lbl-pic"></div>
+          </div>
+        </details>
+      </div>
       <label class="ps-field pg-sel">
         <span class="ps-lbl">Provinsi</span>
         <select class="filter-select" id="pg-provinsi"><option value="">Semua provinsi</option></select>
@@ -264,11 +270,11 @@ export const POPULASI_MARKUP = `
       </div>
       <div class="table-scroll">
         <table>
-          <thead><tr><th>No. RMP</th><th>Rumah sakit</th><th>Sales</th><th>Status</th><th class="ps-th-num">Jumlah</th><th>Tgl PO</th><th>Diperbarui</th></tr></thead>
+          <thead><tr><th>No. RMP</th><th>Rumah sakit</th><th>No. EP</th><th>Sales</th><th>Status</th><th class="ps-th-num">Jumlah</th><th>Tgl PO</th><th>Diperbarui</th></tr></thead>
           <tbody id="pg-body">
-            <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:70%;height:13px"></div></td><td><div class="skeleton" style="width:80%"></div></td><td><div class="skeleton" style="width:50%"></div></td><td><div class="skeleton" style="width:70%"></div></td><td><div class="skeleton" style="width:40px;margin-left:auto"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
-            <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:60%;height:13px"></div></td><td><div class="skeleton" style="width:70%"></div></td><td><div class="skeleton" style="width:45%"></div></td><td><div class="skeleton" style="width:65%"></div></td><td><div class="skeleton" style="width:40px;margin-left:auto"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
-            <tr class="ps-skel-note"><td colspan="7"><span class="ps-sr" role="status">Memuat data…</span></td></tr>
+            <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:70%;height:13px"></div></td><td><div class="skeleton" style="width:85%"></div></td><td><div class="skeleton" style="width:80%"></div></td><td><div class="skeleton" style="width:50%"></div></td><td><div class="skeleton" style="width:70%"></div></td><td><div class="skeleton" style="width:40px;margin-left:auto"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
+            <tr class="ps-skel-row" aria-hidden="true"><td><div class="skeleton" style="width:60%;height:13px"></div></td><td><div class="skeleton" style="width:85%"></div></td><td><div class="skeleton" style="width:70%"></div></td><td><div class="skeleton" style="width:45%"></div></td><td><div class="skeleton" style="width:65%"></div></td><td><div class="skeleton" style="width:40px;margin-left:auto"></div></td><td><div class="skeleton" style="width:70px"></div></td><td></td></tr>
+            <tr class="ps-skel-note"><td colspan="8"><span class="ps-sr" role="status">Memuat data…</span></td></tr>
           </tbody>
         </table>
       </div>

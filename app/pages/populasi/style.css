@@ -716,7 +716,7 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 #app-root .pg-filters .ps-seg{ display: inline-flex; }
 #app-root .pg-filters .filter-select,
 #app-root .pg-filters .search-mini{ height: 34px; box-sizing: border-box; font-size: var(--ps-fs); }
-#app-root .pg-sel{ width: 200px; }
+#app-root .pg-sel{ width: 220px; }
 #app-root .pg-sel .filter-select{ width: 100%; }
 #app-root .pg-date{ width: 140px; }
 #app-root .pg-date .search-mini{ width: 100%; }
@@ -756,7 +756,7 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 }
 #app-root .pg-table .filter-bar{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
 #app-root .pg-table .table-scroll{ min-height: 200px; overflow-x: auto; border-top: 1px solid var(--border-strong); }
-#app-root .pg-table .table-scroll > table{ width: 100%; min-width: 860px; border-collapse: collapse; }
+#app-root .pg-table .table-scroll > table{ width: 100%; min-width: 1000px; border-collapse: collapse; }
 #app-root .pg-table thead th{
   padding: 10px 12px; text-align: left; white-space: nowrap;
   font-size: var(--ps-fs-cap); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ps-muted);
@@ -796,3 +796,29 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 #app-root .pg-set{ font-size: var(--ps-fs); line-height: 18px; color: var(--text); }
 #app-root .pg-set b{ font-weight: 600; }
 #app-root .pg-set .ps-sub{ display: inline; margin-left: 6px; }
+
+/* filter sales multi-pilih (dropdown berisi daftar centang) */
+#app-root .pg-multi{ position: relative; }
+#app-root .pg-multi > summary{
+  display: flex; align-items: center; height: 34px; box-sizing: border-box; padding: 0 28px 0 10px; list-style: none;
+  font-size: var(--ps-fs); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative;
+}
+#app-root .pg-multi > summary::-webkit-details-marker{ display: none; }
+#app-root .pg-multi > summary::after{ content: '\203A'; position: absolute; right: 11px; top: 50%; font-size: 15px; line-height: 1; transform: translateY(-50%) rotate(90deg); color: var(--ps-muted); }
+#app-root .pg-multi[open] > summary::after{ transform: translateY(-50%) rotate(-90deg); }
+#app-root .pg-multi-body{
+  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; width: max(100%, 280px); max-height: 340px; overflow-y: auto;
+  padding: 4px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,.16); scrollbar-width: thin;
+}
+#app-root .pg-multi-clear{ width: 100%; min-height: 30px; margin-bottom: 2px; justify-content: flex-start; font-size: var(--ps-fs); }
+#app-root .pg-multi-it{
+  display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 8px;
+  font-size: var(--ps-fs); color: var(--text); cursor: pointer; border-radius: var(--radius-sm);
+}
+#app-root .pg-multi-it:hover{ background: var(--surface-2); }
+#app-root .pg-multi-it input{ width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+#app-root .pg-multi-empty{ padding: 8px; }
+#app-root .pg-col-ep{ white-space: nowrap; }
+#app-root .pg-col-ep .kode-text{ font-size: var(--ps-fs-cap); }
+#app-root .pg-sec-btn{ min-height: 28px; font-size: var(--ps-fs-cap); }

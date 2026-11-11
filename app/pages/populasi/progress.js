@@ -29,7 +29,7 @@ export function createProgress(ctx) {
     const p = periodeBulan(0);
     Object.assign(st, {
       status: 'IN_PIPELINE', preset: 'bulan-ini', dari: p.dari, sampai: p.sampai,
-      pic: '', provinsi: '', cari: '', tanpaSample: false, sort: 'update', shown: PAGE_STEP,
+      pics: [], provinsi: '', cari: '', tanpaSample: false, sort: 'update', shown: PAGE_STEP,
     });
   }
   resetState();
@@ -41,6 +41,14 @@ export function createProgress(ctx) {
   let timer = null;
   let alive = true;
   let started = false;
+  const picOpsi = new Map();   // semua sales yang pernah muncul di opsi (dipertahankan walau filter menyempit)
+  let picTimer = null;
+  let picSig = '';
+  const picText = () => st.pics.join(', ');
+  // Nomor EP (e-purchasing) = "No. FKS" di rekap manual. Dibaca dari kolom yang tersedia; PO yang berawalan EP- juga dianggap EP.
+  const epOf = (r) => String(r.no_ep || r.no_fks || r.ep || (/^EP-/i.test(String(r.po || '')) ? r.po : '') || '').trim();
+  const onDocClick = (e) => { const d = $('pg-pic-det'); if (d && d.open && !d.contains(e.target)) d.open = false; };
+  document.addEventListener('click', onDocClick);
 
   // ── util ──────────────────────────────────────────────────────────────────
   const dash = '<span class="ps-muted">—</span>';
@@ -88,14 +96,42 @@ export function createProgress(ctx) {
   }
 
   // ── muat data ─────────────────────────────────────────────────────────────
+  // Satu sales = satu panggilan RPC (seperti sebelumnya). Beberapa sales = satu panggilan per sales, digabung di sini,
+  // supaya hitungan server per sales tetap dipakai apa adanya dan tidak perlu mengubah SQL.
+  async function fetchData() {
+    const call = (pic) => rpc('get_progress_order', Object.assign(baseParams(), { p_pic_order: pic || null }));
+    if (st.pics.length <= 1) return call(st.pics[0]);
+    const pics = st.pics.slice();
+    const parts = await Promise.all(pics.map(call));
+    return mergeParts(pics, parts);
+  }
+  function mergeParts(pics, parts) {
+    const map = new Map();
+    parts.forEach((pt, i) => ((pt && pt.rows) || []).forEach((r) => {
+      const k = `${r.kode_rmp}|${r.customer}`;
+      const ada = map.get(k);
+      if (ada) ada._pics.push(pics[i]); else map.set(k, Object.assign({}, r, { _pics: [pics[i]] }));
+    }));
+    const rows = [...map.values()].sort((a, b) => String(b.diperbarui || '').localeCompare(String(a.diperbarui || '')));
+    const sum = (f) => rows.reduce((s, r) => s + num(r[f]), 0);
+    const p0 = parts[0] || {};
+    return {
+      rows, data_per: p0.data_per, opsi_provinsi: p0.opsi_provinsi, opsi_pic: p0.opsi_pic,
+      ringkasan: { jumlah_rmp: rows.length, jumlah_rs: new Set(rows.map((r) => r.customer)).size, set_total: sum('set_qty'), pcs_total: sum('pcs_qty'), unit_total: sum('unit_qty'), jumlah_item: sum('jumlah_item') },
+      rekap_sales: pics.map((pc, i) => Object.assign({ pic: pc }, (parts[i] && parts[i].ringkasan) || {})),
+      rekap_tanpa_pic: null,
+    };
+  }
+
   async function load() {
     const my = ++reqId;
     clearError();
     setBusy(true);
     try {
-      const res = await rpc('get_progress_order', Object.assign(baseParams(), { p_pic_order: st.pic || null }));
+      const res = await fetchData();
       if (!alive || my !== reqId) return;
       data = res || {};
+      (Array.isArray(data.opsi_pic) ? data.opsi_pic : []).forEach((o) => { if (o && o.pic) picOpsi.set(o.pic, o); });
       rows = (Array.isArray(data.rows) ? data.rows : []).map((r) => {
         const set = num(r.set_qty); const pcs = num(r.pcs_qty); const unit = num(r.unit_qty);
         return Object.assign({}, r, { set, pcs, unit, total: set + pcs + unit, items: Array.isArray(r.items) ? r.items : [] });
@@ -113,7 +149,7 @@ export function createProgress(ctx) {
       if (data) msg = 'Gagal menyegarkan, yang tampil adalah hasil sebelumnya. ' + msg;
       showError(msg);
       if (!data) {
-        $('pg-body').innerHTML = `<tr><td colspan="7" class="ps-empty ps-empty-err">${esc(msg)}<br><button type="button" class="btn btn-ghost ps-retry" data-action="pg-reload">Coba lagi</button></td></tr>`;
+        $('pg-body').innerHTML = `<tr><td colspan="8" class="ps-empty ps-empty-err">${esc(msg)}<br><button type="button" class="btn btn-ghost ps-retry" data-action="pg-reload">Coba lagi</button></td></tr>`;
       }
     } finally {
       if (alive && my === reqId) setBusy(false);
@@ -144,7 +180,7 @@ export function createProgress(ctx) {
   }
 
   function renderFilters() {
-    const prov = $('pg-provinsi'); const pic = $('pg-pic');
+    const prov = $('pg-provinsi');
     if (prov) {
       const opsi = (data && data.opsi_provinsi) || [];
       const names = new Set(opsi.map((o) => o.provinsi));
@@ -153,14 +189,7 @@ export function createProgress(ctx) {
       if (st.provinsi && !names.has(st.provinsi)) h += `<option value="${esc(st.provinsi)}">${esc(st.provinsi)} (0 RMP)</option>`;
       prov.innerHTML = h; prov.value = st.provinsi;
     }
-    if (pic) {
-      const opsi = (data && data.opsi_pic) || [];
-      const names = new Set(opsi.map((o) => o.pic));
-      let h = '<option value="">Semua sales</option>' +
-        opsi.map((o) => `<option value="${esc(o.pic)}">${esc(o.pic)} (${fmt(o.jumlah_rmp)} RMP)</option>`).join('');
-      if (st.pic && !names.has(st.pic)) h += `<option value="${esc(st.pic)}">${esc(st.pic)}</option>`;
-      pic.innerHTML = h; pic.value = st.pic;
-    }
+    renderPicFilter();
     document.querySelectorAll('[data-action="pg-status"]').forEach((b) => {
       const on = b.dataset.v === st.status;
       b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on));
@@ -176,7 +205,34 @@ export function createProgress(ctx) {
     if (ur) ur.value = st.sort;
     if (ci && ci.value !== st.cari) ci.value = st.cari;
     const rs = $('pg-reset');
-    if (rs) rs.hidden = !(st.pic || st.provinsi || st.cari.trim() || st.tanpaSample || st.status !== 'IN_PIPELINE' || st.preset !== 'bulan-ini');
+    if (rs) rs.hidden = !(st.pics.length || st.provinsi || st.cari.trim() || st.tanpaSample || st.status !== 'IN_PIPELINE' || st.preset !== 'bulan-ini');
+  }
+
+  function picSumText() {
+    if (!st.pics.length) return 'Semua sales';
+    return st.pics.length <= 2 ? st.pics.join(', ') : `${st.pics.length} sales dipilih`;
+  }
+  // Daftar centang sales. Opsi dirender ulang hanya bila daftarnya berubah, supaya kotak yang sedang dicentang tidak "loncat".
+  function renderPicFilter() {
+    const list = $('pg-pic-list'); const sum = $('pg-pic-sum');
+    if (!list) return;
+    const opsi = [...picOpsi.values()];
+    const names = new Set(opsi.map((o) => o.pic));
+    st.pics.forEach((n) => { if (!names.has(n)) opsi.push({ pic: n, jumlah_rmp: 0 }); });
+    opsi.sort((x, y) => String(x.pic).localeCompare(String(y.pic), 'id'));
+    const sig = opsi.map((o) => o.pic).join('|');
+    if (sig !== picSig) {
+      picSig = sig;
+      list.innerHTML = opsi.length
+        ? opsi.map((o, i) => `<label class="pg-multi-it"><input type="checkbox" id="pg-pic-${i}" data-pic="${esc(o.pic)}"><span>${esc(o.pic)}</span><span class="ps-cat-n" data-n="${esc(o.pic)}"></span></label>`).join('')
+        : '<div class="ps-muted pg-multi-empty">Belum ada data sales.</div>';
+    }
+    list.querySelectorAll('input[data-pic]').forEach((cb) => { cb.checked = st.pics.includes(cb.dataset.pic); });
+    opsi.forEach((o) => {
+      const n = [...list.querySelectorAll('[data-n]')].find((e) => e.dataset.n === o.pic);
+      if (n) n.textContent = fmt(o.jumlah_rmp);
+    });
+    if (sum) sum.textContent = picSumText();
   }
 
   function statCard(val, label, sub) {
@@ -186,7 +242,7 @@ export function createProgress(ctx) {
   function renderSummary() {
     const s = (data && data.ringkasan) || {};
     const bits = [`<b>${esc(periodeText())}</b>`, esc(statusText()), esc(st.provinsi || 'Semua provinsi')];
-    if (st.pic) bits.push(`Sales <b>${esc(st.pic)}</b>`);
+    if (st.pics.length) bits.push(`Sales <b>${esc(picText())}</b>`);
     if (st.cari.trim()) bits.push(`“${esc(st.cari.trim())}”`);
     $('pg-sum-main').innerHTML = bits.join(' <span class="ps-sep">·</span> ');
     const cards = [statCard(fmt(s.jumlah_rmp), 'No. RMP', rows.length ? '' : 'tidak ada yang cocok'), statCard(fmt(s.jumlah_rs), 'Rumah sakit')];
@@ -214,15 +270,15 @@ export function createProgress(ctx) {
   function renderRecap() {
     const el = $('pg-recap');
     if (!el) return;
-    if (st.pic) {
+    if (st.pics.length === 1) {
       el.hidden = false;
-      el.innerHTML = `<div class="ps-review-bar"><span class="ps-review-msg">Menampilkan sales <b>${esc(st.pic)}</b> saja.</span><button type="button" class="btn btn-ghost" data-action="pg-pic" data-pic="">Lihat semua sales</button></div>`;
+      el.innerHTML = `<div class="ps-review-bar"><span class="ps-review-msg">Menampilkan sales <b>${esc(st.pics[0])}</b> saja.</span><button type="button" class="btn btn-ghost" data-action="pg-pic" data-pic="">Lihat semua sales</button></div>`;
       return;
     }
     const list = recapList();
     if (!list || !list.length) { el.hidden = true; return; }
     el.hidden = false;
-    const head = '<div class="pg-sec-h"><span class="table-title">Rekap per sales</span><span class="ps-muted pg-sec-note">klik baris untuk melihat RMP sales itu</span></div>';
+    const head = '<div class="pg-sec-h"><span class="table-title">Rekap per sales</span><span class="ps-muted pg-sec-note">klik nama untuk melihat RMP sales itu</span>' + (st.pics.length > 1 ? '<button type="button" class="btn btn-ghost pg-sec-btn" data-action="pg-pic" data-pic="">Lihat semua sales</button>' : '') + '</div>';
     const s = data.ringkasan || {};
     const body = list.map((x) => {
       const nama = x.pic
@@ -230,7 +286,7 @@ export function createProgress(ctx) {
         : '<span class="ps-muted">Tanpa PIC order</span>';
       return `<tr class="pg-recap-row"><td>${nama}</td><td class="ps-num"><b>${fmt(x.rmp)}</b></td><td class="ps-num">${nc(x.rs)}</td><td class="ps-num">${nc(x.set)}</td><td class="ps-num">${nc(x.pcs)}</td><td class="ps-num">${nc(x.unit)}</td><td class="ps-num">${nc(x.item)}</td></tr>`;
     }).join('');
-    const foot = `<tr class="pg-recap-total"><td>Semua sales <span class="ps-sub" title="RMP yang ditangani lebih dari satu sales dihitung di tiap sales, jadi baris di atas tidak dijumlahkan.">tidak sama dengan jumlah baris di atas</span></td><td class="ps-num"><b>${fmt(s.jumlah_rmp)}</b></td><td class="ps-num">${nc(s.jumlah_rs)}</td><td class="ps-num">${nc(s.set_total)}</td><td class="ps-num">${nc(s.pcs_total)}</td><td class="ps-num">${nc(s.unit_total)}</td><td class="ps-num">${nc(s.jumlah_item)}</td></tr>`;
+    const foot = `<tr class="pg-recap-total"><td>${st.pics.length ? 'Gabungan sales terpilih' : 'Semua sales'} <span class="ps-sub" title="RMP yang ditangani lebih dari satu sales dihitung di tiap sales, jadi baris di atas tidak dijumlahkan.">tidak sama dengan jumlah baris di atas</span></td><td class="ps-num"><b>${fmt(s.jumlah_rmp)}</b></td><td class="ps-num">${nc(s.jumlah_rs)}</td><td class="ps-num">${nc(s.set_total)}</td><td class="ps-num">${nc(s.pcs_total)}</td><td class="ps-num">${nc(s.unit_total)}</td><td class="ps-num">${nc(s.jumlah_item)}</td></tr>`;
     el.innerHTML = head +
       `<div class="table-scroll pg-recap-scroll"><table class="pg-recap-t"><thead><tr><th>Sales</th><th class="ps-th-num">RMP</th><th class="ps-th-num">RS</th><th class="ps-th-num">Set</th><th class="ps-th-num">Pcs</th><th class="ps-th-num">Unit</th><th class="ps-th-num">Baris</th></tr></thead><tbody>${body}${foot}</tbody></table></div>`;
   }
@@ -239,7 +295,7 @@ export function createProgress(ctx) {
     const b = (label, attrs) => `<button type="button" class="btn btn-ghost" ${attrs}>${esc(label)}</button>`;
     const act = [];
     if (st.cari.trim()) act.push(b('Lepas pencarian', 'data-action="pg-clear" data-k="cari"'));
-    if (st.pic) act.push(b('Lihat semua sales', 'data-action="pg-pic" data-pic=""'));
+    if (st.pics.length) act.push(b('Lihat semua sales', 'data-action="pg-pic" data-pic=""'));
     if (st.provinsi) act.push(b('Semua provinsi', 'data-action="pg-clear" data-k="provinsi"'));
     if (st.preset !== 'semua') act.push(b('Semua tanggal', 'data-action="pg-periode" data-v="semua"'));
     if (st.status !== 'SEMUA') act.push(b('Termasuk yang sudah terkirim', 'data-action="pg-status" data-v="SEMUA"'));
@@ -255,7 +311,7 @@ export function createProgress(ctx) {
     const ur = $('pg-urut'); if (ur) ur.disabled = rows.length < 2;
     const more = $('pg-more');
     if (!rows.length) {
-      body.innerHTML = `<tr><td colspan="7" class="ps-empty">${emptyHtml()}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="8" class="ps-empty">${emptyHtml()}</td></tr>`;
       if (more) more.hidden = true;
       return;
     }
@@ -263,11 +319,13 @@ export function createProgress(ctx) {
     body.innerHTML = tampil.map((r, i) => {
       const lokasi = [r.kab_kota, st.provinsi ? '' : r.provinsi].filter(Boolean).join(' · ') || r.provinsi || '';
       const statusTeks = String(r.status_teks || '').trim();
+      const ep = epOf(r);
       const jml = [r.set ? `${fmt(r.set)} set` : '', r.pcs ? `${fmt(r.pcs)} pcs` : '', r.unit ? `${fmt(r.unit)} unit` : ''].filter(Boolean);
       return `
       <tr class="ps-row pg-row" data-action="pg-toggle" data-i="${i}">
         <td class="pg-col-rmp"><button type="button" class="ps-rs-btn" data-action="pg-toggle" data-i="${i}" aria-expanded="false" title="Lihat isi project"><i class="ti ti-chevron-right ps-chev" aria-hidden="true"></i><span class="kode-text">${esc(rmpNum(r.kode_rmp))}</span></button></td>
         <td><span class="ps-rs">${esc(r.customer)}</span>${lokasi ? `<span class="ps-sub">${esc(lokasi)}</span>` : ''}</td>
+        <td class="pg-col-ep">${ep ? `<span class="kode-text">${esc(ep)}</span>` : dash}</td>
         <td>${r.pic_order ? esc(r.pic_order) : '<span class="ps-muted">—</span>'}</td>
         <td class="pg-col-status"><span class="ps-st" title="${esc(statusTeks)}">${esc(statusTeks || '—')}</span><span class="ps-sub">${esc(grupTag(r.status_grup))}${r.ada_sample ? ' · sample' : ''}</span></td>
         <td class="ps-num">${jml.length ? jml.map((t) => `<b>${esc(t)}</b>`).join('') : dash}<span class="ps-sub">${fmt(r.jumlah_item)} baris</span></td>
@@ -284,7 +342,8 @@ export function createProgress(ctx) {
 
   function detailHtml(r) {
     const meta = [
-      r.po ? ['No. PO', r.po] : null,
+      epOf(r) ? ['No. EP', epOf(r)] : null,
+      r.po && r.po !== epOf(r) ? ['No. PO', r.po] : null,
       r.channel ? ['Channel', r.channel] : null,
       r.sumber_sheet ? ['Sheet', r.sumber_sheet] : null,
       r.deadline ? ['Deadline kirim', r.deadline] : null,
@@ -317,7 +376,7 @@ export function createProgress(ctx) {
     }
     const d = document.createElement('tr');
     d.className = 'ps-detail-row pg-detail-row';
-    d.innerHTML = `<td colspan="7">${detailHtml(r)}</td>`;
+    d.innerHTML = `<td colspan="8">${detailHtml(r)}</td>`;
     tr.after(d);
     tr.classList.add('open');
     if (btn) btn.setAttribute('aria-expanded', 'true');
@@ -330,16 +389,16 @@ export function createProgress(ctx) {
     const s = data.ringkasan || {};
     const L = [];
     L.push(`Progress order — ${periodeText()}`);
-    L.push(`${statusText()}${st.provinsi ? ', ' + st.provinsi : ''}${st.pic ? ', sales ' + st.pic : ''}, data per ${fmtDate(data.data_per)}`, '');
+    L.push(`${statusText()}${st.provinsi ? ', ' + st.provinsi : ''}${st.pics.length ? ', sales ' + picText() : ''}, data per ${fmtDate(data.data_per)}`, '');
     const rec = recapList() || [];
-    if (rec.length && !st.pic) {
+    if (rec.length && st.pics.length !== 1) {
       L.push('Rekap per sales:');
       rec.forEach((x, i) => L.push(`${i + 1}. ${x.pic || 'Tanpa PIC order'} — ${fmt(x.rmp)} RMP, ${fmt(x.rs)} RS (${qtyText(x)})`));
       L.push('');
     }
     L.push('Daftar project:');
     view.forEach((r, i) => {
-      L.push(`${i + 1}. ${r.kode_rmp} · ${r.customer}${r.pic_order ? ' · ' + r.pic_order : ''} — ${qtyText(r)}${r.status_teks ? ' [' + String(r.status_teks).trim() + ']' : ''}`);
+      L.push(`${i + 1}. ${r.kode_rmp} · ${r.customer}${epOf(r) ? ' · ' + epOf(r) : ''}${r.pic_order ? ' · ' + r.pic_order : ''} — ${qtyText(r)}${r.status_teks ? ' [' + String(r.status_teks).trim() + ']' : ''}`);
     });
     L.push('', `Total: ${fmt(s.jumlah_rmp)} RMP, ${fmt(s.jumlah_rs)} RS (${qtyText({ set: num(s.set_total), pcs: num(s.pcs_total), unit: num(s.unit_total) })})`);
     return L.join('\n');
@@ -355,7 +414,7 @@ export function createProgress(ctx) {
   async function downloadXlsx(btn) {
     if (!data || !rows.length) return;
     if (btn) btn.disabled = true;
-    const snap = { rows: view.slice(), data, rec: recapList() || [], periode: periodeText(), status: statusText(), prov: st.provinsi, pic: st.pic };
+    const snap = { rows: view.slice(), data, rec: recapList() || [], periode: periodeText(), status: statusText(), prov: st.provinsi, pic: picText(), pics: st.pics.slice() };
     try {
       const ExcelJS = await ctx.ensureExcel();
       const wb = new ExcelJS.Workbook();
@@ -365,6 +424,47 @@ export function createProgress(ctx) {
       const D = (s) => { const t = ctx.toDate(s); return t || null; };
       const NUMF = '#,##0;-#,##0;"–"';
       const DATEF = 'dd mmm yyyy';
+
+      // 0. Laporan per sales: satu sheet per sales, bentuknya seperti rekap orderan manual
+      //    (entitas, No., distributor bila ada, No. RMP, rumah sakit, No. EP/FKS, tanggal pemenuhan).
+      const grup = new Map();
+      snap.rows.forEach((r) => {
+        const ks = (r._pics && r._pics.length) ? r._pics : [snap.pics.length === 1 ? snap.pics[0] : (r.pic_order || '')];
+        ks.forEach((k) => { if (!grup.has(k)) grup.set(k, []); grup.get(k).push(r); });
+      });
+      const adaDist = snap.rows.some((r) => r.distributor);
+      const pakai = new Set(['rekap per sales', 'daftar rmp', 'rincian item']);
+      const namaSheet = (k) => {
+        const b = String(k || 'Tanpa PIC').replace(/[\\\/*?:\[\]]/g, ' ').trim().slice(0, 28) || 'Tanpa PIC';
+        let n = b; let i = 2;
+        while (pakai.has(n.toLowerCase())) n = b.slice(0, 25) + ' ' + (i++);
+        pakai.add(n.toLowerCase());
+        return n;
+      };
+      const cmpS = (x, y) => String(x || '').localeCompare(String(y || ''), 'id', { numeric: true });
+      [...grup.entries()].sort((x, y) => cmpS(x[0] || '~', y[0] || '~')).forEach(([k, list]) => {
+        const ws = wb.addWorksheet(namaSheet(k));
+        ws.addRow([`REKAP ORDERAN ${String(k || 'TANPA PIC ORDER').toUpperCase()}`]).font = { bold: true, size: 14 };
+        ws.addRow([`${snap.periode} · ${snap.status}${snap.prov ? ' · ' + snap.prov : ''} · data per ${fmtDate(snap.data.data_per)}`]);
+        ws.addRow([]);
+        const head = ['Pabrik / Entitas', 'No.'].concat(adaDist ? ['Nama Distributor'] : [], ['No. RMP', 'Rumah Sakit / Politeknik / Puskesmas', 'No. EP (FKS)', 'Tanggal Pemenuhan', 'Status']);
+        styleHead(ws.addRow(head));
+        const ent = (r) => String(r.entitas || r.pabrik || '').trim();
+        const urut = list.slice().sort((x, y) => cmpS(ent(x), ent(y)) || cmpS(x.kode_rmp, y.kode_rmp));
+        let prev = null;
+        urut.forEach((r, i) => {
+          const e = ent(r);
+          const tgl = D(r.tgl_kirim) || D(r.deadline) || r.deadline || '';
+          ws.addRow([e !== prev ? e : ''].concat([i + 1], adaDist ? [r.distributor || ''] : [], [r.kode_rmp, r.customer, epOf(r), tgl, String(r.status_teks || '').trim()]));
+          prev = e;
+        });
+        const tr = ws.addRow(['', '', ...(adaDist ? [''] : []), `Total ${fmt(urut.length)} RMP`]);
+        tr.font = { bold: true };
+        const iTgl = head.indexOf('Tanggal Pemenuhan') + 1;
+        ws.getColumn(iTgl).numFmt = DATEF;
+        ws.columns = [{ width: 20 }, { width: 6 }].concat(adaDist ? [{ width: 30 }] : [], [{ width: 18 }, { width: 44 }, { width: 34 }, { width: 18 }, { width: 30 }]);
+        ws.views = [{ state: 'frozen', ySplit: 4 }];
+      });
 
       // 1. Rekap per sales
       const w1 = wb.addWorksheet('Rekap per sales');
@@ -384,13 +484,13 @@ export function createProgress(ctx) {
 
       // 2. Daftar RMP
       const w2 = wb.addWorksheet('Daftar RMP');
-      styleHead(w2.addRow(['No. RMP', 'Rumah sakit', 'Provinsi', 'Kab/Kota', 'Sales (PIC order)', 'No. PO', 'Status', 'Grup status', 'Channel', 'Tgl PO', 'Deadline kirim', 'Tgl kirim', 'Diperbarui', 'Baris item', 'Set', 'Pcs', 'Unit', 'Sample', 'Catatan']));
-      snap.rows.forEach((r) => w2.addRow([r.kode_rmp, r.customer, r.provinsi || '', r.kab_kota || '', r.pic_order || '', r.po || '', String(r.status_teks || '').trim(), grupTag(r.status_grup), r.channel || '', D(r.tgl_po), r.deadline || '', D(r.tgl_kirim), D(r.diperbarui), num(r.jumlah_item), r.set, r.pcs, r.unit, r.ada_sample ? 'Ya' : '', r.catatan || '']));
-      w2.columns = [{ width: 13 }, { width: 36 }, { width: 18 }, { width: 20 }, { width: 18 }, { width: 26 }, { width: 28 }, { width: 16 }, { width: 14 }, { width: 13 }, { width: 16 }, { width: 13 }, { width: 13 }, { width: 10 }, { width: 8 }, { width: 8 }, { width: 8 }, { width: 8 }, { width: 40 }];
-      [10, 12, 13].forEach((c) => { w2.getColumn(c).numFmt = DATEF; });
-      [14, 15, 16, 17].forEach((c) => { w2.getColumn(c).numFmt = NUMF; });
+      styleHead(w2.addRow(['No. RMP', 'Rumah sakit', 'Provinsi', 'Kab/Kota', 'Sales (PIC order)', 'No. EP', 'No. PO', 'Status', 'Grup status', 'Channel', 'Tgl PO', 'Deadline kirim', 'Tgl kirim', 'Diperbarui', 'Baris item', 'Set', 'Pcs', 'Unit', 'Sample', 'Catatan']));
+      snap.rows.forEach((r) => w2.addRow([r.kode_rmp, r.customer, r.provinsi || '', r.kab_kota || '', r.pic_order || '', epOf(r), r.po || '', String(r.status_teks || '').trim(), grupTag(r.status_grup), r.channel || '', D(r.tgl_po), r.deadline || '', D(r.tgl_kirim), D(r.diperbarui), num(r.jumlah_item), r.set, r.pcs, r.unit, r.ada_sample ? 'Ya' : '', r.catatan || '']));
+      w2.columns = [{ width: 13 }, { width: 36 }, { width: 18 }, { width: 20 }, { width: 18 }, { width: 32 }, { width: 26 }, { width: 28 }, { width: 16 }, { width: 14 }, { width: 13 }, { width: 16 }, { width: 13 }, { width: 13 }, { width: 10 }, { width: 8 }, { width: 8 }, { width: 8 }, { width: 8 }, { width: 40 }];
+      [11, 13, 14].forEach((c) => { w2.getColumn(c).numFmt = DATEF; });
+      [15, 16, 17, 18].forEach((c) => { w2.getColumn(c).numFmt = NUMF; });
       w2.views = [{ state: 'frozen', ySplit: 1, xSplit: 2 }];
-      w2.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 19 } };
+      w2.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 20 } };
 
       // 3. Rincian item
       const w3 = wb.addWorksheet('Rincian item');
@@ -424,7 +524,7 @@ export function createProgress(ctx) {
     'pg-reload': () => load(),
     'pg-status': (el) => { st.status = el.dataset.v === 'SEMUA' ? 'SEMUA' : 'IN_PIPELINE'; load(); },
     'pg-periode': (el) => setPeriode(el.dataset.v),
-    'pg-pic': (el) => { st.pic = el.dataset.pic || ''; load(); },
+    'pg-pic': (el) => { st.pics = el.dataset.pic ? [el.dataset.pic] : []; const d = $('pg-pic-det'); if (d) d.open = false; load(); },
     'pg-clear': (el) => {
       if (el.dataset.k === 'cari') st.cari = '';
       else if (el.dataset.k === 'provinsi') st.provinsi = '';
@@ -438,7 +538,6 @@ export function createProgress(ctx) {
   };
 
   const CHANGE = {
-    'pg-pic': (t) => { st.pic = t.value; load(); },
     'pg-provinsi': (t) => { st.provinsi = t.value; load(); },
     'pg-dari': (t) => { st.dari = t.value; st.preset = (st.dari || st.sampai) ? 'kustom' : 'semua'; load(); },
     'pg-sampai': (t) => { st.sampai = t.value; st.preset = (st.dari || st.sampai) ? 'kustom' : 'semua'; load(); },
@@ -457,18 +556,27 @@ export function createProgress(ctx) {
     hide() {
       const r = $('pg-root'); if (r) r.hidden = true;
       reqId++;                       // batalkan respons yang masih di jalan
-      clearTimeout(timer);
+      clearTimeout(timer); clearTimeout(picTimer);
       setBusy(false);
     },
     isStarted: () => started,
     onClick(el) { const f = ACTIONS[el.dataset.action]; if (f && Object.prototype.hasOwnProperty.call(ACTIONS, el.dataset.action)) f(el); },
-    onChange(t) { if (Object.prototype.hasOwnProperty.call(CHANGE, t.id)) CHANGE[t.id](t); },
+    onChange(t) {
+      if (t.dataset && t.dataset.pic !== undefined && /^pg-pic-/.test(t.id)) {
+        const nm = t.dataset.pic; const i = st.pics.indexOf(nm);
+        if (t.checked && i < 0) st.pics.push(nm); else if (!t.checked && i >= 0) st.pics.splice(i, 1);
+        const sum = $('pg-pic-sum'); if (sum) sum.textContent = picSumText();
+        clearTimeout(picTimer); picTimer = setTimeout(() => load(), 350);   // beberapa centang beruntun = satu pemuatan
+        return;
+      }
+      if (Object.prototype.hasOwnProperty.call(CHANGE, t.id)) CHANGE[t.id](t);
+    },
     onInput(t) {
       if (t.id !== 'pg-cari') return;
       st.cari = t.value;
       clearTimeout(timer);
       timer = setTimeout(() => load(), 350);
     },
-    destroy() { alive = false; reqId++; clearTimeout(timer); },
+    destroy() { alive = false; reqId++; clearTimeout(timer); clearTimeout(picTimer); document.removeEventListener('click', onDocClick); },
   };
 }
