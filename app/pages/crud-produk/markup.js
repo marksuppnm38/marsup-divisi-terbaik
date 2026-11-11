@@ -37,7 +37,6 @@ export const CRUD_PRODUK_MARKUP = `
         <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama... (filter langsung di daftar)"/>
         <button class="clear-btn" id="topSearchClear" title="Bersihkan"><i class="ti ti-x"></i></button>
       </div>
-      <button class="cmdk-launch" id="cmdkTrigger" title="Buka pencarian cepat lintas halaman"><i class="ti ti-command"></i> Spotlight <kbd>⌘K</kbd></button>
       <div class="topbar-actions">
         <div class="view-toggle">
           <button id="viewTableBtn" class="active" title="Tampilan tabel"><i class="ti ti-list"></i></button>
@@ -57,8 +56,21 @@ export const CRUD_PRODUK_MARKUP = `
           <div class="content-sub" id="produkCount">Memuat...</div>
         </div>
         <div class="produk-head-actions">
-          <button class="btn btn-ghost excel-export-btn" id="produkExportBtn"><i class="ti ti-file-spreadsheet"></i> Download Excel (hasil filter)</button>
-          <button class="btn btn-accent excel-export-btn" id="produkExportPricelistBtn" title="Ngikut filter/pencarian yang lagi aktif (Tipe, Golongan, dll — via Tambah Filter). Cuma produk yang udah ada Link V6 & harga EKATALOG yang masuk, kolom harga keisi angka beneran, siap dikirim ke sales."><i class="ti ti-currency-dollar"></i> Export Pricelist (Sales)</button>
+          <!-- Dua tombol export (audit & pricelist) digabung jadi satu menu: dua-duanya ngikut filter aktif,
+               yang beda cuma isi file-nya. ID tombol lama dipertahankan di item menu. -->
+          <div class="export-menu" id="produkExportMenu">
+            <button class="btn btn-accent" id="produkExportToggle" type="button" aria-haspopup="menu" aria-expanded="false"><i class="ti ti-download"></i> Export <i class="ti ti-chevron-down export-chev"></i></button>
+            <div class="export-pop" id="produkExportPop" role="menu" hidden>
+              <button class="export-item" id="produkExportBtn" type="button" role="menuitem">
+                <i class="ti ti-file-spreadsheet"></i>
+                <span><b>Excel, hasil filter</b><small>Semua kolom untuk cek data, mengikuti filter dan pencarian yang aktif</small></span>
+              </button>
+              <button class="export-item" id="produkExportPricelistBtn" type="button" role="menuitem">
+                <i class="ti ti-currency-dollar"></i>
+                <span><b>Pricelist untuk sales</b><small>Hanya produk yang sudah punya Link V6 dan harga EKATALOG, harga berupa angka</small></span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

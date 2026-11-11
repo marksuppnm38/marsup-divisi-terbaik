@@ -444,16 +444,16 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
    ============================================================ */
 #modalOverlay{align-items:center;padding:24px 16px}
 .prod-modal{display:flex;flex-direction:column;max-width:760px;max-height:calc(100vh - 48px);padding:0;overflow:hidden}
-.prod-modal .modal-head{margin:0;padding:22px 28px 0}
+.prod-modal .modal-head{flex:0 0 auto;margin:0;padding:22px 28px 0}
 .prod-modal .modal-title{font-size:17px;letter-spacing:-.01em}
 .prod-modal .modal-sub{font-size:12.5px}
 .prod-modal .modal-close{margin:-4px -8px 0 0}
-.prod-modal .prod-tabs{margin:16px 0 0;padding:0 28px;flex-wrap:nowrap;overflow-x:auto}
+.prod-modal .prod-tabs{flex:0 0 auto;margin:16px 0 0;padding:0 28px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
 .prod-modal .prod-tab{padding:10px 14px;font-size:13px;font-weight:500;white-space:nowrap;margin-bottom:-1px}
 .prod-modal .prod-tab.active{font-weight:600}
 .prod-modal .prod-tab.locked{opacity:.5}
 .prod-modal .prod-tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--radius-sm)}
-.prod-tabs-hint{padding:10px 28px 0;font-size:12.5px;color:var(--text-muted)}
+.prod-tabs-hint{flex:0 0 auto;padding:10px 28px 0;font-size:12.5px;color:var(--text-muted)}
 .prod-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:22px 28px 10px}
 .prod-modal .modal-actions{flex-shrink:0;margin:0;padding:14px 28px;border-top:1px solid var(--border);background:var(--surface)}
 
@@ -508,3 +508,27 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion:reduce){
   .prod-modal .f input,.prod-modal .f select,.prod-modal .f textarea,#appWrap .prod-card{transition:none}
 }
+
+/* ---- Crop fix: header/tab/hint tidak boleh ikut mengecil saat tinggi modal dibatasi ---- */
+.prod-modal .prod-tab{flex:0 0 auto}
+
+/* ---- Baris "Cari produk" di sidebar global (gaya baris menu: ikon, label, pintasan di kanan) ---- */
+#crudSpotlightNav{display:flex;align-items:center;gap:10px;width:calc(100% - 24px);height:34px;margin:2px 12px 4px;padding:0 8px;border:0;border-radius:var(--radius);background:none;color:var(--text-secondary);font:inherit;font-size:13px;text-align:left;cursor:pointer;flex-shrink:0}
+#crudSpotlightNav:hover{background:var(--fill-ghost-hover,var(--surface-3));color:var(--text)}
+#crudSpotlightNav:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#crudSpotlightNav i{width:18px;font-size:16px;text-align:center;flex-shrink:0}
+#crudSpotlightNav span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#crudSpotlightNav kbd{font-family:inherit;font-size:11.5px;color:var(--text-muted)}
+.pw-nav.collapsed #crudSpotlightNav{display:none}
+
+/* ---- Menu Export ---- */
+.export-menu{position:relative}
+.export-menu .export-chev{font-size:14px;margin-left:2px}
+.export-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:340px;padding:6px;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-lg)}
+.export-pop[hidden]{display:none}
+.export-item{display:flex;align-items:flex-start;gap:12px;width:100%;padding:10px 12px;border:0;border-radius:var(--radius);background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.export-item:hover,.export-item:focus-visible{background:var(--surface-2)}
+.export-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.export-item>i{margin-top:1px;font-size:18px;color:var(--text-muted);flex-shrink:0}
+.export-item b{display:block;font-size:13px;font-weight:600}
+.export-item small{display:block;margin-top:2px;font-size:12px;line-height:1.45;color:var(--text-muted)}

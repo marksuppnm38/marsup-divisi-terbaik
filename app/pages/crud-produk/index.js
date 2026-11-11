@@ -158,6 +158,8 @@ let mountedContainer = null;
 let filterPopOutsideClickHandler = null;
 let resizeHandler = null;
 let cmdkKeydownHandler = null;
+let spotlightNavObserver = null;
+let exportMenuDocHandler = null;
 // Module-level indirection for setSubroute() (real top-level export, see
 // far below near unmount()) to reach switchView(), which stays a NESTED
 // function inside mount() -- see switchView()'s own comment for why.
@@ -1659,7 +1661,6 @@ async function refreshProdukFilterCountsLegacy(){
 const cmdkOverlay = document.getElementById('cmdkOverlay');
 const cmdkInput = document.getElementById('cmdkInput');
 const cmdkList = document.getElementById('cmdkList');
-const cmdkTrigger = document.getElementById('cmdkTrigger');
 let cmdkResults = [];
 let cmdkActiveIdx = -1;
 let cmdkTimer = null;
@@ -1672,7 +1673,45 @@ function openCmdk(){
   setTimeout(() => cmdkInput.focus(), 30);
 }
 function closeCmdk(){ cmdkOverlay.classList.remove('open'); }
-cmdkTrigger.addEventListener('click', openCmdk);
+
+// ---- Pintu masuk Spotlight: baris di sidebar global (di bawah kotak Search), bukan tombol di topbar. ----
+// Sidebar dirender ulang oleh nav.js kalau modul berganti, jadi barisnya dipasang lagi lewat observer
+// selama halaman ini aktif, dan dilepas di unmount(). Tidak ada file nav yang diubah.
+const SPOTLIGHT_KBD = /Mac|iPhone|iPad/i.test(navigator.platform || '') ? '⌘K' : 'Ctrl K';
+function injectSpotlightNavRow(){
+  if (document.getElementById('crudSpotlightNav')) return;
+  const wrap = document.querySelector('.pw-nav-search-wrap');
+  if (!wrap) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'crudSpotlightNav';
+  btn.title = 'Cari produk di semua halaman CRUD';
+  btn.innerHTML = '<i class="ti ti-search"></i><span>Cari produk</span><kbd>' + SPOTLIGHT_KBD + '</kbd>';
+  btn.addEventListener('click', openCmdk);
+  wrap.after(btn);
+}
+injectSpotlightNavRow();
+const navHost = document.querySelector('.pw-nav-search-wrap')?.parentElement;
+if (navHost) {
+  spotlightNavObserver = new MutationObserver(injectSpotlightNavRow);
+  spotlightNavObserver.observe(navHost, { childList: true });
+}
+
+// ---- Menu Export (Excel hasil filter + Pricelist sales) ----
+const exportToggle = document.getElementById('produkExportToggle');
+const exportPop = document.getElementById('produkExportPop');
+function setExportMenu(open){
+  exportPop.hidden = !open;
+  exportToggle.setAttribute('aria-expanded', String(open));
+}
+exportToggle.addEventListener('click', () => setExportMenu(exportPop.hidden));
+exportPop.addEventListener('click', () => setExportMenu(false));
+exportMenuDocHandler = (e) => {
+  if (e.type === 'keydown') { if (e.key === 'Escape' && !exportPop.hidden) { setExportMenu(false); exportToggle.focus(); } return; }
+  if (!exportPop.hidden && !e.target.closest('#produkExportMenu')) setExportMenu(false);
+};
+document.addEventListener('click', exportMenuDocHandler);
+document.addEventListener('keydown', exportMenuDocHandler);
 cmdkOverlay.addEventListener('click', e => { if (e.target === cmdkOverlay) closeCmdk(); });
 document.getElementById('cmdkCloseBtn').addEventListener('click', closeCmdk);
 
@@ -3353,6 +3392,13 @@ export function unmount() {
   if (filterPopOutsideClickHandler) document.removeEventListener('click', filterPopOutsideClickHandler);
   if (resizeHandler) window.removeEventListener('resize', resizeHandler);
   if (cmdkKeydownHandler) document.removeEventListener('keydown', cmdkKeydownHandler);
+  if (spotlightNavObserver) { spotlightNavObserver.disconnect(); spotlightNavObserver = null; }
+  document.getElementById('crudSpotlightNav')?.remove();
+  if (exportMenuDocHandler) {
+    document.removeEventListener('click', exportMenuDocHandler);
+    document.removeEventListener('keydown', exportMenuDocHandler);
+    exportMenuDocHandler = null;
+  }
   if (beforeUnloadHandler) window.removeEventListener('beforeunload', beforeUnloadHandler);
   filterPopOutsideClickHandler = null;
   resizeHandler = null;
