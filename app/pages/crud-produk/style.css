@@ -425,8 +425,10 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .flag-warn{color:var(--amber-text)}
 .flag-mute{color:var(--text-muted)}
 
-/* Baru diubah (<24 jam): teks, bukan titik biru */
-.tag-baru{margin-left:8px;font-family:var(--font-body);font-size:11px;font-weight:600;color:var(--accent-text);white-space:nowrap}
+/* Baru diubah (<24 jam): titik kecil + teks redup. Teks biru tebal dulu terbaca seperti tautan dan menjerit di
+   30 baris sekaligus (mis. habis edit massal); titik sendirian tidak menjelaskan apa-apa, jadi dua-duanya dipakai. */
+.tag-baru{display:inline-flex;align-items:center;gap:5px;margin-left:10px;font-family:var(--font-body);font-size:11.5px;font-weight:500;color:var(--text-muted);white-space:nowrap}
+.tag-baru::before{content:"";flex:none;width:5px;height:5px;border-radius:50%;background:var(--accent)}
 
 /* Verified: ikon centang INAPROC dipertahankan (itu memang lencananya), tanpa gaya tambahan */
 #tableBody .vbadge{margin-left:4px}
@@ -511,15 +513,6 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 
 /* ---- Crop fix: header/tab/hint tidak boleh ikut mengecil saat tinggi modal dibatasi ---- */
 .prod-modal .prod-tab{flex:0 0 auto}
-
-/* ---- Baris "Cari produk" di sidebar global (gaya baris menu: ikon, label, pintasan di kanan) ---- */
-#crudSpotlightNav{display:flex;align-items:center;gap:10px;width:calc(100% - 24px);height:34px;margin:2px 12px 4px;padding:0 8px;border:0;border-radius:var(--radius);background:none;color:var(--text-secondary);font:inherit;font-size:13px;text-align:left;cursor:pointer;flex-shrink:0}
-#crudSpotlightNav:hover{background:var(--fill-ghost-hover,var(--surface-3));color:var(--text)}
-#crudSpotlightNav:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-#crudSpotlightNav i{width:18px;font-size:16px;text-align:center;flex-shrink:0}
-#crudSpotlightNav span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#crudSpotlightNav kbd{font-family:inherit;font-size:11.5px;color:var(--text-muted)}
-.pw-nav.collapsed #crudSpotlightNav{display:none}
 
 /* ---- Menu Export ---- */
 .export-menu{position:relative}
@@ -643,3 +636,23 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 }
 /* matriks Kategori: kolom angka selebar tetap supaya tidak terpisah jauh dari labelnya */
 #katBody > .table-card th.num,#katBody > .table-card td.num{width:150px}
+
+/* ============================================================
+   POLISH TOOLBAR PRODUK -- 2026-11-11
+   1. Searchbar, "Tambah Filter", dan toggle tampilan dulu tiga tinggi berbeda (searchbar paling tinggi, toggle paling pendek)
+      sehingga barisnya tampak miring. Sekarang satu tinggi kontrol (--ctl-h), satu radius, satu warna garis.
+   2. Hint pintasan (Ctrl K / ⌘K) tinggal di dalam searchbar, menggantikan baris "Cari produk" di sidebar.
+      Hilang saat searchbar fokus atau berisi teks (di situ tombol bersihkan yang mengambil tempatnya).
+   3. .clear-btn di universal itu position:absolute tapi .top-search tidak positioned, jadi acuannya lari ke .vtools.
+      .top-search dijadikan acuan sendiri.
+   ============================================================ */
+#appWrap{--ctl-h:34px}
+#appWrap .vtools .top-search{position:relative;box-sizing:border-box;min-height:var(--ctl-h);padding:0 10px;border-radius:var(--radius)}
+#appWrap .vtools .top-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+#appWrap .vtools .top-search input{align-self:stretch;min-width:0;padding-right:24px}
+#appWrap .top-search-kbd{flex:none;margin-left:auto;padding:1px 6px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface);color:var(--text-muted);font-family:var(--font-body);font-size:11px;font-weight:500;line-height:1.5;letter-spacing:.02em;pointer-events:none}
+#appWrap .top-search:focus-within .top-search-kbd,#appWrap .top-search-kbd[hidden]{display:none}
+#appWrap .vtools .add-filter-btn{box-sizing:border-box;min-height:var(--ctl-h);padding:0 12px;border-radius:var(--radius)}
+#appWrap .vtools .view-toggle{box-sizing:border-box;height:var(--ctl-h);border-radius:var(--radius)}
+#appWrap .vtools .view-toggle button{display:grid;place-items:center;height:100%;padding:0 11px}
+#appWrap .vtools .view-toggle button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}

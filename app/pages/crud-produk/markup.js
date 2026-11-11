@@ -70,8 +70,9 @@ export const CRUD_PRODUK_MARKUP = `
         <div class="vtools">
           <div class="top-search">
             <i class="ti ti-search"></i>
-            <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama..."/>
-            <button class="clear-btn" id="topSearchClear" title="Bersihkan"><i class="ti ti-x"></i></button>
+            <input type="text" id="topSearchInput" placeholder="Cari kode produk atau nama..." aria-keyshortcuts="Control+K Meta+K"/>
+            <kbd class="top-search-kbd" id="topSearchKbd" aria-hidden="true"></kbd>
+            <button class="clear-btn" id="topSearchClear" title="Bersihkan" aria-label="Bersihkan pencarian"><i class="ti ti-x"></i></button>
           </div>
       <div class="stacked-filters-row">
               <div class="stacked-filter-chips" id="produkFilterChips"></div>

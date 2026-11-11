@@ -158,7 +158,6 @@ let mountedContainer = null;
 let filterPopOutsideClickHandler = null;
 let resizeHandler = null;
 let cmdkKeydownHandler = null;
-let spotlightNavObserver = null;
 let exportMenuDocHandler = null;
 // Module-level indirection for setSubroute() (real top-level export, see
 // far below near unmount()) to reach switchView(), which stays a NESTED
@@ -167,6 +166,8 @@ let _switchView = null;
 let beforeUnloadHandler = null;
 
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-11-11: baris "Cari produk" di sidebar global dihapus (kembar sama searchbar Produk); hint Ctrl K pindah ke dalam searchbar Produk,
+//   dan Ctrl K di view Produk sekarang fokus ke searchbar itu (palette tetap kebuka di view lain / saat modal terbuka) — Claude
 // 2026-08-14: fix dedup bulk INAPROC tracker — status "Disetujui" menang duluan atas nomor
 //   permohonan duplikat, tanggal cuma dipakai buat tie-break (dulu murni tanggal terbaru,
 //   ada edge case "Disetujui" ketiban "Ditolak" dari baris duplikat bertanggal lebih baru) — Claude
@@ -582,6 +583,7 @@ const topSearchClear = document.getElementById('topSearchClear');
 topSearchInput.addEventListener('input', () => {
   clearTimeout(topSearchTimer);
   topSearchClear.style.display = topSearchInput.value ? 'block' : 'none';
+  syncTopSearchKbd();
   topSearchTimer = setTimeout(() => {
     switchView('produk');
     loadProduk(topSearchInput.value);
@@ -590,6 +592,7 @@ topSearchInput.addEventListener('input', () => {
 topSearchClear.addEventListener('click', () => {
   topSearchInput.value = '';
   topSearchClear.style.display = 'none';
+  syncTopSearchKbd();
   loadProduk('');
   topSearchInput.focus();
 });
@@ -1674,27 +1677,22 @@ function openCmdk(){
 }
 function closeCmdk(){ cmdkOverlay.classList.remove('open'); }
 
-// ---- Pintu masuk Spotlight: baris di sidebar global (di bawah kotak Search), bukan tombol di topbar. ----
-// Sidebar dirender ulang oleh nav.js kalau modul berganti, jadi barisnya dipasang lagi lewat observer
-// selama halaman ini aktif, dan dilepas di unmount(). Tidak ada file nav yang diubah.
+// ---- Pintasan Ctrl K ----
+// Di view Produk, Ctrl K langsung fokus ke searchbar Produk (hint pintasannya tampil di dalam searchbar itu).
+// Di view lain (Set, AKD, KFA, ...) searchbar Produk disembunyikan, jadi Ctrl K tetap membuka palette pencarian.
+// Palette juga tetap dipakai kalau ada modal/dialog yang sedang terbuka, supaya fokus tidak lari ke belakang overlay.
 const SPOTLIGHT_KBD = /Mac|iPhone|iPad/i.test(navigator.platform || '') ? '⌘K' : 'Ctrl K';
-function injectSpotlightNavRow(){
-  if (document.getElementById('crudSpotlightNav')) return;
-  const wrap = document.querySelector('.pw-nav-search-wrap');
-  if (!wrap) return;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.id = 'crudSpotlightNav';
-  btn.title = 'Cari produk di semua halaman CRUD';
-  btn.innerHTML = '<i class="ti ti-search"></i><span>Cari produk</span><kbd>' + SPOTLIGHT_KBD + '</kbd>';
-  btn.addEventListener('click', openCmdk);
-  wrap.after(btn);
-}
-injectSpotlightNavRow();
-const navHost = document.querySelector('.pw-nav-search-wrap')?.parentElement;
-if (navHost) {
-  spotlightNavObserver = new MutationObserver(injectSpotlightNavRow);
-  spotlightNavObserver.observe(navHost, { childList: true });
+const topSearchKbd = document.getElementById('topSearchKbd');
+if (topSearchKbd) topSearchKbd.textContent = SPOTLIGHT_KBD;
+function syncTopSearchKbd(){ if (topSearchKbd) topSearchKbd.hidden = !!topSearchInput.value; }
+function focusProdukSearch(){
+  const view = document.getElementById('appWrap')?.dataset.view;
+  if (view && view !== 'produk') return false;
+  if (cmdkOverlay.classList.contains('open')) return false;
+  if (document.querySelector('.modal-overlay.open, .confirm-overlay.open')) return false;
+  topSearchInput.focus();
+  topSearchInput.select();
+  return true;
 }
 
 // ---- Menu Export (Excel hasil filter + Pricelist sales) ----
@@ -1716,7 +1714,7 @@ cmdkOverlay.addEventListener('click', e => { if (e.target === cmdkOverlay) close
 document.getElementById('cmdkCloseBtn').addEventListener('click', closeCmdk);
 
 cmdkKeydownHandler = e => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openCmdk(); }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); if (!focusProdukSearch()) openCmdk(); }
   if (e.key === 'Escape' && cmdkOverlay.classList.contains('open')) closeCmdk();
 };
 document.addEventListener('keydown', cmdkKeydownHandler);
@@ -3420,8 +3418,6 @@ export function unmount() {
   if (filterPopOutsideClickHandler) document.removeEventListener('click', filterPopOutsideClickHandler);
   if (resizeHandler) window.removeEventListener('resize', resizeHandler);
   if (cmdkKeydownHandler) document.removeEventListener('keydown', cmdkKeydownHandler);
-  if (spotlightNavObserver) { spotlightNavObserver.disconnect(); spotlightNavObserver = null; }
-  document.getElementById('crudSpotlightNav')?.remove();
   if (exportMenuDocHandler) {
     document.removeEventListener('click', exportMenuDocHandler);
     document.removeEventListener('keydown', exportMenuDocHandler);
