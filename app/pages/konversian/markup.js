@@ -220,42 +220,41 @@ export const KONVERSIAN_MARKUP = `
       <div id="prj-root"></div>
     </div>
     <div class="panel-body" id="panel-body-converter" style="display:none">
-      <div class="sesi-toolbar">
-        <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center">Paste kode produk ATAU kode asli (+ nama opsional, dipisah tab; 1 baris = 1 produk) — dicocokkan exact ke katalog</span>
-      </div>
-      <div style="padding:10px 12px 0">
-        <textarea id="conv-input" placeholder="RB999-KE921-B99-U238&#9;WSD S.
-RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;font-family:var(--mono);font-size:12px;line-height:1.5;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text);resize:vertical"></textarea>
-        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
-          <select id="conv-kunci" class="conv-select" title="Kode yang dipaste itu kode apa? 'Otomatis' mencoba kode produk dulu, lalu kode asli.">
-            <option value="auto">Otomatis (kode produk / kode asli)</option>
+      <div class="conv-input-wrap">
+        <p class="conv-hint" id="conv-hint">Tempel kode produk atau kode asli, satu baris per produk. Nama dari customer boleh ditambahkan setelah kode, dipisah tab atau spasi. Kode dicocokkan persis ke katalog.</p>
+        <textarea id="conv-input" class="conv-input" aria-describedby="conv-hint" spellcheck="false" placeholder="RB999-KE921-B99-U238&#9;WSD S.
+RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
+        <div class="conv-run-row">
+          <select id="conv-kunci" class="conv-select" aria-label="Jenis kode yang ditempel" title="Jenis kode yang ditempel. Otomatis mencoba kode produk dulu, lalu kode asli.">
+            <option value="auto">Otomatis (kode produk atau kode asli)</option>
             <option value="kode_produk">Kode produk</option>
             <option value="kode_asli">Kode asli</option>
           </select>
-          <button class="pr-add-clip-btn" id="btn-conv-proses" type="button"><i class="ti ti-list-search"></i> Proses &amp; Cocokkan</button>
-          <button class="toggle-btn" id="btn-conv-retry-err" type="button" style="display:none"><i class="ti ti-refresh"></i> Proses Ulang yang Error</button>
-          <button class="toggle-btn" id="btn-conv-clear" type="button"><i class="ti ti-eraser"></i> Bersihkan</button>
+          <button class="pr-add-clip-btn" id="btn-conv-proses" type="button"><i class="ti ti-list-search"></i> Cocokkan ke katalog</button>
+          <button class="toggle-btn" id="btn-conv-retry-err" type="button" style="display:none"><i class="ti ti-refresh"></i> Ulangi yang error</button>
+          <button class="toggle-btn" id="btn-conv-clear" type="button"><i class="ti ti-eraser"></i> Kosongkan</button>
         </div>
-        <div id="conv-status" style="font-size:11.5px;color:var(--text-muted);margin-top:8px;min-height:16px"></div>
+        <div id="conv-status" class="conv-status" role="status" aria-live="polite"></div>
       </div>
-      <div id="conv-results" style="padding:0 12px 8px"></div>
-      <div id="conv-actions" style="display:none;padding:0 12px 12px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang Dicentang ke Clipboard</button>
-          <!-- Jalur MURNI BACA buat tim yang konversinya masih di spreadsheet
-               (unit/instrumen): paste kode di atas, cocokkan, copy langsung
-               dari sini — TANPA lewat Clipboard, jadi TANPA bikin sesi
-               konversi di server. Beda sama tombol sebelah yang emang commit
-               ke sesi. Detail: copyConvWithImages() di converter.js. -->
-          <!-- COPY TABEL (converter-bulk.js): urutan & jumlah baris = input, jadi bisa ditempel
-               di sebelah kolom asli di Sheet. Baris yang gak ketemu tetap ada & ditandai. -->
-          <select id="conv-preset" class="conv-select" title="Kolom yang disalin">
-            <option value="kdhl">Kode · Deskripsi · Harga · Link</option>
-            <option value="peta">Peta: Kode Input → Kode Produk / Kode Asli</option>
-            <option value="lengkap">Lengkap (+ AKD, stok, catatan)</option>
+      <div id="conv-results" class="conv-results"></div>
+      <div id="conv-actions" class="conv-actions" style="display:none">
+        <!-- Grup 1 menulis ke sesi konversi di server. Grup 2 murni baca: hasil
+             Converter disalin ke Excel/Sheet tanpa lewat Clipboard, jadi tidak
+             membuat sesi (lihat komentar Copy + Gambar di converter.js). Copy Tabel
+             (converter-bulk.js) menjaga urutan dan jumlah baris sama dengan input,
+             baris yang tidak ketemu tetap ada dan ditandai. -->
+        <div class="conv-actions-group">
+          <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang dicentang ke Clipboard</button>
+        </div>
+        <div class="conv-actions-group">
+          <select id="conv-preset" class="conv-select" aria-label="Kolom yang disalin" title="Kolom yang disalin">
+            <option value="kdhl">Kode, deskripsi, harga, link</option>
+            <option value="peta">Peta kode input ke kode produk dan kode asli</option>
+            <option value="lengkap">Lengkap, dengan AKD, stok, dan catatan</option>
           </select>
-          <button class="toggle-btn" id="btn-conv-copy-tabel" type="button" title="Salin semua baris sebagai tabel (bukan cuma yang dicentang), siap paste ke Excel/Sheet"><i class="ti ti-table-export"></i> Copy Tabel</button>
-          <button class="toggle-btn" id="btn-conv-copy-gambar" type="button" title="Salin yang dicentang sebagai tabel (kode, deskripsi, qty, gambar) — siap paste ke Excel, gak bikin sesi konversi. Di Google Sheet, paste pakai Ctrl+Shift+V."><i class="ti ti-photo"></i> Copy + Gambar (buat Sheet)</button>
+          <button class="toggle-btn" id="btn-conv-copy-tabel" type="button" title="Salin semua baris sebagai tabel (bukan cuma yang dicentang), siap ditempel ke Excel atau Sheet"><i class="ti ti-table-export"></i> Copy Tabel</button>
+          <button class="toggle-btn" id="btn-conv-copy-gambar" type="button" title="Salin baris yang dicentang sebagai tabel berisi kode, deskripsi, qty, dan gambar. Di Google Sheets, tempel dengan Ctrl+Shift+V."><i class="ti ti-photo"></i> Copy + Gambar</button>
+          <span class="conv-actions-note">Menyalin tidak membuat sesi konversi.</span>
         </div>
       </div>
     </div>
@@ -271,21 +270,21 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
          lain / RS) yang mau langsung dicocokkan ke SET terdekat TANPA
          nambahin ke Clipboard dulu. ===== -->
     <div class="panel-body" id="panel-body-setcari" style="display:none">
-      <div class="sesi-toolbar" style="flex-wrap:wrap;row-gap:8px">
-        <div style="display:flex;gap:6px">
-          <button class="toggle-btn on" id="setcari-src-clip" type="button"><i class="ti ti-clipboard-list"></i> <span class="toggle-btn-label">Dari Clipboard</span></button>
-          <button class="toggle-btn" id="setcari-src-paste" type="button"><i class="ti ti-clipboard-text"></i> <span class="toggle-btn-label">Dari Paste-an</span></button>
+      <div class="setcari-bar">
+        <div class="setcari-seg" role="group" aria-label="Sumber kode produk">
+          <button class="toggle-btn on" id="setcari-src-clip" type="button" aria-pressed="true"><i class="ti ti-clipboard-list"></i> <span class="toggle-btn-label">Dari Clipboard</span></button>
+          <button class="toggle-btn" id="setcari-src-paste" type="button" aria-pressed="false"><i class="ti ti-clipboard-text"></i> <span class="toggle-btn-label">Dari paste-an</span></button>
         </div>
-        <span style="flex:1;font-size:11.5px;color:var(--text-muted);align-self:center" id="setcari-source-label">Nyari SET dengan isi paling mirip <b>0</b> produk yang lagi ada di Clipboard</span>
         <button class="pr-add-clip-btn" id="setcari-search-btn" type="button" disabled><i class="ti ti-search"></i> Cari SET Mendekati</button>
       </div>
-      <div id="setcari-paste-wrap" style="display:none;padding:0 12px 10px">
-        <textarea id="setcari-paste-input" placeholder="Paste kode produk, 1 per baris (boleh juga dipisah koma)&#10;RB999-KE921-B99-U238&#10;RB999-KE921-B99-U109" style="width:100%;min-height:100px;font-family:var(--mono);font-size:12px;line-height:1.5;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text);resize:vertical"></textarea>
+      <p class="setcari-source-label" id="setcari-source-label"><b>0</b> produk di Clipboard dibandingkan dengan isi tiap SET</p>
+      <div id="setcari-paste-wrap" class="setcari-paste-wrap" style="display:none">
+        <textarea id="setcari-paste-input" class="setcari-paste-input" aria-label="Kode produk, satu per baris atau dipisah koma" spellcheck="false" placeholder="Tempel kode produk, satu per baris (boleh juga dipisah koma)&#10;RB999-KE921-B99-U238&#10;RB999-KE921-B99-U109"></textarea>
       </div>
-      <div class="setcari-status" id="setcari-status"></div>
+      <div class="setcari-status" id="setcari-status" role="status" aria-live="polite"></div>
       <div class="clip-empty" id="setcari-empty">
         <i class="ti ti-box-multiple"></i>
-        <p>Tambahkan produk ke Clipboard dulu, lalu klik "Cari SET Mendekati" buat lihat SET yang isinya paling mirip sama produk-produk itu.</p>
+        <p>Tambahkan produk ke Clipboard, lalu klik "Cari SET Mendekati" untuk melihat SET dengan isi paling mirip.</p>
       </div>
       <div class="setcari-list" id="setcari-list"></div>
     </div>
@@ -296,60 +295,60 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
     <div class="panel-body" id="panel-body-dictionary" style="display:none">
       <div class="dict-stats-row">
         <div class="dict-stat-card">
-          <div class="dict-stat-label">Total Istilah Customer Unik</div>
           <div class="dict-stat-value" id="dict-stat-istilah">—</div>
+          <div class="dict-stat-label">Istilah customer unik</div>
         </div>
         <div class="dict-stat-card">
-          <div class="dict-stat-label">Total Produk Pernah Dipilih</div>
           <div class="dict-stat-value" id="dict-stat-produk">—</div>
+          <div class="dict-stat-label">Produk pernah dipilih</div>
         </div>
         <div class="dict-stat-card">
-          <div class="dict-stat-label">Total Alias</div>
           <div class="dict-stat-value" id="dict-stat-alias">—</div>
+          <div class="dict-stat-label">Alias</div>
         </div>
       </div>
 
       <div class="dict-toolbar">
-        <div class="search-wrap">
+        <div class="search-wrap dict-search">
           <i class="ti ti-search"></i>
-          <input id="dict-search-input" type="text" placeholder="Cari istilah customer, kode produk, atau nama produk…" autocomplete="off" style="width:100%;height:36px;padding:0 34px;font-size:13px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);outline:none"/>
-          <button class="clear-btn" id="dict-clear-btn"><i class="ti ti-x"></i></button>
+          <input id="dict-search-input" class="dict-search-input" type="text" placeholder="Cari istilah, kode, atau nama produk" aria-label="Cari di dictionary" autocomplete="off"/>
+          <button class="clear-btn" id="dict-clear-btn" type="button" aria-label="Bersihkan pencarian"><i class="ti ti-x"></i></button>
         </div>
-        <select class="filter-select" id="dict-filter-select" title="Filter status">
-          <option value="semua">Semua</option>
+        <select class="filter-select" id="dict-filter-select" aria-label="Filter status">
+          <option value="semua">Semua status</option>
           <option value="consistent">Consistent</option>
           <option value="multiple">Multiple</option>
         </select>
-        <select class="filter-select" id="dict-sort-select" title="Urutkan">
-          <option value="frekuensi">Frekuensi terbanyak</option>
-          <option value="alphabet">Alphabet</option>
-          <option value="terbaru">Terbaru digunakan</option>
+        <select class="filter-select" id="dict-sort-select" aria-label="Urutkan">
+          <option value="frekuensi">Paling sering dipakai</option>
+          <option value="alphabet">A sampai Z</option>
+          <option value="terbaru">Terakhir dipakai</option>
         </select>
-        <button class="toggle-btn" id="btn-dict-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
-        <button class="toggle-btn" id="btn-dict-tambah" type="button" title="Tambah istilah manual"><i class="ti ti-plus"></i> Tambah Istilah</button>
+        <button class="toggle-btn" id="btn-dict-refresh" type="button" title="Muat ulang" aria-label="Muat ulang"><i class="ti ti-refresh"></i></button>
+        <button class="toggle-btn" id="btn-dict-tambah" type="button"><i class="ti ti-plus"></i> Tambah istilah</button>
       </div>
 
-      <div id="dict-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat dictionary…</div>
-      <div id="dict-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
+      <div id="dict-loading" class="dict-loading" style="display:none" role="status"><i class="ti ti-loader-2"></i> Memuat dictionary…</div>
+      <div id="dict-error" class="dict-error" style="display:none"></div>
       <div class="clip-empty" id="dict-empty" style="display:none">
         <i class="ti ti-book-2"></i>
-        <p>Belum ada data dictionary.<br>Otomatis terisi tiap item permintaan RS ditandai "TERPENUHI", atau tambah manual lewat tombol "Tambah Istilah".</p>
+        <p>Dictionary masih kosong.<br>Isinya bertambah otomatis setiap item permintaan RS ditandai "TERPENUHI". Istilah juga bisa ditambahkan manual lewat "Tambah istilah".</p>
       </div>
 
       <div class="dict-table-wrap" id="dict-table-wrap" style="display:none">
         <table class="dict-table">
           <thead>
             <tr>
-              <th>Istilah Customer</th>
-              <th>Status</th>
-              <th style="text-align:right">Frekuensi</th>
-              <th>Terakhir Dipakai</th>
+              <th scope="col">Istilah customer</th>
+              <th scope="col" title="Consistent: satu istilah selalu dipenuhi satu produk. Multiple: lebih dari satu produk.">Status</th>
+              <th scope="col" class="dict-col-freq">Frekuensi</th>
+              <th scope="col">Terakhir dipakai</th>
             </tr>
           </thead>
           <tbody id="dict-table-body"></tbody>
         </table>
       </div>
-      <div id="dict-pagination" style="display:none;align-items:center;justify-content:center;gap:6px;padding:14px 0 6px"></div>
+      <div id="dict-pagination" class="dict-pagination" style="display:none"></div>
     </div>
   </div>
 
@@ -1018,40 +1017,38 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2" style="width:100%;min-height:130px;fo
 </div>
 
 <div class="modal-overlay" id="dictionary-modal">
-  <div class="modal-box" style="width:90vw;max-width:520px;max-height:82vh;overflow-y:auto;text-align:left;padding:20px 24px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <div class="modal-title" id="dict-modal-title" style="margin:0">Istilah</div>
-      <button id="dict-modal-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
+  <div class="modal-box dict-modal-box" role="dialog" aria-modal="true" aria-labelledby="dict-modal-title">
+    <div class="dict-modal-head">
+      <div class="modal-title" id="dict-modal-title">Istilah</div>
+      <button id="dict-modal-close" class="modal-close" type="button" aria-label="Tutup">&times;</button>
     </div>
-    <div class="modal-sub" id="dict-modal-sub" style="margin-bottom:14px">Pernah dipilih menjadi produk berikut, diurutkan dari yang paling sering.</div>
-    <div id="dict-modal-loading" style="display:none;text-align:center;padding:20px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat detail…</div>
-    <div id="dict-modal-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px"></div>
+    <div class="modal-sub dict-modal-sub" id="dict-modal-sub">Produk yang pernah dipilih untuk istilah ini, dari yang paling sering.</div>
+    <div id="dict-modal-loading" class="dict-loading" style="display:none" role="status"><i class="ti ti-loader-2"></i> Memuat detail…</div>
+    <div id="dict-modal-error" class="dict-error" style="display:none"></div>
     <div id="dict-modal-list"></div>
 
-    <div id="dict-modal-add-wrap" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-      <div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:600;margin-bottom:6px">+ Tambah / hubungkan produk lain</div>
-      <div style="position:relative">
-        <input id="dict-modal-add-input" type="text" placeholder="Cari kode/nama produk…" autocomplete="off" style="width:100%;height:34px;padding:0 10px;font-size:12.5px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--text);outline:none"/>
-        <div id="dict-modal-add-results" style="display:none;margin-top:4px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:7px"></div>
-      </div>
+    <div id="dict-modal-add-wrap" class="dict-modal-section">
+      <div class="dict-modal-section-title">Hubungkan produk lain</div>
+      <input id="dict-modal-add-input" class="dict-modal-input" type="text" placeholder="Cari kode atau nama produk" aria-label="Cari produk untuk dihubungkan" autocomplete="off"/>
+      <div id="dict-modal-add-results" class="dict-add-results" style="display:none"></div>
     </div>
 
-    <div id="dict-modal-hidden-wrap" style="display:none;margin-top:14px">
-      <div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:600;margin-bottom:6px">Disembunyikan (ditandai kurang akurat)</div>
+    <div id="dict-modal-hidden-wrap" class="dict-modal-section" style="display:none">
+      <div class="dict-modal-section-title">Disembunyikan karena kurang akurat</div>
       <div id="dict-modal-hidden-list"></div>
     </div>
   </div>
 </div>
 
 <div class="modal-overlay" id="dict-new-modal">
-  <div class="modal-box" style="width:90vw;max-width:400px;text-align:left;padding:22px 24px">
-    <div class="modal-title" style="margin:0 0 4px">Tambah Istilah Baru</div>
-    <div class="modal-sub" style="margin-bottom:14px">Istilah customer yang mau dicatat manual — belum tentu pernah muncul di histori konversi.</div>
-    <input id="dict-new-input" type="text" placeholder="mis. gunting jaringan" autocomplete="off" style="width:100%;height:38px;padding:0 12px;font-size:13px;font-family:inherit;border:1.5px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:6px;outline:none"/>
-    <div id="dict-new-error" style="display:none;color:var(--danger);font-size:12px;margin-bottom:6px"></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
-      <button id="dict-new-cancel" type="button" style="font-size:12.5px;padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);cursor:pointer">Batal</button>
-      <button id="dict-new-ok" type="button" style="font-size:12.5px;padding:8px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer">Lanjut</button>
+  <div class="modal-box dict-new-box" role="dialog" aria-modal="true" aria-labelledby="dict-new-title">
+    <div class="modal-title" id="dict-new-title">Tambah istilah</div>
+    <div class="modal-sub dict-modal-sub">Istilah customer yang dicatat manual. Belum tentu pernah muncul di histori konversi.</div>
+    <input id="dict-new-input" class="dict-modal-input" type="text" placeholder="Contoh: gunting jaringan" aria-label="Istilah customer" autocomplete="off"/>
+    <div id="dict-new-error" class="dict-error" style="display:none"></div>
+    <div class="dict-new-actions">
+      <button id="dict-new-cancel" class="conv-btn-secondary" type="button">Batal</button>
+      <button id="dict-new-ok" class="conv-btn-primary" type="button">Lanjut pilih produk</button>
     </div>
   </div>
 </div>

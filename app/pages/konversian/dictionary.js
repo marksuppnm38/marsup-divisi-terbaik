@@ -259,18 +259,19 @@ async function loadDictionaryStats() {
 
 function dictBadgeHtml(status) {
   return status === 'MULTIPLE'
-    ? `<span class="dict-badge multiple">MULTIPLE</span>`
-    : `<span class="dict-badge consistent">CONSISTENT</span>`;
+    ? `<span class="dict-badge multiple" title="Istilah ini pernah dipenuhi lebih dari satu produk">Multiple</span>`
+    : `<span class="dict-badge consistent" title="Istilah ini selalu dipenuhi satu produk yang sama">Consistent</span>`;
 }
 
 function dictFormatTanggal(iso) {
   if (!iso) return '-';
-  return new Date(iso).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) + ' · ' + S.sesiTimeAgo(iso);
+  return new Date(iso).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) + ` (${S.sesiTimeAgo(iso)})`;
 }
 
 function renderDictRow(row) {
   const tr = document.createElement('tr');
   tr.dataset.istilah = row.istilah_customer;
+  tr.tabIndex = 0;
   tr.innerHTML = `
     <td class="dict-term">${S.escapeHtmlAttr(row.istilah_customer)}</td>
     <td>${dictBadgeHtml(row.status)}</td>
@@ -278,6 +279,9 @@ function renderDictRow(row) {
     <td class="dict-col-time">${dictFormatTanggal(row.terakhir_dipakai)}</td>
   `;
   tr.addEventListener('click', () => openDictionaryDetail(row.istilah_customer));
+  tr.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDictionaryDetail(row.istilah_customer); }
+  });
   return tr;
 }
 
@@ -300,7 +304,7 @@ async function loadDictionary() {
       p_limit: DICT_PAGE_SIZE,
       p_offset: (dictCurrentPage - 1) * DICT_PAGE_SIZE
     });
-    if (error) throw new Error(error.message || error.hint || 'Gagal memuat dictionary');
+    if (error) throw new Error(error.message || error.hint || 'Dictionary gagal dimuat');
     dictLastTotal = (data && data.length) ? Number(data[0].total_count) : 0;
     if (!data || data.length === 0) {
       dictEmpty.style.display = 'block';
@@ -351,9 +355,9 @@ function renderDictPagination() {
 
   dictPaginationEl.innerHTML = `
     <span class="page-info">${startItem}–${endItem} dari ${dictLastTotal}</span>
-    ${pageBtn(dictCurrentPage - 1, '<i class="ti ti-chevron-left"></i>', dictCurrentPage === 1)}
+    ${pageBtn(dictCurrentPage - 1, '<i class="ti ti-chevron-left" aria-label="Halaman sebelumnya"></i>', dictCurrentPage === 1)}
     ${numberBtns}
-    ${pageBtn(dictCurrentPage + 1, '<i class="ti ti-chevron-right"></i>', dictCurrentPage === totalPages)}
+    ${pageBtn(dictCurrentPage + 1, '<i class="ti ti-chevron-right" aria-label="Halaman berikutnya"></i>', dictCurrentPage === totalPages)}
   `;
 
   dictPaginationEl.querySelectorAll('.page-btn[data-page]').forEach(btn => {
@@ -390,43 +394,35 @@ let dictModalCurrentIstilah = null;
 function dictDetailRowHtml(d, isManual) {
   const kodeForUrl = (d.kode_asli && d.kode_asli.trim()) ? d.kode_asli.trim() : d.kode_produk;
   const thumbUrl = S.THUMB_BASE + kodeForUrl + '.png';
+  const esc = S.escapeHtmlAttr;
+  const pct = d.persentase != null ? d.persentase : 0;
   return `
-    <div class="dict-detail-row" style="display:block" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}">
-      <div style="display:flex;align-items:flex-start;gap:10px">
-        <img src="${thumbUrl}" class="dict-detail-thumb" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}"
-          data-kode-asli="${S.escapeHtmlAttr(d.kode_asli || '')}" data-nama="${S.escapeHtmlAttr(d.nama_produk || '')}"
-          style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);flex-shrink:0;cursor:pointer"/>
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-            <div style="min-width:0">
-              <div class="dict-detail-produk">${S.escapeHtmlAttr(d.nama_produk || '(nama produk tidak tersedia)')}
-                ${isManual ? '<span class="dict-badge" style="font-size:9px;padding:1px 5px;margin-left:6px">MANUAL</span>' : ''}
-                ${d.is_set ? '<span style="font-size:9px;color:var(--success);margin-left:6px"><i class="ti ti-packages"></i> Set</span>' : ''}
-              </div>
-              <div class="dict-detail-kode">${S.escapeHtmlAttr(d.kode_produk || '-')}</div>
+    <div class="dict-detail-row" data-kode="${esc(d.kode_produk || '')}">
+      <img src="${thumbUrl}" class="dict-detail-thumb" alt="" loading="lazy" title="Lihat gambar" data-kode="${esc(d.kode_produk || '')}"
+        data-kode-asli="${esc(d.kode_asli || '')}" data-nama="${esc(d.nama_produk || '')}"/>
+      <div class="dict-detail-main">
+        <div class="dict-detail-head">
+          <div class="dict-detail-title">
+            <div class="dict-detail-produk">${esc(d.nama_produk || '(nama produk tidak tersedia)')}
+              ${isManual ? '<span class="dict-tag">Manual</span>' : ''}
+              ${d.is_set ? '<span class="dict-tag set"><i class="ti ti-packages"></i> Set</span>' : ''}
             </div>
-            <div style="text-align:right;flex-shrink:0;display:flex;align-items:center;gap:10px">
-              <div>
-                <div class="dict-detail-freq">${Number(d.jumlah_pemakaian).toLocaleString('id-ID')}×</div>
-                <div class="dict-detail-pct">${d.persentase != null ? d.persentase + '%' : ''}</div>
-              </div>
-              <button type="button" class="dict-detail-hapus-btn" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}"
-                title="Tandai link ini kurang akurat / gak relevan" style="border:none;background:none;color:var(--text-muted);cursor:pointer;padding:4px">
-                <i class="ti ti-trash"></i>
-              </button>
-            </div>
+            <div class="dict-detail-kode">${esc(d.kode_produk || '-')}</div>
           </div>
-          <div class="dict-detail-bar-wrap"><div class="dict-detail-bar" style="width:${d.persentase != null ? d.persentase : 0}%"></div></div>
-          <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" class="btn-preview-gambar dict-detail-gambar-btn" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}"
-              data-kode-asli="${S.escapeHtmlAttr(d.kode_asli || '')}" data-nama="${S.escapeHtmlAttr(d.nama_produk || '')}">
-              <i class="ti ti-eye" style="font-size:12px"></i> Lihat Gambar
-            </button>
-            <button type="button" class="dict-detail-lampiran-btn" data-kode="${S.escapeHtmlAttr(d.kode_produk || '')}" data-is-set="${!!d.is_set}"
-              style="font-size:11px;color:var(--accent-text);background:var(--accent-bg);border:1px solid var(--accent-text);border-radius:20px;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-family:inherit">
-              <i class="ti ti-file-text" style="font-size:12px"></i> Lihat Lampiran
-            </button>
+          <div class="dict-detail-stat">
+            <div class="dict-detail-freq">${Number(d.jumlah_pemakaian).toLocaleString('id-ID')}×</div>
+            <div class="dict-detail-pct">${d.persentase != null ? d.persentase + '%' : ''}</div>
           </div>
+          <button type="button" class="dict-detail-hapus-btn" data-kode="${esc(d.kode_produk || '')}"
+            title="Sembunyikan produk ini dari istilah (bisa dikembalikan)" aria-label="Sembunyikan produk ini dari istilah">
+            <i class="ti ti-eye-off"></i>
+          </button>
+        </div>
+        <div class="dict-detail-bar-wrap" role="img" aria-label="${pct}% dari pemakaian istilah ini"><div class="dict-detail-bar" style="width:${pct}%"></div></div>
+        <div class="dict-detail-actions">
+          <button type="button" class="dict-detail-link dict-detail-gambar-btn" data-kode="${esc(d.kode_produk || '')}"
+            data-kode-asli="${esc(d.kode_asli || '')}" data-nama="${esc(d.nama_produk || '')}"><i class="ti ti-eye"></i> Lihat gambar</button>
+          <button type="button" class="dict-detail-link dict-detail-lampiran-btn" data-kode="${esc(d.kode_produk || '')}" data-is-set="${!!d.is_set}"><i class="ti ti-file-text"></i> Lihat lampiran</button>
         </div>
       </div>
     </div>
@@ -454,14 +450,14 @@ async function openDictionaryDetail(istilah) {
       S.rpc('get_dictionary_detail', { p_istilah: istilah }),
       S.rpc('get_dictionary_overrides', { p_istilah: istilah })
     ]);
-    if (detailRes.error) throw new Error(detailRes.error.message || detailRes.error.hint || 'Gagal memuat detail istilah');
+    if (detailRes.error) throw new Error(detailRes.error.message || detailRes.error.hint || 'Detail istilah gagal dimuat');
     const data = detailRes.data || [];
     const overrides = overrideRes.error ? [] : (overrideRes.data || []);
     const manualAddedKodes = new Set(overrides.filter(o => o.included).map(o => o.kode_produk));
     const hiddenRows = overrides.filter(o => !o.included);
 
     if (!data.length) {
-      dictModalList.innerHTML = '<div style="padding:16px 0;text-align:center;color:var(--text-muted);font-size:13px">Belum ada produk yang dihubungkan ke istilah ini — tambah lewat kolom di bawah.</div>';
+      dictModalList.innerHTML = '<div class="dict-detail-empty">Belum ada produk yang dihubungkan ke istilah ini. Cari produknya di kolom di bawah.</div>';
     } else {
       // Sudah terurut dari server berdasarkan frekuensi terbesar (JANGAN diurutkan ulang —
       // satu istilah customer memang wajar punya beberapa produk Robust, ini bukan error).
@@ -471,10 +467,9 @@ async function openDictionaryDetail(istilah) {
     if (hiddenRows.length) {
       dictModalHiddenWrap.style.display = 'block';
       dictModalHiddenList.innerHTML = hiddenRows.map(h => `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;font-size:12px">
-          <span style="color:var(--text-muted)">${S.escapeHtmlAttr(h.nama_produk || h.kode_produk)} <span class="dict-detail-kode">${S.escapeHtmlAttr(h.kode_produk)}</span></span>
-          <button type="button" class="dict-detail-kembalikan-btn" data-kode="${S.escapeHtmlAttr(h.kode_produk)}"
-            style="font-size:11.5px;padding:4px 10px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);cursor:pointer">Kembalikan</button>
+        <div class="dict-hidden-row">
+          <span class="dict-hidden-info">${S.escapeHtmlAttr(h.nama_produk || h.kode_produk)} <span class="dict-detail-kode">${S.escapeHtmlAttr(h.kode_produk)}</span></span>
+          <button type="button" class="dict-detail-kembalikan-btn" data-kode="${S.escapeHtmlAttr(h.kode_produk)}">Kembalikan</button>
         </div>
       `).join('');
     }
@@ -501,18 +496,13 @@ dictModalList.addEventListener('error', (e) => {
 // Klik thumbnail atau tombol "Lihat Gambar" -> pakai modal gambar yang
 // sama persis kayak di tab Cari Produk (S.openGambarModal sudah nanganin
 // fallback kode_asli -> kode_produk & upload/ganti gambar kalau belum ada).
+// Klik "Lihat lampiran" -> modal lampiran yang sama juga (menampilkan rincian per
+// komponen otomatis kalau produknya SET, lewat flag isSet).
 dictModalList.addEventListener('click', (e) => {
   const el = e.target.closest('.dict-detail-thumb, .dict-detail-gambar-btn');
-  if (!el) return;
-  S.openGambarModal(el.dataset.kodeAsli, el.dataset.kode, el.dataset.nama);
-});
-
-// Klik "Lihat Lampiran" -> modal lampiran yang sama juga (nampilin rincian
-// per komponen otomatis kalau produknya SET, lewat flag isSet).
-dictModalList.addEventListener('click', (e) => {
+  if (el) { S.openGambarModal(el.dataset.kodeAsli, el.dataset.kode, el.dataset.nama); return; }
   const btn = e.target.closest('.dict-detail-lampiran-btn');
-  if (!btn) return;
-  S.openLampiranModal(btn.dataset.kode, btn.dataset.isSet === 'true');
+  if (btn) S.openLampiranModal(btn.dataset.kode, btn.dataset.isSet === 'true');
 });
 
 // Klik "Hapus" di satu baris produk (link asli dari histori ATAU manual) —
@@ -529,7 +519,7 @@ dictModalList.addEventListener('click', async (e) => {
     const { error } = await S.rpc('upsert_dictionary_override', {
       p_istilah: dictModalCurrentIstilah, p_kode_produk: kode, p_produk_id: null, p_included: false
     });
-    if (error) throw new Error(error.message || error.hint || 'Gagal menyembunyikan link');
+    if (error) throw new Error(error.message || error.hint || 'Produk gagal disembunyikan');
     await openDictionaryDetail(dictModalCurrentIstilah);
     loadDictionary(); // status/jumlah produk di tabel utama bisa ikut geser
   } catch (err) {
@@ -538,30 +528,10 @@ dictModalList.addEventListener('click', async (e) => {
   }
 });
 
-// Klik "Kembalikan" di bagian "Disembunyikan" — hapus override-nya sekalian
-// (bukan sekadar toggle included=true), biar balik ke keadaan alami: kalau
-// link itu emang dari histori asli, dia otomatis muncul lagi di detail tanpa
-// perlu nyimpen override apa pun.
-dictModalList.addEventListener('click', async (e) => {
-  const btn = e.target.closest('.dict-detail-kembalikan-btn');
-  if (!btn || !dictModalCurrentIstilah) return;
-  const kode = btn.dataset.kode;
-  if (!kode) return;
-  btn.disabled = true;
-  try {
-    const { error } = await S.rpc('delete_dictionary_override', { p_istilah: dictModalCurrentIstilah, p_kode_produk: kode });
-    if (error) throw new Error(error.message || error.hint || 'Gagal mengembalikan link');
-    await openDictionaryDetail(dictModalCurrentIstilah);
-    loadDictionary();
-  } catch (err) {
-    S.showToast('Gagal: ' + err.message, 'error');
-    btn.disabled = false;
-  }
-});
-
-// "Kembalikan" ada di dictModalHiddenList, bukan dictModalList — event di atas
-// gak nyampe ke situ (elemen beda). Delegasikan sekali lagi dari parent yang
-// beneran ngandung tombolnya.
+// Klik "Kembalikan" di bagian "Disembunyikan": hapus override-nya sekalian (bukan
+// sekadar toggle included=true), jadi kembali ke keadaan alami. Kalau link itu
+// memang dari histori asli, dia muncul lagi di detail tanpa menyimpan override apa pun.
+// Tombolnya hanya ada di dictModalHiddenList, jadi listener-nya dipasang di sini.
 dictModalHiddenList.addEventListener('click', async (e) => {
   const btn = e.target.closest('.dict-detail-kembalikan-btn');
   if (!btn || !dictModalCurrentIstilah) return;
@@ -570,7 +540,7 @@ dictModalHiddenList.addEventListener('click', async (e) => {
   btn.disabled = true;
   try {
     const { error } = await S.rpc('delete_dictionary_override', { p_istilah: dictModalCurrentIstilah, p_kode_produk: kode });
-    if (error) throw new Error(error.message || error.hint || 'Gagal mengembalikan link');
+    if (error) throw new Error(error.message || error.hint || 'Produk gagal dikembalikan');
     await openDictionaryDetail(dictModalCurrentIstilah);
     loadDictionary();
   } catch (err) {
@@ -592,20 +562,19 @@ dictModalAddInput.addEventListener('input', () => {
       const { data, error } = await S.rpc('search_produk_dengan_harga', { q, p_tipe: null, only_akd: false, only_kfa: false });
       if (error || !data || !data.length) {
         dictModalAddResults.style.display = 'block';
-        dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--text-muted)">Gak ketemu.</div>`;
+        dictModalAddResults.innerHTML = `<div class="dict-add-note">Tidak ada produk yang cocok.</div>`;
         return;
       }
       dictModalAddResults.style.display = 'block';
       dictModalAddResults.innerHTML = data.slice(0, 8).map(p => `
-        <div class="dict-add-result-row" data-kode="${S.escapeHtmlAttr(p.kode_produk)}" data-produk-id="${p.id || ''}"
-          style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--border)">
-          <span>${S.escapeHtmlAttr(p.kode_produk)} — ${S.escapeHtmlAttr(p.nama_produk || '')}</span>
-          <i class="ti ti-plus" style="flex-shrink:0"></i>
-        </div>
+        <button type="button" class="dict-add-result-row" data-kode="${S.escapeHtmlAttr(p.kode_produk)}" data-produk-id="${p.id || ''}">
+          <span class="dict-add-result-text"><span class="dict-add-result-kode">${S.escapeHtmlAttr(p.kode_produk)}</span><span class="dict-add-result-nama">${S.escapeHtmlAttr(p.nama_produk || '')}</span></span>
+          <i class="ti ti-plus"></i>
+        </button>
       `).join('');
     } catch (err) {
       dictModalAddResults.style.display = 'block';
-      dictModalAddResults.innerHTML = `<div style="padding:8px 10px;font-size:12px;color:var(--danger)">${S.escapeHtmlAttr(err.message)}</div>`;
+      dictModalAddResults.innerHTML = `<div class="dict-add-note error">${S.escapeHtmlAttr(err.message)}</div>`;
     }
   }, 300);
 });
@@ -615,13 +584,12 @@ dictModalAddResults.addEventListener('click', async (e) => {
   if (!row || !dictModalCurrentIstilah) return;
   const kode = row.dataset.kode;
   const produkId = row.dataset.produkId ? parseInt(row.dataset.produkId, 10) : null;
-  row.style.pointerEvents = 'none';
-  row.style.opacity = '.5';
+  row.disabled = true;
   try {
     const { error } = await S.rpc('upsert_dictionary_override', {
       p_istilah: dictModalCurrentIstilah, p_kode_produk: kode, p_produk_id: produkId, p_included: true
     });
-    if (error) throw new Error(error.message || error.hint || 'Gagal menambahkan link');
+    if (error) throw new Error(error.message || error.hint || 'Produk gagal dihubungkan');
     dictModalAddInput.value = '';
     dictModalAddResults.style.display = 'none';
     dictModalAddResults.innerHTML = '';
@@ -629,8 +597,7 @@ dictModalAddResults.addEventListener('click', async (e) => {
     loadDictionary();
   } catch (err) {
     S.showToast('Gagal: ' + err.message, 'error');
-    row.style.pointerEvents = '';
-    row.style.opacity = '';
+    row.disabled = false;
   }
 });
 
@@ -652,7 +619,7 @@ dictNewInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeD
 dictNewOk.addEventListener('click', () => {
   const istilah = dictNewInput.value.trim();
   if (!istilah) {
-    dictNewError.textContent = 'Istilah gak boleh kosong.';
+    dictNewError.textContent = 'Istilah belum diisi.';
     dictNewError.style.display = 'block';
     return;
   }

@@ -159,7 +159,7 @@ export function installConverterBulk(S) {
 
     if (missing) {
       // RPC belum dipasang -> jalur lama (kode_produk saja), supaya Converter tetap hidup.
-      S.showToast('Fungsi resolve_kode_bulk belum dipasang di database — pakai mode lama (lambat, kode produk saja).', 'error');
+      S.showToast('Fungsi resolve_kode_bulk belum dipasang di database. Converter memakai mode lama: lebih lambat dan hanya membaca kode produk.', 'error');
       if (typeof S.matchOneKode !== 'function') throw new Error('resolve_kode_bulk belum dipasang');
       const rows = [];
       for (let i = 0; i < parsed.length; i++) {
@@ -186,19 +186,19 @@ export function installConverterBulk(S) {
     if (!S.modeSwastaOutput) flags.push(S.cleanLinkV6(c.link_v6) ? 'ada link' : '<span class="conv-alt-warn">tanpa link</span>');
     if (c.no_akd) flags.push('AKD');
     if (c.is_active === false) flags.push('<span class="conv-alt-warn">nonaktif</span>');
-    return flags.join(' · ');
+    return flags.join(', ');
   }
   // Satu daftar kandidat, dipakai untuk 2 kasus: baris ambigu (belum ada pilihan) dan
   // baris yang sudah auto-pick tapi punya varian lain.
   S.convAltListHtml = function convAltListHtml(i, r) {
     if (!r.alternatives || !r.alternatives.length) return '';
-    const label = r.produk ? 'Ganti ke varian lain:' : 'Pilih salah satu:';
+    const label = r.produk ? 'Ganti ke varian lain' : 'Pilih salah satu';
     const konflikNote = r.konflik
-      ? '<div class="conv-alt-note">⚠ Deskripsinya beda antar kode ini — cek dulu sebelum memilih.</div>' : '';
+      ? '<div class="conv-alt-note"><i class="ti ti-alert-triangle"></i> Deskripsi tiap kode berbeda. Cek dulu sebelum memilih.</div>' : '';
     const items = r.alternatives.map(c => `<div class="conv-alt-row">
       <div class="conv-alt-info">
         <span class="conv-alt-nama">${esc(c.nama_produk)}</span>
-        <span class="conv-alt-meta"><span class="conv-manual-row-kode">${esc(c.kode_produk)}</span> · ${altFlags(c)}</span>
+        <span class="conv-alt-meta"><span class="conv-manual-row-kode">${esc(c.kode_produk)}</span><span class="conv-alt-flags">${altFlags(c)}</span></span>
       </div>
       <button type="button" class="conv-manual-pick conv-alt-pick" data-idx="${i}" data-kode="${esc(c.kode_produk)}">${r.produk ? 'Pakai' : 'Pilih'}</button>
     </div>`).join('');
@@ -307,13 +307,13 @@ export function installConverterBulk(S) {
   const presetEl = document.getElementById('conv-preset');
   if (btnCopyTabel) {
     btnCopyTabel.addEventListener('click', async () => {
-      if (!S.convRows || !S.convRows.length) { S.showToast('Belum ada hasil untuk disalin', 'error'); return; }
+      if (!S.convRows || !S.convRows.length) { S.showToast('Belum ada hasil untuk disalin. Cocokkan kode dulu.', 'error'); return; }
       const { html, plain, nBaris, nTidak } = S.buildConvTable(S.convRows, presetEl ? presetEl.value : 'kdhl');
       const ok = await S.writeRichClipboard(html, plain);
-      if (!ok) { S.showToast('Gagal copy ke clipboard, coba lagi', 'error'); return; }
-      S.showToast(`Tersalin ${nBaris} baris (urutan sama dengan input)` + (nTidak ? ` — ${nTidak} baris belum terselesaikan, ditandai merah` : '') + ' ✓');
+      if (!ok) { S.showToast('Gagal menyalin ke clipboard. Coba lagi.', 'error'); return; }
+      S.showToast(`Tersalin ${nBaris} baris, urutannya sama dengan input` + (nTidak ? `. ${nTidak} baris belum terselesaikan dan ditandai merah.` : '.'));
       const original = btnCopyTabel.innerHTML;
-      btnCopyTabel.innerHTML = '<i class="ti ti-check"></i> Tersalin!';
+      btnCopyTabel.innerHTML = '<i class="ti ti-check"></i> Tersalin';
       setTimeout(() => { btnCopyTabel.innerHTML = original; }, 1800);
     });
   }

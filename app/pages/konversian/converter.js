@@ -1,7 +1,7 @@
-// CATATAN 2026-10-27: file ini dulu bernama search.js, padahal isinya BUKAN mesin pencarian — cuma
-// pintu Cari Cepat vs Konversi (switchDoor), pencarian exact-by-kode (findProdukByKodeExact/matchOneKode,
-// dipakai Converter + Cari SET Mendekati) dan proses Converter. Mesin pencarian produk yang sebenarnya
-// sekarang ada di search.js (installSearch). Fungsi di sini: installConverter(S).
+// CATATAN 2026-10-27: file ini dulu bernama search.js, tapi isinya bukan mesin pencarian: pintu
+// Cari Cepat vs Konversi (switchDoor), pencarian exact-by-kode (findProdukByKodeExact/matchOneKode,
+// dipakai Converter dan Cari SET Mendekati), dan proses Converter. Mesin pencarian produk ada di
+// search.js (installSearch). Fungsi di sini: installConverter(S).
 // Modul hasil pecahan dari konversian/index.js. State lintas-file diakses lewat objek
 // 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
 // lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
@@ -22,17 +22,8 @@ function switchDoor(door) {
   const appRootEl = document.getElementById('app-root');
   appRootEl.classList.toggle('door-cari', door === 'cari');
   appRootEl.classList.toggle('door-konversi', door === 'konversi');
-  // door-btn-cari/door-btn-konversi (the manual toggle pair) were removed
-  // from the toolbar in the shell-integration pass -- this function is
-  // still the right place for door state (auto-escalation from actions
-  // like openSesi()/first clipboard add still calls switchDoor('konversi')
-  // below), it just no longer has a visible button pair to sync .active
-  // onto. Guarded rather than deleted outright in case a manual toggle
-  // ever comes back.
-  const btnCari = document.getElementById('door-btn-cari');
-  const btnKonversi = document.getElementById('door-btn-konversi');
-  if (btnCari) btnCari.classList.toggle('active', door === 'cari');
-  if (btnKonversi) btnKonversi.classList.toggle('active', door === 'konversi');
+  // Tombol pintu manual (door-btn-*) sudah dihapus dari toolbar. Pintu sekarang cuma
+  // berpindah lewat switchDoor() dari openSesi() dan dari produk pertama di clipboard.
   if (door === 'cari') {
     S.switchSubTab('cari'); // pintu ini cuma nyisain 1 opsi, pastiin itu yang aktif
     if (typeof S.switchTab === 'function') S.switchTab('search'); // sinkron sama mekanisme tab mobile yang udah ada
@@ -44,9 +35,6 @@ function switchDoor(door) {
   }
 }
 S.switchDoor = switchDoor;
-// door-btn-cari/door-btn-konversi click bindings removed along with the
-// buttons themselves (shell-integration pass) -- switchDoor() above is
-// still called from every other spot in this file exactly as before.
 
 // ══════════════════════════════════════════
 // PENCARIAN EXACT-BY-KODE (DISATUKAN): sebelumnya logika ini ada 2 salinan
@@ -153,10 +141,10 @@ async function processConverter() {
     // converter-bulk.js: 1 RPC per chunk (bukan per baris), kunci kode_produk/kode_asli,
     // pemilih otomatis buat kode_asli dobel. Fallback ke jalur lama kalau RPC belum ada.
     rows = await S.resolveConvRows(parsed, (done, total) => {
-      S.convStatus.textContent = `Mencocokkan ${done} / ${total}…`;
+      S.convStatus.textContent = `Mencocokkan ${done} dari ${total} baris…`;
     });
   } catch (e) {
-    S.convStatus.textContent = 'Gagal memproses: ' + (e.message || e);
+    S.convStatus.textContent = 'Gagal memproses daftar kode: ' + (e.message || e);
     S.btnConvProses.disabled = false;
     return;
   }
@@ -169,12 +157,12 @@ S.btnConvRetryErr.addEventListener('click', async () => {
   const errIdxs = S.convRows.map((r, i) => r.status === 'error' ? i : -1).filter(i => i >= 0);
   if (!errIdxs.length) return;
   S.btnConvRetryErr.disabled = true;
-  S.convStatus.textContent = `Mengulang ${errIdxs.length} baris…`;
+  S.convStatus.textContent = `Mengulangi ${errIdxs.length} baris…`;
   try {
     const retried = await S.resolveConvRows(errIdxs.map(i => ({ kode: S.convRows[i].kode, nama_input: S.convRows[i].nama_input })));
     errIdxs.forEach((i, n) => { S.convRows[i] = retried[n]; });
   } catch (e) {
-    S.convStatus.textContent = 'Gagal mengulang: ' + (e.message || e);
+    S.convStatus.textContent = 'Gagal mengulangi baris yang error: ' + (e.message || e);
     S.btnConvRetryErr.disabled = false;
     return;
   }
@@ -239,9 +227,9 @@ S.btnConvAddAll.addEventListener('click', async () => {
     // RS: kalau ini bakal jadi sesi PERTAMA, konfirmasi dulu.
     if (!S.currentSesiId) {
       const ok = await S.showConfirmModal({
-        title: 'Mulai Konversi Baru?',
-        text: 'Produk-produk terpilih bakal masuk ke sesi konversi baru.',
-        okText: 'Ya, Mulai Konversi'
+        title: 'Mulai konversi baru?',
+        text: 'Produk yang dicentang akan masuk ke sesi konversi baru.',
+        okText: 'Mulai konversi'
       });
       if (!ok) { S.btnConvAddAll.disabled = false; return; }
     }
@@ -282,7 +270,7 @@ S.btnConvAddAll.addEventListener('click', async () => {
       added++;
     }
     S.updateClipboard();
-    S.showToast(`${added} produk ditambahkan ke clipboard` + (skipped ? `, ${skipped} sudah ada di clipboard` : ''), added > 0 ? 'success' : 'error');
+    S.showToast(`${added} produk ditambahkan ke Clipboard` + (skipped ? `, ${skipped} sudah ada di Clipboard` : ''), added > 0 ? 'success' : 'error');
   } finally {
     S.btnConvAddAll.disabled = false;
   }
@@ -309,7 +297,7 @@ if (S.btnConvCopyGambar) {
       .map(chk => S.convRows[parseInt(chk.dataset.idx, 10)])
       .filter(row => row && row.produk);
 
-    if (!rows.length) { S.showToast('Belum ada baris tercentang yang cocok ke katalog', 'error'); return; }
+    if (!rows.length) { S.showToast('Centang minimal satu baris yang cocok ke katalog.', 'error'); return; }
 
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const clean = (s) => String(s ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ').trim();
@@ -327,7 +315,7 @@ if (S.btnConvCopyGambar) {
     try {
       urlMap = await S.resolveThumbUrls(nonSetProduk);
     } catch (e) {
-      S.showToast('Gagal menyiapkan URL gambar: ' + (e.message || e), 'error');
+      S.showToast('Gagal menyiapkan gambar: ' + (e.message || e), 'error');
       return;
     }
 
@@ -362,13 +350,13 @@ if (S.btnConvCopyGambar) {
     }).join('\n');
 
     const ok = await S.writeRichClipboard(html, plain);
-    if (!ok) { S.showToast('Gagal copy ke clipboard, coba lagi', 'error'); return; }
+    if (!ok) { S.showToast('Gagal menyalin ke clipboard. Coba lagi.', 'error'); return; }
 
     const jmlSet = rows.filter(row => row.produk.tipe && row.produk.tipe.toLowerCase() === 'set').length;
-    const catatanSet = jmlSet ? ` (${jmlSet} SET tanpa gambar)` : '';
-    S.showToast(`Tersalin ${rows.length} baris + gambar ✓${catatanSet} — paste biasa ke Excel; di Google Sheet pakai Ctrl+Shift+V`);
+    const catatanSet = jmlSet ? `, ${jmlSet} SET tanpa gambar` : '';
+    S.showToast(`Tersalin ${rows.length} baris dengan gambar${catatanSet}. Excel: tempel biasa. Google Sheets: Ctrl+Shift+V.`);
     const original = S.btnConvCopyGambar.innerHTML;
-    S.btnConvCopyGambar.innerHTML = '<i class="ti ti-check"></i> Tersalin!';
+    S.btnConvCopyGambar.innerHTML = '<i class="ti ti-check"></i> Tersalin';
     setTimeout(() => { S.btnConvCopyGambar.innerHTML = original; }, 1800);
   });
 }

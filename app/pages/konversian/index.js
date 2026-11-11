@@ -5061,17 +5061,18 @@ function parseConverterLine(line) {
 }
 S.parseConverterLine = parseConverterLine;
 
-// Badge/warna/sub-caption per status — satu titik dipakai baris compact
-// (produk ketemu) maupun baris accordion (produk gak ketemu), biar teksnya
-// gak keulang nulis beda-beda di dua tempat.
+// Label dan nada per status. Satu titik dipakai baris compact (produk ketemu) dan
+// baris accordion (produk tidak ketemu), supaya teksnya tidak ditulis ulang di dua
+// tempat. Nada (ok/warn/bad) jadi titik warna di CSS (.conv-dot); artinya selalu
+// dibawa juga oleh label teksnya, jadi tidak bergantung pada warna saja.
 function convStatusMeta(r) {
-  if (r.status === 'exact') return { badge: '✅ Cocok', color: 'var(--success)' };
-  if (r.status === 'manual_matched') return { badge: '✅ Dipilih manual', color: 'var(--success)' };
-  if (r.status === 'code_found_name_diff') return { badge: '⚠️ Kode ketemu, nama beda', color: 'var(--warning)' };
-  if (r.status === 'ambiguous') return { badge: `🟠 ${r.alternatives.length} kode produk untuk kode ini — pilih satu`, color: 'var(--warning)' };
-  if (r.status === 'error') return { badge: '🔄 Error / timeout — belum sempat dicek', color: 'var(--warning)' };
-  if (r.notFirm) return { badge: '⛔ Belum firm (link V6 ada catatan) — tidak dipakai', color: 'var(--danger)' };
-  return { badge: '❌ Tidak ditemukan', color: 'var(--danger)' };
+  if (r.status === 'exact') return { label: 'Cocok', tone: 'ok' };
+  if (r.status === 'manual_matched') return { label: 'Dipilih manual', tone: 'ok' };
+  if (r.status === 'code_found_name_diff') return { label: 'Kode ada, nama berbeda', tone: 'warn' };
+  if (r.status === 'ambiguous') return { label: `${r.alternatives.length} kode produk untuk kode ini, pilih satu`, tone: 'warn' };
+  if (r.status === 'error') return { label: 'Belum dicek (error atau timeout)', tone: 'warn' };
+  if (r.notFirm) return { label: 'Belum firm (link V6 ada catatan), tidak dipakai', tone: 'bad' };
+  return { label: 'Tidak ditemukan', tone: 'bad' };
 }
 
 // Hasil pencarian manual buat baris ke-i, dirender di dalam accordion.
@@ -5080,7 +5081,7 @@ function convManualResultsHtml(i) {
   if (!st) return '';
   if (st.loading) return `<div class="conv-manual-status">Mencari…</div>`;
   if (st.error) return `<div class="conv-manual-status">Gagal mencari: ${S.escapeHtmlAttr(st.error)}</div>`;
-  if (!st.items.length) return `<div class="conv-manual-status">Tidak ada hasil.</div>`;
+  if (!st.items.length) return `<div class="conv-manual-status">Tidak ada hasil. Coba kata kunci lain atau sebagian kode.</div>`;
   return st.items.map(p => `<div class="conv-manual-row">
     <div class="conv-manual-row-info">
       <span class="conv-manual-row-nama">${S.escapeHtmlAttr(p.nama_produk)}</span>
@@ -5091,41 +5092,38 @@ function convManualResultsHtml(i) {
 }
 
 // Satu baris hasil Converter. Kalau produk-nya ketemu (exact/nama beda/manual),
-// tampil compact kayak semula. Kalau enggak (not_found/error), jadi accordion
-// (.kb-item, reuse style dari Kebutuhan RS) yang bisa dibuka buat search manual.
+// tampil compact. Kalau tidak (not_found/error), jadi accordion (.kb-item, reuse
+// style dari Kebutuhan RS) yang bisa dibuka buat search manual.
 function convRowHtml(r, i) {
   const meta = convStatusMeta(r);
   const nama = r.produk ? r.produk.nama_produk : (r.nama_input || '(tanpa nama)');
-  // Badge stok cuma relevan buat baris yang udah cocok ke katalog (r.produk
-  // keisi) — datanya sendiri udah ADA sejak finishConvBatch() manggil
-  // enrichResultsWithStok() abis batch selesai diproses (lihat converter.js),
-  // cuma belum ditampilin di sini. stokBadgeHtml() sama persis yang dipakai
-  // Cari Cepat (lihat clipboard.js), biar Converter bisa dipakai serbaguna:
-  // sekalian compile-gambar (Copy + Gambar) MAUPUN cek stok bulk dari satu
-  // paste kode, tanpa perlu pindah ke tab Cari Cepat satu-satu.
+  // Badge stok cuma relevan buat baris yang sudah cocok ke katalog. Datanya sudah ada
+  // sejak finishConvBatch() memanggil enrichResultsWithStok() (converter.js);
+  // stokBadgeHtml() sama dengan yang dipakai Cari Cepat (clipboard.js), jadi paste
+  // daftar kode di sini sekaligus jadi cek stok bulk.
   const isSet = r.produk && r.produk.tipe && r.produk.tipe.toUpperCase() === 'SET';
   const stokBadge = r.produk ? S.stokBadgeHtml(r.produk, isSet) : '';
   const metaLine = `<div class="clip-item-meta">
     <span class="clip-item-code">${S.escapeHtmlAttr(r.kode)}</span>
-    ${S.isVerified(r.produk) ? '<i class="ti ti-rosette-discount-check-filled" style="font-size:13px;color:#1d9bf0" title="Verified Product — tayang di INAPROC"></i>' : ''}
-    <span style="color:${meta.color};font-size:11px">${meta.badge}</span>
+    ${S.isVerified(r.produk) ? '<i class="ti ti-rosette-discount-check-filled conv-verified" title="Verified Product, tayang di INAPROC"></i>' : ''}
+    <span class="conv-state" data-tone="${meta.tone}"><span class="conv-dot" aria-hidden="true"></span>${S.escapeHtmlAttr(meta.label)}</span>
     ${stokBadge}
   </div>`;
 
   if (r.produk) {
     const sub = r.status === 'code_found_name_diff'
-      ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Input: "${S.escapeHtmlAttr(r.nama_input)}" · Katalog: "${S.escapeHtmlAttr(r.produk.nama_produk)}"</div>`
+      ? `<dl class="conv-namediff"><div><dt>Input</dt><dd>${S.escapeHtmlAttr(r.nama_input)}</dd></div><div><dt>Katalog</dt><dd>${S.escapeHtmlAttr(r.produk.nama_produk)}</dd></div></dl>`
       : '';
     // converter-bulk.js: kode_asli yang dobel di produk -> auto-pick + chip untuk menukar varian.
     const nAlt = (r.alternatives || []).length;
     const altOpen = S.convAltOpen && S.convAltOpen.has(i);
     const altChip = nAlt
-      ? `<button type="button" class="conv-alt-toggle" data-idx="${i}"><i class="ti ti-arrows-exchange" style="font-size:12px"></i> ${nAlt} varian lain${r.konflik ? ' · deskripsi beda' : ''}<i class="ti ti-chevron-${altOpen ? 'up' : 'down'}" style="font-size:11px"></i></button>`
+      ? `<button type="button" class="conv-alt-toggle" data-idx="${i}" aria-expanded="${altOpen ? 'true' : 'false'}"><i class="ti ti-arrows-exchange"></i> ${nAlt} varian lain${r.konflik ? ', deskripsi berbeda' : ''}<i class="ti ti-chevron-${altOpen ? 'up' : 'down'}"></i></button>`
       : '';
     const altList = (nAlt && altOpen && S.convAltListHtml) ? S.convAltListHtml(i, r) : '';
-    return `<div class="clip-item" style="align-items:flex-start" data-idx="${i}">
-      <input type="checkbox" class="conv-check" data-idx="${i}" checked style="margin-top:4px"/>
-      <div class="clip-item-info" style="margin-left:8px">
+    return `<div class="clip-item conv-row" data-idx="${i}">
+      <input type="checkbox" class="conv-check" data-idx="${i}" checked aria-label="Pilih ${S.escapeHtmlAttr(nama)}"/>
+      <div class="clip-item-info">
         <div class="clip-item-name">${S.escapeHtmlAttr(nama)}</div>
         ${metaLine}
         ${sub}
@@ -5139,7 +5137,7 @@ function convRowHtml(r, i) {
   const cls = 'kb-item tidak-terpenuhi' + (isExpanded ? ' expanded' : ' collapsed');
   const errSub = r.status === 'error' ? `<div class="kb-item-sub">${S.escapeHtmlAttr(r.errMsg || '')}</div>` : '';
   const headerHtml = `<div class="kb-item-header" data-action="conv-toggle" data-idx="${i}">
-    <input type="checkbox" class="conv-check" data-idx="${i}" disabled style="margin-top:2px"/>
+    <input type="checkbox" class="conv-check" data-idx="${i}" disabled aria-label="Belum bisa dipilih: produk belum cocok"/>
     <div class="kb-item-header-text">
       <div class="kb-item-text">${S.escapeHtmlAttr(nama)}</div>
       ${metaLine}
@@ -5150,7 +5148,7 @@ function convRowHtml(r, i) {
     ${errSub}
     ${(r.status === 'ambiguous' && S.convAltListHtml) ? S.convAltListHtml(i, r) : ''}
     <div class="conv-manual-search">
-      <input type="text" class="conv-manual-input" data-idx="${i}" placeholder="Cari produk yang benar di katalog…" value="${S.escapeHtmlAttr(S.convManualQuery[i] || '')}" autocomplete="off"/>
+      <input type="text" class="conv-manual-input" data-idx="${i}" placeholder="Cari produk yang benar di katalog" aria-label="Cari produk yang benar di katalog" value="${S.escapeHtmlAttr(S.convManualQuery[i] || '')}" autocomplete="off"/>
       <div class="conv-manual-results" data-idx="${i}">${convManualResultsHtml(i)}</div>
     </div>
   </div>` : '';
@@ -5181,36 +5179,38 @@ function patchConvRow(i, opts = {}) {
 }
 S.patchConvRow = patchConvRow;
 
-// Ringkasan status (teks "Selesai — N cocok…" + tombol Tambah/Proses Ulang)
-// — dipisah dari finishConvBatch() biar bisa dipanggil ulang abis user
-// nyelesein satu baris lewat search manual, tanpa harus re-match semua baris.
+// Ringkasan hasil (hitungan per status + tombol Tambah/Ulangi), dipisah dari
+// finishConvBatch() supaya bisa dipanggil ulang setelah user menyelesaikan satu
+// baris lewat search manual, tanpa mencocokkan ulang semua baris. Hitungan
+// dirender sebagai daftar bertitik nada (bukan satu kalimat panjang); hanya status
+// yang jumlahnya > 0 yang tampil.
 function updateConvSummary() {
   const rows = S.convRows;
   const foundProduk = rows.filter(r => r.produk).map(r => r.produk);
-  const nExact = rows.filter(r => r.status === 'exact').length;
-  const nDiff = rows.filter(r => r.status === 'code_found_name_diff').length;
-  const nManual = rows.filter(r => r.status === 'manual_matched').length;
-  const nErr = rows.filter(r => r.status === 'error').length;
-  const nNotFound = rows.filter(r => r.status === 'not_found').length;
-  const nAmbig = rows.filter(r => r.status === 'ambiguous').length;
-  const nVarian = rows.filter(r => r.produk && (r.alternatives || []).length).length;
-  // Ringkasan stok, biar "paste daftar kode → langsung kelihatan mana yang
-  // Ready/Indent" (cek stok bulk) gak perlu scroll baca badge satu-satu.
-  // Cuma ngitung baris yang udah cocok (foundProduk) — baris not_found/error
-  // gak punya data stok buat dihitung.
+  const count = (fn) => rows.filter(fn).length;
+  const nErr = count(r => r.status === 'error');
+  const tally = [
+    [count(r => r.status === 'exact'), 'cocok', 'ok'],
+    [count(r => r.status === 'manual_matched'), 'dipilih manual', 'ok'],
+    [count(r => r.status === 'code_found_name_diff'), 'nama berbeda', 'warn'],
+    [count(r => r.status === 'ambiguous'), 'perlu dipilih (kode produk ganda)', 'warn'],
+    [count(r => r.produk && (r.alternatives || []).length), 'punya varian lain', 'warn'],
+    [nErr, 'error atau timeout', 'warn'],
+    [count(r => r.status === 'not_found'), 'tidak ditemukan', 'bad']
+  ].filter(([n]) => n > 0)
+   .map(([n, label, tone]) => `<span class="conv-tally-item" data-tone="${tone}"><span class="conv-dot" aria-hidden="true"></span><b>${n}</b> ${label}</span>`)
+   .join('');
+  // Ringkasan stok: paste daftar kode lalu langsung kelihatan mana yang Ready/Indent.
+  // Cuma menghitung baris yang sudah cocok; baris not_found/error tidak punya data stok.
   const nReady = foundProduk.filter(p => p.stok_status === 'READY').length;
   const nIndent = foundProduk.filter(p => p.stok_status === 'INDENT').length;
+  const nTanpaStok = foundProduk.length - nReady - nIndent;
   const stokSummary = foundProduk.length
-    ? ` · Stok: ${nReady} ready, ${nIndent} indent${foundProduk.length - nReady - nIndent ? `, ${foundProduk.length - nReady - nIndent} belum ada data` : ''}`
+    ? `<span class="conv-tally-stok">Stok: ${nReady} ready, ${nIndent} indent${nTanpaStok ? `, ${nTanpaStok} belum ada data` : ''}</span>`
     : '';
-  convStatus.textContent = `Selesai — ${nExact} cocok penuh, ${nDiff} kode ketemu (nama beda)`
-    + (nManual ? `, ${nManual} dipilih manual` : '')
-    + (nAmbig ? `, ${nAmbig} perlu dipilih (kode produk ganda)` : '')
-    + (nVarian ? `, ${nVarian} punya varian lain` : '')
-    + `, ${nNotFound} tidak ditemukan`
-    + (nErr ? `, ${nErr} error/timeout (klik "Proses Ulang yang Error").` : '.')
-    + stokSummary;
-  convActions.style.display = rows.length ? 'block' : 'none'; // Copy Tabel berguna juga kalau sebagian/semua gak ketemu (baris tetap sejajar input)
+  const retryHint = nErr ? `<span class="conv-tally-stok">Klik "Ulangi yang error" untuk mencoba lagi baris yang gagal dicek.</span>` : '';
+  convStatus.innerHTML = `<div class="conv-tally">${tally}${stokSummary}${retryHint}</div>`;
+  convActions.style.display = rows.length ? 'block' : 'none'; // Copy Tabel berguna juga kalau sebagian/semua tidak ketemu (baris tetap sejajar input)
   btnConvRetryErr.style.display = nErr ? 'inline-flex' : 'none';
 }
 S.updateConvSummary = updateConvSummary;
