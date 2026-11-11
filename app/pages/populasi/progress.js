@@ -454,7 +454,7 @@ export function createProgress(ctx) {
         let prev = null;
         urut.forEach((r, i) => {
           const e = ent(r);
-          const tgl = D(r.tgl_kirim) || D(r.deadline) || r.deadline || '';
+          const tgl = D(r.deadline) || D(r.tgl_kirim) || r.deadline || '';
           ws.addRow([e !== prev ? e : ''].concat([i + 1], adaDist ? [r.distributor || ''] : [], [r.kode_rmp, r.customer, epOf(r), tgl, String(r.status_teks || '').trim()]));
           prev = e;
         });
