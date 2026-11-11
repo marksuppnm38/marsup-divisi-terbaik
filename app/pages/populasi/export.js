@@ -699,6 +699,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   if (st.mikro) d0.kv('Hanya mikrosurgery', 'Ya');
   if (st.produk.trim()) d0.kv('Nama produk mengandung', st.produk.trim());
   if (st.produk.trim() && !sph) d0.kv('Isi set ikut dihitung', st.isiSet ? 'Ya' : 'Tidak');
+  if (st.pic) d0.kv('PIC order', st.pic);
   if (st.rs.trim()) d0.kv('Rumah sakit', st.rs.trim());
   d0.kv('Status pesanan', statusText.charAt(0).toUpperCase() + statusText.slice(1));
   d0.kv('Periode', h.periodeText(st));

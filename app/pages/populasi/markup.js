@@ -58,6 +58,11 @@ export const POPULASI_MARKUP = `
         <select class="filter-select" id="ps-provinsi"><option value="">Semua provinsi</option></select>
       </label>
 
+      <label class="ps-field" id="ps-pic-wrap" hidden>
+        <span class="ps-lbl">PIC order</span>
+        <select class="filter-select" id="ps-pic"><option value="">Semua PIC order</option></select>
+      </label>
+
       <div class="ps-field">
         <span class="ps-lbl" id="ps-lbl-status">Status pesanan</span>
         <div class="ps-seg" role="group" aria-labelledby="ps-lbl-status">
@@ -92,6 +97,13 @@ export const POPULASI_MARKUP = `
         <details class="ps-more-filters">
           <summary>Periode dan cakupan data</summary>
           <div class="ps-grid ps-more-body">
+            <div class="ps-field ps-span">
+              <span class="ps-lbl" id="ps-lbl-periode">Pilih cepat</span>
+              <div class="ps-seg" role="group" aria-labelledby="ps-lbl-periode">
+                <button type="button" class="filter-btn" data-action="ps-periode" data-v="bulan-ini">Bulan ini</button>
+                <button type="button" class="filter-btn" data-action="ps-periode" data-v="bulan-lalu">Bulan lalu</button>
+              </div>
+            </div>
             <label class="ps-field">
               <span class="ps-lbl">Dari tanggal</span>
               <input class="search-mini" type="date" id="ps-dari">
