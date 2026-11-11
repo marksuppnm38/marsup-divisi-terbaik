@@ -3,16 +3,14 @@
 // belum firm / bukan populasi. Satu baris per (RS, No. RMP). Tujuan utama: rekap order tiap sales pada periode tertentu
 // (default bulan ini), lalu daftar RMP di bawahnya.
 //
-// DATA: RPC get_progress_order (populasi_progress_order.sql) -> { ringkasan, rows, opsi_provinsi, opsi_pic, data_per }.
-//   Rekap per sales = satu panggilan tambahan per PIC (p_pic_order), memakai filter yang sama, hanya 'ringkasan' yang dipakai.
-//   Dijalankan di belakang (3 sekaligus) setelah daftar tampil, jadi daftar tidak menunggu rekap.
+// DATA: RPC get_progress_order (populasi_progress_order.sql + progress_order_hitung_set.sql) ->
+//   { ringkasan, rows, rekap_sales, rekap_tanpa_pic, opsi_provinsi, opsi_pic, data_per }. SATU panggilan untuk semuanya.
+//   Jumlah set per RMP dihitung server dengan logika Populasi (isi set), bukan qty mentah komponen.
 //
 // Modul ini berdiri sendiri: tidak menyentuh state/tabel Populasi. index.js hanya menyediakan util (ctx) dan
 // meneruskan klik/ubah/ketik untuk id/aksi berawalan pg-. Semua nilai dari DB lewat esc() (data berasal dari sheet).
 
 const PAGE_STEP = 100;      // baris RMP yang digambar per tahap
-const MAX_SALES = 24;       // batas PIC yang direkap
-const POOL = 3;             // panggilan rekap yang berjalan bersamaan
 
 const SORTS = {
   update: 'Terbaru diperbarui',
@@ -39,9 +37,7 @@ export function createProgress(ctx) {
   let data = null;          // respons terakhir
   let rows = [];            // data.rows + field turunan
   let view = [];            // rows menurut urutan tampil
-  let recap = null;         // null = memuat; array = hasil rekap per sales
   let reqId = 0;
-  let recapReq = 0;
   let timer = null;
   let alive = true;
   let started = false;
@@ -94,7 +90,6 @@ export function createProgress(ctx) {
   // ── muat data ─────────────────────────────────────────────────────────────
   async function load() {
     const my = ++reqId;
-    recapReq++;
     clearError();
     setBusy(true);
     try {
@@ -106,9 +101,7 @@ export function createProgress(ctx) {
         return Object.assign({}, r, { set, pcs, unit, total: set + pcs + unit, items: Array.isArray(r.items) ? r.items : [] });
       });
       st.shown = PAGE_STEP;
-      recap = null;
       render();
-      loadRecap();
     } catch (e) {
       if (!alive || my !== reqId || String(e.message).startsWith('unauthorized')) return;
       const missing = e.code === 'PGRST202' || e.status === 404;
@@ -125,35 +118,6 @@ export function createProgress(ctx) {
     } finally {
       if (alive && my === reqId) setBusy(false);
     }
-  }
-
-  // Rekap per sales: satu panggilan per PIC, hanya ringkasannya yang dipakai. Berjalan di belakang.
-  async function loadRecap() {
-    const rid = recapReq;
-    if (st.pic) { recap = null; renderRecap(); return; }
-    const opsi = (data && Array.isArray(data.opsi_pic) ? data.opsi_pic : []).slice(0, MAX_SALES);
-    if (!opsi.length) { recap = []; renderRecap(); return; }
-    recap = null;
-    renderRecap();
-    const base = baseParams();
-    const out = new Array(opsi.length);
-    let next = 0;
-    async function worker() {
-      while (next < opsi.length) {
-        const i = next++;
-        try {
-          const r = await rpc('get_progress_order', Object.assign({}, base, { p_pic_order: opsi[i].pic }));
-          out[i] = { pic: opsi[i].pic, s: (r && r.ringkasan) || {} };
-        } catch (e) {
-          out[i] = { pic: opsi[i].pic, err: true };
-        }
-        if (!alive || rid !== recapReq) return;
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(POOL, opsi.length) }, worker));
-    if (!alive || rid !== recapReq) return;
-    recap = out.filter(Boolean);
-    renderRecap();
   }
 
   // ── urutan ────────────────────────────────────────────────────────────────
@@ -237,15 +201,14 @@ export function createProgress(ctx) {
     if (cp) cp.disabled = !rows.length;
   }
 
-  // RMP tanpa PIC order dihitung di sisi klien dari daftar yang sudah ada (server hanya merekap per nama PIC).
-  function tanpaPicRow() {
-    const t = rows.filter((r) => !String(r.pic_order || '').trim());
-    if (!t.length) return null;
-    return {
-      pic: '', rmp: t.length, rs: new Set(t.map((r) => r.customer)).size,
-      set: t.reduce((a, r) => a + r.set, 0), pcs: t.reduce((a, r) => a + r.pcs, 0), unit: t.reduce((a, r) => a + r.unit, 0),
-      item: t.reduce((a, r) => a + num(r.jumlah_item), 0),
-    };
+  // Rekap dari server (rekap_sales + rekap_tanpa_pic). null = SQL belum diperbarui (progress_order_hitung_set.sql).
+  const toRec = (pic, x) => ({ pic, rmp: num(x.jumlah_rmp), rs: num(x.jumlah_rs), set: num(x.set_total), pcs: num(x.pcs_total), unit: num(x.unit_total), item: num(x.jumlah_item) });
+  function recapList() {
+    if (!data || !Array.isArray(data.rekap_sales)) return null;
+    const l = data.rekap_sales.map((x) => toRec(x.pic, x)).filter((x) => x.rmp > 0);
+    const t = data.rekap_tanpa_pic;
+    if (t && num(t.jumlah_rmp) > 0) l.push(toRec('', t));
+    return l;
   }
 
   function renderRecap() {
@@ -256,21 +219,10 @@ export function createProgress(ctx) {
       el.innerHTML = `<div class="ps-review-bar"><span class="ps-review-msg">Menampilkan sales <b>${esc(st.pic)}</b> saja.</span><button type="button" class="btn btn-ghost" data-action="pg-pic" data-pic="">Lihat semua sales</button></div>`;
       return;
     }
-    if (!data) { el.hidden = true; return; }
-    const opsi = Array.isArray(data.opsi_pic) ? data.opsi_pic : [];
-    const tanpa = tanpaPicRow();
-    if (!opsi.length && !tanpa) { el.hidden = true; return; }
+    const list = recapList();
+    if (!list || !list.length) { el.hidden = true; return; }
     el.hidden = false;
     const head = '<div class="pg-sec-h"><span class="table-title">Rekap per sales</span><span class="ps-muted pg-sec-note">klik baris untuk melihat RMP sales itu</span></div>';
-    if (recap === null) {
-      el.innerHTML = head + '<div class="ps-empty pg-recap-load" role="status">Menghitung rekap per sales…</div>';
-      return;
-    }
-    const list = recap.filter((x) => !x.err).map((x) => ({
-      pic: x.pic, rmp: num(x.s.jumlah_rmp), rs: num(x.s.jumlah_rs), set: num(x.s.set_total), pcs: num(x.s.pcs_total), unit: num(x.s.unit_total), item: num(x.s.jumlah_item),
-    })).filter((x) => x.rmp > 0).sort((a, b) => b.rmp - a.rmp || a.pic.localeCompare(b.pic, 'id'));
-    const gagal = recap.filter((x) => x.err).length;
-    if (tanpa) list.push(tanpa);
     const s = data.ringkasan || {};
     const body = list.map((x) => {
       const nama = x.pic
@@ -279,9 +231,8 @@ export function createProgress(ctx) {
       return `<tr class="pg-recap-row"><td>${nama}</td><td class="ps-num"><b>${fmt(x.rmp)}</b></td><td class="ps-num">${nc(x.rs)}</td><td class="ps-num">${nc(x.set)}</td><td class="ps-num">${nc(x.pcs)}</td><td class="ps-num">${nc(x.unit)}</td><td class="ps-num">${nc(x.item)}</td></tr>`;
     }).join('');
     const foot = `<tr class="pg-recap-total"><td>Semua sales <span class="ps-sub" title="RMP yang ditangani lebih dari satu sales dihitung di tiap sales, jadi baris di atas tidak dijumlahkan.">tidak sama dengan jumlah baris di atas</span></td><td class="ps-num"><b>${fmt(s.jumlah_rmp)}</b></td><td class="ps-num">${nc(s.jumlah_rs)}</td><td class="ps-num">${nc(s.set_total)}</td><td class="ps-num">${nc(s.pcs_total)}</td><td class="ps-num">${nc(s.unit_total)}</td><td class="ps-num">${nc(s.jumlah_item)}</td></tr>`;
-    const warn = gagal ? `<div class="ps-note">${fmt(gagal)} sales gagal dihitung (database sibuk). <button type="button" class="ps-linkbtn" data-action="pg-reload">Muat ulang</button></div>` : '';
-    el.innerHTML = head + warn +
-      `<div class="table-scroll pg-recap-scroll"><table class="pg-recap-t"><thead><tr><th>Sales</th><th class="ps-th-num">RMP</th><th class="ps-th-num">RS</th><th class="ps-th-num">Set</th><th class="ps-th-num">Pcs</th><th class="ps-th-num">Unit</th><th class="ps-th-num">Item</th></tr></thead><tbody>${body}${foot}</tbody></table></div>`;
+    el.innerHTML = head +
+      `<div class="table-scroll pg-recap-scroll"><table class="pg-recap-t"><thead><tr><th>Sales</th><th class="ps-th-num">RMP</th><th class="ps-th-num">RS</th><th class="ps-th-num">Set</th><th class="ps-th-num">Pcs</th><th class="ps-th-num">Unit</th><th class="ps-th-num">Baris</th></tr></thead><tbody>${body}${foot}</tbody></table></div>`;
   }
 
   function emptyHtml() {
@@ -319,7 +270,7 @@ export function createProgress(ctx) {
         <td><span class="ps-rs">${esc(r.customer)}</span>${lokasi ? `<span class="ps-sub">${esc(lokasi)}</span>` : ''}</td>
         <td>${r.pic_order ? esc(r.pic_order) : '<span class="ps-muted">—</span>'}</td>
         <td class="pg-col-status"><span class="ps-st" title="${esc(statusTeks)}">${esc(statusTeks || '—')}</span><span class="ps-sub">${esc(grupTag(r.status_grup))}${r.ada_sample ? ' · sample' : ''}</span></td>
-        <td class="ps-num">${jml.length ? jml.map((t) => `<b>${esc(t)}</b>`).join('') : dash}<span class="ps-sub">${fmt(r.jumlah_item)} item</span></td>
+        <td class="ps-num">${jml.length ? jml.map((t) => `<b>${esc(t)}</b>`).join('') : dash}<span class="ps-sub">${fmt(r.jumlah_item)} baris</span></td>
         <td class="ps-date">${esc(fmtDate(r.tgl_po))}</td>
         <td class="ps-date">${esc(fmtDate(r.diperbarui))}</td>
       </tr>`;
@@ -342,13 +293,16 @@ export function createProgress(ctx) {
     ].filter(Boolean);
     const metaHtml = meta.length
       ? `<dl class="pg-meta">${meta.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : '';
+    const sets = Array.isArray(r.set_rinci) ? r.set_rinci : [];
+    const setHtml = sets.length
+      ? `<div class="pg-sets">${sets.map((x) => `<span class="pg-set"><b>${esc(x.label)}</b> ×${fmt(x.jumlah_set)} set${x.status_hitung === 'estimasi' ? ' <span class="ps-tag" title="Isi di sheet tidak sama dengan isi set di DB produk, jumlah set diperkirakan.">Perkiraan</span>' : ''}<span class="ps-sub">dari ${fmt(x.jumlah_baris)} baris</span></span>`).join('')}</div>` : '';
     const items = r.items || [];
     const tbl = items.length
       ? `<table class="ps-dt"><thead><tr><th>Produk</th><th>Kode</th><th class="ps-th-num">Jumlah</th><th>Status</th></tr></thead><tbody>${
         items.map((it) => `<tr><td>${esc(it.produk || '—')}${it.kelompok ? `<span class="ps-sub">${esc(it.kelompok)}</span>` : ''}</td><td><span class="kode-text">${esc(it.kode || '—')}</span></td><td class="ps-num">${esc(fmt(it.qty))} ${esc(String(it.satuan || '').toLowerCase())}</td><td class="ps-st">${esc(it.status || '—')}</td></tr>`).join('')
       }</tbody></table>`
       : '<div class="ps-detail-empty">Tidak ada rincian item.</div>';
-    return `<div class="ps-detail">${metaHtml}${tbl}</div>`;
+    return `<div class="ps-detail">${metaHtml}${setHtml}${tbl}</div>`;
   }
 
   function toggle(i) {
@@ -370,15 +324,6 @@ export function createProgress(ctx) {
   }
 
   // ── teks (WhatsApp) ───────────────────────────────────────────────────────
-  function recapList() {
-    if (!recap) return [];
-    const l = recap.filter((x) => !x.err && num(x.s.jumlah_rmp) > 0).map((x) => ({
-      pic: x.pic, rmp: num(x.s.jumlah_rmp), rs: num(x.s.jumlah_rs), set: num(x.s.set_total), pcs: num(x.s.pcs_total), unit: num(x.s.unit_total), item: num(x.s.jumlah_item),
-    })).sort((a, b) => b.rmp - a.rmp || a.pic.localeCompare(b.pic, 'id'));
-    const t = tanpaPicRow();
-    if (t) l.push(Object.assign(t, { pic: 'Tanpa PIC order' }));
-    return l;
-  }
   const qtyText = (o) => [o.set ? `${fmt(o.set)} set` : '', o.pcs ? `${fmt(o.pcs)} pcs` : '', o.unit ? `${fmt(o.unit)} unit` : ''].filter(Boolean).join(' + ') || '0';
 
   function buildText() {
@@ -386,10 +331,10 @@ export function createProgress(ctx) {
     const L = [];
     L.push(`Progress order — ${periodeText()}`);
     L.push(`${statusText()}${st.provinsi ? ', ' + st.provinsi : ''}${st.pic ? ', sales ' + st.pic : ''}, data per ${fmtDate(data.data_per)}`, '');
-    const rec = recapList();
+    const rec = recapList() || [];
     if (rec.length && !st.pic) {
       L.push('Rekap per sales:');
-      rec.forEach((x, i) => L.push(`${i + 1}. ${x.pic} — ${fmt(x.rmp)} RMP, ${fmt(x.rs)} RS (${qtyText(x)})`));
+      rec.forEach((x, i) => L.push(`${i + 1}. ${x.pic || 'Tanpa PIC order'} — ${fmt(x.rmp)} RMP, ${fmt(x.rs)} RS (${qtyText(x)})`));
       L.push('');
     }
     L.push('Daftar project:');
@@ -410,7 +355,7 @@ export function createProgress(ctx) {
   async function downloadXlsx(btn) {
     if (!data || !rows.length) return;
     if (btn) btn.disabled = true;
-    const snap = { rows: view.slice(), data, rec: recapList(), periode: periodeText(), status: statusText(), prov: st.provinsi, pic: st.pic };
+    const snap = { rows: view.slice(), data, rec: recapList() || [], periode: periodeText(), status: statusText(), prov: st.provinsi, pic: st.pic };
     try {
       const ExcelJS = await ctx.ensureExcel();
       const wb = new ExcelJS.Workbook();
@@ -428,7 +373,7 @@ export function createProgress(ctx) {
       w1.addRow([]);
       const h1 = w1.addRow(['Sales', 'No. RMP', 'Rumah sakit', 'Set', 'Pcs', 'Unit', 'Baris item']);
       styleHead(h1);
-      if (snap.rec.length) snap.rec.forEach((x) => w1.addRow([x.pic, x.rmp, x.rs, x.set, x.pcs, x.unit, x.item]));
+      if (snap.rec.length) snap.rec.forEach((x) => w1.addRow([x.pic || 'Tanpa PIC order', x.rmp, x.rs, x.set, x.pcs, x.unit, x.item]));
       else w1.addRow([snap.pic ? 'Rekap per sales tidak ditampilkan saat satu sales dipilih.' : 'Rekap per sales belum tersedia.']);
       const s = snap.data.ringkasan || {};
       const tot = w1.addRow(['Semua sales', num(s.jumlah_rmp), num(s.jumlah_rs), num(s.set_total), num(s.pcs_total), num(s.unit_total), num(s.jumlah_item)]);
@@ -511,7 +456,7 @@ export function createProgress(ctx) {
     },
     hide() {
       const r = $('pg-root'); if (r) r.hidden = true;
-      reqId++; recapReq++;           // batalkan respons yang masih di jalan
+      reqId++;                       // batalkan respons yang masih di jalan
       clearTimeout(timer);
       setBusy(false);
     },
@@ -524,6 +469,6 @@ export function createProgress(ctx) {
       clearTimeout(timer);
       timer = setTimeout(() => load(), 350);
     },
-    destroy() { alive = false; reqId++; recapReq++; clearTimeout(timer); },
+    destroy() { alive = false; reqId++; clearTimeout(timer); },
   };
 }

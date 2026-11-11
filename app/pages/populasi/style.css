@@ -790,3 +790,9 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
   #app-root .pg-date{ width: calc(50% - 7px); }
   #app-root .ps-modeseg{ margin-right: 8px; }
 }
+
+/* set per RMP di rincian (hitungan logika Populasi) */
+#app-root .pg-sets{ display: flex; flex-wrap: wrap; gap: 6px 24px; margin: 4px 0 10px; }
+#app-root .pg-set{ font-size: var(--ps-fs); line-height: 18px; color: var(--text); }
+#app-root .pg-set b{ font-weight: 600; }
+#app-root .pg-set .ps-sub{ display: inline; margin-left: 6px; }
