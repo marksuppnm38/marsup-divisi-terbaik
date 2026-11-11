@@ -92,20 +92,10 @@ function ensureVendorScripts() {
   return vendorReady;
 }
 
-// shared-google-fonts: id+href SAMA PERSIS kayak dashboard/index.js --
-// stok.html asli kebetulan pakai font-family:'Inter' di CSS-nya tapi TIDAK
-// PERNAH benar-benar load webfont-nya (gak ada <link> Google Fonts sama
-// sekali di <head> aslinya, jadi diam-diam fallback ke system-ui).
-// shared-phosphor-icons DIHAPUS dari sini (icon-library convergence pass):
-// stok's markup/index.js no longer uses any ph-* class -- every icon was
-// switched to the ti-* (Tabler) set the shared sidebar nav and most other
-// modules already use, so loading Phosphor here was pure dead weight (a
-// whole second icon webfont fetched for zero glyphs actually rendered).
-// pnm-universal.css: pola sama kayak halaman lain (load di mount(), lepas
-// di unmount(), bukan "shared selamanya").
+// Hanya pnm-universal.css yang dimuat di sini. Font (Inter/JetBrains) dan ikon Tabler
+// sudah dimuat global oleh index.html / nav, dan halaman stok tidak lagi memakai ikon
+// sama sekali, jadi tidak perlu dimuat ulang dari modul ini.
 const SHARED_LINKS = [
-  { id: 'shared-google-fonts', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap' },
-  { id: 'shared-tabler-icons', href: 'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css' },
   { id: 'shared-pnm-universal-css', href: '/pnm-universal.css?v=20260813b' },
 ];
 
@@ -298,29 +288,17 @@ export async function mount(container) {
     const hist = await getHistory(1);
     updateLocalNote();
     if (hist.length === 0) {
-      body.innerHTML = '<div class="summary-empty">Belum pernah upload stok.</div>';
+      body.textContent = 'Belum pernah upload stok.';
       return;
     }
     const last = hist[0];
     const w = fmtWhen(last.at);
     body.innerHTML = `
-      <div class="summary-row">
-        <div class="summary-main">
-          <div class="summary-main-text">
-            <div class="lbl">Sinkron terakhir</div>
-            <div class="val">${w.date}, ${w.time}</div>
-            <div class="who">${escapeHtml(last.email) || 'Pengguna tidak diketahui'}</div>
-          </div>
-        </div>
-        <div class="metric-group">
-          <div class="metric green">
-            <div><div class="num">${last.total.toLocaleString('id-ID')}</div><div class="lbl2">Diperbarui</div></div>
-          </div>
-          <div class="metric amber">
-            <div><div class="num">${last.skipped.toLocaleString('id-ID')}</div><div class="lbl2">Dilewati</div></div>
-          </div>
-        </div>
-      </div>`;
+      <span>Stok terakhir diperbarui <b>${w.date}, ${w.time}</b> oleh ${escapeHtml(last.email) || 'pengguna tidak diketahui'}</span>
+      <span class="nums">
+        <span class="status ok">${last.total.toLocaleString('id-ID')} diperbarui</span>
+        <span class="status warn">${last.skipped.toLocaleString('id-ID')} dilewati</span>
+      </span>`;
   }
   async function renderHistory() {
     const tbody = document.getElementById('history-tbody');
@@ -338,12 +316,9 @@ export async function mount(container) {
     emptyEl.hidden = true;
     const visible = historyShowAll ? hist : hist.slice(0, 5);
     showMoreBtn.hidden = hist.length <= 5;
-    showMoreBtn.innerHTML = historyShowAll
-      ? 'Ringkas <i class="ti ti-chevron-up" aria-hidden="true"></i>'
-      : 'Lihat semua <i class="ti ti-chevron-right" aria-hidden="true"></i>';
+    showMoreBtn.textContent = historyShowAll ? 'Ringkas' : 'Lihat semua';
     tbody.innerHTML = visible.map(h => {
       const w = fmtWhen(h.at);
-      const dlLabel = h.skipped > 0 ? 'Unduh kode yang dilewati' : 'Tidak ada kode yang dilewati';
       return `
       <tr>
         <td class="act-when"><div class="d">${w.date}</div><div class="t">${w.time}</div></td>
@@ -351,11 +326,9 @@ export async function mount(container) {
         <td class="act-num green"><span class="mlabel">Diperbarui</span>${h.total.toLocaleString('id-ID')}</td>
         <td class="act-num ${h.skipped > 0 ? 'amber' : ''}"><span class="mlabel">Dilewati</span>${h.skipped.toLocaleString('id-ID')}</td>
         <td class="act-file" title="${escapeHtml(h.fileName || '')}">${escapeHtml(h.fileName) || '—'}</td>
-        <td>
-          <button class="act-dl" type="button" data-id="${h.id || ''}" data-skipped="${h.skipped}" title="${dlLabel}" aria-label="${dlLabel}" ${(!h.id || h.skipped === 0) ? 'disabled' : ''}>
-            <i class="ti ti-download" aria-hidden="true"></i>
-          </button>
-        </td>
+        <td>${(h.id && h.skipped > 0)
+          ? `<button class="mini-btn act-dl" type="button" data-id="${escapeHtml(h.id)}">Unduh CSV</button>`
+          : '<span class="c-muted">—</span>'}</td>
       </tr>`;
     }).join('');
     tbody.querySelectorAll('.act-dl').forEach(btn => {
@@ -389,13 +362,11 @@ export async function mount(container) {
   const refreshHistoryBtn = document.getElementById('refresh-history-btn');
   refreshHistoryBtn.addEventListener('click', async () => {
     refreshHistoryBtn.disabled = true;
-    refreshHistoryBtn.classList.add('is-loading');
     try {
       await renderLastStatus();
       await renderHistory();
     } finally {
       refreshHistoryBtn.disabled = false;
-      refreshHistoryBtn.classList.remove('is-loading');
     }
   });
 
@@ -498,7 +469,7 @@ export async function mount(container) {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / 1024 / 1024).toFixed(1) + ' MB';
   }
-  const UPLOAD_BTN_HTML = '<i class="ti ti-upload" aria-hidden="true"></i>Upload stok';
+  const UPLOAD_BTN_HTML = 'Upload stok';
   function resetUploadUI() {
     stokParsedRows = null; stokMatchedRows = null; stokSkippedRows = null; currentFileName = null;
     fileChip.hidden = true;
@@ -651,11 +622,11 @@ export async function mount(container) {
     if (!stokSkippedRows || stokSkippedRows.length === 0) return;
     try {
       await navigator.clipboard.writeText(stokSkippedRows.map(r => r.kode_asli).join('\n'));
-      copySkipBtn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>Tersalin';
+      copySkipBtn.textContent = 'Tersalin';
     } catch {
-      copySkipBtn.innerHTML = '<i class="ti ti-alert-circle" aria-hidden="true"></i>Gagal menyalin';
+      copySkipBtn.textContent = 'Gagal menyalin';
     }
-    setTimeout(() => { copySkipBtn.innerHTML = '<i class="ti ti-copy" aria-hidden="true"></i>Salin'; }, 1500);
+    setTimeout(() => { copySkipBtn.textContent = 'Salin'; }, 1500);
   });
   exportSkipBtn.addEventListener('click', () => {
     if (!stokSkippedRows || stokSkippedRows.length === 0) return;

@@ -5,78 +5,43 @@
 // dengan link_v6 bersih, plus stok_status (READY / INDENT / DATA_TIDAK_LENGKAP).
 //
 // Pola sama dengan kelengkapan.js: mountSiapTayang() di mount(), refreshSiapTayang()
-// abis upload stok sukses, unmountSiapTayang() di unmount(). Style di-inject dari sini
-// (scoped ke #siap-card). Output: Salin ke Sheets, .xlsx, CSV, Salin kode saja —
+// abis upload stok sukses, unmountSiapTayang() di unmount(). Style ada di style.css
+// (class bersama dengan kelengkapan.js). Output: Salin ke Sheets, .xlsx, CSV, Salin kode saja —
 // semuanya mengikuti SEMUA baris hasil filter, bukan cuma yang tampil.
 
-const STYLE_ID = 'siap-style';
 const PAGE_STEP = 200;
 let S = null;
-
-const CSS = `
-#siap-card .st-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
-#siap-card .st-stat{display:block;width:100%;text-align:left;background:transparent;font-family:inherit;border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;cursor:pointer;transition:border-color .12s,background .12s}
-#siap-card .st-stat:hover{border-color:var(--accent)}
-#siap-card .st-stat:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-#siap-card .st-stat.active{border-color:var(--accent);background:var(--accent-soft)}
-#siap-card .st-stat .n{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;color:var(--text);line-height:1.2}
-#siap-card .st-stat .n::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--text-muted)}
-#siap-card .st-stat.ok .n::before{background:var(--success-dot)}
-#siap-card .st-stat.warn .n::before{background:var(--warning-dot)}
-#siap-card .st-stat .l{font-size:11px;color:var(--text-muted);margin-top:2px}
-#siap-card .st-banner{border:1px solid var(--warn);background:var(--warn-soft);color:var(--warn-text);border-radius:var(--radius-sm);padding:9px 12px;font-size:12px;margin-bottom:12px;line-height:1.5}
-#siap-card .st-banner code{font-family:var(--font-mono);font-size:11.5px}
-#siap-card .st-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
-#siap-card .st-toolbar input,#siap-card .st-toolbar select{height:33px;padding:0 10px;font-size:12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-family:inherit}
-#siap-card .st-toolbar input{flex:1 1 200px;min-width:160px}
-#siap-card .st-btns{display:flex;gap:6px;flex-wrap:wrap}
-#siap-card .st-wrap{max-height:460px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface)}
-#siap-card .st-table{width:100%;border-collapse:collapse;font-size:12px}
-#siap-card .st-table th{position:sticky;top:0;background:var(--surface-2);text-align:left;padding:7px 11px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border);white-space:nowrap}
-#siap-card .st-table td{padding:7px 11px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top}
-#siap-card .st-table tr:last-child td{border-bottom:0}
-#siap-card .st-mono{font-family:var(--font-mono);white-space:nowrap}
-#siap-card .st-num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-#siap-card .st-tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--border);color:var(--text-secondary)}
-#siap-card .st-tag.ok{border-color:var(--success-dot);color:var(--success-text)}
-#siap-card .st-tag.skip{border-color:var(--warn);color:var(--warn-text)}
-#siap-card .st-muted{color:var(--text-muted)}
-#siap-card .st-open{display:inline-flex;align-items:center;gap:4px;color:var(--accent-text);text-decoration:none}
-#siap-card .st-open:hover{text-decoration:underline}
-#siap-card .st-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;font-size:11.5px;color:var(--text-muted);flex-wrap:wrap}
-#siap-card .st-empty{padding:22px;text-align:center;color:var(--text-muted);font-size:12.5px}
-`;
 
 const SHELL = `
 <div class="card-head">
   <div class="card-head-text">
     <h2 id="siap-title">Siap tayang</h2>
-    <p>Produk yang sudah punya link e-Katalog V6 beserta status stoknya. Pilih <b>Siap</b> untuk yang bisa langsung dijual.</p>
+    <p>Produk yang sudah punya link e-Katalog V6 beserta status stoknya.</p>
   </div>
   <div class="card-head-action">
-    <button class="mini-btn" type="button" data-st="refresh" title="Muat ulang"><i class="ti ti-refresh" aria-hidden="true"></i>Muat ulang</button>
+    <button class="mini-btn" type="button" data-st="refresh">Muat ulang</button>
   </div>
 </div>
-<div class="st-stats" data-st-region="stats"></div>
-<div class="st-banner" data-st-region="banner" role="status" hidden></div>
-<div class="st-toolbar">
+<div class="result-banner err data-banner" data-st-region="banner" role="status" hidden></div>
+<div class="toolbar">
   <input type="text" data-st="q" placeholder="Cari kode / nama…" aria-label="Cari kode atau nama" autocomplete="off"/>
+  <select data-st="status" aria-label="Filter status stok"></select>
   <select data-st="tipe" aria-label="Filter tipe">
     <option value="all">Semua tipe</option><option value="SET">Set</option>
     <option value="INSTRUMENT">Instrumen</option><option value="UNIT">Unit</option>
   </select>
-  <div class="st-btns">
-    <button type="button" class="mini-btn" data-st="copy" title="Salin sebagai tabel — tinggal Ctrl+V di Google Sheets / Excel"><i class="ti ti-copy" aria-hidden="true"></i>Salin ke Sheets</button>
-    <button type="button" class="mini-btn" data-st="xlsx"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i>.xlsx</button>
-    <button type="button" class="mini-btn" data-st="csv"><i class="ti ti-download" aria-hidden="true"></i>CSV</button>
-    <button type="button" class="mini-btn" data-st="codes" title="Satu kode produk per baris"><i class="ti ti-list" aria-hidden="true"></i>Salin kode saja</button>
+  <div class="btns">
+    <button type="button" class="mini-btn" data-st="copy" title="Salin sebagai tabel, tinggal Ctrl+V di Google Sheets / Excel">Salin ke Sheets</button>
+    <button type="button" class="mini-btn" data-st="xlsx">.xlsx</button>
+    <button type="button" class="mini-btn" data-st="csv">CSV</button>
+    <button type="button" class="mini-btn" data-st="codes" title="Satu kode produk per baris">Salin kode saja</button>
   </div>
 </div>
-<div class="st-wrap"><table class="st-table">
-  <thead><tr><th scope="col">Kode produk</th><th scope="col">Nama</th><th scope="col">Tipe</th><th scope="col">Stok</th><th scope="col" class="st-num">Bisa kirim</th><th scope="col">e-Katalog</th></tr></thead>
+<div class="data-wrap"><table class="data-table">
+  <thead><tr><th scope="col">Kode produk</th><th scope="col">Nama</th><th scope="col">Tipe</th><th scope="col">Stok</th><th scope="col" class="c-num">Bisa kirim</th><th scope="col">e-Katalog</th></tr></thead>
   <tbody data-st-region="tbody"></tbody>
 </table></div>
-<div class="st-foot" data-st-region="foot"></div>
+<div class="list-foot" data-st-region="foot"></div>
 `;
 
 // ───────── util ─────────
@@ -92,7 +57,7 @@ function safeHref(u) { return /^https?:\/\//i.test(u || '') ? u : ''; } // cegah
 const STATUS = {
   READY: ['ok', 'Siap'],
   INDENT: ['', 'Indent'],
-  DATA_TIDAK_LENGKAP: ['skip', 'Data tidak lengkap']
+  DATA_TIDAK_LENGKAP: ['warn', 'Data tidak lengkap']
 };
 const TIPE = { SET: 'Set', INSTRUMENT: 'Instrumen', UNIT: 'Unit' };
 
@@ -172,21 +137,7 @@ function filtered() {
 }
 
 // ───────── render ─────────
-function renderAll() { if (S) { renderStats(); renderBanner(); syncToolbar(); renderList(); } }
-
-function renderStats() {
-  const rows = S.rows;
-  const cnt = (st) => rows ? rows.filter(r => r.stok_status === st).length : null;
-  const v = (n) => (n == null ? '…' : fmtN(n));
-  const card = (key, st, num, label, cls) =>
-    `<button type="button" class="st-stat ${cls}${S.fStatus === st ? ' active' : ''}" data-st="stat" data-status="${st}" aria-pressed="${S.fStatus === st}">` +
-    `<div class="n">${num}</div><div class="l">${label}</div></button>`;
-  region('stats').innerHTML =
-    card('all', 'all', v(rows && rows.length), 'Ada link e-Katalog', '') +
-    card('ready', 'READY', v(cnt('READY')), 'Siap (stok ready)', 'ok') +
-    card('indent', 'INDENT', v(cnt('INDENT')), 'Indent', 'warn') +
-    card('tl', 'DATA_TIDAK_LENGKAP', v(cnt('DATA_TIDAK_LENGKAP')), 'Set data tidak lengkap', 'warn');
-}
+function renderAll() { if (S) { renderBanner(); syncToolbar(); renderList(); } }
 
 function renderBanner() {
   const el = region('banner');
@@ -203,30 +154,35 @@ function renderBanner() {
 
 function syncToolbar() {
   const qIn = S.host.querySelector('[data-st="q"]');
-  const sel = S.host.querySelector('[data-st="tipe"]');
+  const tipe = S.host.querySelector('[data-st="tipe"]');
+  const status = S.host.querySelector('[data-st="status"]');
   if (qIn.value !== S.q) qIn.value = S.q;
-  if (sel.value !== S.fTipe) sel.value = S.fTipe;
+  if (tipe.value !== S.fTipe) tipe.value = S.fTipe;
+  const rows = S.rows;
+  const n = (st) => (rows ? ` (${fmtN(st === 'all' ? rows.length : rows.filter(r => r.stok_status === st).length)})` : '');
+  status.innerHTML = [['all', 'Semua status'], ['READY', 'Siap'], ['INDENT', 'Indent'], ['DATA_TIDAK_LENGKAP', 'Set data tidak lengkap']]
+    .map(([v, l]) => `<option value="${v}"${v === S.fStatus ? ' selected' : ''}>${l}${n(v)}</option>`).join('');
 }
 
 function renderList() {
   const tbody = region('tbody'), foot = region('foot');
-  if (S.error && !S.rows) { tbody.innerHTML = '<tr><td colspan="6"><div class="st-empty">Data belum bisa ditampilkan.</div></td></tr>'; foot.innerHTML = ''; return; }
-  if (S.loading || !S.rows) { tbody.innerHTML = '<tr><td colspan="6"><div class="st-empty">Memuat…</div></td></tr>'; foot.innerHTML = ''; return; }
+  if (S.error && !S.rows) { tbody.innerHTML = '<tr><td colspan="6"><div class="list-empty">Data belum bisa ditampilkan.</div></td></tr>'; foot.innerHTML = ''; return; }
+  if (S.loading || !S.rows) { tbody.innerHTML = '<tr><td colspan="6"><div class="list-empty">Memuat…</div></td></tr>'; foot.innerHTML = ''; return; }
   const rows = filtered();
   const shown = rows.slice(0, S.limit);
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="st-empty">${S.q ? 'Tidak ada yang cocok dengan pencarian.' : 'Tidak ada data untuk filter ini.'}</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6"><div class="list-empty">${S.q ? 'Tidak ada yang cocok dengan pencarian.' : 'Tidak ada data untuk filter ini.'}</div></td></tr>`;
   } else {
     tbody.innerHTML = shown.map(r => {
       const st = STATUS[r.stok_status] || ['', r.stok_status || '-'];
       const href = safeHref(r.link_v6);
       return `<tr>
-        <td class="st-mono">${esc(r.kode_produk)}</td>
+        <td class="c-mono">${esc(r.kode_produk)}</td>
         <td>${esc(r.nama_produk)}</td>
         <td>${esc(TIPE[r.tipe] || r.tipe || '-')}</td>
-        <td><span class="st-tag ${st[0]}">${esc(st[1])}</span></td>
-        <td class="st-num">${r.qty_ready == null ? '<span class="st-muted">—</span>' : fmtN(r.qty_ready)}</td>
-        <td>${href ? `<a class="st-open" href="${esc(href)}" target="_blank" rel="noopener noreferrer">Buka <i class="ti ti-external-link" aria-hidden="true"></i></a>` : '<span class="st-muted">—</span>'}</td>
+        <td><span class="status ${st[0]}">${esc(st[1])}</span></td>
+        <td class="c-num">${r.qty_ready == null ? '<span class="c-muted">—</span>' : fmtN(r.qty_ready)}</td>
+        <td>${href ? `<a class="link-btn" href="${esc(href)}" target="_blank" rel="noopener noreferrer">Buka</a>` : '<span class="c-muted">—</span>'}</td>
       </tr>`;
     }).join('');
   }
@@ -288,11 +244,11 @@ async function doExport(kind, btn) {
   const file = `${name}-${today()}`;
   if (kind === 'copy') {
     const ok = await copyText(toTSV(aoa));
-    flash(btn, ok ? `<i class="ti ti-check"></i>${fmtN(rows.length)} baris tersalin` : 'Gagal menyalin');
+    flash(btn, ok ? `${fmtN(rows.length)} baris tersalin` : 'Gagal menyalin');
   } else if (kind === 'codes') {
     const kode = rows.map(r => r.kode_produk).filter(Boolean);
     const ok = await copyText(kode.join('\n'));
-    flash(btn, ok ? `<i class="ti ti-check"></i>${fmtN(kode.length)} kode tersalin` : 'Gagal menyalin');
+    flash(btn, ok ? `${fmtN(kode.length)} kode tersalin` : 'Gagal menyalin');
   } else if (kind === 'csv') {
     download(new Blob(['\uFEFF' + toCSV(aoa)], { type: 'text/csv;charset=utf-8;' }), file + '.csv');
   } else if (kind === 'xlsx') {
@@ -311,8 +267,7 @@ function onClick(e) {
   const t = e.target.closest('[data-st]');
   if (!t || !S) return;
   const act = t.dataset.st;
-  if (act === 'stat') { S.fStatus = t.dataset.status; S.limit = PAGE_STEP; renderStats(); renderList(); }
-  else if (act === 'refresh') loadAll();
+  if (act === 'refresh') loadAll();
   else if (act === 'more') { S.limit += PAGE_STEP; renderList(); }
   else if (['copy', 'xlsx', 'csv', 'codes'].includes(act)) doExport(act, t);
 }
@@ -321,20 +276,17 @@ function onInput(e) {
   S.q = e.target.value; S.limit = PAGE_STEP; renderList();
 }
 function onChange(e) {
-  if (!S || !e.target.matches('[data-st="tipe"]')) return;
-  S.fTipe = e.target.value; S.limit = PAGE_STEP; renderList();
+  if (!S) return;
+  if (e.target.matches('[data-st="tipe"]')) S.fTipe = e.target.value;
+  else if (e.target.matches('[data-st="status"]')) S.fStatus = e.target.value;
+  else return;
+  S.limit = PAGE_STEP; renderList();
 }
 
 // ───────── lifecycle ─────────
 export function mountSiapTayang({ supabaseUrl, anonKey }) {
   const host = document.getElementById('siap-card');
   if (!host) return;
-  if (!document.getElementById(STYLE_ID)) {
-    const st = document.createElement('style');
-    st.id = STYLE_ID;
-    st.textContent = CSS;
-    document.head.appendChild(st);
-  }
   S = { url: supabaseUrl, key: anonKey, host, rows: null, loading: true, error: null,
         fStatus: 'READY', fTipe: 'all', q: '', limit: PAGE_STEP };
   host.innerHTML = SHELL;
@@ -345,6 +297,5 @@ export function mountSiapTayang({ supabaseUrl, anonKey }) {
 }
 export function refreshSiapTayang() { if (S) loadAll(); }
 export function unmountSiapTayang() {
-  document.getElementById(STYLE_ID)?.remove();
   S = null;
 }

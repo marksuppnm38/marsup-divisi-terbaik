@@ -1,55 +1,64 @@
 /* app/pages/stok/style.css
-   Page-scoped OVERRIDE untuk kelas stok-only di pnm-universal.css. Semua selector
-   di bawah #app-root (tidak ada bare selector), dimuat di mount() dan dilepas di
-   unmount() -- tidak bocor ke halaman lain.
+   Page-scoped OVERRIDE untuk kelas di pnm-universal.css, plus gaya bersama untuk
+   daftar data di kartu Kelengkapan dan Siap tayang (dulu diinjeksi dari JS, dua
+   salinan hampir identik). Semua selector di bawah #app-root; dimuat di mount() dan
+   dilepas di unmount(), jadi tidak bocor ke halaman lain.
 
-   Acuan: konversian/style.css (flat surface + hairline border, status = titik +
-   label bukan blok warna, mono untuk angka, fokus keyboard terlihat, reduced-motion).
-
-   Token: tidak ada nilai warna mentah di file ini selain #fff untuk teks di atas
-   warna aksen (sama seperti .btn-accent di pnm-universal.css). Titik status dipetakan
-   ke --success/--warning/--danger milik pnm-universal.css, yang sudah punya varian
-   dark; dulu didefinisikan ulang di sini dengan hex tetap yang tidak ikut tema.
+   Prinsip: permukaan datar, garis tipis, tanpa bayangan; status = titik + label;
+   angka monospace tabular; tidak ada nilai warna mentah selain #fff untuk teks di
+   atas warna aksen. Titik status memakai token --success/--warning/--danger.
 */
 
 #app-root{
-  --success-dot: var(--success);
-  --warning-dot: var(--warning);
-  --danger-dot:  var(--danger);
+  --dot-ok: var(--success);
+  --dot-warn: var(--warning);
+  --dot-bad: var(--danger);
 }
 
-/* Atribut [hidden] harus menang atas display:flex/grid milik class (UA stylesheet
-   kalah dari aturan author). Satu-satunya !important di file ini, dan memang
-   itulah gunanya. */
+/* Atribut [hidden] harus menang atas display:flex/grid milik class. */
 #app-root [hidden]{ display: none !important; }
 
-/* Utilitas teks khusus pembaca layar. */
 #app-root .sr-only{
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
 
-/* ---- Kanvas halaman ----
-   <main> juga cocok dengan `#app:has(.dropzone) main` (pnm-universal.css, specificity
-   1,1,1) yang membatasi lebar 820px. `#app #app-root main` (2,0,1) menang tanpa
-   !important. Lebar penuh dipertahankan: topbar putih + <main> putih supaya tidak ada
-   seam abu-abu di bawah topbar (sama seperti konversian/dashboard), dan tabel riwayat
-   butuh lebar. Layout flex-column + gap dari universal tetap dipakai untuk menumpuk card. */
+/* ---- Kanvas ----
+   `#app:has(.dropzone) main` (pnm-universal.css) membatasi lebar 820px; selector di
+   bawah (2,0,1) menang tanpa !important. Tabel butuh lebar penuh. */
 #app #app-root main{
   max-width: none;
   margin: 0;
-  padding: 20px 24px 48px;
+  padding: 16px 24px 48px;
   gap: 16px;
   background: var(--surface);
 }
 
-/* ---- Card: flat, hairline, tanpa bayangan ---- */
+/* ---- Status sinkron terakhir: satu baris teks ---- */
+#app-root .sync-line{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 20px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+#app-root .sync-line b{ color: var(--text); font-weight: 600; }
+#app-root .sync-line .nums{ display: flex; gap: 16px; }
+
+/* ---- Card: datar, garis tipis, tanpa hover-lift ---- */
 #app-root .card{
   padding: 16px;
+  border-radius: var(--radius);
+  box-shadow: none;
+  transition: none;
+}
+#app-root .card:hover{
+  transform: none;
   box-shadow: none;
 }
 #app-root .card-head{
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   flex-wrap: wrap;
   align-items: center;
 }
@@ -58,9 +67,9 @@
   font-weight: 600;
 }
 #app-root .card-head-text p{
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.5;
-  margin-top: 4px;
+  margin-top: 2px;
   max-width: 72ch;
 }
 #app-root .card-head-actions{
@@ -69,45 +78,63 @@
   margin-left: auto;
 }
 
-/* ---- Tombol kecil: target sentuh minimal 32px ---- */
+/* ---- Tombol ---- */
 #app-root .mini-btn{
-  min-height: 32px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
 }
-#app-root .mini-btn:disabled{
-  opacity: .5;
-  cursor: not-allowed;
+#app-root .mini-btn:hover{
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
 }
-#app-root .mini-btn.is-loading i{
-  animation: spin .7s linear infinite;
-}
-#app-root .act-dl{
-  width: 32px;
+#app-root .mini-btn:disabled{ opacity: .5; cursor: not-allowed; }
+#app-root .btn-primary-lg{
+  width: auto;
   height: 32px;
+  margin: 0;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+}
+#app-root .btn-primary-lg .spinner{
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor;
+}
+#app-root .btn-secondary{
+  height: 32px;
+  margin: 0;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+}
+/* "Batal" bukan aksi destruktif: hover netral, bukan merah. */
+#app-root .btn-secondary:hover{
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
 }
 
-/* ---- Dropzone ----
-   Ikon kecil, netral saat diam; aksen hanya saat file sedang diseret ke atasnya.
-   Input file transparan menutupi seluruh area, jadi ring fokus digambar di label
-   (outline di dalam .dropzone akan terpotong overflow:hidden). :has(:focus-visible)
-   supaya ring muncul untuk keyboard, bukan setelah klik mouse. */
+/* ---- Dropzone: satu area teks, aksen hanya saat file diseret ---- */
 #app-root .dropzone{
-  padding: 32px 16px;
-}
-#app-root .dropzone-icon{
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  font-size: 20px;
-  margin-bottom: 12px;
+  padding: 14px 16px;
+  align-items: flex-start;
+  text-align: left;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
-  border: 0.5px solid var(--border);
 }
-#app-root .dropzone.drag .dropzone-icon{
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
+#app-root .dropzone:hover{ background: var(--surface-2); border-color: var(--border-strong); }
+#app-root .dropzone.drag{ border-color: var(--accent); background: var(--accent-soft); }
+#app-root .dropzone-title{ font-size: 13px; font-weight: 600; }
+#app-root .dropzone-sub{ margin-top: 2px; }
+/* Input file transparan menutupi seluruh area, jadi ring fokus digambar di label. */
 #app-root .dropzone:has(input:focus-visible){
   border-color: var(--accent);
   outline: 2px solid var(--accent);
@@ -115,74 +142,66 @@
 }
 
 /* ---- File terpilih ---- */
-#app-root .file-row .fico{
+#app-root .file-row{
+  margin-top: 10px;
+  padding: 8px 12px;
   background: transparent;
-  color: var(--text-secondary);
-  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
 }
-#app-root .file-row .fdel{
-  width: 32px;
-  height: 32px;
-}
+#app-root .file-row .fname{ font-size: 13px; font-weight: 500; }
 
-/* ---- Status: titik + label, bukan pil/blok berwarna ---- */
-#app-root .stat-row{
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
+/* ---- Pra-periksa: ringkasan satu baris ---- */
+#app-root .precheck{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 28px;
+  margin-top: 14px;
 }
-#app-root .stat-pill{
-  background: transparent;
-  border: 0.5px solid var(--border);
-}
-#app-root .stat-pill .num{
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-#app-root .stat-pill.ok .num,
-#app-root .stat-pill.warn .num{
-  display: inline-flex;
-  align-items: center;
+#app-root .precheck > div{
+  display: flex;
+  align-items: baseline;
   gap: 6px;
 }
-#app-root .stat-pill.ok .num::before,
-#app-root .stat-pill.warn .num::before{
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-#app-root .stat-pill.ok .num::before{ background: var(--success-dot); }
-#app-root .stat-pill.warn .num::before{ background: var(--warning-dot); }
-
-/* Panel kode yang dilewati: kartu netral, penanda status hanya titik di judulnya. */
-#app-root .skip-panel{
-  background: var(--surface);
-  border: 0.5px solid var(--border);
-}
-#app-root .skip-head-title{
+#app-root .precheck b{
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--text);
 }
+#app-root .precheck span{ font-size: 12px; color: var(--text-muted); }
+#app-root .precheck .warn b::before{
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--dot-warn);
+  vertical-align: middle;
+}
+
+/* Panel kode yang dilewati: netral, penanda hanya titik di judul. */
+#app-root .skip-panel{
+  margin-top: 12px;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+#app-root .skip-head-title{ color: var(--text); font-weight: 600; }
 #app-root .skip-head-title::before{
   content: '';
   display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--warning-dot);
+  background: var(--dot-warn);
   flex-shrink: 0;
 }
-#app-root table.skip-table td:first-child{
-  font-family: var(--font-mono);
-}
-#app-root table.skip-table td.skip-empty{
-  color: var(--text-muted);
-  font-family: var(--font-body);
-}
+#app-root .skip-search{ height: 30px; }
+#app-root table.skip-table td:first-child{ font-family: var(--font-mono); }
+#app-root table.skip-table td.skip-empty{ color: var(--text-muted); font-family: var(--font-body); }
 #app-root table.skip-table th.num,
 #app-root table.skip-table td.num{
   text-align: right;
@@ -191,60 +210,173 @@
 }
 
 /* ---- Aksi upload ---- */
-/* pnm-universal.css menolkan margin-top tombol di dalam .actions-row, jadi baris ini
-   sendiri yang harus memberi jarak dari panel di atasnya. */
-#app-root .actions-row{
-  margin-top: 16px;
-}
-#app-root #stok-status-msg:not(:empty){
-  margin-top: 12px;
-}
-#app-root .btn-primary-lg .spinner{
-  border-color: color-mix(in srgb, currentColor 35%, transparent);
-  border-top-color: currentColor;
-}
-/* "Batal" bukan aksi destruktif: hover netral, bukan merah. */
-#app-root .btn-secondary:hover{
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-  color: var(--text);
-}
-#app-root #stok-status-msg:empty{
-  margin-top: 0;
-}
+#app-root .actions-row{ margin-top: 12px; justify-content: flex-end; }
+#app-root #stok-status-msg:not(:empty){ margin-top: 12px; }
 
-/* ---- Sinkron terakhir ---- */
-#app-root .summary-row{ gap: 16px; }
-#app-root .metric-group{ gap: 24px; }
-#app-root .metric .num{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 18px;
-  font-weight: 600;
+/* ---- Banner hasil/pesan: datar, status = titik ---- */
+#app-root .result-banner{
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
   color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
-#app-root .metric .num::before{
+#app-root .result-banner::before{
   content: '';
+  display: inline-block;
   width: 6px;
   height: 6px;
+  margin-right: 8px;
   border-radius: 50%;
-  flex-shrink: 0;
+  vertical-align: middle;
   background: var(--text-muted);
 }
-#app-root .metric.green .num::before{ background: var(--success-dot); }
-#app-root .metric.amber .num::before{ background: var(--warning-dot); }
+#app-root .result-banner.ok::before{ background: var(--dot-ok); }
+#app-root .result-banner.err::before{ background: var(--dot-warn); }
+#app-root .result-banner.fail{ color: var(--danger-text); border-color: var(--danger-border); }
+#app-root .result-banner.fail::before{ background: var(--dot-bad); }
+#app-root .result-banner code{ font-family: var(--font-mono); font-size: 11.5px; }
 
-/* ---- Tabel riwayat ---- */
-#app-root .table-scroll{
-  overflow-x: auto;
+/* ---- Status: titik + label (dipakai tabel di semua kartu) ---- */
+#app-root .status::before{
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: var(--text-muted);
 }
-#app-root .activity-table th.num,
-#app-root .activity-table td.act-num{
+#app-root .status.ok::before{ background: var(--dot-ok); }
+#app-root .status.warn::before{ background: var(--dot-warn); }
+
+/* ---- Daftar data (Kelengkapan, Siap tayang) ---- */
+#app-root .tabs{
+  display: flex;
+  gap: 18px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+#app-root .tab{
+  margin-bottom: -1px;
+  padding: 6px 0;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+#app-root .tab:hover{ color: var(--text); }
+#app-root .tab.active{
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+#app-root .toolbar{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+#app-root .toolbar input,
+#app-root .toolbar select{
+  height: 30px;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+#app-root .toolbar input{ flex: 1 1 220px; min-width: 160px; }
+#app-root .toolbar .btns{ display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+#app-root .data-wrap{
+  max-height: 460px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+#app-root .data-table{
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+#app-root .data-table th{
+  position: sticky;
+  top: 0;
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+#app-root .data-table td{
+  padding: 6px 10px;
+  vertical-align: top;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+#app-root .data-table tbody tr:last-child td{ border-bottom: 0; }
+#app-root .data-table tbody tr:hover td{ background: var(--surface-2); }
+#app-root .data-table .c-mono{ font-family: var(--font-mono); white-space: nowrap; }
+#app-root .data-table th.c-num,
+#app-root .data-table td.c-num{
   text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
+#app-root .c-muted{ color: var(--text-muted); }
+#app-root .link-btn{
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: var(--accent-text);
+  cursor: pointer;
+}
+#app-root .link-btn:hover{ text-decoration: underline; text-underline-offset: 3px; }
+#app-root a.link-btn{ text-decoration: none; }
+#app-root .detail-list{ margin: 0; padding: 0; list-style: none; }
+#app-root .list-empty{
+  padding: 20px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+#app-root .list-foot{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+#app-root .data-banner{ margin-bottom: 10px; }
+
+/* ---- Riwayat ---- */
+#app-root .table-scroll{ overflow-x: auto; }
+#app-root .activity-table thead th{
+  padding: 0 10px 8px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+#app-root .activity-table tbody td{ padding: 8px 10px; }
+#app-root .activity-table th.num,
+#app-root .activity-table td.act-num{ text-align: right; }
 #app-root .act-num{
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -257,32 +389,35 @@
   display: inline-block;
   width: 6px;
   height: 6px;
-  border-radius: 50%;
   margin-right: 6px;
+  border-radius: 50%;
   vertical-align: middle;
 }
-#app-root .act-num.green::before{ background: var(--success-dot); }
-#app-root .act-num.amber::before{ background: var(--warning-dot); }
+#app-root .act-num.green::before{ background: var(--dot-ok); }
+#app-root .act-num.amber::before{ background: var(--dot-warn); }
+#app-root .activity-table .act-dl{
+  width: auto;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+#app-root .act-when{ white-space: nowrap; }
+#app-root .act-when .d{ font-weight: 500; }
 #app-root .act-when .d,
-#app-root .act-when .t{
-  font-family: var(--font-mono);
-}
-#app-root .act-file{
-  max-width: 240px;
-}
-#app-root .activity-table .mlabel{
-  display: none;
-}
-#app-root .activity-table tbody td.activity-empty{
-  text-align: left;
-}
+#app-root .act-when .t{ display: inline; font-family: var(--font-mono); }
+#app-root .act-when .t{ margin-left: 8px; }
+#app-root .act-file{ max-width: 240px; }
+#app-root .activity-table .mlabel{ display: none; }
+#app-root .activity-table tbody td.activity-empty{ text-align: left; }
+#app-root .local-note{ margin-top: 12px; }
 
 /* ---- Dialog konfirmasi ---- */
-#app-root .confirm-card:focus{
-  outline: none;
-}
+#app-root .confirm-card:focus{ outline: none; }
 
-/* ---- Fokus keyboard terlihat di semua kontrol (sama dengan konversian) ---- */
+/* ---- Fokus keyboard terlihat di semua kontrol ---- */
 #app-root :is(button, a, select, input:not([type="file"]), [role="button"], [tabindex="0"]):focus-visible{
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -290,38 +425,25 @@
 
 /* ---- Layar sempit ---- */
 @media (max-width: 768px){
-  #app #app-root main{
-    padding: 16px 16px 40px;
-  }
-  #app-root .card-head-actions{
-    margin-left: 0;
-  }
+  #app #app-root main{ padding: 16px 16px 40px; }
+  #app-root .card-head-actions{ margin-left: 0; }
+  #app-root .toolbar .btns{ margin-left: 0; }
 }
 @media (max-width: 640px){
-  #app-root .stat-row{
-    grid-template-columns: 1fr;
-  }
-  #app-root .actions-row{
-    flex-direction: column-reverse;
-  }
-  #app-root .actions-row .btn-secondary{
-    width: 100%;
-  }
+  #app-root .actions-row{ flex-direction: column-reverse; }
+  #app-root .actions-row button{ width: 100%; }
 }
 /* Di bawah 600px pnm-universal.css mengubah tabel riwayat jadi kartu per baris dan
-   menyembunyikan header; label kolom dipindah ke dalam sel supaya angkanya tetap
-   punya arti. */
+   menyembunyikan header; label kolom dipindah ke dalam sel. */
 @media (max-width: 600px){
-  #app-root .activity-table td.act-num{
-    text-align: left;
-  }
+  #app-root .activity-table td.act-num{ text-align: left; }
   #app-root .activity-table .mlabel{
     display: inline;
-    color: var(--text-muted);
-    font-family: var(--font-body);
-    font-weight: 400;
-    font-size: 11.5px;
     margin-right: 6px;
+    font-family: var(--font-body);
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--text-muted);
   }
 }
 
