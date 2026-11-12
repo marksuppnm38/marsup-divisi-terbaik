@@ -891,3 +891,5 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .col-mv button:hover:not(:disabled){background:var(--surface-3);color:var(--accent-text)}
 .col-mv button:disabled{opacity:.3;cursor:default}
 .col-mv button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+.col-auto{margin-left:6px;padding:0 6px;border-radius:20px;background:var(--accent-soft);color:var(--accent-text);font-size:10.5px;font-style:normal;font-weight:600;line-height:16px}

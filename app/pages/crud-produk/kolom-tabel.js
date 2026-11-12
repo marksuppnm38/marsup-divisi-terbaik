@@ -79,11 +79,16 @@ export const COL_PRESETS = [
 ];
 const DEFAULT_VISIBLE = COL_PRESETS[0].cols;
 
-// state = { order: [key...] (semua kolom non-locked, termasuk yang disembunyikan), visible: Set }
-function defaultState() { return orderFrom(DEFAULT_VISIBLE); }
-function orderFrom(visibleKeys) {
+// state = {
+//   order  : [key...] semua kolom non-locked (termasuk yang tidak tampil)
+//   visible: Set kolom yang dipilih user
+//   hidden : Set kolom yang SENGAJA dimatikan user -> tidak akan ditambahkan otomatis oleh filter
+//   follow : true = filter aktif boleh menambah kolom yang relevan (kolom dinamis)
+// }
+function defaultState() { return orderFrom(DEFAULT_VISIBLE, true); }
+function orderFrom(visibleKeys, follow) {
   const vis = visibleKeys.filter((k) => MOVABLE.includes(k));
-  return { order: [...vis, ...MOVABLE.filter((k) => !vis.includes(k))], visible: new Set(vis) };
+  return { order: [...vis, ...MOVABLE.filter((k) => !vis.includes(k))], visible: new Set(vis), hidden: new Set(), follow };
 }
 function readState() {
   try {
@@ -92,7 +97,12 @@ function readState() {
       const seen = raw.order.filter((k, i) => MOVABLE.includes(k) && raw.order.indexOf(k) === i);
       // kolom baru (ditambah di versi kode berikutnya) otomatis masuk di ujung, tersembunyi
       const order = [...seen, ...MOVABLE.filter((k) => !seen.includes(k))];
-      return { order, visible: new Set(raw.visible.filter((k) => MOVABLE.includes(k))) };
+      return {
+        order,
+        visible: new Set(raw.visible.filter((k) => MOVABLE.includes(k))),
+        hidden: new Set((Array.isArray(raw.hidden) ? raw.hidden : []).filter((k) => MOVABLE.includes(k))),
+        follow: raw.follow !== false,
+      };
     }
   } catch { /* storage diblok / isi rusak -> default */ }
   return defaultState();
@@ -113,9 +123,19 @@ export function createTableColumns(opts) {
   let pop = null, popAnchor = null, popCleanup = null;
 
   const save = () => {
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ order: state.order, visible: [...state.visible] })); } catch { /* abaikan */ }
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ order: state.order, visible: [...state.visible], hidden: [...state.hidden], follow: state.follow })); } catch { /* abaikan */ }
   };
-  const visibleCols = () => [COL_BY_KEY.kode, ...state.order.filter((k) => state.visible.has(k)).map((k) => COL_BY_KEY[k])];
+  let autoKeys = [];   // kolom yang diminta filter aktif (diisi index.js lewat setAuto)
+  // Kolom dinamis: filter menambah kolom yang relevan tepat setelah Nama. Hanya menambah -- pilihan user
+  // jadi dasar, dan kolom yang sengaja dimatikan user tidak dipaksa muncul.
+  const autoExtra = () => (state.follow ? autoKeys.filter((k) => !state.visible.has(k) && !state.hidden.has(k)) : []);
+  const isOn = (k) => state.visible.has(k) || autoExtra().includes(k);
+  const visibleCols = () => {
+    const keys = state.order.filter((k) => state.visible.has(k));
+    const at = keys.includes('nama') ? keys.indexOf('nama') + 1 : 0;
+    keys.splice(at, 0, ...autoExtra());
+    return [COL_BY_KEY.kode, ...keys.map((k) => COL_BY_KEY[k])];
+  };
 
   // Klik link V6 jangan ikut membuka modal edit baris (listener klik per-baris ada di index.js).
   const onLinkClick = (e) => { if (e.target.closest && e.target.closest('a.link-v6')) e.stopPropagation(); };
@@ -164,8 +184,8 @@ export function createTableColumns(opts) {
     const rows = [
       `<div class="col-row is-locked"><label class="cp-check"><input type="checkbox" checked disabled/><span>${esc(COL_BY_KEY.kode.label)}</span></label><i class="ti ti-lock col-lock" title="Selalu tampil, selalu pertama"></i></div>`,
       ...state.order.map((k, i) => {
-        const c = COL_BY_KEY[k], on = state.visible.has(k);
-        return `<div class="col-row${on ? '' : ' is-off'}"><label class="cp-check"><input type="checkbox" data-key="${k}"${on ? ' checked' : ''}/><span>${esc(c.label)}</span></label>`
+        const c = COL_BY_KEY[k], on = isOn(k), viaFilter = on && !state.visible.has(k);
+        return `<div class="col-row${on ? '' : ' is-off'}"><label class="cp-check"><input type="checkbox" data-key="${k}"${on ? ' checked' : ''}/><span>${esc(c.label)}</span>${viaFilter ? '<em class="col-auto" title="Ditambahkan otomatis oleh filter yang aktif">filter</em>' : ''}</label>`
           + `<span class="col-mv"><button type="button" data-mv="up" data-key="${k}" aria-label="Geser ${esc(c.label)} ke atas" title="Geser ke atas"${i === 0 ? ' disabled' : ''}><i class="ti ti-chevron-up"></i></button>`
           + `<button type="button" data-mv="down" data-key="${k}" aria-label="Geser ${esc(c.label)} ke bawah" title="Geser ke bawah"${i === state.order.length - 1 ? ' disabled' : ''}><i class="ti ti-chevron-down"></i></button></span></div>`;
       }),
@@ -188,13 +208,20 @@ export function createTableColumns(opts) {
       `<div class="col-presets">${COL_PRESETS.map((p) => `<button type="button" class="col-preset" data-preset="${p.id}">${esc(p.label)}</button>`).join('')}</div>` +
       `<div class="col-list"></div>` +
       `<div class="cp-sep" role="separator"></div>` +
+      `<label class="cp-check" title="Filter yang aktif menambah kolom yang relevan (mis. filter Harga menampilkan kolom harga)"><input type="checkbox" data-follow${state.follow ? ' checked' : ''}/><span>Ikuti filter (kolom ditambah otomatis)</span></label>` +
       `<button type="button" class="cp-item" data-act="reset"><span class="cp-lbl">Kembalikan standar</span></button>`;
     paintList(el);
 
     el.addEventListener('change', (e) => {
+      if (e.target.hasAttribute && e.target.hasAttribute('data-follow')) {
+        state.follow = e.target.checked;
+        commit(el, 'input[data-follow]');
+        return;
+      }
       const k = e.target.dataset && e.target.dataset.key;
       if (!k) return;
-      if (e.target.checked) state.visible.add(k); else state.visible.delete(k);
+      if (e.target.checked) { state.visible.add(k); state.hidden.delete(k); }
+      else { state.visible.delete(k); state.hidden.add(k); } // dimatikan sengaja -> filter tidak memaksa muncul lagi
       commit(el, `input[data-key="${k}"]`);
     });
     el.addEventListener('click', (e) => {
@@ -207,7 +234,7 @@ export function createTableColumns(opts) {
         return;
       }
       const pr = e.target.closest('[data-preset]');
-      if (pr) { state = orderFrom(COL_PRESETS.find((p) => p.id === pr.dataset.preset).cols); commit(el); return; }
+      if (pr) { state = orderFrom(COL_PRESETS.find((p) => p.id === pr.dataset.preset).cols, state.follow); commit(el); return; }
       if (e.target.closest('[data-act="reset"]')) { state = defaultState(); commit(el); }
     });
     el.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePicker(true); } });
@@ -241,6 +268,8 @@ export function createTableColumns(opts) {
     },
     /** Dibuang tiap loadProduk() supaya Nama AKD tidak basi setelah edit. */
     invalidate() { akdNamaCache.clear(); },
+    /** Kolom yang diminta filter aktif (urutan = urutan tampil). Panggil sebelum renderHead(). */
+    setAuto(keys) { autoKeys = (keys || []).filter((x) => MOVABLE.includes(x)); },
     openPicker,
     destroy() { closePicker(); tableBody.removeEventListener('click', onLinkClick, true); akdNamaCache.clear(); },
   };

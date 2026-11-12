@@ -944,6 +944,29 @@ function buildProdukDimParams(){
   return params;
 }
 
+// Kolom dinamis: filter yang sedang aktif (chip status + "+ Tambah Filter") meminta kolom yang relevan.
+// Hanya menambah di atas pilihan kolom user -- lihat kolom-tabel.js.
+const FILTER_COLS_CHIP = {
+  belum_diajukan: ['no_akd', 'nama_akd'],
+  terhubung: ['no_akd', 'nama_akd'],
+  disetujui_tanpa_link: ['status_inaproc', 'link'],
+  verified: ['status_inaproc', 'link'],
+};
+const FILTER_COLS_DIM = {
+  tipe: ['tipe'],
+  golongan: ['golongan'],
+  is_active: ['aktif'],
+  status_inaproc: ['status_inaproc', 'link'],
+  harga: ['ekat', 'swasta', 'tahun'],
+  link_v6: ['link'],
+  stok: ['stok'],
+};
+function produkAutoCols(){
+  const keys = [...(FILTER_COLS_CHIP[produkActiveFilter] || [])];
+  produkActiveFilters.forEach(f => (FILTER_COLS_DIM[f.dim] || []).forEach(k => keys.push(k)));
+  return [...new Set(keys)];
+}
+
 async function loadProduk(q, page){
   const newQ = (q ?? lastQuery ?? '').trim();
   const searchChanged = newQ !== (lastQuery ?? '').trim();
@@ -954,6 +977,8 @@ async function loadProduk(q, page){
   colKit.invalidate();
   copyKit.setPage([]);
   produkPageRows = [];
+  colKit.setAuto(produkAutoCols()); // kolom ikut filter yang aktif
+  colKit.renderHead();
 
   tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Memuat data...</td></tr>`;
   cardWrap.innerHTML = '';
