@@ -1174,17 +1174,10 @@ async function muatRevisiKeClipboard(idx, btnEl) {
     // ---- Reset clipboard/sesi kerja (pola sama kayak startNewSesi()) ----
     const modal = document.getElementById('konversi-riwayat-modal');
     if (modal) modal.classList.remove('show');
-    S.currentSesiId = null;
-    S.currentButuhBantuan = false;
-    S.clipboard = [];
-    S.inpRs.value = row.nama_rs || '';
-    S.inpSales.value = row.pic_sales || '';
-    if (row.pic_marsup) S.inpMarsup.value = row.pic_marsup;
-    S.resetChecklistUI();
-    S.setClipHeaderCollapsed(!!S.inpRs.value.trim(), false);
-    S.renderButuhBantuanBtn();
-    S.setSesiSavedStatus('');
-    S.updateEndSesiBtnState();
+    S.sesi.detach('revisi', {
+      rs: row.nama_rs || '', sales: row.pic_sales || '', marsup: row.pic_marsup,
+      headerCollapsed: [!!(row.nama_rs || '').trim(), false]
+    });
     S.switchSubTab('cari');
     if (typeof S.switchDoor === 'function') S.switchDoor('konversi');
     if (window.innerWidth <= 860 && typeof S.switchTab === 'function') S.switchTab('clip');

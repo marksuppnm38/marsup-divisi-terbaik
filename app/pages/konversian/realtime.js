@@ -268,7 +268,7 @@ function seedKnownState() {
     pagu: S.checklistPagu != null ? S.checklistPagu : null,
     butuh_bantuan: !!S.currentButuhBantuan,
     mode_harga_swasta: !!S.modeSwastaOutput,
-    status: 'berjalan'
+    status: S.sesi.isClosed ? 'selesai' : 'berjalan' // sesi yang dibuka dari Riwayat bisa udah 'selesai'
   };
 }
 const normNum = (v) => (v == null || v === '' ? null : Number(v));
@@ -338,6 +338,8 @@ function applySesiRow(row, opts) {
   if (!silent && row.status && prev.status !== row.status && row.status !== 'berjalan') {
     pushActivity(`${actor} menyelesaikan sesi ini`);
   }
+  // Event live DAN resync (silent) sama-sama ngabarin mesin: sesi yang kepegang udah ditutup server.
+  if (row.status && row.status !== 'berjalan') S.sesi.close('remote');
   if (row.status) prev.status = row.status;
 }
 

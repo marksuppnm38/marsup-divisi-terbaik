@@ -14,7 +14,7 @@ const SESI_ITEM_TABLE = 'sesi_konversi_item';
 S.SESI_ITEM_TABLE = SESI_ITEM_TABLE;
 const PERMINTAAN_ITEM_TABLE = 'permintaan_item'; // tabel mentah di balik RPC get_permintaan_by_sesi/update_permintaan_item_multi — dipakai buat filter postgres_changes
 S.PERMINTAAN_ITEM_TABLE = PERMINTAAN_ITEM_TABLE;
-S.currentSesiId = null;
+// S.currentSesiId sekarang accessor baca-saja milik sesi-machine.js (S.sesi) — jangan di-assign di sini.
 S.currentButuhBantuan = false;
 
 const subtabCari = document.getElementById('subtab-cari');
@@ -318,8 +318,10 @@ async function touchSesiUpdatedAt(id) {
 
 // Bikin baris sesi baru di server begitu ada aktivitas pertama (isi form atau
 // tambah produk), kalau belum ada sesi yang lagi dibuka.
-async function ensureSesi() {
-  if (S.currentSesiId) return S.currentSesiId;
+// Lewat S.sesi.ensure() (sesi-machine.js): panggilan bersamaan JOIN ke POST yang sama
+// (dulu 2 panggilan berdekatan = 2 sesi, yang kedua jadi yatim). Efek samping setelah
+// sesi terbentuk (tombol, indikator header, subscribe realtime) ada di listener di bawah.
+async function createSesiRow() {
   const body = {
     nama_rs: S.inpRs.value.trim() || null,
     nama_sales: S.inpSales.value.trim() || null,
@@ -339,12 +341,16 @@ async function ensureSesi() {
     throw new Error(errData.message || errData.hint || 'Gagal membuat sesi baru (cek tabel sesi_konversi di Supabase)');
   }
   const rows = await res.json();
-  S.currentSesiId = rows[0].id;
-  updateEndSesiBtnState();
-  S.updateClipHeaderCompact(); // refresh indikator header (ikut currentSesiId, bukan cuma nama RS)
-  if (typeof S.subscribeToSesiRealtime === 'function') S.subscribeToSesiRealtime(S.currentSesiId);
-  return S.currentSesiId;
+  return rows[0];
 }
+function ensureSesi() { return S.sesi.ensure(createSesiRow); }
+S.sesi.on(({ to, reason }) => {
+  updateEndSesiBtnState(); // satu-satunya penentu enable/disable Selesaikan/Keluar: ikut fase mesin
+  if (reason === 'created' && to !== 'idle') {
+    S.updateClipHeaderCompact(); // refresh indikator header (ikut currentSesiId, bukan cuma nama RS)
+    if (typeof S.subscribeToSesiRealtime === 'function') S.subscribeToSesiRealtime(S.currentSesiId);
+  }
+});
 S.ensureSesi = ensureSesi;
 
 async function persistAddItem(item) {
@@ -557,19 +563,7 @@ renderButuhBantuanBtn();
 async function startNewSesi() {
   if (!(await S.lanjutkanTanpaDrive('mulai sesi baru'))) return;
   if (S.clipboard.length && !(await S.showConfirmModal({ title: 'Mulai Sesi Baru', text: 'Sesi yang sedang dibuka akan ditinggalkan — datanya tetap tersimpan, bisa dibuka lagi lewat daftar Konversi Berjalan.', okText: 'Ya, Mulai Baru' }))) return;
-  S.currentSesiId = null;
-  S.currentButuhBantuan = false;
-  S.clipboard = [];
-  S.inpRs.value = '';
-  S.inpSales.value = '';
-  updateClipboard();
-  S.renderResults(S.lastResults);
-  S.setClipHeaderCollapsed(false);
-  S.updateClipHeaderCompact();
-  renderButuhBantuanBtn();
-  setSesiSavedStatus('');
-  S.resetChecklistUI();
-  updateEndSesiBtnState();
+  S.sesi.detach('new');
   S.switchSubTab('cari');
 
   btnSesiBaru.disabled = true;
@@ -601,19 +595,7 @@ btnSesiBaru.addEventListener('click', startNewSesi);
 btnLeaveSesi.addEventListener('click', async () => {
   if (!S.currentSesiId) return;
   if (!(await S.lanjutkanTanpaDrive('keluar dari sesi'))) return;
-  S.currentSesiId = null;
-  S.currentButuhBantuan = false;
-  S.clipboard = [];
-  S.inpRs.value = '';
-  S.inpSales.value = '';
-  updateClipboard();
-  S.renderResults(S.lastResults);
-  S.setClipHeaderCollapsed(false);
-  S.updateClipHeaderCompact();
-  renderButuhBantuanBtn();
-  setSesiSavedStatus('');
-  S.resetChecklistUI();
-  updateEndSesiBtnState();
+  S.sesi.detach('leave');
   showToast('Keluar dari sesi — sesi tetap berjalan, bisa dibuka lagi lewat daftar Konversi Berjalan');
   S.loadSesiList();
 });
@@ -633,18 +615,7 @@ btnEndSesi.addEventListener('click', async () => {
       method: 'PATCH',
       body: JSON.stringify({ status: 'selesai', updated_at: new Date().toISOString() })
     }), 'Gagal menyelesaikan sesi');
-    S.currentSesiId = null;
-    S.currentButuhBantuan = false;
-    S.clipboard = [];
-    S.inpRs.value = '';
-    S.inpSales.value = '';
-    updateClipboard();
-    S.renderResults(S.lastResults);
-    S.setClipHeaderCollapsed(false);
-    S.updateClipHeaderCompact();
-    renderButuhBantuanBtn();
-    setSesiSavedStatus('');
-    S.resetChecklistUI();
+    S.sesi.detach('end');
     showToast('Sesi diselesaikan ✓');
     S.loadSesiList();
   } catch (err) {

@@ -33,6 +33,7 @@
 // Kebutuhan RS, Clipboard, Buat SPH, Cari SET Mendekati, Dictionary.
 
 import { KONVERSIAN_MARKUP } from './markup.js';
+import { installSesiMachine } from './sesi-machine.js';
 import { installRealtime } from './realtime.js';
 import { installClipboard } from './clipboard.js';
 import { installSearch } from './search.js';
@@ -919,6 +920,7 @@ export async function mount(container, initialSub) {
   // sph-module.js — sph-module.js baca fungsi/variabel dari konversian.js
   // lewat shared scope, lihat komentar di kepala sph-module.js sendiri). ──
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-11-12: SESI MACHINE (sesi-machine.js baru) — lifecycle sesi yang tadinya implisit (S.currentSesiId ditulis di 9 tempat, 5 salinan blok reset, ensureSesi() bisa bikin sesi dobel) jadi mesin fase eksplisit idle/creating/active/closed. Semua transisi lewat S.sesi.ensure/attach/close/detach; S.currentSesiId tinggal accessor BACA. Yang kesentuh: index.js (import+install, openSesi→attach, Record→close, resetLayarKalauSesiAktif→detach), clipboard.js (ensureSesi, Sesi Baru/Keluar/Selesaikan), dictionary.js (Muat Revisi), realtime.js (applySesiRow→close, seedKnownState). Fix ikutan: pagu sesi lama gak lagi kebawa ke sesi baru; ensureSesi gak lagi bikin sesi dobel — Claude
 // 2026-11-09: fix urutan "Paling relevan" — hit Dictionary (search_dictionary_hits, semua skor 1000) dulu selalu dipaksa ke atas, jadi cari "minor" menaruh MAYOR S. (dari riwayat customer) di atas MINOR S. Sekarang di mergeDictHits() (search.js) kalau pencarian biasa sudah punya kecocokan penuh (score >= 80), hit Dictionary tetap dapat badge tapi gak menyalip; yang belum ada di hasil utama ditaruh di bawah. Perilaku lama (naik ke atas) cuma jalan kalau hasil utama lemah/kosong — Claude
 // 2026-10-27: REORG checklist Kebutuhan RS — ±1000 baris (renderChecklist, tab section, rollup, picker produk, reconcileClipboardQty, autoFinalizePermintaan, callUpdatePermintaanItemMulti, normalizeMatchedItems) dipindah dari dictionary.js ke permintaan-rs.js. dictionary.js sekarang cuma Dictionary (saran inline + tab Dictionary) + modal generik + Riwayat SPH/Konversi (itu menyusul di langkah berikutnya). Tambahan ekspor: S.renderDictSuggestionHtml. Urutan install tidak berubah.
 // 2026-10-27: REORG search — mesin pencarian produk (runSearch/renderResults/applySort/paginasi/autocomplete + wiring input & filter) dipindah dari clipboard.js ke search.js (installSearch); search.js LAMA (switchDoor, exact-by-kode, proses Converter) diganti nama jadi converter.js (installConverter). Urutan install: Clipboard -> Search -> Converter -> ConverterBulk. Plus fix: Dictionary dicek saat hasil katalog kosong (kasus "korentang").
@@ -2932,6 +2934,7 @@ const btnConvCopyGambar = document.getElementById('btn-conv-copy-gambar');
 S.btnConvCopyGambar = btnConvCopyGambar;
 S.convRows = [];
 
+  installSesiMachine(S); // WAJIB sebelum installClipboard: S.currentSesiId jadi accessor milik mesin ini
   installClipboard(S);
   installSearch(S); // mesin pencarian produk (dulu numpang di clipboard.js) — cuma definisi + wiring, gak ada kerja saat install
   installConverter(S); // pintu Cari Cepat/Konversi + exact-by-kode + proses Converter (dulu search.js)
@@ -4516,18 +4519,7 @@ async function purgeSesi(id) {
 
 function resetLayarKalauSesiAktif(id) {
   if (S.currentSesiId !== id) return;
-  S.currentSesiId = null;
-  S.clipboard = [];
-  inpRs.value = '';
-  inpSales.value = '';
-  S.currentButuhBantuan = false;
-  S.updateClipboard();
-  S.renderResults(S.lastResults);
-  S.renderButuhBantuanBtn();
-  S.setSesiSavedStatus('');
-  S.updateClipHeaderCompact();
-  resetChecklistUI();
-  S.updateEndSesiBtnState();
+  S.sesi.detach('deleted');
 }
 
 async function deleteSesi(id, nama, btn) {
@@ -4584,7 +4576,7 @@ async function openSesi(id) {
     const sesi = sesiRows[0];
     if (!sesi) throw new Error('Sesi tidak ditemukan (mungkin sudah dihapus/selesai)');
 
-    S.currentSesiId = sesi.id;
+    S.sesi.attach(sesi); // fase active/closed ngikut sesi.status
     S.currentButuhBantuan = !!sesi.butuh_bantuan;
     inpRs.value = sesi.nama_rs || '';
     inpSales.value = sesi.nama_sales || '';
@@ -4838,7 +4830,7 @@ S.recordSubmitBtn.addEventListener('click', async () => {
       // -REVx). Sesi tetap "kepegang" di layar sampai user eksplisit klik
       // "Mulai Sesi Baru" atau buka sesi lain — statusnya sendiri udah 'selesai'
       // di server, jadi tetap gak nyangkut di daftar "Konversi Berjalan".
-      S.updateEndSesiBtnState();
+      S.sesi.close('record'); // fase closed (tetap kepegang, lihat komentar di atas); listener mesin yang update tombol
       loadSesiList();
       if (S.subtabRiwayat.classList.contains('active')) loadRiwayatList(true);
     }
