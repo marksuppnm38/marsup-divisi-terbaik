@@ -169,7 +169,7 @@ let copyKitDestroy = null; // copy.js: tutup popover salin + buang cache saat ha
 
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
 // 2026-11-12: alur "salin dulu" di list Produk (copy.js): ikon salin Kode/Nama, menu Salin per baris, centang + salin TSV ke Excel/Sheets,
-//   kolom aksi baru (colspan 6 -> 7), kotak pilih muncul saat hover, kolom AKD menampilkan nomor AKD, fetchAkdNoMap dapat opsi {silent}, klik baris diabaikan saat teks sedang diblok — Claude
+//   kolom aksi baru (colspan 6 -> 7), kotak pilih muncul saat hover, kolom AKD menampilkan nomor AKD (list, kartu, modal, set, export: istilah status AKD jadi "sudah ada AKD / belum"), fetchAkdNoMap dapat opsi {silent}, klik baris diabaikan saat teks sedang diblok — Claude
 // 2026-11-11: baris "Cari produk" di sidebar global dihapus (kembar sama searchbar Produk); hint Ctrl K pindah ke dalam searchbar Produk,
 //   dan Ctrl K di view Produk sekarang fokus ke searchbar itu (palette tetap kebuka di view lain / saat modal terbuka) — Claude
 // 2026-08-14: fix dedup bulk INAPROC tracker — status "Disetujui" menang duluan atas nomor
@@ -196,16 +196,25 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // checkGambarInstrumen(). Sekarang preview-nya lewat window.PNM_getSignedUrl()
 // (shared/supabase-client.js) -- lihat pemakaiannya di checkGambarInstrumen().
 
+// Istilah status AKD sekarang cuma satu pertanyaan: sudah punya AKD atau belum.
+// Yang sudah punya ditampilkan sebagai NOMOR AKD-nya (bukan kata "Terhubung"); label di bawah
+// hanya dipakai kalau nomornya tidak tersedia (belum termuat) atau untuk teks export/salin.
+// Nilai status_akd di DB (belum_diajukan / belum_firm / di_luar_cakupan) TIDAK diubah.
 const SEAL_LABELS = {
-  terhubung: 'Terhubung',
-  belum_diajukan: 'Perlu AKD',
-  belum_firm: 'Belum Firm',
-  di_luar_cakupan: 'Di Luar Cakupan'
+  terhubung: 'Sudah ada AKD',
+  belum_diajukan: 'Belum ada AKD',
+  belum_firm: 'Belum ada AKD',
+  di_luar_cakupan: 'Belum ada AKD'
 };
-function sealHtml(status){
-  const s = status || 'null';
-  const label = SEAL_LABELS[status] || 'Belum Ada';
-  return `<span class="seal seal-${s}">${label}</span>`;
+let akdLookup = () => []; // diisi mount(): produk_id -> [no_akd] dari cache copy.js
+// akdList (opsional) = nomor AKD yang sudah diketahui pemanggil (mis. modal edit); kalau kosong dicari lewat akdLookup(produkId).
+function sealHtml(status, produkId, akdList){
+  const list = Array.isArray(akdList) ? akdList : (produkId != null ? akdLookup(produkId) : []);
+  if (list.length) {
+    return `<span class="seal seal-terhubung seal-akd" title="${escapeHtml(list.join(', '))}">${escapeHtml(list[0])}${list.length > 1 ? ` <small>+${list.length - 1}</small>` : ''}</span>`;
+  }
+  if (status === 'terhubung') return `<span class="seal seal-terhubung">${SEAL_LABELS.terhubung}</span>`;
+  return `<span class="seal seal-null">${SEAL_LABELS[status] || 'Belum ada AKD'}</span>`;
 }
 const TIPE_TO_AKD = { INSTRUMENT: 'satuan', SET: 'set', UNIT: 'unit' };
 
@@ -587,9 +596,10 @@ const copyKit = createCopyKit({
   stokOf: (id) => produkStokCache.get(id),
   ensureStok: (ids) => ensureStokForIds(ids),
   get stokLabel() { return STOK_LABEL; }, // getter: STOK_LABEL (const) baru dideklarasi di bawah
-  sealLabel: (s) => SEAL_LABELS[s] || s || '',
+  sealLabel: (s) => SEAL_LABELS[s] || 'Belum ada AKD',
 });
-copyKitDestroy = () => copyKit.destroy();
+copyKitDestroy = () => { copyKit.destroy(); akdLookup = () => []; };
+akdLookup = (id) => copyKit.akdOf(id);
 
 let lastQuery = '';
 let topSearchTimer = null;
@@ -1064,12 +1074,6 @@ async function loadProduk(q, page){
   // RPC) -- just never applied here. Reusing that same cached, RPC-backed
   // Set instead of a fresh row-limited query fixes it the same way.
   const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id)), copyKit.loadExtra(rows.map(r => r.id))]);
-  // Kolom AKD: produk terhubung menampilkan nomor AKD-nya (bukan kata "Terhubung"); gagal muat / belum ada nomor -> label status biasa.
-  function akdPillHtml(p){
-    const l = p.status_akd === 'terhubung' ? copyKit.akdOf(p.id) : [];
-    if (!l.length) return sealHtml(p.status_akd);
-    return `<span class="seal seal-terhubung seal-akd" title="Terhubung ke ${escapeHtml(l.join(', '))}">${escapeHtml(l[0])}${l.length > 1 ? ` <small>+${l.length - 1}</small>` : ''}</span>`;
-  }
   function attentionMeta(p){
     const noHarga = !hargaExistIds.has(p.id);
     const noLink = p.status_inaproc === 'Disetujui' && !p.link_v6;
@@ -1095,7 +1099,7 @@ async function loadProduk(q, page){
       <td class="kode-cell">${copyKit.selBox(p)}${escapeHtml(p.kode_produk)}${copyKit.btn('kode', 'Salin kode produk')}${recentBadgeHtml(p.updated_at)}</td>
       <td class="nama-cell">${escapeHtml(p.nama_produk || '—')}${copyKit.btn('nama', 'Salin nama produk')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</td>
       <td class="tipe-cell">${escapeHtml(p.tipe || '—')}</td>
-      <td class="akd-cell">${akdPillHtml(p)}${p.status_akd === 'terhubung' && copyKit.akdOf(p.id).length ? copyKit.btn('akd', 'Salin No. AKD') : ''}</td>
+      <td class="akd-cell">${sealHtml(p.status_akd, p.id)}${copyKit.akdOf(p.id).length ? copyKit.btn('akd', 'Salin No. AKD') : ''}</td>
       <td class="num">${stokCellHtml(p.id)}</td>
       <td class="flag-cell">${flagsHtml}</td>
       ${copyKit.moreCell(p)}
@@ -1113,7 +1117,7 @@ async function loadProduk(q, page){
       ${copyKit.moreBtnCard(p)}
       <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</div>
       <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</div>
-      <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}</span>${akdPillHtml(p)}</div>
+      <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd, p.id)}</div>
       <div class="pc-foot">${stokPillHtml(p.id)}${flagsHtml}</div>
     `;
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
@@ -1476,10 +1480,8 @@ async function exportProdukToExcel(){
 
   // Warna status (teks + background lembut) biar bolongnya langsung kelihatan.
   const STATUS_COLOR = {
-    'Terhubung':          { fg: '1E6B3A', bg: 'E2F4E8' },
-    'Perlu AKD':          { fg: '9C2B2B', bg: 'FBE4E4' },
-    'Belum Firm':         { fg: '8A5A00', bg: 'FFF1D6' },
-    'Di Luar Cakupan':    { fg: '555555', bg: 'ECECEC' },
+    'Sudah ada AKD':      { fg: '1E6B3A', bg: 'E2F4E8' },
+    'Belum ada AKD':      { fg: '9C2B2B', bg: 'FBE4E4' },
     'Disetujui':          { fg: '1E6B3A', bg: 'E2F4E8' },
     'Siap':               { fg: '1E6B3A', bg: 'E2F4E8' },
     'Indent':             { fg: '555555', bg: 'ECECEC' },
@@ -2053,7 +2055,7 @@ async function openEdit(produkId){
   refreshVerifiedRow();
   document.getElementById('f_spesifikasi').value = p.spesifikasi || '';
   document.getElementById('f_is_active').checked = !!p.is_active;
-  document.getElementById('akdSealHolder').innerHTML = sealHtml(p.status_akd);
+  document.getElementById('akdSealHolder').innerHTML = sealHtml(p.status_akd, produkId);
   modalSub.textContent = 'Kode: ' + (p.kode_produk || '—');
   applySetModalAdjustments(); // tipe sudah terisi di f_tipe; dulu dikerjakan monkey-patch SETELAH semua fetch selesai
   modalGo('edit');            // form sudah berisi data asli -> Simpan/Hapus boleh dipakai
@@ -2284,6 +2286,8 @@ async function loadAkdLinks(produkId, tipe){
 
 function renderAkdCurrent(){
   const el = document.getElementById('akdCurrentList');
+  const sealHolder = document.getElementById('akdSealHolder');
+  if (sealHolder) sealHolder.innerHTML = sealHtml(null, null, currentAkdLinks.map(a => a.no_akd)); // nomor AKD = relasi yang benar-benar ada
   if (currentAkdLinks.length === 0) {
     el.innerHTML = `<div class="akd-empty">Belum ada AKD terhubung ke produk ini.</div>`;
     return;
@@ -2355,7 +2359,7 @@ async function refreshAkdFieldsFromDb(){
   document.getElementById('f_no_akd').value = p.no_akd || '';
   document.getElementById('f_masa_berlaku').value = p.masa_berlaku || '';
   document.getElementById('f_golongan').value = p.golongan || '';
-  document.getElementById('akdSealHolder').innerHTML = sealHtml(p.status_akd);
+  document.getElementById('akdSealHolder').innerHTML = sealHtml(p.status_akd, null, currentAkdLinks.map(a => a.no_akd));
 }
 
 // ---- Harga ----
@@ -2743,7 +2747,8 @@ async function loadSetList(page){
   // vulnerable to PostgREST's default ~1000-row cap once enough sets on a
   // page have real price history. Switched to the same cached, RPC-backed
   // produkHargaIdSet.
-  const hargaExistIds = await fetchHargaExistForIds(data.map(s => s.set_id));
+  copyKit.invalidate();
+  const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(data.map(s => s.set_id)), copyKit.loadExtra(data.map(s => s.set_id))]);
   const ONE_DAY = 24 * 60 * 60 * 1000;
 
   wrap.innerHTML = '';
@@ -2761,7 +2766,7 @@ async function loadSetList(page){
       <span class="num">${noItem ? '<span class="sl-warn">Kosong</span>' : s.jumlah_jenis_item}</span>
       <span class="num">${noItem ? '<span class="sl-dash">–</span>' : (s.total_qty || 0)}</span>
       <span>${noHarga ? '<span class="sl-warn">Belum ada</span>' : 'Ada'}</span>
-      ${sealHtml(s.status_akd)}
+      ${sealHtml(s.status_akd, s.set_id)}
     `;
     const openRow = () => openSetDetail(s.set_id, s.kode_produk);
     row.addEventListener('click', openRow);
@@ -2806,7 +2811,9 @@ async function refreshSetHeader(){
   if (!p) return;
   document.getElementById('setDetailNama').textContent = p.nama_produk || p.kode_produk;
   document.getElementById('setDetailKode').textContent = p.kode_produk;
-  document.getElementById('setDetailSeal').innerHTML = sealHtml(p.status_akd);
+  copyKit.invalidate();
+  await copyKit.loadExtra([currentSetId]);
+  document.getElementById('setDetailSeal').innerHTML = sealHtml(p.status_akd, currentSetId);
 
   document.getElementById('setDetailJumlahItem').textContent = ring?.jumlah_jenis_item || 0;
   document.getElementById('setDetailQty').textContent = ring?.total_qty || 0;

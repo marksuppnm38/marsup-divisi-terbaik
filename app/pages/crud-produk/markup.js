@@ -92,7 +92,7 @@ export const CRUD_PRODUK_MARKUP = `
                 <button class="filter-chip" data-filter="belum_diajukan">Perlu AKD<span class="fc-count" id="fc-belum_diajukan"></span></button>
                 <button class="filter-chip" data-filter="belum_firm">Belum Firm<span class="fc-count" id="fc-belum_firm"></span></button>
                 <button class="filter-chip" data-filter="di_luar_cakupan">Di Luar Cakupan<span class="fc-count" id="fc-di_luar_cakupan"></span></button>
-                <button class="filter-chip" data-filter="terhubung">Terhubung<span class="fc-count" id="fc-terhubung"></span></button>
+                <button class="filter-chip" data-filter="terhubung">Sudah ada AKD<span class="fc-count" id="fc-terhubung"></span></button>
                 <button class="filter-chip" data-filter="disetujui_tanpa_link">Disetujui, Belum Ada Link<span class="fc-count" id="fc-disetujui_tanpa_link"></span></button>
                 <button class="filter-chip" data-filter="verified"><i class="ti ti-rosette-discount-check-filled vbadge vbadge-chip"></i>Verified<span class="fc-count" id="fc-verified"></span></button>
               </div>
