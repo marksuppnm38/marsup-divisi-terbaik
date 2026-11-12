@@ -779,12 +779,28 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
    ============================================================ */
 .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
-/* kolom centang + kolom aksi */
-#appWrap #tableWrap th.c-chk,#appWrap #tableWrap td.c-chk{width:1%;padding-left:var(--gutter);padding-right:0;text-align:center}
-#appWrap #tableWrap th.c-act,#appWrap #tableWrap td.c-act{width:1%;padding-left:6px;padding-right:var(--gutter);text-align:right;white-space:nowrap}
-.c-chk input{margin:0;vertical-align:middle;accent-color:var(--accent);cursor:pointer}
+/* kolom aksi */
+#appWrap #tableWrap th.c-act,#appWrap #tableWrap td.c-act{width:1%;padding-left:6px;white-space:nowrap;text-align:right}
 #tableBody tr.is-selected td{background:var(--accent-soft)}
 #tableBody tr.is-selected:hover td,#tableBody tr.is-selected:focus-visible td{background:var(--accent-soft)}
+
+/* kotak pilih: di margin kiri sel Kode, tidak makan kolom sendiri. Tampil saat baris di-hover,
+   dan di SEMUA baris begitu ada yang terpilih. Ctrl/Cmd+klik & Shift+klik tetap bisa tanpa kotak. */
+#tableBody .kode-cell{position:relative}
+.sel-input{appearance:none;-webkit-appearance:none;position:absolute;left:max(2px,calc(var(--gutter) - 22px));top:50%;width:15px;height:15px;margin:-7.5px 0 0;border:1.5px solid var(--border-strong);border-radius:4px;background:var(--surface) center/11px no-repeat;cursor:pointer;opacity:0;transition:opacity .12s,background-color .12s,border-color .12s}
+#tableBody tr:hover .sel-input,#tableBody.has-sel .sel-input,.sel-input:checked,.sel-input:focus-visible{opacity:1}
+.sel-input:hover{border-color:var(--accent)}
+.sel-input:checked{border-color:var(--accent);background-color:var(--accent);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.4 5 8.9l4.5-5.3' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+.sel-input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (hover:none),(max-width:760px){
+  #appWrap #tableWrap td.kode-cell,#appWrap #tableWrap th:first-child{padding-left:calc(var(--gutter) + 24px)}
+  .sel-input{left:var(--gutter);opacity:1}
+}
+
+/* kolom AKD: nomor AKD menggantikan kata "Terhubung" */
+.seal-akd{font-variant-numeric:tabular-nums;font-weight:500}
+.seal-akd small{font-size:11px;font-weight:600;opacity:.8}
+#tableBody .akd-cell{white-space:nowrap}
 
 /* ikon salin per field (Kode, Nama) */
 .cp-btn{appearance:none;border:0;background:none;padding:2px 4px;margin:0 2px 0 4px;border-radius:4px;color:var(--text-muted);font-size:13px;line-height:1;cursor:pointer;opacity:0;transition:opacity .12s,background .12s,color .12s}
@@ -814,7 +830,8 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .cb-btn:hover{border-color:var(--accent);color:var(--accent-text)}
 .cb-primary{border-color:var(--accent);background:var(--accent);color:#fff}
 .cb-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:#fff}
-.cb-link{margin-left:auto;padding:4px 2px;border:0;background:none;color:var(--accent-text);font:inherit;font-size:12.5px;cursor:pointer;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:2px}
+.cb-page{margin-left:auto}
+.cb-link{padding:4px 2px;border:0;background:none;color:var(--accent-text);font:inherit;font-size:12.5px;cursor:pointer;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:2px}
 .cb-link:hover{text-decoration-color:currentColor}
 .cb-btn:focus-visible,.cb-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 

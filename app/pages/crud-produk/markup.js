@@ -101,10 +101,10 @@ export const CRUD_PRODUK_MARKUP = `
           <div class="table-card" id="tableWrap">
                   <table>
                     <thead>
-                      <tr><th class="c-chk"><input type="checkbox" id="copySelAll" title="Pilih semua di halaman ini" aria-label="Pilih semua produk di halaman ini"/></th><th>Kode Produk</th><th>Nama Produk</th><th>Tipe</th><th>Status AKD</th><th class="num">Stok</th><th>Perlu dicek</th><th class="c-act"><span class="sr-only">Salin</span></th></tr>
+                      <tr><th>Kode Produk</th><th>Nama Produk</th><th>Tipe</th><th>AKD</th><th class="num">Stok</th><th>Perlu dicek</th><th class="c-act"><span class="sr-only">Salin</span></th></tr>
                     </thead>
                     <tbody id="tableBody">
-                      <tr class="state-row"><td colspan="8">Memuat data...</td></tr>
+                      <tr class="state-row"><td colspan="7">Memuat data...</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -114,6 +114,7 @@ export const CRUD_PRODUK_MARKUP = `
           <span class="cb-count" id="copyBarCount" aria-live="polite"></span>
           <button type="button" class="cb-btn cb-primary" id="copyBarCopy"><i class="ti ti-copy"></i> Salin sebagai tabel</button>
           <button type="button" class="cb-btn" id="copyBarCols" aria-haspopup="dialog">Kolom</button>
+          <button type="button" class="cb-link cb-page" id="copyBarPage">Pilih semua di halaman ini</button>
           <button type="button" class="cb-link" id="copyBarClear">Batal pilih</button>
         </div>
         <div class="pg-bar" id="produkPagination" style="display:none;"></div>

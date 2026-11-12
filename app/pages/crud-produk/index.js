@@ -169,7 +169,7 @@ let copyKitDestroy = null; // copy.js: tutup popover salin + buang cache saat ha
 
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
 // 2026-11-12: alur "salin dulu" di list Produk (copy.js): ikon salin Kode/Nama, menu Salin per baris, centang + salin TSV ke Excel/Sheets,
-//   kolom checkbox & aksi baru (colspan 6 -> 8), fetchAkdNoMap dapat opsi {silent}, klik baris diabaikan saat teks sedang diblok — Claude
+//   kolom aksi baru (colspan 6 -> 7), kotak pilih muncul saat hover, kolom AKD menampilkan nomor AKD, fetchAkdNoMap dapat opsi {silent}, klik baris diabaikan saat teks sedang diblok — Claude
 // 2026-11-11: baris "Cari produk" di sidebar global dihapus (kembar sama searchbar Produk); hint Ctrl K pindah ke dalam searchbar Produk,
 //   dan Ctrl K di view Produk sekarang fokus ke searchbar itu (palette tetap kebuka di view lain / saat modal terbuka) — Claude
 // 2026-08-14: fix dedup bulk INAPROC tracker — status "Disetujui" menang duluan atas nomor
@@ -920,7 +920,7 @@ async function loadProduk(q, page){
   copyKit.invalidate(); // harga/AKD hasil salin selalu diambil ulang (bisa baru diedit)
   copyKit.setPage([]);
 
-  tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Memuat data...</td></tr>`;
+  tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Memuat data...</td></tr>`;
   cardWrap.innerHTML = '';
   produkCount.textContent = 'Memuat...';
 
@@ -950,14 +950,14 @@ async function loadProduk(q, page){
       if (!fastSearchOk) {
       if (listErr) console.warn('search_produk_list gagal, fallback ke 2 langkah:', listErr.message);
       const { data: rpcData, error: rpcErr } = await sb.rpc('search_produk_dengan_harga', { q: qq, p_tipe: null, only_akd: false, only_kfa: false });
-      if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
+      if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
       const kodeList = (rpcData || []).map(r => r.kode_produk);
       if (kodeList.length === 0) { produkSearchRawRows = []; }
       else {
         const { data: fullRows, error: fullErr } = await sb.from('produk')
           .select(PRODUK_LIST_COLUMNS)
           .in('kode_produk', kodeList);
-        if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
+        if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
         const byKode = Object.fromEntries((fullRows || []).map(r => [r.kode_produk, r]));
         produkSearchRawRows = kodeList.map(k => byKode[k]).filter(Boolean);
       }
@@ -978,7 +978,7 @@ async function loadProduk(q, page){
     // ("+ Tambah Filter") dipasang di client pakai produkRowMatchesFilter yang sama dgn jalur
     // search — get_produk_list sengaja TIDAK dipakai (gak kenal status "verified").
     const all = await ensureVerifiedRows();
-    if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Gagal memuat produk Verified.</td></tr>`; return; }
+    if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal memuat produk Verified.</td></tr>`; return; }
     let filtered = all;
     if (needsStok && !(await ensureStokForIds(all.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
@@ -1001,7 +1001,7 @@ async function loadProduk(q, page){
     });
     if (error) {
       const stokBelumMigrasi = needsStok && (error.code === 'PGRST202' || /p_stok/.test(error.message || ''));
-      tableBody.innerHTML = `<tr class="state-row"><td colspan="8">${stokBelumMigrasi
+      tableBody.innerHTML = `<tr class="state-row"><td colspan="7">${stokBelumMigrasi
         ? 'Filter Stok belum aktif di database. Jalankan <code>sql/01_stok_filter_produk.sql</code> di Supabase SQL Editor, lalu muat ulang.'
         : 'Gagal memuat: ' + escapeHtml(error.message)}</td></tr>`;
       return;
@@ -1019,7 +1019,7 @@ async function loadProduk(q, page){
     const { data, error, count } = await query
       .order('updated_at', { ascending: false })
       .range(from, to);
-    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
     rows = data || [];
     total = count || 0;
   }
@@ -1042,7 +1042,7 @@ async function loadProduk(q, page){
   });
 
   if (rows.length === 0) {
-    tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Tidak ada produk ditemukan.</td></tr>`;
+    tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Tidak ada produk ditemukan.</td></tr>`;
     cardWrap.innerHTML = `<div class="stub-box" style="grid-column:1/-1;">Tidak ada produk ditemukan.</div>`;
     return;
   }
@@ -1063,7 +1063,13 @@ async function loadProduk(q, page){
   // case (see ensureProdukHargaSet()'s comment above, get_produk_harga_ids
   // RPC) -- just never applied here. Reusing that same cached, RPC-backed
   // Set instead of a fresh row-limited query fixes it the same way.
-  const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id))]);
+  const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id)), copyKit.loadExtra(rows.map(r => r.id))]);
+  // Kolom AKD: produk terhubung menampilkan nomor AKD-nya (bukan kata "Terhubung"); gagal muat / belum ada nomor -> label status biasa.
+  function akdPillHtml(p){
+    const l = p.status_akd === 'terhubung' ? copyKit.akdOf(p.id) : [];
+    if (!l.length) return sealHtml(p.status_akd);
+    return `<span class="seal seal-terhubung seal-akd" title="Terhubung ke ${escapeHtml(l.join(', '))}">${escapeHtml(l[0])}${l.length > 1 ? ` <small>+${l.length - 1}</small>` : ''}</span>`;
+  }
   function attentionMeta(p){
     const noHarga = !hargaExistIds.has(p.id);
     const noLink = p.status_inaproc === 'Disetujui' && !p.link_v6;
@@ -1086,11 +1092,10 @@ async function loadProduk(q, page){
     tr.dataset.id = p.id;
     tr.tabIndex = 0; // bisa dijangkau keyboard: Tab lalu Enter/Spasi buka produk
     tr.innerHTML = `
-      ${copyKit.chkCell(p)}
-      <td class="kode-cell">${escapeHtml(p.kode_produk)}${copyKit.btn('kode', 'Salin kode produk')}${recentBadgeHtml(p.updated_at)}</td>
+      <td class="kode-cell">${copyKit.selBox(p)}${escapeHtml(p.kode_produk)}${copyKit.btn('kode', 'Salin kode produk')}${recentBadgeHtml(p.updated_at)}</td>
       <td class="nama-cell">${escapeHtml(p.nama_produk || '—')}${copyKit.btn('nama', 'Salin nama produk')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</td>
       <td class="tipe-cell">${escapeHtml(p.tipe || '—')}</td>
-      <td>${sealHtml(p.status_akd)}</td>
+      <td class="akd-cell">${akdPillHtml(p)}${p.status_akd === 'terhubung' && copyKit.akdOf(p.id).length ? copyKit.btn('akd', 'Salin No. AKD') : ''}</td>
       <td class="num">${stokCellHtml(p.id)}</td>
       <td class="flag-cell">${flagsHtml}</td>
       ${copyKit.moreCell(p)}
@@ -1108,7 +1113,7 @@ async function loadProduk(q, page){
       ${copyKit.moreBtnCard(p)}
       <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</div>
       <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</div>
-      <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}</div>
+      <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}</span>${akdPillHtml(p)}</div>
       <div class="pc-foot">${stokPillHtml(p.id)}${flagsHtml}</div>
     `;
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });

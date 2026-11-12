@@ -100,7 +100,7 @@ export function createCopyKit(ctx) {
   const barCopy = $('copyBarCopy');
   const barCols = $('copyBarCols');
   const barClear = $('copyBarClear');
-  const selAll = $('copySelAll');
+  const barPage = $('copyBarPage');
 
   const extra = new Map();     // produk_id -> { t, ekatalog, swasta, tahun, akd[] }
   const inflight = new Map();  // produk_id -> Promise<boolean>
@@ -349,16 +349,14 @@ export function createCopyKit(ctx) {
     tableBody.querySelectorAll('tr[data-id]').forEach((tr) => {
       const p = byId.get(tr.dataset.id);
       const on = !!p && selected.has(p.id);
-      const cb = tr.querySelector('.c-chk input');
+      const cb = tr.querySelector('.sel-input');
       if (cb) cb.checked = on;
       tr.classList.toggle('is-selected', on);
     });
+    // Kotak pilih disembunyikan sampai ada baris terpilih (lalu tampil di semua baris).
+    tableBody.classList.toggle('has-sel', selected.size > 0);
     const n = pageRows.filter((r) => selected.has(r.id)).length;
-    if (selAll) {
-      selAll.checked = pageRows.length > 0 && n === pageRows.length;
-      selAll.indeterminate = n > 0 && n < pageRows.length;
-      selAll.disabled = !pageRows.length;
-    }
+    if (barPage) barPage.hidden = !pageRows.length || n === pageRows.length;
     if (bar) bar.hidden = selected.size === 0;
     if (barCount) barCount.textContent = `${selected.size.toLocaleString('id-ID')} produk dipilih`;
     if (barCols) barCols.textContent = `Kolom (${cols.size})`;
@@ -394,11 +392,13 @@ export function createCopyKit(ctx) {
     const p = byId.get(host.dataset.id);
     if (!p) return;
 
-    const chkCell = t.closest('.c-chk');
-    if (chkCell) {
+    if (t.matches('.sel-input')) { e.stopPropagation(); setSelected(p, t.checked, e.shiftKey); return; }
+    // Ctrl/Cmd+klik = pilih/lepas baris, Shift+klik = rentang (cara Excel/Finder), tanpa perlu kotak pilih.
+    if ((e.ctrlKey || e.metaKey || e.shiftKey) && !t.closest('button,a,input')) {
       e.stopPropagation();
-      if (t.matches('input[type="checkbox"]')) setSelected(p, t.checked, e.shiftKey);
-      else chkCell.querySelector('input')?.click();
+      e.preventDefault();
+      if (e.shiftKey) setSelected(p, true, true);
+      else setSelected(p, !selected.has(p.id), false);
       return;
     }
     const cp = t.closest('[data-cp]');
@@ -414,6 +414,12 @@ export function createCopyKit(ctx) {
     // Enter/Spasi pada tombol/checkbox di dalam baris jangan dibajak jadi "buka produk".
     if (host && e.target !== host && (e.key === 'Enter' || e.key === ' ')) { e.stopPropagation(); return; }
 
+    // x = pilih/lepas baris yang sedang difokus (seperti Gmail)
+    if (host && e.target === host && e.key.toLowerCase() === 'x' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const p = byId.get(host.dataset.id);
+      if (p) { e.preventDefault(); setSelected(p, !selected.has(p.id), e.shiftKey); }
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'c') {
       if (hasTextSelection()) return; // salin teks biasa
       if (selected.size) { e.preventDefault(); copySelected(); return; }
@@ -439,13 +445,19 @@ export function createCopyKit(ctx) {
     openMenu(p, { x: e.clientX, y: e.clientY }, host);
   }
 
+  // Shift+klik pada teks biasanya memperluas blok teks browser; tahan supaya dipakai untuk pilih rentang.
+  function onMouseDown(e) {
+    if (e.shiftKey && hostOf(e.target) && !e.target.closest('input,button,a')) e.preventDefault();
+  }
+
   [tableBody, cardWrap].forEach((root) => {
+    root.addEventListener('mousedown', onMouseDown, true);
     root.addEventListener('click', onClick, true);
     root.addEventListener('keydown', onKeydown, true);
     root.addEventListener('contextmenu', onContext);
   });
-  selAll?.addEventListener('change', () => {
-    pageRows.forEach((r) => { if (selAll.checked) selected.set(r.id, r); else selected.delete(r.id); });
+  barPage?.addEventListener('click', () => {
+    pageRows.forEach((r) => selected.set(r.id, r));
     lastId = null;
     syncUi();
   });
@@ -471,9 +483,14 @@ export function createCopyKit(ctx) {
     },
     /** Data harga/AKD dibuang tiap loadProduk() supaya tidak menyalin harga lama setelah edit. */
     invalidate() { extra.clear(); },
-    chkCell(p) {
-      return `<td class="c-chk"><input type="checkbox" aria-label="Pilih ${esc(p.kode_produk)}"${selected.has(p.id) ? ' checked' : ''}/></td>`;
+    /** Kotak pilih kecil di tepi kiri sel Kode (hanya tampil saat hover / ada seleksi). */
+    selBox(p) {
+      return `<input type="checkbox" class="sel-input" tabindex="-1" aria-label="Pilih ${esc(p.kode_produk)}"${selected.has(p.id) ? ' checked' : ''}/>`;
     },
+    /** No. AKD terhubung untuk produk ini (kosong kalau belum termuat / tidak ada). */
+    akdOf(id) { const c = freshExtra(id); return c ? c.akd : []; },
+    /** Muat harga + No. AKD untuk sekumpulan id (dipakai sebelum render supaya kolom AKD langsung terisi). */
+    loadExtra(ids) { return ensureExtra(ids); },
     /** Ikon salin kecil untuk satu field (muncul saat sel di-hover). */
     btn(key, label) {
       return `<button type="button" class="cp-btn" data-cp="${key}" tabindex="-1" title="${esc(label)}" aria-label="${esc(label)}"><i class="ti ti-copy"></i></button>`;
