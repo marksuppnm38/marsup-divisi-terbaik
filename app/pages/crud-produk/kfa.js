@@ -221,6 +221,24 @@ let syncSearchQuery = '';
 // Cocokkan ke kode, deskripsi, sumber sheet, dan kode set yang membutuhkan produk ini.
 let syncStatusFilter = 'all';   // all | ok | warn | bad
 let syncTipeFilter = 'all';     // all | INSTRUMENT | UNIT | SET
+// Harga E-KAT sebuah baris sync. Untuk UNIT, edge function sync-sheet kadang cuma membawa harga di
+// payload.unit.harga_satuan (kolom harga pertama di sheet UNIT = harga E-KAT) sementara harga_ekat null.
+function parseHargaNum(v){
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const s = String(v).trim();
+  const digits = s.replace(/\D/g, '');
+  if (!digits) return null;
+  const n = /^\d+(\.\d+)?$/.test(s) ? Number(s) : Number(digits);
+  return Number.isFinite(n) ? n : null;
+}
+function syncHargaOf(r){
+  const d = parseHargaNum(r && r.harga_ekat);
+  if (d != null && d > 0) return d;
+  const u = parseHargaNum(r && r.payload && r.payload.unit && r.payload.unit.harga_satuan);
+  return u != null && u > 0 ? u : null;
+}
+S.syncHargaOf = syncHargaOf;
 function syncTipeOf(r){ return (r.is_set || r.source_sheet === 'SET FIX V6') ? 'SET' : (r.tipe_hint || 'LAINNYA'); }
 function syncMatchSearch(r){
   const q = syncSearchQuery.trim().toLowerCase();
@@ -258,7 +276,7 @@ function syncMatchCols(r){
     if (f.link === 'ada' ? (st !== 'bersih' && st !== 'catatan') : st !== f.link) return false;
   }
   if (f.harga !== 'all') {
-    const adaHarga = r.harga_ekat != null && r.harga_ekat !== '';
+    const adaHarga = syncHargaOf(r) != null;
     if ((f.harga === 'ada') !== adaHarga) return false;
   }
   if (f.sumber !== 'all') {
@@ -469,10 +487,56 @@ function evalSyncRow(row){
   if (asli && (asli.length > 60 || /[\n\r$\/]/.test(asli) || asli.includes('..'))) warn.push('kode asli janggal (tidak dipakai)');
   else if (row.tipe_hint === 'INSTRUMENT' && !asli) warn.push('tanpa kode asli');
   if (row.link && !/^https?:\/\/\S+$/i.test(String(row.link).trim())) warn.push('link berisi catatan (tidak dipakai)');
-  if (row.tipe_hint === 'UNIT' && row.harga_ekat == null) warn.push('tanpa harga');
+  if (row.tipe_hint === 'UNIT' && syncHargaOf(row) == null) warn.push('tanpa harga');
   return { level: bad.length ? 'bad' : (warn.length ? 'warn' : 'ok'), bad, warn };
 }
 
+
+// Tulis harga E-KAT dari baris sync_unmatched_produk ke produk_harga lewat RPC bulk_upsert_harga
+// (SWASTA & UPLOAD dihitung di RPC, sama seperti tab Bulk Harga).
+// Aman dipanggil berulang: HANYA menulis untuk produk yang BELUM punya harga di tahun itu, jadi
+// tidak pernah menimpa harga yang sudah ada. SET dilewati (harganya dikelola dari komposisi).
+// Return { written, failed:Set<kode>, skippedNoHarga } -- pemanggil jangan menghapus baris sync
+// untuk kode di `failed` supaya bisa dicoba lagi.
+async function tulisHargaDariSync(rowsSync){
+  const out = { written: 0, failed: new Set(), skippedNoHarga: 0 };
+  const tahunDefault = new Date().getFullYear();
+  const cand = (rowsSync || [])
+    .filter(r => r && !(r.is_set || r.source_sheet === 'SET FIX V6'))
+    .map(r => { const h = syncHargaOf(r); return { kode: r.kode_produk, harga: h == null ? NaN : h, tahun: Number(r.tahun) || tahunDefault }; });
+  const valid = cand.filter(c => Number.isFinite(c.harga) && c.harga > 0);
+  out.skippedNoHarga = cand.length - valid.length;
+  if (!valid.length) return out;
+
+  // kode_produk -> produk.id
+  const idByKode = new Map();
+  for (let i = 0; i < valid.length; i += 200) {
+    const part = valid.slice(i, i + 200);
+    const { data, error } = await S.sb.from('produk').select('id, kode_produk').in('kode_produk', part.map(c => c.kode));
+    if (error) { part.forEach(c => out.failed.add(c.kode)); continue; }
+    (data || []).forEach(p => idByKode.set(p.kode_produk, p.id));
+  }
+  const withId = valid.filter(c => idByKode.has(c.kode) && !out.failed.has(c.kode));
+
+  // Lewati yang sudah punya harga di tahun itu.
+  const sudah = new Set();
+  for (let i = 0; i < withId.length; i += 200) {
+    const part = withId.slice(i, i + 200);
+    const { data, error } = await S.sb.from('produk_harga').select('produk_id, tahun').in('produk_id', part.map(c => idByKode.get(c.kode)));
+    if (error) { part.forEach(c => out.failed.add(c.kode)); continue; }
+    (data || []).forEach(h => sudah.add(h.produk_id + '|' + h.tahun));
+  }
+  const todo = withId.filter(c => !out.failed.has(c.kode) && !sudah.has(idByKode.get(c.kode) + '|' + c.tahun));
+
+  for (let i = 0; i < todo.length; i += 300) {
+    const part = todo.slice(i, i + 300);
+    const items = part.map(c => ({ produk_id: idByKode.get(c.kode), tahun: c.tahun, harga_ekat: c.harga }));
+    const { data, error } = await S.sb.rpc('bulk_upsert_harga', { p_items: items });
+    if (error) { console.error('Sync harga dari sheet gagal:', error.message); part.forEach(c => out.failed.add(c.kode)); continue; }
+    out.written += data?.processed ?? part.length;
+  }
+  return out;
+}
 
 function updateSyncBulkBar(){
   const bar = document.getElementById('syncBulkBar');
@@ -506,7 +570,7 @@ async function runSyncBulkCreate(){
     if (warns.length > 8) lines.push(`…dan ${warns.length - 8} lainnya`);
     lines.push('');
   }
-  lines.push('Yang dibuat sekarang: kode, nama, tipe, kode asli, spek, link bersih. Harga, AKD, KFA & detail unit terisi otomatis di sync berikutnya.');
+  lines.push('Yang dibuat sekarang: kode, nama, tipe, kode asli, spek, link bersih, dan harga E-KAT dari sheet (SWASTA & UPLOAD dihitung otomatis). AKD, KFA & detail unit terisi otomatis di sync berikutnya.');
   if (!await crudConfirm(lines.join('\n'), { title: 'Tambah produk dari sheet', okLabel: `Ya, Tambah ${evs.length}` })) return;
 
   btn.disabled = true;
@@ -521,8 +585,20 @@ async function runSyncBulkCreate(){
     }
   } finally { btn.disabled = false; }
 
+  // Harga E-KAT dari sheet ikut ditulis SEKARANG (dulu cuma "terisi di sync berikutnya", padahal
+  // baris sync-nya keburu terhapus -> harga tidak pernah masuk). Pakai data di memori (syncRows).
+  const createdKodes = new Set(created.map(c => (typeof c === 'string' ? c : (c && (c.kode || c.kode_produk))) ).filter(Boolean));
+  let hargaMsg = '';
+  if (createdKodes.size) {
+    const hr = await tulisHargaDariSync(rows.filter(r => createdKodes.has(r.kode_produk)));
+    if (hr.written) hargaMsg += `, ${hr.written} harga ditulis`;
+    if (hr.failed.size) {
+      hargaMsg += `, ${hr.failed.size} harga GAGAL`;
+      await crudAlert(`Produk sudah dibuat, tapi harga ${hr.failed.size} produk gagal ditulis:\n` + [...hr.failed].slice(0, 15).map(k => `• ${k}`).join('\n') + '\n\nIsi lewat tab Bulk Harga.');
+    }
+  }
   created.forEach(k => syncSelected.delete(k));
-  if (created.length) showToast(`${created.length} produk ditambahkan` + (skipped.length ? `, ${skipped.length} dilewati` : ''));
+  if (created.length) showToast(`${created.length} produk ditambahkan` + hargaMsg + (skipped.length ? `, ${skipped.length} dilewati` : ''), /GAGAL/.test(hargaMsg));
   if (skipped.length) {
     await crudAlert(`${skipped.length} produk dilewati:\n` + skipped.slice(0, 15).map(s => `• ${s.kode} — ${s.alasan}`).join('\n') + (skipped.length > 15 ? `\n…dan ${skipped.length - 15} lainnya` : ''));
   }
@@ -776,7 +852,7 @@ async function renderSyncPage(){
         ${syncPayloadHtml(row)}${syncNoteHtml(row, nameByKode, komposisiInfo)}
       </td>
       <td class="c-link">${syncLinkHtml(row.link)}</td>
-      <td class="c-harga num">${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '<span class="sync-empty">—</span>'}</td>
+      <td class="c-harga num">${syncHargaOf(row) != null ? Number(syncHargaOf(row)).toLocaleString('id-ID') : '<span class="sync-empty">—</span>'}</td>
       <td class="c-sumber">${S.escapeHtml(row.source_sheet || '—')}${seen ? `<div class="sync-seen">Terlihat ${seen}</div>` : ''}</td>
       <td class="c-status">${syncStatusHtml(ev)}</td>
       <td class="c-aksi"><button type="button" class="btn btn-sm sync-add-btn" aria-label="Tambah ${S.escapeHtml(row.kode_produk)}"><i class="ti ti-plus"></i> Tambah</button></td>
@@ -845,8 +921,14 @@ async function loadSyncUnmatched(){
     const cekOk = !cekRes.some(r => r.error);
     if (cekOk) cekRes.forEach(r => (r.data || []).forEach(p => sudahAdaSet.add(p.kode_produk)));
     if (cekOk && sudahAdaSet.size) {
+      const sudahAdaRows = data.filter(r => sudahAdaSet.has(r.kode_produk));
       data = data.filter(r => !sudahAdaSet.has(r.kode_produk));
-      const del = Array.from(sudahAdaSet);
+      // Sebelum baris sync dibuang: pastikan harga E-KAT dari sheet sudah masuk produk_harga
+      // (produk bisa dibuat dari jalur lain). Yang gagal ditulis DIBIARKAN di sync_unmatched_produk
+      // supaya dicoba lagi saat tab dibuka berikutnya, bukan hilang diam-diam.
+      const hr = await tulisHargaDariSync(sudahAdaRows);
+      if (hr.written) showToast(`${hr.written} harga dari sheet disinkronkan ke produk yang sudah ada`);
+      const del = Array.from(sudahAdaSet).filter(k => !hr.failed.has(k));
       for (let i = 0; i < del.length; i += 200) {
         S.sb.from('sync_unmatched_produk').delete().in('kode_produk', del.slice(i, i + 200))
           .then(({ error: delErr }) => { if (delErr) console.warn('Gagal bersihin sync_unmatched_produk:', delErr.message); });

@@ -2612,13 +2612,31 @@ async function saveProdukInner(session){
   // jadi walau delete ini gak sempet jalan, tab Sync tetap gak nampilin lagi.
   // SET baru yang berasal dari tab Sync: ambil komposisi dari sheet SEBELUM baris
   // sync-nya dihapus di bawah, lalu isi sekarang juga (gak nunggu polling).
+  // Baca baris sync SEBELUM dihapus: komposisi (SET) + harga_ekat/tahun (non-SET).
+  // BUG LAMA: baris ini dihapus tanpa pernah membaca harga_ekat, jadi produk yang ditambah
+  // manual dari tab Sync punya link tapi tidak punya harga sama sekali di produk_harga.
   let seedKomposisi = null;
-  if (wasNew && tipe === 'SET') {
-    const { data: syncRow } = await sb.from('sync_unmatched_produk').select('komposisi').eq('kode_produk', kodeProduk).maybeSingle();
-    seedKomposisi = Array.isArray(syncRow?.komposisi) ? syncRow.komposisi : null;
+  let hargaSyncGagal = false;
+  let syncRowAda = false;
+  if (wasNew) {
+    const { data: syncRow } = await sb.from('sync_unmatched_produk').select('komposisi, harga_ekat, tahun, payload').eq('kode_produk', kodeProduk).maybeSingle();
+    syncRowAda = !!syncRow;
+    if (tipe === 'SET') {
+      seedKomposisi = Array.isArray(syncRow?.komposisi) ? syncRow.komposisi : null;
+    } else if (syncRow && S.syncHargaOf && S.syncHargaOf(syncRow) > 0) {
+      // bulk_upsert_harga: hitung EKATALOG + SWASTA (x1.3) + UPLOAD (/1.11) sekaligus, sama seperti Bulk Harga.
+      const { error: hErr } = await sb.rpc('bulk_upsert_harga', { p_items: [{
+        produk_id: result.data.id,
+        tahun: Number(syncRow.tahun) || new Date().getFullYear(),
+        harga_ekat: S.syncHargaOf(syncRow)
+      }] });
+      if (hErr) { hargaSyncGagal = true; showToast('Produk tersimpan, tapi harga dari sheet gagal ditulis: ' + hErr.message + ' (isi lewat tab Harga / Bulk Harga)', true); }
+      else showToast('Harga E-KAT dari sheet ikut ditulis');
+    }
   }
 
-  if (wasNew) {
+  // Kalau harga gagal ditulis, baris sync SENGAJA dibiarkan: loadSyncUnmatched() akan mencoba backfill lagi.
+  if (wasNew && syncRowAda && !hargaSyncGagal) {
     sb.from('sync_unmatched_produk').delete().eq('kode_produk', kodeProduk)
       .then(({ error: delErr }) => { if (delErr) console.warn('Gagal bersihin sync_unmatched_produk:', delErr.message); });
   }
