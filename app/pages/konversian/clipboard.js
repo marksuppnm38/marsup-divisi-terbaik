@@ -532,7 +532,7 @@ S.handleEditingStopBroadcast = handleEditingStopBroadcast;
 
 function renderButuhBantuanBtn() {
   btnButuhBantuan.classList.toggle('on', S.currentButuhBantuan);
-  btnButuhBantuan.textContent = S.currentButuhBantuan ? '🙋 Butuh Bantuan' : '🙋 Minta Bantuan';
+  btnButuhBantuan.innerHTML = '<i class="ti ti-lifebuoy"></i><span class="cheb-label">' + (S.currentButuhBantuan ? 'Butuh Bantuan' : 'Minta Bantuan') + '</span>';
 }
 S.renderButuhBantuanBtn = renderButuhBantuanBtn;
 btnButuhBantuan.addEventListener('click', async () => {
@@ -706,7 +706,7 @@ S.kbEmptyCta.addEventListener('click', () => S.openPrModal());
 // beneran di dalam tab Kebutuhan RS, plus update badge jumlah item pending
 // di tab-nya sendiri biar kelihatan dari tab Clipboard tanpa perlu pindah.
 function updateKbTabState() {
-  if (typeof S.updateRsStrip === 'function') S.updateRsStrip();
+  if (typeof S.updatePermintaanButton === 'function') S.updatePermintaanButton();
   const hasChecklist = !!S.checklistPermintaanId && S.checklistItems.length > 0;
   S.kbEmptyState.style.display = hasChecklist ? 'none' : 'flex';
   S.kbRealContent.style.display = hasChecklist ? 'flex' : 'none';
@@ -1398,7 +1398,7 @@ S.getSetStokGap = getSetStokGap;
       if (!gap.missing.length && !gap.kurang.length) html += `<div class="ssp-muted">Semua komponen sudah punya data stok — coba muat ulang hasil pencarian.</div>`;
     }
     const canCopy = !gap.kosong && (gap.missing.length || gap.kurang.length);
-    if (canCopy) html += `<div class="ssp-copy">📋 Klik untuk copy daftar ini</div>`;
+    if (canCopy) html += `<div class="ssp-copy"><i class="ti ti-copy"></i> Klik untuk menyalin daftar ini</div>`;
     pop.classList.remove('ssp-copied');
     pop.classList.toggle('ssp-ready', !!canCopy);
     activeGap = gap;

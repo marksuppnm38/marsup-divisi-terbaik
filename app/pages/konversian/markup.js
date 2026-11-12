@@ -59,7 +59,7 @@ export const KONVERSIAN_MARKUP = `
   </div>
   <div class="header-right">
     <span class="clip-count" id="hdr-clip-count-wrap" role="button" tabindex="0" title="Tutup clipboard" aria-label="Buka/tutup clipboard"><span class="hdr-clip-label">Clipboard: <span id="hdr-count">0</span> item</span><i class="ti ti-layout-sidebar-right-collapse" id="hdr-clip-toggle-ic"></i></span>
-    <button class="toggle-btn" id="btn-permintaan" title="Catat Permintaan RS"><i class="ti ti-clipboard-text"></i> <span class="toggle-btn-label">Permintaan RS</span></button>
+    <button class="toggle-btn" id="btn-permintaan" type="button" title="Catat Permintaan RS untuk sesi ini"><i class="ti ti-clipboard-text"></i> <span class="toggle-btn-label">Permintaan RS</span><span class="toggle-btn-count" id="btn-permintaan-count" hidden></span></button>
   </div>
 </div>
 <!-- The Cari Cepat / Konversi door-switch pills that used to live here are
@@ -390,7 +390,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
               </div>
             </div>
           </div>
-          <button class="clip-header-edit-btn" id="btn-butuh-bantuan" type="button" title="Tandai sesi ini butuh bantuan tim">🙋 Minta Bantuan</button>
+          <button class="clip-header-edit-btn" id="btn-butuh-bantuan" type="button" title="Tandai sesi ini butuh bantuan tim"><i class="ti ti-lifebuoy"></i><span class="cheb-label">Minta Bantuan</span></button>
           <!-- Selesaikan Sesi dipindah dari menu "⋯" footer ke sini: user sering lupa nutup sesi
                (jadi nyangkut di Konversi Berjalan), jadi harus kelihatan terus, sejajar Minta Bantuan.
                ID & handler (clipboard.js) sama persis — cuma posisi DOM yang pindah. -->
@@ -439,16 +439,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
       <button class="clip-tab-btn" id="clip-tab-btn-sph" type="button" data-tab="sph" title="Buat SPH">
         <i class="ti ti-file-text"></i> <span class="clip-tab-label">Buat SPH</span>
       </button>
-      <!-- Permintaan RS (state sesi) — dulu strip terpisah 1 baris penuh, sekarang nempel di ujung kanan
-           baris tab. Di panel sempit otomatis turun ke baris sendiri (flex-wrap). ID sama persis. -->
-      <div class="rs-strip" id="rs-strip">
-        <button type="button" class="rs-strip-state" id="rs-strip-state" title="Lihat isi Permintaan RS sesi ini">
-          <i class="ti ti-clipboard-text"></i>
-          <span class="rs-strip-title">Permintaan RS</span>
-          <span class="rs-strip-info" id="rs-strip-info">Catat Permintaan RS</span>
-          <i class="ti ti-chevron-right rs-strip-chev"></i>
-        </button>
-      </div>
     </div>
     <!-- Label tahap: satu baris kecil yang bilang "lagi di tahap apa" — diisi
          switchClipTab() (clipboard.js). -->

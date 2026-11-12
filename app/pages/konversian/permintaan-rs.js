@@ -141,29 +141,30 @@ document.getElementById('pr-active-close-btn').addEventListener('click', () => {
 document.getElementById('pr-active-add-btn').addEventListener('click', () => openPrModal('add'));
 document.getElementById('pr-active-edit-btn').addEventListener('click', () => openPrModal('edit'));
 
-const rsStripState = document.getElementById('rs-strip-state');
-const rsStripInfo = document.getElementById('rs-strip-info');
-// Satu pintu masuk aja: klik strip → openPrModal() tanpa mode. Kalau sesi udah punya Permintaan RS
+// Satu pintu masuk di header atas: klik → openPrModal() tanpa mode. Kalau sesi sudah punya Permintaan RS
 // jatuhnya ke view "active" (isi tersimpan + tombol Tambah item / Edit item); kalau belum → form Catat.
-// Dulu ada tombol "+ Tambah"/"Edit" terpisah di strip yang loncat langsung ke form input, jadi
-// kelihatan kayak bikin Permintaan RS baru — dibuang.
-rsStripState.addEventListener('click', () => openPrModal());
+// Dulu ada chip kedua di baris tab clipboard yang membuka modal yang sama; dibuang supaya satu aksi = satu tombol.
+// Status sesi (berapa item sudah terpenuhi) tampil sebagai pil kecil di tombol header.
+const btnPermintaanCount = document.getElementById('btn-permintaan-count');
 
-// Satu-satunya tempat yang nyinkronin state Permintaan RS ke UI di luar modal:
-// strip di panel sesi + label tombol toolbar. Dipanggil dari updateKbTabState()
-// (yang udah jalan tiap checklist berubah/di-reset), jadi gak ada state kedua.
-function updateRsStrip() {
+// Satu-satunya tempat yang nyinkronin state Permintaan RS ke tombol header. Dipanggil dari
+// updateKbTabState() (jalan tiap checklist berubah/di-reset), jadi gak ada state kedua.
+function updatePermintaanButton() {
   const active = hasActivePermintaan();
   const n = S.checklistItems.length;
   const done = S.checklistItems.filter(i => i.status === 'TERPENUHI').length;
-  rsStripInfo.textContent = active ? `${n} item · ${done}/${n} terpenuhi` : 'Catat Permintaan RS';
-  rsStripState.classList.toggle('has-data', active);
-  rsStripState.title = active ? 'Lihat / tambah item / edit Permintaan RS sesi ini' : 'Catat Permintaan RS untuk sesi ini';
-  const lbl = S.btnPermintaan.querySelector('.toggle-btn-label');
-  if (lbl) lbl.textContent = 'Permintaan RS';
-  S.btnPermintaan.title = active ? 'Lihat / tambah / edit Permintaan RS sesi ini' : 'Catat Permintaan RS';
+  const showCount = active && n > 0;
+  S.btnPermintaan.classList.toggle('on', active);
+  S.btnPermintaan.title = active ? 'Lihat, tambah, atau edit Permintaan RS sesi ini' : 'Catat Permintaan RS untuk sesi ini';
+  if (!btnPermintaanCount) return;
+  btnPermintaanCount.hidden = !showCount;
+  btnPermintaanCount.textContent = showCount ? `${done}/${n}` : '';
+  btnPermintaanCount.classList.toggle('is-complete', showCount && done === n);
+  const ket = showCount ? `${done} dari ${n} item terpenuhi` : '';
+  btnPermintaanCount.title = ket;
+  if (ket) btnPermintaanCount.setAttribute('aria-label', ket); else btnPermintaanCount.removeAttribute('aria-label');
 }
-S.updateRsStrip = updateRsStrip;
+S.updatePermintaanButton = updatePermintaanButton;
 
 // ---- Tab switch Teks / Excel / Screenshot ----
 let prTeksFromOcr = false;

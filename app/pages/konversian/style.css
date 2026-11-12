@@ -72,6 +72,15 @@
   background:var(--accent-bg);
   border-color:transparent;
 }
+/* Pil progres Permintaan RS (terpenuhi/total) di tombol header. Hijau kalau semua item sudah terpenuhi. */
+#app-root .header-right .toggle-btn-count{
+  min-width:18px;height:18px;padding:0 6px;border-radius:999px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--accent);color:#fff;
+  font-size:10px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;
+}
+#app-root .header-right .toggle-btn-count[hidden]{display:none}
+#app-root .header-right .toggle-btn-count.is-complete{background:var(--success)}
 
 /* SPA integration (icon/shell convergence pass): Beranda and Stok are gone
    from markup.js entirely now (plain <a> links, zero JS binding, 100%
@@ -297,10 +306,6 @@
   display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:6px;
   width:auto;height:32px;padding:0 14px;font-size:12.5px;
 }
-/* Di tab Kebutuhan RS yang masih kosong, CTA besar di tengah sudah jadi pintu masuknya —
-   chip "Catat Permintaan RS" di baris tab disembunyikan biar gak ada dua tombol untuk aksi yang sama.
-   Di tab Clipboard / saat sudah ada data, chip tetap tampil. */
-#app-root .clip-sticky-top:has(#clip-tab-btn-kb.active) .rs-strip:has(.rs-strip-state:not(.has-data)){display:none}
 
 /* Clipboard/produk list items: keep as list rows, but border only appears
    on hover/interaction, not sitting there constantly as visual noise */
@@ -660,31 +665,6 @@
    card besar ala dashboard marketing.
    ══════════════════════════════════════════════════════════════════ */
 
-/* Strip Permintaan RS — state sesi selalu kelihatan, terpisah jelas dari
-   identitas sesi (di atas) dan tab pencocokan/hasil (di bawah). */
-.rs-strip{
-  display:flex;align-items:center;justify-content:space-between;gap:8px;
-  margin:0 14px 8px;padding:6px 10px;
-  background:var(--accent-bg);border:1px solid var(--border);border-radius:var(--radius-sm);
-  flex-shrink:0;
-}
-.rs-strip-state{
-  display:flex;align-items:center;gap:6px;min-width:0;flex:1;
-  background:none;border:none;padding:0;cursor:pointer;font-family:inherit;text-align:left;
-}
-.rs-strip-state i{font-size:13px;color:var(--accent-text);flex-shrink:0}
-.rs-strip-title{font-size:11.5px;font-weight:600;color:var(--text);flex-shrink:0}
-.rs-strip-info{font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rs-strip-state.has-data .rs-strip-info{color:var(--text-secondary);font-weight:500}
-.rs-strip-actions{display:flex;gap:4px;flex-shrink:0}
-.rs-strip-btn{
-  height:24px;padding:0 8px;font-size:11px;font-weight:600;font-family:inherit;
-  border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);
-  color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;gap:4px;
-}
-.rs-strip-btn:hover{border-color:var(--accent);color:var(--accent-text);background:var(--surface-2)}
-.rs-strip-btn i{font-size:11px}
-
 /* Label tahap — satu baris kecil, bukan header baru; bilang user lagi
    ngapain tanpa makan ruang. */
 .clip-stage-label{
@@ -1026,8 +1006,6 @@
 #app-root .rm-ek{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:600;color:var(--success);flex:0 0 auto}
 
 @media (max-width:768px){
-  #app-root .rs-strip{margin:0 10px 6px;flex-wrap:wrap}
-  #app-root .rs-strip-info{white-space:normal}
   #app-root .clip-foot-exit-row{flex-direction:column}
   #app-root .clip-foot-exit-row .btn-leave-sesi,#app-root .clip-foot-exit-row .btn-end-sesi{width:100%}
 }
@@ -1238,7 +1216,9 @@
 #app-root .clip-header-edit-btn{
   height:22px;padding:0 7px;white-space:nowrap;font-size:10.5px;
   border:1px solid var(--border);border-radius:6px;
+  display:inline-flex;align-items:center;gap:4px;
 }
+#app-root .clip-header-edit-btn i{font-size:13px;line-height:1}
 #app-root .clip-header-edit-btn:hover{text-decoration:none;background:var(--surface-2)}
 /* ikon pensil/× jangan ikut muter pas header collapsed */
 #app-root .clip-header.collapsed .clip-header-icon-btn i,
@@ -1300,20 +1280,12 @@
 #app-root .clip-stage-label,
 #app-root .clip-summary-strip{display:none !important}
 
-/* Baris tab + Permintaan RS (nempel di ujung kanan, turun baris sendiri kalau panel sempit) */
+/* Baris tab clipboard */
 #app-root .clip-tab-row{
   display:flex;flex-wrap:wrap;align-items:center;gap:0 14px;padding:0 12px;
   border-bottom:1px solid var(--border);
 }
 #app-root .clip-tab-btn{height:34px;flex:0 0 auto}
-#app-root .clip-tab-row .rs-strip{
-  flex:1 1 auto;min-width:0;margin:0 0 0 auto;padding:0;
-  background:none;border:none;justify-content:flex-end;gap:6px;
-}
-#app-root .clip-tab-row .rs-strip-state{flex:0 1 auto;min-width:0}
-#app-root .clip-tab-row .rs-strip-title{display:none}
-#app-root .clip-tab-row .rs-strip-info{font-size:11px}
-#app-root .clip-tab-row .rs-strip-btn{height:22px;padding:0 7px}
 
 /* ---------- ZONA B: workbench ---------- */
 /* Rantai tinggi desktop: header (auto) + workbench (sisa) + footer (auto).
@@ -1421,26 +1393,13 @@
 #app-root .clip-more-menu .btn-end-sesi:hover:not(:disabled){background:var(--surface-2)}
 /* ══════════════════════════════════════════════════════════════════════
    2026-10-19 — Rapihin panel kanan (Claude)
-   - Strip Permintaan RS: tombol "+ Tambah"/"Edit" dibuang; strip jadi SATU chip yang bisa diklik
-     (buka modal Permintaan RS → di dalamnya baru ada Tambah item / Edit item).
+   - Strip Permintaan RS dibuang; aksinya satu tombol di header atas (lihat .toggle-btn-count).
    - Selesaikan Sesi pindah ke strip header (sejajar Minta Bantuan), selalu kelihatan.
    - Identitas sesi gak dobel: chip toolbar = nama RS, strip header = Sales · PIC.
    - Belum ada section → tab bar section disembunyiin, diganti tombol "+ Section" kecil di kb-head.
    - Baris status autosave kebutuhan disembunyiin kalau kosong.
    Blok ini sengaja PALING AKHIR (selektor #app-root) — hapus blok = balik ke tampilan sebelumnya.
    ══════════════════════════════════════════════════════════════════════ */
-
-/* Chip Permintaan RS */
-#app-root .clip-tab-row .rs-strip-state{
-  gap:6px;height:24px;padding:0 8px;border:1px solid var(--border);border-radius:6px;
-  background:var(--surface-2);transition:border-color .12s,background .12s;
-}
-#app-root .clip-tab-row .rs-strip-state:hover{border-color:var(--accent);background:var(--accent-bg)}
-#app-root .clip-tab-row .rs-strip-state.has-data{border-color:var(--accent);background:var(--accent-bg)}
-#app-root .clip-tab-row .rs-strip-state .rs-strip-info{color:var(--text-secondary);font-weight:600}
-#app-root .clip-tab-row .rs-strip-state:not(.has-data) .rs-strip-info{color:var(--text-muted);font-weight:500}
-#app-root .rs-strip-chev{font-size:11px;color:var(--text-muted);flex-shrink:0;margin-left:-2px}
-#app-root .clip-tab-row .rs-strip-state:hover .rs-strip-chev{color:var(--accent-text)}
 
 /* Identitas strip header: label muted, nilai tebal; peringatan kalau nama RS belum diisi */
 #app-root .clip-header .clip-header-compact{color:var(--text-muted)}
@@ -1628,8 +1587,8 @@
 /* label tombol strip: cuma di panel lebar; di sempit tinggal ikon (title tetap jadi tooltip) */
 #app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-strip-actions .btn-end-sesi{font-size:0;gap:0;padding:0 6px;min-width:24px;justify-content:center}
 #app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-strip-actions .btn-end-sesi i{font-size:13px}
-#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-header-edit-btn{font-size:0;min-width:24px;padding:0 6px}
-#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-header-edit-btn::before{content:"🙋";font-size:13px;line-height:1}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-header-edit-btn{min-width:24px;padding:0 6px}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-header-edit-btn .cheb-label{display:none}
 #app-root[data-clip-size="sm"] .sesi-save-status{display:none}
 /* label tab ditentukan lebar PANEL (bukan lebar layar seperti media query lama) */
 #app-root[data-clip-size="sm"] .clip-tab-label{display:none}
@@ -1773,7 +1732,7 @@
 /* ══════════════════════════════════════════════════════════════════════
    POLISH (27 Okt 2026) — kerapian panel kanan di lebar sempit/menengah.
    Blok ini sengaja PALING AKHIR; hapus blok = balik ke tampilan sebelumnya.
-   1. Tombol aksi header (🙋 / Selesaikan / ✎ / ✕) dulu beda-beda ukuran (22×28, 24×22, …).
+   1. Tombol aksi header (Minta Bantuan / Selesaikan / ✎ / ✕) dulu beda-beda ukuran (22×28, 24×22, …).
       Sekarang semuanya persegi 26×26 dengan radius & ikon seragam.
    2. Chip "N item · x/N terpenuhi" turun ke baris sendiri di bawah tab dengan jarak napas
       (dulu nempel ke garis bawah tab & kelihatan menimpa). Di panel sempit/menengah (<480px)
@@ -1795,12 +1754,6 @@
 #app-root .clip-strip-actions .clip-header-icon-btn i{font-size:14px}
 
 #app-root .clip-tab-row{row-gap:0}
-#app-root .clip-tab-row .rs-strip{padding:6px 0}
-#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-tab-row .rs-strip{
-  flex:1 1 100%;margin:0;justify-content:flex-start;
-  border-top:1px solid var(--border);
-}
-#app-root .clip-tab-row .rs-strip-state{height:26px}
 /* Pengingat: langkah "Simpan ke Drive" berdenyut sampai file hasil export di-upload (S.exportDrivePending) */
 @keyframes convNudge{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,0)}50%{box-shadow:0 0 0 5px rgba(245,158,11,.35)}}
 #app-root .conv-step.is-nudge:not(.is-done):not(:disabled){border-color:var(--accent);animation:convNudge 1.6s ease-in-out infinite}
