@@ -1779,7 +1779,67 @@ document.getElementById('cancelBtn').addEventListener('click', attemptCloseModal
 document.getElementById('modalCloseBtn').addEventListener('click', attemptCloseModal);
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) attemptCloseModal(); });
 
-function closeModal(){ modalOverlay.classList.remove('open'); }
+// ================================================================
+// STATE MACHINE MODAL PRODUK
+// ----------------------------------------------------------------
+// Dulu "modal lagi ngapain" cuma ditebak dari kombinasi currentProdukId,
+// modalDirty, dan class 'open' di overlay -- tidak ada yang melarang
+// transisi aneh. Akibatnya: (1) openEdit(A) lalu openEdit(B) sebelum A
+// selesai dimuat bikin form berisi data A padahal currentProdukId = B,
+// lalu Simpan menimpa B dengan isi A; (2) Simpan bisa diklik saat form
+// masih "Memuat data..."; (3) Simpan bisa jalan dobel (tombol Simpan +
+// dialog "belum disimpan"); (4) modal bisa dibuka ulang ke produk lain
+// di tengah simpan/hapus.
+//
+//   closed --openAdd--> add --simpan--> busy --ok--> edit
+//   closed --openEdit-> loading --data masuk--> edit --simpan/hapus--> busy
+//   add|edit|loading --close--> closed        busy --selesai/gagal--> edit|add
+//
+// Setiap kali modal "hidup baru" (closed/add/loading) modalSession naik.
+// Semua await di alur modal menyimpan session saat mulai dan berhenti kalau
+// session-nya sudah beda (hasil fetch basi tidak boleh nulis ke form).
+// ================================================================
+const MODAL_TRANSITIONS = {
+  closed:  ['add', 'loading'],
+  add:     ['add', 'loading', 'busy', 'closed'],
+  loading: ['add', 'loading', 'edit', 'closed'],
+  edit:    ['add', 'loading', 'busy', 'closed'],
+  busy:    ['add', 'edit', 'closed'] // 'busy' = lagi menyimpan atau menghapus
+};
+let modalState = 'closed';
+let modalSession = 0;
+
+function renderModalChrome(){
+  modalOverlay.classList.toggle('open', modalState !== 'closed');
+  modalOverlay.dataset.state = modalState;
+  const locked = modalState === 'loading' || modalState === 'busy';
+  document.getElementById('saveBtn').disabled = locked;
+  deleteBtn.disabled = locked;
+}
+function modalGo(to){
+  if (!MODAL_TRANSITIONS[modalState].includes(to)) {
+    console.warn('[crud-produk] transisi modal ditolak:', modalState, '->', to);
+    return false;
+  }
+  const from = modalState;
+  modalState = to;
+  if (from !== 'busy' && (to === 'closed' || to === 'add' || to === 'loading')) modalSession++;
+  renderModalChrome();
+  return true;
+}
+// Dipakai di pintu masuk openAdd/openEdit: modal tidak boleh dibuka ulang
+// selagi simpan/hapus berjalan (currentProdukId bisa ketimpa di tengah jalan).
+function modalRejectIfBusy(){
+  if (modalState !== 'busy') return false;
+  showToast('Sedang menyimpan/menghapus, tunggu sebentar', true);
+  return true;
+}
+
+function closeModal(){
+  if (modalState === 'closed') return;
+  modalDirty = false;
+  modalGo('closed');
+}
 
 // ---- Unsaved changes guard — dipakai di modal edit produk (form yang sama
 // juga dipakai buat "Set Baru" & "Edit Info Dasar" di Set Management, jadi
@@ -1793,6 +1853,7 @@ document.getElementById('f_link_v6').addEventListener('input', renderLinkV6Hint)
 document.querySelector('#modalOverlay .modal-card').addEventListener('change', () => { modalDirty = true; });
 
 function attemptCloseModal(){
+  if (modalRejectIfBusy()) return;
   if (modalDirty) { unsavedConfirmOverlay.classList.add('open'); return; }
   closeModal();
 }
@@ -1819,7 +1880,7 @@ document.getElementById('unsavedSaveBtn').addEventListener('click', async (e) =>
 // modalOverlay yang udah gak ada di DOM lagi (detached node) begitu user
 // pindah ke halaman SPA lain.
 beforeUnloadHandler = (e) => {
-  if (modalOverlay.classList.contains('open') && modalDirty) {
+  if (modalState !== 'closed' && modalDirty) {
     e.preventDefault();
     e.returnValue = '';
   }
@@ -1850,6 +1911,8 @@ function setProdTabsLocked(locked){
 
 function resetForm(){
   modalDirty = false;
+  const staleSetNote = document.getElementById('setRedirectNote');
+  if (staleSetNote) staleSetNote.remove(); // sisa dari openEdit produk SET sebelumnya
   document.querySelectorAll('.prod-tab.hidden-for-set').forEach(b => b.classList.remove('hidden-for-set'));
   document.getElementById('inaprocIndikator').style.display = 'none';
   ['f_kode_asli','f_kode_produk','f_nama_produk','f_no_akd','f_masa_berlaku','f_golongan',
@@ -1890,7 +1953,10 @@ function resetForm(){
 // panel-nya lagi display:none atau enggak, jadi udah otomatis keisi pas
 // user nyampe ke tab itu setelah Info Dasar pertama disimpan.
 function openAdd(prefill){
+  if (modalRejectIfBusy()) return;
   pendingSetLink = null; // tombol "Tambah ke set" (compMissing) mengisinya SETELAH openAdd() dipanggil
+  modalGo('add'); // naikkan session dulu: load basi dari modal sebelumnya jadi tidak berlaku
+  const session = modalSession;
   resetForm();
   currentProdukId = null;
   modalTitle.textContent = 'Tambah Produk';
@@ -1907,7 +1973,8 @@ function openAdd(prefill){
   if (prefill?.kode_asli) {
     document.getElementById('f_kode_asli').value = prefill.kode_asli;
     // cekMaster() mengisi field master dari DB; kalau master belum ada, deskripsi vendor diisi dari spek sheet.
-    cekMaster(prefill.kode_asli, true).then(() => {
+    cekMaster(prefill.kode_asli, true, session).then(() => {
+      if (session !== modalSession) return;
       const d = document.getElementById('m_deskripsi_vendor');
       if (prefill.spesifikasi && d && !d.value) d.value = prefill.spesifikasi;
     });
@@ -1915,10 +1982,19 @@ function openAdd(prefill){
   if (prefill?.tipe) { const ft = document.getElementById('f_tipe'); ft.value = prefill.tipe; ft.dispatchEvent(new Event('change')); }
   renderLinkV6Hint();
   document.getElementById('verifiedRow').style.display = 'none';
-  modalOverlay.classList.add('open');
 }
 
 async function openEdit(produkId){
+  if (modalRejectIfBusy()) return;
+  // Pindah produk saat form lama masih berisi perubahan belum tersimpan (mis. lewat Ctrl+K):
+  // dulu perubahan itu hilang diam-diam.
+  if (modalState !== 'closed' && modalDirty) {
+    const lanjut = await crudConfirm('Perubahan di form ini belum disimpan dan akan dibuang. Lanjut buka produk lain?', { danger: true, okLabel: 'Buang & Lanjut' });
+    if (!lanjut) return;
+    if (modalRejectIfBusy()) return; // state bisa berubah selama dialog terbuka
+  }
+  modalGo('loading'); // Simpan/Hapus terkunci sampai data selesai masuk
+  const session = modalSession;
   resetForm();
   currentProdukId = produkId;
   modalTitle.textContent = 'Edit Produk';
@@ -1927,9 +2003,9 @@ async function openEdit(produkId){
   document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
   deleteBtn.style.display = 'inline-flex';
   document.getElementById('toggleAkdBoxBtn').style.display = 'inline-flex';
-  modalOverlay.classList.add('open');
 
   const { data: p, error } = await sb.from('produk').select('*').eq('id', produkId).single();
+  if (session !== modalSession) return; // modal ditutup / pindah produk selagi memuat -> buang hasil basi
   if (error) { showToast('Gagal memuat produk: ' + error.message, true); closeModal(); return; }
 
   document.getElementById('f_kode_asli').value = p.kode_asli || '';
@@ -1950,9 +2026,11 @@ async function openEdit(produkId){
   document.getElementById('f_is_active').checked = !!p.is_active;
   document.getElementById('akdSealHolder').innerHTML = sealHtml(p.status_akd);
   modalSub.textContent = 'Kode: ' + (p.kode_produk || '—');
+  applySetModalAdjustments(); // tipe sudah terisi di f_tipe; dulu dikerjakan monkey-patch SETELAH semua fetch selesai
+  modalGo('edit');            // form sudah berisi data asli -> Simpan/Hapus boleh dipakai
 
   await Promise.all([
-    p.kode_asli ? cekMaster(p.kode_asli, true) : null,
+    p.kode_asli ? cekMaster(p.kode_asli, true, session) : null,
     loadHarga(produkId),
     loadMedia(produkId),
     loadAkdLinks(produkId, p.tipe),
@@ -1964,6 +2042,7 @@ let currentInfoDasarKodeProduk = '';
 async function loadKfaInfoForProduk(produkId, kodeProduk){
   currentInfoDasarKodeProduk = kodeProduk || '';
   const { data } = await sb.from('produk_kfa').select('kode_kfa, kode_cangkang, nama_cangkang').eq('produk_id', produkId).maybeSingle();
+  if (produkId !== currentProdukId) return; // modal sudah pindah produk
   document.getElementById('f_kode_kfa').value = data?.kode_kfa || '';
   document.getElementById('f_kode_cangkang').value = data?.kode_cangkang || '';
   document.getElementById('f_nama_cangkang').value = data?.nama_cangkang || '';
@@ -1982,11 +2061,12 @@ document.getElementById('cekMasterBtn').addEventListener('click', () => {
   if (!kode) { showToast('Isi kode_asli dulu', true); return; }
   cekMaster(kode, false);
 });
-async function cekMaster(kodeAsli, silent){
+async function cekMaster(kodeAsli, silent, session){
   const msgEl = document.getElementById('masterLookupMsg');
   const fieldsEl = document.getElementById('masterFields');
   if (!silent) msgEl.innerHTML = `<div class="lookup-msg">Mencari...</div>`;
   const { data, error } = await sb.from('master_produk').select('*').eq('kode_asli', kodeAsli).maybeSingle();
+  if (session !== undefined && session !== modalSession) return; // hasil basi dari modal sebelumnya
   if (error) { msgEl.innerHTML = `<div class="lookup-msg notfound">Gagal cek: ${escapeHtml(error.message)}</div>`; return; }
   fieldsEl.style.display = 'block';
   if (data) {
@@ -2163,6 +2243,7 @@ async function loadAkdLinks(produkId, tipe){
   const { data, error } = await sb.from('produk_akd')
     .select('akd_id, akd:akd_id(id, no_akd, nama_akd, tipe_akd)')
     .eq('produk_id', produkId);
+  if (produkId !== currentProdukId) return; // hasil basi
   if (error) { document.getElementById('akdHint').textContent = 'Gagal memuat relasi AKD: ' + error.message; return; }
   currentAkdLinks = (data || []).map(r => r.akd).filter(Boolean);
   renderAkdCurrent();
@@ -2251,6 +2332,7 @@ async function refreshAkdFieldsFromDb(){
 // ---- Harga ----
 async function loadHarga(produkId){
   const { data, error } = await sb.from('produk_harga').select('*').eq('produk_id', produkId).order('tahun', { ascending: false });
+  if (produkId !== currentProdukId) return; // hasil basi
   if (error) { showToast('Gagal memuat harga: ' + error.message, true); return; }
   hargaRows = data || [];
   renderHargaTable();
@@ -2346,6 +2428,7 @@ document.getElementById('addHargaBtn').addEventListener('click', async () => {
 // ---- Media ----
 async function loadMedia(produkId){
   const { data, error } = await sb.from('produk_media').select('*').eq('produk_id', produkId).order('urutan', { ascending: true });
+  if (produkId !== currentProdukId) return; // hasil basi
   if (error) { showToast('Gagal memuat media: ' + error.message, true); return; }
   mediaRows = data || [];
   renderMediaTable();
@@ -2414,18 +2497,24 @@ async function deleteMedia(id){
 
 // ---- Save produk ----
 async function saveProduk(){
+  // Hanya boleh dari 'add' / 'edit'. Menolak simpan dobel (tombol Simpan + dialog
+  // "belum disimpan") dan simpan saat form masih memuat data.
+  if (modalState === 'loading') { showToast('Data produk masih dimuat, tunggu sebentar', true); return false; }
+  if (modalState !== 'add' && modalState !== 'edit') return false;
+  const session = modalSession;
   const saveBtn = document.getElementById('saveBtn');
   const saveBtnOriginalHtml = saveBtn.innerHTML;
-  saveBtn.disabled = true;
+  modalGo('busy');
   saveBtn.innerHTML = '<span class="spinner"></span> Menyimpan...';
   try {
-    return await saveProdukInner();
+    return await saveProdukInner(session);
   } finally {
-    saveBtn.disabled = false;
     saveBtn.innerHTML = saveBtnOriginalHtml;
+    // Kalau modal sudah ditutup di tengah jalan (mis. SET baru -> closeModal()), jangan disentuh.
+    if (session === modalSession && modalState === 'busy') modalGo(currentProdukId ? 'edit' : 'add');
   }
 }
-async function saveProdukInner(){
+async function saveProdukInner(session){
   const kodeAsli = document.getElementById('f_kode_asli').value.trim();
   const kodeProduk = document.getElementById('f_kode_produk').value.trim();
   const tipe = document.getElementById('f_tipe').value;
@@ -2515,6 +2604,13 @@ async function saveProdukInner(){
     return true;
   }
 
+  if (session !== modalSession) {
+    // Modal sudah ditutup selagi simpan berjalan: data tetap tersimpan, cukup segarkan daftar.
+    invalidateProdukStackCache();
+    loadProduk();
+    refreshProdukFilterCounts(true);
+    return true;
+  }
   setProdTabsLocked(false);
   document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
   deleteBtn.style.display = 'inline-flex';
@@ -3245,9 +3341,7 @@ document.getElementById('openFullLogFromSetBtn').addEventListener('click', () =>
 // langsung (`openEdit = ...`, tanpa `window.`), yang balik kerja sama persis
 // kayak sebelumnya karena semua pemanggil sekarang satu function scope yang
 // sama (mount()).
-const _origOpenEdit = openEdit;
-openEdit = async function(produkId){
-  await _origOpenEdit(produkId);
+function applySetModalAdjustments(){
   const tipe = document.getElementById('f_tipe').value;
   const tabAkdBtn = document.querySelector('.prod-tab[data-tab="akd"]');
   const tabHargaBtn = document.querySelector('.prod-tab[data-tab="harga"]');
@@ -3275,7 +3369,7 @@ openEdit = async function(produkId){
     tabAkdBtn.classList.remove('hidden-for-set');
     tabHargaBtn.classList.remove('hidden-for-set');
   }
-};
+}
 
 // ---- Route klik SET dari Produk list & command palette ke Set Management ----
 const _origLoadProdukRowClick = null; // handled inline below via monkey-patch approach not needed; see loadProduk edits
@@ -3307,8 +3401,16 @@ const _origLoadProdukRowClick = null; // handled inline below via monkey-patch a
 //    bukan wewenang halaman Produk buat hapus diam-diam. Kalau masih ada baris di
 //    situ, delete diBLOK dengan pesan jelas, bukan dibiarin gagal error Postgres mentah.
 deleteBtn.addEventListener('click', async () => {
-  if (!currentProdukId) return;
-  const id = currentProdukId;
+  if (modalState !== 'edit' || !currentProdukId) return;
+  const session = modalSession;
+  modalGo('busy'); // kunci Simpan/Hapus/Tutup selama cek relasi + konfirmasi + delete
+  try {
+    await deleteProdukInner(currentProdukId);
+  } finally {
+    if (session === modalSession && modalState === 'busy') modalGo('edit');
+  }
+});
+async function deleteProdukInner(id){
 
   const [hargaR, mediaR, akdR, komposisiSendiriR, dipakaiDiSetLainR, inaprocR, permintaanR, konversiR] = await Promise.all([
     sb.from('produk_harga').select('id', { count: 'exact', head: true }).eq('produk_id', id),
@@ -3357,7 +3459,7 @@ deleteBtn.addEventListener('click', async () => {
   invalidateProdukStackCache();
   loadProduk();
   refreshProdukFilterCounts(true);
-});
+}
 
   // ---- AKD MANAGEMENT ----
   // Dipindah ke ./akd-master.js (breakup sesi ini). Fungsi loadAkd/
