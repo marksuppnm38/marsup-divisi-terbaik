@@ -46,6 +46,7 @@ import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
 import { installOrphan } from './orphan.js';
 import { installKategori } from './kategori.js';
+import { createCopyKit } from './copy.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared, selectPricelistRows, writePricelistXlsx } from '../../../shared/exports/pricelist.js';
 
@@ -164,8 +165,11 @@ let exportMenuDocHandler = null;
 // function inside mount() -- see switchView()'s own comment for why.
 let _switchView = null;
 let beforeUnloadHandler = null;
+let copyKitDestroy = null; // copy.js: tutup popover salin + buang cache saat halaman di-unmount
 
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-11-12: alur "salin dulu" di list Produk (copy.js): ikon salin Kode/Nama, menu Salin per baris, centang + salin TSV ke Excel/Sheets,
+//   kolom checkbox & aksi baru (colspan 6 -> 8), fetchAkdNoMap dapat opsi {silent}, klik baris diabaikan saat teks sedang diblok — Claude
 // 2026-11-11: baris "Cari produk" di sidebar global dihapus (kembar sama searchbar Produk); hint Ctrl K pindah ke dalam searchbar Produk,
 //   dan Ctrl K di view Produk sekarang fokus ke searchbar itu (palette tetap kebuka di view lain / saat modal terbuka) — Claude
 // 2026-08-14: fix dedup bulk INAPROC tracker — status "Disetujui" menang duluan atas nomor
@@ -576,6 +580,17 @@ viewTableBtn.addEventListener('click', () => setView('table'));
 viewCardBtn.addEventListener('click', () => setView('card'));
 setView(currentView);
 
+// Alur salin (copy.js). Semua akses ke state index.js lewat closure (dibaca saat dipanggil, bukan saat dibuat).
+const copyKit = createCopyKit({
+  sb, tableBody, cardWrap, showToast,
+  fetchAkdNoMap: (ids, opts) => fetchAkdNoMap(ids, opts),
+  stokOf: (id) => produkStokCache.get(id),
+  ensureStok: (ids) => ensureStokForIds(ids),
+  get stokLabel() { return STOK_LABEL; }, // getter: STOK_LABEL (const) baru dideklarasi di bawah
+  sealLabel: (s) => SEAL_LABELS[s] || s || '',
+});
+copyKitDestroy = () => copyKit.destroy();
+
 let lastQuery = '';
 let topSearchTimer = null;
 const topSearchInput = document.getElementById('topSearchInput');
@@ -902,8 +917,10 @@ async function loadProduk(q, page){
   lastQuery = newQ;
   produkPage = searchChanged ? 1 : (page || produkPage || 1);
   const qq = newQ;
+  copyKit.invalidate(); // harga/AKD hasil salin selalu diambil ulang (bisa baru diedit)
+  copyKit.setPage([]);
 
-  tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Memuat data...</td></tr>`;
+  tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Memuat data...</td></tr>`;
   cardWrap.innerHTML = '';
   produkCount.textContent = 'Memuat...';
 
@@ -933,14 +950,14 @@ async function loadProduk(q, page){
       if (!fastSearchOk) {
       if (listErr) console.warn('search_produk_list gagal, fallback ke 2 langkah:', listErr.message);
       const { data: rpcData, error: rpcErr } = await sb.rpc('search_produk_dengan_harga', { q: qq, p_tipe: null, only_akd: false, only_kfa: false });
-      if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
+      if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
       const kodeList = (rpcData || []).map(r => r.kode_produk);
       if (kodeList.length === 0) { produkSearchRawRows = []; }
       else {
         const { data: fullRows, error: fullErr } = await sb.from('produk')
           .select(PRODUK_LIST_COLUMNS)
           .in('kode_produk', kodeList);
-        if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
+        if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
         const byKode = Object.fromEntries((fullRows || []).map(r => [r.kode_produk, r]));
         produkSearchRawRows = kodeList.map(k => byKode[k]).filter(Boolean);
       }
@@ -961,7 +978,7 @@ async function loadProduk(q, page){
     // ("+ Tambah Filter") dipasang di client pakai produkRowMatchesFilter yang sama dgn jalur
     // search — get_produk_list sengaja TIDAK dipakai (gak kenal status "verified").
     const all = await ensureVerifiedRows();
-    if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal memuat produk Verified.</td></tr>`; return; }
+    if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Gagal memuat produk Verified.</td></tr>`; return; }
     let filtered = all;
     if (needsStok && !(await ensureStokForIds(all.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
@@ -984,7 +1001,7 @@ async function loadProduk(q, page){
     });
     if (error) {
       const stokBelumMigrasi = needsStok && (error.code === 'PGRST202' || /p_stok/.test(error.message || ''));
-      tableBody.innerHTML = `<tr class="state-row"><td colspan="6">${stokBelumMigrasi
+      tableBody.innerHTML = `<tr class="state-row"><td colspan="8">${stokBelumMigrasi
         ? 'Filter Stok belum aktif di database. Jalankan <code>sql/01_stok_filter_produk.sql</code> di Supabase SQL Editor, lalu muat ulang.'
         : 'Gagal memuat: ' + escapeHtml(error.message)}</td></tr>`;
       return;
@@ -1002,7 +1019,7 @@ async function loadProduk(q, page){
     const { data, error, count } = await query
       .order('updated_at', { ascending: false })
       .range(from, to);
-    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
     rows = data || [];
     total = count || 0;
   }
@@ -1025,7 +1042,7 @@ async function loadProduk(q, page){
   });
 
   if (rows.length === 0) {
-    tableBody.innerHTML = `<tr class="state-row"><td colspan="6">Tidak ada produk ditemukan.</td></tr>`;
+    tableBody.innerHTML = `<tr class="state-row"><td colspan="8">Tidak ada produk ditemukan.</td></tr>`;
     cardWrap.innerHTML = `<div class="stub-box" style="grid-column:1/-1;">Tidak ada produk ditemukan.</div>`;
     return;
   }
@@ -1053,6 +1070,7 @@ async function loadProduk(q, page){
     return { noHarga, noLink };
   }
 
+  copyKit.setPage(rows);
   tableBody.innerHTML = '';
   cardWrap.innerHTML = '';
   rows.forEach(p => {
@@ -1065,14 +1083,17 @@ async function loadProduk(q, page){
     const flagsHtml = flags.join('');
     const tr = document.createElement('tr');
     tr.className = 'clickable';
+    tr.dataset.id = p.id;
     tr.tabIndex = 0; // bisa dijangkau keyboard: Tab lalu Enter/Spasi buka produk
     tr.innerHTML = `
-      <td class="kode-cell">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</td>
-      <td class="nama-cell">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</td>
+      ${copyKit.chkCell(p)}
+      <td class="kode-cell">${escapeHtml(p.kode_produk)}${copyKit.btn('kode', 'Salin kode produk')}${recentBadgeHtml(p.updated_at)}</td>
+      <td class="nama-cell">${escapeHtml(p.nama_produk || '—')}${copyKit.btn('nama', 'Salin nama produk')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</td>
       <td class="tipe-cell">${escapeHtml(p.tipe || '—')}</td>
       <td>${sealHtml(p.status_akd)}</td>
       <td class="num">${stokCellHtml(p.id)}</td>
       <td class="flag-cell">${flagsHtml}</td>
+      ${copyKit.moreCell(p)}
     `;
     tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     tr.addEventListener('keydown', (e) => {
@@ -1082,7 +1103,9 @@ async function loadProduk(q, page){
 
     const card = document.createElement('div');
     card.className = 'prod-card';
+    card.dataset.id = p.id;
     card.innerHTML = `
+      ${copyKit.moreBtnCard(p)}
       <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</div>
       <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</div>
       <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd)}</div>
@@ -1091,6 +1114,7 @@ async function loadProduk(q, page){
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     cardWrap.appendChild(card);
   });
+  copyKit.afterRender();
 }
 
 // ---- Klik chip filter status di atas list Produk ----
@@ -1320,7 +1344,7 @@ async function fetchHargaLatestMap(produkIds){
 
 // ---- Ambil No. AKD per produk (bisa >1 AKD per produk -> digabung koma).
 // Dipecah per-chunk sama kayak fetchHargaLatestMap biar query .in() gak kepanjangan.
-async function fetchAkdNoMap(produkIds){
+async function fetchAkdNoMap(produkIds, opts = {}){
   const map = new Map(); // produk_id -> [no_akd, ...]
   const CHUNK = 300;
   for (let i = 0; i < produkIds.length; i += CHUNK) {
@@ -1328,7 +1352,7 @@ async function fetchAkdNoMap(produkIds){
     const { data, error } = await sb.from('produk_akd')
       .select('produk_id, akd:akd_id(no_akd)')
       .in('produk_id', chunk);
-    if (error) { showToast('Gagal ambil data AKD: ' + error.message, true); return null; }
+    if (error) { if (!opts.silent) showToast('Gagal ambil data AKD: ' + error.message, true); return null; }
     (data || []).forEach(l => {
       const no = l.akd && l.akd.no_akd;
       if (!no) return;
@@ -3526,6 +3550,7 @@ export function unmount() {
     exportMenuDocHandler = null;
   }
   if (beforeUnloadHandler) window.removeEventListener('beforeunload', beforeUnloadHandler);
+  if (copyKitDestroy) { copyKitDestroy(); copyKitDestroy = null; }
   filterPopOutsideClickHandler = null;
   resizeHandler = null;
   cmdkKeydownHandler = null;
