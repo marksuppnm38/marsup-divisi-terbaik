@@ -231,6 +231,8 @@ sessionIndicator.addEventListener('click', () => {
   // switch the active tab to "sesi" underneath a hidden tab strip).
   S.switchDoor('konversi');
   if (window.innerWidth <= 860 && typeof switchTab === 'function') switchTab('search');
+  // Belum ada sesi: pill berlabel "Mulai sesi baru", jadi klik = benar-benar mulai (bukan cuma pindah ke daftar).
+  if (S.sesi.phase === 'idle') { startNewSesi(); return; }
   S.switchSubTab('sesi');
 });
 
@@ -344,7 +346,16 @@ async function createSesiRow() {
   return rows[0];
 }
 function ensureSesi() { return S.sesi.ensure(createSesiRow); }
+// Panel kanan "belum ada sesi": fase idle + clipboard kosong. Sengaja butuh KEDUANYA: clipboard yang masih
+// berisi item (mis. simpan ke server gagal) tidak boleh ikut tersembunyi. Dipakai CSS lewat [data-sesi-empty].
+function syncIdleState() {
+  const root = document.getElementById('app-root');
+  if (!root) return;
+  const kosong = S.sesi.phase === 'idle' && !(S.clipboard && S.clipboard.length);
+  root.toggleAttribute('data-sesi-empty', kosong);
+}
 S.sesi.on(({ to, reason }) => {
+  syncIdleState();
   updateEndSesiBtnState(); // satu-satunya penentu enable/disable Selesaikan/Keluar: ikut fase mesin
   if (reason === 'created' && to !== 'idle') {
     S.updateClipHeaderCompact(); // refresh indikator header (ikut currentSesiId, bukan cuma nama RS)
@@ -352,6 +363,7 @@ S.sesi.on(({ to, reason }) => {
   }
 });
 S.ensureSesi = ensureSesi;
+syncIdleState();
 
 async function persistAddItem(item) {
   setSesiSavedStatus('Menyimpan…');
@@ -567,6 +579,7 @@ async function startNewSesi() {
   S.switchSubTab('cari');
 
   btnSesiBaru.disabled = true;
+  btnClipIdleStart.disabled = true;
   try {
     await ensureSesi();
     updateEndSesiBtnState();
@@ -577,9 +590,12 @@ async function startNewSesi() {
     showToast('Gagal bikin sesi baru: ' + err.message, 'error');
   } finally {
     btnSesiBaru.disabled = false;
+    btnClipIdleStart.disabled = false;
   }
 }
 btnSesiBaru.addEventListener('click', startNewSesi);
+const btnClipIdleStart = document.getElementById('btn-clip-idle-start');
+btnClipIdleStart.addEventListener('click', startNewSesi);
 
 // Nutup sesi yang lagi dibuka tanpa harus lewat Record — buat kasus sesi cuma
 // dipakai cek-cek/diskusi dan gak jadi ada transaksi, tapi user tetap mau
@@ -967,6 +983,10 @@ function updateClipAggregates() {
   S.clipTotal.textContent = n;
   S.btnExport.disabled = n === 0;
   S.btnRecord.disabled = n === 0;
+  S.btnRecord.title = n === 0 ? 'Tambahkan produk ke Clipboard dulu' : '';
+  const recordHint = document.getElementById('clip-record-hint');
+  if (recordHint) recordHint.textContent = n === 0 ? 'Export dan Record aktif setelah ada produk di Clipboard.' : '';
+  syncIdleState();
   S.clipEmpty.style.display = n === 0 ? 'block' : 'none';
   const tabBadge = document.getElementById('tab-badge');
   if (tabBadge) { tabBadge.textContent = n; tabBadge.style.display = n > 0 ? 'inline-block' : 'none'; }

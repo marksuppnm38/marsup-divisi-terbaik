@@ -2038,3 +2038,42 @@
   #app-root .dict-table td{padding-left:8px;padding-right:8px}
   #app-root .modal-box.dict-modal-box{padding:16px}
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   2026-11-12 — Belum ada sesi: panel kanan, pill sesi, dan alasan Record nonaktif (Claude)
+   - Pill sesi tanpa sesi = tombol "Mulai sesi baru": garis solid beraksen, bukan garis putus-putus miring
+     (yang terbaca seperti placeholder). Titik status simpan disembunyikan, belum ada yang disimpan.
+   - Panel kanan: fase idle + clipboard kosong → hanya #clip-idle yang tampil (lihat syncIdleState()).
+   - Record nonaktif: datar dan terbaca, bukan abu pekat berteks putih; alasannya di bawah tombol.
+   Blok ini sengaja PALING AKHIR (selektor #app-root) — hapus blok = balik ke tampilan sebelumnya.
+   ══════════════════════════════════════════════════════════════════════ */
+#app-root .session-indicator.empty{
+  font-style:normal;font-weight:600;color:var(--accent-text);
+  background:transparent;border:1px solid var(--accent);
+}
+#app-root .session-indicator.empty:hover{background:var(--accent-bg)}
+#app-root .session-indicator.empty .session-indicator-dot{display:none}
+
+#app-root #clip-idle{display:none}
+#app-root[data-sesi-empty] #panel-clip > :not(#clip-idle){display:none !important}
+#app-root[data-sesi-empty] #clip-idle{
+  display:flex;flex:1 1 auto;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;padding:32px 28px;text-align:center;
+}
+#app-root .clip-idle-icon{font-size:30px;line-height:1;color:var(--text-muted)}
+#app-root .clip-idle-title{font-size:14px;font-weight:600;color:var(--text)}
+#app-root .clip-idle-text{margin:0;max-width:34ch;font-size:12.5px;line-height:1.55;color:var(--text-secondary)}
+#app-root .clip-idle .pr-add-clip-btn{
+  margin-top:6px;height:34px;padding:0 16px;font-size:12.5px;
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--accent);border-color:var(--accent);color:#fff;
+}
+#app-root .clip-idle .pr-add-clip-btn:hover:not(:disabled){filter:brightness(.92);background:var(--accent);color:#fff}
+#app-root .clip-idle .pr-add-clip-btn:disabled{background:var(--surface-2);border-color:var(--border);color:var(--text-muted)}
+
+#app-root .btn-record:disabled{
+  background:var(--surface-2);color:var(--text-muted);
+  border:1px solid var(--border);box-shadow:none;
+}
+#app-root .clip-record-hint{margin-top:-4px;font-size:11.5px;line-height:1.4;color:var(--text-muted)}
+#app-root .clip-record-hint:empty{display:none}

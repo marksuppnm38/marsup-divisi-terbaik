@@ -45,10 +45,10 @@ export const KONVERSIAN_MARKUP = `
   </div>
 </div>
 <div class="konv-toolbar" id="konv-toolbar">
-  <button class="session-indicator empty" id="session-indicator" type="button" title="Klik untuk lihat daftar Konversi Berjalan">
+  <button class="session-indicator empty" id="session-indicator" type="button" title="Mulai sesi konversi baru">
     <span class="session-indicator-dot" id="session-indicator-dot"></span>
-    <i class="ti ti-building-hospital"></i>
-    <span id="session-indicator-text">Belum ada sesi — klik "Mulai Sesi Baru"</span>
+    <i class="ti ti-plus"></i>
+    <span id="session-indicator-text">Mulai sesi baru</span>
   </button>
   <!-- Gabungan status koneksi + siapa aja yang online, satu badge aja (dulu 2
        terpisah, kerasa penuh) — dot warna = status koneksi, avatar = presence.
@@ -359,6 +359,15 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
 
   <!-- PANEL KANAN: CLIPBOARD -->
   <div class="panel-clip" id="panel-clip">
+    <!-- Belum ada sesi DAN clipboard kosong: panel cukup satu pesan + satu tombol. Form RS/Sales/PIC, tab, dan
+         footer tersembunyi (lewat [data-sesi-empty] di #app-root, lihat syncIdleState() di clipboard.js) dan
+         muncul sendiri begitu sesi terbentuk, termasuk yang terbentuk otomatis saat produk ditambahkan. -->
+    <div class="clip-idle" id="clip-idle">
+      <i class="ti ti-clipboard-plus clip-idle-icon"></i>
+      <div class="clip-idle-title">Belum ada sesi</div>
+      <p class="clip-idle-text">Sesi terbuat otomatis saat kamu menambahkan produk dari hasil pencarian. Mulai sekarang kalau ingin mengisi data RS lebih dulu.</p>
+      <button type="button" class="pr-add-clip-btn" id="btn-clip-idle-start"><i class="ti ti-plus"></i> Mulai sesi baru</button>
+    </div>
     <!-- FIX: header+tabs+mode-toggle+summary dibungkus 1 wrapper sticky (lihat
          .clip-sticky-top di pnm-universal.css) supaya nempel jadi satu unit di
          atas panel-clip yang sekarang scrollable, bukan numpuk saling tindih
@@ -639,6 +648,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
           </div>
         </div>
       </div>
+      <div class="clip-record-hint" id="clip-record-hint" aria-live="polite"></div>
     </div>
   </div>
 </div>

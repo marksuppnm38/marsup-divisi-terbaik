@@ -850,13 +850,17 @@ function updateSessionIndicatorAndTitle(rsRaw, salesRaw) {
   const hasSesi = !!S.currentSesiId;
   S.sessionIndicator.classList.toggle('empty', !hasSesi);
   S.sessionIndicator.classList.toggle('active', hasSesi);
+  // Tanpa sesi pill ini tombol "Mulai sesi baru" (ikon plus); dengan sesi, penunjuk RS yang membuka daftar.
+  const pillIcon = S.sessionIndicator.querySelector('i.ti');
+  if (pillIcon) pillIcon.className = 'ti ' + (hasSesi ? 'ti-building-hospital' : 'ti-plus');
+  S.sessionIndicator.title = hasSesi ? 'Klik untuk lihat daftar Konversi Berjalan' : 'Mulai sesi konversi baru';
   if (hasSesi) {
     // Cuma nama RS (Sales & PIC ada di strip header clipboard — gak diulang di dua tempat)
     const label = rsRaw || 'Sesi baru (RS belum diisi)';
     S.sessionIndicatorText.textContent = label;
     document.title = rsRaw ? `${rsRaw} — Conversion Workspace` : S.APP_TITLE_BASE;
   } else {
-    S.sessionIndicatorText.textContent = 'Belum ada sesi — klik "Mulai Sesi Baru"';
+    S.sessionIndicatorText.textContent = 'Mulai sesi baru';
     document.title = S.APP_TITLE_BASE;
   }
 }
