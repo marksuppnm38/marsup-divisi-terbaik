@@ -10,11 +10,12 @@ export function installOrphan(S) {
   const PAGE_SIZE = 50;
   const CONFIRM_AFTER = 3; // harus sama dengan MANIFEST_CONFIRM_AFTER di Apps Script
   const SECTIONS = [
-    { id: 'orphan',   label: 'Ada di DB, hilang di sheet', icon: 'ti-ghost-2' },
-    { id: 'akd',      label: 'Relasi AKD tak ada di sheet', icon: 'ti-shield-off' },
-    { id: 'komp',     label: 'Komposisi set tak ada di sheet', icon: 'ti-stack-2' },
-    { id: 'tipe',     label: 'Tipe beda',                  icon: 'ti-arrows-diff' },
-    { id: 'nonaktif', label: 'Nonaktif tapi ada di sheet', icon: 'ti-eye-off' },
+    // label pendek supaya lima tab muat satu baris; kalimat lengkapnya ada di tooltip dan di subjudul halaman
+    { id: 'orphan',   label: 'Hilang di sheet', hint: 'Ada di DB, hilang di sheet',           icon: 'ti-ghost-2' },
+    { id: 'akd',      label: 'Relasi AKD',      hint: 'Relasi AKD ada di DB, tidak ada di sheet', icon: 'ti-shield-off' },
+    { id: 'komp',     label: 'Komposisi set',   hint: 'Komposisi set ada di DB, tidak ada di sheet', icon: 'ti-stack-2' },
+    { id: 'tipe',     label: 'Tipe beda',       hint: 'Tipe produk di DB berbeda dengan di sheet', icon: 'ti-arrows-diff' },
+    { id: 'nonaktif', label: 'Nonaktif di DB',  hint: 'Nonaktif di DB, tapi masih ada di sheet', icon: 'ti-eye-off' },
   ];
   const SOURCES = {
     orphan: 'v_sync_orphan_detail', akd: 'v_sync_akd_drift', komp: 'v_sync_setkomp_drift',
@@ -50,12 +51,12 @@ export function installOrphan(S) {
     st.sel.clear();
     const cachedRunId = st.loadedRunId;
     body.innerHTML = '<div class="table-card">' + Array.from({ length: 8 }, () =>
-      '<div class="orph-skel-row"><span class="orph-skel" style="width:110px"></span><span class="orph-skel" style="flex:1"></span><span class="orph-skel" style="width:90px"></span></div>').join('') + '</div>';
+      '<div class="orph-skel-row"><span class="orph-skel s-kode"></span><span class="orph-skel s-nama"></span><span class="orph-skel s-tag"></span></div>').join('') + '</div>';
     const runRes = await S.sb.from('sync_manifest_run').select('run_id, finished_at, status, note')
       .in('status', ['committed', 'suspect']).order('finished_at', { ascending: false }).limit(1);
     if (runRes.error) {
       st.missingBackend = true;
-      body.innerHTML = `<div class="state-row" style="padding:24px;">Backend reverse-check belum terpasang (${esc(runRes.error.message)}). Jalankan <code>reverse_check.sql</code>, deploy edge function, lalu jalankan <code>pushManifest()</code> sekali di Apps Script.</div>`;
+      body.innerHTML = `<div class="orph-alert"><i class="ti ti-alert-triangle"></i><div>Backend reverse-check belum terpasang (${esc(runRes.error.message)}). Jalankan <code>reverse_check.sql</code>, deploy edge function, lalu jalankan <code>pushManifest()</code> sekali di Apps Script.</div></div>`;
       $('orphanCount').textContent = 'Belum aktif';
       return;
     }
@@ -75,6 +76,11 @@ export function installOrphan(S) {
   const chip = (attr, val, active, html, count) =>
     `<button class="filter-chip${active ? ' active' : ''}" ${attr}="${val}">${html}${count != null ? `<span class="fc-count">${count}</span>` : ''}</button>`;
   const matchQ = (vals) => { const q = st.q.trim().toLowerCase(); return !q || vals.some((v) => v && String(v).toLowerCase().includes(q)); };
+  const filtersOn = () => !!st.q.trim() || (st.section === 'orphan' && (st.fStatus !== 'all' || st.fAsal !== 'all' || st.fTipe !== 'all'));
+  // kosong karena filter -> beri jalan keluar (reset); kosong karena memang bersih -> jelaskan artinya
+  const emptyState = (cleanMsg) => filtersOn()
+    ? '<div class="orph-empty is-filtered"><i class="ti ti-filter-off"></i><div>Tidak ada hasil untuk pencarian atau filter ini.</div><button class="btn btn-sm" type="button" data-oreset>Reset pencarian dan filter</button></div>'
+    : `<div class="orph-empty"><i class="ti ti-circle-check"></i><div>${cleanMsg}</div></div>`;
 
   function runHealth() {
     if (!st.run) return { level: 'bad', label: 'Belum ada', when: '-', ago: '', warns: [] };
@@ -137,7 +143,7 @@ export function installOrphan(S) {
     const body = $('orphanBody');
     if (!body || st.missingBackend) return;
     $('orphanSectionBar').innerHTML = SECTIONS.map((s) =>
-      `<button class="orph-tab${st.section === s.id ? ' active' : ''}" data-osec="${s.id}"><i class="ti ${s.icon}"></i><span>${s.label}</span><span class="orph-tab-count${st.data[s.id].length ? '' : ' zero'}">${st.data[s.id].length.toLocaleString('id-ID')}</span></button>`).join('');
+      `<button class="orph-tab${st.section === s.id ? ' active' : ''}" data-osec="${s.id}" title="${esc(s.hint)}"><i class="ti ${s.icon}"></i><span>${s.label}</span><span class="orph-tab-count${st.data[s.id].length ? '' : ' zero'}">${st.data[s.id].length.toLocaleString('id-ID')}</span></button>`).join('');
     $('orphanRunInfo').innerHTML = runBanner();
     renderStats();
     renderFilters();
@@ -149,8 +155,9 @@ export function installOrphan(S) {
     const totalPages = Math.max(1, Math.ceil(trs.length / PAGE_SIZE));
     if (st.page > totalPages) st.page = totalPages;
     const slice = trs.slice((st.page - 1) * PAGE_SIZE, st.page * PAGE_SIZE);
-    body.innerHTML = `<div class="table-card orph-card"><div class="orph-scroll"><table class="orph-table"><thead><tr>${head}</tr></thead><tbody>${
-      slice.length ? slice.join('') : `<tr class="state-row"><td colspan="${cols}"><div class="orph-empty"><i class="ti ti-circle-check"></i><div>${empty}</div></div></td></tr>`}</tbody></table></div></div>`;
+    // satu area scroll saja (.vbody di markup); tabel tidak lagi punya kotak scroll sendiri
+    body.innerHTML = `<div class="table-card"><table class="orph-table"><thead><tr>${head}</tr></thead><tbody>${
+      slice.length ? slice.join('') : `<tr class="state-row"><td colspan="${cols}">${emptyState(empty)}</td></tr>`}</tbody></table></div>`;
     renderPgBar($('orphanPagination'), { page: st.page, pageSize: PAGE_SIZE, total: trs.length, onPageChange: (p) => { st.page = p; render(); } });
     syncSelUi(rows);
   }
@@ -180,12 +187,12 @@ export function installOrphan(S) {
     fb.innerHTML =
       seg('Status', 'data-ost', st.fStatus, [
         ['all', 'Semua', cnt({ status: 'all' })],
-        ['confirmed', '<i class="ti ti-circle-check"></i> Terkonfirmasi', cnt({ status: 'confirmed' }), 'Hilang di 3 snapshot berturut-turut'],
+        ['confirmed', '<i class="ti ti-circle-check"></i> Terkonfirmasi', cnt({ status: 'confirmed' }), `Hilang di ${CONFIRM_AFTER} snapshot berturut-turut`],
         ['pending', '<i class="ti ti-hourglass"></i> Menunggu', cnt({ status: 'pending' }), 'Belum cukup snapshot berturut-turut'],
       ]) +
       seg('Asal', 'data-oas', st.fAsal, [
         ['all', 'Semua', cnt({ asal: 'all' })],
-        ['dihapus', '<i class="ti ti-trash-x"></i> Pernah di sheet, hilang', cnt({ asal: 'dihapus' }), 'Pernah terpantau di sheet lalu hilang: paling perlu ditindaklanjuti'],
+        ['dihapus', '<i class="ti ti-trash-x"></i> Dihapus dari sheet', cnt({ asal: 'dihapus' }), 'Pernah terpantau di sheet lalu hilang: paling perlu ditindaklanjuti'],
         ['legacy', '<i class="ti ti-history"></i> Tak pernah di sheet', cnt({ asal: 'legacy' }), 'Tidak pernah terpantau di sheet (kemungkinan dibuat dari sumber lain)'],
       ]) +
       seg('Tipe', 'data-otp', st.fTipe, [
@@ -216,42 +223,42 @@ export function installOrphan(S) {
         : `<span class="orph-status is-pending" title="${n} dari ${CONFIRM_AFTER} snapshot. Belum cukup berturut-turut; mungkin sheet sempat loading">Menunggu <span class="orph-n">${n}/${CONFIRM_AFTER}</span></span>`;
       const asal = r.pernah_di_sheet
         ? '<span class="orph-asal is-deleted" title="Pernah terpantau di sheet, sekarang hilang"><i class="ti ti-trash-x"></i> Dihapus dari sheet</span>'
-        : '<span class="orph-asal" title="Tak pernah terpantau di sheet (kemungkinan dibuat dari sumber lain)"><i class="ti ti-history"></i></span>';
+        : '<span class="orph-asal" title="Tak pernah terpantau di sheet (kemungkinan dibuat dari sumber lain)"><i class="ti ti-history"></i> Tak pernah di sheet</span>';
       const kode = esc(r.kode_produk);
       return `<tr>
-        <td class="orph-chk"><input type="checkbox" data-osel="${kode}"${st.sel.has(r.kode_produk) ? ' checked' : ''}/></td>
-        <td class="kode-cell orph-kode"><div class="orph-kode-row"><span>${kode}</span><button class="orph-copy" data-ocopy="${kode}" title="Salin kode"><i class="ti ti-copy"></i></button></div><div>${tipeBadge(r.tipe)}</div></td>
+        <td class="orph-chk"><input type="checkbox" data-osel="${kode}" aria-label="Pilih ${kode}"${st.sel.has(r.kode_produk) ? ' checked' : ''}/></td>
+        <td class="kode-cell orph-kode"><div class="orph-kode-row"><span>${kode}</span><button class="orph-copy" type="button" data-ocopy="${kode}" title="Salin kode" aria-label="Salin kode ${kode}"><i class="ti ti-copy"></i></button></div><div>${tipeBadge(r.tipe)}</div></td>
         <td class="orph-nama"><div class="orph-nama-main">${r.nama_produk ? esc(r.nama_produk) : '<span class="orph-muted">(tanpa nama)</span>'}</div>
           ${notes.length ? `<div class="orph-note">${esc(notes.join(' · '))}</div>` : ''}${rename}</td>
         <td class="orph-asal-cell">${asal}</td>
         <td class="orph-when"><div>${fmtDate(r.first_missing_at)}</div><div class="orph-note">${relDay(r.first_missing_at)}</div></td>
         <td>${status}</td></tr>`;
     });
-    return { head: '<th class="orph-chk"><input type="checkbox" id="orphanSelAll" title="Pilih semua hasil filter (semua halaman)"/></th><th>Kode Produk</th><th>Nama / Keterangan</th><th>Asal</th><th>Hilang sejak</th><th>Status</th>', trs, cols: 6,
+    return { head: '<th class="orph-chk"><input type="checkbox" id="orphanSelAll" title="Pilih semua hasil filter (semua halaman)" aria-label="Pilih semua hasil filter"/></th><th>Kode Produk</th><th>Nama / Keterangan</th><th>Asal</th><th>Hilang sejak</th><th>Status</th>', trs, cols: 6,
       count: `${rows.length.toLocaleString('id-ID')} dari ${st.data.orphan.length.toLocaleString('id-ID')} produk aktif di DB yang tidak ditemukan di sheet`,
-      empty: 'Tidak ada untuk filter ini. Semua produk cocok dengan sheet 🎉' };
+      empty: 'Semua produk aktif di DB ada di sheet.' };
   }
   function rAkd(rows) {
     return { head: '<th>Kode Produk</th><th>Nama</th><th>No AKD (ada di DB, tidak di baris sheet)</th><th>Primary</th>', cols: 4,
-      trs: rows.map((r) => `<tr><td class="kode-cell">${esc(r.kode_produk)}</td><td style="white-space:normal;max-width:380px;">${esc(r.nama_produk)}</td><td>${esc(r.no_akd)}</td><td>${r.is_primary ? 'ya' : ''}</td></tr>`),
-      count: `${rows.length} relasi produk↔AKD ada di DB tapi tidak ada di baris sheet-nya`, empty: 'Semua relasi AKD sejalan dengan sheet 🎉' };
+      trs: rows.map((r) => `<tr><td class="kode-cell">${esc(r.kode_produk)}</td><td class="orph-wrap">${esc(r.nama_produk)}</td><td>${esc(r.no_akd)}</td><td>${r.is_primary ? 'ya' : ''}</td></tr>`),
+      count: `${rows.length} relasi produk↔AKD ada di DB tapi tidak ada di baris sheet-nya`, empty: 'Semua relasi AKD di DB sama dengan sheet.' };
   }
   function rKomp(rows) {
-    return { head: '<th>Set</th><th>Komponen (ada di DB, tidak di sheet)</th><th>Qty</th><th>Keterangan</th>', cols: 4,
-      trs: rows.map((r) => `<tr><td style="white-space:normal;max-width:280px;"><b>${esc(r.kode_set)}</b><div style="font-size:11px;color:var(--text-muted);">${esc(r.nama_set)}</div></td>
-        <td style="white-space:normal;max-width:320px;"><b>${esc(r.kode_komponen)}</b><div style="font-size:11px;color:var(--text-muted);">${esc(r.nama_komponen)}</div></td>
-        <td>${esc(r.qty)}</td><td style="font-size:12px;">${esc(r.alasan)}</td></tr>`),
-      count: `${rows.length} item komposisi ada di DB tapi tidak ada di RINCIAN SET`, empty: 'Komposisi DB sejalan dengan sheet 🎉' };
+    return { head: '<th>Set</th><th>Komponen (ada di DB, tidak di sheet)</th><th class="num">Qty</th><th>Keterangan</th>', cols: 4,
+      trs: rows.map((r) => `<tr><td class="orph-wrap"><b>${esc(r.kode_set)}</b><div class="orph-note">${esc(r.nama_set)}</div></td>
+        <td class="orph-wrap"><b>${esc(r.kode_komponen)}</b><div class="orph-note">${esc(r.nama_komponen)}</div></td>
+        <td class="num">${esc(r.qty)}</td><td class="orph-wrap orph-small">${esc(r.alasan)}</td></tr>`),
+      count: `${rows.length} item komposisi ada di DB tapi tidak ada di RINCIAN SET`, empty: 'Semua komposisi set di DB sama dengan sheet.' };
   }
   function rTipe(rows) {
     return { head: '<th>Kode Produk</th><th>Nama</th><th>Tipe di DB</th><th>Tipe di sheet</th>', cols: 4,
-      trs: rows.map((r) => `<tr><td class="kode-cell">${esc(r.kode_produk)}</td><td style="white-space:normal;max-width:400px;">${esc(r.nama_produk)}</td><td><span class="tipe-chip">${esc(r.tipe_db)}</span></td><td><span class="tipe-chip">${esc(r.tipe_sheet)}</span></td></tr>`),
-      count: `${rows.length} produk bertipe beda antara DB dan sheet`, empty: 'Tidak ada ketidakcocokan tipe 🎉' };
+      trs: rows.map((r) => `<tr><td class="kode-cell">${esc(r.kode_produk)}</td><td class="orph-wrap">${esc(r.nama_produk)}</td><td><span class="tipe-chip">${esc(r.tipe_db)}</span></td><td><span class="tipe-chip">${esc(r.tipe_sheet)}</span></td></tr>`),
+      count: `${rows.length} produk bertipe beda antara DB dan sheet`, empty: 'Tipe produk di DB dan sheet sama.' };
   }
   function rNonaktif(rows) {
     return { head: '<th>Kode Produk</th><th>Nama</th><th>Tipe</th>', cols: 3,
-      trs: rows.map((r) => `<tr><td class="kode-cell">${esc(r.kode_produk)}</td><td style="white-space:normal;max-width:420px;">${esc(r.nama_produk)}</td><td><span class="tipe-chip">${esc(r.tipe)}</span></td></tr>`),
-      count: `${rows.length} produk nonaktif di DB tapi kodenya ada di sheet`, empty: 'Tidak ada 🎉' };
+      trs: rows.map((r) => `<tr><td class="kode-cell">${esc(r.kode_produk)}</td><td class="orph-wrap">${esc(r.nama_produk)}</td><td><span class="tipe-chip">${esc(r.tipe)}</span></td></tr>`),
+      count: `${rows.length} produk nonaktif di DB tapi kodenya ada di sheet`, empty: 'Tidak ada produk nonaktif yang masih tercantum di sheet.' };
   }
 
   // ---------- ekspor (read-only): salin kode / unduh CSV dari hasil yang sedang tampil ----------
@@ -298,6 +305,12 @@ export function installOrphan(S) {
     });
     // salin 1 kode / checkbox baris / pilih semua (delegasi di body tabel)
     $('orphanBody').addEventListener('click', async (e) => {
+      if (attr(e, 'data-oreset')) {
+        st.q = ''; st.fStatus = st.fAsal = st.fTipe = 'all'; st.page = 1;
+        $('orphanSearchInput').value = '';
+        render();
+        return;
+      }
       const cp = attr(e, 'data-ocopy');
       if (!cp) return;
       try { await navigator.clipboard.writeText(cp.getAttribute('data-ocopy')); showToast('Kode disalin'); }

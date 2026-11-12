@@ -487,45 +487,43 @@ export const CRUD_PRODUK_MARKUP = `
             <div class="content-title">Orphan / Drift</div>
             <div class="content-sub" id="orphanCount">Memuat...</div>
           </div>
-      <div class="orph-actions">
-                <div class="orph-btn-group">
-                  <button class="btn btn-sm" id="orphanCopyBtn" title="Salin kode yang sedang tampil (sesuai filter)"><i class="ti ti-copy"></i> Salin kode</button>
-                  <button class="btn btn-sm" id="orphanCsvBtn" title="Unduh hasil yang sedang tampil sebagai CSV"><i class="ti ti-download"></i> Unduh CSV</button>
-                </div>
-                <button class="btn btn-sm" id="orphanRefreshBtn" title="Muat ulang data"><i class="ti ti-refresh"></i> Muat ulang</button>
-              </div>
+          <div class="orph-actions">
+            <button class="icon-btn" id="orphanRefreshBtn" type="button" title="Muat ulang data" aria-label="Muat ulang"><i class="ti ti-refresh"></i></button>
+            <button class="btn btn-sm" id="orphanCopyBtn" type="button" title="Salin kode yang sedang tampil (sesuai filter)"><i class="ti ti-copy"></i> Salin kode</button>
+            <button class="btn btn-sm" id="orphanCsvBtn" type="button" title="Unduh hasil yang sedang tampil sebagai CSV"><i class="ti ti-download"></i> Unduh CSV</button>
+          </div>
         </div>
-        <div class="vbody pad">
+        <div class="orph-tabs" id="orphanSectionBar"></div>
+        <div class="akd-toolbar">
+          <div class="akd-search-box">
+            <i class="ti ti-search"></i>
+            <input type="text" id="orphanSearchInput" placeholder="Cari kode produk, nama, no AKD, kode set..." aria-label="Cari di tab ini"/>
+          </div>
+        </div>
+        <div class="orph-filters" id="orphanFilterBar"></div>
+        <div class="vbody">
           <div id="orphanRunInfo"></div>
-                <div class="orph-stats" id="orphanStats"></div>
-                <details class="orph-info">
-                  <summary><i class="ti ti-info-circle"></i> Cara membaca halaman ini</summary>
-                  <div class="orph-info-body">
-                    Kebalikan tab Sync: item yang <b>masih ada di database tapi sudah tidak ada / beda di Google Sheets</b>.
-                    Halaman ini <b>hanya memberi informasi</b> &mdash; tidak ada yang diubah atau dihapus otomatis.
-                    Status <b>terkonfirmasi</b> berarti item hilang di 3 snapshot berturut-turut (antisipasi sheet sedang loading).
-                    Angka seperti <b>2/3</b> di kolom Status berarti item sudah hilang di 2 dari 3 snapshot yang dibutuhkan untuk terkonfirmasi.
-                  </div>
-                </details>
-                <div class="orph-tabs" id="orphanSectionBar"></div>
-                <div class="akd-toolbar">
-                  <div class="akd-search-box">
-                    <i class="ti ti-search"></i>
-                    <input type="text" id="orphanSearchInput" placeholder="Cari kode produk, nama, no AKD, kode set..."/>
-                  </div>
-                </div>
-                <div class="orph-filters" id="orphanFilterBar"></div>
-                <div class="orph-bulk" id="orphanBulkBar" style="display:none;">
-                  <span id="orphanBulkInfo"></span>
-                  <span class="orph-bulk-actions">
-                    <button class="btn btn-sm" id="orphanBulkClear">Kosongkan</button>
-                    <button class="btn btn-sm" id="orphanBulkCopy"><i class="ti ti-copy"></i> Salin terpilih</button>
-                    <button class="btn btn-sm btn-accent" id="orphanBulkCsv"><i class="ti ti-download"></i> CSV terpilih</button>
-                  </span>
-                </div>
-                <div id="orphanBody"></div>
-                <div class="pg-bar" id="orphanPagination" style="display:none;"></div>
+          <div class="orph-stats" id="orphanStats"></div>
+          <details class="orph-info">
+            <summary><i class="ti ti-info-circle"></i> Cara membaca halaman ini</summary>
+            <div class="orph-info-body">
+              Kebalikan tab Sync: item yang <b>masih ada di database tapi sudah tidak ada / beda di Google Sheets</b>.
+              Halaman ini <b>hanya memberi informasi</b> &mdash; tidak ada yang diubah atau dihapus otomatis.
+              Status <b>terkonfirmasi</b> berarti item hilang di 3 snapshot berturut-turut (antisipasi sheet sedang loading).
+              Angka seperti <b>2/3</b> di kolom Status berarti item sudah hilang di 2 dari 3 snapshot yang dibutuhkan untuk terkonfirmasi.
+            </div>
+          </details>
+          <div id="orphanBody"></div>
+          <div class="orph-bulk" id="orphanBulkBar" style="display:none;">
+            <span id="orphanBulkInfo"></span>
+            <span class="orph-bulk-actions">
+              <button class="btn btn-sm" id="orphanBulkClear" type="button">Kosongkan pilihan</button>
+              <button class="btn btn-sm" id="orphanBulkCopy" type="button"><i class="ti ti-copy"></i> Salin kode terpilih</button>
+              <button class="btn btn-sm btn-accent" id="orphanBulkCsv" type="button"><i class="ti ti-download"></i> Unduh CSV terpilih</button>
+            </span>
+          </div>
         </div>
+        <div class="pg-bar" id="orphanPagination" style="display:none;"></div>
       </div>
     </div>
 
