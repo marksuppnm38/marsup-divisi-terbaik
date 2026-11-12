@@ -335,16 +335,16 @@ function syncNoteHtml(row, nameByKode, komposisiInfo){
     const shown = needed.slice(0, 3).map(k => S.escapeHtml(label(k))).join(', ');
     const more = needed.length > 3 ? ` +${needed.length - 3} lainnya` : '';
     const tip = needed.map(k => `${label(k)} (${k})`).join('\n');
-    return `<div style="margin-top:4px;font-size:11.5px;color:var(--warn-text, #b45309);" title="${S.escapeHtml(tip)}"><i class="ti ti-alert-triangle"></i> Belum ada di database, dibutuhkan oleh set: ${shown}${more}</div>`;
+    return `<div class="sync-note is-warn" title="${S.escapeHtml(tip)}"><i class="ti ti-alert-triangle"></i><span>Belum ada di database, dibutuhkan oleh set: ${shown}${more}</span></div>`;
   }
   if (row.is_set) {
-    let html = `<div style="margin-top:4px;font-size:11.5px;color:var(--text-muted);"><i class="ti ti-stack-2"></i> Set baru dari sheet. Buat produknya (tipe SET), komposisi terisi otomatis di sync berikutnya</div>`;
+    let html = `<div class="sync-note"><i class="ti ti-stack-2"></i><span>Set baru dari sheet. Buat produknya (tipe SET), komposisi terisi otomatis di sync berikutnya.</span></div>`;
     if (komposisiInfo && (komposisiInfo.missing.length || komposisiInfo.nested.length)) {
       const parts = [];
       if (komposisiInfo.missing.length) parts.push(`${komposisiInfo.missing.length} dari ${komposisiInfo.total} instrumen belum ada di database`);
       if (komposisiInfo.nested.length) parts.push(`${komposisiInfo.nested.length} berupa SET (gak masuk komposisi)`);
       const tip = komposisiInfo.missing.concat(komposisiInfo.nested).join('\n');
-      html += `<div style="margin-top:4px;font-size:11.5px;color:var(--warn-text, #b45309);" title="${S.escapeHtml(tip)}"><i class="ti ti-alert-triangle"></i> Cek dulu komposisinya: ${S.escapeHtml(parts.join(', '))}</div>`;
+      html += `<div class="sync-note is-warn" title="${S.escapeHtml(tip)}"><i class="ti ti-alert-triangle"></i><span>Komposisi belum lengkap: ${S.escapeHtml(parts.join(', '))}</span></div>`;
     }
     return html;
   }
@@ -391,7 +391,7 @@ async function confirmSetKomposisi(row){
 // Chip ringkas data dari sheet (tipe, kode asli, merk, AKD, KFA) di bawah deskripsi.
 function syncPayloadHtml(row){
   const p = row.payload || {};
-  const chip = (t, mono) => `<span class="tipe-chip" style="${mono ? 'font-family:var(--font-mono);' : ''}">${S.escapeHtml(t)}</span>`;
+  const chip = (t, mono) => `<span class="tipe-chip${mono ? ' is-mono' : ''}">${S.escapeHtml(t)}</span>`;
   const bits = [];
   if (row.tipe_hint) bits.push(chip(row.tipe_hint));
   if (p.kode_asli) bits.push(chip('asli ' + p.kode_asli, true));
@@ -399,30 +399,29 @@ function syncPayloadHtml(row){
   if (Array.isArray(p.akd) && p.akd.length) bits.push(chip('AKD ' + p.akd.slice(0, 2).map(a => String(a.no_akd).replace(/^AKD\s*/i, '')).join(', ') + (p.akd.length > 2 ? ' …' : ''), true));
   if (p.kfa && p.kfa.kode) bits.push(chip('KFA ' + p.kfa.kode, true));
   if (!bits.length) return '';
-  return `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">${bits.join('')}</div>`;
+  return `<div class="sync-meta">${bits.join('')}</div>`;
 }
 
 // Kolom Status: pill + alasan (kalau ada).
 function syncStatusHtml(ev){
-  const label = { ok: 'Siap', warn: 'Cek dulu', bad: 'Tidak siap' }[ev.level];
+  const label = { ok: 'Siap', warn: 'Perlu dicek', bad: 'Tidak siap' }[ev.level];
   const reasons = ev.bad.concat(ev.warn);
   const list = reasons.length
-    ? `<div style="margin-top:5px;font-size:11px;line-height:1.4;color:var(--text-muted);">${reasons.map(r => S.escapeHtml(r)).join('<br>')}</div>` : '';
+    ? `<ul class="sync-reasons">${reasons.map(r => `<li>${S.escapeHtml(r)}</li>`).join('')}</ul>` : '';
   return `<span class="status-pill ${ev.level}">${label}</span>${list}`;
 }
 
 // Link V6: tampil ringkas (slug), tandai kalau sel berisi catatan selain URL.
 function syncLinkHtml(raw){
   const t = String(raw == null ? '' : raw).trim();
-  if (!t) return '<span style="color:var(--text-muted);">—</span>';
+  if (!t) return '<span class="sync-empty">—</span>';
   const m = t.match(/https?:\/\/\S+/);
-  const clamp = 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all;font-size:12px;max-width:240px;';
-  if (!m) return `<span style="${clamp}color:var(--text-muted);" title="${S.escapeHtml(t)}">${S.escapeHtml(t)}</span>`;
+  if (!m) return `<span class="sync-link is-text" title="${S.escapeHtml(t)}">${S.escapeHtml(t)}</span>`;
   const url = m[0];
   const clean = url === t;
   const label = url.replace(/^https?:\/\/[^/]+\//, '').replace(/^pionir-nusantara-manufacturing\//, '') || url;
-  return `<a href="${S.escapeHtml(url)}" target="_blank" rel="noopener" title="${S.escapeHtml(t)}" style="${clamp}">${S.escapeHtml(label)}</a>`
-    + (clean ? '' : `<div style="margin-top:3px;font-size:11px;color:var(--warn-text, #b45309);"><i class="ti ti-note"></i> ada catatan di sel</div>`);
+  return `<a class="sync-link" href="${S.escapeHtml(url)}" target="_blank" rel="noopener" title="${S.escapeHtml(t)}">${S.escapeHtml(label)}</a>`
+    + (clean ? '' : `<div class="sync-note is-warn"><i class="ti ti-note"></i><span>Ada catatan di sel</span></div>`);
 }
 
 // Chip filter status & tipe, lengkap dengan hitungan. Hitungan status mengikuti search + filter tipe,
@@ -438,13 +437,13 @@ function renderSyncFilters(){
     if (syncTipeFilter === 'all' || ty === syncTipeFilter) { st.all++; st[lv]++; }
     if (syncStatusFilter === 'all' || lv === syncStatusFilter) { tp.all++; if (tp[ty] !== undefined) tp[ty]++; }
   });
-  const chip = (attr, val, active, html, count, title) =>
-    `<button class="filter-chip${active ? ' active' : ''}" ${attr}="${val}" title="${S.escapeHtml(title || '')}">${html}<span class="fc-count">${count}</span></button>`;
+  const chip = (attr, val, active, label, count, title) =>
+    `<button type="button" class="filter-chip${active ? ' active' : ''}" ${attr}="${val}" aria-pressed="${active ? 'true' : 'false'}"${title ? ` title="${S.escapeHtml(title)}"` : ''}>${label}<span class="fc-count">${count}</span></button>`;
   sb.innerHTML =
     chip('data-sst', 'all', syncStatusFilter === 'all', 'Semua', st.all) +
-    chip('data-sst', 'ok', syncStatusFilter === 'ok', '<i class="ti ti-circle-check" style="color:var(--teal-ok-text,#0f766e)"></i> Siap bulk', st.ok, 'Data lengkap & valid, aman ditambahkan massal') +
-    chip('data-sst', 'warn', syncStatusFilter === 'warn', '<i class="ti ti-alert-triangle" style="color:var(--warn-text,#b45309)"></i> Perlu dicek', st.warn, 'Bisa dibuat, tapi ada bagian data yang dilewati / perlu ditengok') +
-    chip('data-sst', 'bad', syncStatusFilter === 'bad', '<i class="ti ti-circle-x" style="color:var(--danger-text,#b91c1c)"></i> Tidak siap', st.bad, 'Tidak bisa bulk: SET, tanpa deskripsi, atau kode janggal. Tambah manual lewat form');
+    chip('data-sst', 'ok', syncStatusFilter === 'ok', 'Siap', st.ok, 'Data lengkap dan valid, aman ditambahkan massal') +
+    chip('data-sst', 'warn', syncStatusFilter === 'warn', 'Perlu dicek', st.warn, 'Bisa dibuat, tapi ada bagian data yang dilewati atau perlu ditengok') +
+    chip('data-sst', 'bad', syncStatusFilter === 'bad', 'Tidak siap', st.bad, 'Tidak bisa massal: SET, tanpa deskripsi, atau kode janggal. Tambah manual lewat form');
   tb.innerHTML =
     chip('data-stp', 'all', syncTipeFilter === 'all', 'Semua tipe', tp.all) +
     chip('data-stp', 'INSTRUMENT', syncTipeFilter === 'INSTRUMENT', 'Instrument', tp.INSTRUMENT) +
@@ -485,7 +484,10 @@ function updateSyncBulkBar(){
   const all = document.getElementById('syncSelectAll');
   if (all) {
     const ready = getFilteredSyncRows().filter(r => evalSyncRow(r).level === 'ok');
-    all.checked = ready.length > 0 && ready.every(r => syncSelected.has(r.kode_produk));
+    const picked = ready.filter(r => syncSelected.has(r.kode_produk)).length;
+    all.disabled = !ready.length;
+    all.checked = ready.length > 0 && picked === ready.length;
+    all.indeterminate = picked > 0 && picked < ready.length;
   }
 }
 
@@ -548,12 +550,19 @@ async function runSyncBulkCreate(){
   if (clr) clr.addEventListener('click', () => { syncSelected.clear(); renderSyncPage(); });
   const add = document.getElementById('syncBulkAddBtn');
   if (add) add.addEventListener('click', runSyncBulkCreate);
+  const reload = document.getElementById('syncReloadBtn');
+  if (reload) reload.addEventListener('click', async () => {
+    reload.disabled = true;
+    const cnt = document.getElementById('syncCount');
+    if (cnt) cnt.textContent = 'Memuat...';
+    try { await loadSyncUnmatched(); } finally { reload.disabled = false; }
+  });
 })();
 
 // ---- Ringkasan filter aktif (bar di atas tabel) ----
 const SYNC_LABEL = {
   tipe: { INSTRUMENT: 'Instrument', UNIT: 'Unit', SET: 'Set' },
-  status: { ok: 'Siap', warn: 'Cek dulu', bad: 'Tidak siap' },
+  status: { ok: 'Siap', warn: 'Perlu dicek', bad: 'Tidak siap' },
   link: { ada: 'Ada link', bersih: 'Link bersih', catatan: 'Link + catatan', invalid: 'Cuma teks (bukan URL)', kosong: 'Kosong' },
   harga: { ada: 'Ada harga', kosong: 'Kosong' },
 };
@@ -571,6 +580,7 @@ function syncActiveFilters(){
   return out;
 }
 function syncRemoveFilter(key){
+  if (key === '__reload__') { loadSyncUnmatched(); return; }
   const f = syncColFilter;
   if (key === '__all__') {
     Object.assign(f, { kode: '', desk: '', link: 'all', harga: 'all', sumber: 'all' });
@@ -604,10 +614,10 @@ function ensureSyncColFilterRow(){
   const tr = document.createElement('tr');
   tr.className = 'sync-filter-row';
   tr.innerHTML = `
-    <th></th>
-    <th><input type="text" class="sync-col-input" data-scol="kode" placeholder="Filter kode..." autocomplete="off"/></th>
-    <th><input type="text" class="sync-col-input" data-scol="desk" placeholder="Filter deskripsi..." autocomplete="off"/></th>
-    <th><select class="sync-col-select" data-scol="link">
+    <th class="c-chk"></th>
+    <th class="c-kode"><input type="text" class="sync-col-input" data-scol="kode" placeholder="Filter kode" aria-label="Filter kolom kode produk" autocomplete="off"/></th>
+    <th class="c-desk"><input type="text" class="sync-col-input" data-scol="desk" placeholder="Filter deskripsi" aria-label="Filter kolom deskripsi" autocomplete="off"/></th>
+    <th class="c-link"><select class="sync-col-select" data-scol="link" aria-label="Filter kolom link V6">
       <option value="all">Semua</option>
       <option value="ada">Ada link</option>
       <option value="bersih">Link bersih (URL doang)</option>
@@ -615,19 +625,19 @@ function ensureSyncColFilterRow(){
       <option value="invalid">Cuma teks (bukan URL)</option>
       <option value="kosong">Kosong</option>
     </select></th>
-    <th><select class="sync-col-select" data-scol="harga">
+    <th class="c-harga"><select class="sync-col-select" data-scol="harga" aria-label="Filter kolom harga E-KAT">
       <option value="all">Semua</option>
       <option value="ada">Ada harga</option>
       <option value="kosong">Kosong</option>
     </select></th>
-    <th><select class="sync-col-select" data-scol="sumber"><option value="all">Semua</option></select></th>
-    <th><select class="sync-col-select" data-scol="status">
+    <th class="c-sumber"><select class="sync-col-select" data-scol="sumber" aria-label="Filter kolom sumber"><option value="all">Semua</option></select></th>
+    <th class="c-status"><select class="sync-col-select" data-scol="status" aria-label="Filter kolom status">
       <option value="all">Semua</option>
       <option value="ok">Siap</option>
-      <option value="warn">Cek dulu</option>
+      <option value="warn">Perlu dicek</option>
       <option value="bad">Tidak siap</option>
     </select></th>
-    <th><button type="button" class="btn btn-sm" id="syncColResetBtn" title="Reset semua filter kolom" style="display:none;"><i class="ti ti-filter-off"></i></button></th>
+    <th class="c-aksi"><button type="button" class="btn btn-sm sync-col-reset" id="syncColResetBtn" title="Reset filter kolom" aria-label="Reset filter kolom" style="display:none;"><i class="ti ti-filter-off"></i></button></th>
   `;
   thead.appendChild(tr);
 
@@ -715,15 +725,15 @@ async function renderSyncPage(){
   const q = syncSearchQuery.trim();
   const filtered = !!q || syncStatusFilter !== 'all' || syncTipeFilter !== 'all' || syncHasColFilter();
   document.getElementById('syncCount').textContent = filtered
-    ? `${total} dari ${syncRows.length} kode produk (terfilter)`
+    ? `${total} dari ${syncRows.length} kode produk, sesuai filter`
     : `${syncRows.length} kode produk belum terdaftar`;
   const pagEl = document.getElementById('syncPagination');
   renderSyncActiveBar(total);
 
   if (!total) {
     tbody.innerHTML = filtered
-      ? `<tr class="state-row"><td colspan="8">Tidak ada kode produk yang cocok dengan filter/pencarian ini.<div style="margin-top:10px;"><button type="button" class="btn btn-sm" data-saf="__all__"><i class="ti ti-filter-off"></i> Reset semua filter</button></div></td></tr>`
-      : `<tr class="state-row"><td colspan="8">Semua kode produk dari sheet sudah terdaftar di database 🎉</td></tr>`;
+      ? `<tr class="state-row"><td colspan="8"><div class="sync-empty-state"><b>Tidak ada yang cocok</b><span>Longgarkan filter atau ubah kata pencarian.</span><button type="button" class="btn btn-sm" data-saf="__all__"><i class="ti ti-filter-off"></i> Reset semua filter</button></div></td></tr>`
+      : `<tr class="state-row"><td colspan="8"><div class="sync-empty-state"><b>Tidak ada yang menunggu</b><span>Semua kode dari sheet sudah terdaftar di database.</span></div></td></tr>`;
     renderPgBar(pagEl, { page: 1, pageSize: SYNC_PAGE_SIZE, total: 0, onPageChange: () => {} });
     return;
   }
@@ -755,21 +765,25 @@ async function renderSyncPage(){
     const komposisiInfo = (row.is_set && tipeMap) ? summarizeKomposisi(row.komposisi, tipeMap) : null;
     const ev = evalSyncRow(row);
     const tr = document.createElement('tr');
+    const picked = syncSelected.has(row.kode_produk);
+    if (picked) tr.className = 'is-selected';
+    const seen = row.last_seen_at ? new Date(row.last_seen_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '';
     tr.innerHTML = `
-      <td><input type="checkbox" class="sync-sel" ${ev.level === 'bad' ? 'disabled' : ''} ${syncSelected.has(row.kode_produk) ? 'checked' : ''}/></td>
-      <td class="kode-cell" style="white-space:normal;word-break:break-word;max-width:190px;">${S.escapeHtml(row.kode_produk)}</td>
-      <td class="sync-desc-cell" title="${S.escapeHtml(row.deskripsi || '')}" style="max-width:380px;white-space:normal;">
-        <div style="font-weight:500;line-height:1.35;">${row.deskripsi ? S.escapeHtml(row.deskripsi) : '<span style="color:var(--text-muted);font-weight:400;">(tanpa deskripsi)</span>'}</div>
+      <td class="c-chk"><input type="checkbox" class="sync-sel" aria-label="Pilih ${S.escapeHtml(row.kode_produk)}" ${ev.level === 'bad' ? 'disabled' : ''} ${picked ? 'checked' : ''}/></td>
+      <td class="c-kode"><span class="sync-kode">${S.escapeHtml(row.kode_produk)}</span></td>
+      <td class="c-desk" title="${S.escapeHtml(row.deskripsi || '')}">
+        <div class="sync-desc">${row.deskripsi ? S.escapeHtml(row.deskripsi) : '<span class="sync-empty">(tanpa deskripsi)</span>'}</div>
         ${syncPayloadHtml(row)}${syncNoteHtml(row, nameByKode, komposisiInfo)}
       </td>
-      <td>${syncLinkHtml(row.link)}</td>
-      <td style="white-space:nowrap;font-variant-numeric:tabular-nums;">${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '<span style="color:var(--text-muted);">—</span>'}</td>
-      <td style="white-space:nowrap;">${S.escapeHtml(row.source_sheet || '—')}<div style="margin-top:2px;font-size:11px;color:var(--text-muted);">${row.last_seen_at ? new Date(row.last_seen_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : ''}</div></td>
-      <td style="min-width:130px;">${syncStatusHtml(ev)}</td>
-      <td><button class="btn btn-sm btn-accent sync-add-btn" style="white-space:nowrap;"><i class="ti ti-plus"></i> Tambah</button></td>
+      <td class="c-link">${syncLinkHtml(row.link)}</td>
+      <td class="c-harga num">${row.harga_ekat != null ? Number(row.harga_ekat).toLocaleString('id-ID') : '<span class="sync-empty">—</span>'}</td>
+      <td class="c-sumber">${S.escapeHtml(row.source_sheet || '—')}${seen ? `<div class="sync-seen">Terlihat ${seen}</div>` : ''}</td>
+      <td class="c-status">${syncStatusHtml(ev)}</td>
+      <td class="c-aksi"><button type="button" class="btn btn-sm sync-add-btn" aria-label="Tambah ${S.escapeHtml(row.kode_produk)}"><i class="ti ti-plus"></i> Tambah</button></td>
     `;
     tr.querySelector('.sync-sel').addEventListener('change', (e) => {
       if (e.target.checked) syncSelected.add(row.kode_produk); else syncSelected.delete(row.kode_produk);
+      tr.classList.toggle('is-selected', e.target.checked);
       updateSyncBulkBar();
     });
     const btn = tr.querySelector('.sync-add-btn');
@@ -803,7 +817,7 @@ async function loadSyncUnmatched(){
   if (!tbody) return;
   const { data: rawData, error } = await fetchAllSyncRows();
   if (error) {
-    tbody.innerHTML = `<tr class="state-row"><td colspan="8">Gagal memuat: ${S.escapeHtml(error.message)}</td></tr>`;
+    tbody.innerHTML = `<tr class="state-row"><td colspan="8"><div class="sync-empty-state"><b>Gagal memuat daftar sync</b><span>${S.escapeHtml(error.message)}</span><button type="button" class="btn btn-sm" data-saf="__reload__"><i class="ti ti-refresh"></i> Coba lagi</button></div></td></tr>`;
     document.getElementById('syncCount').textContent = 'Gagal memuat';
     renderPgBar(document.getElementById('syncPagination'), { page: 1, pageSize: SYNC_PAGE_SIZE, total: 0, onPageChange: () => {} });
     return;

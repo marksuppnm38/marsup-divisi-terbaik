@@ -434,45 +434,59 @@ export const CRUD_PRODUK_MARKUP = `
          (lewat Apps Script pollAndSync -> Edge Function sync-sheet) tapi
          belum ada di tabel produk -- edge function nyatet ini ke tabel
          sync_unmatched_produk tiap poll, baris hilang sendiri dari sini
-         begitu produknya dibuat. -->
+         begitu produknya dibuat.
+         Susunan ikut kontrak SHELL v2: .vwrap > .content-head, .vtools, tab, filter aktif, .vbody (scroll), .pg-bar.
+         Baris filter per kolom disuntik kfa.js ke <thead> (ensureSyncColFilterRow). -->
     <div class="content" id="viewSync" style="display:none;">
       <div class="vwrap">
         <div class="content-head">
           <div>
             <div class="content-title">Sync dari Sheet</div>
             <div class="content-sub" id="syncCount">Memuat...</div>
+            <div class="content-hint">Kode dari Google Sheets yang belum ada di database. Tambah satu per satu lewat form, atau centang beberapa baris untuk menambah sekaligus.</div>
+          </div>
+          <div class="produk-head-actions">
+            <button type="button" class="btn" id="syncReloadBtn"><i class="ti ti-refresh"></i> Muat ulang</button>
           </div>
         </div>
-        <div class="vbody pad">
-          <div class="paste-hint">
-                  Kode produk ini muncul di Google Sheets (lewat sync otomatis) tapi belum ada di database.
-                  Klik <b>Tambah Produk</b> (satu-satu) atau centang beberapa baris berstatus siap lalu <b>Tambah terpilih</b>. Produknya — kode, deskripsi (jadi Nama Produk) &amp; link V6-nya udah otomatis keisi di form.
-                </div>
-                <div class="akd-toolbar">
-                  <div class="akd-search-box">
-                    <i class="ti ti-search"></i>
-                    <input type="text" id="syncSearchInput" placeholder="Cari kode produk, deskripsi, sumber sheet, kode set..."/>
-                  </div>
-                </div>
-                <div class="filter-bar" id="syncStatusBar"></div>
-                <div class="filter-bar" id="syncTipeBar" style="margin-top:-4px;"></div>
-                <div id="syncBulkBar" class="paste-hint" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;">
-                  <span id="syncBulkInfo" style="flex:1;min-width:200px;"></span>
-                  <button class="btn btn-sm" id="syncBulkClearBtn">Kosongkan</button>
-                  <button class="btn btn-sm btn-accent" id="syncBulkAddBtn"><i class="ti ti-plus"></i> Tambah terpilih</button>
-                </div>
-                <div class="table-card">
-                  <table>
-                    <thead>
-                      <tr><th style="width:34px;"><input type="checkbox" id="syncSelectAll" title="Pilih semua yang siap (sesuai filter)"/></th><th>Kode Produk</th><th>Deskripsi</th><th>Link V6</th><th>Harga E-KAT</th><th>Sumber</th><th>Status</th><th></th></tr>
-                    </thead>
-                    <tbody id="syncTableBody">
-                      <tr class="state-row"><td colspan="8">Memuat data...</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div class="pg-bar" id="syncPagination" style="display:none;"></div>
+        <div class="vtools">
+          <div class="akd-search-box">
+            <i class="ti ti-search"></i>
+            <input type="text" id="syncSearchInput" placeholder="Cari kode, deskripsi, sumber sheet, atau kode set..." aria-label="Cari di daftar sync"/>
+          </div>
+          <div id="syncBulkBar" class="sync-bulkbar" style="display:none;">
+            <span id="syncBulkInfo" class="sync-bulk-info" aria-live="polite"></span>
+            <button type="button" class="btn btn-sm" id="syncBulkClearBtn">Kosongkan</button>
+            <button type="button" class="btn btn-sm btn-accent" id="syncBulkAddBtn"><i class="ti ti-plus"></i> Tambah produk</button>
+          </div>
         </div>
+        <div class="sync-tabs">
+          <div class="filter-bar" id="syncStatusBar" role="group" aria-label="Filter status"></div>
+          <div class="filter-bar" id="syncTipeBar" role="group" aria-label="Filter tipe"></div>
+        </div>
+        <div id="syncActiveBar" style="display:none;"></div>
+        <div class="vbody">
+          <div class="table-card">
+            <table class="sync-table">
+              <thead>
+                <tr>
+                  <th class="c-chk"><input type="checkbox" id="syncSelectAll" title="Pilih semua yang siap (sesuai filter)" aria-label="Pilih semua yang siap"/></th>
+                  <th class="c-kode">Kode produk</th>
+                  <th class="c-desk">Deskripsi</th>
+                  <th class="c-link">Link V6</th>
+                  <th class="c-harga num">Harga E-KAT</th>
+                  <th class="c-sumber">Sumber</th>
+                  <th class="c-status">Status</th>
+                  <th class="c-aksi"></th>
+                </tr>
+              </thead>
+              <tbody id="syncTableBody">
+                <tr class="state-row"><td colspan="8">Memuat data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="pg-bar" id="syncPagination" style="display:none;"></div>
       </div>
     </div>
 
