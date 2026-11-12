@@ -14,7 +14,7 @@
 //   - harga & No. AKD: cache milik copy.js (helpers.extraOf / helpers.akdNoOf), sudah dimuat sebelum render
 //   - stok: helpers.stokCell (cache stok index.js)
 //   - Nama AKD (deskripsi AKD): satu-satunya data baru, diambil modul ini sendiri HANYA kalau kolomnya tampil.
-import { parseLinkV6 } from './ui-utils.js';
+import { parseLinkV6, sembunyikanAkdPlaceholder } from './ui-utils.js';
 
 const LS_KEY = 'pnm_crud_produk_tbl_cols_v1';
 
@@ -134,6 +134,7 @@ export function createTableColumns(opts) {
         if (!l.akd) return;
         akdNamaCache.get(l.produk_id).push({ no: l.akd.no_akd || '', nama: l.akd.nama_akd || '' });
       });
+      chunk.forEach((id) => akdNamaCache.set(id, sembunyikanAkdPlaceholder(akdNamaCache.get(id), (a) => a.no)));
     }
     return true;
   }

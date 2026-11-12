@@ -122,3 +122,16 @@ export function parseLinkV6(raw) {
   if (!m) return { state: 'invalid', url: null, catatan: t };
   return { state: 'catatan', url: m[0], catatan: t.replace(m[0], ' ').replace(/\s+/g, ' ').trim() };
 }
+// ---- AKD placeholder "TIDAK ADA" ----
+// Di tabel akd ada record placeholder bernomor "TIDAK ADA" (artinya: memang tidak ada AKD).
+// Begitu produk/set punya AKD asli, placeholder itu tidak boleh ikut tampil ("TIDAK ADA +1").
+export function isAkdPlaceholder(noAkd) {
+  return /^\s*tidak\s+ada\s*$/i.test(String(noAkd == null ? '' : noAkd));
+}
+// Buang placeholder HANYA kalau masih ada AKD asli. Kalau yang ada cuma placeholder, dibiarkan.
+// getNo: ambil nomor AKD dari elemen list (default: elemennya sendiri, untuk array string).
+export function sembunyikanAkdPlaceholder(list, getNo = (x) => x) {
+  const arr = Array.isArray(list) ? list : [];
+  const asli = arr.filter((x) => !isAkdPlaceholder(getNo(x)));
+  return asli.length ? asli : arr;
+}

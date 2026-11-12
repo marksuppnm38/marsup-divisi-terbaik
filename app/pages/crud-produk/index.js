@@ -40,7 +40,7 @@
 //      function scope yang sama.
 
 import { CRUD_PRODUK_MARKUP } from './markup.js';
-import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6 } from './ui-utils.js';
+import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6, isAkdPlaceholder, sembunyikanAkdPlaceholder } from './ui-utils.js';
 import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
@@ -1409,7 +1409,18 @@ async function fetchAkdNoMap(produkIds, opts = {}){
       if (!arr.includes(no)) arr.push(no);
     });
   }
+  // Placeholder "TIDAK ADA" disembunyikan kalau produk sudah punya AKD asli (tabel, badge, salin, export).
+  map.forEach((arr, id) => map.set(id, sembunyikanAkdPlaceholder(arr)));
   return map;
+}
+
+// Dipanggil setelah AKD ASLI berhasil dihubungkan: lepas relasi placeholder "TIDAK ADA" yang masih menempel.
+async function lepasAkdPlaceholder(produkId){
+  const { data, error } = await sb.from('produk_akd').select('akd_id, akd:akd_id(no_akd)').eq('produk_id', produkId);
+  if (error) return;
+  const ids = (data || []).filter(r => r.akd && isAkdPlaceholder(r.akd.no_akd)).map(r => r.akd_id);
+  if (!ids.length) return;
+  await sb.from('produk_akd').delete().eq('produk_id', produkId).in('akd_id', ids);
 }
 
 // ---- Download Excel (hasil filter yang lagi aktif — chip status + filter tambahan
@@ -2315,7 +2326,7 @@ async function loadAkdLinks(produkId, tipe){
     .eq('produk_id', produkId);
   if (produkId !== currentProdukId) return; // hasil basi
   if (error) { document.getElementById('akdHint').textContent = 'Gagal memuat relasi AKD: ' + error.message; return; }
-  currentAkdLinks = (data || []).map(r => r.akd).filter(Boolean);
+  currentAkdLinks = sembunyikanAkdPlaceholder((data || []).map(r => r.akd).filter(Boolean), a => a.no_akd);
   renderAkdCurrent();
   const mapped = TIPE_TO_AKD[tipe];
   document.getElementById('akdHint').textContent = mapped
@@ -2371,19 +2382,20 @@ document.getElementById('akdSearchInput').addEventListener('input', () => {
       const row = document.createElement('div');
       row.className = 'akd-result-row';
       row.innerHTML = `<span class="ar-no">${escapeHtml(a.no_akd)}</span><span class="ar-nama">${escapeHtml(a.nama_akd || '')}</span>`;
-      row.addEventListener('click', () => linkAkd(a.id));
+      row.addEventListener('click', () => linkAkd(a.id, a.no_akd));
       resEl.appendChild(row);
     });
   }, 250);
 });
 
-async function linkAkd(akdId){
+async function linkAkd(akdId, noAkd){
   if (!currentProdukId) { showToast('Simpan produk dulu sebelum menghubungkan AKD', true); return; }
   const { error } = await sb.from('produk_akd').insert({ produk_id: currentProdukId, akd_id: akdId, is_primary: true });
   if (error) {
     if (error.code === '23505') { showToast('AKD ini sudah terhubung ke produk ini'); return; }
     showToast('Gagal menghubungkan AKD: ' + error.message, true); return;
   }
+  if (!isAkdPlaceholder(noAkd)) await lepasAkdPlaceholder(currentProdukId);
   showToast('AKD terhubung');
   document.getElementById('akdSearchInput').value = '';
   document.getElementById('akdResults').innerHTML = '';
@@ -3259,7 +3271,7 @@ let setAkdLinks = [];
 async function loadSetAkd(){
   const { data, error } = await sb.from('produk_akd').select('akd_id, akd:akd_id(id, no_akd, nama_akd, tipe_akd)').eq('produk_id', currentSetId);
   if (error) return;
-  setAkdLinks = (data || []).map(r => r.akd).filter(Boolean);
+  setAkdLinks = sembunyikanAkdPlaceholder((data || []).map(r => r.akd).filter(Boolean), a => a.no_akd);
   renderSetAkd();
 }
 function renderSetAkd(){
@@ -3297,6 +3309,7 @@ document.getElementById('setAkdSearchInput').addEventListener('input', () => {
       row.addEventListener('click', async () => {
         const { error: linkErr } = await sb.from('produk_akd').insert({ produk_id: currentSetId, akd_id: a.id, is_primary: true });
         if (linkErr) { if (linkErr.code === '23505') { showToast('Sudah terhubung'); return; } showToast('Gagal: ' + linkErr.message, true); return; }
+        if (!isAkdPlaceholder(a.no_akd)) await lepasAkdPlaceholder(currentSetId);
         showToast('AKD terhubung');
         document.getElementById('setAkdSearchInput').value = ''; resEl.innerHTML = '';
         loadSetAkd(); refreshSetHeader();
