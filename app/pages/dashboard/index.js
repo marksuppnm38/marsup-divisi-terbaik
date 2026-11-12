@@ -443,18 +443,18 @@ async function rpc(fn, params){
     const k = await rpc('get_dashboard_konversi_today', {}) || {};
     el.innerHTML = `
       <div class="hi-figs">
-        <div><div class="hi-n">${fmt(k.selesai_count)}</div><div class="hi-l">order selesai</div></div>
+        <div><div class="hi-n">${fmt(k.selesai_count)}</div><div class="hi-l">konversi selesai</div></div>
         <div><div class="hi-n" title="${esc(rupiah(k.selesai_value))}">${rupiahShort(k.selesai_value)}</div><div class="hi-l">total nilai</div></div>
       </div>
       <dl class="hi-list">
-        <div class="hi-li"><dt>Rata-rata per order</dt><dd>${Number(k.selesai_count) ? rupiah(k.selesai_avg) : '—'}</dd></div>
+        <div class="hi-li"><dt>Rata-rata per konversi</dt><dd>${Number(k.selesai_count) ? rupiah(k.selesai_avg) : '—'}</dd></div>
         <div class="hi-li"><dt><a href="/konversian/sesi" data-nav="/konversian/sesi">Sesi sedang berjalan</a></dt>
           <dd>${fmt(k.berjalan_count)}${Number(k.berjalan_baru_count) ? `<small>${fmt(k.berjalan_baru_count)} dibuka hari ini</small>` : ''}</dd></div>
       </dl>`;
   }
 
   // ══════════════════════════════════════════
-  // TUJUH HARI TERAKHIR (satu grafik, ukuran bisa diganti Order/Nilai)
+  // TUJUH HARI TERAKHIR (satu grafik, ukuran bisa diganti Jumlah/Nilai)
   // ══════════════════════════════════════════
   let trendData = null;
   let trendMetric = 'jumlah';
@@ -475,7 +475,7 @@ async function rpc(fn, params){
       const dt = new Date(d.tanggal + 'T00:00:00');
       const v = val(d);
       return `<li class="tr-col${d.tanggal === today ? ' is-today' : ''}">
-        <a class="tr-link" href="/konversian/riwayat" data-nav="/konversian/riwayat" title="${esc(`${DAY_NAMES[dt.getDay()]}, ${d.tanggal}: ${fmt(d.jumlah)} order, ${rupiah(d.total_value)}`)}">
+        <a class="tr-link" href="/konversian/riwayat" data-nav="/konversian/riwayat" title="${esc(`${DAY_NAMES[dt.getDay()]}, ${d.tanggal}: ${fmt(d.jumlah)} konversi, ${rupiah(d.total_value)}`)}">
           <span class="tr-val">${byNilai ? compact(v) : fmt(v)}</span>
           <span class="tr-track"><span class="tr-bar" style="height:${Math.round(v / max * 100)}%"></span></span>
           <span class="tr-day">${DAY_NAMES[dt.getDay()]} ${dt.getDate()}</span>
@@ -483,7 +483,7 @@ async function rpc(fn, params){
     }).join('');
     el.innerHTML = `
       <dl class="tr-totals">
-        <div><dt>order</dt><dd>${fmt(totJ)}</dd></div>
+        <div><dt>konversi</dt><dd>${fmt(totJ)}</dd></div>
         <div><dt>total nilai</dt><dd title="${esc(rupiah(totV))}">${rupiahShort(totV)}</dd></div>
       </dl>
       <ol class="tr-cols" aria-label="${byNilai ? 'Nilai konversi' : 'Jumlah konversi'} per hari, 7 hari terakhir">${cols}</ol>`;
@@ -504,7 +504,7 @@ async function rpc(fn, params){
     el.innerHTML = `<ol class="rk">${data.slice(0, 8).map((r, i) => `
       <li><button type="button" class="rk-row" data-action="goto-riwayat-sales" data-sales="${esc(r.nama)}" title="Lihat konversi ${esc(r.nama)}">
         <span class="rk-pos">${i + 1}</span>
-        <span class="rk-name">${esc(r.nama)}<span class="rk-sub">${fmt(r.jumlah_order)} order</span></span>
+        <span class="rk-name">${esc(r.nama)}<span class="rk-sub">${fmt(r.jumlah_order)} konversi</span></span>
         <span class="rk-val" title="${esc(rupiah(r.total_value))}">${rupiahShort(r.total_value)}</span>
       </button></li>`).join('')}</ol>`;
   }

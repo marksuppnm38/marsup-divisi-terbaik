@@ -47,7 +47,7 @@ export const DASHBOARD_MARKUP = `
         <h2 class="db-sec-title">Tujuh hari terakhir</h2>
         <div class="db-sec-tools">
           <div class="seg" role="group" aria-label="Ukuran grafik">
-            <button type="button" data-action="trend-metric" data-m="jumlah" aria-pressed="true">Order</button>
+            <button type="button" data-action="trend-metric" data-m="jumlah" aria-pressed="true">Jumlah</button>
             <button type="button" data-action="trend-metric" data-m="nilai" aria-pressed="false">Nilai</button>
           </div>
         </div>
