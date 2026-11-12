@@ -47,6 +47,7 @@ import { installBulk } from './bulk.js';
 import { installOrphan } from './orphan.js';
 import { installKategori } from './kategori.js';
 import { createCopyKit } from './copy.js';
+import { createTableColumns } from './kolom-tabel.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared, selectPricelistRows, writePricelistXlsx } from '../../../shared/exports/pricelist.js';
 
@@ -584,6 +585,8 @@ function setView(v){
   viewCardBtn.classList.toggle('active', v === 'card');
   tableWrap.style.display = v === 'table' ? 'block' : 'none';
   cardWrap.style.display = v === 'card' ? 'grid' : 'none';
+  const colsBtn = document.getElementById('produkColsBtn');
+  if (colsBtn) colsBtn.style.display = v === 'table' ? '' : 'none';
 }
 viewTableBtn.addEventListener('click', () => setView('table'));
 viewCardBtn.addEventListener('click', () => setView('card'));
@@ -598,7 +601,27 @@ const copyKit = createCopyKit({
   get stokLabel() { return STOK_LABEL; }, // getter: STOK_LABEL (const) baru dideklarasi di bawah
   sealLabel: (s) => SEAL_LABELS[s] || 'Belum ada AKD',
 });
-copyKitDestroy = () => { copyKit.destroy(); akdLookup = () => []; };
+// Kolom tabel Produk yang bisa diatur (kolom-tabel.js): tampil/sembunyi, urutan, preset. Disimpan di localStorage.
+const colKit = createTableColumns({
+  sb,
+  headRow: document.getElementById('produkHeadRow'),
+  tableBody,
+  helpers: {
+    selBox: (p) => copyKit.selBox(p),
+    btn: (key, label) => copyKit.btn(key, label),
+    moreCell: (p) => copyKit.moreCell(p),
+    recent: (updatedAt) => recentBadgeHtml(updatedAt),
+    verified: (id) => verifiedBadgeHtml(produkVerifiedIdSet.has(id)),
+    seal: (p) => sealHtml(p.status_akd, p.id),
+    akdNoOf: (id) => copyKit.akdOf(id),
+    extraOf: (id) => copyKit.extraOf(id),
+    stokCell: (id) => stokCellHtml(id),
+  },
+  onChange: () => applyProdukColumns(),
+});
+colKit.renderHead();
+document.getElementById('produkColsBtn').addEventListener('click', (e) => colKit.openPicker(e.currentTarget));
+copyKitDestroy = () => { copyKit.destroy(); colKit.destroy(); akdLookup = () => []; };
 akdLookup = (id) => copyKit.akdOf(id);
 
 let lastQuery = '';
@@ -928,9 +951,11 @@ async function loadProduk(q, page){
   produkPage = searchChanged ? 1 : (page || produkPage || 1);
   const qq = newQ;
   copyKit.invalidate(); // harga/AKD hasil salin selalu diambil ulang (bisa baru diedit)
+  colKit.invalidate();
   copyKit.setPage([]);
+  produkPageRows = [];
 
-  tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Memuat data...</td></tr>`;
+  tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Memuat data...</td></tr>`;
   cardWrap.innerHTML = '';
   produkCount.textContent = 'Memuat...';
 
@@ -960,14 +985,14 @@ async function loadProduk(q, page){
       if (!fastSearchOk) {
       if (listErr) console.warn('search_produk_list gagal, fallback ke 2 langkah:', listErr.message);
       const { data: rpcData, error: rpcErr } = await sb.rpc('search_produk_dengan_harga', { q: qq, p_tipe: null, only_akd: false, only_kfa: false });
-      if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
+      if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
       const kodeList = (rpcData || []).map(r => r.kode_produk);
       if (kodeList.length === 0) { produkSearchRawRows = []; }
       else {
         const { data: fullRows, error: fullErr } = await sb.from('produk')
           .select(PRODUK_LIST_COLUMNS)
           .in('kode_produk', kodeList);
-        if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
+        if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
         const byKode = Object.fromEntries((fullRows || []).map(r => [r.kode_produk, r]));
         produkSearchRawRows = kodeList.map(k => byKode[k]).filter(Boolean);
       }
@@ -988,7 +1013,7 @@ async function loadProduk(q, page){
     // ("+ Tambah Filter") dipasang di client pakai produkRowMatchesFilter yang sama dgn jalur
     // search — get_produk_list sengaja TIDAK dipakai (gak kenal status "verified").
     const all = await ensureVerifiedRows();
-    if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal memuat produk Verified.</td></tr>`; return; }
+    if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat produk Verified.</td></tr>`; return; }
     let filtered = all;
     if (needsStok && !(await ensureStokForIds(all.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
@@ -1011,7 +1036,7 @@ async function loadProduk(q, page){
     });
     if (error) {
       const stokBelumMigrasi = needsStok && (error.code === 'PGRST202' || /p_stok/.test(error.message || ''));
-      tableBody.innerHTML = `<tr class="state-row"><td colspan="7">${stokBelumMigrasi
+      tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">${stokBelumMigrasi
         ? 'Filter Stok belum aktif di database. Jalankan <code>sql/01_stok_filter_produk.sql</code> di Supabase SQL Editor, lalu muat ulang.'
         : 'Gagal memuat: ' + escapeHtml(error.message)}</td></tr>`;
       return;
@@ -1029,7 +1054,7 @@ async function loadProduk(q, page){
     const { data, error, count } = await query
       .order('updated_at', { ascending: false })
       .range(from, to);
-    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
     rows = data || [];
     total = count || 0;
   }
@@ -1052,7 +1077,7 @@ async function loadProduk(q, page){
   });
 
   if (rows.length === 0) {
-    tableBody.innerHTML = `<tr class="state-row"><td colspan="7">Tidak ada produk ditemukan.</td></tr>`;
+    tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Tidak ada produk ditemukan.</td></tr>`;
     cardWrap.innerHTML = `<div class="stub-box" style="grid-column:1/-1;">Tidak ada produk ditemukan.</div>`;
     return;
   }
@@ -1073,43 +1098,15 @@ async function loadProduk(q, page){
   // case (see ensureProdukHargaSet()'s comment above, get_produk_harga_ids
   // RPC) -- just never applied here. Reusing that same cached, RPC-backed
   // Set instead of a fresh row-limited query fixes it the same way.
-  const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id)), copyKit.loadExtra(rows.map(r => r.id))]);
-  function attentionMeta(p){
-    const noHarga = !hargaExistIds.has(p.id);
-    const noLink = p.status_inaproc === 'Disetujui' && !p.link_v6;
-    return { noHarga, noLink };
-  }
+  const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id)), copyKit.loadExtra(rows.map(r => r.id)), colKit.loadNeeds(rows.map(r => r.id))]);
+  produkHargaExistIds = hargaExistIds;
 
+  produkPageRows = rows;
   copyKit.setPage(rows);
-  tableBody.innerHTML = '';
   cardWrap.innerHTML = '';
+  paintProdukRows();
   rows.forEach(p => {
-    const { noHarga, noLink } = attentionMeta(p);
-    // "Perlu dicek": teks berwarna, bukan ikon tanpa label. Satu kata kerja per masalah.
-    const flags = [];
-    if (noLink) flags.push('<span class="flag flag-bad" title="Sudah disetujui INAPROC tapi belum ada Link V6">Belum ada link V6</span>');
-    if (noHarga) flags.push('<span class="flag flag-warn" title="Belum ada harga EKATALOG">Tanpa harga</span>');
-    if (!p.is_active) flags.push('<span class="flag flag-mute" title="Produk nonaktif">Nonaktif</span>');
-    const flagsHtml = flags.join('');
-    const tr = document.createElement('tr');
-    tr.className = 'clickable';
-    tr.dataset.id = p.id;
-    tr.tabIndex = 0; // bisa dijangkau keyboard: Tab lalu Enter/Spasi buka produk
-    tr.innerHTML = `
-      <td class="kode-cell">${copyKit.selBox(p)}${escapeHtml(p.kode_produk)}${copyKit.btn('kode', 'Salin kode produk')}${recentBadgeHtml(p.updated_at)}</td>
-      <td class="nama-cell">${escapeHtml(p.nama_produk || '—')}${copyKit.btn('nama', 'Salin nama produk')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</td>
-      <td class="tipe-cell">${escapeHtml(p.tipe || '—')}</td>
-      <td class="akd-cell">${sealHtml(p.status_akd, p.id)}${copyKit.akdOf(p.id).length ? copyKit.btn('akd', 'Salin No. AKD') : ''}</td>
-      <td class="num">${stokCellHtml(p.id)}</td>
-      <td class="flag-cell">${flagsHtml}</td>
-      ${copyKit.moreCell(p)}
-    `;
-    tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
-    tr.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tr.click(); }
-    });
-    tableBody.appendChild(tr);
-
+    const flagsHtml = produkFlagsHtml(p);
     const card = document.createElement('div');
     card.className = 'prod-card';
     card.dataset.id = p.id;
@@ -1123,7 +1120,49 @@ async function loadProduk(q, page){
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     cardWrap.appendChild(card);
   });
+}
+
+// ---- Baris tabel Produk. Dipisah dari loadProduk() supaya ganti kolom (tombol "Kolom") cukup
+// menggambar ulang baris yang sudah dimuat, tanpa query ulang. ----
+let produkPageRows = [];             // baris halaman yang sedang tampil
+let produkHargaExistIds = new Set(); // produk_id di halaman ini yang sudah punya harga
+
+// "Perlu dicek": teks berwarna, bukan ikon tanpa label. Satu kata kerja per masalah.
+function produkFlagsHtml(p){
+  const noHarga = !produkHargaExistIds.has(p.id);
+  const noLink = p.status_inaproc === 'Disetujui' && !p.link_v6;
+  const flags = [];
+  if (noLink) flags.push('<span class="flag flag-bad" title="Sudah disetujui INAPROC tapi belum ada Link V6">Belum ada link V6</span>');
+  if (noHarga) flags.push('<span class="flag flag-warn" title="Belum ada harga EKATALOG">Tanpa harga</span>');
+  if (!p.is_active) flags.push('<span class="flag flag-mute" title="Produk nonaktif">Nonaktif</span>');
+  return flags.join('');
+}
+
+function paintProdukRows(){
+  tableBody.innerHTML = '';
+  produkPageRows.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.className = 'clickable';
+    tr.dataset.id = p.id;
+    tr.tabIndex = 0; // bisa dijangkau keyboard: Tab lalu Enter/Spasi buka produk
+    tr.innerHTML = colKit.rowHtml(p, { flags: produkFlagsHtml(p) });
+    tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tr.click(); }
+    });
+    tableBody.appendChild(tr);
+  });
   copyKit.afterRender();
+}
+
+// Dipanggil colKit setelah user mengubah pilihan kolom.
+async function applyProdukColumns(){
+  colKit.renderHead();
+  if (!produkPageRows.length) return; // lagi memuat / kosong / error: tidak ada baris untuk digambar ulang
+  const ids = produkPageRows.map(r => r.id);
+  await Promise.all([colKit.loadNeeds(ids), copyKit.loadExtra(ids)]);
+  if (!mountedContainer) return;
+  paintProdukRows();
 }
 
 // ---- Klik chip filter status di atas list Produk ----

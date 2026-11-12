@@ -489,6 +489,8 @@ export function createCopyKit(ctx) {
     },
     /** No. AKD terhubung untuk produk ini (kosong kalau belum termuat / tidak ada). */
     akdOf(id) { const c = freshExtra(id); return c ? c.akd : []; },
+    /** Harga + No. AKD yang sudah termuat untuk satu produk (null kalau belum / sudah basi). Dipakai kolom-tabel.js. */
+    extraOf(id) { return freshExtra(id); },
     /** Muat harga + No. AKD untuk sekumpulan id (dipakai sebelum render supaya kolom AKD langsung terisi). */
     loadExtra(ids) { return ensureExtra(ids); },
     /** Ikon salin kecil untuk satu field (muncul saat sel di-hover). */

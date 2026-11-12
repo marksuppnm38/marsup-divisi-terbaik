@@ -81,9 +81,12 @@ export const CRUD_PRODUK_MARKUP = `
                 <div class="add-filter-pop" id="produkAddFilterPop"></div>
               </div>
             </div>
-          <div class="view-toggle">
-            <button id="viewTableBtn" class="active" title="Tampilan tabel"><i class="ti ti-list"></i></button>
-            <button id="viewCardBtn" title="Tampilan kartu"><i class="ti ti-layout-grid"></i></button>
+          <div class="vtools-end">
+            <button type="button" class="btn-cols" id="produkColsBtn" aria-haspopup="dialog" aria-expanded="false" title="Pilih & urutkan kolom tabel"><i class="ti ti-columns"></i> Kolom</button>
+            <div class="view-toggle">
+              <button id="viewTableBtn" class="active" title="Tampilan tabel"><i class="ti ti-list"></i></button>
+              <button id="viewCardBtn" title="Tampilan kartu"><i class="ti ti-layout-grid"></i></button>
+            </div>
           </div>
         </div>
 
@@ -101,7 +104,7 @@ export const CRUD_PRODUK_MARKUP = `
           <div class="table-card" id="tableWrap">
                   <table>
                     <thead>
-                      <tr><th>Kode Produk</th><th>Nama Produk</th><th>Tipe</th><th>AKD</th><th class="num">Stok</th><th>Perlu dicek</th><th class="c-act"><span class="sr-only">Salin</span></th></tr>
+                      <tr id="produkHeadRow"><th>Kode Produk</th><th>Nama Produk</th><th>Tipe</th><th>AKD</th><th class="num">Stok</th><th>Perlu dicek</th><th class="c-act"><span class="sr-only">Salin</span></th></tr>
                     </thead>
                     <tbody id="tableBody">
                       <tr class="state-row"><td colspan="7">Memuat data...</td></tr>
