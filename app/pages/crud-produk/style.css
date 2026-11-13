@@ -850,11 +850,6 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .cp-sep{height:1px;margin:4px 6px;background:var(--border)}
 .cp-item{display:flex;align-items:baseline;justify-content:space-between;gap:16px;width:100%;padding:6px 10px;border:0;border-radius:var(--radius-sm);background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .cp-item:hover,.cp-item:focus-visible{background:var(--surface-2)}
-.cp-action .cp-lbl{display:flex;align-items:center;gap:8px}
-.cp-action .cp-lbl i{font-size:15px;color:var(--text-muted)}
-.cp-danger{color:var(--danger-text,#b91c1c)}
-.cp-danger .cp-lbl i{color:inherit}
-.cp-danger:hover,.cp-danger:focus-visible{background:var(--danger-bg,rgba(185,28,28,.1))}
 .cp-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .cp-item:disabled{opacity:.5;cursor:default;background:none}
 .cp-main .cp-lbl{font-weight:600}
