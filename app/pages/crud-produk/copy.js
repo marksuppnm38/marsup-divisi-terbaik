@@ -89,7 +89,8 @@ async function writeClip(text) {
  *   sb, tableBody, cardWrap, showToast(msg, isError),
  *   fetchAkdNoMap(ids, {silent}) -> Map|null,
  *   stokOf(id) -> {status, qty}|undefined, ensureStok(ids) -> Promise<boolean>,
- *   stokLabel: {READY:'Siap',...}, sealLabel(status) -> string
+ *   stokLabel: {READY:'Siap',...}, sealLabel(status) -> string,
+ *   rowActions(p) -> [{ key, label, icon, danger?, run() }]  aksi cepat di menu klik kanan (opsional; index.js)
  * }
  */
 export function createCopyKit(ctx) {
@@ -273,13 +274,17 @@ export function createCopyKit(ctx) {
     el.setAttribute('role', 'menu');
     el.setAttribute('aria-label', 'Salin dari ' + p.kode_produk);
     const menuFields = COPY_FIELDS.filter((f) => f.menu);
+    const actions = ctx.rowActions ? ctx.rowActions(p) : [];
     el.innerHTML =
       `<div class="cp-title">${esc(p.kode_produk)}</div>` +
       `<button type="button" class="cp-item cp-main" role="menuitem" data-act="row"><span class="cp-lbl">Salin baris</span><span class="cp-val" data-rowinfo></span></button>` +
       `<div class="cp-sep" role="separator"></div>` +
       menuFields.map((f) => `<button type="button" class="cp-item" role="menuitem" data-act="field" data-key="${f.key}"><span class="cp-lbl">${esc(f.label)}</span><span class="cp-val"></span></button>`).join('') +
       `<div class="cp-sep" role="separator"></div>` +
-      `<button type="button" class="cp-item" role="menuitem" data-act="cols"><span class="cp-lbl">Atur kolom salinan…</span></button>`;
+      `<button type="button" class="cp-item" role="menuitem" data-act="cols"><span class="cp-lbl">Atur kolom salinan…</span></button>` +
+      (actions.length
+        ? `<div class="cp-sep" role="separator"></div>` + actions.map((a) => `<button type="button" class="cp-item cp-action${a.danger ? ' cp-danger' : ''}" role="menuitem" data-act="action" data-akey="${esc(a.key)}"><span class="cp-lbl"><i class="ti ti-${esc(a.icon || 'bolt')}"></i>${esc(a.label)}</span></button>`).join('')
+        : '');
 
     const paint = () => {
       el.querySelector('[data-rowinfo]').textContent = `${cols.size} kolom, tab`;
@@ -300,6 +305,7 @@ export function createCopyKit(ctx) {
       if (!b || b.disabled) return;
       const act = b.dataset.act;
       if (act === 'cols') { const rect = el.getBoundingClientRect(); closePop(); openCols({ x: rect.left, y: rect.top }, returnEl); return; }
+      if (act === 'action') { closePop(); const a = actions.find((x) => x.key === b.dataset.akey); if (a) a.run(); return; }
       closePop(true);
       if (act === 'row') copyRows([p]);
       else copyField(p, b.dataset.key, null);

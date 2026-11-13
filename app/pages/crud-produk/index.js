@@ -601,6 +601,11 @@ const copyKit = createCopyKit({
   ensureStok: (ids) => ensureStokForIds(ids),
   get stokLabel() { return STOK_LABEL; }, // getter: STOK_LABEL (const) baru dideklarasi di bawah
   sealLabel: (s) => SEAL_LABELS[s] || 'Belum ada AKD',
+  // Aksi cepat di menu klik kanan / tombol Salin (sama dengan yang ada di modal edit; hapus tetap lewat cek relasi + konfirmasi).
+  rowActions: (p) => [
+    { key: 'edit', label: p.tipe === 'SET' ? 'Buka set' : 'Edit produk', icon: 'pencil', run: () => { if (p.tipe === 'SET') goToSetDetail(p.id); else openEdit(p.id); } },
+    { key: 'hapus', label: 'Hapus produk…', icon: 'trash', danger: true, run: () => deleteProdukInner(p.id, p.kode_produk) },
+  ],
 });
 // Kolom tabel Produk yang bisa diatur (kolom-tabel.js): tampil/sembunyi, urutan, preset. Disimpan di localStorage.
 const colKit = createTableColumns({
@@ -3406,7 +3411,7 @@ deleteBtn.addEventListener('click', async () => {
     if (session === modalSession && modalState === 'busy') modalGo('edit');
   }
 });
-async function deleteProdukInner(id){
+async function deleteProdukInner(id, label){
 
   const [hargaR, mediaR, akdR, komposisiSendiriR, dipakaiDiSetLainR, inaprocR, permintaanR, konversiR] = await Promise.all([
     sb.from('produk_harga').select('id', { count: 'exact', head: true }).eq('produk_id', id),
@@ -3436,7 +3441,7 @@ async function deleteProdukInner(id){
   if (mediaCount) parts.push(`${mediaCount} media`);
   if (akdCount) parts.push(`${akdCount} relasi AKD`);
   if (komposisiSendiri) parts.push(`${komposisiSendiri} item komposisi set ini`);
-  let pesan = 'Hapus produk ini?';
+  let pesan = label ? `Hapus produk ${label}?` : 'Hapus produk ini?';
   if (parts.length) pesan += ' Ikut terhapus otomatis: ' + parts.join(', ') + '.';
   if (dipakaiDiSetLain) pesan += ` ⚠️ Produk ini masih jadi item komposisi di ${dipakaiDiSetLain} SET lain — relasinya di sana akan dilepas dulu (komposisi set-set itu berkurang satu item), baru produknya dihapus.`;
   if (!await crudConfirm(pesan, { danger: true, okLabel: 'Ya, Hapus' })) return;
