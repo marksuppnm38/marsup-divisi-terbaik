@@ -520,6 +520,71 @@ async function rpc(fn, params){
   }
 
   // ══════════════════════════════════════════
+  // DISTRIBUTOR TERBAIK
+  // Satu panggilan (get_dashboard_top_distributor) mengembalikan semua distributor dari pesanan terkirim,
+  // dengan sumber yang sama dengan halaman Populasi. Urutan (volume / jumlah RS / jumlah PO) diganti di
+  // browser tanpa panggilan baru; ganti periode memanggil ulang.
+  // Volume = set + pcs + unit (satuannya berbeda, jadi hanya pembanding kasar); jumlah RS tidak terpengaruh satu pesanan besar.
+  // ══════════════════════════════════════════
+  const DIST_TOP = 10;
+  const DIST_PERIODE = { 90: '90 hari terakhir', 365: '1 tahun terakhir', 0: 'seluruh periode' };
+  const DIST_URUT = {
+    volume: (a, b) => b.volume - a.volume || b.jumlah_rs - a.jumlah_rs || b.jumlah_po - a.jumlah_po,
+    rs:     (a, b) => b.jumlah_rs - a.jumlah_rs || b.jumlah_po - a.jumlah_po || b.volume - a.volume,
+    po:     (a, b) => b.jumlah_po - a.jumlah_po || b.jumlah_rs - a.jumlah_rs || b.volume - a.volume,
+  };
+  let distMetric = 'volume', distDays = 365, distData = null;
+  async function loadDistributor(el) {
+    try {
+      distData = await rpc('get_dashboard_top_distributor', { p_days: distDays || null, p_status: 'DELIVERED' });
+    } catch (e) {
+      // RPC belum dipasang: mencoba ulang tidak menolong, jadi tampilkan petunjuknya, bukan tombol "Coba lagi".
+      if (e && (e.code === 'PGRST202' || e.status === 404)) {
+        distData = null;
+        el.innerHTML = emptyHtml('Ranking distributor belum aktif. Jalankan populasi_distributor.sql di Supabase SQL Editor.');
+        return;
+      }
+      throw e;
+    }
+    renderDistributor(el);
+  }
+  function renderDistributor(el) {
+    if (!el) return;
+    const n = (v) => Number(v) || 0;
+    const rows = ((distData && distData.rows) || []).map((r) => ({
+      distributor: r.distributor, jumlah_rs: n(r.jumlah_rs), jumlah_po: n(r.jumlah_po), jumlah_provinsi: n(r.jumlah_provinsi),
+      set_total: n(r.set_total), pcs_total: n(r.pcs_total), unit_total: n(r.unit_total), volume: n(r.volume),
+    }));
+    if (!rows.length) { el.innerHTML = emptyHtml('Belum ada pesanan terkirim dengan distributor tercatat pada periode ini.'); return; }
+    const total = distData.total || {};
+    const tanpa = distData.tanpa_distributor || {};
+    const totVol = n(total.volume);
+    const top = rows.slice().sort(DIST_URUT[distMetric] || DIST_URUT.volume).slice(0, DIST_TOP);
+    const rincian = (r) => [
+      r.set_total ? `${fmt(r.set_total)} set` : '', r.pcs_total ? `${fmt(r.pcs_total)} pcs` : '', r.unit_total ? `${fmt(r.unit_total)} unit` : '',
+    ].filter(Boolean).join(' · ');
+    const hd = (m, label) => `<th class="num${distMetric === m ? ' is-sort' : ''}"${distMetric === m ? ' aria-sort="descending"' : ''}>${label}</th>`;
+    const tanpaVol = n(tanpa.volume);
+    el.innerHTML = `
+      <p class="pop-lead"><strong>${fmt(rows.length)}</strong> distributor, <strong>${fmt(n(total.jumlah_rs))}</strong> rumah sakit, ${fmt(n(total.jumlah_po))} PO (${DIST_PERIODE[distDays] || DIST_PERIODE[365]}).</p>
+      <div class="tb-wrap"><table class="tb tb--static">
+        <thead><tr><th class="rank">#</th><th>Distributor</th>${hd('rs', 'Jumlah RS')}${hd('po', 'Jumlah PO')}${hd('volume', 'Volume')}<th class="num">Porsi volume</th></tr></thead>
+        <tbody>${top.map((r, i) => `
+          <tr>
+            <td class="rank">${i + 1}</td>
+            <td><span class="tb-name">${esc(r.distributor)}</span><span class="tb-sub">${esc(rincian(r) || '—')}${r.jumlah_provinsi ? ` · ${fmt(r.jumlah_provinsi)} provinsi` : ''}</span></td>
+            <td class="num">${fmt(r.jumlah_rs)}</td>
+            <td class="num">${fmt(r.jumlah_po)}</td>
+            <td class="num">${fmt(r.volume)}</td>
+            <td class="num">${totVol ? Math.round(r.volume / totVol * 100) : 0}%</td>
+          </tr>`).join('')}</tbody>
+      </table></div>
+      <div class="tb-foot">
+        <span>Volume = set + pcs + unit; satuannya berbeda, jadi baca bersama jumlah RS. Jumlah RS tidak terpengaruh satu pesanan besar.${tanpaVol ? ` ${fmt(n(tanpa.jumlah_rs))} RS (${pct(tanpaVol, totVol)}% volume) belum tercatat distributornya.` : ''}</span>
+      </div>`;
+  }
+
+  // ══════════════════════════════════════════
   // STOK BERISIKO HABIS
   // ══════════════════════════════════════════
   const FC_INITIAL = 6;
@@ -688,6 +753,7 @@ async function rpc(fn, params){
     stok:        { el: 'db-stok',        load: loadStok },
     populasi:    { el: 'db-populasi',    load: loadPopulasi },
     kategori:    { el: 'db-kategori',    load: loadKategori },
+    distributor: { el: 'db-distributor', load: loadDistributor },
     kebutuhan:   { el: 'db-kebutuhan',   load: loadKebutuhan },
   };
   const rendered = new Set();   // panel yang pernah berhasil tampil
@@ -846,6 +912,8 @@ function isSafeHttpUrl(u){
     'lb-period':       (el) => { lbDays = +el.dataset.days || 30; setPressed(el); runPanel('leaderboard', false); },
     'forecast-period': (el) => { fcDays = +el.dataset.days || 30; fcAll = false; setPressed(el); runPanel('stok', false); },
     'forecast-more':   () => { fcAll = !fcAll; renderStok($('db-stok')); },
+    'dist-metric':     (el) => { distMetric = (el.dataset.m === 'rs' || el.dataset.m === 'po') ? el.dataset.m : 'volume'; setPressed(el); renderDistributor($('db-distributor')); },
+    'dist-period':     (el) => { distDays = el.dataset.days === '0' ? 0 : (+el.dataset.days || 365); setPressed(el); runPanel('distributor', false); },
     'pop-prov':        (el) => { popSel = el.dataset.prov || popSel; renderPopulasi($('db-populasi')); },
     'wt-pick':         (el) => pickIstilah(el.dataset.istilah),
     'retry':           (el) => runPanel(el.dataset.panel, false).then(renderFresh),

@@ -108,6 +108,29 @@ export const DASHBOARD_MARKUP = `
   <section class="db-row">
     <div class="db-c12">
       <div class="db-sec-head">
+        <h2 class="db-sec-title">Distributor terbaik</h2>
+        <span class="db-sec-sub">Pesanan terkirim, 10 teratas</span>
+        <div class="db-sec-tools">
+          <div class="seg" role="group" aria-label="Urutkan distributor menurut">
+            <button type="button" data-action="dist-metric" data-m="volume" aria-pressed="true">Volume</button>
+            <button type="button" data-action="dist-metric" data-m="rs" aria-pressed="false">Jumlah RS</button>
+            <button type="button" data-action="dist-metric" data-m="po" aria-pressed="false">Jumlah PO</button>
+          </div>
+          <div class="seg" role="group" aria-label="Periode distributor">
+            <button type="button" data-action="dist-period" data-days="90" aria-pressed="false">90 hari</button>
+            <button type="button" data-action="dist-period" data-days="365" aria-pressed="true">1 tahun</button>
+            <button type="button" data-action="dist-period" data-days="0" aria-pressed="false">Semua</button>
+          </div>
+          <a class="db-link" href="/populasi" data-nav="/populasi">Buka populasi</a>
+        </div>
+      </div>
+      <div id="db-distributor">${BUSY}</div>
+    </div>
+  </section>
+
+  <section class="db-row">
+    <div class="db-c12">
+      <div class="db-sec-head">
         <h2 class="db-sec-title">Kebutuhan customer ke SKU</h2>
         <span class="db-sec-sub">Istilah yang dipakai customer dan SKU yang akhirnya dipakai untuk memenuhinya</span>
         <div class="db-sec-tools"><a class="db-link" href="/konversian/dictionary" data-nav="/konversian/dictionary">Buka dictionary</a></div>

@@ -2094,6 +2094,7 @@ function xlRender() {
   let internal = false;
   $('ps-xl-sheets').innerHTML = xlDlg.cat.map((sh) => {
     const on = sh.lock || sel.sheets.includes(sh.id);
+    if (sh.id === 'distributor' && on) internal = true;   // sheet Per Distributor (kolom tetap) juga internal
     let cols = '';
     if (sh.cols && on) {
       const dipilih = new Set(sel.cols[sh.id] || []);
@@ -2112,7 +2113,7 @@ function xlRender() {
 
   const warn = $('ps-xl-warn');
   warn.hidden = !internal;
-  warn.textContent = internal ? 'Berisi kolom internal (No. PO, No. RMP, atau data teknis). Jangan dikirim ke pihak luar.' : '';
+  warn.textContent = internal ? 'Berisi kolom internal (No. PO, No. RMP, distributor, atau data teknis). Jangan dikirim ke pihak luar.' : '';
 
   if (fokus) {
     const sel2 = fokus.xl === 'preset' ? `[data-xl="preset"][value="${fokus.v}"]` : `[data-xl="${fokus.xl}"]${fokus.sheet ? `[data-sheet="${fokus.sheet}"]` : ''}[data-v="${fokus.v}"]`;

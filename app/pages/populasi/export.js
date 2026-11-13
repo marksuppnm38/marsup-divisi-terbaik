@@ -6,7 +6,7 @@
 // bukan salinan mentah database. Prinsip:
 //  - Satu export, beberapa tujuan: PRESET memilih sheet dan kelompok kolom; pembaca bisa menyesuaikan.
 //  - Sheet berurutan dari yang paling dibaca: Ringkasan > Daftar RS > Per Produk > Per Provinsi >
-//    RS per Kategori > Rincian Pesanan > Wilayah Belum Diketahui > Catatan & Kamus.
+//    Per Distributor (internal) > RS per Kategori > Rincian Pesanan > Wilayah Belum Diketahui > Catatan & Kamus.
 //  - Integritas data: nilai tidak diisi/ditebak. Kosong di sumber tetap kosong (angka/tanggal) atau
 //    "Tidak tersedia" (teks), "Belum diketahui" untuk wilayah, dan setiap hitungan perkiraan / belum dihitung
 //    diberi penanda + dijelaskan di Catatan & Kamus. Kolom yang seluruhnya kosong tidak ditampilkan (dicatat).
@@ -51,19 +51,19 @@ export const XL_PRESETS = [
     id: 'sph', nama: 'Lampiran SPH',
     desc: 'Ringkas dan rapi untuk dikirim ke calon pembeli: daftar RS, populasi per produk, dan per provinsi. Tanpa nomor PO/RMP dan data teknis.',
     sheets: ['rs', 'rincianrs', 'produk', 'provinsi'],
-    grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 0, tek: 0, sebaran: 0 },
+    grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 0, tek: 0, sebaran: 0, dist: 0 },
   },
   {
     id: 'presentasi', nama: 'Presentasi dan diskusi',
     desc: 'Gambaran cepat untuk dibicarakan: per provinsi, per produk, per kategori, dan daftar RS. Tanpa data teknis.',
     sheets: ['provinsi', 'produk', 'matriks', 'rs', 'rincianrs'],
-    grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 1, tek: 0, sebaran: 1 },
+    grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 1, tek: 0, sebaran: 1, dist: 0 },
   },
   {
     id: 'internal', nama: 'Laporan dan analisis internal',
     desc: 'Lengkap: semua sheet termasuk rincian pesanan, nomor PO/RMP, dan kolom teknis. Hanya untuk internal.',
-    sheets: ['rs', 'produk', 'provinsi', 'matriks', 'pesanan', 'belum'],
-    grp: { wil: 1, jml: 1, status: 1, waktu: 1, produk: 1, dok: 1, cat: 1, tek: 1, sebaran: 1 },
+    sheets: ['rs', 'produk', 'provinsi', 'distributor', 'matriks', 'pesanan', 'belum'],
+    grp: { wil: 1, jml: 1, status: 1, waktu: 1, produk: 1, dok: 1, cat: 1, tek: 1, sebaran: 1, dist: 1 },
   },
   {
     id: 'kustom', nama: 'Kustom',
@@ -75,10 +75,10 @@ export const XL_PRESETS = [
 export const XL_GRUP = {
   id: 'Identitas', wil: 'Wilayah', jml: 'Jumlah', status: 'Terkirim dan dalam proses terpisah',
   waktu: 'Tanggal dan status', produk: 'Detail produk', dok: 'Dokumen (No. PO, No. RMP)',
-  cat: 'Keterangan data', tek: 'Data teknis', sebaran: 'Sebaran jumlah per PO',
+  cat: 'Keterangan data', tek: 'Data teknis', sebaran: 'Sebaran jumlah per PO', dist: 'Distributor (internal)',
 };
 // Kelompok yang hanya untuk internal: dipakai untuk peringatan di dialog.
-export const XL_GRUP_INTERNAL = ['dok', 'tek'];
+export const XL_GRUP_INTERNAL = ['dok', 'tek', 'dist'];
 
 export const XL_SHEETS = [
   { id: 'ringkasan', nama: 'Ringkasan', lock: true,
@@ -91,6 +91,8 @@ export const XL_SHEETS = [
     desc: 'Populasi per produk atau jenis set: jumlah, berapa RS, berapa provinsi.' },
   { id: 'provinsi', nama: 'Per Provinsi', when: (i) => !i.provinsiDipilih,
     desc: 'Jumlah RS, set, pcs, dan unit per provinsi.' },
+  { id: 'distributor', nama: 'Per Distributor', when: (i) => i.adaDist,
+    desc: 'Peringkat distributor: jumlah RS, PO, set/pcs/unit, provinsi dan produk terbanyak. Hanya untuk internal.' },
   { id: 'matriks', nama: 'RS per Kategori', when: (i) => i.multiKategori,
     desc: 'Perbandingan jumlah tiap RS per kategori produk.' },
   { id: 'pesanan', nama: 'Rincian Pesanan', cols: true,
@@ -123,6 +125,9 @@ const COLS = {
     { id: 'pertama', h: 'Pesanan pertama', k: 'pertama', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan paling awal pada hasil ini. Kosong bila tidak ada tanggal tercatat.' },
     { id: 'terakhir', h: 'Pesanan terakhir', k: 'terakhir', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan paling baru. Kosong bila tidak ada tanggal tercatat.' },
     { id: 'rincian', h: 'Jenis yang dipesan', k: 'rincian', w: 62, wrap: 1, grp: 'produk', desc: 'Produk atau jenis set yang dipesan, diikuti ×jumlahnya.' },
+    { id: 'distUtama', h: 'Distributor utama', k: 'distUtama', w: 28, grp: 'dist', drop: 1, na: 1, desc: 'Distributor dengan volume terbanyak di RS ini (set + pcs + unit pada pesanan yang dihitung). “Tidak tersedia” berarti distributor RS ini tidak tercatat.' },
+    { id: 'distJml', h: 'Jumlah distributor', k: 'distJml', w: 12, fmt: XL_NUMZ, grp: 'dist', drop: 1, desc: 'Berapa distributor berbeda yang melayani RS ini.' },
+    { id: 'distRinci', h: 'Semua distributor', k: 'distRinci', w: 46, wrap: 1, grp: 'dist', drop: 1, desc: 'Semua distributor yang melayani RS ini, diikuti ×volumenya (set + pcs + unit), terbanyak dulu.' },
     { id: 'ket', h: 'Keterangan', k: 'ket', w: 40, wrap: 1, warn: 1, drop: 1, grp: 'cat', desc: 'Catatan khusus: jumlah berupa perkiraan, pesanan belum dihitung, atau wilayah belum diketahui.' },
     { id: 'sumber', h: 'Dasar wilayah', k: 'sumber', w: 18, tech: 1, drop: 1, grp: 'tek', desc: 'Asal data wilayah: koreksi manual oleh tim, atau deteksi otomatis dari alamat pengiriman (bisa keliru).' },
   ],
@@ -150,12 +155,15 @@ const COLS = {
     { id: 'pesanan', h: 'Jumlah pesanan', k: 'pesanan', w: 11, fmt: XL_NUMZ, grp: 'jml', desc: 'Jumlah baris pesanan (kombinasi PO dan produk) di sheet Rincian Pesanan untuk produk ini, termasuk yang belum dihitung.' },
     { id: 'pertama', h: 'Pesanan pertama', k: 'pertama', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan paling awal. Kosong bila tidak ada tanggal tercatat.' },
     { id: 'terakhir', h: 'Pesanan terakhir', k: 'terakhir', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan paling baru. Kosong bila tidak ada tanggal tercatat.' },
+    { id: 'distJml', h: 'Jumlah distributor', k: 'distJml', w: 12, fmt: XL_NUMZ, grp: 'dist', drop: 1, desc: 'Berapa distributor berbeda yang menjual produk ini (hanya pesanan yang dihitung).' },
+    { id: 'distTop', h: 'Distributor teratas', k: 'distTop', w: 40, wrap: 1, grp: 'dist', drop: 1, desc: 'Tiga distributor dengan volume terbanyak untuk produk ini, diikuti ×jumlahnya.' },
     { id: 'ket', h: 'Keterangan', k: 'ket', w: 40, wrap: 1, warn: 1, drop: 1, grp: 'cat', desc: 'Catatan khusus: ada pesanan perkiraan atau belum dihitung.' },
   ],
   pesanan: [
     { id: 'customer', h: 'Rumah sakit / instansi', k: 'customer', w: 40, grp: 'id', req: 1, desc: 'Nama customer seperti tercatat di data pesanan.' },
     { id: 'kab', h: 'Kab/Kota', k: 'kab', w: 20, grp: 'wil', drop: 1, na: 1, desc: 'Kabupaten/kota. “Tidak tersedia” berarti belum ada datanya.' },
     { id: 'provinsi', h: 'Provinsi', k: 'provinsi', w: 18, grp: 'wil', desc: 'Provinsi. “Belum diketahui” berarti wilayah belum bisa ditentukan.' },
+    { id: 'distributor', h: 'Distributor', k: 'distributor', w: 28, grp: 'dist', drop: 1, na: 1, desc: 'Distributor pada pesanan ini, menurut No. RMP. “Tidak tersedia” berarti tidak tercatat.' },
     { id: 'kategori', h: 'Kategori', k: 'kategori', w: 18, grp: 'produk', desc: 'Kategori produk menurut klasifikasi aplikasi.' },
     { id: 'jenis', h: 'Produk / jenis set', k: 'jenis', w: 50, wrap: 1, grp: 'id', req: 1, desc: 'Nama produk (barang satuan) atau jenis set.' },
     { id: 'kode', h: 'Kode produk', k: 'kode', w: 16, grp: 'produk', drop: 1, na: 1, desc: 'Kode produk di database. “Tidak tersedia” berarti tidak tercatat.' },
@@ -189,6 +197,27 @@ const COLS_PROV = [
   { id: 'terakhir', h: 'Pesanan terakhir', k: 'terakhir', w: 14, fmt: XL_DATE, desc: 'Tanggal pesanan paling baru. Kosong bila tidak ada tanggal tercatat.' },
 ];
 
+const COLS_DIST = [
+  { id: 'no', h: 'No', k: 'no', w: 5, fmt: XL_NUM, align: 'center', desc: 'Nomor urut.' },
+  { id: 'distributor', h: 'Distributor', k: 'distributor', w: 36, wrap: 1, desc: 'Nama distributor menurut data pesanan, ejaan yang berbeda disatukan lewat daftar alias. “Belum tercatat” = pesanan yang distributornya tidak ada di data.' },
+  { id: 'rankVol', h: 'Peringkat (volume)', k: 'rankVol', w: 11, fmt: XL_NUM, align: 'center', desc: 'Peringkat menurut volume (set + pcs + unit). Kosong untuk “Belum tercatat”.' },
+  { id: 'rankRs', h: 'Peringkat (jumlah RS)', k: 'rankRs', w: 11, fmt: XL_NUM, align: 'center', desc: 'Peringkat menurut jumlah RS yang dilayani, lalu jumlah PO. Tidak terpengaruh satu pesanan besar.' },
+  { id: 'rs', h: 'Jumlah RS', k: 'rs', w: 10, fmt: XL_NUMZ, desc: 'Berapa RS/instansi berbeda yang dilayani distributor ini (hanya pesanan yang dihitung). Tidak dijumlahkan di baris Total karena satu RS bisa dilayani beberapa distributor.' },
+  { id: 'po', h: 'Jumlah PO', k: 'po', w: 10, fmt: XL_NUMZ, desc: 'Berapa PO berbeda (kombinasi customer + No. PO + No. RMP).' },
+  { id: 'prov', h: 'Jumlah provinsi', k: 'prov', w: 11, fmt: XL_NUMZ, when: (i) => !i.provinsiDipilih, desc: 'Berapa provinsi berbeda; RS yang wilayahnya belum diketahui tidak dihitung.' },
+  { id: 'set', h: 'Jumlah set', k: 'set', w: 12, fmt: XL_NUMZ, when: (i) => i.hasSet, desc: 'Jumlah set.' },
+  { id: 'pcs', h: 'Jumlah pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, when: (i) => i.hasPcs, desc: 'Jumlah pcs (instrumen satuan, termasuk isi set dan BMHP).' },
+  { id: 'unit', h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ, when: (i) => i.hasUnit, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya).' },
+  { id: 'vol', h: 'Volume (set + pcs + unit)', k: 'vol', w: 14, fmt: XL_NUMZ, desc: 'Penjumlahan set, pcs, dan unit. Satuannya berbeda, jadi pakai sebagai pembanding kasar antar distributor.' },
+  { id: 'share', h: 'Porsi volume', k: 'share', w: 10, fmt: XL_PCT, desc: 'Bagian dari total volume pada hasil ini, termasuk pesanan yang distributornya belum tercatat.' },
+  { id: 'dominasi', h: 'PO terbesar (% dari total)', k: 'dominasi', w: 13, fmt: XL_PCT, desc: 'Berapa persen volume distributor ini berasal dari satu PO terbesar. Nilai tinggi = volume condong ke satu pesanan.' },
+  { id: 'provTop', h: 'Provinsi terbanyak', k: 'provTop', w: 34, wrap: 1, desc: 'Tiga provinsi dengan RS terbanyak untuk distributor ini.' },
+  { id: 'prodTop', h: 'Produk terbanyak', k: 'prodTop', w: 52, wrap: 1, desc: 'Lima produk / jenis set dengan volume terbanyak, diikuti ×jumlahnya.' },
+  { id: 'pertama', h: 'Pesanan pertama', k: 'pertama', w: 14, fmt: XL_DATE, desc: 'Tanggal pesanan paling awal. Kosong bila tidak ada tanggal tercatat.' },
+  { id: 'terakhir', h: 'Pesanan terakhir', k: 'terakhir', w: 14, fmt: XL_DATE, desc: 'Tanggal pesanan paling baru. Kosong bila tidak ada tanggal tercatat.' },
+  { id: 'ket', h: 'Keterangan', k: 'ket', w: 44, wrap: 1, warn: 1, desc: 'Catatan khusus: volume didominasi satu PO, ada pesanan perkiraan atau belum dihitung, atau RMP yang tercatat dengan lebih dari satu distributor.' },
+];
+
 const usable = (c, info) => !c.when || c.when(info);
 const sheetAvail = (s, info) => !s.when || s.when(info);
 
@@ -211,6 +240,8 @@ export function xlInfo({ data, unmapped, st, lines }) {
     adaSet: lines ? lines.some((l) => l.kind === 'SET') : hasSet,
     adaPcs: lines ? lines.some((l) => satuanBaris(l) === 'pcs') : hasPcs,
     adaUnit: lines ? lines.some((l) => satuanBaris(l) === 'unit') : hasUnit,
+    // Dialog belum memuat baris pesanan: sheet distributor ditawarkan; saat unduh dilewati bila datanya tidak ada.
+    adaDist: lines ? lines.some((l) => !!(l.distributor && String(l.distributor).trim())) : true,
     semuaStatus: st.status === 'ALL',
     provinsiDipilih: !!st.provinsi,
     multiKategori: st.kelompok.length !== 1,
@@ -312,6 +343,24 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     if (l.kind === 'SET' && l.status_hitung === 'estimasi') o.estimasi += n0(l.nilai);
   });
 
+  // Distributor: nama dari server (data pesanan + alias), kosong bila tidak tercatat. Dibandingkan tanpa membedakan huruf besar/kecil.
+  const distNama = (l) => String(l.distributor || '').trim();
+  const distTotalLine = (m, nm, l) => {
+    const e = m.get(nm.toLowerCase()) || { nama: nm, v: 0, n: 0 };
+    e.n += 1;
+    if (dihitung(l)) e.v += n0(l.nilai);
+    m.set(nm.toLowerCase(), e);
+  };
+  const distRs = new Map();        // customer -> Map(kunci nama -> {nama, v, n})
+  lines.forEach((l) => {
+    const nm = distNama(l);
+    if (!nm) return;
+    if (!distRs.has(l.customer)) distRs.set(l.customer, new Map());
+    distTotalLine(distRs.get(l.customer), nm, l);
+  });
+  const distUrut = (m) => Array.from(m.values()).sort((a, b) => b.v - a.v || b.n - a.n || a.nama.localeCompare(b.nama, 'id'));
+  const distTeks = (e) => (e.v > 0 ? `${e.nama} ×${fmt(e.v)}` : e.nama);
+
   const sumberTxt = (x) => (x.sumber_wilayah === 'manual' ? 'Koreksi manual' : (x.sumber_wilayah === 'alamat' ? 'Deteksi alamat' : ''));
   const itemsRs = R.map((x, i) => {
     const o = peta[x.customer] || { pertama: '', estimasi: 0 };
@@ -327,6 +376,13 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       pesanan: n0(x.jumlah_pesanan), pertama: xlDate(o.pertama), terakhir: xlDate(x.terakhir),
       rincian: '', _rinc: x.rincian || [],
       ket: sph ? '' : ket.join('; '), sumber: sumberTxt(x),
+      distUtama: '', distJml: null, distRinci: '',
+      ...(() => {
+        const dd = distRs.get(x.customer);
+        if (!dd || !dd.size) return {};
+        const u = distUrut(dd);
+        return { distUtama: u[0].nama, distJml: u.length, distRinci: u.map(distTeks).join('\n') };
+      })(),
     };
   });
 
@@ -341,6 +397,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       spes: new Set(), set_t: 0, set_p: 0, pcs_t: 0, pcs_p: 0, unit_t: 0, unit_p: 0, rs: new Set(), prov: new Set(), sat: satuanBaris(l),
       pesanan: 0, pertama: '', terakhir: '', est: 0, cek: 0, isSet,
       po: new Map(),            // kunci PO -> jumlah produk ini pada PO itu (frekuensi + sebaran per PO)
+      dist: new Map(),          // distributor -> {nama, v}: siapa yang menjual produk ini
     };
     if (l.spes) o.spes.add(spesNama(l.spes));
     o.pesanan += 1;
@@ -358,6 +415,12 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       // Satu PO = customer + No. PO + No. RMP. Tanpa keduanya, baris dianggap PO tersendiri (tidak digabung).
       const pk = (l.po || l.kode_rmp) ? `${l.customer}|${l.po || ''}|${l.kode_rmp || ''}` : `${l.customer}|#${li}`;
       o.po.set(pk, (o.po.get(pk) || 0) + v);
+      const dn = distNama(l);
+      if (dn) {
+        const e = o.dist.get(dn.toLowerCase()) || { nama: dn, v: 0, n: 0 };
+        e.v += v; e.n += 1;
+        o.dist.set(dn.toLowerCase(), e);
+      }
     } else o.cek += 1;
     if (isSet && l.status_hitung === 'estimasi') o.est += 1;
     pm.set(key, o);
@@ -385,6 +448,8 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       unit_t: o.sat === 'unit' ? o.unit_t : null, unit_p: o.sat === 'unit' ? o.unit_p : null, unit: o.sat === 'unit' ? o.unit_t + o.unit_p : null,
       rs: o.rs.size, prov: o.prov.size, pesanan: o.pesanan,
       pertama: xlDate(o.pertama), terakhir: xlDate(o.terakhir), ket: sph ? '' : ket.join('; '),
+      distJml: o.dist.size || null,
+      distTop: distUrut(o.dist).slice(0, 3).map(distTeks).join('\n'),
     };
   }).sort((a, b) => b.rs - a.rs || b.po - a.po || volProduk(b) - volProduk(a) || String(a.nama).localeCompare(String(b.nama), 'id'))
     .filter((o) => !sph || n0(o.set) + n0(o.pcs) + n0(o.unit) > 0)   // SPH: produk yang tidak punya angka tidak ditampilkan
@@ -403,6 +468,69 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     .sort((a, b) => ((a.provinsi === belumLabel) - (b.provinsi === belumLabel)) || (b.set + b.pcs + b.unit) - (a.set + a.pcs + a.unit) || a.provinsi.localeCompare(b.provinsi, 'id'))
     .map((o, i) => Object.assign({}, o, { no: i + 1, terakhir: xlDate(o.terakhir) }));
 
+  // Per distributor. Satu baris per distributor (ejaan berbeda sudah disatukan di server); pesanan tanpa distributor
+  // dikumpulkan di baris "Belum tercatat" supaya total kolom tetap sama dengan Daftar RS.
+  const adaDist = lines.some((l) => distNama(l));
+  const dm = new Map();
+  lines.forEach((l, li) => {
+    const nm = distNama(l);
+    const key = nm.toLowerCase();
+    const o = dm.get(key) || {
+      nama: nm, set: 0, pcs: 0, unit: 0, rs: new Set(), prov: new Map(), po: new Map(), prod: new Map(),
+      pertama: '', terakhir: '', cek: 0, est: 0, multi: 0,
+    };
+    if (l.tanggal) {
+      if (!o.pertama || l.tanggal < o.pertama) o.pertama = l.tanggal;
+      if (!o.terakhir || l.tanggal > o.terakhir) o.terakhir = l.tanggal;
+    }
+    if (n0(l.distributor_n) > 1) o.multi += 1;
+    if (l.kind === 'SET' && l.status_hitung === 'estimasi') o.est += 1;
+    if (dihitung(l)) {
+      const v = n0(l.nilai);
+      o[satuanBaris(l)] += v;
+      o.rs.add(l.customer);
+      if (l.provinsi) { if (!o.prov.has(l.provinsi)) o.prov.set(l.provinsi, new Set()); o.prov.get(l.provinsi).add(l.customer); }
+      const pk = (l.po || l.kode_rmp) ? `${l.customer}|${l.po || ''}|${l.kode_rmp || ''}` : `${l.customer}|#${li}`;
+      o.po.set(pk, (o.po.get(pk) || 0) + v);
+      const pn = l.kind === 'SET' ? l.label : l.produk;
+      if (pn) o.prod.set(pn, (o.prod.get(pn) || 0) + v);
+    } else o.cek += 1;
+    dm.set(key, o);
+  });
+  const volDist = (o) => o.set + o.pcs + o.unit;
+  const totalVolDist = Array.from(dm.values()).reduce((a, o) => a + volDist(o), 0);
+  const topMap = (m, n, fmtFn) => Array.from(m.entries())
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'id')).slice(0, n).map(fmtFn).join('\n');
+  const buildDistRow = (o) => {
+    const qs = Array.from(o.po.values());
+    const tot = qs.reduce((a, v) => a + v, 0);
+    const maks = qs.length ? Math.max(...qs) : null;
+    const med = median(qs);
+    const dom = tot > 0 && maks !== null ? maks / tot : null;
+    const dominan = qs.length >= OUTLIER_MIN_PO && dom !== null && dom >= OUTLIER_SHARE && maks >= OUTLIER_X * Math.max(med, 1);
+    const ket = [];
+    if (dominan) ket.push(`satu PO berisi ${fmt(maks)} (${Math.round(dom * 100)}% dari volume distributor ini); peringkat menurut jumlah RS lebih mewakili`);
+    if (o.est) ket.push(`${fmt(o.est)} pesanan berupa perkiraan`);
+    if (o.cek) ket.push(`${fmt(o.cek)} pesanan belum dihitung`);
+    if (o.multi) ket.push(`${fmt(o.multi)} baris pesanan dari RMP yang tercatat dengan lebih dari satu distributor`);
+    return {
+      _dominan: dominan, _dim: !o.nama,
+      distributor: o.nama || 'Belum tercatat', rs: o.rs.size, po: qs.length, prov: o.prov.size,
+      set: o.set, pcs: o.pcs, unit: o.unit, vol: volDist(o),
+      share: totalVolDist > 0 ? volDist(o) / totalVolDist : null,
+      dominasi: dom,
+      provTop: topMap(new Map(Array.from(o.prov.entries()).map(([k, v]) => [k, v.size])), 3, ([k, v]) => `${k} (${fmt(v)} RS)`),
+      prodTop: topMap(o.prod, 5, ([k, v]) => `${k} ×${fmt(v)}`),
+      pertama: xlDate(o.pertama), terakhir: xlDate(o.terakhir), ket: ket.join('; '),
+    };
+  };
+  const distBernama = Array.from(dm.values()).filter((o) => o.nama).map(buildDistRow);
+  const byVolD = distBernama.slice().sort((a, b) => b.vol - a.vol || b.rs - a.rs || a.distributor.localeCompare(b.distributor, 'id'));
+  const byRsD = distBernama.slice().sort((a, b) => b.rs - a.rs || b.po - a.po || b.vol - a.vol || a.distributor.localeCompare(b.distributor, 'id'));
+  byVolD.forEach((r, i) => { r.rankVol = i + 1; });
+  byRsD.forEach((r, i) => { r.rankRs = i + 1; });
+  const itemsDist = byVolD.concat(dm.has('') ? [buildDistRow(dm.get(''))] : []).map((r, i) => Object.assign(r, { no: i + 1 }));
+
   // Rincian pesanan
   const ord = new Map(R.map((x, i) => [x.customer, i]));
   const sorted = lines.slice().sort((a, b) =>
@@ -413,13 +541,14 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     const ok = dihitung(l);
     return {
       _dim: !ok,
-      customer: l.customer, kab: l.kab_kota || '', provinsi: l.provinsi || BELUM, kategori: katName(l.kelompok),
+      customer: l.customer, kab: l.kab_kota || '', provinsi: l.provinsi || BELUM, distributor: distNama(l), kategori: katName(l.kelompok),
       jenis: l.kind === 'SET' ? l.label : l.produk, kode: l.kind === 'SET' ? '' : (l.kode_produk || ''),
       spes: l.spes ? spesNama(l.spes) : '', jenisInstr: l.jenis ? jenisNama(l.jenis) : '', mikro: l.mikro ? 'Ya' : '',
       // Jumlah dikosongkan untuk pesanan yang tidak dihitung, supaya total kolom sama dengan Daftar RS.
       set: l.kind === 'SET' && ok ? n0(l.nilai) : null, pcs: satuanBaris(l) === 'pcs' && ok ? n0(l.nilai) : null, unit: satuanBaris(l) === 'unit' && ok ? n0(l.nilai) : null,
       status: l.status === 'TERKIRIM' ? 'Terkirim' : 'Dalam proses', tanggal: xlDate(l.tanggal),
-      rmp: l.kode_rmp || '', po: l.po || '', shitung: labelHitung(l), ket: ketBaris(l),
+      rmp: l.kode_rmp || '', po: l.po || '', shitung: labelHitung(l),
+      ket: [ketBaris(l), n0(l.distributor_n) > 1 ? 'RMP ini tercatat dengan lebih dari satu distributor; yang ditampilkan adalah yang terbanyak' : ''].filter(Boolean).join('; '),
       family: l.family || '', baris: n0(l.jumlah_baris), sheet: l.sumber_sheet || '', asli: l.label_asli || '',
     };
   });
@@ -441,6 +570,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   const plan = ORDER.filter((id) => {
     const def = XL_SHEETS.find((x) => x.id === id);
     if (def.lock) return true;
+    if (id === 'distributor' && pilih.has(id) && !adaDist) { dilewati.push('Per Distributor: tidak ada data distributor pada hasil ini.'); return false; }
     if (!pilih.has(id) || !sheetAvail(def, info)) return false;
     if (id === 'matriks' && present.length < 2) { dilewati.push('RS per Kategori: hasilnya hanya memuat satu kategori.'); return false; }
     if ((id === 'pesanan' || id === 'produk' || id === 'rincianrs') && !lines.length) { dilewati.push(`${def.nama}: tidak ada baris pesanan.`); return false; }
@@ -733,6 +863,15 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     }
     if (plan.includes('produk')) d0.wide('Daftar lengkap ada di sheet “Per Produk”.', { size: 10, color: XL.soft });
   }
+  if (plan.includes('distributor') && itemsDist.some((x) => x.rankVol)) {
+    const top = itemsDist.filter((x) => x.rankVol).slice(0, 10);
+    const volTextD = (x) => [x.set ? `${fmt(x.set)} set` : '', x.pcs ? `${fmt(x.pcs)} pcs` : '', x.unit ? `${fmt(x.unit)} unit` : ''].filter(Boolean).join(' + ') || '–';
+    d0.section(`${top.length} distributor dengan volume terbanyak`);
+    d0.wide('Diurutkan menurut volume (set + pcs + unit). Peringkat menurut jumlah RS ada di sheet “Per Distributor”: satu pesanan besar bisa menaikkan volume tanpa berarti distributor itu melayani banyak RS.', { size: 10, color: XL.soft });
+    d0.table(['Distributor', 'Jumlah RS', 'Jumlah PO', 'Volume', 'Porsi volume'], ['left', 'right', 'right', 'right', 'right'],
+      top.map((x) => [x.distributor, x.rs, x.po, volTextD(x), x.share === null ? '–' : `${Math.round(x.share * 100)}%`]));
+    d0.wide('Daftar lengkap ada di sheet “Per Distributor”.', { size: 10, color: XL.soft });
+  }
   if (!provinsiDipilih && R.length && !plan.includes('provinsi')) {
     d0.section('Per provinsi');
     d0.table(['Provinsi', 'Jumlah RS'].concat(kolUnit()), ['left', 'right'].concat(alUnit),
@@ -823,6 +962,14 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       title: 'Populasi per provinsi', sub: subLine,
       note: sph ? '' : 'Provinsi mengikuti data wilayah RS (koreksi manual, atau deteksi dari alamat bila belum dikoreksi). ' + NOTE_KOSONG,
       cols, freeze: 2, labelKey: 'provinsi', totals: sumTot(cols, ['rs', 'set', 'pcs', 'unit', 'pesanan']), items: itemsProv,
+    });
+  }
+  if (plan.includes('distributor')) {
+    const cols = COLS_DIST.filter((c) => usable(c, info));
+    tableSheet('Per Distributor', {
+      title: 'Populasi per distributor', sub: subLine,
+      note: 'Hanya untuk internal. Diurutkan menurut volume (set + pcs + unit); peringkat menurut jumlah RS ada di kolom sebelahnya. Satu pesanan besar bisa menaikkan volume, jadi baca kedua peringkat. ' + NOTE_KOSONG,
+      cols, freeze: 2, labelKey: 'distributor', totals: sumTot(cols, ['set', 'pcs', 'unit', 'vol', 'po']), items: itemsDist,
     });
   }
   if (plan.includes('matriks')) {
@@ -939,6 +1086,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   if (distLabel) cara.push(distLabel === 'Samaya'
     ? 'Distributor: hanya pesanan yang distributornya Samaya yang dihitung. Penentuan dilakukan per No. RMP.'
     : 'Distributor: hanya pesanan yang distributornya bukan Samaya yang dihitung (termasuk yang distributornya kosong). Penentuan dilakukan per No. RMP.');
+  if (adaDist) cara.push('Distributor diambil dari data pesanan dan disatukan lewat daftar alias nama, jadi ejaan yang berbeda dihitung satu distributor. Distributor ditentukan per No. RMP: bila satu RMP tercatat dengan lebih dari satu distributor, dipakai yang paling banyak barisnya. Pesanan tanpa distributor dikelompokkan sebagai “Belum tercatat”. Peringkat distributor memakai volume dan jumlah RS secara terpisah; volume menjumlahkan set, pcs, dan unit sehingga hanya pembanding kasar.');
   cara.push('Wilayah RS memakai koreksi manual bila ada. Bila tidak, wilayah dideteksi dari alamat pengiriman sehingga ada kemungkinan keliru.');
   if (info.adaBelum) cara.push(`${fmt(U.length)} RS lain belum diketahui wilayahnya dan tidak masuk angka ${st.provinsi}. Daftarnya ada di sheet “Wilayah Belum Diketahui”${plan.includes('belum') ? '' : ' (tidak disertakan di file ini)'}.`);
   cara.push('Sheet Ringkasan, Per Produk, Per Provinsi, dan RS per Kategori adalah hasil hitung pada saat diunduh. Bila Daftar RS atau Rincian Pesanan difilter, hanya baris Total di sheet itu yang ikut berubah.');
@@ -967,6 +1115,12 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     }
     if (lines.some((l) => l.kind !== 'SET')) q.push(['   barang satuan', cnt((l) => l.kind !== 'SET'), 'Jumlah sesuai yang tercatat di pesanan.']);
     q.push(['   tanpa tanggal pesanan', cnt((l) => !l.tanggal), 'Tanggal tidak tercatat; sel tanggal dibiarkan kosong.']);
+    if (adaDist) {
+      q.push(['   distributor tercatat', cnt((l) => !!distNama(l)), 'Baris pesanan yang distributornya diketahui.']);
+      q.push(['   distributor belum tercatat', cnt((l) => !distNama(l)), 'Baris pesanan tanpa distributor; dikelompokkan sebagai “Belum tercatat” di Per Distributor.']);
+      const multiD = cnt((l) => n0(l.distributor_n) > 1);
+      if (multiD) q.push(['   RMP dengan lebih dari satu distributor', multiD, 'Baris yang RMP-nya tercatat dengan beberapa distributor; yang ditampilkan adalah yang terbanyak.']);
+    }
   }
   if (sel.tanpaCek && belumDihitungN) q.push(['Pesanan tidak dicantumkan', belumDihitungN, 'Pesanan set yang belum dihitung, dikeluarkan dari Rincian Pesanan dan Per Produk atas pilihan saat unduh.']);
   dc.table(['Item', 'Jumlah', 'Arti'], ['left', 'right', 'left'], q);
