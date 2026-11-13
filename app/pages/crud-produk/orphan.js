@@ -1,9 +1,11 @@
-// Tab "Orphan / Drift" -- arah SEBALIKNYA dari tab "Sync dari Sheet", dan sifatnya INFORMASI SAJA:
+// Tab "Orphan / Drift" -- arah SEBALIKNYA dari tab "Sync dari Sheet":
 // "item ini ada di Supabase tapi di sheet sudah tidak ada".
-// Tidak ada tombol hapus / nonaktifkan / ubah apa pun di sini -- tab ini hanya membaca.
+// Semua section hanya-baca, KECUALI section "Hilang di sheet" yang punya quick action hapus massal
+// (RPC orphan_bulk_delete, lihat sql/02_orphan_bulk_delete.sql). Keputusan boleh-tidaknya dihapus ada di
+// SERVER: tiap kode dievaluasi ulang terhadap snapshot terbaru, jadi daftar di layar yang basi tidak bisa
+// menghapus produk yang sudah kembali ada di sheet. Browser hanya memilih dan menampilkan pratinjau.
 // Sumber: view v_sync_* + sync_orphan_produk (diisi pushManifest di Apps Script ->
 // edge function sync-sheet type 'manifest' -> RPC reverse_check_commit).
-// Yang disediakan: lihat, cari, filter, salin daftar kode, unduh CSV (buat dicek manual di sheet).
 import { showToast, renderPgBar } from './ui-utils.js';
 
 export function installOrphan(S) {
@@ -25,6 +27,7 @@ export function installOrphan(S) {
     section: 'orphan', page: 1, q: '', fStatus: 'all', fAsal: 'all', fTipe: 'all', sel: new Set(),
     data: { orphan: [], akd: [], komp: [], tipe: [], nonaktif: [] },
     run: null, missingBackend: false,
+    del: { busy: false, opt: { legacy: false, detach: false }, preview: [], typed: '' },
   };
   const esc = (v) => S.escapeHtml(v == null ? '' : String(v));
   const $ = (id) => document.getElementById(id);
@@ -147,6 +150,7 @@ export function installOrphan(S) {
     $('orphanRunInfo').innerHTML = runBanner();
     renderStats();
     renderFilters();
+    renderQuick();
     const rows = currentRows();
     const R = { orphan: rOrphan, akd: rAkd, komp: rKomp, tipe: rTipe, nonaktif: rNonaktif }[st.section];
     const { head, trs, count, empty, cols } = R(rows);
@@ -168,6 +172,10 @@ export function installOrphan(S) {
     const n = st.section === 'orphan' ? st.sel.size : 0;
     bar.style.display = n ? 'flex' : 'none';
     $('orphanBulkInfo').innerHTML = `<b>${st.sel.size.toLocaleString('id-ID')}</b> produk dipilih`;
+    const blocked = deleteBlockedReason();
+    const delBtn = $('orphanBulkDelete');
+    delBtn.disabled = !!blocked;
+    delBtn.title = blocked || 'Periksa lalu hapus produk terpilih (server memeriksa ulang sebelum menghapus)';
     const all = $('orphanSelAll');
     if (all && st.section === 'orphan') {
       const inView = rows.filter((r) => st.sel.has(r.kode_produk)).length;
@@ -283,6 +291,231 @@ export function installOrphan(S) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+
+  // =====================================================================
+  // QUICK ACTION: pilih cepat + hapus massal (hanya section "Hilang di sheet")
+  // =====================================================================
+  const CHUNK_PREVIEW = 200, CHUNK_EXEC = 100;
+
+  // Tombol hapus hanya hidup kalau snapshot sehat. Server menegakkan aturan yang sama (RUN_SUSPECT / RUN_STALE).
+  function deleteBlockedReason() {
+    if (!st.run) return 'Belum ada snapshot sheet';
+    if (st.run.status !== 'committed') return 'Snapshot terakhir bermasalah, penghapusan dinonaktifkan';
+    const ageH = (Date.now() - new Date(st.run.finished_at).getTime()) / 3600000;
+    if (ageH > 3) return `Snapshot sudah ${Math.floor(ageH)} jam, penghapusan dinonaktifkan sampai snapshot baru masuk`;
+    return '';
+  }
+  // Prafilter di browser = cermin aturan server (hanya untuk pilih cepat; server tetap memutuskan).
+  // n_permintaan / n_konversi tidak ada di view, jadi yang itu baru ketahuan saat pratinjau.
+  const isSafe = (r) => r.status === 'confirmed' && r.pernah_di_sheet
+    && !(r.rename_candidates || []).length && !Number(r.n_inaproc) && !Number(r.n_dipakai_set);
+
+  function renderQuick() {
+    const q = $('orphanQuick');
+    if (!q) return;
+    if (st.section !== 'orphan') { q.innerHTML = ''; q.style.display = 'none'; return; }
+    q.style.display = '';
+    const rows = orphanRows({});
+    const nSafe = rows.filter(isSafe).length;
+    const nConf = rows.filter((r) => r.status === 'confirmed').length;
+    q.innerHTML = `<span class="orph-quick-label"><i class="ti ti-bolt"></i> Quick action</span>
+      <button class="btn btn-sm" type="button" data-oq="safe"${nSafe ? '' : ' disabled'} title="Terkonfirmasi, pernah ada di sheet lalu dihapus, tidak ada kandidat rename, tanpa riwayat INAPROC, bukan komponen set lain">
+        <i class="ti ti-shield-check"></i> Pilih yang aman dihapus <span class="fc-count">${nSafe.toLocaleString('id-ID')}</span></button>
+      <button class="btn btn-sm" type="button" data-oq="confirmed"${nConf ? '' : ' disabled'} title="Semua yang terkonfirmasi pada hasil filter saat ini (pratinjau tetap memeriksa riwayat satu per satu)">
+        <i class="ti ti-checks"></i> Pilih semua terkonfirmasi <span class="fc-count">${nConf.toLocaleString('id-ID')}</span></button>`;
+  }
+
+  const KODE_RE = /^[^\s]+$/;
+  const chunk = (arr, n) => { const o = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; };
+
+  function friendlyRpcError(err) {
+    const m = String((err && err.message) || err || '');
+    if (/Could not find the function|PGRST202|does not exist/i.test(m) && /orphan_bulk_delete/i.test(m))
+      return 'Fungsi hapus massal belum terpasang. Jalankan sql/02_orphan_bulk_delete.sql di Supabase SQL Editor.';
+    const code = (m.match(/RUN_(NONE|SUSPECT|STALE|CHANGED)/) || [])[0];
+    if (code === 'RUN_CHANGED') return 'Snapshot sheet sudah berganti sejak halaman dimuat. Tidak ada yang dihapus: muat ulang, lalu pilih lagi.';
+    if (code) return m.replace(/^.*?RUN_\w+:\s*/, '').split('\n')[0];
+    return m;
+  }
+
+  async function callBulk(kodes, dry, size) {
+    const out = [];
+    for (const part of chunk(kodes, size)) {
+      const { data, error } = await S.sb.rpc('orphan_bulk_delete', {
+        p_kodes: part, p_run_id: String(st.run.run_id), p_dry_run: dry,
+        p_include_legacy: st.del.opt.legacy, p_detach_sets: st.del.opt.detach,
+      });
+      if (error) return { error, results: out };
+      out.push(...((data && data.results) || []));
+    }
+    return { results: out };
+  }
+
+  const dEl = {
+    ov: () => $('orphDelOverlay'), title: () => $('orphDelTitle'), body: () => $('orphDelBody'), act: () => $('orphDelActions'),
+  };
+  function dOpen() { dEl.ov().classList.add('open'); }
+  function dClose() { if (st.del.busy) return; dEl.ov().classList.remove('open'); }
+  function dSetActions(html) { dEl.act().innerHTML = html; }
+
+  function groupBy(rows, fn) {
+    const m = new Map();
+    rows.forEach((r) => { const k = fn(r); (m.get(k) || m.set(k, []).get(k)).push(r); });
+    return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
+  }
+  const listKodes = (rows, max) => rows.slice(0, max).map((r) => esc(r.kode_produk)).join(', ')
+    + (rows.length > max ? ` …dan ${(rows.length - max).toLocaleString('id-ID')} lainnya` : '');
+
+  function dCsv(rows, name) {
+    const cols = ['kode_produk', 'nama_produk', 'tipe', 'outcome', 'reason'];
+    const cell = (v) => { const t = v == null ? '' : String(v); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    const csv = [cols.join(',')].concat(rows.map((r) => cols.map((c) => cell(r[c])).join(','))).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `${name}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function openDelete() {
+    if (st.del.busy) return;
+    const why = deleteBlockedReason();
+    if (why) { showToast(why, true); return; }
+    const kodes = [...st.sel].filter((k) => KODE_RE.test(k));
+    if (!kodes.length) { showToast('Belum ada produk dipilih', true); return; }
+    st.del.typed = '';
+    dEl.title().textContent = 'Hapus produk orphan';
+    dOpen();
+    await runPreview(kodes);
+  }
+
+  async function runPreview(kodes) {
+    st.del.busy = true;
+    dEl.body().innerHTML = `<p class="orph-del-lead"><span class="orph-spin"></span> Memeriksa ${kodes.length.toLocaleString('id-ID')} produk terhadap snapshot terbaru…</p>`;
+    dSetActions('<button class="btn btn-ghost" type="button" disabled>Batal</button>');
+    const res = await callBulk(kodes, true, CHUNK_PREVIEW);
+    st.del.busy = false;
+    if (res.error) {
+      dEl.body().innerHTML = `<div class="orph-alert"><i class="ti ti-alert-triangle"></i><div>${esc(friendlyRpcError(res.error))}</div></div>`;
+      dSetActions('<button class="btn btn-ghost" type="button" data-od="close">Tutup</button><button class="btn" type="button" data-od="reload"><i class="ti ti-refresh"></i> Muat ulang data</button>');
+      return;
+    }
+    st.del.preview = res.results;
+    renderPreview();
+  }
+
+  function renderPreview() {
+    const rows = st.del.preview;
+    const ok = rows.filter((r) => r.outcome === 'can_delete');
+    const blocked = rows.filter((r) => r.outcome !== 'can_delete');
+    const sum = (k) => ok.reduce((a, r) => a + (Number((r.notes || {})[k]) || 0), 0);
+    const cascade = [['harga', 'baris harga'], ['media', 'media'], ['akd', 'relasi AKD'], ['komposisi', 'item komposisi set']]
+      .map(([k, l]) => [sum(k), l]).filter(([n]) => n).map(([n, l]) => `${n.toLocaleString('id-ID')} ${l}`);
+    const detachN = ok.reduce((a, r) => a + (Number((r.notes || {}).dipakai_di_set) || 0), 0);
+    const groups = groupBy(blocked, (r) => (r.reason || r.outcome).replace(/\d+/g, 'N'));
+    const typed = st.del.typed.trim().toUpperCase() === 'HAPUS';
+
+    dEl.body().innerHTML = `
+      <p class="orph-del-lead"><b>${ok.length.toLocaleString('id-ID')}</b> produk lolos pemeriksaan server dan siap dihapus${
+        blocked.length ? `, <b>${blocked.length.toLocaleString('id-ID')}</b> ditahan` : ''}.</p>
+      <div class="orph-del-opts">
+        <label><input type="checkbox" data-oopt="legacy"${st.del.opt.legacy ? ' checked' : ''}/> Sertakan yang <b>tak pernah terpantau di sheet</b> <span class="orph-note">(bisa jadi dibuat langsung di app)</span></label>
+        <label><input type="checkbox" data-oopt="detach"${st.del.opt.detach ? ' checked' : ''}/> Lepas dulu dari <b>komposisi set lain</b> <span class="orph-note">(set itu berkurang satu item)</span></label>
+      </div>
+      ${ok.length ? `<div class="orph-del-box"><div class="orph-del-h"><i class="ti ti-trash"></i> Akan dihapus</div>
+        <div class="orph-del-list">${listKodes(ok, 12)}</div>
+        ${cascade.length ? `<div class="orph-note">Ikut terhapus otomatis: ${cascade.join(', ')}.</div>` : ''}
+        ${st.del.opt.detach && detachN ? `<div class="orph-note">${detachN.toLocaleString('id-ID')} relasi komponen di set lain dilepas.</div>` : ''}</div>` : ''}
+      ${blocked.length ? `<details class="orph-del-box is-held"><summary><i class="ti ti-hand-stop"></i> Ditahan, tidak akan dihapus (${blocked.length.toLocaleString('id-ID')})</summary>
+        ${groups.map(([k, rs]) => `<div class="orph-del-grp"><div class="orph-del-reason">${esc(rs[0].reason || rs[0].outcome)}${rs.length > 1 ? ` <span class="fc-count">${rs.length}</span>` : ''}</div><div class="orph-note">${listKodes(rs, 8)}</div></div>`).join('')}</details>` : ''}
+      <p class="orph-note orph-del-safe"><i class="ti ti-archive"></i> Isi produk dan data turunannya dicadangkan ke tabel <code>sync_orphan_delete_log</code> sebelum dihapus.</p>
+      ${ok.length ? `<label class="orph-del-confirm">Ketik <b>HAPUS</b> untuk melanjutkan
+        <input type="text" id="orphDelTyped" autocomplete="off" spellcheck="false" value="${esc(st.del.typed)}" placeholder="HAPUS"/></label>` : ''}`;
+    dSetActions(`<button class="btn btn-ghost" type="button" data-od="close">Batal</button>
+      <button class="btn" type="button" data-od="csv"><i class="ti ti-download"></i> Unduh pratinjau</button>
+      <button class="btn btn-danger-ghost" type="button" id="orphDelGo" data-od="go"${ok.length && typed ? '' : ' disabled'}><i class="ti ti-trash"></i> Hapus ${ok.length.toLocaleString('id-ID')} produk</button>`);
+  }
+
+  async function runDelete() {
+    const kodes = st.del.preview.filter((r) => r.outcome === 'can_delete').map((r) => r.kode_produk);
+    if (!kodes.length || st.del.busy) return;
+    const why = deleteBlockedReason();
+    if (why) { showToast(why, true); return; }
+    st.del.busy = true;
+    dEl.title().textContent = 'Menghapus…';
+    dSetActions('<button class="btn btn-ghost" type="button" disabled>Mohon tunggu</button>');
+    const done = [];
+    let fatal = null;
+    for (const [i, part] of chunk(kodes, CHUNK_EXEC).entries()) {
+      dEl.body().innerHTML = `<p class="orph-del-lead"><span class="orph-spin"></span> Menghapus… ${(i * CHUNK_EXEC).toLocaleString('id-ID')} / ${kodes.length.toLocaleString('id-ID')}</p>
+        <div class="orph-del-bar"><span style="width:${Math.round((i * CHUNK_EXEC) / kodes.length * 100)}%"></span></div>`;
+      const { data, error } = await S.sb.rpc('orphan_bulk_delete', {
+        p_kodes: part, p_run_id: String(st.run.run_id), p_dry_run: false,
+        p_include_legacy: st.del.opt.legacy, p_detach_sets: st.del.opt.detach,
+      });
+      if (error) { fatal = error; break; }
+      done.push(...((data && data.results) || []));
+    }
+    st.del.busy = false;
+    const deleted = done.filter((r) => r.outcome === 'deleted');
+    const rest = done.filter((r) => r.outcome !== 'deleted');
+    const notReached = kodes.length - done.length;
+    deleted.forEach((r) => st.sel.delete(r.kode_produk));
+    dEl.title().textContent = fatal ? 'Berhenti di tengah jalan' : 'Selesai';
+    dEl.body().innerHTML = `
+      <p class="orph-del-lead"><b>${deleted.length.toLocaleString('id-ID')}</b> produk berhasil dihapus${
+        rest.length ? `, <b>${rest.length.toLocaleString('id-ID')}</b> tidak jadi dihapus` : ''}.</p>
+      ${fatal ? `<div class="orph-alert"><i class="ti ti-alert-triangle"></i><div>${esc(friendlyRpcError(fatal))}${notReached ? ` ${notReached.toLocaleString('id-ID')} produk belum diproses.` : ''}</div></div>` : ''}
+      ${rest.length ? `<details class="orph-del-box is-held" open><summary><i class="ti ti-hand-stop"></i> Tidak jadi dihapus</summary>
+        ${groupBy(rest, (r) => (r.reason || r.outcome).replace(/\d+/g, 'N')).map(([k, rs]) => `<div class="orph-del-grp"><div class="orph-del-reason">${esc(rs[0].reason || rs[0].outcome)}${rs.length > 1 ? ` <span class="fc-count">${rs.length}</span>` : ''}</div><div class="orph-note">${listKodes(rs, 8)}</div></div>`).join('')}</details>` : ''}`;
+    st.del.preview = done;
+    dSetActions(`${done.length ? '<button class="btn" type="button" data-od="csvdone"><i class="ti ti-download"></i> Unduh hasil</button>' : ''}
+      <button class="btn btn-accent" type="button" data-od="finish">Tutup</button>`);
+    if (deleted.length) {
+      try { S.invalidateProdukStackCache && S.invalidateProdukStackCache(); S.loadProduk && S.loadProduk(); S.refreshProdukFilterCounts && S.refreshProdukFilterCounts(true); } catch { /* daftar Produk akan menyegarkan sendiri saat dibuka */ }
+    }
+  }
+
+  function wireDelete() {
+    if (!$('orphDelOverlay')) return;
+    $('orphanBulkDelete').addEventListener('click', openDelete);
+    $('orphanQuick').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-oq]');
+      if (!b || b.disabled) return;
+      const rows = orphanRows({}).filter(b.getAttribute('data-oq') === 'safe' ? isSafe : (r) => r.status === 'confirmed');
+      rows.forEach((r) => st.sel.add(r.kode_produk));
+      render();
+      showToast(`${rows.length.toLocaleString('id-ID')} produk dipilih. Cek lalu klik "Hapus terpilih…"`);
+    });
+    const ov = $('orphDelOverlay');
+    ov.addEventListener('click', async (e) => {
+      if (e.target === ov) { dClose(); return; }
+      const a = e.target.closest('[data-od]');
+      if (!a || a.disabled) return;
+      const act = a.getAttribute('data-od');
+      if (act === 'close') dClose();
+      else if (act === 'csv') dCsv(st.del.preview, 'orphan-pratinjau-hapus');
+      else if (act === 'csvdone') dCsv(st.del.preview, 'orphan-hasil-hapus');
+      else if (act === 'go') runDelete();
+      else if (act === 'reload') { dClose(); load(true); }
+      else if (act === 'finish') { dClose(); st.loadedRunId = null; await load(true); }
+    });
+    ov.addEventListener('change', (e) => {
+      const o = e.target.closest('[data-oopt]');
+      if (!o) return;
+      st.del.opt[o.getAttribute('data-oopt')] = o.checked;
+      st.del.typed = '';
+      runPreview([...st.sel].filter((k) => KODE_RE.test(k)));
+    });
+    ov.addEventListener('input', (e) => {
+      if (e.target.id !== 'orphDelTyped') return;
+      st.del.typed = e.target.value;
+      const go = $('orphDelGo');
+      if (go) go.disabled = st.del.typed.trim().toUpperCase() !== 'HAPUS' || !st.del.preview.some((r) => r.outcome === 'can_delete');
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ov.classList.contains('open')) dClose(); });
+  }
+
   (function wire() {
     if (!$('orphanBody')) return;
     const attr = (e, a) => e.target.closest('[' + a + ']');
@@ -338,5 +571,6 @@ export function installOrphan(S) {
     $('orphanBulkClear').addEventListener('click', () => { st.sel.clear(); render(); });
   })();
 
+  wireDelete();
   S.loadOrphan = () => load(false);
 }
