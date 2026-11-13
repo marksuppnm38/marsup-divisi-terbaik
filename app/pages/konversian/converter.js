@@ -265,6 +265,9 @@ S.btnConvAddAll.addEventListener('click', async () => {
         stok_qty: r.stok_qty ?? null,
         qty: 1
       };
+      // Produk ini sudah dialokasikan di Kebutuhan RS (qty permintaan terisi) → qty langsung ikut, bukan 1.
+      const rsQtyAwal = typeof S.rsQtyForClipItem === 'function' ? S.rsQtyForClipItem(newItem) : null;
+      if (rsQtyAwal != null) newItem.qty = rsQtyAwal;
       S.clipboard.push(newItem);
       await S.persistAddItem(newItem); // ditunggu satu-satu biar gak ada race lain & gak nge-flood API
       added++;

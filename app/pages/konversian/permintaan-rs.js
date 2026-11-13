@@ -837,12 +837,14 @@ async function cascadeQtyChange(item, oldQty, newQty) {
   if ((oldQty ?? null) === (newQty ?? null)) return '';
   const links = item.matched_items || [];
   if (item.status !== 'TERPENUHI' || !links.length) return '';
-  const follows = links.length === 1 && newQty != null && links[0].qty_alokasi != null && Number(links[0].qty_alokasi) === Number(oldQty);
+  // Mengikuti = alokasi kosong (autofill dari qty permintaan) ATAU sama dengan qty lama. Alokasi yang sudah diatur beda = manual, tidak disentuh.
+  const follows = links.length === 1 && newQty != null && (links[0].qty_alokasi == null || Number(links[0].qty_alokasi) === Number(oldQty));
   if (!follows) return `Qty "${item.raw_text}" berubah, tapi alokasi produknya tidak ikut — cek ulang di Kebutuhan RS`;
   const newLinks = [{ ...links[0], qty_alokasi: newQty }];
   S.markLocalWrite(S.PERMINTAAN_ITEM_TABLE, item.id, 'status', 'TERPENUHI');
   await S.callUpdatePermintaanItemMulti(item.id, 'TERPENUHI', newLinks);
-  const oldLinks = links;
+  // item.qty_diminta sudah berisi qty BARU saat ini dipanggil → alokasi kosong di link lama dibuat eksplisit = qty lama
+  const oldLinks = links.map(l => (l.qty_alokasi == null && oldQty != null ? { ...l, qty_alokasi: Number(oldQty) } : l));
   item.matched_items = newLinks;
   S.reconcileClipboardQty(item.id, oldLinks, newLinks);
   S.broadcastChecklistItemUpdated(item);
@@ -975,6 +977,10 @@ S.startChecklistSession = startChecklistSession;
 // dropdown single-select lagi. Qty per-SKU opsional, dipakai kalau kebutuhan
 // dipenuhi campuran beberapa varian dengan porsi qty berbeda.
 function clipboardPickerHtml(itemId, matchedItems) {
+  const rsItem = S.checklistItems.find(i => i.id === itemId);
+  const dqPick = rsItem ? Number(rsItem.qty_diminta) : NaN;
+  const qtyPh = (!isNaN(dqPick) && dqPick >= 1) ? String(dqPick) : 'qty';
+  const qtyTitle = qtyPh === 'qty' ? '' : ` title="Kosongkan = ikut qty permintaan (${qtyPh}) kalau cuma 1 produk dipilih"`;
   const rows = S.clipboard.map(c => {
     const link = (matchedItems || []).find(l => l.kode_produk === c.kode_produk);
     const checked = link ? ' checked' : '';
@@ -986,7 +992,7 @@ function clipboardPickerHtml(itemId, matchedItems) {
       <input type="checkbox" data-picker-check="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}" data-produk-id="${c.produk_id||''}"${checked}>
       <span class="kb-picker-name">${S.escapeHtmlAttr(c.kode_produk)} — ${S.escapeHtmlAttr(c.nama_produk)}</span>
       <input type="number" min="0" class="kb-picker-qty" data-picker-qty="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}"
-        placeholder="qty" value="${qtyVal}" style="${checked ? '' : 'display:none'}">
+        placeholder="${qtyPh}"${qtyTitle} value="${qtyVal}" style="${checked ? '' : 'display:none'}">
     </label>`;
   }).join('');
   // Quick-pick dari pool sesi ini (clipboard) itu jalur UTAMA — kebanyakan
@@ -1558,6 +1564,15 @@ S.refreshRollupHeadersOnly = refreshRollupHeadersOnly;
 // sama persis (harus DIJUMLAH, bukan ketimpa sama yang terakhir dikonfirm).
 // `override` opsional: {itemId, links} — dipake pas lagi proses konfirmasi
 // picker, sebelum item.matched_items-nya sendiri kesimpen.
+// Qty efektif satu link: qty_alokasi kalau diisi; kalau KOSONG dan kebutuhan itu cuma dipenuhi 1 produk
+// sementara qty_diminta (Permintaan RS) sudah terisi → pakai qty_diminta (autofill). Multi-produk dengan
+// alokasi kosong tetap null: porsi per varian memang tidak bisa ditebak.
+function effQtyAlokasi(it, l, list) {
+  if (l.qty_alokasi != null && !isNaN(l.qty_alokasi) && l.qty_alokasi >= 1) return Number(l.qty_alokasi);
+  const dq = Number(it.qty_diminta);
+  return ((list || []).length === 1 && !isNaN(dq) && dq >= 1) ? dq : null;
+}
+
 function sumQtyAlokasiForProduk(produkId, kode, override) {
   let total = 0;
   let hasAny = false;
@@ -1566,8 +1581,9 @@ function sumQtyAlokasiForProduk(produkId, kode, override) {
     (list || []).forEach(l => {
       const sameProduk = (produkId != null && l.produk_id != null) ? l.produk_id === produkId : l.kode_produk === kode;
       if (!sameProduk) return;
-      if (l.qty_alokasi == null || isNaN(l.qty_alokasi) || l.qty_alokasi < 1) return;
-      total += Number(l.qty_alokasi);
+      const q = effQtyAlokasi(it, l, list);
+      if (q == null) return;
+      total += q;
       hasAny = true;
     });
   });
@@ -1736,6 +1752,12 @@ S.kbList.addEventListener('click', async (e) => {
       const qtyVal = qtyInput && qtyInput.value.trim() ? Number(qtyInput.value) : null;
       return { produk_id: produkId, kode_produk: kode, qty_alokasi: qtyVal };
     });
+    // Qty alokasi kosong + cuma 1 produk dipilih + qty permintaan RS sudah diisi → ikut qty permintaan (autofill).
+    // >1 produk: dibiarkan kosong, porsi per varian tidak bisa ditebak.
+    if (links.length === 1 && links[0].qty_alokasi == null) {
+      const dqc = Number(item.qty_diminta);
+      if (!isNaN(dqc) && dqc >= 1) links[0].qty_alokasi = dqc;
+    }
 
     // Kalau qty_alokasi diisi di picker Kebutuhan RS, ikutin ke qty item clipboard
     // yang sama — biar user gak perlu isi qty dua kali (di clipboard & di sini).
