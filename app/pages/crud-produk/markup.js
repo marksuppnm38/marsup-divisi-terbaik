@@ -49,18 +49,19 @@ export const CRUD_PRODUK_MARKUP = `
             <div class="content-sub" id="produkCount">Memuat...</div>
           </div>
           <div class="produk-head-actions">
-            <!-- Dua export (audit & pricelist) digabung jadi satu menu; dua-duanya ngikut filter aktif. -->
-<div class="export-menu" id="produkExportMenu">
+            <!-- Satu export: kolom = kolom tabel yang tampil (tombol Kolom), baris = semua hasil filter + pencarian. -->
+            <div class="export-menu" id="produkExportMenu">
               <button class="btn btn-accent" id="produkExportToggle" type="button" aria-haspopup="menu" aria-expanded="false"><i class="ti ti-download"></i> Export <i class="ti ti-chevron-down export-chev"></i></button>
               <div class="export-pop" id="produkExportPop" role="menu" hidden>
                 <button class="export-item" id="produkExportBtn" type="button" role="menuitem">
                   <i class="ti ti-file-spreadsheet"></i>
-                  <span><b>Excel, hasil filter</b><small>Semua kolom untuk cek data, mengikuti filter dan pencarian yang aktif</small></span>
+                  <span><b>Export tampilan ini ke Excel</b><small id="produkExportInfo">Kolom dan baris persis seperti di layar</small></span>
                 </button>
-                <button class="export-item" id="produkExportPricelistBtn" type="button" role="menuitem">
-                  <i class="ti ti-currency-dollar"></i>
-                  <span><b>Pricelist untuk sales</b><small>Hanya produk yang sudah punya Link V6 dan harga EKATALOG, harga berupa angka</small></span>
-                </button>
+                <label class="export-opt">
+                  <input type="checkbox" id="produkExportSiapJual"/>
+                  <span><b>Hanya produk siap jual</b><small>Buang yang belum punya Link V6 bersih atau harga E-Katalog, urut Golongan. Untuk pricelist sales.</small></span>
+                </label>
+                <div class="export-hint"><i class="ti ti-columns"></i><span>Atur isi file lewat tombol <b>Kolom</b>: preset <b>Pricelist sales</b> untuk sales, <b>Audit lengkap</b> untuk cek data. Filter yang aktif ikut menentukan baris (dan menambah kolom otomatis).</span></div>
               </div>
             </div>
             <button class="btn btn-accent" id="addBtn"><i class="ti ti-plus"></i> Tambah Produk</button>

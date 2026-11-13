@@ -639,6 +639,13 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .export-item>i{margin-top:1px;font-size:18px;color:var(--text-muted);flex-shrink:0}
 .export-item b{display:block;font-size:13px;font-weight:600}
 .export-item small{display:block;margin-top:2px;font-size:12px;line-height:1.45;color:var(--text-muted)}
+.export-opt{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;border-radius:var(--radius);cursor:pointer}
+.export-opt:hover{background:var(--surface-2)}
+.export-opt input{margin:3px 0 0 1px;width:16px;height:16px;flex-shrink:0;accent-color:var(--accent)}
+.export-opt b{display:block;font-size:13px;font-weight:600}
+.export-opt small{display:block;margin-top:2px;font-size:12px;line-height:1.45;color:var(--text-muted)}
+.export-hint{display:flex;gap:10px;margin:4px 6px 2px;padding:9px 10px;border-top:1px solid var(--border);font-size:12px;line-height:1.5;color:var(--text-muted)}
+.export-hint>i{margin-top:1px;font-size:15px;flex-shrink:0}
 
 /* ============================================================
    SHELL v2 -- 2026-11-11

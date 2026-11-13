@@ -5,6 +5,10 @@
 // Pola sama dengan copy.js: tanpa state global index.js. Semua yang butuh data/helper index.js
 // dioper lewat `helpers`. Modul ini hanya tahu cara menggambar header, sel baris, dan popover pilihan.
 //
+// Export ("Export tampilan ini") memakai definisi kolom yang SAMA: tiap kolom punya `xl` (kolom Excel yang
+// dihasilkan: label, format, lebar, cara ambil nilai). Satu kolom bisa jadi >1 kolom Excel (Stok -> Status + Qty).
+// Jadi yang diexport = persis kolom & urutan yang terlihat di layar; tidak ada daftar kolom kedua yang bisa melenceng.
+//
 // Kolom "Kode Produk" selalu tampil dan selalu pertama: kotak pilih (checkbox salin) dan penanda
 // "baru diubah" menempel di sel itu. Tombol "Salin" di ujung baris juga selalu ada.
 //
@@ -27,29 +31,47 @@ const tglPendek = (iso) => {
   return `<span title="${esc(d.toLocaleString('id-ID'))}">${esc(d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }))}</span>`;
 };
 
+const rawNum = (v) => (v == null || v === '' || !Number.isFinite(Number(v))) ? null : Number(v);
+// Nilai stok = qty x harga E-Katalog; hanya ada kalau qty > 0 dan harga ada (definisi sama dengan export lama).
+const nilaiOf = (p, c) => {
+  const sk = c.h.stokOf(p.id), ekat = rawNum(c.x && c.x.ekatalog);
+  const qty = sk && sk.qty != null ? Number(sk.qty) : null;
+  return qty != null && Number.isFinite(qty) && qty > 0 && ekat != null ? qty * ekat : null;
+};
+
 // ctx tiap sel: { h: helpers, x: harga/AKD (atau null), akdNama: [{no, nama}], flags: html "Perlu dicek" }
 // td: kelas tambahan sel; num: rata kanan angka; locked: tidak bisa disembunyikan/dipindah.
 export const TABLE_COLS = [
   { key: 'kode', label: 'Kode Produk', locked: true, td: 'kode-cell',
-    render: (p, c) => `${c.h.selBox(p)}${esc(p.kode_produk)}${c.h.btn('kode', 'Salin kode produk')}${c.h.recent(p.updated_at)}` },
+    render: (p, c) => `${c.h.selBox(p)}${esc(p.kode_produk)}${c.h.btn('kode', 'Salin kode produk')}${c.h.recent(p.updated_at)}`,
+    xl: [{ id: 'kode', label: 'Kode Produk', w: 22, get: (p) => p.kode_produk }] },
   { key: 'nama', label: 'Nama Produk', td: 'nama-cell',
-    render: (p, c) => `${esc(p.nama_produk || '—')}${c.h.btn('nama', 'Salin nama produk')}${c.h.verified(p.id)}` },
+    render: (p, c) => `${esc(p.nama_produk || '—')}${c.h.btn('nama', 'Salin nama produk')}${c.h.verified(p.id)}`,
+    xl: [{ id: 'nama', label: 'Nama Produk', w: 45, get: (p) => p.nama_produk }] },
   { key: 'tipe', label: 'Tipe', td: 'tipe-cell',
-    render: (p) => esc(p.tipe || '—') },
+    render: (p) => esc(p.tipe || '—'),
+    xl: [{ label: 'Tipe', fmt: 'center', w: 12, get: (p) => p.tipe }] },
   { key: 'golongan', label: 'Golongan', td: 'tipe-cell',
-    render: (p, c) => p.golongan ? `${esc(p.golongan)}${c.h.btn('golongan', 'Salin golongan')}` : '—' },
+    render: (p, c) => p.golongan ? `${esc(p.golongan)}${c.h.btn('golongan', 'Salin golongan')}` : '—',
+    xl: [{ label: 'Golongan', w: 18, get: (p) => p.golongan }] },
   { key: 'akd', label: 'AKD', td: 'akd-cell',
-    render: (p, c) => `${c.h.seal(p)}${c.h.akdNoOf(p.id).length ? c.h.btn('akd', 'Salin No. AKD') : ''}` },
-  { key: 'no_akd', label: 'No. AKD', td: 'mono-cell',
-    render: (p, c) => { const l = c.h.akdNoOf(p.id); return l.length ? `<span title="${esc(l.join(', '))}">${esc(l.join(', '))}</span>${c.h.btn('akd', 'Salin No. AKD')}` : '—'; } },
+    render: (p, c) => `${c.h.seal(p)}${c.h.akdNoOf(p.id).length ? c.h.btn('akd', 'Salin No. AKD') : ''}`,
+    xl: [{ label: 'Status AKD', fmt: 'status', w: 15, get: (p, c) => c.h.sealLabel(p.status_akd) }] },
+  { key: 'no_akd', label: 'No. AKD', td: 'mono-cell', uses: ['extra'],
+    render: (p, c) => { const l = c.h.akdNoOf(p.id); return l.length ? `<span title="${esc(l.join(', '))}">${esc(l.join(', '))}</span>${c.h.btn('akd', 'Salin No. AKD')}` : '—'; },
+    xl: [{ label: 'No. AKD', w: 24, get: (p, c) => c.h.akdNoOf(p.id).join(', ') }] },
   { key: 'nama_akd', label: 'Nama AKD', td: 'wrap-cell', needs: 'akdNama',
-    render: (p, c) => c.akdNama.length ? c.akdNama.map((a) => `<div title="${esc(a.no)}">${esc(a.nama || a.no)}</div>`).join('') : '—' },
-  { key: 'ekat', label: 'Harga E-Katalog', num: true, td: 'harga-cell',
-    render: (p, c) => { const v = c.x && c.x.ekatalog; return rupiah(v) + (v != null ? c.h.btn('ekat', 'Salin harga E-Katalog') : ''); } },
-  { key: 'swasta', label: 'Harga Swasta', num: true, td: 'harga-cell',
-    render: (p, c) => { const v = c.x && c.x.swasta; return rupiah(v) + (v != null ? c.h.btn('swasta', 'Salin harga swasta') : ''); } },
-  { key: 'tahun', label: 'Tahun Harga', td: 'tipe-cell',
-    render: (p, c) => (c.x && c.x.tahun != null) ? esc(c.x.tahun) : '—' },
+    render: (p, c) => c.akdNama.length ? c.akdNama.map((a) => `<div title="${esc(a.no)}">${esc(a.nama || a.no)}</div>`).join('') : '—',
+    xl: [{ label: 'Nama AKD', w: 38, get: (p, c) => c.akdNama.map((a) => a.nama || a.no).join('; ') }] },
+  { key: 'ekat', label: 'Harga E-Katalog', num: true, td: 'harga-cell', uses: ['extra'],
+    render: (p, c) => { const v = c.x && c.x.ekatalog; return rupiah(v) + (v != null ? c.h.btn('ekat', 'Salin harga E-Katalog') : ''); },
+    xl: [{ id: 'ekat', label: 'Harga E-Katalog', fmt: 'rp', w: 16, get: (p, c) => rawNum(c.x && c.x.ekatalog) }] },
+  { key: 'swasta', label: 'Harga Swasta', num: true, td: 'harga-cell', uses: ['extra'],
+    render: (p, c) => { const v = c.x && c.x.swasta; return rupiah(v) + (v != null ? c.h.btn('swasta', 'Salin harga swasta') : ''); },
+    xl: [{ label: 'Harga Swasta', fmt: 'rp', w: 16, get: (p, c) => rawNum(c.x && c.x.swasta) }] },
+  { key: 'tahun', label: 'Tahun Harga', td: 'tipe-cell', uses: ['extra'],
+    render: (p, c) => (c.x && c.x.tahun != null) ? esc(c.x.tahun) : '—',
+    xl: [{ label: 'Tahun Harga', fmt: 'center', w: 11, get: (p, c) => (c.x && c.x.tahun != null ? c.x.tahun : null) }] },
   { key: 'link', label: 'Link E-Katalog (V6)', td: 'link-cell',
     render: (p, c) => {
       const l = parseLinkV6(p.link_v6);
@@ -57,25 +79,42 @@ export const TABLE_COLS = [
       if (!l.url) return `<span class="link-bad" title="${esc(l.catatan)}">Bukan URL</span>`;
       const label = l.url.replace(/^https?:\/\//i, '');
       return `<a class="link-v6" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" title="${esc(p.link_v6)}">${esc(label)}</a>${c.h.btn('link', 'Salin link V6')}`;
-    } },
+    },
+    xl: [{ label: 'Link V6', fmt: 'link', w: 40, get: (p) => p.link_v6 }] },
   { key: 'status_inaproc', label: 'Status INAPROC', td: 'tipe-cell',
-    render: (p) => esc(p.status_inaproc || '—') },
-  { key: 'stok', label: 'Stok', num: true,
-    render: (p, c) => c.h.stokCell(p.id) },
-  { key: 'flags', label: 'Perlu dicek', td: 'flag-cell',
-    render: (p, c) => c.flags },
+    render: (p) => esc(p.status_inaproc || '—'),
+    xl: [{ label: 'Status INAPROC', fmt: 'status', w: 16, get: (p) => p.status_inaproc }] },
+  { key: 'stok', label: 'Stok', num: true, uses: ['stok'],
+    render: (p, c) => c.h.stokCell(p.id),
+    xl: [
+      { label: 'Status Stok', fmt: 'status', w: 18, get: (p, c) => { const sk = c.h.stokOf(p.id); return (sk && c.h.stokLabel[sk.status]) || null; } },
+      { id: 'qty', label: 'Qty Stok', fmt: 'int', w: 10, get: (p, c) => { const sk = c.h.stokOf(p.id); return sk ? rawNum(sk.qty) : null; } },
+    ] },
+  { key: 'nilai', label: 'Nilai Stok', num: true, uses: ['extra', 'stok'],
+    render: (p, c) => { const v = nilaiOf(p, c); return v == null ? dash : rupiah(v); },
+    // Di Excel jadi rumus Qty x Harga E-Katalog (bisa diaudit) kalau dua kolom itu ikut diexport.
+    xl: [{ id: 'nilai', label: 'Nilai Stok', fmt: 'rp', w: 18, get: nilaiOf, f: (L, r) => (L('qty') && L('ekat') ? `${L('qty')}${r}*${L('ekat')}${r}` : null) }] },
+  { key: 'flags', label: 'Perlu dicek', td: 'flag-cell', uses: ['extra'],
+    render: (p, c) => c.flags,
+    xl: [{ label: 'Perlu dicek', w: 34, get: (p, c) => c.flagsText || null }] },
   { key: 'aktif', label: 'Aktif', td: 'tipe-cell',
-    render: (p) => p.is_active ? 'Aktif' : '<span class="flag flag-mute">Nonaktif</span>' },
+    render: (p) => p.is_active ? 'Aktif' : '<span class="flag flag-mute">Nonaktif</span>',
+    xl: [{ label: 'Aktif', fmt: 'center', w: 8, get: (p) => (p.is_active ? 'Ya' : 'Tidak') }] },
+  { key: 'verified', label: 'Verified INAPROC', td: 'tipe-cell',
+    render: (p, c) => c.h.verified(p.id) || dash,
+    xl: [{ label: 'Verified INAPROC', fmt: 'center', w: 16, get: (p, c) => (c.h.isVerified(p.id) ? 'Ya' : null) }] },
   { key: 'updated', label: 'Terakhir Diubah', td: 'tipe-cell',
-    render: (p) => tglPendek(p.updated_at) },
+    render: (p) => tglPendek(p.updated_at),
+    xl: [{ label: 'Terakhir Diubah', fmt: 'center', w: 16, get: (p) => { const d = p.updated_at ? new Date(p.updated_at) : null; return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : null; } }] },
 ];
 const COL_BY_KEY = Object.fromEntries(TABLE_COLS.map((c) => [c.key, c]));
 const MOVABLE = TABLE_COLS.filter((c) => !c.locked).map((c) => c.key);
 
 export const COL_PRESETS = [
   { id: 'standar', label: 'Standar', cols: ['nama', 'tipe', 'akd', 'stok', 'flags'] },
-  { id: 'harga', label: 'Harga & Link', cols: ['nama', 'ekat', 'swasta', 'link'] },
+  { id: 'harga', label: 'Pricelist sales', cols: ['nama', 'golongan', 'ekat', 'swasta', 'tahun', 'link'] },
   { id: 'akd', label: 'AKD lengkap', cols: ['nama', 'no_akd', 'nama_akd', 'status_inaproc'] },
+  { id: 'audit', label: 'Audit lengkap', cols: ['nama', 'tipe', 'golongan', 'no_akd', 'akd', 'status_inaproc', 'ekat', 'swasta', 'tahun', 'stok', 'nilai', 'aktif', 'link', 'verified'] },
 ];
 const DEFAULT_VISIBLE = COL_PRESETS[0].cols;
 
@@ -112,7 +151,9 @@ function readState() {
  * opts: {
  *   sb, headRow (<tr> di <thead>), tableBody,
  *   helpers: { selBox(p), btn(key,label), recent(updatedAt), verified(id), seal(p), akdNoOf(id) -> [no],
- *              stokCell(id), moreCell(p) },
+ *              stokCell(id), moreCell(p),
+ *              (khusus export, data mentah:) extraOf(id), stokOf(id) -> {status, qty}, stokLabel {READY:'Siap',..},
+ *              sealLabel(status_akd) -> teks, isVerified(id) -> bool },
  *   onChange(): dipanggil setelah pilihan kolom berubah (index.js menggambar ulang header + baris)
  * }
  */
@@ -164,8 +205,10 @@ export function createTableColumns(opts) {
     headRow.innerHTML = visibleCols().map((c) => `<th${c.num ? ' class="num"' : ''}>${esc(c.label)}</th>`).join('')
       + '<th class="c-act"><span class="sr-only">Salin</span></th>';
   }
+  const ctxOf = (p, extraCtx) => ({ h, x: h.extraOf(p.id), akdNama: akdNamaCache.get(p.id) || [], flags: '', flagsText: '', ...extraCtx });
+  const xcols = () => visibleCols().flatMap((c) => (c.xl || []).map((x) => ({ ...x, key: c.key })));
   function rowHtml(p, extraCtx) {
-    const ctx = { h, x: h.extraOf(p.id), akdNama: akdNamaCache.get(p.id) || [], flags: '', ...extraCtx };
+    const ctx = ctxOf(p, extraCtx);
     return visibleCols().map((c) => `<td class="${[c.num ? 'num' : '', c.td || ''].filter(Boolean).join(' ')}">${c.render(p, ctx)}</td>`).join('')
       + h.moreCell(p);
   }
@@ -266,6 +309,19 @@ export function createTableColumns(opts) {
       if (visibleCols().some((c) => c.needs === 'akdNama')) return loadAkdNama(ids);
       return true;
     },
+    // ---------- export: "yang terlihat di tabel = yang diexport" ----------
+    /** Kolom Excel sesuai kolom yang tampil sekarang (urutan sama): [{ id?, key, label, fmt, w, f? }]. */
+    exportColumns() { return xcols().map(({ get, ...rest }) => rest); },
+    /** Nilai satu baris, sejajar dengan exportColumns(). extraCtx: { flagsText }. */
+    exportRow(p, extraCtx) { const ctx = ctxOf(p, extraCtx); return xcols().map((x) => x.get(p, ctx)); },
+    /** Data apa yang harus dimuat dulu supaya semua kolom yang tampil terisi: Set('extra' | 'stok' | 'akdNama'). */
+    exportUses() {
+      const u = new Set();
+      visibleCols().forEach((c) => { (c.uses || []).forEach((k) => u.add(k)); if (c.needs) u.add(c.needs); });
+      return u;
+    },
+    /** Label kolom yang tampil (untuk ringkasan di menu Export). */
+    visibleLabels() { return visibleCols().map((c) => c.label); },
     /** Dibuang tiap loadProduk() supaya Nama AKD tidak basi setelah edit. */
     invalidate() { akdNamaCache.clear(); },
     /** Kolom yang diminta filter aktif (urutan = urutan tampil). Panggil sebelum renderHead(). */

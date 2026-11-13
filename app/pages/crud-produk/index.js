@@ -49,7 +49,8 @@ import { installKategori } from './kategori.js';
 import { createCopyKit } from './copy.js';
 import { createTableColumns } from './kolom-tabel.js';
 import { orIlike } from '../../../shared/api.js';
-import { fetchHargaLatestMap as fetchHargaLatestMapShared, selectPricelistRows, writePricelistXlsx } from '../../../shared/exports/pricelist.js';
+import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
+import { writeTableXlsx } from '../../../shared/exports/tabel-xlsx.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -71,7 +72,7 @@ const AUTH_CHAIN_SCRIPTS = [
 // pake keduanya, unzip, cek xl/styles.xml): versi polos cellXfs-nya cuma 1
 // entry default, gak ada font bold/fill custom sama sekali biarpun
 // di-set eksplisit di kode. Baru ketauan kalau file jadinya dibuka di Excel,
-// bukan dari error apapun -- exportPricelistSales() di bawah butuh header
+// bukan dari error apapun -- exportTampilanIni() di bawah butuh header
 // bold+background biar "siap konsumsi sales" beneran, bukan cuma klaim.
 const XLSX_SRC = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
 // PERF: xlsx-js-style (bundle besar) cuma dibutuhkan pas klik Download Excel /
@@ -616,6 +617,11 @@ const colKit = createTableColumns({
     akdNoOf: (id) => copyKit.akdOf(id),
     extraOf: (id) => copyKit.extraOf(id),
     stokCell: (id) => stokCellHtml(id),
+    // data mentah untuk export (kolom-tabel.js exportRow)
+    stokOf: (id) => produkStokCache.get(id),
+    get stokLabel() { return STOK_LABEL; }, // getter: STOK_LABEL (const) baru dideklarasi di bawah
+    sealLabel: (s) => SEAL_LABELS[s] || 'Belum ada AKD',
+    isVerified: (id) => !!produkVerifiedIdSet && produkVerifiedIdSet.has(id),
   },
   onChange: () => applyProdukColumns(),
 });
@@ -684,6 +690,7 @@ let produkDistinct = { tipe: [], golongan: [], status_inaproc: [] };
 let produkVerifiedIdSet = null; // Set<produk_id> berbadge Verified (RPC get_verified_produk_ids, 1 baris jsonb)
 let produkVerifiedRows = null;  // cache baris produk berbadge (dipakai chip "Verified" — ~700 baris, cukup ditarik sekali)
 let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
+let produkLastTotal = 0; // jumlah hasil filter terakhir -> ringkasan di menu Export
 let produkCurrentFilteredFull = null; // hasil filter lengkap dari jalur search (client-side match) -> sumber Download Excel pas search aktif
 
 const PRODUK_FILTER_DIMS = [
@@ -1068,7 +1075,7 @@ async function loadProduk(q, page){
     }
     rows = data?.rows || [];
     total = data?.total || 0;
-    produkCurrentFilteredFull = null; // gak lagi nyimpen array penuh di client -> export narik ulang lewat RPC (lihat exportProdukToExcel)
+    produkCurrentFilteredFull = null; // gak lagi nyimpen array penuh di client -> export narik ulang lewat RPC (lihat exportTampilanIni)
   } else {
     produkCurrentFilteredFull = null;
     const from = (produkPage - 1) * PRODUK_PAGE_SIZE;
@@ -1094,6 +1101,7 @@ async function loadProduk(q, page){
   // renderPgBar(null, ...) throw. Bail out di sini daripada nunggu ketauan di
   // renderPgBar.
   if (!mountedContainer) return;
+  produkLastTotal = Number(total) || 0;
   produkCount.textContent = Number(total).toLocaleString('id-ID') + ' produk' + (qq ? ` untuk "${qq}"` : '') +
     (produkActiveFilters.length ? `, ${produkActiveFilters.length} filter tambahan aktif` : '');
   renderPgBar(document.getElementById('produkPagination'), {
@@ -1347,8 +1355,7 @@ function renderProdukFilterChips(){
 }
 
 // ---- Ambil baris yang mau di-export, respect filter+search yang lagi aktif.
-// Dipakai bareng exportProdukToExcel (dump semua kolom, admin/QA) DAN
-// exportPricelistSales (kolom terbatas + harga beneran, buat sales) --
+// Dipakai exportTampilanIni --
 // biar behavior "ikut filter chip + search yang lagi aktif" konsisten,
 // gak keduplikasi/berisiko divergen di 2 tempat.
 async function getRowsToExport(){
@@ -1397,8 +1404,7 @@ function describeActiveFilters(){
   if (lastQuery.trim()) parts.push(`cari "${lastQuery.trim()}"`);
   return parts;
 }
-// Versi slug buat nama file (dipakai exportProdukToExcel yang sudah ada DAN
-// exportPricelistSales) -- sengaja dari raw dim/filter key, bukan dari label
+// Versi slug buat nama file (dipakai exportTampilanIni) -- sengaja dari raw dim/filter key, bukan dari label
 // describeActiveFilters() di atas (label bisa berisi spasi/simbol yang jelek
 // buat nama file).
 function buildFilterFilenameTag(){
@@ -1448,252 +1454,93 @@ async function lepasAkdPlaceholder(produkId){
   await sb.from('produk_akd').delete().eq('produk_id', produkId).in('akd_id', ids);
 }
 
-// ---- Download Excel (hasil filter yang lagi aktif — chip status + filter tambahan
-// + search, bukan cuma halaman yang lagi tampil) ----
-// Isi: No. AKD beneran (bukan cuma status), harga EKATALOG/SWASTA beneran kalau
-// sudah ada (bukan Ya/Tidak), + styling (judul, header berwarna, zebra, format Rp,
-// freeze header, autofilter, status berwarna). Semua pakai xlsx-js-style yang sama
-// dengan exportPricelistSales.
-// Stok: kolom Status Stok / Qty / Nilai (Nilai = rumus Qty x Harga EKATALOG, bisa diaudit di Excel) +
-// baris total di bawah. Total fisik (Instrument+Unit) DIPISAH dari nilai SET: qty SET = jumlah set yang
-// bisa dirakit dari komponen yang sama, jadi menjumlahkan keduanya = hitung stok dua kali.
-async function exportProdukToExcel(){
+// ---- Export tampilan ini ----
+// SATU export, bukan tiga fitur terpisah: kolom = kolom yang tampil di tabel (tombol "Kolom", termasuk kolom
+// yang ditambah otomatis oleh filter), urutan sama; baris = SEMUA hasil filter + pencarian yang aktif (bukan
+// cuma halaman yang tampil). Dua kebutuhan lama jadi susunan kolom, bukan tombol lain:
+//   - "Pricelist untuk sales"  = preset kolom "Pricelist sales" + opsi "Hanya produk siap jual"
+//   - "Excel semua kolom"      = preset kolom "Audit lengkap"
+// Definisi kolom Excel ada di kolom-tabel.js (xl), penulis file di shared/exports/tabel-xlsx.js.
+// "Hanya produk siap jual": Link V6 bersih DAN harga E-Katalog ada, urut Golongan -> Nama. Ini jaring pengaman
+// (baris yang harganya kosong tidak pernah ikut ke sales), jumlah yang dibuang dilaporkan di toast.
+const LS_EXPORT_SIAP = 'pnm_crud_export_siapjual';
+const produkFlagsText = (p) => {
+  const x = copyKit.extraOf(p.id);
+  const f = [];
+  if (p.status_inaproc === 'Disetujui' && !p.link_v6) f.push('Belum ada link V6');
+  if (!x || x.tahun == null) f.push('Tanpa harga');
+  if (!p.is_active) f.push('Nonaktif');
+  return f.join(', ');
+};
+async function exportTampilanIni(){
   try { await ensureXlsx(); } catch (e) { showToast('Gagal memuat library Excel: ' + e.message, true); return; }
-  await ensureVerifiedSet(); // kolom "Verified" di Excel baca produkVerifiedIdSet
-  const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
-  if (needsHarga) await ensureProdukHargaSet();
+  await ensureVerifiedSet(); // kolom "Verified" baca produkVerifiedIdSet
+  if (produkActiveFilters.some(f => f.dim === 'harga')) await ensureProdukHargaSet();
+  const siapJual = !!document.getElementById('produkExportSiapJual')?.checked;
 
-  const rowsToExport = await getRowsToExport();
-  if (rowsToExport === null) return; // error sudah di-toast di getRowsToExport
-  if (!rowsToExport.length) { showToast('Tidak ada data untuk diexport', true); return; }
+  let rows = await getRowsToExport();
+  if (rows === null) return; // error sudah di-toast di getRowsToExport
+  if (!rows.length) { showToast('Tidak ada data untuk diexport', true); return; }
 
-  const ids = rowsToExport.map(r => r.id);
-  const [hargaMap, akdMap, stokOk] = await Promise.all([fetchHargaLatestMap(ids), fetchAkdNoMap(ids), ensureStokForIds(ids)]);
-  if (hargaMap === null || akdMap === null) return;
-  // Stok gagal dimuat (mis. SQL migrasi belum jalan) -> export tetap jalan, kolom stok kosong.
-  if (!stokOk) showToast('Status stok gagal dimuat (SQL migrasi stok sudah dijalankan?) — kolom stok dikosongkan.', true);
+  // Muat hanya data yang dibutuhkan kolom yang tampil (pricelist tidak perlu narik stok / Nama AKD).
+  const ids = rows.map(r => r.id);
+  const uses = colKit.exportUses();
+  if (siapJual) uses.add('extra');
+  showToast(`Menyiapkan ${rows.length.toLocaleString('id-ID')} baris…`);
+  const [okExtra, okStok, okNeeds] = await Promise.all([
+    uses.has('extra') ? copyKit.loadExtra(ids) : true,
+    uses.has('stok') ? ensureStokForIds(ids) : true,
+    uses.has('akdNama') ? colKit.loadNeeds(ids) : true,
+  ]);
+  if (!okExtra || !okNeeds) { showToast('Gagal mengambil harga / AKD — export dibatalkan', true); return; }
+  if (!okStok) showToast('Status stok gagal dimuat (SQL migrasi stok sudah dijalankan?) — kolom stok dikosongkan.', true);
 
-  const HEADER = ['No', 'Kode Produk', 'Nama Produk', 'Tipe', 'Golongan', 'No. AKD', 'Status AKD', 'Status INAPROC', 'Harga EKATALOG', 'Harga SWASTA', 'Tahun Harga', 'Status Stok', 'Qty Stok', 'Nilai Stok', 'Aktif', 'Link V6', 'Verified INAPROC'];
-  const COL = { no: 0, tipe: 3, akd: 5, statusAkd: 6, inaproc: 7, ekat: 8, swasta: 9, tahun: 10, stok: 11, qty: 12, nilai: 13, aktif: 14, link: 15, verified: 16 };
-  const KOSONG = '—';
-  const FIRST_DATA_ROW = 3; // 0-based: judul, subtitle, header
-
-  const dateStr = new Date().toISOString().slice(0, 10);
-  const filterParts = describeActiveFilters();
-  const subtitle = (filterParts.length ? filterParts.join(' · ') + ' — ' : 'Semua produk — ') + `per ${dateStr} — ${rowsToExport.length} produk`;
-
-  const aoa = [['EXPORT PRODUK'], [subtitle], HEADER];
-  let nilaiFisik = 0, nilaiSet = 0, adaNilai = false;
-  rowsToExport.forEach((r, idx) => {
-    const h = hargaMap.get(r.id);
-    const akdList = akdMap.get(r.id) || (r.no_akd ? [r.no_akd] : []);
-    const sk = stokOk ? produkStokCache.get(r.id) : null;
-    const ekat = h && h.ekatalog != null ? Number(h.ekatalog) : null;
-    const qty = sk && sk.qty != null && Number.isFinite(sk.qty) ? sk.qty : null;
-    // Sama dengan definisi lama v_stok_nilai: nilai cuma ada kalau qty > 0 DAN harga EKATALOG ada.
-    const nilai = qty != null && qty > 0 && ekat != null ? qty * ekat : null;
-    if (nilai != null) { adaNilai = true; if (r.tipe === 'SET') nilaiSet += nilai; else nilaiFisik += nilai; }
-    aoa.push([
-      idx + 1,
-      r.kode_produk || '',
-      r.nama_produk || '',
-      r.tipe || '',
-      r.golongan || '',
-      akdList.length ? akdList.join(', ') : KOSONG,
-      SEAL_LABELS[r.status_akd] || r.status_akd || KOSONG,
-      r.status_inaproc || KOSONG,
-      ekat != null ? ekat : KOSONG,
-      h && h.swasta != null ? h.swasta : KOSONG,
-      h ? h.tahun : KOSONG,
-      sk && STOK_LABEL[sk.status] ? STOK_LABEL[sk.status] : KOSONG,
-      qty != null ? qty : KOSONG,
-      nilai != null ? nilai : KOSONG,
-      r.is_active ? 'Ya' : 'Tidak',
-      r.link_v6 || KOSONG,
-      produkVerifiedIdSet && produkVerifiedIdSet.has(r.id) ? 'Ya' : KOSONG,
-    ]);
-  });
-  const lastCol = HEADER.length - 1;
-  const lastDataRow = aoa.length - 1; // 0-based, baris data terakhir (sebelum baris total)
-
-  // Baris total (di luar autofilter): fisik (Instrument+Unit) DIPISAH dari SET -- lihat komentar di atas fungsi.
-  let totalFisikRow = -1, totalSetRow = -1;
-  if (adaNilai) {
-    const blank = () => new Array(HEADER.length).fill('');
-    aoa.push(blank());
-    const rFisik = blank(); rFisik[COL.tipe - 1] = 'TOTAL NILAI STOK FISIK (Instrument + Unit, semua baris export)'; rFisik[COL.nilai] = nilaiFisik;
-    const rSet = blank(); rSet[COL.tipe - 1] = 'Nilai SET siap rakit — dari komponen yang sama, JANGAN dijumlahkan dengan total di atas'; rSet[COL.nilai] = nilaiSet;
-    totalFisikRow = aoa.length; aoa.push(rFisik);
-    totalSetRow = aoa.length; aoa.push(rSet);
+  let skippedNoLink = 0, skippedNoHarga = 0;
+  if (siapJual) {
+    const withLink = rows.filter(r => parseLinkV6(r.link_v6).state === 'bersih');
+    const priced = withLink.filter(r => { const x = copyKit.extraOf(r.id); return x && x.ekatalog != null; });
+    skippedNoLink = rows.length - withLink.length;
+    skippedNoHarga = withLink.length - priced.length;
+    priced.sort((a, b) => (a.golongan || '').localeCompare(b.golongan || '', 'id') || (a.nama_produk || '').localeCompare(b.nama_produk || '', 'id'));
+    rows = priced;
+    if (!rows.length) { showToast('Tidak ada produk yang sekaligus punya Link V6 bersih & harga E-Katalog di hasil filter ini.', true); return; }
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  const lastRow = aoa.length - 1;
+  const columns = colKit.exportColumns();
+  const data = rows.map(r => colKit.exportRow(r, { flagsText: produkFlagsText(r) }));
 
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } },
-  ];
-  ws['A1'].s = { font: { bold: true, sz: 15 } };
-  ws['A2'].s = { font: { italic: true, sz: 10.5, color: { rgb: '666666' } } };
-
-  const thin = { style: 'thin', color: { rgb: 'D9D9D9' } };
-  const border = { top: thin, bottom: thin, left: thin, right: thin };
-  const headerStyle = {
-    font: { bold: true, color: { rgb: 'FFFFFF' } },
-    fill: { fgColor: { rgb: '2F5496' } },
-    alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
-    border,
-  };
-  HEADER.forEach((_, c) => {
-    const addr = XLSX.utils.encode_cell({ r: 2, c });
-    if (ws[addr]) ws[addr].s = headerStyle;
-  });
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: lastDataRow, c: lastCol } }) };
-  ws['!freeze'] = { xSplit: 3, ySplit: 3 }; // header + kolom No/Kode/Nama tetap kelihatan pas scroll
-  ws['!views'] = [{ state: 'frozen', xSplit: 3, ySplit: 3 }];
-
-  // Warna status (teks + background lembut) biar bolongnya langsung kelihatan.
-  const STATUS_COLOR = {
-    'Sudah ada AKD':      { fg: '1E6B3A', bg: 'E2F4E8' },
-    'Belum ada AKD':      { fg: '9C2B2B', bg: 'FBE4E4' },
-    'Disetujui':          { fg: '1E6B3A', bg: 'E2F4E8' },
-    'Siap':               { fg: '1E6B3A', bg: 'E2F4E8' },
-    'Indent':             { fg: '555555', bg: 'ECECEC' },
-    'Data tidak lengkap': { fg: '8A5A00', bg: 'FFF1D6' },
-  };
-  const colLetter = (c) => XLSX.utils.encode_col(c);
-
-  for (let r = FIRST_DATA_ROW; r <= lastDataRow; r++) {
-    const zebra = (r - FIRST_DATA_ROW) % 2 === 1;
-    for (let c = 0; c <= lastCol; c++) {
-      const addr = XLSX.utils.encode_cell({ r, c });
-      const cell = ws[addr];
-      if (!cell) continue;
-      const style = { border, alignment: { vertical: 'center' } };
-      if (zebra) style.fill = { fgColor: { rgb: 'F2F2F2' } };
-
-      const isEmpty = cell.v === KOSONG;
-      if (isEmpty) style.font = { color: { rgb: 'A0A0A0' } };
-
-      if ([COL.no, COL.tahun, COL.aktif, COL.statusAkd, COL.inaproc, COL.stok, COL.verified].includes(c) || isEmpty) {
-        style.alignment = { vertical: 'center', horizontal: 'center' };
-      }
-      if ((c === COL.ekat || c === COL.swasta) && typeof cell.v === 'number') {
-        cell.z = '"Rp" #,##0';
-        style.alignment = { vertical: 'center', horizontal: 'right' };
-      }
-      if (c === COL.qty && typeof cell.v === 'number') {
-        cell.z = '#,##0';
-        style.alignment = { vertical: 'center', horizontal: 'right' };
-      }
-      if (c === COL.nilai && typeof cell.v === 'number') {
-        // Rumus (bukan angka mati) supaya bisa diaudit: Qty x Harga EKATALOG di baris yang sama.
-        cell.f = `${colLetter(COL.qty)}${r + 1}*${colLetter(COL.ekat)}${r + 1}`;
-        cell.z = '"Rp" #,##0';
-        style.alignment = { vertical: 'center', horizontal: 'right' };
-      }
-      if ((c === COL.statusAkd || c === COL.inaproc || c === COL.stok) && STATUS_COLOR[cell.v]) {
-        const sc = STATUS_COLOR[cell.v];
-        style.font = { bold: true, color: { rgb: sc.fg } };
-        style.fill = { fgColor: { rgb: sc.bg } };
-      }
-      if (c === COL.link && !isEmpty && /^https?:\/\//i.test(String(cell.v))) {
-        cell.l = { Target: String(cell.v) };
-        style.font = { color: { rgb: '0563C1' }, underline: true };
-      }
-      cell.s = style;
+  // Total nilai stok: fisik (Instrument + Unit) DIPISAH dari SET -- qty SET = jumlah set yang bisa dirakit dari
+  // komponen yang sama, jadi menjumlahkan keduanya = hitung stok dua kali.
+  const totals = [];
+  const ni = columns.findIndex(c => c.id === 'nilai');
+  if (ni >= 0) {
+    let fisik = 0, set = 0, ada = false;
+    rows.forEach((r, i) => { const v = data[i][ni]; if (typeof v === 'number') { ada = true; if (r.tipe === 'SET') set += v; else fisik += v; } });
+    if (ada) {
+      totals.push({ label: 'TOTAL NILAI STOK FISIK (Instrument + Unit, semua baris export)', id: 'nilai', value: fisik, bold: true });
+      totals.push({ label: 'Nilai SET siap rakit — dari komponen yang sama, JANGAN dijumlahkan dengan total di atas', id: 'nilai', value: set, bold: false });
     }
   }
 
-  // Baris total: SUMIF terhadap kolom Tipe supaya fisik & SET terpisah.
-  if (adaNilai) {
-    const tipeRng = `${colLetter(COL.tipe)}${FIRST_DATA_ROW + 1}:${colLetter(COL.tipe)}${lastDataRow + 1}`;
-    const nilaiRng = `${colLetter(COL.nilai)}${FIRST_DATA_ROW + 1}:${colLetter(COL.nilai)}${lastDataRow + 1}`;
-    const topBorder = { top: { style: 'medium', color: { rgb: '2F5496' } } };
-    [[totalFisikRow, `SUMIF(${tipeRng},"<>SET",${nilaiRng})`, true], [totalSetRow, `SUMIF(${tipeRng},"SET",${nilaiRng})`, false]].forEach(([r, formula, bold]) => {
-      const labelCell = ws[XLSX.utils.encode_cell({ r, c: COL.tipe - 1 })];
-      const valCell = ws[XLSX.utils.encode_cell({ r, c: COL.nilai })];
-      if (labelCell) labelCell.s = { font: { bold, italic: !bold, color: { rgb: bold ? '000000' : '666666' } }, border: bold ? topBorder : undefined };
-      if (valCell) {
-        valCell.f = formula;
-        valCell.z = '"Rp" #,##0';
-        valCell.s = { font: { bold, italic: !bold, color: { rgb: bold ? '000000' : '666666' } }, alignment: { horizontal: 'right' }, border: bold ? topBorder : undefined };
-      }
-    });
-  }
-
-  ws['!cols'] = [
-    { wch: 5 },   // No
-    { wch: 22 },  // Kode Produk
-    { wch: 45 },  // Nama Produk
-    { wch: 12 },  // Tipe
-    { wch: 18 },  // Golongan
-    { wch: 24 },  // No. AKD
-    { wch: 15 },  // Status AKD
-    { wch: 16 },  // Status INAPROC
-    { wch: 16 },  // Harga EKATALOG
-    { wch: 16 },  // Harga SWASTA
-    { wch: 11 },  // Tahun Harga
-    { wch: 18 },  // Status Stok
-    { wch: 10 },  // Qty Stok
-    { wch: 18 },  // Nilai Stok
-    { wch: 8 },   // Aktif
-    { wch: 40 },  // Link V6
-    { wch: 16 },  // Verified INAPROC
-  ];
-  ws['!rows'] = [{ hpt: 22 }, { hpt: 16 }, { hpt: 20 }];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Produk');
-  const filterTag = buildFilterFilenameTag();
-  XLSX.writeFile(wb, `produk_export_${dateStr}${filterTag || '_semua'}.xlsx`);
-  showToast(`Excel terdownload — ${rowsToExport.length} baris`);
-}
-document.getElementById('produkExportBtn').addEventListener('click', exportProdukToExcel);
-
-// ---- Export Pricelist (Sales): beda tujuan dari exportProdukToExcel di atas --
-// itu dump audit/QA (semua kolom internal, flag Ya/Tidak doang buat harga, dipakai
-// admin ngecek data mana yang masih bolong). Ini KHUSUS buat dikirim ke sales:
-// - Cuma kolom yang relevan buat jualan (gak ada Status AKD/INAPROC yang internal).
-// - Harga beneran keluar angkanya (EKATALOG & SWASTA, tahun terbaru), bukan Ya/Tidak.
-// - Cuma produk yang BENERAN siap jual (ada Link V6 katalog DAN ada harga EKATALOG)
-//   yang masuk -- baris "Ya" di kolom lama tapi ternyata harganya kosong (kejadian
-//   sebelum fix ini, lihat produk_export_2026-09-18_harga-link_v6.xlsx yang dikirim
-//   user) otomatis gak akan pernah nongol lagi, difilter di sini, bukan cuma di UI.
-// - Header bold+warna & kolom harga format Rp (lihat komentar xlsx-js-style di atas
-//   file -- 'xlsx' community biasa DIAM-DIAM buang style ini pas nulis file).
-async function exportPricelistSales(){
-  try { await ensureXlsx(); } catch (e) { showToast('Gagal memuat library Excel: ' + e.message, true); return; }
-  const rowsToExport = await getRowsToExport();
-  if (rowsToExport === null) return;
-  if (!rowsToExport.length) { showToast('Tidak ada data untuk diexport', true); return; }
-
-  let hargaMap;
-  try { hargaMap = await fetchHargaLatestMapShared(sb, rowsToExport.map(r => r.id)); }
-  catch (e) { showToast(e.message, true); return; }
-
-  // Logic seleksi + format file ada di shared/exports/pricelist.js (dipakai juga dashboard).
-  const { priced, skippedNoLink, skippedNoHarga } =
-    selectPricelistRows(rowsToExport, hargaMap, r => parseLinkV6(r.link_v6).state === 'bersih');
-  if (!priced.length) {
-    showToast('Gak ada produk yang sekaligus punya Link V6 & harga EKATALOG di hasil filter ini — gak ada yang bisa di-pricelist-kan.', true);
-    return;
-  }
-  const filterParts = describeActiveFilters();
-  writePricelistXlsx(XLSX, priced, hargaMap, {
-    subtitle: filterParts.length ? filterParts.join(' · ') : 'Semua produk',
-    fileTag: buildFilterFilenameTag() || '_semua',
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const parts = describeActiveFilters();
+  if (siapJual) parts.push('siap jual (Link V6 bersih + harga E-Katalog)');
+  const subtitle = (parts.length ? parts.join(' · ') : 'Semua produk') + ` — per ${dateStr} — ${rows.length.toLocaleString('id-ID')} produk`;
+  writeTableXlsx(XLSX, {
+    sheetName: siapJual ? 'Pricelist' : 'Produk',
+    title: siapJual ? 'PRICELIST PRODUK' : 'EXPORT PRODUK',
+    subtitle, columns, rows: data, totals,
+    fileName: `${siapJual ? 'pricelist' : 'produk_export'}_${dateStr}${buildFilterFilenameTag() || '_semua'}.xlsx`,
   });
 
-  let msg = `Pricelist terdownload — ${priced.length} produk`;
-  const skippedNote = [];
-  if (skippedNoLink) skippedNote.push(`${skippedNoLink} dilewati (belum ada Link V6 / link belum bersih)`);
-  if (skippedNoHarga) skippedNote.push(`${skippedNoHarga} dilewati (belum ada harga EKATALOG)`);
-  if (skippedNote.length) msg += ` · ${skippedNote.join(', ')}`;
+  let msg = `Excel terdownload — ${rows.length.toLocaleString('id-ID')} baris × ${columns.length} kolom`;
+  const note = [];
+  if (skippedNoLink) note.push(`${skippedNoLink} dilewati (belum ada Link V6 / link belum bersih)`);
+  if (skippedNoHarga) note.push(`${skippedNoHarga} dilewati (belum ada harga E-Katalog)`);
+  if (note.length) msg += ' · ' + note.join(', ');
   showToast(msg);
 }
-document.getElementById('produkExportPricelistBtn').addEventListener('click', exportPricelistSales);
+document.getElementById('produkExportBtn').addEventListener('click', exportTampilanIni);
 
 // ---- Angka di tiap chip (total per kategori, independen dari search/pagination) ----
 const FILTER_COUNT_KEYS = ['all','belum_diajukan','belum_firm','di_luar_cakupan','terhubung','disetujui_tanpa_link','verified'];
@@ -1804,12 +1651,24 @@ function focusProdukSearch(){
 // ---- Menu Export (Excel hasil filter + Pricelist sales) ----
 const exportToggle = document.getElementById('produkExportToggle');
 const exportPop = document.getElementById('produkExportPop');
+const exportSiapEl = document.getElementById('produkExportSiapJual');
+try { exportSiapEl.checked = localStorage.getItem(LS_EXPORT_SIAP) === '1'; } catch { /* storage diblok */ }
+exportSiapEl.addEventListener('change', () => { try { localStorage.setItem(LS_EXPORT_SIAP, exportSiapEl.checked ? '1' : '0'); } catch { /* abaikan */ } });
+// Ringkasan "apa yang akan diexport" dihitung saat menu dibuka, dari kolom & filter yang aktif saat itu.
+function paintExportInfo(){
+  const el = document.getElementById('produkExportInfo');
+  if (!el) return;
+  const labels = ['Kode Produk', ...colKit.visibleLabels().filter(l => l !== 'Kode Produk')];
+  const shown = labels.length > 6 ? labels.slice(0, 6).join(', ') + ` +${labels.length - 6}` : labels.join(', ');
+  el.textContent = `${produkLastTotal.toLocaleString('id-ID')} produk (semua hasil filter) · ${labels.length} kolom: ${shown}`;
+}
 function setExportMenu(open){
+  if (open) paintExportInfo();
   exportPop.hidden = !open;
   exportToggle.setAttribute('aria-expanded', String(open));
 }
 exportToggle.addEventListener('click', () => setExportMenu(exportPop.hidden));
-exportPop.addEventListener('click', () => setExportMenu(false));
+exportPop.addEventListener('click', (e) => { if (e.target.closest('.export-item')) setExportMenu(false); }); // checkbox/teks lain: menu tetap terbuka
 exportMenuDocHandler = (e) => {
   if (e.type === 'keydown') { if (e.key === 'Escape' && !exportPop.hidden) { setExportMenu(false); exportToggle.focus(); } return; }
   if (!exportPop.hidden && !e.target.closest('#produkExportMenu')) setExportMenu(false);
