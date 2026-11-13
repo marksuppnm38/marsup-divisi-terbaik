@@ -22,7 +22,14 @@ const XL = {
 };
 const XL_NUM = '#,##0';
 const XL_NUMZ = '#,##0;-#,##0;"–"';     // nol tampil strip, supaya angka yang ada langsung terlihat
+const XL_DEC = '#,##0.0;-#,##0.0;"–"';
+const XL_PCT = '0%';
 const XL_DATE = 'dd mmm yyyy';
+// Penanda "volume didominasi satu pesanan" (sheet Per Produk dan Ringkasan). Ketiganya harus terpenuhi:
+// minimal OUTLIER_MIN_PO PO, PO terbesar >= OUTLIER_X kali median per PO, dan PO terbesar >= OUTLIER_SHARE dari total.
+const OUTLIER_MIN_PO = 3;
+const OUTLIER_X = 5;
+const OUTLIER_SHARE = 0.3;
 const NA = 'Tidak tersedia';              // teks untuk data yang memang tidak tercatat
 const BELUM = 'Belum diketahui';          // wilayah yang belum bisa ditentukan
 const xlFill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
@@ -44,19 +51,19 @@ export const XL_PRESETS = [
     id: 'sph', nama: 'Lampiran SPH',
     desc: 'Ringkas dan rapi untuk dikirim ke calon pembeli: daftar RS, populasi per produk, dan per provinsi. Tanpa nomor PO/RMP dan data teknis.',
     sheets: ['rs', 'rincianrs', 'produk', 'provinsi'],
-    grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 0, tek: 0 },
+    grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 0, tek: 0, sebaran: 0 },
   },
   {
     id: 'presentasi', nama: 'Presentasi dan diskusi',
     desc: 'Gambaran cepat untuk dibicarakan: per provinsi, per produk, per kategori, dan daftar RS. Tanpa data teknis.',
     sheets: ['provinsi', 'produk', 'matriks', 'rs', 'rincianrs'],
-    grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 1, tek: 0 },
+    grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 1, tek: 0, sebaran: 1 },
   },
   {
     id: 'internal', nama: 'Laporan dan analisis internal',
     desc: 'Lengkap: semua sheet termasuk rincian pesanan, nomor PO/RMP, dan kolom teknis. Hanya untuk internal.',
     sheets: ['rs', 'produk', 'provinsi', 'matriks', 'pesanan', 'belum'],
-    grp: { wil: 1, jml: 1, status: 1, waktu: 1, produk: 1, dok: 1, cat: 1, tek: 1 },
+    grp: { wil: 1, jml: 1, status: 1, waktu: 1, produk: 1, dok: 1, cat: 1, tek: 1, sebaran: 1 },
   },
   {
     id: 'kustom', nama: 'Kustom',
@@ -68,7 +75,7 @@ export const XL_PRESETS = [
 export const XL_GRUP = {
   id: 'Identitas', wil: 'Wilayah', jml: 'Jumlah', status: 'Terkirim dan dalam proses terpisah',
   waktu: 'Tanggal dan status', produk: 'Detail produk', dok: 'Dokumen (No. PO, No. RMP)',
-  cat: 'Keterangan data', tek: 'Data teknis',
+  cat: 'Keterangan data', tek: 'Data teknis', sebaran: 'Sebaran jumlah per PO',
 };
 // Kelompok yang hanya untuk internal: dipakai untuk peringatan di dialog.
 export const XL_GRUP_INTERNAL = ['dok', 'tek'];
@@ -135,6 +142,10 @@ const COLS = {
     { id: 'unit_p', h: 'Unit dalam proses', k: 'unit_p', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasUnit && i.semuaStatus, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya) pada pesanan yang masih dalam proses.' },
     { id: 'unit', h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.adaUnit, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya) untuk produk ini. Pesanan yang belum dihitung tidak termasuk.' },
     { id: 'rs', h: 'Jumlah RS', k: 'rs', w: 10, fmt: XL_NUMZ, grp: 'jml', desc: 'Berapa RS/instansi berbeda yang memesan produk ini (hanya pesanan yang dihitung).' },
+    { id: 'po', h: 'Frekuensi (jumlah PO)', k: 'po', w: 12, fmt: XL_NUMZ, grp: 'jml', desc: 'Berapa PO berbeda yang memuat produk ini (hanya pesanan yang dihitung). Mengukur seberapa sering produk dipesan, tidak terpengaruh besar kecilnya jumlah per PO.' },
+    { id: 'median', h: 'Median per PO', k: 'median', w: 11, fmt: XL_DEC, grp: 'sebaran', desc: 'Nilai tengah jumlah produk ini per PO: gambaran ukuran pesanan yang umum, tidak terpengaruh satu pesanan yang sangat besar.' },
+    { id: 'maks', h: 'PO terbesar', k: 'maks', w: 11, fmt: XL_NUMZ, grp: 'sebaran', desc: 'Jumlah pada PO dengan jumlah terbanyak untuk produk ini.' },
+    { id: 'dominasi', h: 'PO terbesar (% dari total)', k: 'dominasi', w: 13, fmt: XL_PCT, grp: 'sebaran', desc: 'Berapa persen total jumlah produk ini yang berasal dari satu PO terbesar. Nilai tinggi = total jumlah condong ke satu pesanan.' },
     { id: 'prov', h: 'Jumlah provinsi', k: 'prov', w: 11, fmt: XL_NUMZ, grp: 'wil', when: (i) => !i.provinsiDipilih, desc: 'Berapa provinsi berbeda; RS yang wilayahnya belum diketahui tidak dihitung.' },
     { id: 'pesanan', h: 'Jumlah pesanan', k: 'pesanan', w: 11, fmt: XL_NUMZ, grp: 'jml', desc: 'Jumlah baris pesanan (kombinasi PO dan produk) di sheet Rincian Pesanan untuk produk ini, termasuk yang belum dihitung.' },
     { id: 'pertama', h: 'Pesanan pertama', k: 'pertama', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan paling awal. Kosong bila tidak ada tanggal tercatat.' },
@@ -224,6 +235,12 @@ function perkiraanBaris(text, width) {
     .reduce((a, p) => a + Math.max(1, Math.ceil(p.length / Math.max(1, width * 1.05))), 0);
 }
 const kosong = (v) => v === null || v === undefined || v === '';
+const median = (arr) => {
+  if (!arr.length) return null;
+  const a = arr.slice().sort((x, y) => x - y);
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+};
 const dihitung = (l) => !(l.kind === 'SET' && l.status_hitung === 'cek');
 
 function labelHitung(l) {
@@ -313,7 +330,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
 
   // Per produk. Kunci: set = kategori + nama set; barang satuan = kode + nama (nama tidak diubah).
   const pm = new Map();
-  lines.forEach((l) => {
+  lines.forEach((l, li) => {
     const isSet = l.kind === 'SET';
     const nama = isSet ? l.label : l.produk;
     const key = isSet ? `S|${l.kelompok}|${nama}` : `P|${l.kode_produk || ''}|${nama}`;
@@ -321,6 +338,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       nama: nama || '', kode: isSet ? '' : (l.kode_produk || ''), kategori: katName(l.kelompok),
       spes: new Set(), set_t: 0, set_p: 0, pcs_t: 0, pcs_p: 0, unit_t: 0, unit_p: 0, rs: new Set(), prov: new Set(), sat: satuanBaris(l),
       pesanan: 0, pertama: '', terakhir: '', est: 0, cek: 0, isSet,
+      po: new Map(),            // kunci PO -> jumlah produk ini pada PO itu (frekuensi + sebaran per PO)
     };
     if (l.spes) o.spes.add(spesNama(l.spes));
     o.pesanan += 1;
@@ -335,15 +353,30 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       o[f] += v;
       o.rs.add(l.customer);
       if (l.provinsi) o.prov.add(l.provinsi);
+      // Satu PO = customer + No. PO + No. RMP. Tanpa keduanya, baris dianggap PO tersendiri (tidak digabung).
+      const pk = (l.po || l.kode_rmp) ? `${l.customer}|${l.po || ''}|${l.kode_rmp || ''}` : `${l.customer}|#${li}`;
+      o.po.set(pk, (o.po.get(pk) || 0) + v);
     } else o.cek += 1;
     if (isSet && l.status_hitung === 'estimasi') o.est += 1;
     pm.set(key, o);
   });
+  // Peringkat produk: jumlah RS yang memesan (populasi menurut frekuensi), lalu jumlah PO, baru volume.
+  // Volume tidak dipakai sebagai kunci utama: satu pesanan besar menggeser peringkat, dan satuannya berbeda-beda.
+  const volProduk = (x) => n0(x.set) + n0(x.pcs) + n0(x.unit);
   const itemsProduk = Array.from(pm.values()).map((o) => {
     const ket = [];
     if (o.est) ket.push(`${fmt(o.est)} pesanan berupa perkiraan`);
     if (o.cek) ket.push(`${fmt(o.cek)} pesanan belum dihitung`);
+    // Sebaran jumlah per PO: pembeda produk yang sering dipesan dengan produk yang totalnya dibesarkan satu pesanan.
+    const qs = Array.from(o.po.values());
+    const tot = qs.reduce((a, v) => a + v, 0);
+    const maks = qs.length ? Math.max(...qs) : null;
+    const med = median(qs);
+    const dom = tot > 0 && maks !== null ? maks / tot : null;
+    const dominan = qs.length >= OUTLIER_MIN_PO && dom !== null && dom >= OUTLIER_SHARE && maks >= OUTLIER_X * Math.max(med, 1);
+    if (dominan) ket.push(`satu PO berisi ${fmt(maks)} ${o.sat} (${Math.round(dom * 100)}% dari total); peringkat menurut jumlah RS lebih mewakili`);
     return {
+      po: qs.length, median: med === null ? null : Math.round(med * 10) / 10, maks, dominasi: dom, _dominan: dominan,
       nama: o.nama, kode: o.kode, kategori: o.kategori, spes: Array.from(o.spes).join(' / '),
       set_t: o.isSet ? o.set_t : null, set_p: o.isSet ? o.set_p : null, set: o.isSet ? o.set_t + o.set_p : null,
       pcs_t: o.sat === 'pcs' ? o.pcs_t : null, pcs_p: o.sat === 'pcs' ? o.pcs_p : null, pcs: o.sat === 'pcs' ? o.pcs_t + o.pcs_p : null,
@@ -351,7 +384,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       rs: o.rs.size, prov: o.prov.size, pesanan: o.pesanan,
       pertama: xlDate(o.pertama), terakhir: xlDate(o.terakhir), ket: sph ? '' : ket.join('; '),
     };
-  }).sort((a, b) => (n0(b.set) + n0(b.pcs) + n0(b.unit)) - (n0(a.set) + n0(a.pcs) + n0(a.unit)) || String(a.nama).localeCompare(String(b.nama), 'id'))
+  }).sort((a, b) => b.rs - a.rs || b.po - a.po || volProduk(b) - volProduk(a) || String(a.nama).localeCompare(String(b.nama), 'id'))
     .filter((o) => !sph || n0(o.set) + n0(o.pcs) + n0(o.unit) > 0)   // SPH: produk yang tidak punya angka tidak ditampilkan
     .map((o, i) => Object.assign(o, { no: i + 1 }));
 
@@ -680,9 +713,22 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     if (plan.includes('rs')) d0.wide('Daftar lengkap ada di sheet “Daftar RS”.', { size: 10, color: XL.soft });
   }
   if (itemsProduk.length > 1) {
-    d0.section(`${Math.min(10, itemsProduk.length)} produk / jenis set terbanyak`);
-    d0.table(['Produk / jenis set', 'Kategori'].concat(kolUnit()), ['left', 'left'].concat(alUnit),
-      itemsProduk.slice(0, 10).map((x) => [x.nama, x.kategori].concat(hasSet ? [x.set] : [], hasPcs ? [x.pcs] : [], hasUnit ? [x.unit] : [])));
+    const volText = (x) => [x.set ? `${fmt(x.set)} set` : '', x.pcs ? `${fmt(x.pcs)} pcs` : '', x.unit ? `${fmt(x.unit)} unit` : ''].filter(Boolean).join(' + ') || '–';
+    // Tabel utama: peringkat menurut jumlah RS yang memesan, lalu frekuensi PO (itemsProduk sudah berurutan begitu).
+    d0.section(`${Math.min(10, itemsProduk.length)} produk / jenis set paling banyak dipesan`);
+    d0.wide(sph ? 'Diurutkan menurut jumlah rumah sakit yang memesan.' : 'Diurutkan menurut jumlah RS yang memesan, lalu frekuensi PO. Satu pesanan besar tidak mengubah peringkat.', { size: 10, color: XL.soft });
+    d0.table(['Produk / jenis set', 'Kategori', 'Jumlah RS', 'Frekuensi PO', 'Volume'], ['left', 'left', 'right', 'right', 'right'],
+      itemsProduk.slice(0, 10).map((x) => [x.nama, x.kategori, x.rs, x.po, volText(x)]));
+    // Pembanding: menurut volume, dengan PO terbesar ditampilkan supaya pesanan tunggal yang besar kelihatan.
+    if (!sph) {
+      const byVol = itemsProduk.slice().sort((a, b) => volProduk(b) - volProduk(a) || b.rs - a.rs || String(a.nama).localeCompare(String(b.nama), 'id')).slice(0, 10);
+      d0.section(`${byVol.length} produk / jenis set menurut volume`);
+      d0.table(['Produk / jenis set', 'Kategori', 'Volume', 'Jumlah RS', 'PO terbesar'], ['left', 'left', 'right', 'right', 'right'],
+        byVol.map((x) => [x.nama, x.kategori, volText(x), x.rs, x.maks === null ? '–' : `${x._dominan ? '⚠ ' : ''}${fmt(x.maks)} (${Math.round(x.dominasi * 100)}%)`]));
+      if (byVol.some((x) => x._dominan)) {
+        d0.wide(`⚠  Volume produk ini didominasi satu PO: PO terbesar ≥ ${OUTLIER_X}× median per PO dan ≥ ${Math.round(OUTLIER_SHARE * 100)}% dari total (minimal ${OUTLIER_MIN_PO} PO). Untuk produk bertanda ini, baca peringkat menurut jumlah RS. Persen di kolom PO terbesar = bagian dari total volume.`, { size: 10, color: XL.warn, fill: XL.warnBg });
+      }
+    }
     if (plan.includes('produk')) d0.wide('Daftar lengkap ada di sheet “Per Produk”.', { size: 10, color: XL.soft });
   }
   if (!provinsiDipilih && R.length && !plan.includes('provinsi')) {
@@ -762,7 +808,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     tableSheet('Per Produk', {
       bersih: sph,
       title: 'Populasi per produk / jenis set', sub: subLine + subTek(cols),
-      note: sph ? 'Set, pcs, dan unit dihitung terpisah karena satuannya berbeda.' : 'Hanya pesanan yang dihitung; set, pcs, dan unit dihitung terpisah karena satuannya berbeda. ' + NOTE_KOSONG,
+      note: sph ? 'Diurutkan menurut jumlah RS yang memesan. Set, pcs, dan unit dihitung terpisah karena satuannya berbeda.' : 'Diurutkan menurut jumlah RS yang memesan, lalu frekuensi PO (bukan volume; urutkan ulang lewat filter kolom bila perlu). Hanya pesanan yang dihitung; set, pcs, dan unit dihitung terpisah karena satuannya berbeda. ' + NOTE_KOSONG,
       cols, freeze: 2, labelKey: 'nama',
       totals: sumTot(cols, ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'unit_t', 'unit_p', 'unit']), items: itemsProduk,   // 'Jumlah pesanan' tidak dijumlah: satu PO berisi beberapa produk
     });
@@ -846,6 +892,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     if (hasPcs) bacaan.push('Pcs = jumlah instrumen satuan, dihitung per buah (termasuk isi set dan BMHP).');
     if (hasUnit) bacaan.push('Unit = jumlah alat medis, elektromedis, dan alat penunjang laboratorium, dihitung per unit alat.');
     if ([hasSet, hasPcs, hasUnit].filter(Boolean).length > 1) bacaan.push('Set, pcs, dan unit tidak dijumlahkan karena satuannya berbeda.');
+    if (itemsProduk.length > 1) bacaan.push('Produk diurutkan menurut jumlah rumah sakit yang memesan.');
     bacaan.push(st.cakupan === 'SEMUA' ? 'Data mencakup seluruh pesanan.' : 'Data mencakup pesanan melalui INAPROC dan pembelian langsung.');
     bacaan.forEach((t) => dc.wide('•  ' + t));
     return wb.xlsx.writeBuffer();
@@ -878,6 +925,10 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   if (hasPcs) cara.push('Pcs = jumlah instrumen satuan, dihitung per buah. Isi set yang dipesan terpisah dan BMHP juga masuk di sini.');
   if (hasUnit) cara.push('Unit = jumlah alat, dihitung per unit alat: unit medis, elektromedis, alat penunjang laboratorium, penunjang medis, dan unit lainnya.');
   if ([hasSet, hasPcs, hasUnit].filter(Boolean).length > 1) cara.push('Set, pcs, dan unit tidak dijumlahkan karena satuannya berbeda.');
+  if (itemsProduk.length > 1) {
+    cara.push('Peringkat produk memakai jumlah RS yang memesan, lalu frekuensi PO, bukan total jumlah. Satu pesanan besar (mis. 50 unit sekaligus) bisa menaikkan total sebuah produk tanpa berarti produk itu banyak dipakai, dan set/pcs/unit tidak bisa dibandingkan langsung. Volume tetap ditampilkan sebagai pelengkap.');
+    cara.push(`Tanda ⚠ / keterangan “satu PO berisi …” muncul bila volume didominasi satu PO: minimal ${OUTLIER_MIN_PO} PO, PO terbesar ≥ ${OUTLIER_X}× median per PO, dan ≥ ${Math.round(OUTLIER_SHARE * 100)}% dari total. Frekuensi PO menghitung kombinasi customer + No. PO + No. RMP yang berbeda; baris tanpa keduanya dihitung sebagai PO tersendiri.`);
+  }
   cara.push(st.cakupan === 'SEMUA'
     ? 'Cakupan: semua pesanan non-sample, termasuk retail.'
     : 'Cakupan: pesanan lewat INAPROC dan pembelian langsung. Retail, konsinyasi, dan sample tidak dihitung.');
