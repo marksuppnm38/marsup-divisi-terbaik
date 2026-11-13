@@ -624,6 +624,12 @@ const colKit = createTableColumns({
     isVerified: (id) => !!produkVerifiedIdSet && produkVerifiedIdSet.has(id),
   },
   onChange: () => applyProdukColumns(),
+  // Preset Pricelist menyalakan "Hanya produk siap jual" (link kotor/bercatatan + tanpa harga dibuang), Audit mematikannya.
+  onPreset: (pr) => {
+    if (typeof pr.siapJual !== 'boolean') return;
+    const cb = document.getElementById('produkExportSiapJual');
+    if (cb) { cb.checked = pr.siapJual; cb.dispatchEvent(new Event('change')); }
+  },
 });
 colKit.renderHead();
 document.getElementById('produkColsBtn').addEventListener('click', (e) => colKit.openPicker(e.currentTarget));
@@ -1461,7 +1467,7 @@ async function lepasAkdPlaceholder(produkId){
 //   - "Pricelist untuk sales"  = preset kolom "Pricelist sales" + opsi "Hanya produk siap jual"
 //   - "Excel semua kolom"      = preset kolom "Audit lengkap"
 // Definisi kolom Excel ada di kolom-tabel.js (xl), penulis file di shared/exports/tabel-xlsx.js.
-// "Hanya produk siap jual": Link V6 bersih DAN harga E-Katalog ada, urut Golongan -> Nama. Ini jaring pengaman
+// "Hanya produk siap jual": Link V6 bersih DAN harga E-Katalog ada, urut Nama. Ini jaring pengaman
 // (baris yang harganya kosong tidak pernah ikut ke sales), jumlah yang dibuang dilaporkan di toast.
 const LS_EXPORT_SIAP = 'pnm_crud_export_siapjual';
 const produkFlagsText = (p) => {
@@ -1501,7 +1507,7 @@ async function exportTampilanIni(){
     const priced = withLink.filter(r => { const x = copyKit.extraOf(r.id); return x && x.ekatalog != null; });
     skippedNoLink = rows.length - withLink.length;
     skippedNoHarga = withLink.length - priced.length;
-    priced.sort((a, b) => (a.golongan || '').localeCompare(b.golongan || '', 'id') || (a.nama_produk || '').localeCompare(b.nama_produk || '', 'id'));
+    priced.sort((a, b) => (a.nama_produk || '').localeCompare(b.nama_produk || '', 'id'));
     rows = priced;
     if (!rows.length) { showToast('Tidak ada produk yang sekaligus punya Link V6 bersih & harga E-Katalog di hasil filter ini.', true); return; }
   }

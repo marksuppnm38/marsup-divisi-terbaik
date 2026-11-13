@@ -112,9 +112,10 @@ const MOVABLE = TABLE_COLS.filter((c) => !c.locked).map((c) => c.key);
 
 export const COL_PRESETS = [
   { id: 'standar', label: 'Standar', cols: ['nama', 'tipe', 'akd', 'stok', 'flags'] },
-  { id: 'harga', label: 'Pricelist sales', cols: ['nama', 'golongan', 'ekat', 'swasta', 'tahun', 'link'] },
+  // siapJual: preset ini menyalakan/mematikan opsi export "Hanya produk siap jual" (lihat index.js onPreset)
+  { id: 'harga', label: 'Pricelist sales', cols: ['nama', 'ekat', 'swasta', 'tahun', 'verified', 'link'], siapJual: true },
   { id: 'akd', label: 'AKD lengkap', cols: ['nama', 'no_akd', 'nama_akd', 'status_inaproc'] },
-  { id: 'audit', label: 'Audit lengkap', cols: ['nama', 'tipe', 'golongan', 'no_akd', 'akd', 'status_inaproc', 'ekat', 'swasta', 'tahun', 'stok', 'nilai', 'aktif', 'link', 'verified'] },
+  { id: 'audit', label: 'Audit lengkap', cols: ['nama', 'tipe', 'golongan', 'no_akd', 'akd', 'status_inaproc', 'ekat', 'swasta', 'tahun', 'stok', 'nilai', 'aktif', 'link', 'verified'], siapJual: false },
 ];
 const DEFAULT_VISIBLE = COL_PRESETS[0].cols;
 
@@ -154,11 +155,12 @@ function readState() {
  *              stokCell(id), moreCell(p),
  *              (khusus export, data mentah:) extraOf(id), stokOf(id) -> {status, qty}, stokLabel {READY:'Siap',..},
  *              sealLabel(status_akd) -> teks, isVerified(id) -> bool },
+ *   onPreset(preset): dipanggil setelah user memilih preset kolom (index.js: sinkron opsi export "siap jual")
  *   onChange(): dipanggil setelah pilihan kolom berubah (index.js menggambar ulang header + baris)
  * }
  */
 export function createTableColumns(opts) {
-  const { sb, headRow, tableBody, helpers: h, onChange } = opts;
+  const { sb, headRow, tableBody, helpers: h, onChange, onPreset } = opts;
   let state = readState();
   const akdNamaCache = new Map(); // produk_id -> [{ no, nama }]
   let pop = null, popAnchor = null, popCleanup = null;
@@ -277,7 +279,7 @@ export function createTableColumns(opts) {
         return;
       }
       const pr = e.target.closest('[data-preset]');
-      if (pr) { state = orderFrom(COL_PRESETS.find((p) => p.id === pr.dataset.preset).cols, state.follow); commit(el); return; }
+      if (pr) { const preset = COL_PRESETS.find((p) => p.id === pr.dataset.preset); state = orderFrom(preset.cols, state.follow); commit(el); if (onPreset) onPreset(preset); return; }
       if (e.target.closest('[data-act="reset"]')) { state = defaultState(); commit(el); }
     });
     el.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePicker(true); } });
