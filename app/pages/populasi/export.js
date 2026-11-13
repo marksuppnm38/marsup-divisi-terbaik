@@ -268,6 +268,8 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   // Preset SPH dibaca pembeli: tanpa istilah teknis (perkiraan, deteksi alamat, belum dihitung, "Tidak tersedia", nama aplikasi).
   // Angka tetap sama; hanya cara menyampaikannya yang dibersihkan.
   const sph = preset.id === 'sph';
+  // Filter distributor (SAMAYA / NON_SAMAYA) dari state; kosong = tidak difilter.
+  const distLabel = st.distributor === 'SAMAYA' ? 'Samaya' : st.distributor === 'NON_SAMAYA' ? 'Non-Samaya' : '';
   const belumLabel = sph ? 'Lainnya' : BELUM;
   const xlDate = (s) => { const d = h.toDate(s); return d ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) : null; };
 
@@ -286,9 +288,9 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   const lokasi = st.provinsi || 'Semua provinsi';
   const kategori = h.kategoriText(st);
   const statusText = semuaStatus ? 'terkirim dan dalam proses' : 'terkirim saja';
-  const subLine = `${kategori} · ${lokasi} · ${statusText} · data per ${fmtDate(D.data_per)}`;
+  const subLine = `${kategori} · ${lokasi}${distLabel ? ` · distributor ${distLabel}` : ''} · ${statusText} · data per ${fmtDate(D.data_per)}`;
   const diunduhPendek = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-  const footTxt = `Populasi ${kategori} - ${lokasi} - diunduh ${h.localISODate(now)}`.replace(/&/g, '&&');
+  const footTxt = `Populasi ${kategori} - ${lokasi}${distLabel ? ` - ${distLabel}` : ''} - diunduh ${h.localISODate(now)}`.replace(/&/g, '&&');
   const FOOT = { oddFooter: `&L&8${footTxt}&R&8Halaman &P dari &N` };
   const page = (orientation) => ({
     paperSize: 9, orientation, fitToPage: true, fitToWidth: 1, fitToHeight: 0,
@@ -298,7 +300,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Populasi PNM';
   wb.created = now;
-  wb.title = `Populasi ${kategori} - ${lokasi}`;
+  wb.title = `Populasi ${kategori} - ${lokasi}${distLabel ? ` - ${distLabel}` : ''}`;
   wb.subject = `${preset.nama} · ${subLine}`;
   wb.description = sph ? 'Lampiran populasi produk.' : 'Dibuat dari aplikasi Populasi. Arti kolom dan cara membaca angka ada di sheet "Catatan & Kamus".';
 
@@ -745,6 +747,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   if (st.mikro) d0.kv('Hanya mikrosurgery', 'Ya');
   if (st.produk.trim()) d0.kv('Nama produk mengandung', st.produk.trim());
   if (st.produk.trim() && !sph) d0.kv('Isi set ikut dihitung', st.isiSet ? 'Ya' : 'Tidak');
+  if (distLabel) d0.kv('Distributor', distLabel === 'Samaya' ? 'Samaya' : 'Non-Samaya (semua distributor selain Samaya)');
   if (st.pic) d0.kv('PIC order', st.pic);
   if (st.rs.trim()) d0.kv('Rumah sakit', st.rs.trim());
   d0.kv('Status pesanan', statusText.charAt(0).toUpperCase() + statusText.slice(1));
@@ -894,6 +897,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     if ([hasSet, hasPcs, hasUnit].filter(Boolean).length > 1) bacaan.push('Set, pcs, dan unit tidak dijumlahkan karena satuannya berbeda.');
     if (itemsProduk.length > 1) bacaan.push('Produk diurutkan menurut jumlah rumah sakit yang memesan.');
     bacaan.push(st.cakupan === 'SEMUA' ? 'Data mencakup seluruh pesanan.' : 'Data mencakup pesanan melalui INAPROC dan pembelian langsung.');
+    if (distLabel) bacaan.push(`Hanya pesanan dengan distributor ${distLabel} yang dihitung.`);
     bacaan.forEach((t) => dc.wide('•  ' + t));
     return wb.xlsx.writeBuffer();
   }
@@ -932,6 +936,9 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
   cara.push(st.cakupan === 'SEMUA'
     ? 'Cakupan: semua pesanan non-sample, termasuk retail.'
     : 'Cakupan: pesanan lewat INAPROC dan pembelian langsung. Retail, konsinyasi, dan sample tidak dihitung.');
+  if (distLabel) cara.push(distLabel === 'Samaya'
+    ? 'Distributor: hanya pesanan yang distributornya Samaya yang dihitung. Penentuan dilakukan per No. RMP.'
+    : 'Distributor: hanya pesanan yang distributornya bukan Samaya yang dihitung (termasuk yang distributornya kosong). Penentuan dilakukan per No. RMP.');
   cara.push('Wilayah RS memakai koreksi manual bila ada. Bila tidak, wilayah dideteksi dari alamat pengiriman sehingga ada kemungkinan keliru.');
   if (info.adaBelum) cara.push(`${fmt(U.length)} RS lain belum diketahui wilayahnya dan tidak masuk angka ${st.provinsi}. Daftarnya ada di sheet “Wilayah Belum Diketahui”${plan.includes('belum') ? '' : ' (tidak disertakan di file ini)'}.`);
   cara.push('Sheet Ringkasan, Per Produk, Per Provinsi, dan RS per Kategori adalah hasil hitung pada saat diunduh. Bila Daftar RS atau Rincian Pesanan difilter, hanya baris Total di sheet itu yang ikut berubah.');
