@@ -172,12 +172,15 @@ export function installOrphan(S) {
   function syncSelUi(rows) {
     const bar = $('orphanBulkBar');
     const n = st.section === 'orphan' ? st.sel.size : 0;
-    bar.style.display = n ? 'flex' : 'none';
-    $('orphanBulkInfo').innerHTML = `<b>${st.sel.size.toLocaleString('id-ID')}</b> produk dipilih`;
+    if (bar) bar.style.display = n ? 'flex' : 'none';
+    const info = $('orphanBulkInfo');
+    if (info) info.innerHTML = `<b>${st.sel.size.toLocaleString('id-ID')}</b> produk dipilih`;
     const blocked = deleteBlockedReason();
-    const delBtn = $('orphanBulkDelete');
-    delBtn.disabled = !!blocked;
-    delBtn.title = blocked || 'Periksa lalu hapus produk terpilih (server memeriksa ulang sebelum menghapus)';
+    const delBtn = $('orphanBulkDelete'); // tidak ada di markup lama: jangan sampai merobohkan render()
+    if (delBtn) {
+      delBtn.disabled = !!blocked;
+      delBtn.title = blocked || 'Periksa lalu hapus produk terpilih (server memeriksa ulang sebelum menghapus)';
+    }
     const all = $('orphanSelAll');
     if (all && st.section === 'orphan') {
       const inView = rows.filter((r) => st.sel.has(r.kode_produk)).length;
@@ -228,17 +231,21 @@ export function installOrphan(S) {
     'inaproc_pengajuan.produk_id': 'riwayat pengajuan INAPROC', 'permintaan_item.matched_produk_id': 'riwayat Permintaan RS',
     'konversi_item.produk_id': 'riwayat konversi', 'produk_kfa.produk_id': 'data KFA', 'produk_verified.produk_id': 'status Verified INAPROC',
   };
-  function fpHtml(kode) {
+  function fpHtml(kode, cols) {
     const d = st.fp.get(kode);
-    const box = (inner) => `<tr class="orph-fp-row"><td></td><td colspan="5"><div class="orph-fp">${inner}</div></td></tr>`;
+    const box = (inner) => `<tr class="orph-fp-row"><td></td><td colspan="${Math.max(1, (cols || 6) - 1)}"><div class="orph-fp">${inner}</div></td></tr>`;
     if (!d || d.loading) return box('<span class="orph-spin"></span> Mencari lokasi di database…');
     if (d.error) return box(`<div class="orph-fp-err"><i class="ti ti-alert-triangle"></i> ${esc(d.error)}</div>`);
-    if (!d.found) return box('Produk ini sudah tidak ada di tabel <code>produk</code> (mungkin baru saja dihapus). Muat ulang data.');
+    if (!d.found) {
+      const left = (d.refs || []).map((r) => `<tr><td><code>${esc(r.tabel)}</code>.<code>${esc(r.kolom)}</code></td><td class="num">${Number(r.jumlah).toLocaleString('id-ID')}</td></tr>`).join('');
+      return box('Produk ini sudah tidak ada di tabel <code>produk</code> (mungkin baru saja dihapus). Muat ulang data.'
+        + (left ? `<div class="orph-fp-h" style="margin-top:8px"><i class="ti ti-alert-triangle"></i> Jejak kode yang masih tersisa</div><table class="orph-fp-t"><thead><tr><th>Tabel.kolom</th><th class="num">Baris</th></tr></thead><tbody>${left}</tbody></table>` : ''));
+    }
     const sets = (d.dipakai_di_set || []).length ? ` <span class="orph-note">(${esc(d.dipakai_di_set.join(', '))})</span>` : '';
     const rowsHtml = (d.refs || []).map((r) => {
       const key = `${r.tabel}.${r.kolom}`;
       const extra = key === 'produk_set_item.produk_id' ? sets : '';
-      return `<tr><td><code>${esc(r.tabel)}</code>.<code>${esc(r.kolom)}</code></td><td class="num">${Number(r.jumlah).toLocaleString('id-ID')}</td><td>${esc(FP_LABEL[key] || 'baris yang menunjuk ke produk ini')}${extra}</td></tr>`;
+      return `<tr><td><code>${esc(r.tabel)}</code>.<code>${esc(r.kolom)}</code></td><td class="num">${Number(r.jumlah).toLocaleString('id-ID')}</td><td>${esc(FP_LABEL[key] || (r.jenis === 'kode' ? 'menyimpan kode ini sebagai teks (tanpa FK, tidak ikut terhapus)' : 'baris yang menunjuk ke produk ini'))}${extra}</td></tr>`;
     }).join('');
     return box(`<div class="orph-fp-h"><i class="ti ti-database"></i> Lokasi di database</div>
       <table class="orph-fp-t"><thead><tr><th>Tabel.kolom</th><th class="num">Baris</th><th>Arti</th></tr></thead><tbody>
@@ -260,6 +267,11 @@ export function installOrphan(S) {
     }
     render();
   }
+
+  // tombol + baris rincian "Lokasi di DB" untuk tab selain "Hilang di sheet"
+  const fpBtn = (kode) => `<button class="orph-copy orph-fp-btn${st.fpOpen.has(kode) ? ' is-on' : ''}" type="button" data-ofp="${esc(kode)}" title="Lihat tabel dan kolom tempat item ini tercatat di database" aria-label="Lokasi ${esc(kode)} di database" aria-expanded="${st.fpOpen.has(kode)}"><i class="ti ti-database"></i></button>`;
+  const kodeCell = (kode) => `<td class="kode-cell orph-kode"><div class="orph-kode-row"><span>${esc(kode)}</span>${fpBtn(kode)}</div></td>`;
+  const fpRow = (kode, cols) => (st.fpOpen.has(kode) ? fpHtml(kode, cols) : '');
 
   function rOrphan(rows) {
     const trs = rows.map((r) => {
@@ -284,7 +296,7 @@ export function installOrphan(S) {
           ${notes.length ? `<div class="orph-note">${esc(notes.join(' · '))}</div>` : ''}${rename}</td>
         <td class="orph-asal-cell">${asal}</td>
         <td class="orph-when"><div>${fmtDate(r.first_missing_at)}</div><div class="orph-note">${relDay(r.first_missing_at)}</div></td>
-        <td>${status}</td></tr>${st.fpOpen.has(r.kode_produk) ? fpHtml(r.kode_produk) : ''}`;
+        <td>${status}</td></tr>${st.fpOpen.has(r.kode_produk) ? fpHtml(r.kode_produk, 6) : ''}`;
     });
     return { head: '<th class="orph-chk"><input type="checkbox" id="orphanSelAll" title="Pilih semua hasil filter (semua halaman)" aria-label="Pilih semua hasil filter"/></th><th>Kode Produk</th><th>Nama / Keterangan</th><th>Asal</th><th>Hilang sejak</th><th>Status</th>', trs, cols: 6,
       count: `${rows.length.toLocaleString('id-ID')} dari ${st.data.orphan.length.toLocaleString('id-ID')} produk aktif di DB yang tidak ditemukan di sheet`,
@@ -292,7 +304,7 @@ export function installOrphan(S) {
   }
   function rAkd(rows) {
     return { head: '<th>Kode Produk</th><th>Nama</th><th>No AKD (ada di DB, tidak di baris sheet)</th><th>Primary</th>', cols: 4,
-      trs: rows.map((r) => `<tr><td class="kode-cell">${esc(r.kode_produk)}</td><td class="orph-wrap">${esc(r.nama_produk)}</td><td>${esc(r.no_akd)}</td><td>${r.is_primary ? 'ya' : ''}</td></tr>`),
+      trs: rows.map((r) => `<tr>${kodeCell(r.kode_produk)}<td class="orph-wrap">${esc(r.nama_produk)}</td><td>${esc(r.no_akd)}</td><td>${r.is_primary ? 'ya' : ''}</td></tr>${fpRow(r.kode_produk, 4)}`),
       count: `${rows.length} relasi produk↔AKD ada di DB tapi tidak ada di baris sheet-nya`, empty: 'Semua relasi AKD di DB sama dengan sheet.' };
   }
   function rKomp(rows) {
@@ -304,12 +316,12 @@ export function installOrphan(S) {
   }
   function rTipe(rows) {
     return { head: '<th>Kode Produk</th><th>Nama</th><th>Tipe di DB</th><th>Tipe di sheet</th>', cols: 4,
-      trs: rows.map((r) => `<tr><td class="kode-cell">${esc(r.kode_produk)}</td><td class="orph-wrap">${esc(r.nama_produk)}</td><td><span class="tipe-chip">${esc(r.tipe_db)}</span></td><td><span class="tipe-chip">${esc(r.tipe_sheet)}</span></td></tr>`),
+      trs: rows.map((r) => `<tr>${kodeCell(r.kode_produk)}<td class="orph-wrap">${esc(r.nama_produk)}</td><td><span class="tipe-chip">${esc(r.tipe_db)}</span></td><td><span class="tipe-chip">${esc(r.tipe_sheet)}</span></td></tr>${fpRow(r.kode_produk, 4)}`),
       count: `${rows.length} produk bertipe beda antara DB dan sheet`, empty: 'Tipe produk di DB dan sheet sama.' };
   }
   function rNonaktif(rows) {
     return { head: '<th>Kode Produk</th><th>Nama</th><th>Tipe</th>', cols: 3,
-      trs: rows.map((r) => `<tr><td class="kode-cell">${esc(r.kode_produk)}</td><td class="orph-wrap">${esc(r.nama_produk)}</td><td><span class="tipe-chip">${esc(r.tipe)}</span></td></tr>`),
+      trs: rows.map((r) => `<tr>${kodeCell(r.kode_produk)}<td class="orph-wrap">${esc(r.nama_produk)}</td><td><span class="tipe-chip">${esc(r.tipe)}</span></td></tr>${fpRow(r.kode_produk, 3)}`),
       count: `${rows.length} produk nonaktif di DB tapi kodenya ada di sheet`, empty: 'Tidak ada produk nonaktif yang masih tercantum di sheet.' };
   }
 

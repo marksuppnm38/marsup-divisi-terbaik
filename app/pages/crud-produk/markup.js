@@ -501,7 +501,9 @@ export const CRUD_PRODUK_MARKUP = `
       </div>
     </div>
 
-    <!-- ORPHAN / DRIFT VIEW (INFORMASI SAJA, tanpa aksi tulis): arah SEBALIKNYA dari Sync dari Sheet --
+    <!-- ORPHAN / DRIFT VIEW: arah SEBALIKNYA dari Sync dari Sheet. Tab "Hilang di sheet" punya quick action
+         hapus massal (RPC orphan_bulk_delete, sql/02_orphan_bulk_delete.sql) dan "Lokasi di DB" (RPC orphan_footprint,
+         sql/03_orphan_footprint.sql); tab lain tetap hanya-baca. --
          yang ada di Supabase tapi sudah hilang/beda di Google Sheets (sheet = source of truth).
          Sumber: view v_sync_* + sync_orphan_produk, diisi pushManifest (Apps Script) ->
          edge function -> reverse_check_commit. -->
@@ -526,6 +528,7 @@ export const CRUD_PRODUK_MARKUP = `
           </div>
         </div>
         <div class="orph-filters" id="orphanFilterBar"></div>
+        <div class="orph-quick" id="orphanQuick"></div>
         <div class="vbody">
           <div id="orphanRunInfo"></div>
           <div class="orph-stats" id="orphanStats"></div>
@@ -533,7 +536,9 @@ export const CRUD_PRODUK_MARKUP = `
             <summary><i class="ti ti-info-circle"></i> Cara membaca halaman ini</summary>
             <div class="orph-info-body">
               Kebalikan tab Sync: item yang <b>masih ada di database tapi sudah tidak ada / beda di Google Sheets</b>.
-              Halaman ini <b>hanya memberi informasi</b> &mdash; tidak ada yang diubah atau dihapus otomatis.
+              Tidak ada yang dihapus otomatis. Di tab <b>Hilang di sheet</b> ada quick action hapus massal: server memeriksa ulang setiap kode
+              terhadap snapshot terbaru, menolak yang masih punya riwayat atau kemungkinan cuma di-rename, dan menyimpan cadangan sebelum menghapus.
+              Ikon <b>database</b> di samping kode menampilkan tabel dan kolom tempat item itu masih tercatat.
               Status <b>terkonfirmasi</b> berarti item hilang di 3 snapshot berturut-turut (antisipasi sheet sedang loading).
               Angka seperti <b>2/3</b> di kolom Status berarti item sudah hilang di 2 dari 3 snapshot yang dibutuhkan untuk terkonfirmasi.
             </div>
@@ -544,7 +549,8 @@ export const CRUD_PRODUK_MARKUP = `
             <span class="orph-bulk-actions">
               <button class="btn btn-sm" id="orphanBulkClear" type="button">Kosongkan pilihan</button>
               <button class="btn btn-sm" id="orphanBulkCopy" type="button"><i class="ti ti-copy"></i> Salin kode terpilih</button>
-              <button class="btn btn-sm btn-accent" id="orphanBulkCsv" type="button"><i class="ti ti-download"></i> Unduh CSV terpilih</button>
+              <button class="btn btn-sm" id="orphanBulkCsv" type="button"><i class="ti ti-download"></i> Unduh CSV terpilih</button>
+              <button class="btn btn-sm btn-danger-ghost" id="orphanBulkDelete" type="button"><i class="ti ti-trash"></i> Hapus terpilih…</button>
             </span>
           </div>
         </div>
@@ -831,6 +837,13 @@ export const CRUD_PRODUK_MARKUP = `
      ini generic 2 tombol (Batal/OK), title/pesan/label diisi dinamis lewat
      crudConfirm() di index.js. Varian .danger nge-ganti ikon jadi merah +
      tombol OK jadi btn-danger-ghost, dipakai buat semua aksi hapus permanen. -->
+<div class="confirm-overlay" id="orphDelOverlay">
+  <div class="confirm-card danger orph-del-card" id="orphDelCard" role="dialog" aria-modal="true" aria-labelledby="orphDelTitle">
+    <h3><i class="ti ti-trash"></i> <span id="orphDelTitle">Hapus produk orphan</span></h3>
+    <div id="orphDelBody"></div>
+    <div class="confirm-actions" id="orphDelActions"></div>
+  </div>
+</div>
 <div class="confirm-overlay" id="genericConfirmOverlay">
   <div class="confirm-card" id="genericConfirmCard">
     <h3><i class="ti ti-alert-triangle" id="genericConfirmIcon"></i> <span id="genericConfirmTitle">Konfirmasi</span></h3>
