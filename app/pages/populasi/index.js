@@ -100,7 +100,7 @@ const LS_PROV = 'pnm_populasi_set_provinsi';
 const LS_PAGE = 'pnm_populasi_set_page_size';
 const LS_MODE = 'pnm_populasi_mode';          // 'populasi' | 'progress' (mode terakhir dipakai)
 const PAGE_SIZES = [25, 50, 100];   // pilihan baris per halaman; halaman 1 selalu dimulai dari yang teratas
-const DEFAULT_PROV = 'Jawa Tengah';
+const DEFAULT_PROV = '';          // default: semua provinsi
 const STALE_DAYS = 7;     // lewat ini, tampilkan peringatan "data di DB tertinggal"
 
 // Kategori = kelompok dari label satuan_or_set (public.fn_kelompok_baris di populasi_v2.sql).
@@ -135,7 +135,7 @@ let reqId = 0;
 
 const state = {
   provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI',
-  kelompok: ['SET'], cari: 'produk', produk: '', pic: '', spes: [], jenis: [], mikro: false, rs: '', rmp: '', isiSet: false, dari: '', sampai: '',
+  kelompok: [], cari: 'produk', produk: '', pic: '', spes: [], jenis: [], mikro: false, rs: '', rmp: '', isiSet: false, dari: '', sampai: '',
   sort: { k: 'total', dir: 'desc' },
   page: 1,                          // halaman tabel RS (mulai 1); kembali ke 1 saat data/filter/urutan berubah
   pageSize: (() => { const v = Number(lsGet(LS_PAGE)); return PAGE_SIZES.includes(v) ? v : 50; })(),
@@ -271,7 +271,22 @@ async function ambilOpsiPic(cakupan) {
   }
 }
 
+// get_populasi_v3 (populasi_v3_satu_panggilan.sql) = get_populasi_v2 + pemisahan pcs/unit dalam SATU panggilan
+// (jalur lama: v2 + v2_unit = 3x evaluasi populasi_grup_v3 per muat). null = belum dicoba, false = belum terpasang.
+let v3ok = null;
 async function ambilPopulasi(params) {
+  if (v3ok !== false) {
+    try {
+      const [res3, ops3] = await Promise.all([rpc('get_populasi_v3', params), ambilOpsiPic(params.p_cakupan)]);
+      v3ok = true;
+      const o3 = res3 || {};
+      o3.opsi_pic = Array.isArray(ops3) ? ops3 : null;
+      return o3;
+    } catch (e) {
+      if (e && (e.code === 'PGRST202' || e.status === 404)) v3ok = false;   // belum terpasang: pakai jalur lama
+      else throw e;
+    }
+  }
   const [res, sp, ops] = await Promise.all([
     rpc('get_populasi_v2', params),
     rpc('get_populasi_v2_unit', params).catch((e) => {
@@ -2242,7 +2257,7 @@ function syncControls() {
   sel.value = state.provinsi;
   const ssl = $('ps-pic');
   if (ssl) ssl.value = state.pic;
-  syncCari();
+  syncCari(true);
   $('ps-isi-set').checked = state.isiSet;
   $('ps-isi-wrap').hidden = !state.produk.trim();
   $('ps-dari').value = state.dari;
@@ -2256,17 +2271,22 @@ function syncControls() {
 
 // Satu kotak cari, tiga cakupan (produk, rs, rmp). Isi tiap cakupan disimpan di state-nya sendiri (produk / rs);
 // kotak hanya menampilkan yang sedang dipilih. Titik pada tombol = cakupan lain masih punya isi.
+// Pencarian BARU dijalankan saat Enter (atau saat kotak dikosongkan lewat tombol x). Ketikan hanya mengisi
+// draft; state (yang dipakai filterParams) tidak berubah sebelum Enter, jadi tidak ada panggilan ke database per ketikan.
 const CARI = {
-  produk: { ph: 'mis. drill, centrifuge, obgyn, tubectomy', aria: 'Cari nama set atau produk' },
-  rs: { ph: 'mis. soetrasno atau RMP 25-054', aria: 'Cari rumah sakit atau No. RMP' },
-  rmp: { ph: 'mis. 25-054 (beberapa nomor: pisahkan dengan koma)', aria: 'Cari No. RMP' },
+  produk: { ph: 'mis. drill, centrifuge, obgyn, tubectomy · tekan Enter', aria: 'Cari nama set atau produk, tekan Enter untuk mencari' },
+  rs: { ph: 'mis. soetrasno · tekan Enter', aria: 'Cari rumah sakit, tekan Enter untuk mencari' },
+  rmp: { ph: 'mis. 25-054 (beberapa nomor: pisahkan koma) · tekan Enter', aria: 'Cari No. RMP, tekan Enter untuk mencari' },
 };
 const scopeOf = (v) => (v === 'rs' || v === 'rmp' ? v : 'produk');
-function syncCari() {
+const cariDraft = { produk: '', rs: '', rmp: '' };
+function resetCariDraft() { cariDraft.produk = state.produk; cariDraft.rs = state.rs; cariDraft.rmp = state.rmp; }
+function syncCari(dariState) {
   const input = $('ps-cari');
   if (!input) return;
+  if (dariState) resetCariDraft();      // state diubah dari luar (lepas filter, dst): draft ikut
   const sc = scopeOf(state.cari);
-  if (input.value !== state[sc]) input.value = state[sc];
+  if (input.value !== cariDraft[sc]) input.value = cariDraft[sc];
   input.placeholder = CARI[sc].ph;
   input.setAttribute('aria-label', CARI[sc].aria);
   document.querySelectorAll('[data-action="ps-cari-scope"]').forEach((b) => {
@@ -2275,6 +2295,16 @@ function syncCari() {
     b.setAttribute('aria-pressed', String(on));
     b.classList.toggle('has', !on && !!state[b.dataset.v].trim());
   });
+}
+// Terapkan isi kotak cari ke filter lalu muat data. Enter berulang pada isi yang sama = coba lagi.
+function commitCari() {
+  const sc = scopeOf(state.cari);
+  const v = cariDraft[sc];
+  state[sc] = v;
+  if (sc === 'produk') $('ps-isi-wrap').hidden = !v.trim();
+  syncCari();
+  clearTimeout(searchTimer);
+  if (sc === 'rmp') terapkanRmp(); else load();
 }
 
 // Dropdown Urutkan mengikuti state.sort (header kolom tetap bisa diklik juga).
@@ -2297,7 +2327,7 @@ function periodeBulan(offset) {
 function clearFilter(k) {
   if (k === 'rmp') {                 // hanya mengubah tampilan; data server tidak perlu dimuat ulang
     state.rmp = '';
-    syncCari();
+    syncCari(true);
     renderActive();
     if (data) renderTable();
     return;
@@ -2325,14 +2355,15 @@ export async function mount(container) {
   await Promise.all([ensureStyle(), ensureVendorScripts()]);
   container.innerHTML = POPULASI_MARKUP;
 
-  // Provinsi terakhir yang dipilih diingat; belum pernah memilih -> Jawa Tengah.
-  const saved = lsGet(LS_PROV);
+  // Tiap halaman dibuka: semua provinsi dan semua kategori (tidak ada filter bawaan).
   Object.assign(state, {
-    provinsi: saved === null ? DEFAULT_PROV : saved,
-    status: 'DELIVERED', cakupan: 'POPULASI', kelompok: ['SET'],
+    provinsi: DEFAULT_PROV,
+    status: 'DELIVERED', cakupan: 'POPULASI', kelompok: [],
     cari: 'produk', produk: '', pic: '', spes: [], jenis: [], mikro: false, rs: '', rmp: '', isiSet: false, dari: '', sampai: '',
     sort: { k: 'total', dir: 'desc' }, tinjau: '', mode: 'populasi',
   });
+  resetCariDraft();
+  v3ok = null;
   data = null; rows = []; unmapped = [];
   picOpsi.clear();
   progress = createProgress({
@@ -2490,18 +2521,23 @@ export async function mount(container) {
       return;
     }
     if (id !== 'ps-cari') return;
-    const v = e.target.value;
-    // state langsung diperbarui, hanya muat-ulang yang ditunda.
-    const sc = state.cari;             // cakupan saat mengetik (bukan saat timer berbunyi)
-    if (sc === 'rs') state.rs = v;
-    else if (sc === 'rmp') state.rmp = v;
-    else { state.produk = v; $('ps-isi-wrap').hidden = !v.trim(); }
-    syncCari();
-    clearTimeout(searchTimer);
-    // RMP disaring di klien (tanpa muat ulang dari server); produk dan RS tetap lewat load().
-    searchTimer = setTimeout(() => (sc === 'rmp' ? terapkanRmp() : load()), 300);
+    // Hanya simpan draft. Pencarian dijalankan oleh Enter (onKeyDown) atau tombol x (onSearch).
+    cariDraft[scopeOf(state.cari)] = e.target.value;
   }
-  handlers = { click: onClick, change: onChange, input: onInput };
+  function onKeyDown(e) {
+    if (e.target.id !== 'ps-cari' || e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    commitCari();
+  }
+  // Tombol x bawaan input type=search: mengosongkan kotak = lepas pencarian, langsung diterapkan.
+  function onSearch(e) {
+    if (e.target.id !== 'ps-cari' || e.target.value !== '') return;
+    const sc = scopeOf(state.cari);
+    if (state[sc] === '') return;
+    cariDraft[sc] = '';
+    commitCari();
+  }
+  handlers = { click: onClick, change: onChange, input: onInput, keydown: onKeyDown, search: onSearch };
   Object.entries(handlers).forEach(([type, fn]) => container.addEventListener(type, fn));
 
   // nilai awal kontrol (setelah markup terpasang)
