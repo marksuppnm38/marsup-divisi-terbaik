@@ -70,6 +70,15 @@ export const POPULASI_MARKUP = `
         <select class="filter-select" id="ps-pic"><option value="">Semua PIC order</option></select>
       </label>
 
+      <label class="ps-field">
+        <span class="ps-lbl">Distributor</span>
+        <select class="filter-select" id="ps-distributor">
+          <option value="">Semua distributor</option>
+          <option value="SAMAYA">Samaya</option>
+          <option value="NON_SAMAYA">Non-Samaya</option>
+        </select>
+      </label>
+
       <div class="ps-field">
         <span class="ps-lbl" id="ps-lbl-status">Status pesanan</span>
         <div class="ps-seg" role="group" aria-labelledby="ps-lbl-status">

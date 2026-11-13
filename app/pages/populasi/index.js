@@ -135,7 +135,7 @@ let reqId = 0;
 
 const state = {
   provinsi: DEFAULT_PROV, status: 'DELIVERED', cakupan: 'POPULASI',
-  kelompok: [], cari: 'produk', produk: '', pic: '', spes: [], jenis: [], mikro: false, rs: '', rmp: '', isiSet: false, dari: '', sampai: '',
+  kelompok: [], cari: 'produk', produk: '', pic: '', distributor: '', spes: [], jenis: [], mikro: false, rs: '', rmp: '', isiSet: false, dari: '', sampai: '',
   sort: { k: 'total', dir: 'desc' },
   page: 1,                          // halaman tabel RS (mulai 1); kembali ke 1 saat data/filter/urutan berubah
   pageSize: (() => { const v = Number(lsGet(LS_PAGE)); return PAGE_SIZES.includes(v) ? v : 50; })(),
@@ -283,7 +283,7 @@ async function ambilPopulasi(params) {
       o3.opsi_pic = Array.isArray(ops3) ? ops3 : null;
       return o3;
     } catch (e) {
-      if (e && (e.code === 'PGRST202' || e.status === 404)) v3ok = false;   // belum terpasang: pakai jalur lama
+      if (e && (e.code === 'PGRST202' || e.status === 404) && !params.p_distributor) v3ok = false;   // belum terpasang: pakai jalur lama (kecuali yang kurang hanya p_distributor)
       else throw e;
     }
   }
@@ -390,6 +390,7 @@ function filterParams() {
   };
   const at = atributParam();
   if (at) p.p_atribut = at;        // hanya dikirim bila dipakai
+  if (state.distributor) p.p_distributor = state.distributor;   // hanya dikirim bila dipakai (RPC butuh patch SQL p_distributor)
   if (state.pic) p.p_pic_order = state.pic;   // idem: RPC lama tanpa p_pic_order tetap jalan selama filter ini tidak dipakai
   return p;
 }
@@ -454,7 +455,9 @@ async function load() {
     if (my !== reqId || String(e.message).startsWith('unauthorized')) return;
     const missing = e.code === 'PGRST202' || e.status === 404;
     let msg = missing
-      ? (state.pic
+      ? (state.distributor
+        ? 'RPC get_populasi_v3 belum mendukung filter distributor. Jalankan patch SQL p_distributor di Supabase SQL Editor.'
+        : state.pic
         ? 'RPC get_populasi_v2 belum mendukung filter PIC order. Jalankan patch SQL filter PIC order di Supabase SQL Editor.'
         : 'RPC get_populasi_v2 belum terpasang. Jalankan populasi_v2.sql di Supabase SQL Editor.')
       : (isStmtTimeout(e)
@@ -637,11 +640,13 @@ function renderAtribut() {
 
 const rumpunNama = (r) => (r === 'LAINNYA' ? 'Belum dikelompokkan' : String(r || '').replace(/\w\S*/g, (w) => w.charAt(0) + w.slice(1).toLowerCase()).replace(/\bTht\b/, 'THT').replace(/\bObgyn\b/, 'OBGYN'));
 
+const distributorNama = (v) => (v === 'SAMAYA' ? 'Samaya' : v === 'NON_SAMAYA' ? 'Non-Samaya' : '');
 // Filter yang sedang aktif, masing-masing bisa dilepas (atau lepas semua sekaligus).
 function renderActive() {
   const el = $('ps-active');
   if (!el) return;
   const a = [];
+  if (state.distributor) a.push({ k: 'distributor', t: `Distributor: ${distributorNama(state.distributor)}` });
   if (state.pic) a.push({ k: 'pic', t: `PIC order: ${state.pic}` });
   if (state.spes.length) a.push({ k: 'spes', t: `Spesialisasi: ${state.spes.map(spesNama).join(', ')}` });
   if (state.jenis.length) a.push({ k: 'jenis', t: `Jenis: ${state.jenis.map(jenisNama).join(', ')}` });
@@ -798,6 +803,7 @@ function emptyHtml() {
   if (p && !state.isiSet) act.push(b('Cari juga di isi set', 'data-action="ps-isi-on"'));
   if (p && state.kelompok.length) act.push(b('Cari di semua kategori', 'data-action="ps-cat" data-k=""'));
   if (state.pic) act.push(b('Lepas filter PIC order', 'data-action="ps-clear" data-k="pic"'));
+  if (state.distributor) act.push(b(`Lepas filter distributor (${distributorNama(state.distributor)})`, 'data-action="ps-clear" data-k="distributor"'));
   if (atributParam()) act.push(b('Lepas filter spesialisasi dan jenis', 'data-action="ps-clear" data-k="atribut"'));
   if (state.rs.trim()) act.push(b('Lepas pencarian RS', 'data-action="ps-clear" data-k="rs"'));
   if (state.dari || state.sampai) act.push(b('Lepas periode', 'data-action="ps-clear" data-k="periode"'));
@@ -1019,7 +1025,7 @@ function terapkanRmp() {
 
 function rmpEmptyHtml() {
   const b = (label, attrs) => `<button type="button" class="btn btn-ghost" ${attrs}>${esc(label)}</button>`;
-  const sempit = state.kelompok.length || state.provinsi || state.status !== 'ALL' || atributParam() ||
+  const sempit = state.kelompok.length || state.provinsi || state.status !== 'ALL' || atributParam() || state.distributor || state.pic ||
     state.produk.trim() || state.rs.trim() || state.dari || state.sampai;
   const act = [];
   if (sempit) act.push(b('Cari di semua provinsi, kategori, dan status', 'data-action="ps-rmp-lebar"'));
@@ -1967,6 +1973,7 @@ function buildText() {
   lines.push(`Populasi ${kategoriText()} — ${state.provinsi || 'Semua provinsi'}`);
   let sub = state.status === 'ALL' ? 'Terkirim + dalam proses' : 'Terkirim';
   if (state.pic) sub += `, PIC order ${state.pic}`;
+  if (state.distributor) sub += `, distributor ${distributorNama(state.distributor)}`;
   if (state.produk.trim()) sub += `, produk “${state.produk.trim()}”${state.isiSet ? ' (termasuk isi set)' : ''}`;
   if (state.dari || state.sampai) sub += `, ${periodeText()}`;
   sub += `, data per ${fmtDate(data.data_per)}`;
@@ -2164,7 +2171,7 @@ function namaFile(presetId) {
   if (state.kelompok.length > 3) kat = 'Beberapa kategori';
   kat = bersihNama(kat).slice(0, 60);
   const suf = presetId === 'internal' ? ' - INTERNAL' : '';
-  const sl = state.pic ? ` - PIC ${bersihNama(state.pic).slice(0, 30)}` : '';
+  const sl = (state.distributor ? ` - ${distributorNama(state.distributor)}` : '') + (state.pic ? ` - PIC ${bersihNama(state.pic).slice(0, 30)}` : '');
   return `Populasi ${kat} - ${bersihNama(state.provinsi || 'Semua provinsi')}${sl} - ${localISODate()}${suf}.xlsx`;
 }
 
@@ -2257,6 +2264,8 @@ function syncControls() {
   sel.value = state.provinsi;
   const ssl = $('ps-pic');
   if (ssl) ssl.value = state.pic;
+  const sdist = $('ps-distributor');
+  if (sdist) sdist.value = state.distributor;
   syncCari(true);
   $('ps-isi-set').checked = state.isiSet;
   $('ps-isi-wrap').hidden = !state.produk.trim();
@@ -2333,11 +2342,12 @@ function clearFilter(k) {
     return;
   }
   if (k === 'semua') {
-    state.produk = ''; state.pic = ''; state.spes = []; state.jenis = []; state.mikro = false; state.isiSet = false; state.rs = ''; state.rmp = '';
+    state.produk = ''; state.pic = ''; state.distributor = ''; state.spes = []; state.jenis = []; state.mikro = false; state.isiSet = false; state.rs = ''; state.rmp = '';
     state.dari = ''; state.sampai = ''; state.cakupan = 'POPULASI';
   }
   else if (k === 'produk') { state.produk = ''; state.isiSet = false; }
   else if (k === 'pic') state.pic = '';
+  else if (k === 'distributor') state.distributor = '';
   else if (k === 'atribut') { state.spes = []; state.jenis = []; state.mikro = false; }
   else if (k === 'spes') state.spes = [];
   else if (k === 'jenis') state.jenis = [];
@@ -2359,7 +2369,7 @@ export async function mount(container) {
   Object.assign(state, {
     provinsi: DEFAULT_PROV,
     status: 'DELIVERED', cakupan: 'POPULASI', kelompok: [],
-    cari: 'produk', produk: '', pic: '', spes: [], jenis: [], mikro: false, rs: '', rmp: '', isiSet: false, dari: '', sampai: '',
+    cari: 'produk', produk: '', pic: '', distributor: '', spes: [], jenis: [], mikro: false, rs: '', rmp: '', isiSet: false, dari: '', sampai: '',
     sort: { k: 'total', dir: 'desc' }, tinjau: '', mode: 'populasi',
   });
   resetCariDraft();
@@ -2432,7 +2442,7 @@ export async function mount(container) {
     'ps-isi-on': () => { state.isiSet = true; syncControls(); load(); },
     'ps-prov-all': () => { state.provinsi = ''; lsSet(LS_PROV, ''); syncControls(); load(); },
     'ps-rmp-lebar': () => {          // dari hasil RMP kosong: longgarkan semua filter selain pencarian RMP
-      Object.assign(state, { kelompok: [], provinsi: '', status: 'ALL', produk: '', pic: '', rs: '', isiSet: false, spes: [], jenis: [], mikro: false, dari: '', sampai: '' });
+      Object.assign(state, { kelompok: [], provinsi: '', status: 'ALL', produk: '', pic: '', distributor: '', rs: '', isiSet: false, spes: [], jenis: [], mikro: false, dari: '', sampai: '' });
       lsSet(LS_PROV, '');
       syncControls();
       load();
@@ -2462,6 +2472,7 @@ export async function mount(container) {
       renderTable();
     },
     'ps-pic': (t) => { state.pic = t.value; load(); },
+    'ps-distributor': (t) => { state.distributor = (t.value === 'SAMAYA' || t.value === 'NON_SAMAYA') ? t.value : ''; load(); },
     'ps-cakupan': (t) => { state.cakupan = t.value === 'SEMUA' ? 'SEMUA' : 'POPULASI'; load(); },
     'ps-dari': (t) => { state.dari = t.value; load(); },
     'ps-sampai': (t) => { state.sampai = t.value; load(); },
