@@ -12,7 +12,13 @@
   #app-root .pw-topbar { height: 48px; padding: 0 12px; }
   #app-root .db-fresh { font-size: 11.5px; text-align: right; }
 
+  /* clip (bukan hidden) supaya chip sticky tetap jalan; mencegah satu elemen lebar menggeser seluruh halaman */
+  .pw-content, #app-root, #app-root main { max-width: 100%; overflow-x: clip; }
+  #app-root .pw-topbar-crumb, #app-root .pw-topbar-actions { min-width: 0; }
+  #app-root .db-fresh { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52vw; }
   #app-root main { padding: 16px 14px calc(32px + env(safe-area-inset-bottom, 0px)); }
+  .db-head { min-width: 0; }
+  .db-date { white-space: normal; }
   .db-head { margin-bottom: 12px; }
   .db-title { font-size: 20px; }
 
@@ -51,10 +57,13 @@
   .seg button { flex: 1 0 auto; min-height: 40px; padding: 0 14px; font-size: 13px; white-space: nowrap; }
   .out-actions .db-btn { flex: 1 1 100%; justify-content: center; }
 
-  /* ── Booking tracker ── */
-  .bk-controls { gap: 10px; }
-  .bk-search { flex: 1 1 100%; min-width: 0; }
+  /* ── Booking tracker: filter jadi grid 2 kolom yang rapat, bukan tumpukan 1 kontrol per baris ── */
+  .bk-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: stretch; }
+  .bk-controls > select, .bk-controls > input[type="date"] { width: 100%; min-width: 0; padding-right: 8px; text-overflow: ellipsis; }
+  .bk-search, #bk-field, .bk-check, .bk-controls > .db-textbtn { grid-column: 1 / -1; }
+  .bk-sd { display: none; }
   .bk-check { min-height: 44px; font-size: 14px; }
+  .bk-controls > .db-textbtn { justify-self: start; }
   .bk-head { min-height: 56px; padding: 10px 0; }
   .bk-body { padding-left: 0; }
   .bk-meta { grid-template-columns: 1fr 1fr; }
@@ -69,10 +78,11 @@
 
   /* ── Tujuh hari terakhir: kolom punya lebar minimum, grafik digeser bila nilai Rp panjang ── */
   .tr-totals { gap: 24px; flex-wrap: wrap; }
-  .tr-cols { grid-template-columns: repeat(7, minmax(64px, 1fr)); gap: 6px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+  .tr-cols { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
   .tr-val { font-size: 11px; }
   .tr-track { height: 112px; }
   .tr-link { min-height: 44px; }
+  .tr-cols.is-long .tr-val { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; align-self: center; }
 
   /* ── Daftar berperingkat, populasi, kebutuhan: baris minimal 48px ── */
   .rk-row, .pv-btn, .wt-item, .sku-btn { min-height: 48px; }

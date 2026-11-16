@@ -56,5 +56,16 @@ export function installDashboardMobile(container) {
   }
   setActive(sections[0]?.sec.id);
 
-  return () => { io?.disconnect(); nav.remove(); };
+  // Grafik 7 hari: bila label nilai panjang (mis. "Rp 14.093.792.600"), kolom 1/7 lebar layar tak muat.
+  // Tandai supaya CSS memutar labelnya. Dirender ulang tiap data/metrik berubah, jadi diamati.
+  const trend = main.querySelector('#db-trend');
+  const markLong = () => {
+    const cols = trend?.querySelector('.tr-cols');
+    if (cols) cols.classList.toggle('is-long', [...cols.querySelectorAll('.tr-val')].some(v => v.textContent.trim().length > 6));
+  };
+  const mo = trend ? new MutationObserver(markLong) : null;
+  mo?.observe(trend, { childList: true, subtree: true, characterData: true });
+  markLong();
+
+  return () => { io?.disconnect(); mo?.disconnect(); nav.remove(); };
 }
