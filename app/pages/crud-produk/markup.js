@@ -730,7 +730,7 @@ export const CRUD_PRODUK_MARKUP = `
           </div>
         </section>
 
-        <section class="fs">
+        <section class="fs fs-panel">
           <div class="fs-head">
             <h4>Master produk</h4>
             <span class="fs-note">Data vendor, dicari lewat kode asli</span>
@@ -744,8 +744,8 @@ export const CRUD_PRODUK_MARKUP = `
             <div id="masterLookupMsg"></div>
           </div>
           <div id="masterFields" style="display:none;">
-            <div class="grid2">
-              <div class="f full"><label for="m_deskripsi_vendor">Deskripsi vendor</label><input type="text" id="m_deskripsi_vendor"/></div>
+            <div class="grid2 grid-master">
+              <div class="f"><label for="m_deskripsi_vendor">Deskripsi vendor</label><input type="text" id="m_deskripsi_vendor"/></div>
               <div class="f"><label for="m_family">Family</label><input type="text" id="m_family"/></div>
             </div>
           </div>
@@ -753,7 +753,7 @@ export const CRUD_PRODUK_MARKUP = `
 
         <section class="fs">
           <div class="fs-head"><h4>Fisik &amp; spesifikasi</h4></div>
-          <div class="grid2">
+          <div class="grid2 grid-fisik">
             <div class="f"><label for="f_berat_gram">Berat (gram)</label><input type="number" step="any" id="f_berat_gram" inputmode="decimal"/></div>
             <div class="f full"><label for="f_spesifikasi">Spesifikasi</label><textarea id="f_spesifikasi"></textarea></div>
           </div>

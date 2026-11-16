@@ -574,7 +574,14 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .prod-modal .modal-actions{flex-shrink:0;margin:0;padding:14px 28px;border-top:1px solid var(--border);background:var(--surface)}
 
 /* bagian form */
-.prod-modal .fs{margin:0 0 26px}
+.prod-modal .fs{margin:0;padding:22px 0}
+/* Garis tipis memisahkan bagian-bagian di tiap tab; bagian pertama tidak perlu. */
+.prod-modal .prod-tab-panel .fs{border-top:1px solid var(--border)}
+.prod-modal .prod-tab-panel > .fs:first-child{border-top:0;padding-top:0}
+/* Master produk: satu panel berlatar beda, karena isinya satu kesatuan (kode asli -> hasil cek -> data vendor). */
+.prod-modal .prod-tab-panel .fs.fs-panel{margin:4px 0;padding:16px 18px 18px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-2)}
+.prod-modal .fs-panel + .fs{border-top:0}
+.prod-modal .fs-panel .f input{background:var(--surface)}
 .prod-modal .fs-head{display:flex;align-items:center;gap:10px;margin:0 0 12px;min-height:26px}
 .prod-modal .fs-head h4{margin:0;font-size:13.5px;font-weight:650;color:var(--text)}
 .prod-modal .fs-note{font-size:12px;color:var(--text-muted)}
@@ -584,7 +591,11 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .prod-modal .fs-link:hover{text-decoration:underline}
 
 /* kolom isian */
-.prod-modal .grid2{gap:14px}
+.prod-modal .grid2{gap:16px 14px}
+/* Deskripsi vendor lebih lebar dari Family; Berat cukup sempit karena isinya angka pendek. */
+.prod-modal .grid2.grid-master{grid-template-columns:minmax(0,2fr) minmax(0,1fr);margin-top:16px}
+.prod-modal .grid2.grid-fisik{grid-template-columns:minmax(0,180px) minmax(0,1fr)}
+.prod-modal .grid2.grid-fisik > .f.full{grid-column:1 / -1}
 .prod-modal .f{gap:5px}
 .prod-modal .f label{font-size:12px;font-weight:500;color:var(--text-secondary)}
 .prod-modal .f input,.prod-modal .f select,.prod-modal .f textarea{padding:9px 11px;border-radius:var(--radius);transition:border-color .15s var(--ease),box-shadow .15s var(--ease)}
@@ -593,7 +604,8 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .prod-modal #f_kode_produk,.prod-modal #f_kode_asli,.prod-modal #f_link_v6{font-family:var(--font-mono);font-size:12.5px}
 .prod-modal .f-row{align-items:stretch}
 .prod-modal .f-row .btn{padding:0 12px}
-.prod-modal .lookup-msg{margin-top:2px}
+.prod-modal .lookup-msg{display:flex;align-items:center;gap:6px;margin-top:8px;line-height:1.4}
+.prod-modal .f textarea{resize:vertical}
 
 /* nilai read-only: teks biasa, bukan kotak isian yang tidak bisa diisi */
 .prod-modal .ro-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 20px;margin:0}
@@ -620,6 +632,7 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
   .prod-modal{max-width:none;max-height:none;height:100%;border-radius:0}
   .prod-modal .modal-head,.prod-modal .prod-tabs,.prod-tabs-hint,.prod-body,.prod-modal .modal-actions{padding-left:18px;padding-right:18px}
   .prod-modal .ro-grid{grid-template-columns:1fr}
+  .prod-modal .grid2.grid-master,.prod-modal .grid2.grid-fisik{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){
   .prod-modal .f input,.prod-modal .f select,.prod-modal .f textarea,#appWrap .prod-card{transition:none}
