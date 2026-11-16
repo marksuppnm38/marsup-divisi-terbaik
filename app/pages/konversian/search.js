@@ -599,7 +599,8 @@ function renderPagination(totalItems) {
       if (!p || p < 1 || p > totalPages || p === S.currentPage) return;
       S.currentPage = p;
       renderResults(S.lastResults);
-      S.panelBodyCari.scrollTop = 0;
+      const sc = S.panelBodyCari.querySelector('.pane-scroll');
+      if (sc) sc.scrollTop = 0;
     });
   });
 }

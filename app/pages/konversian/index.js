@@ -3057,13 +3057,13 @@ function switchSubTab(tab) {
   S.subtabConverter.classList.toggle('active', tab === 'converter');
   S.subtabSetcari.classList.toggle('active', tab === 'setcari');
   S.subtabDictionary.classList.toggle('active', tab === 'dictionary');
-  S.panelBodyCari.style.display = tab === 'cari' ? 'block' : 'none';
-  S.panelBodySesi.style.display = tab === 'sesi' ? 'block' : 'none';
-  S.panelBodyRiwayat.style.display = tab === 'riwayat' ? 'block' : 'none';
+  S.panelBodyCari.style.display = tab === 'cari' ? 'flex' : 'none'; // flex: .pane-scroll (hasil) scroll sendiri, pagination menempel di dasar; juga bikin #hint/#empty benar-benar di tengah
+  S.panelBodySesi.style.display = tab === 'sesi' ? 'flex' : 'none'; // flex: .pane-top diam, .pane-scroll yang scroll
+  S.panelBodyRiwayat.style.display = tab === 'riwayat' ? 'flex' : 'none'; // flex: filter diam di atas, daftar + pager scroll
   S.panelBodyProject.style.display = tab === 'project' ? 'block' : 'none';
-  S.panelBodyConverter.style.display = tab === 'converter' ? 'block' : 'none';
-  S.panelBodySetcari.style.display = tab === 'setcari' ? 'block' : 'none';
-  S.panelBodyDictionary.style.display = tab === 'dictionary' ? 'block' : 'none';
+  S.panelBodyConverter.style.display = tab === 'converter' ? 'flex' : 'none'; // flex: .conv-scroll (input+hasil) scroll sendiri, .conv-actions menempel di dasar
+  S.panelBodySetcari.style.display = tab === 'setcari' ? 'flex' : 'none'; // flex: .setcari-top diam, .setcari-scroll yang scroll
+  S.panelBodyDictionary.style.display = tab === 'dictionary' ? 'flex' : 'none'; // flex: .dict-scroll scroll sendiri, pagination menempel di dasar
   S.cariControls.style.display = tab === 'cari' ? 'block' : 'none';
   // Keeps the shared .pw-topbar's breadcrumb in sync with whatever's
   // actually on screen, instead of it permanently reading "Conversion
@@ -5206,7 +5206,7 @@ function updateConvSummary() {
     : '';
   const retryHint = nErr ? `<span class="conv-tally-stok">Klik "Ulangi yang error" untuk mencoba lagi baris yang gagal dicek.</span>` : '';
   convStatus.innerHTML = `<div class="conv-tally">${tally}${stokSummary}${retryHint}</div>`;
-  convActions.style.display = rows.length ? 'block' : 'none'; // Copy Tabel berguna juga kalau sebagian/semua tidak ketemu (baris tetap sejajar input)
+  convActions.style.display = rows.length ? 'flex' : 'none'; // Copy Tabel berguna juga kalau sebagian/semua tidak ketemu (baris tetap sejajar input)
   btnConvRetryErr.style.display = nErr ? 'inline-flex' : 'none';
 }
 S.updateConvSummary = updateConvSummary;

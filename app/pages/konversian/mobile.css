@@ -11,6 +11,7 @@
 
 @media (max-width: 640px) {
   :root { --kb-bar-h: 64px; }
+  #app-root { --pane-inset: 12px; }
 
   #app-root {
     height: 100dvh !important;
@@ -37,7 +38,7 @@
   #app-root .workspace { min-height: 0; }
   #app-root .panel-search, #app-root .panel-clip { min-height: 0; }
   #app-root .panel-body, #app-root .clip-body { padding: 12px 12px calc(16px + env(safe-area-inset-bottom, 0px)); -webkit-overflow-scrolling: touch; }
-  #app-root .panel-header { padding: 10px 12px 8px; }
+  #app-root .panel-header { padding: 10px var(--pane-inset) 8px; }
   #app-root .panel-collapse-btn, #app-root .panel-search-rail { display: none !important; }
 
   /* ---- Input: 16px supaya Brave/Chrome Android tidak zoom saat fokus ---- */
@@ -63,15 +64,18 @@
   #app-root .conv-input { min-height: 160px; font-size: 16px; }
   #app-root .conv-run-row { flex-direction: column; align-items: stretch; gap: 8px; }
   #app-root .conv-run-row > * { width: 100%; justify-content: center; }
-  #app-root .conv-actions {
-    position: sticky; bottom: 0; z-index: 3; margin: 0 -12px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-    background: var(--surface); border-top: 1px solid var(--border); flex-direction: column; gap: 8px;
-  }
-  #app-root .conv-actions-group { flex-wrap: wrap; gap: 8px; }
-  #app-root .conv-actions-group > * { flex: 1 1 140px; justify-content: center; }
-  #app-root .conv-actions-note { flex: 1 1 100%; text-align: center; }
+  #app-root .conv-actions { flex-direction: column; align-items: stretch; gap: 8px; }
+  #app-root .conv-actions > .pr-add-clip-btn { width: 100%; justify-content: center; }
+  #app-root .conv-actions-copy { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #app-root .conv-actions-copy .conv-select { grid-column: 1 / -1; width: 100%; }
+  #app-root .conv-actions-copy .toggle-btn { justify-content: center; }
+  #app-root .conv-actions-note { flex: 0 0 auto; text-align: center; margin-top: 0; }
 
   /* ---- Cari SET / Riwayat / Dictionary / Project ---- */
+  #app-root .dict-toolbar { position: static; }
+  #app-root #panel-body-riwayat { overflow-y: auto; }
+  #app-root #panel-body-riwayat .pane-top { border-bottom: 0; }
+  #app-root #panel-body-riwayat .pane-scroll { flex: 0 0 auto; overflow: visible; }
   #app-root .setcari-bar { flex-direction: column; align-items: stretch; gap: 8px; }
   #app-root .setcari-seg { display: flex; gap: 8px; }
   #app-root .setcari-seg .toggle-btn { flex: 1; justify-content: center; }
@@ -80,7 +84,7 @@
   #app-root .riwayat-scope { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
   #app-root .riwayat-scope-btn { min-height: 44px; flex: 0 0 auto; }
   #app-root .dict-stats-row { overflow-x: auto; scrollbar-width: none; }
-  #app-root .dict-table-wrap, #app-root .conv-results { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #app-root .dict-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   #app-root .prj-trx-fields { flex-direction: column; align-items: stretch; }
   #app-root .prj-harga { width: 100%; height: 44px; font-size: 16px; }
 
