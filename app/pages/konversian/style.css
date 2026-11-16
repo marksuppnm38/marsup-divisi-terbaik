@@ -32,13 +32,13 @@
    .pw-topbar above it (the design spec's 48-52px shared row-height target) --
    so this module is two stacked 52px rows, not one row of mismatched
    height sitting next to the shared topbar. */
-/* Topbar + toolbar dibaca sebagai satu header: garis bawah topbar dihilangkan di modul ini,
-   sehingga hanya ada satu pemisah (di bawah toolbar) sebelum kolom pencarian, bukan dua garis
-   bertumpuk. Garis toolbar juga dulu 0.5px, yang dirender tidak rata di layar ber-DPI pecahan. */
-#app-root .pw-topbar{border-bottom-color:transparent}
+/* Satu-satunya garis pemisah header adalah garis bawah .pw-topbar (52px, 0.5px) -- itu sama
+   dengan garis bawah brand sidebar, jadi keduanya menyambung lurus di seam sidebar|konten,
+   seperti di modul lain. Toolbar di bawahnya tidak punya garis sendiri: dulu garisnya jatuh di
+   y=104px, tidak sejajar dengan garis logo PNM (y=52px), dan menempel tepat di atas searchbar. */
 #app-root .konv-toolbar{
   background:var(--surface);
-  border-bottom:1px solid var(--border);
+  border-bottom:none;
   padding:10px 24px;
   display:flex;
   align-items:center;
@@ -814,7 +814,7 @@
    RIWAYAT — compact filter toolbar (see markup.js's comment on the
    panel-body-riwayat block for what this replaces: a 3-row stack of
    one-off inline-styled controls). Search grows to fill the row,
-   the two selects + refresh button stay their natural width, everything
+   the two selects stay their natural width, everything
    sits on one 32px-control-height row like the rest of the app's
    toolbars (.sesi-toolbar, .dict-toolbar).
    ============================================================ */
@@ -848,7 +848,7 @@
   width:132px;
 }
 /* Scope note demoted to a plain caption line under the toolbar instead of
-   sharing a row with the refresh button -- it's context, not a control,
+   sharing a row with the filters -- it's context, not a control,
    so it no longer competes for the same visual weight as the actions
    above it. */
 #app-root .riwayat-scope-note{

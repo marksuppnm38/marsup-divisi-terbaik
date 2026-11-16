@@ -201,7 +201,6 @@ export const KONVERSIAN_MARKUP = `
           <option value="bulanini">Bulan Ini</option>
           <option value="bulanlalu">Bulan Lalu</option>
         </select>
-        <button class="toggle-btn" id="btn-riwayat-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
       </div>
       <!-- Scope pencarian: "Barang" nyari ke isi konversi (kode/nama produk di
            konversi_item + sesi_konversi_item), "RS · PIC · Sales" nyari ke

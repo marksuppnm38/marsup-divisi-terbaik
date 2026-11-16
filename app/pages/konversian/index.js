@@ -4268,7 +4268,6 @@ async function loadRiwayatList(keepPage) {
     S.riwayatListLoading.style.display = 'none';
   }
 }
-S.btnRiwayatRefresh.addEventListener('click', loadRiwayatList);
 
 // Klik tile ringkasan = filter status (klik lagi / klik tile Sesi / "Hapus filter" = lepas).
 // Delegasi di container karena innerHTML tile di-render ulang tiap kali.
