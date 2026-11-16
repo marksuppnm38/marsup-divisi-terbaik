@@ -790,22 +790,24 @@ async function rpc(fn, params){
       bkSalesJson = '';
       el.innerHTML = `
         <div class="bk-controls">
-          <input type="search" id="bk-q" class="db-select bk-search" placeholder="Cari RS, code name, sales, barang, set, status…" aria-label="Cari booking" autocomplete="off" value="${esc(bkQ)}">
-          <select id="bk-sales" class="db-select" aria-label="Filter sales"></select>
-          <select id="bk-sort" class="db-select" aria-label="Urutkan">
+          <label class="bk-search"><i class="ti ti-search" aria-hidden="true"></i><input type="search" id="bk-q" placeholder="Cari RS, code name, sales, barang, set, status…" aria-label="Cari booking" autocomplete="off" value="${esc(bkQ)}"></label>
+          <select id="bk-sales" class="filter-select" aria-label="Filter sales"></select>
+          <select id="bk-sort" class="filter-select" aria-label="Urutkan">
             <option value="terbaru"${bkSort === 'terbaru' ? ' selected' : ''}>Terbaru (PO diterima)</option>
             <option value="dl_dekat"${bkSort === 'dl_dekat' ? ' selected' : ''}>Deadline terdekat</option>
             <option value="dl_jauh"${bkSort === 'dl_jauh' ? ' selected' : ''}>Deadline terjauh</option>
           </select>
-          <select id="bk-field" class="db-select" aria-label="Filter tanggal berdasarkan">
-            <option value="deadline"${bkField === 'deadline' ? ' selected' : ''}>Deadline pabrik</option>
-            <option value="tgl_po"${bkField === 'tgl_po' ? ' selected' : ''}>PO diterima</option>
-          </select>
-          <input type="date" id="bk-from" class="db-select" aria-label="Dari tanggal" value="${esc(bkFrom)}">
-          <span class="bk-sd">s/d</span>
-          <input type="date" id="bk-to" class="db-select" aria-label="Sampai tanggal" value="${esc(bkTo)}">
-          <button type="button" class="db-textbtn" data-action="bk-reset">Reset filter</button>
+          <div class="bk-dates" role="group" aria-label="Filter rentang tanggal">
+            <select id="bk-field" class="filter-select" aria-label="Filter tanggal berdasarkan">
+              <option value="deadline"${bkField === 'deadline' ? ' selected' : ''}>Deadline pabrik</option>
+              <option value="tgl_po"${bkField === 'tgl_po' ? ' selected' : ''}>PO diterima</option>
+            </select>
+            <input type="date" id="bk-from" class="bk-date" aria-label="Dari tanggal" value="${esc(bkFrom)}">
+            <span class="bk-sd">s/d</span>
+            <input type="date" id="bk-to" class="bk-date" aria-label="Sampai tanggal" value="${esc(bkTo)}">
+          </div>
           <label class="bk-check"><input type="checkbox" id="bk-batal"${bkBatal ? ' checked' : ''}> Tampilkan yang batal</label>
+          <button type="button" class="bk-reset" data-action="bk-reset" hidden><i class="ti ti-filter-off" aria-hidden="true"></i> Reset filter</button>
         </div>
         <p class="pop-lead" id="bk-lead"></p>
         <div id="bk-list"></div>`;
@@ -824,6 +826,8 @@ async function rpc(fn, params){
   function renderBookingList() {
     const list = $('bk-list');
     if (!list) return;
+    const bkResetBtn = document.querySelector('[data-action="bk-reset"]');
+    if (bkResetBtn) bkResetBtn.hidden = !(bkQ.trim() || bkSales || bkFrom || bkTo);
     const q = bkQ.trim().toLowerCase();
     const inRange = (g) => {
       if (!bkFrom && !bkTo) return true;
@@ -1116,7 +1120,10 @@ function isSafeHttpUrl(u){
     else if (t.id === 'bk-to') { bkTo = t.value; bkAll = false; renderBookingList(); }
     else if (t.id === 'bk-batal') { bkBatal = !!t.checked; bkAll = false; renderBookingList(); }
   }
-  dashContainerHandlers = { click: onContainerClick, keydown: onContainerKeydown, input: onContainerInput };
+  // Dropdown filter dirender shared/ui-select.js: pilih opsi mengirim 'change' saja (bukan 'input'
+  // seperti <select> asli), jadi select perlu didengarkan lewat 'change' juga.
+  const onContainerChange = (e) => { if (e.target && e.target.tagName === 'SELECT') onContainerInput(e); };
+  dashContainerHandlers = { click: onContainerClick, keydown: onContainerKeydown, input: onContainerInput, change: onContainerChange };
   Object.entries(dashContainerHandlers).forEach(([type, fn]) => container.addEventListener(type, fn));
   dashKeydownHandler = (e) => {
     if (e.key === 'Escape' && detailOverlay && detailOverlay.classList.contains('show')) closeDetailModal();

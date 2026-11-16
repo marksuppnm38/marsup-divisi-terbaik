@@ -225,9 +225,49 @@ a.wl-row:focus-visible{ outline-offset:-2px; }
 
 @media (prefers-reduced-motion:reduce){ #app-root *{ transition:none !important; } }
 /* ── Booking tracker ── */
-.bk-controls{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
-.bk-search{ flex:1 1 280px; min-width:200px; }
-.bk-check{ display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--text-secondary); cursor:pointer; }
+/* Filter booking: tampilan yang sama dengan filter hasil pencarian di Conversion Workspace.
+   Dropdown = shared/ui-select.js (select.filter-select), kolom cari berlatar abu lembut dengan ikon,
+   "Tampilkan yang batal" = chip yang menyala saat aktif, Reset = tombol ghost yang baru muncul
+   kalau ada filter. Semua 32px supaya satu baris sejajar. */
+.bk-controls{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+.bk-controls .ui-select-btn{ height:32px; font-size:12.5px; }
+.bk-search{ position:relative; display:block; flex:1 1 280px; min-width:200px; }
+.bk-search i{ position:absolute; left:11px; top:50%; transform:translateY(-50%); font-size:15px; color:var(--text-muted); pointer-events:none; }
+.bk-search input{
+  width:100%; height:32px; padding:0 12px 0 33px; font:inherit; font-size:13px; color:var(--text);
+  background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+  transition:var(--transition-state);
+}
+.bk-search input::placeholder{ color:var(--text-muted); }
+.bk-search input:focus{ outline:none; background:var(--surface); border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-ring); }
+.bk-dates{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.bk-date{
+  width:138px; height:32px; padding:0 10px; font:inherit; font-size:12.5px; color:var(--text);
+  background:var(--surface); border:1px solid var(--border-strong); border-radius:8px;
+  transition:var(--transition-state);
+}
+.bk-date:hover{ background:var(--surface-2); }
+.bk-date:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-ring); }
+.bk-date::-webkit-calendar-picker-indicator{ opacity:.55; cursor:pointer; }
+.bk-date:hover::-webkit-calendar-picker-indicator{ opacity:.9; }
+[data-theme="dark"] .bk-date{ color-scheme:dark; }
+.bk-check{
+  display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 12px;
+  border:1px solid var(--border-strong); border-radius:8px; background:var(--surface);
+  font-size:12.5px; font-weight:500; color:var(--text-secondary); cursor:pointer; user-select:none;
+  transition:var(--transition-state);
+}
+.bk-check:hover{ background:var(--surface-2); }
+.bk-check input{ width:14px; height:14px; margin:0; accent-color:var(--accent); cursor:pointer; }
+.bk-check:has(input:checked){ border-color:var(--accent); background:var(--accent-bg); color:var(--accent-text); }
+.bk-check:has(input:focus-visible){ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-ring); }
+.bk-reset{
+  display:inline-flex; align-items:center; gap:5px; height:32px; padding:0 10px; border:0; border-radius:8px;
+  background:transparent; color:var(--text-muted); font:inherit; font-size:12.5px; font-weight:500; cursor:pointer;
+  transition:var(--transition-state);
+}
+.bk-reset:hover{ background:var(--surface-2); color:var(--text); }
+.bk-reset[hidden]{ display:none; }
 .bk-th,.bk-head{ display:grid; grid-template-columns:minmax(150px,1.2fr) minmax(180px,1.6fr) minmax(110px,.8fr) 130px 110px; gap:12px; align-items:center; }
 .bk-th{ padding:8px 0; font-size:12px; font-weight:500; color:var(--text-muted); border-bottom:1px solid var(--border-strong); }
 .bk-th .num,.bk-head .num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -252,5 +292,4 @@ a.wl-row:focus-visible{ outline-offset:-2px; }
   .bk-head > span:nth-child(3),.bk-head > span:nth-child(4){ grid-column:1; font-size:12.5px; color:var(--text-muted); }
   .bk-head > span.num{ grid-column:2; grid-row:1; }
 }
-.bk-sd{ font-size:13px; color:var(--text-muted); }
-.bk-controls input[type="date"]{ min-width:140px; }
+.bk-sd{ font-size:12.5px; color:var(--text-muted); }

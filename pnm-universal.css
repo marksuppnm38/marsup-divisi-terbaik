@@ -2391,3 +2391,10 @@ table.skip-table tr:last-child td{border-bottom:none}
     animation-iteration-count:infinite !important;
   }
 }
+
+/* Scrollbar tipis tanpa tombol panah dan tanpa jalur (track) yang kelihatan. Tanpa ini, area scroll
+   yang tidak diatur aturan ::-webkit-scrollbar di atas tampil dengan scrollbar bawaan Windows
+   (panah atas/bawah + garis jalur), yang terlihat sebagai garis aneh di sebelah kolom pencarian.
+   scrollbar-color diwarisi dari html; scrollbar-width tidak, jadi dipasang di semua elemen. */
+html{scrollbar-color:var(--border-strong) transparent}
+*{scrollbar-width:thin}

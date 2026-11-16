@@ -59,11 +59,17 @@
 
   /* ── Booking tracker: filter jadi grid 2 kolom yang rapat, bukan tumpukan 1 kontrol per baris ── */
   .bk-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: stretch; }
-  .bk-controls > select, .bk-controls > input[type="date"] { width: 100%; min-width: 0; padding-right: 8px; text-overflow: ellipsis; }
-  .bk-search, #bk-field, .bk-check, .bk-controls > .db-textbtn { grid-column: 1 / -1; }
+  .bk-dates { display: contents; }
+  .bk-controls .ui-select { display: flex; min-width: 0; }
+  .bk-controls .ui-select-btn { width: 100%; min-height: 44px; justify-content: flex-start; font-size: 13px; }
+  .bk-controls .ui-select-label { flex: 1; min-width: 0; max-width: none; text-align: left; }
+  .bk-controls .ui-select-menu { max-width: calc(100vw - 32px); }
+  .bk-search input, .bk-date { min-height: 44px; font-size: 16px; }
+  .bk-date { width: 100%; min-width: 0; }
+  .bk-search, .bk-dates > .ui-select, .bk-check, .bk-reset { grid-column: 1 / -1; }
   .bk-sd { display: none; }
   .bk-check { min-height: 44px; font-size: 14px; }
-  .bk-controls > .db-textbtn { justify-self: start; }
+  .bk-reset { min-height: 44px; justify-self: start; }
   .bk-head { min-height: 56px; padding: 10px 0; }
   .bk-body { padding-left: 0; }
   .bk-meta { grid-template-columns: 1fr 1fr; }

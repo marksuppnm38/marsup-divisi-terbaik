@@ -32,9 +32,13 @@
    .pw-topbar above it (the design spec's 48-52px shared row-height target) --
    so this module is two stacked 52px rows, not one row of mismatched
    height sitting next to the shared topbar. */
+/* Topbar + toolbar dibaca sebagai satu header: garis bawah topbar dihilangkan di modul ini,
+   sehingga hanya ada satu pemisah (di bawah toolbar) sebelum kolom pencarian, bukan dua garis
+   bertumpuk. Garis toolbar juga dulu 0.5px, yang dirender tidak rata di layar ber-DPI pecahan. */
+#app-root .pw-topbar{border-bottom-color:transparent}
 #app-root .konv-toolbar{
   background:var(--surface);
-  border-bottom:0.5px solid var(--border);
+  border-bottom:1px solid var(--border);
   padding:10px 24px;
   display:flex;
   align-items:center;
