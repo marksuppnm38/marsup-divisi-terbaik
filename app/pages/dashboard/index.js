@@ -768,7 +768,8 @@ async function rpc(fn, params){
   function bkHay(g) {
     if (!g._hay) {
       g._hay = [g.code_rmp, g.no_po, g.distributor, g.kode_po_inaproc, g.sales, g.code_name, g.rs,
-        ...(g.items || []).map((i) => (i.kode || '') + ' ' + (i.deskripsi || ''))].join(' ').toLowerCase();
+        g.pic_penerima, g.alamat, g.status_order,
+        ...(g.items || []).map((i) => [i.kode, i.deskripsi, i.satuan, i.status_produksi, i.marking, i.status_order].filter(Boolean).join(' '))].join(' ').toLowerCase();
     }
     return g._hay;
   }
@@ -785,7 +786,7 @@ async function rpc(fn, params){
       bkSalesJson = '';
       el.innerHTML = `
         <div class="bk-controls">
-          <input type="search" id="bk-q" class="db-select bk-search" placeholder="Cari RS, code name, sales, kode/nama barang…" aria-label="Cari booking" autocomplete="off" value="${esc(bkQ)}">
+          <input type="search" id="bk-q" class="db-select bk-search" placeholder="Cari RS, code name, sales, barang, set, status…" aria-label="Cari booking" autocomplete="off" value="${esc(bkQ)}">
           <select id="bk-sales" class="db-select" aria-label="Filter sales"></select>
           <select id="bk-sort" class="db-select" aria-label="Urutkan">
             <option value="terbaru"${bkSort === 'terbaru' ? ' selected' : ''}>Terbaru (PO diterima)</option>
