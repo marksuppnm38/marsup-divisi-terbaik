@@ -98,6 +98,25 @@
     border-radius: 20px 20px 0 0 !important; padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
   }
 
+  /* Clipboard count punya aturan ber-ID di style.css; di HP sudah diganti bar bawah */
+  #app-root #hdr-clip-count-wrap { display: none !important; }
+  #app-root .pw-topbar-actions .toggle-btn { width: 44px; height: 44px; padding: 0; justify-content: center; border-radius: 12px; }
+
+  /* ---- Kartu Riwayat / Berjalan: judul tidak boleh terjepit pill status ---- */
+  #app-root .rc-head { flex-direction: column; align-items: stretch; gap: 8px; }
+  #app-root .rc-title { flex: none; width: 100%; }
+  #app-root .rc-name { font-size: 15px; overflow-wrap: break-word; word-break: normal; }
+  #app-root .rc-head .ro-pill { align-self: flex-start; height: 32px; font-size: 12px; }
+  #app-root .rc-sub { gap: 4px 14px; font-size: 12.5px; }
+  #app-root .rc-stats { font-size: 13px; }
+  #app-root .rc-time { margin-left: 0; flex: 1 1 100%; }
+  #app-root .rc-actions { gap: 8px; }
+  #app-root .rc-act { height: 40px; padding: 0 14px; font-size: 13px; border-radius: 10px; flex: 1 1 auto; justify-content: center; }
+  #app-root .rcard-top { flex-wrap: wrap; }
+  #app-root .rcard-name { flex: 1 1 100%; font-size: 14.5px; overflow-wrap: break-word; }
+  #app-root .sesi-delete-btn { width: 40px; height: 40px; }
+  #app-root .riwayat-card, #app-root .rcard { padding: 14px; }
+
   /* ══ Bar navigasi bawah (Material 3) ══ */
   .konv-bottombar {
     display: flex; flex: 0 0 auto; height: calc(var(--kb-bar-h) + env(safe-area-inset-bottom, 0px));
