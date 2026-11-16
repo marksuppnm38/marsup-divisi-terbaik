@@ -322,24 +322,33 @@ if (S.btnConvCopyGambar) {
       return;
     }
 
+    const BOX = S.PASTE_IMG_BOX || 130, ROW_H = BOX + 14;
+    const COL_W = [38, 140, 240, 46, BOX + 14];
+    const TABLE_W = COL_W.reduce((a, b) => a + b, 0);
+    const dims = await S.fitPasteImgDims(rows.map((row) => {
+      const r = row.produk;
+      return (r.tipe && r.tipe.toLowerCase() === 'set') ? '' : (urlMap.get(S.thumbKeyForItem(r)) || '');
+    }));
+
     const rowsHtml = rows.map((row, i) => {
       const r = row.produk;
       const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
       const url = isSet ? '' : (urlMap.get(S.thumbKeyForItem(r)) || '');
       const gambarCell = isSet
         ? `<td style="border:1px solid #000;text-align:center;font-size:10px;color:#6B7280">${esc(SET_NOTE)}</td>`
-        : `<td style="border:1px solid #000;text-align:center">${url ? `<img src="${esc(url)}" width="80" height="65" alt="${esc(r.kode_produk)}">` : ''}</td>`;
-      return `<tr>` +
-        `<td style="border:1px solid #000;text-align:center">${i + 1}</td>` +
-        `<td style="border:1px solid #000">${esc(r.kode_produk)}</td>` +
-        `<td style="border:1px solid #000">${esc(r.nama_produk)}</td>` +
-        `<td style="border:1px solid #000;text-align:center">1</td>` +
+        : `<td width="${COL_W[4]}" valign="middle" align="center" style="border:1px solid #000;text-align:center">${url ? `<img src="${esc(url)}" width="${dims[i].w}" height="${dims[i].h}" style="width:${dims[i].w}px;height:${dims[i].h}px" alt="${esc(r.kode_produk)}">` : ''}</td>`;
+      return `<tr style="height:${ROW_H}px">` +
+        `<td width="${COL_W[0]}" height="${ROW_H}" valign="middle" style="border:1px solid #000;text-align:center">${i + 1}</td>` +
+        `<td width="${COL_W[1]}" valign="middle" style="border:1px solid #000">${esc(r.kode_produk)}</td>` +
+        `<td width="${COL_W[2]}" valign="middle" style="border:1px solid #000">${esc(r.nama_produk)}</td>` +
+        `<td width="${COL_W[3]}" valign="middle" style="border:1px solid #000;text-align:center">1</td>` +
         gambarCell +
         `</tr>`;
     }).join('');
 
     const html =
-      `<table border="1" style="border-collapse:collapse">` +
+      `<table border="1" cellspacing="0" cellpadding="0" width="${TABLE_W}" style="border-collapse:collapse;table-layout:fixed;width:${TABLE_W}px">` +
+      `<colgroup>${COL_W.map(w => `<col width="${w}" style="width:${w}px">`).join('')}</colgroup>` +
       `<thead><tr>` +
       ['NO', 'KODE PNM', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR']
         .map(h => `<th style="border:1px solid #000;background:#1D5BD4;color:#fff">${h}</th>`).join('') +

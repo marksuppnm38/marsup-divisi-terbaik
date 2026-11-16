@@ -2167,6 +2167,34 @@ async function writeRichClipboard(html, plain) {
 }
 S.writeRichClipboard = writeRichClipboard;
 
+// UKURAN GAMBAR PASTE (WPS/Word/Excel). Dulu semua gambar dipaksa 80x65px (±2cm): instrumen yang
+// panjang/tipis jadi cuma garis kecil pucat, dan WPS tidak menskalakan ulang pas paste. Sekarang
+// kotak gambar 130x130px dan ukuran tiap gambar dihitung dari dimensi ASLI-nya (rasio dijaga,
+// tidak gepeng), jadi hasil paste langsung besar & jelas tanpa perlu di-drag manual.
+const PASTE_IMG_BOX = 130;
+function loadNaturalSize(url, timeoutMs) {
+  return new Promise((resolve) => {
+    if (!url) { resolve(null); return; }
+    const im = new Image();
+    const t = setTimeout(() => resolve(null), timeoutMs || 4000);
+    im.onload = () => { clearTimeout(t); resolve({ w: im.naturalWidth, h: im.naturalHeight }); };
+    im.onerror = () => { clearTimeout(t); resolve(null); };
+    im.src = url;
+  });
+}
+// urls: array url (boleh kosong). Return array {w,h} ukuran tampil (px) yg muat di kotak, rasio asli.
+async function fitPasteImgDims(urls, box) {
+  const B = box || PASTE_IMG_BOX;
+  const sizes = await Promise.all(urls.map((u) => loadNaturalSize(u)));
+  return sizes.map((n) => {
+    if (!n || !n.w || !n.h) return { w: B, h: B };
+    const k = Math.min(B / n.w, B / n.h);
+    return { w: Math.max(1, Math.round(n.w * k)), h: Math.max(1, Math.round(n.h * k)) };
+  });
+}
+S.PASTE_IMG_BOX = PASTE_IMG_BOX;
+S.fitPasteImgDims = fitPasteImgDims;
+
 // COPY + GAMBAR.
 // Kenapa gak cukup nambahin kolom gambar ke TSV yang udah ada: clipboard teks
 // (text/plain) secara definisi cuma bisa bawa karakter — gambar gak punya
@@ -2214,16 +2242,17 @@ async function copySetRincianWithImages(items, imgs, btnEl) {
   // dites langsung di WPS). Jadi ukuran sekarang ditetapkan di semua lapis sekaligus: atribut + style pada <img>, <colgroup> dengan lebar tetap,
   // table-layout:fixed, dan tinggi baris. Total lebar 600px (±16cm) muat di halaman A4 dengan
   // margin normal. Excel/Sheets juga membaca lebar & tinggi ini, jadi kolom gambarnya ikut rapi.
-  const IMG_W = 80, IMG_H = 65, ROW_H = 72;
-  const COL_W = [38, 140, 278, 46, 100]; // NO, KODE, DESKRIPSI, QTY, GAMBAR
+  const BOX = PASTE_IMG_BOX, ROW_H = BOX + 14;
+  const COL_W = [38, 140, 240, 46, BOX + 14]; // NO, KODE, DESKRIPSI, QTY, GAMBAR
   const TABLE_W = COL_W.reduce((a, b) => a + b, 0);
   const TD = 'border:1px solid #000;padding:2px 4px;vertical-align:middle;background:#fff';
   const TH = 'border:1px solid #000;padding:2px 4px;vertical-align:middle;background:#1D5BD4;color:#fff;text-align:center';
+  const dims = await fitPasteImgDims(items.map((it) => urlMap.get(thumbKeyForItem(it)) || ''));
 
   const rowsHtml = items.map((it, i) => {
     const url = urlMap.get(thumbKeyForItem(it)) || '';
     const gambarCell = url
-      ? `<img src="${esc(url)}" width="${IMG_W}" height="${IMG_H}" style="width:${IMG_W}px;height:${IMG_H}px" alt="${esc(it.kode_produk)}">`
+      ? `<img src="${esc(url)}" width="${dims[i].w}" height="${dims[i].h}" style="width:${dims[i].w}px;height:${dims[i].h}px" alt="${esc(it.kode_produk)}">`
       : ''; // kode ini belum ada gambarnya di bucket -- sel dibiarkan kosong (dulu: <img> 404/broken)
     return `<tr style="height:${ROW_H}px">` +
       `<td width="${COL_W[0]}" height="${ROW_H}" valign="middle" align="center" bgcolor="#FFFFFF" style="${TD};text-align:center">${it.urutan || i + 1}</td>` +
