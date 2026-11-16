@@ -257,6 +257,9 @@ export const CRUD_PRODUK_MARKUP = `
                           <legend>Nilai ini adalah</legend>
                           <label><input type="radio" name="kalkMode" value="ekat" checked/><span>Harga EKATALOG <small>after tax</small></span></label>
                           <label><input type="radio" name="kalkMode" value="upload"/><span>Harga Upload <small>before tax</small></span></label>
+                          <label><input type="radio" name="kalkMode" value="pagu"/><span>Pagu <small>anggaran maks.</small></span>
+                            <select id="kalkPaguTax" class="kalk-pagu-tax" aria-label="Pagu before atau after tax" hidden><option value="before" selected>before tax</option><option value="after">after tax</option></select>
+                          </label>
                         </fieldset>
                         <div class="kalk-err" id="kalkErr">Isi angka rupiah yang valid, mis. 214.352.000</div>
                       </div>
@@ -289,6 +292,11 @@ export const CRUD_PRODUK_MARKUP = `
                         <div class="kalk-out" aria-live="polite">
                           <div class="kalk-line"><span class="kalk-k">Harga tayang saat ini</span><output id="kalkAcuan">—</output></div>
                           <div class="kalk-line"><span class="kalk-k">Selisih nego</span><output id="kalkSelisih">—</output></div>
+                          <div id="kalkPaguBox" hidden>
+                            <div class="kalk-line"><span class="kalk-k">Harga tayang saat ini <small>before tax</small></span><output id="kalkAcuanUpload">—</output></div>
+                            <div class="kalk-line"><span class="kalk-k">Diskon minimal agar muat pagu</span><output id="kalkPaguDiskon">—</output></div>
+                            <div class="kalk-line"><span class="kalk-k">Harga tayang setelah diskon itu <small>after tax</small></span><output id="kalkPaguHarga">—</output></div>
+                          </div>
                           <div class="kalk-line"><span class="kalk-k">Total komponen <small>EKATALOG × qty</small></span><output id="kalkKomponen">—</output><button type="button" class="btn btn-ghost kalk-copy" id="kalkKomponenBtn">Hitung</button></div>
                           <div class="kalk-line"><span class="kalk-k">Nego vs total komponen</span><output id="kalkVsKomponen">—</output><span></span></div>
                         </div>

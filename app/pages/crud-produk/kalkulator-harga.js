@@ -5,6 +5,9 @@
 // Rumus sama dengan yang dipakai tabel di atasnya: UPLOAD = EKATALOG / 1.11 (FAKTOR_PPN dari Struktur Harga),
 // dibulatkan ke rupiah (Math.round) seperti penyimpanan harga turunan.
 //
+// Mode "Pagu": nilai = pagu/anggaran maksimal (default before tax; bisa diganti after tax). Hasilnya sama dengan
+// mode Upload/EKATALOG, tapi ditambah ringkasan "diskon minimal agar muat pagu" dari harga tayang saat ini.
+//
 // Bagian "Bandingkan" (opsional, lewat getAcuan / getKomponen dari index.js):
 //   - Diskon (%) dari harga tayang saat ini, dua arah: ketik % -> angka terisi; ketik angka -> % terhitung.
 //   - Total komponen set (SUM harga EKATALOG item x qty), dihitung saat diminta, lalu dibandingkan dengan
@@ -14,6 +17,7 @@ import { FAKTOR_PPN } from '../spek-maker/struktur-harga.js';
 import { showToast } from './ui-utils.js';
 
 const LS_MODE = 'crud.kalkHarga.mode';
+const LS_PAGU_TAX = 'crud.kalkHarga.paguTax';
 
 /** "214.352.000", "Rp 214352000", "1.234,5", "214,352,000" -> angka. Tidak valid / <= 0 -> NaN. */
 export function parseRupiah(raw) {
@@ -44,13 +48,31 @@ export function parsePersen(raw) {
   return n > -1000 && n < 100 ? n : NaN;
 }
 
-/** mode 'ekat' = nilai adalah harga EKATALOG (after tax); 'upload' = harga Upload (before tax). */
+/** Mode yang nilainya after tax (basis EKATALOG): 'ekat' dan 'pagu_after'. Lainnya ('upload', 'pagu') = before tax. */
+export const modeAfterTax = (mode) => mode === 'ekat' || mode === 'pagu_after';
+
+/**
+ * mode 'ekat' = nilai adalah harga EKATALOG (after tax); 'upload' = harga Upload (before tax);
+ * 'pagu' = pagu before tax (sama dengan upload); 'pagu_after' = pagu after tax (sama dengan ekat).
+ */
 export function hitungKalkulatorHarga(nilai, mode) {
   if (!Number.isFinite(nilai) || nilai <= 0) return null;
   const n = Math.round(nilai);
-  const ekat = mode === 'upload' ? Math.round(n * FAKTOR_PPN) : n;
-  const upload = mode === 'upload' ? n : Math.round(n / FAKTOR_PPN);
+  const after = modeAfterTax(mode);
+  const ekat = after ? n : Math.round(n * FAKTOR_PPN);
+  const upload = after ? Math.round(n / FAKTOR_PPN) : n;
   return { ekat, upload, ppn: ekat - upload };
+}
+
+/**
+ * Diskon MINIMAL (persen, dibulatkan ke atas 2 desimal) dari harga tayang supaya harga jadi <= pagu.
+ * Dibulatkan ke atas supaya harga hasil diskon yang ditampilkan tidak melewati pagu. 0 = pagu sudah >= harga tayang.
+ * Perbandingan boleh before/after tax: rasionya sama selama dua-duanya basis yang sama.
+ */
+export function hitungDiskonPagu(ekatPagu, ekatTayang) {
+  if (!Number.isFinite(ekatPagu) || !Number.isFinite(ekatTayang) || ekatPagu <= 0 || ekatTayang <= 0) return null;
+  if (ekatPagu >= ekatTayang) return 0;
+  return Math.ceil((1 - ekatPagu / ekatTayang) * 10000) / 100;
 }
 
 /** Selisih harga nego terhadap pembanding: diff > 0 = lebih mahal, < 0 = lebih murah. pct terhadap pembanding. */
@@ -94,10 +116,20 @@ export function installKalkulatorHarga(root, { onPakai, getAcuan, getKomponen } 
   const cmpNote = $('#kalkCmpNote');
   const copyBtns = root.querySelectorAll('[data-kalk-copy]');
   const modeEls = root.querySelectorAll('input[name="kalkMode"]');
+  const paguTaxEl = $('#kalkPaguTax');       // <select> before/after, hanya tampil di mode Pagu
+  const paguBox = $('#kalkPaguBox');         // ringkasan khusus pagu
+  const outPaguDiskon = $('#kalkPaguDiskon');
+  const outPaguHarga = $('#kalkPaguHarga');
+  const outAcuanUpload = $('#kalkAcuanUpload');
   let hasil = null;
   let komponen = null; // { total, tanpaHarga } hasil terakhir; null = belum dihitung
 
-  const mode = () => (root.querySelector('input[name="kalkMode"]:checked') || {}).value || 'ekat';
+  const rawMode = () => (root.querySelector('input[name="kalkMode"]:checked') || {}).value || 'ekat';
+  // Mode efektif untuk hitung: 'pagu' + select "after" -> 'pagu_after'.
+  const mode = () => {
+    const m = rawMode();
+    return m === 'pagu' && paguTaxEl && paguTaxEl.value === 'after' ? 'pagu_after' : m;
+  };
   const acuan = () => {
     const a = getAcuan ? getAcuan() : null;
     return a && Number.isFinite(a.ekat) && a.ekat > 0 ? a : null;
@@ -105,7 +137,9 @@ export function installKalkulatorHarga(root, { onPakai, getAcuan, getKomponen } 
 
   try {
     const saved = localStorage.getItem(LS_MODE);
-    if (saved === 'ekat' || saved === 'upload') modeEls.forEach((el) => { el.checked = el.value === saved; });
+    if (saved === 'ekat' || saved === 'upload' || saved === 'pagu') modeEls.forEach((el) => { el.checked = el.value === saved; });
+    const savedTax = localStorage.getItem(LS_PAGU_TAX);
+    if (paguTaxEl && (savedTax === 'before' || savedTax === 'after')) paguTaxEl.value = savedTax;
   } catch { /* storage diblok: pakai default */ }
 
   function paintKomponen() {
@@ -145,7 +179,8 @@ export function installKalkulatorHarga(root, { onPakai, getAcuan, getKomponen } 
     copyBtns.forEach((b) => { b.disabled = !hasil; });
     if (pakaiBtn) pakaiBtn.disabled = !hasil;
     // Nilai yang diketik user ditandai di baris hasilnya, supaya jelas mana input dan mana hasil hitung.
-    root.querySelectorAll('.kalk-row[data-side]').forEach((row) => row.classList.toggle('is-input', !!hasil && row.dataset.side === mode()));
+    root.querySelectorAll('.kalk-row[data-side]').forEach((row) => row.classList.toggle('is-input', !!hasil && row.dataset.side === (modeAfterTax(mode()) ? 'ekat' : 'upload')));
+    if (paguTaxEl) paguTaxEl.hidden = rawMode() !== 'pagu';
 
     // Bandingkan dengan harga tayang saat ini
     const a = acuan();
@@ -158,8 +193,24 @@ export function installKalkulatorHarga(root, { onPakai, getAcuan, getKomponen } 
       diskonEl.value = sel ? fmtPct((Math.round(-sel.pct * 100) / 100) || 0) : ''; // `|| 0` supaya -0 tidak tampil "-0"
       diskonEl.removeAttribute('aria-invalid');
     }
+    paintPagu(a, hasil);
     paintKomponen();
     paintNote();
+  }
+
+  // Ringkasan pagu: berapa diskon minimal dari harga tayang supaya muat pagu. Hanya tampil di mode Pagu.
+  function paintPagu(a, h) {
+    if (!paguBox) return;
+    const aktif = rawMode() === 'pagu';
+    paguBox.hidden = !aktif;
+    if (!aktif) return;
+    outAcuanUpload.textContent = a ? fmtRp(Math.round(a.ekat / FAKTOR_PPN)) : '—';
+    const d = a && h ? hitungDiskonPagu(h.ekat, a.ekat) : null;
+    if (d === null) { outPaguDiskon.textContent = '—'; outPaguHarga.textContent = '—'; return; }
+    if (d === 0) { outPaguDiskon.textContent = 'Tidak perlu diskon (pagu ≥ harga tayang)'; outPaguHarga.textContent = '—'; return; }
+    outPaguDiskon.textContent = fmtPct(d) + '%';
+    // Harga tayang setelah diskon minimal itu, supaya kelihatan masih di bawah / pas pagu.
+    outPaguHarga.textContent = fmtRp(Math.round(a.ekat * (1 - d / 100)));
   }
 
   input.addEventListener('input', paint);
@@ -173,15 +224,22 @@ export function installKalkulatorHarga(root, { onPakai, getAcuan, getKomponen } 
     paint();
   }));
 
-  // Ketik diskon % -> harga EKATALOG nego terisi (diskon dihitung dari harga tayang saat ini), mode otomatis "EKATALOG".
+  if (paguTaxEl) paguTaxEl.addEventListener('change', () => {
+    try { localStorage.setItem(LS_PAGU_TAX, paguTaxEl.value); } catch { /* abaikan */ }
+    paint();
+  });
+
+  // Ketik diskon % -> nilai terisi (diskon dihitung dari harga tayang saat ini); mode otomatis "EKATALOG" kecuali sedang di mode Pagu.
   diskonEl.addEventListener('input', () => {
     const a = acuan();
     const d = parsePersen(diskonEl.value);
     if (!a || !Number.isFinite(d)) { diskonEl.setAttribute('aria-invalid', String(diskonEl.value.trim() !== '')); return; }
     diskonEl.removeAttribute('aria-invalid');
     const harga = Math.round(a.ekat * (1 - d / 100));
-    modeEls.forEach((el) => { el.checked = el.value === 'ekat'; });
-    input.value = harga.toLocaleString('id-ID');
+    // Mode Pagu dipertahankan (nilai diisi sesuai basis pagu before/after tax); mode lain pindah ke EKATALOG.
+    if (rawMode() !== 'pagu') modeEls.forEach((el) => { el.checked = el.value === 'ekat'; });
+    const nilaiInput = modeAfterTax(mode()) ? harga : Math.round(harga / FAKTOR_PPN);
+    input.value = nilaiInput.toLocaleString('id-ID');
     paint();
   });
   diskonEl.addEventListener('blur', () => { paint(); });

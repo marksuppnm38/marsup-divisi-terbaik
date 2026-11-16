@@ -1017,4 +1017,6 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .kalk-line output.is-warn{color:var(--danger,#e5484d)}
 .kalk-cmp .akd-hint:empty{display:none}
 .kalk-in input[aria-invalid="true"]#kalkDiskon{border-color:var(--danger,#e5484d)}
+.kalk-pagu-tax{margin-left:auto;height:26px;padding:0 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text)}
+.kalk-pagu-tax[hidden],#kalkPaguBox[hidden]{display:none}
 .kalk-in input:disabled{opacity:.55;cursor:not-allowed}
