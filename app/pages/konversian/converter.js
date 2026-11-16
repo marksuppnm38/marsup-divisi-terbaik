@@ -325,7 +325,8 @@ if (S.btnConvCopyGambar) {
     const BOX = S.PASTE_IMG_BOX || 130, ROW_H = BOX + 14;
     const COL_W = [38, 140, 240, 46, BOX + 14];
     const TABLE_W = COL_W.reduce((a, b) => a + b, 0);
-    const dims = await S.fitPasteImgDims(rows.map((row) => {
+    S.showToast('Menyiapkan gambar…');
+    const dims = await S.preparePasteImages(rows.map((row) => {
       const r = row.produk;
       return (r.tipe && r.tipe.toLowerCase() === 'set') ? '' : (urlMap.get(S.thumbKeyForItem(r)) || '');
     }));
@@ -336,7 +337,7 @@ if (S.btnConvCopyGambar) {
       const url = isSet ? '' : (urlMap.get(S.thumbKeyForItem(r)) || '');
       const gambarCell = isSet
         ? `<td style="border:1px solid #000;text-align:center;font-size:10px;color:#6B7280">${esc(SET_NOTE)}</td>`
-        : `<td width="${COL_W[4]}" valign="middle" align="center" style="border:1px solid #000;text-align:center">${url ? `<img src="${esc(url)}" width="${dims[i].w}" height="${dims[i].h}" style="width:${dims[i].w}px;height:${dims[i].h}px" alt="${esc(r.kode_produk)}">` : ''}</td>`;
+        : `<td width="${COL_W[4]}" valign="middle" align="center" style="border:1px solid #000;text-align:center">${dims[i].src ? `<img src="${esc(dims[i].src)}" width="${dims[i].w}" height="${dims[i].h}" style="width:${dims[i].w}px;height:${dims[i].h}px" alt="${esc(r.kode_produk)}">` : ''}</td>`;
       return `<tr style="height:${ROW_H}px">` +
         `<td width="${COL_W[0]}" height="${ROW_H}" valign="middle" style="border:1px solid #000;text-align:center">${i + 1}</td>` +
         `<td width="${COL_W[1]}" valign="middle" style="border:1px solid #000">${esc(r.kode_produk)}</td>` +

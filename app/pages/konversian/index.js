@@ -2167,33 +2167,67 @@ async function writeRichClipboard(html, plain) {
 }
 S.writeRichClipboard = writeRichClipboard;
 
-// UKURAN GAMBAR PASTE (WPS/Word/Excel). Dulu semua gambar dipaksa 80x65px (±2cm): instrumen yang
-// panjang/tipis jadi cuma garis kecil pucat, dan WPS tidak menskalakan ulang pas paste. Sekarang
-// kotak gambar 130x130px dan ukuran tiap gambar dihitung dari dimensi ASLI-nya (rasio dijaga,
-// tidak gepeng), jadi hasil paste langsung besar & jelas tanpa perlu di-drag manual.
+// GAMBAR PASTE (WPS/Word). HASIL UJI (wps-paste-lab.html): di WPS, <img src="https://..."> SELALU
+// tampil kecil & seragam -- atribut, style px/pt/cm, bahkan diperbesar 3,3x semuanya diabaikan.
+// Sebaliknya gambar TERTANAM (data URI) ukurannya DIHORMATI. Jadi gambar sekarang diunduh dulu
+// (signed URL -> blob), diperkecil ke maks 2x kotak lewat canvas (tajam tapi clipboard tidak bengkak),
+// lalu ditanam sebagai data URI di flavor text/html. Ukuran tampil dihitung dari rasio asli (tidak gepeng).
+// Kalau unduh gagal: pakai base64 hasil modal (fallbackB64, kalau ada), terakhir balik ke URL lama.
+// Catatan: Excel desktop dulu tidak mau render data URI saat paste -- kalau itu terjadi pakai tombol .xlsx
+// (gambar tertanam beneran). Flavor text/plain (=IMAGE) buat Google Sheets tidak berubah.
 const PASTE_IMG_BOX = 130;
-function loadNaturalSize(url, timeoutMs) {
-  return new Promise((resolve) => {
-    if (!url) { resolve(null); return; }
+function blobToImage(blob) {
+  return new Promise((resolve, reject) => {
+    const u = URL.createObjectURL(blob);
     const im = new Image();
-    const t = setTimeout(() => resolve(null), timeoutMs || 4000);
-    im.onload = () => { clearTimeout(t); resolve({ w: im.naturalWidth, h: im.naturalHeight }); };
-    im.onerror = () => { clearTimeout(t); resolve(null); };
-    im.src = url;
+    im.onload = () => { URL.revokeObjectURL(u); resolve(im); };
+    im.onerror = () => { URL.revokeObjectURL(u); reject(new Error('decode gagal')); };
+    im.src = u;
   });
 }
-// urls: array url (boleh kosong). Return array {w,h} ukuran tampil (px) yg muat di kotak, rasio asli.
-async function fitPasteImgDims(urls, box) {
-  const B = box || PASTE_IMG_BOX;
-  const sizes = await Promise.all(urls.map((u) => loadNaturalSize(u)));
-  return sizes.map((n) => {
-    if (!n || !n.w || !n.h) return { w: B, h: B };
-    const k = Math.min(B / n.w, B / n.h);
-    return { w: Math.max(1, Math.round(n.w * k)), h: Math.max(1, Math.round(n.h * k)) };
-  });
+async function embedOne(url, fallbackB64, B) {
+  const fit = (w, h) => { const k = Math.min(B / w, B / h); return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) }; };
+  const fromImg = (im, srcFallback) => {
+    const nw = im.naturalWidth, nh = im.naturalHeight;
+    const k = Math.min(1, (B * 2) / Math.max(nw, nh));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(nw * k)); c.height = Math.max(1, Math.round(nh * k));
+    c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+    return Object.assign({ src: c.toDataURL('image/png'), embedded: true }, fit(nw, nh));
+  };
+  if (url) {
+    try {
+      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 8000);
+      const r = await fetch(url, { signal: ctl.signal }); clearTimeout(t);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return fromImg(await blobToImage(await r.blob()));
+    } catch (e) { /* lanjut ke fallback */ }
+  }
+  if (fallbackB64) {
+    try {
+      const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = 'data:image/png;base64,' + fallbackB64; });
+      return fromImg(im);
+    } catch (e) { /* lanjut */ }
+  }
+  return { src: url || '', embedded: false, w: B, h: B };
+}
+// urls: array url (boleh kosong); fallbacks: array base64 opsional. Return [{src,w,h,embedded}]
+async function preparePasteImages(urls, fallbacks) {
+  const out = new Array(urls.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < urls.length) {
+      const i = next++;
+      out[i] = (urls[i] || (fallbacks && fallbacks[i]))
+        ? await embedOne(urls[i], fallbacks && fallbacks[i], PASTE_IMG_BOX)
+        : { src: '', embedded: false, w: PASTE_IMG_BOX, h: PASTE_IMG_BOX };
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, urls.length) }, worker));
+  return out;
 }
 S.PASTE_IMG_BOX = PASTE_IMG_BOX;
-S.fitPasteImgDims = fitPasteImgDims;
+S.preparePasteImages = preparePasteImages;
 
 // COPY + GAMBAR.
 // Kenapa gak cukup nambahin kolom gambar ke TSV yang udah ada: clipboard teks
@@ -2247,12 +2281,13 @@ async function copySetRincianWithImages(items, imgs, btnEl) {
   const TABLE_W = COL_W.reduce((a, b) => a + b, 0);
   const TD = 'border:1px solid #000;padding:2px 4px;vertical-align:middle;background:#fff';
   const TH = 'border:1px solid #000;padding:2px 4px;vertical-align:middle;background:#1D5BD4;color:#fff;text-align:center';
-  const dims = await fitPasteImgDims(items.map((it) => urlMap.get(thumbKeyForItem(it)) || ''));
+  S.showToast('Menyiapkan gambar…');
+  const dims = await preparePasteImages(items.map((it) => urlMap.get(thumbKeyForItem(it)) || ''), imgs || []);
 
   const rowsHtml = items.map((it, i) => {
     const url = urlMap.get(thumbKeyForItem(it)) || '';
-    const gambarCell = url
-      ? `<img src="${esc(url)}" width="${dims[i].w}" height="${dims[i].h}" style="width:${dims[i].w}px;height:${dims[i].h}px" alt="${esc(it.kode_produk)}">`
+    const gambarCell = dims[i].src
+      ? `<img src="${esc(dims[i].src)}" width="${dims[i].w}" height="${dims[i].h}" style="width:${dims[i].w}px;height:${dims[i].h}px" alt="${esc(it.kode_produk)}">`
       : ''; // kode ini belum ada gambarnya di bucket -- sel dibiarkan kosong (dulu: <img> 404/broken)
     return `<tr style="height:${ROW_H}px">` +
       `<td width="${COL_W[0]}" height="${ROW_H}" valign="middle" align="center" bgcolor="#FFFFFF" style="${TD};text-align:center">${it.urutan || i + 1}</td>` +
