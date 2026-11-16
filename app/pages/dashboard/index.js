@@ -19,6 +19,7 @@
 // tanpa handler inline dan tanpa fungsi di window.*.
 
 import { DASHBOARD_MARKUP } from './markup.js';
+import { installDashboardMobile } from './mobile.js';
 import { KONVERSIAN_SUBNAV } from '../konversian/subnav.js';
 import { CRUD_PRODUK_SUBNAV } from '../crud-produk/subnav.js';
 import { parseLinkV6 } from '../crud-produk/ui-utils.js';
@@ -87,10 +88,13 @@ function ensureStyle() {
   return Promise.all([
     ...SHARED_LINKS.map(({ id, href }) => loadLink(id, href)),
     loadLink('page-dashboard-style', new URL('./style.css', import.meta.url).href),
+    // Lapisan HP, wajib setelah style.css. Hanya aktif <=640px.
+    loadLink('page-dashboard-mobile', new URL('./mobile.css', import.meta.url).href),
   ]);
 }
 
 let mountedContainer = null;
+let mobileCleanup = null;
 let dashKeydownHandler = null;
 let dashContainerHandlers = null;   // listener delegasi di container, dilepas di unmount()
 let visibilityHandler = null;
@@ -1127,11 +1131,14 @@ function isSafeHttpUrl(u){
   timers.poll = setInterval(refreshQuietly, POLL_MS);
   visibilityHandler = () => { if (!document.hidden && lastOkAt && Date.now() - lastOkAt > STALE_MS) refreshQuietly(); };
   document.addEventListener('visibilitychange', visibilityHandler);
+  mobileCleanup = installDashboardMobile(container); // chip lompat-bagian untuk HP (mobile.js)
   loadAll();
 }
 
 export function unmount() {
   dashMountSeq++;
+  try { mobileCleanup?.(); } catch (err) { console.error('unmount dashboard: mobile cleanup gagal', err); }
+  mobileCleanup = null;
   if (dashKeydownHandler) document.removeEventListener('keydown', dashKeydownHandler);
   if (visibilityHandler) document.removeEventListener('visibilitychange', visibilityHandler);
   clearInterval(timers.fresh);
@@ -1142,6 +1149,7 @@ export function unmount() {
   // shared-pnm-universal-css TIDAK dilepas di sini (link permanen; melepasnya tiap pindah modul
   // menyebabkan kilatan tanpa-gaya).
   document.getElementById('page-dashboard-style')?.remove();
+  document.getElementById('page-dashboard-mobile')?.remove();
 
   if (dashContainerHandlers && mountedContainer) {
     Object.entries(dashContainerHandlers).forEach(([type, fn]) => mountedContainer.removeEventListener(type, fn));
