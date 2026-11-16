@@ -628,24 +628,47 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 /* ---- Crop fix: header/tab/hint tidak boleh ikut mengecil saat tinggi modal dibatasi ---- */
 .prod-modal .prod-tab{flex:0 0 auto}
 
-/* ---- Menu Export ---- */
+/* ---- Panel Export (toolbar, sejajar tombol Kolom) ----
+   Tiga bagian berurutan: Baris -> Kolom -> tombol download. Panel membuka ke kiri-bawah dari tombolnya. */
 .export-menu{position:relative}
-.export-menu .export-chev{font-size:14px;margin-left:2px}
-.export-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:340px;padding:6px;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-lg)}
+.export-menu .export-chev{font-size:14px;margin-left:0}
+.export-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:392px;max-width:calc(100vw - 24px);max-height:calc(100vh - 160px);overflow-y:auto;padding:4px 0 0;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);text-align:left}
 .export-pop[hidden]{display:none}
-.export-item{display:flex;align-items:flex-start;gap:12px;width:100%;padding:10px 12px;border:0;border-radius:var(--radius);background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
-.export-item:hover,.export-item:focus-visible{background:var(--surface-2)}
-.export-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.export-item>i{margin-top:1px;font-size:18px;color:var(--text-muted);flex-shrink:0}
-.export-item b{display:block;font-size:13px;font-weight:600}
-.export-item small{display:block;margin-top:2px;font-size:12px;line-height:1.45;color:var(--text-muted)}
-.export-opt{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;border-radius:var(--radius);cursor:pointer}
+.xp-title{padding:10px 16px 6px;font-family:var(--font-display);font-size:14px;font-weight:700;color:var(--text)}
+.xp-sec{padding:10px 16px 12px;border-top:1px solid var(--border)}
+.xp-title + .xp-sec{border-top:0}
+.xp-label{display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted)}
+.xp-count{font-weight:500;letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums}
+.xp-link{display:inline-flex;align-items:center;gap:4px;margin-left:auto;padding:2px 4px;border:0;border-radius:var(--radius-sm);background:none;color:var(--accent-text);font:inherit;font-size:12px;font-weight:500;letter-spacing:0;text-transform:none;cursor:pointer}
+.xp-link:hover{text-decoration:underline}
+.xp-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.xp-link i{font-size:14px}
+.xp-rows{display:flex;flex-direction:column;gap:6px;margin-bottom:6px;font-size:13px;color:var(--text)}
+.xp-rows b{font-size:15px;font-variant-numeric:tabular-nums}
+.xp-rows small{font-size:12px;line-height:1.45;color:var(--text-muted)}
+.xp-tags{display:flex;flex-wrap:wrap;gap:4px}
+.xp-tag{padding:1px 8px;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface-2);font-size:11.5px;line-height:18px;color:var(--text-secondary)}
+.export-pop .export-opt{margin:0 -8px;padding:8px}
+.export-opt{display:flex;align-items:flex-start;gap:10px;border-radius:var(--radius);cursor:pointer}
 .export-opt:hover{background:var(--surface-2)}
-.export-opt input{margin:3px 0 0 1px;width:16px;height:16px;flex-shrink:0;accent-color:var(--accent)}
+.export-opt input{margin:2px 0 0 1px;width:16px;height:16px;flex-shrink:0;accent-color:var(--accent)}
 .export-opt b{display:block;font-size:13px;font-weight:600}
 .export-opt small{display:block;margin-top:2px;font-size:12px;line-height:1.45;color:var(--text-muted)}
-.export-hint{display:flex;gap:10px;margin:4px 6px 2px;padding:9px 10px;border-top:1px solid var(--border);font-size:12px;line-height:1.5;color:var(--text-muted)}
-.export-hint>i{margin-top:1px;font-size:15px;flex-shrink:0}
+.xp-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.xp-preset{padding:3px 10px;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface);color:var(--text-secondary);font:inherit;font-size:12px;cursor:pointer}
+.xp-preset:hover{border-color:var(--accent);color:var(--accent-text)}
+.xp-preset.is-active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.xp-preset:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.xp-custom{padding:3px 4px;font-size:12px;color:var(--text-muted)}
+.xp-cols{display:flex;flex-wrap:wrap;gap:4px}
+.xp-col{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);font-size:12px;line-height:18px;color:var(--text)}
+.xp-col.is-first{font-weight:600}
+.xp-col.is-auto{border-style:dashed;border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text)}
+.xp-col .ti{font-size:12px}
+.xp-note{margin-top:8px;font-size:12px;line-height:1.45;color:var(--text-muted)}
+.xp-foot{position:sticky;bottom:0;padding:12px 16px;border-top:1px solid var(--border);background:var(--surface)}
+.xp-go{width:100%;justify-content:center}
+.xp-go:disabled{opacity:.5;cursor:not-allowed}
 
 /* ============================================================
    SHELL v2 -- 2026-11-11
@@ -891,6 +914,8 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .col-presets{display:flex;flex-wrap:wrap;gap:6px;padding:2px 10px 8px}
 .col-preset{padding:3px 10px;border:1px solid var(--border-strong);border-radius:20px;background:var(--surface);color:var(--text-secondary);font:inherit;font-size:12px;cursor:pointer}
 .col-preset:hover{border-color:var(--accent);color:var(--accent-text)}
+.col-preset.is-active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+.col-note{padding:0 10px 8px;font-size:12px;line-height:1.45;color:var(--text-muted)}
 .col-preset:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .col-list{max-height:min(52vh,420px);overflow-y:auto}
 .col-row{display:flex;align-items:center;gap:4px;border-radius:var(--radius-sm)}

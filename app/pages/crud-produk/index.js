@@ -162,6 +162,9 @@ let filterPopOutsideClickHandler = null;
 let resizeHandler = null;
 let cmdkKeydownHandler = null;
 let exportMenuDocHandler = null;
+// Menggambar ulang panel Export kalau sedang terbuka (total hasil / kolom / filter berubah). Diisi di blok "Menu Export";
+// dideklarasi di sini supaya loadProduk() dan colKit.onChange aman memanggilnya sebelum blok itu dijalankan.
+let exportPanelRepaint = null;
 // Module-level indirection for setSubroute() (real top-level export, see
 // far below near unmount()) to reach switchView(), which stays a NESTED
 // function inside mount() -- see switchView()'s own comment for why.
@@ -628,7 +631,7 @@ const colKit = createTableColumns({
     sealLabel: (s) => SEAL_LABELS[s] || 'Belum ada AKD',
     isVerified: (id) => !!produkVerifiedIdSet && produkVerifiedIdSet.has(id),
   },
-  onChange: () => applyProdukColumns(),
+  onChange: () => { applyProdukColumns(); if (exportPanelRepaint) exportPanelRepaint(); },
   // Preset Pricelist menyalakan "Hanya produk siap jual" (link kotor/bercatatan + tanpa harga dibuang), Audit mematikannya.
   onPreset: (pr) => {
     if (typeof pr.siapJual !== 'boolean') return;
@@ -1113,6 +1116,7 @@ async function loadProduk(q, page){
   // renderPgBar.
   if (!mountedContainer) return;
   produkLastTotal = Number(total) || 0;
+  if (exportPanelRepaint) exportPanelRepaint();
   produkCount.textContent = Number(total).toLocaleString('id-ID') + ' produk' + (qq ? ` untuk "${qq}"` : '') +
     (produkActiveFilters.length ? `, ${produkActiveFilters.length} filter tambahan aktif` : '');
   renderPgBar(document.getElementById('produkPagination'), {
@@ -1659,29 +1663,88 @@ function focusProdukSearch(){
   return true;
 }
 
-// ---- Menu Export (Excel hasil filter + Pricelist sales) ----
+// ---- Panel Export (Excel hasil filter + Pricelist sales) ----
+// Panel menjawab tiga pertanyaan sebelum download, berurutan: BARIS (berapa produk, dari filter apa),
+// KOLOM (apa saja, urutan, preset), lalu tombol download yang menyebut ringkasannya. Semua dihitung ulang tiap
+// panel dibuka dan tiap total / kolom / opsi berubah, jadi yang tertulis di tombol = yang benar-benar diexport.
 const exportToggle = document.getElementById('produkExportToggle');
 const exportPop = document.getElementById('produkExportPop');
 const exportSiapEl = document.getElementById('produkExportSiapJual');
 try { exportSiapEl.checked = localStorage.getItem(LS_EXPORT_SIAP) === '1'; } catch { /* storage diblok */ }
-exportSiapEl.addEventListener('change', () => { try { localStorage.setItem(LS_EXPORT_SIAP, exportSiapEl.checked ? '1' : '0'); } catch { /* abaikan */ } });
-// Ringkasan "apa yang akan diexport" dihitung saat menu dibuka, dari kolom & filter yang aktif saat itu.
+exportSiapEl.addEventListener('change', () => {
+  try { localStorage.setItem(LS_EXPORT_SIAP, exportSiapEl.checked ? '1' : '0'); } catch { /* abaikan */ }
+  if (exportPanelRepaint) exportPanelRepaint();
+});
+const fmtId = (n) => Number(n || 0).toLocaleString('id-ID');
 function paintExportInfo(){
-  const el = document.getElementById('produkExportInfo');
-  if (!el) return;
-  const labels = ['Kode Produk', ...colKit.visibleLabels().filter(l => l !== 'Kode Produk')];
-  const shown = labels.length > 6 ? labels.slice(0, 6).join(', ') + ` +${labels.length - 6}` : labels.join(', ');
-  el.textContent = `${produkLastTotal.toLocaleString('id-ID')} produk (semua hasil filter) · ${labels.length} kolom: ${shown}`;
+  const rowsEl = document.getElementById('produkExportRows');
+  const colsEl = document.getElementById('produkExportCols');
+  const presetsEl = document.getElementById('produkExportPresets');
+  const goBtn = document.getElementById('produkExportBtn');
+  if (!rowsEl || !colsEl || !presetsEl || !goBtn) return;
+
+  const total = produkLastTotal;
+  const siap = exportSiapEl.checked;
+  const filters = describeActiveFilters();
+  const cols = colKit.exportColumns();
+  const auto = new Set(colKit.autoKeys());
+
+  // BARIS
+  rowsEl.innerHTML =
+    `<div><b>${fmtId(total)}</b> produk</div>` +
+    `<small>Semua halaman, bukan hanya yang tampil sekarang. ${filters.length ? 'Mengikuti filter &amp; pencarian yang aktif:' : 'Tidak ada filter aktif.'}</small>` +
+    (filters.length ? `<div class="xp-tags">${filters.map((f) => `<span class="xp-tag">${escapeHtml(f)}</span>`).join('')}</div>` : '');
+  const siapNote = document.getElementById('produkExportSiapNote');
+  if (siapNote) siapNote.textContent = siap
+    ? 'Aktif: jumlah akhir bisa lebih sedikit dari angka di atas. Jumlah yang dibuang dilaporkan setelah download.'
+    : 'Buang produk tanpa harga E-Katalog atau dengan Link V6 yang kotor, urut Nama. Untuk pricelist sales.';
+
+  // KOLOM
+  const countEl = document.getElementById('produkExportColCount');
+  if (countEl) countEl.textContent = `${cols.length} kolom`;
+  const presets = colKit.presets();
+  presetsEl.innerHTML = presets.map((p) =>
+    `<button type="button" class="xp-preset${p.active ? ' is-active' : ''}" data-preset="${p.id}" aria-pressed="${p.active}">${escapeHtml(p.label)}</button>`
+  ).join('') + (presets.some((p) => p.active) ? '' : '<span class="xp-custom">Susunan kustom</span>');
+  colsEl.innerHTML = cols.map((c, i) => {
+    const isAuto = auto.has(c.key);
+    return `<span class="xp-col${i === 0 ? ' is-first' : ''}${isAuto ? ' is-auto' : ''}"${isAuto ? ' title="Ditambahkan otomatis oleh filter yang aktif"' : ''}>${isAuto ? '<i class="ti ti-filter"></i>' : ''}${escapeHtml(c.label)}</span>`;
+  }).join('');
+  const noteEl = document.getElementById('produkExportColNote');
+  if (noteEl) noteEl.textContent = (auto.size ? 'Kolom bergaris putus ditambahkan otomatis oleh filter aktif. ' : '') +
+    'Sama dengan kolom di tabel: mengubahnya di sini juga mengubah tabel.';
+
+  // TOMBOL: ringkasan hasil akhir
+  const label = document.getElementById('produkExportGoLabel');
+  if (label) label.textContent = total > 0
+    ? `Download Excel · ${siap ? 'maks. ' : ''}${fmtId(total)} baris × ${cols.length} kolom`
+    : 'Tidak ada baris untuk diexport';
+  goBtn.disabled = total <= 0;
 }
 function setExportMenu(open){
   if (open) paintExportInfo();
   exportPop.hidden = !open;
   exportToggle.setAttribute('aria-expanded', String(open));
 }
+exportPanelRepaint = () => { if (!exportPop.hidden) paintExportInfo(); };
 exportToggle.addEventListener('click', () => setExportMenu(exportPop.hidden));
-exportPop.addEventListener('click', (e) => { if (e.target.closest('.export-item')) setExportMenu(false); }); // checkbox/teks lain: menu tetap terbuka
+exportPop.addEventListener('click', (e) => {
+  const pr = e.target.closest('[data-preset]');
+  if (pr) { colKit.applyPreset(pr.dataset.preset); return; } // tabel + opsi "siap jual" ikut berubah; panel digambar ulang lewat onChange
+  if (e.target.closest('#produkExportEditCols')) {
+    // Popover Kolom butuh tombolnya terlihat sebagai jangkar; di tampilan kartu tombol itu disembunyikan -> jangkar ke tombol Export.
+    const colsBtn = document.getElementById('produkColsBtn');
+    const anchor = colsBtn && colsBtn.offsetParent !== null ? colsBtn : exportToggle;
+    setExportMenu(false);
+    colKit.openPicker(anchor);
+    return;
+  }
+  if (e.target.closest('#produkExportBtn')) setExportMenu(false); // checkbox/teks lain: panel tetap terbuka
+});
 exportMenuDocHandler = (e) => {
   if (e.type === 'keydown') { if (e.key === 'Escape' && !exportPop.hidden) { setExportMenu(false); exportToggle.focus(); } return; }
+  // Klik pada elemen yang baru saja diganti oleh repaint panel (mis. chip preset) sudah lepas dari DOM: itu klik DI DALAM panel.
+  if (!e.target.isConnected) return;
   if (!exportPop.hidden && !e.target.closest('#produkExportMenu')) setExportMenu(false);
 };
 document.addEventListener('click', exportMenuDocHandler);
@@ -3526,6 +3589,7 @@ export function unmount() {
     document.removeEventListener('keydown', exportMenuDocHandler);
     exportMenuDocHandler = null;
   }
+  exportPanelRepaint = null;
   if (beforeUnloadHandler) window.removeEventListener('beforeunload', beforeUnloadHandler);
   if (copyKitDestroy) { copyKitDestroy(); copyKitDestroy = null; }
   filterPopOutsideClickHandler = null;

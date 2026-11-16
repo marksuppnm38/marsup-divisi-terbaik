@@ -236,8 +236,25 @@ export function createTableColumns(opts) {
       }),
     ];
     el.querySelector('.col-list').innerHTML = rows.join('');
+    const pr = el.querySelector('.col-presets');
+    if (pr) pr.innerHTML = presetsHtml();
     if (focusSel) (el.querySelector(focusSel + ':not(:disabled)') || el.querySelector('.col-list input[data-key]'))?.focus({ preventScroll: true });
   }
+
+  // Preset aktif = urutan kolom pilihan user persis sama dengan susunan preset. Diubah manual -> "Kustom".
+  const presetActive = (p) => {
+    const cur = state.order.filter((k) => state.visible.has(k));
+    return p.cols.length === cur.length && p.cols.every((k, i) => k === cur[i]);
+  };
+  const presetsHtml = () => COL_PRESETS.map((p) => {
+    const on = presetActive(p);
+    return `<button type="button" class="col-preset${on ? ' is-active' : ''}" data-preset="${p.id}" aria-pressed="${on}">${esc(p.label)}</button>`;
+  }).join('');
+  const applyPreset = (preset) => {
+    state = orderFrom(preset.cols, state.follow);
+    save(); onChange();
+    if (onPreset) onPreset(preset);
+  };
 
   const commit = (el, focusSel) => { save(); onChange(); if (el) paintList(el, focusSel); };
 
@@ -249,8 +266,9 @@ export function createTableColumns(opts) {
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', 'Kolom tabel Produk');
     el.innerHTML =
-      `<div class="cp-title cp-title-txt">Kolom tabel</div>` +
-      `<div class="col-presets">${COL_PRESETS.map((p) => `<button type="button" class="col-preset" data-preset="${p.id}">${esc(p.label)}</button>`).join('')}</div>` +
+      `<div class="cp-title cp-title-txt">Kolom tabel &amp; export</div>` +
+      `<div class="col-note">Kolom yang dicentang tampil di tabel dan ikut masuk file Export.</div>` +
+      `<div class="col-presets"></div>` +
       `<div class="col-list"></div>` +
       `<div class="cp-sep" role="separator"></div>` +
       `<label class="cp-check" title="Filter yang aktif menambah kolom yang relevan (mis. filter Harga menampilkan kolom harga)"><input type="checkbox" data-follow${state.follow ? ' checked' : ''}/><span>Ikuti filter (kolom ditambah otomatis)</span></label>` +
@@ -279,7 +297,7 @@ export function createTableColumns(opts) {
         return;
       }
       const pr = e.target.closest('[data-preset]');
-      if (pr) { const preset = COL_PRESETS.find((p) => p.id === pr.dataset.preset); state = orderFrom(preset.cols, state.follow); commit(el); if (onPreset) onPreset(preset); return; }
+      if (pr) { const preset = COL_PRESETS.find((p) => p.id === pr.dataset.preset); applyPreset(preset); paintList(el); return; }
       if (e.target.closest('[data-act="reset"]')) { state = defaultState(); commit(el); }
     });
     el.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePicker(true); } });
@@ -324,6 +342,17 @@ export function createTableColumns(opts) {
     },
     /** Label kolom yang tampil (untuk ringkasan di menu Export). */
     visibleLabels() { return visibleCols().map((c) => c.label); },
+    /** Preset kolom + mana yang sedang aktif: [{ id, label, active }]. Tidak ada yang aktif = susunan kustom. */
+    presets() { return COL_PRESETS.map((p) => ({ id: p.id, label: p.label, active: presetActive(p) })); },
+    /** Terapkan preset (sama persis dengan klik di popover Kolom): tabel ikut berubah, onPreset dipanggil. */
+    applyPreset(id) {
+      const preset = COL_PRESETS.find((p) => p.id === id);
+      if (!preset) return;
+      closePicker();
+      applyPreset(preset);
+    },
+    /** Key kolom yang muncul karena filter aktif (bukan pilihan user) -> ditandai di panel Export. */
+    autoKeys() { return autoExtra(); },
     /** Dibuang tiap loadProduk() supaya Nama AKD tidak basi setelah edit. */
     invalidate() { akdNamaCache.clear(); },
     /** Kolom yang diminta filter aktif (urutan = urutan tampil). Panggil sebelum renderHead(). */

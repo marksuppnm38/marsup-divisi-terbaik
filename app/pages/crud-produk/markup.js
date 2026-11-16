@@ -49,21 +49,6 @@ export const CRUD_PRODUK_MARKUP = `
             <div class="content-sub" id="produkCount">Memuat...</div>
           </div>
           <div class="produk-head-actions">
-            <!-- Satu export: kolom = kolom tabel yang tampil (tombol Kolom), baris = semua hasil filter + pencarian. -->
-            <div class="export-menu" id="produkExportMenu">
-              <button class="btn btn-accent" id="produkExportToggle" type="button" aria-haspopup="menu" aria-expanded="false"><i class="ti ti-download"></i> Export <i class="ti ti-chevron-down export-chev"></i></button>
-              <div class="export-pop" id="produkExportPop" role="menu" hidden>
-                <button class="export-item" id="produkExportBtn" type="button" role="menuitem">
-                  <i class="ti ti-file-spreadsheet"></i>
-                  <span><b>Export tampilan ini ke Excel</b><small id="produkExportInfo">Kolom dan baris persis seperti di layar</small></span>
-                </button>
-                <label class="export-opt">
-                  <input type="checkbox" id="produkExportSiapJual"/>
-                  <span><b>Hanya produk siap jual</b><small>Buang produk tanpa harga E-Katalog atau yang Link V6-nya kotor (ada catatan / bukan URL murni), urut Nama. Untuk pricelist sales.</small></span>
-                </label>
-                <div class="export-hint"><i class="ti ti-columns"></i><span>Atur isi file lewat tombol <b>Kolom</b>: preset <b>Pricelist sales</b> (otomatis menyalakan opsi di atas), <b>Audit lengkap</b> untuk cek data. Filter yang aktif ikut menentukan baris (dan menambah kolom otomatis).</span></div>
-              </div>
-            </div>
             <button class="btn btn-accent" id="addBtn"><i class="ti ti-plus"></i> Tambah Produk</button>
           </div>
         </div>
@@ -83,7 +68,38 @@ export const CRUD_PRODUK_MARKUP = `
               </div>
             </div>
           <div class="vtools-end">
-            <button type="button" class="btn-cols" id="produkColsBtn" aria-haspopup="dialog" aria-expanded="false" title="Pilih & urutkan kolom tabel"><i class="ti ti-columns"></i> Kolom</button>
+            <button type="button" class="btn-cols" id="produkColsBtn" aria-haspopup="dialog" aria-expanded="false" title="Pilih & urutkan kolom (tampil di tabel dan ikut di file Export)"><i class="ti ti-columns"></i> Kolom</button>
+            <!-- Export sejajar dengan Kolom karena keduanya satu paket: kolom export = kolom tabel.
+                 Panel berisi 3 hal berurutan -- baris (berapa & dari filter apa), kolom (apa saja, urutan, preset), lalu tombol download
+                 yang menyebut ringkasannya. Tombol download = #produkExportBtn (id lama dipertahankan). -->
+            <div class="export-menu" id="produkExportMenu">
+              <button type="button" class="btn-cols" id="produkExportToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="produkExportPop"><i class="ti ti-download"></i> Export <i class="ti ti-chevron-down export-chev"></i></button>
+              <div class="export-pop" id="produkExportPop" role="dialog" aria-label="Export ke Excel" hidden>
+                <div class="xp-title">Export ke Excel</div>
+
+                <section class="xp-sec" aria-labelledby="xpRowsLbl">
+                  <div class="xp-label" id="xpRowsLbl">Baris</div>
+                  <div class="xp-rows" id="produkExportRows"></div>
+                  <label class="export-opt">
+                    <input type="checkbox" id="produkExportSiapJual"/>
+                    <span><b>Hanya produk siap jual</b><small id="produkExportSiapNote">Buang produk tanpa harga E-Katalog atau dengan Link V6 yang kotor, urut Nama. Untuk pricelist sales.</small></span>
+                  </label>
+                </section>
+
+                <section class="xp-sec" aria-labelledby="xpColsLbl">
+                  <div class="xp-label" id="xpColsLbl">Kolom <span class="xp-count" id="produkExportColCount"></span>
+                    <button type="button" class="xp-link" id="produkExportEditCols"><i class="ti ti-adjustments-horizontal"></i> Atur kolom</button>
+                  </div>
+                  <div class="xp-presets" id="produkExportPresets" role="group" aria-label="Susunan kolom siap pakai"></div>
+                  <div class="xp-cols" id="produkExportCols"></div>
+                  <div class="xp-note" id="produkExportColNote">Sama dengan kolom di tabel: mengubahnya di sini juga mengubah tabel.</div>
+                </section>
+
+                <div class="xp-foot">
+                  <button class="btn btn-accent xp-go" id="produkExportBtn" type="button"><i class="ti ti-file-spreadsheet"></i> <span id="produkExportGoLabel">Download Excel</span></button>
+                </div>
+              </div>
+            </div>
             <div class="view-toggle">
               <button id="viewTableBtn" class="active" title="Tampilan tabel"><i class="ti ti-list"></i></button>
               <button id="viewCardBtn" title="Tampilan kartu"><i class="ti ti-layout-grid"></i></button>
