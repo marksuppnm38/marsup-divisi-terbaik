@@ -752,7 +752,7 @@ async function rpc(fn, params){
   // ══════════════════════════════════════════
   const BK_INITIAL = 30;
   let bkData = { synced_at: null, groups: [] };
-  let bkQ = '', bkSales = '', bkBatal = false, bkAll = false, bkSalesJson = '';
+  let bkQ = '', bkSales = '', bkField = 'deadline', bkFrom = '', bkTo = '', bkBatal = false, bkAll = false, bkSalesJson = '';
   const bkOpen = new Set();
   function tglId(iso) {
     if (!iso) return '—';
@@ -787,6 +787,14 @@ async function rpc(fn, params){
         <div class="bk-controls">
           <input type="search" id="bk-q" class="db-select bk-search" placeholder="Cari RS, code name, sales, kode/nama barang…" aria-label="Cari booking" autocomplete="off" value="${esc(bkQ)}">
           <select id="bk-sales" class="db-select" aria-label="Filter sales"></select>
+          <select id="bk-field" class="db-select" aria-label="Filter tanggal berdasarkan">
+            <option value="deadline"${bkField === 'deadline' ? ' selected' : ''}>Deadline pabrik</option>
+            <option value="tgl_po"${bkField === 'tgl_po' ? ' selected' : ''}>PO diterima</option>
+          </select>
+          <input type="date" id="bk-from" class="db-select" aria-label="Dari tanggal" value="${esc(bkFrom)}">
+          <span class="bk-sd">s/d</span>
+          <input type="date" id="bk-to" class="db-select" aria-label="Sampai tanggal" value="${esc(bkTo)}">
+          <button type="button" class="db-textbtn" data-action="bk-reset">Reset filter</button>
           <label class="bk-check"><input type="checkbox" id="bk-batal"${bkBatal ? ' checked' : ''}> Tampilkan yang batal</label>
         </div>
         <p class="pop-lead" id="bk-lead"></p>
@@ -807,7 +815,12 @@ async function rpc(fn, params){
     const list = $('bk-list');
     if (!list) return;
     const q = bkQ.trim().toLowerCase();
-    const rows = bkData.groups.filter((g) => (bkBatal || !g.is_batal) && (!bkSales || g.sales === bkSales) && (!q || bkHay(g).includes(q)));
+    const inRange = (g) => {
+      if (!bkFrom && !bkTo) return true;
+      const d = String(g[bkField] || '').slice(0, 10);   // tanggal kosong -> tidak lolos filter tanggal
+      return !!d && (!bkFrom || d >= bkFrom) && (!bkTo || d <= bkTo);
+    };
+    const rows = bkData.groups.filter((g) => (bkBatal || !g.is_batal) && (!bkSales || g.sales === bkSales) && inRange(g) && (!q || bkHay(g).includes(q)));
     const itemTotal = rows.reduce((s, g) => s + (g.item_count || 0), 0);
     const lead = $('bk-lead');
     if (lead) lead.innerHTML = `<strong>${fmt(rows.length)}</strong> booking, ${fmt(itemTotal)} item${bkData.groups.some((g) => g.is_batal) && !bkBatal ? ' (yang batal disembunyikan)' : ''}.`;
@@ -1027,6 +1040,11 @@ function isSafeHttpUrl(u){
     'dist-metric':     (el) => { distMetric = (el.dataset.m === 'rs' || el.dataset.m === 'po') ? el.dataset.m : 'volume'; setPressed(el); renderDistributor($('db-distributor')); },
     'dist-period':     (el) => { distDays = el.dataset.days === '0' ? 0 : (+el.dataset.days || 365); setPressed(el); runPanel('distributor', false); },
     'bk-toggle':       (el) => { const k = el.dataset.key; if (bkOpen.has(k)) bkOpen.delete(k); else bkOpen.add(k); renderBookingList(); },
+    'bk-reset':        () => {
+      bkQ = ''; bkSales = ''; bkFrom = ''; bkTo = ''; bkAll = false;
+      ['bk-q', 'bk-sales', 'bk-from', 'bk-to'].forEach((id) => { const e = $(id); if (e) e.value = ''; });
+      renderBookingList();
+    },
     'bk-more':         () => { bkAll = !bkAll; renderBookingList(); },
     'pop-prov':        (el) => { popSel = el.dataset.prov || popSel; renderPopulasi($('db-populasi')); },
     'wt-pick':         (el) => pickIstilah(el.dataset.istilah),
@@ -1069,6 +1087,9 @@ function isSafeHttpUrl(u){
     if (!t || !t.id) return;
     if (t.id === 'bk-q') { bkQ = t.value; bkAll = false; renderBookingList(); }
     else if (t.id === 'bk-sales') { bkSales = t.value; bkAll = false; renderBookingList(); }
+    else if (t.id === 'bk-field') { bkField = t.value === 'tgl_po' ? 'tgl_po' : 'deadline'; bkAll = false; renderBookingList(); }
+    else if (t.id === 'bk-from') { bkFrom = t.value; bkAll = false; renderBookingList(); }
+    else if (t.id === 'bk-to') { bkTo = t.value; bkAll = false; renderBookingList(); }
     else if (t.id === 'bk-batal') { bkBatal = !!t.checked; bkAll = false; renderBookingList(); }
   }
   dashContainerHandlers = { click: onContainerClick, keydown: onContainerKeydown, input: onContainerInput };

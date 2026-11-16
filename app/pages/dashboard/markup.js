@@ -1,6 +1,6 @@
 // Markup dashboard. Susunan halaman:
-//   1. Perlu dikerjakan (daftar kerja, elemen utama) + Konversi hari ini
-//   1b. Booking tracker (sales, code name, RS; klik baris untuk lihat barangnya)
+//   0. Booking tracker (paling atas; sales, code name, RS; klik baris untuk lihat barangnya)
+//   1. Perlu dikerjakan (daftar kerja) + Konversi hari ini
 //   2. Tujuh hari terakhir + Leaderboard sales
 //   3. Stok berisiko habis
 //   4. Populasi set + Kategori konversi
@@ -26,6 +26,16 @@ export const DASHBOARD_MARKUP = `
   </div>
 
   <section class="db-row">
+    <div class="db-c12">
+      <div class="db-sec-head">
+        <h2 class="db-sec-title">Booking tracker</h2>
+        <span class="db-sec-sub" id="bk-sub">Dari sheet Booking Tracker</span>
+      </div>
+      <div id="db-booking">${BUSY}</div>
+    </div>
+  </section>
+
+  <section class="db-row">
     <div class="db-c7">
       <div class="db-sec-head">
         <h2 class="db-sec-title">Perlu dikerjakan</h2>
@@ -39,16 +49,6 @@ export const DASHBOARD_MARKUP = `
         <div class="db-sec-tools"><a class="db-link" href="/konversian/riwayat" data-nav="/konversian/riwayat">Buka riwayat</a></div>
       </div>
       <div id="db-today">${BUSY}</div>
-    </div>
-  </section>
-
-  <section class="db-row">
-    <div class="db-c12">
-      <div class="db-sec-head">
-        <h2 class="db-sec-title">Booking tracker</h2>
-        <span class="db-sec-sub" id="bk-sub">Dari sheet Booking Tracker</span>
-      </div>
-      <div id="db-booking">${BUSY}</div>
     </div>
   </section>
 

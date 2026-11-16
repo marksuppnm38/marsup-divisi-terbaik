@@ -248,3 +248,5 @@ a.wl-row:focus-visible{ outline-offset:-2px; }
   .bk-head > span:nth-child(3),.bk-head > span:nth-child(4){ grid-column:1; font-size:12.5px; color:var(--text-muted); }
   .bk-head > span.num{ grid-column:2; grid-row:1; }
 }
+.bk-sd{ font-size:13px; color:var(--text-muted); }
+.bk-controls input[type="date"]{ min-width:140px; }
