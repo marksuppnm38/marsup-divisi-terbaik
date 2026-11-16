@@ -279,6 +279,22 @@ export const CRUD_PRODUK_MARKUP = `
                         <button type="button" class="btn btn-ghost kalk-pakai" id="kalkPakai"><i class="ti ti-arrow-up-right"></i> Pakai ke kotak Harga EKATALOG</button>
                       </div>
                     </div>
+
+                    <div class="kalk-cmp">
+                      <div class="kalk-cmp-title">Bandingkan harga tayang nego (after tax)</div>
+                      <div class="kalk-body">
+                        <div class="kalk-in">
+                          <div class="f"><label for="kalkDiskon">Diskon dari harga tayang saat ini (%)</label><input type="text" id="kalkDiskon" inputmode="decimal" autocomplete="off" placeholder="mis. 5" aria-describedby="kalkCmpNote"/></div>
+                        </div>
+                        <div class="kalk-out" aria-live="polite">
+                          <div class="kalk-line"><span class="kalk-k">Harga tayang saat ini</span><output id="kalkAcuan">—</output></div>
+                          <div class="kalk-line"><span class="kalk-k">Selisih nego</span><output id="kalkSelisih">—</output></div>
+                          <div class="kalk-line"><span class="kalk-k">Total komponen <small>EKATALOG × qty</small></span><output id="kalkKomponen">—</output><button type="button" class="btn btn-ghost kalk-copy" id="kalkKomponenBtn">Hitung</button></div>
+                          <div class="kalk-line"><span class="kalk-k">Nego vs total komponen</span><output id="kalkVsKomponen">—</output><span></span></div>
+                        </div>
+                      </div>
+                      <div class="akd-hint" id="kalkCmpNote"></div>
+                    </div>
                   </section>
                 </div>
 

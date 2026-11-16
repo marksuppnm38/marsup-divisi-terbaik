@@ -2699,6 +2699,7 @@ let currentSetKode = '';
 // openAdd() mereset ini ke null di awal, jadi hanya berlaku untuk modal yang dibuka dari tombol itu.
 let pendingSetLink = null; // { setId, kode, qty }
 let compRows = [];
+let setHargaAcuan = null; // { ekat, tahun } harga EKATALOG terbaru set yang dibuka; dasar diskon di kalkulator nego
 let lastAddedItemRowId = null;
 
 async function goToSetDetail(produkId){
@@ -2822,6 +2823,8 @@ document.getElementById('setBackBtn').addEventListener('click', () => {
 async function openSetDetail(setId, kodeProduk){
   currentSetId = setId;
   currentSetKode = kodeProduk;
+  // Kalkulator nego: buang acuan & total komponen milik set sebelumnya (angka input tetap, user mungkin lagi membandingkan).
+  setHargaAcuan = null; kalkCtl.resetKomponen(); kalkCtl.refresh();
   document.getElementById('setListWrap').style.display = 'none';
   document.getElementById('setDetailWrap').style.display = 'block';
   switchSetTab('composition');
@@ -3169,10 +3172,21 @@ async function loadSetHarga(){
   const tbody = document.getElementById('setHargaTableBody');
   if (error) { tbody.innerHTML = `<tr><td colspan="4">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
   renderHargaGroupInto(tbody, data || [], () => { loadSetHarga(); refreshSetHeader(); });
+  // Acuan kalkulator nego = harga EKATALOG tahun terbaru (data sudah urut tahun menurun).
+  const ekatTerbaru = (data || []).find(r => r.jenis === 'EKATALOG');
+  setHargaAcuan = ekatTerbaru ? { ekat: Number(ekatTerbaru.harga), tahun: ekatTerbaru.tahun } : null;
+  kalkCtl.refresh();
 }
 // Kalkulator nego: murni hitung. "Pakai ke kotak" cuma mengisi kotak Harga EKATALOG (sh_harga) -- belum menyimpan,
 // sama seperti "Hitung dari Komposisi": user tetap klik Tambah sendiri.
-installKalkulatorHarga(document.getElementById('kalkHarga'), {
+// getAcuan = harga EKATALOG tahun terbaru set yang sedang dibuka (dasar hitung diskon);
+// getKomponen = total komposisi, baru dihitung saat user minta (satu query), bukan tiap buka set.
+const kalkCtl = installKalkulatorHarga(document.getElementById('kalkHarga'), {
+  getAcuan: () => setHargaAcuan,
+  getKomponen: async () => {
+    if (compRows.length === 0) return { kosong: true };
+    return hitungTotalKomposisi();
+  },
   onPakai: (ekat) => {
     const el = document.getElementById('sh_harga');
     el.value = String(ekat);
@@ -3181,40 +3195,42 @@ installKalkulatorHarga(document.getElementById('kalkHarga'), {
     showToast('Harga EKATALOG diisi ' + Number(ekat).toLocaleString('id-ID') + ' (klik Tambah untuk menyimpan)');
   }
 });
+// Total komposisi = SUM(harga EKATALOG terbaru tiap item x qty). Dipakai tombol "Hitung dari Komposisi" dan kalkulator nego.
+// FIX (perf): satu query batched buat semua produk_id sekaligus (dulu satu-satu per item, N round-trip berurutan).
+async function hitungTotalKomposisi(){
+  const produkIds = compRows.map(r => r.produk_id);
+  const { data: hargaRows, error } = await sb.from('produk_harga').select('produk_id, harga, tahun')
+    .in('produk_id', produkIds).eq('jenis', 'EKATALOG').order('tahun', { ascending: false });
+  if (error) return { error };
+
+  // Beberapa produk bisa punya harga EKATALOG di lebih dari satu tahun --
+  // karena hargaRows udah di-order tahun descending dari query di atas,
+  // baris PERTAMA yang ketemu per produk_id otomatis harga tahun terbaru.
+  const hargaTerbaruPerProduk = new Map();
+  (hargaRows || []).forEach(h => {
+    if (!hargaTerbaruPerProduk.has(h.produk_id)) hargaTerbaruPerProduk.set(h.produk_id, h.harga);
+  });
+
+  let total = 0;
+  const itemTanpaHarga = [];
+  for (const r of compRows) {
+    const harga = hargaTerbaruPerProduk.get(r.produk_id);
+    if (harga != null) { total += harga * r.qty; }
+    else { itemTanpaHarga.push(r.item?.nama_produk || r.item?.kode_produk || 'item'); }
+  }
+  return { total, itemTanpaHarga };
+}
 document.getElementById('hitungKomposisiBtn').addEventListener('click', async () => {
   if (compRows.length === 0) { showToast('Belum ada item di komposisi set ini', true); return; }
   const btn = document.getElementById('hitungKomposisiBtn');
   const btnHtmlAsal = btn.innerHTML;
-  // FIX (perf + UX): dulu query harga per item dijalanin SATU-SATU di dalam
-  // loop (N round-trip berurutan ke Supabase — set isi 20 item = 20 request
-  // nunggu gantian), dan tombolnya diem aja selama itu tanpa disable/spinner
-  // sama sekali. Jadi kalau set-nya gede, user ngeklik terus ngira macet
-  // (dan bisa aja re-klik berkali-kali numpuk request). Sekarang: (1) satu
-  // query batched buat semua produk_id sekaligus, dan (2) tombolnya
-  // didisable + kasih spinner + itung jumlah item selama proses jalan.
+  // UX: tombol didisable + spinner + jumlah item selama proses jalan (dulu diam saja, user klik berulang).
   btn.disabled = true;
   btn.innerHTML = `<span class="spinner"></span> Menghitung ${compRows.length} item...`;
   try {
-    const produkIds = compRows.map(r => r.produk_id);
-    const { data: hargaRows, error } = await sb.from('produk_harga').select('produk_id, harga, tahun')
-      .in('produk_id', produkIds).eq('jenis', 'EKATALOG').order('tahun', { ascending: false });
-    if (error) { showToast('Gagal ambil harga item: ' + error.message, true); return; }
-
-    // Beberapa produk bisa punya harga EKATALOG di lebih dari satu tahun --
-    // karena hargaRows udah di-order tahun descending dari query di atas,
-    // baris PERTAMA yang ketemu per produk_id otomatis harga tahun terbaru.
-    const hargaTerbaruPerProduk = new Map();
-    (hargaRows || []).forEach(h => {
-      if (!hargaTerbaruPerProduk.has(h.produk_id)) hargaTerbaruPerProduk.set(h.produk_id, h.harga);
-    });
-
-    let total = 0;
-    const itemTanpaHarga = [];
-    for (const r of compRows) {
-      const harga = hargaTerbaruPerProduk.get(r.produk_id);
-      if (harga != null) { total += harga * r.qty; }
-      else { itemTanpaHarga.push(r.item?.nama_produk || r.item?.kode_produk || 'item'); }
-    }
+    const hasil = await hitungTotalKomposisi();
+    if (hasil.error) { showToast('Gagal ambil harga item: ' + hasil.error.message, true); return; }
+    const { total, itemTanpaHarga } = hasil;
     document.getElementById('sh_harga').value = Math.round(total);
     if (itemTanpaHarga.length > 0) {
       showToast(`Dihitung, tapi ${itemTanpaHarga.length} item belum punya harga EKATALOG (tidak ikut terhitung): ${itemTanpaHarga.slice(0,3).join(', ')}${itemTanpaHarga.length>3?', ...':''}`, true);
