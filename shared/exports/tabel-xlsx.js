@@ -109,5 +109,7 @@ export function writeTableXlsx(XLSX, { sheetName = 'Produk', title, subtitle, co
   ws['!rows'] = [{ hpt: 22 }, { hpt: 16 }, { hpt: 20 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  XLSX.writeFile(wb, fileName);
+  // compression:true -> ZIP di-deflate. Default SheetJS untuk .xlsx = tanpa kompresi (file ~3-4x lebih besar,
+  // isinya identik). Hanya mengubah pengemasan, bukan isi/format/style.
+  XLSX.writeFile(wb, fileName, { compression: true });
 }

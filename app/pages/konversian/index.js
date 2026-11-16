@@ -2208,25 +2208,38 @@ async function copySetRincianWithImages(items, imgs, btnEl) {
     return;
   }
 
+  // UKURAN EKSPLISIT (WPS/Word): paste versi lama (atribut width/height saja, kolom & baris "auto")
+  // tampil di WPS dengan gambar ±1/8 ukuran asli dan pucat. Dugaan: importer HTML Word-family
+  // menurunkan ukuran gambar dari sel kalau lebar kolom/tinggi baris tidak ditetapkan (belum bisa
+  // dites langsung di WPS). Jadi ukuran sekarang ditetapkan di semua lapis sekaligus: atribut + style pada <img>, <colgroup> dengan lebar tetap,
+  // table-layout:fixed, dan tinggi baris. Total lebar 600px (±16cm) muat di halaman A4 dengan
+  // margin normal. Excel/Sheets juga membaca lebar & tinggi ini, jadi kolom gambarnya ikut rapi.
+  const IMG_W = 80, IMG_H = 65, ROW_H = 72;
+  const COL_W = [38, 140, 278, 46, 100]; // NO, KODE, DESKRIPSI, QTY, GAMBAR
+  const TABLE_W = COL_W.reduce((a, b) => a + b, 0);
+  const TD = 'border:1px solid #000;padding:2px 4px;vertical-align:middle;background:#fff';
+  const TH = 'border:1px solid #000;padding:2px 4px;vertical-align:middle;background:#1D5BD4;color:#fff;text-align:center';
+
   const rowsHtml = items.map((it, i) => {
     const url = urlMap.get(thumbKeyForItem(it)) || '';
     const gambarCell = url
-      ? `<img src="${esc(url)}" width="80" height="65" alt="${esc(it.kode_produk)}">`
+      ? `<img src="${esc(url)}" width="${IMG_W}" height="${IMG_H}" style="width:${IMG_W}px;height:${IMG_H}px" alt="${esc(it.kode_produk)}">`
       : ''; // kode ini belum ada gambarnya di bucket -- sel dibiarkan kosong (dulu: <img> 404/broken)
-    return `<tr>` +
-      `<td style="border:1px solid #000;text-align:center">${it.urutan || i + 1}</td>` +
-      `<td style="border:1px solid #000">${esc(it.kode_produk)}</td>` +
-      `<td style="border:1px solid #000">${esc(it.nama_produk)}</td>` +
-      `<td style="border:1px solid #000;text-align:center">${it.qty ?? 1}</td>` +
-      `<td style="border:1px solid #000;text-align:center">${gambarCell}</td>` +
+    return `<tr style="height:${ROW_H}px">` +
+      `<td width="${COL_W[0]}" height="${ROW_H}" valign="middle" align="center" bgcolor="#FFFFFF" style="${TD};text-align:center">${it.urutan || i + 1}</td>` +
+      `<td width="${COL_W[1]}" valign="middle" bgcolor="#FFFFFF" style="${TD}">${esc(it.kode_produk)}</td>` +
+      `<td width="${COL_W[2]}" valign="middle" bgcolor="#FFFFFF" style="${TD}">${esc(it.nama_produk)}</td>` +
+      `<td width="${COL_W[3]}" valign="middle" align="center" bgcolor="#FFFFFF" style="${TD};text-align:center">${it.qty ?? 1}</td>` +
+      `<td width="${COL_W[4]}" valign="middle" align="center" bgcolor="#FFFFFF" style="${TD};text-align:center">${gambarCell}</td>` +
       `</tr>`;
   }).join('');
 
   const html =
-    `<table border="1" style="border-collapse:collapse">` +
+    `<table border="1" cellspacing="0" cellpadding="0" width="${TABLE_W}" style="border-collapse:collapse;table-layout:fixed;width:${TABLE_W}px">` +
+    `<colgroup>${COL_W.map(w => `<col width="${w}" style="width:${w}px">`).join('')}</colgroup>` +
     `<thead><tr>` +
     ['NO', 'KODE PNM', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR']
-      .map(h => `<th style="border:1px solid #000;background:#1D5BD4;color:#fff">${h}</th>`).join('') +
+      .map((h, c) => `<th width="${COL_W[c]}" bgcolor="#1D5BD4" style="${TH}">${h}</th>`).join('') +
     `</tr></thead><tbody>${rowsHtml}</tbody></table>`;
 
   const plain = items.map((it) => {

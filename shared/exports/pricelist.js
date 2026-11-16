@@ -72,5 +72,6 @@ export function writePricelistXlsx(XLSX, priced, hargaMap, { subtitle, fileTag =
   ws['!rows'] = [{ hpt: 22 }, { hpt: 16 }, { hpt: 18 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Pricelist');
-  XLSX.writeFile(wb, `pricelist_sales_${dateStr}${fileTag}.xlsx`);
+  // compression:true -> ZIP di-deflate (default SheetJS untuk .xlsx = tanpa kompresi). Isi/format/style tetap sama.
+  XLSX.writeFile(wb, `pricelist_sales_${dateStr}${fileTag}.xlsx`, { compression: true });
 }
