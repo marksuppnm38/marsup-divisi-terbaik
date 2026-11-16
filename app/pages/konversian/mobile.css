@@ -1,0 +1,147 @@
+/* ══════════════════════════════════════════════════════════════════════
+   KONVERSIAN — lapisan HP (<=640px). Dimuat SETELAH style.css (lihat ensureStyle() di index.js).
+   Hapus file ini + baris installMobileNav = kembali ke tampilan sebelumnya. Desktop/tablet tidak tersentuh.
+   Acuan: Material 3 (Android). Hanya memakai token yang sudah ada di pnm-universal.css.
+   Aturan: target sentuh >=44px, input 16px (cegah auto-zoom Android/Brave), tinggi pakai dvh
+   (bar alamat Brave yang naik-turun bikin 100vh terpotong), aman untuk notch / gesture bar.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Bar bawah + sheet disembunyikan di layar lebar */
+.konv-bottombar, .konv-sheet { display: none; }
+
+@media (max-width: 640px) {
+  :root { --kb-bar-h: 64px; }
+
+  #app-root {
+    height: 100dvh !important;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app-root, #app-root * { overscroll-behavior: contain; }
+
+  /* ---- Top bar & toolbar: ringkas, satu baris ---- */
+  #app-root .pw-topbar { height: 48px; padding: 0 12px; }
+  #app-root .pw-topbar-crumb { font-size: 13px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #app-root .konv-toolbar { padding: 8px 12px; gap: 8px; flex-wrap: nowrap; }
+  #app-root .session-indicator { flex: 1 1 auto; min-width: 0; min-height: 44px; }
+  #app-root .session-indicator-text, #app-root #session-indicator-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #app-root .header-right { flex: 0 0 auto; gap: 6px; }
+  #app-root .header-right .clip-count { display: none; } /* Clipboard sudah ada di bar bawah */
+  #app-root #btn-permintaan { min-width: 44px; min-height: 44px; padding: 0 12px; justify-content: center; position: relative; }
+  #app-root #btn-permintaan .toggle-btn-label { display: none; }
+  #app-root #btn-permintaan .toggle-btn-count { position: absolute; top: 2px; right: 2px; }
+
+  /* ---- Tab lama (2 tombol) digantikan bar bawah 5 tujuan ---- */
+  #app-root .mobile-tabs { display: none !important; }
+
+  /* ---- Area kerja: satu panel penuh, ruang untuk bar bawah ---- */
+  #app-root .workspace { min-height: 0; }
+  #app-root .panel-search, #app-root .panel-clip { min-height: 0; }
+  #app-root .panel-body, #app-root .clip-body { padding: 12px 12px calc(16px + env(safe-area-inset-bottom, 0px)); -webkit-overflow-scrolling: touch; }
+  #app-root .panel-header { padding: 10px 12px 8px; }
+  #app-root .panel-collapse-btn, #app-root .panel-search-rail { display: none !important; }
+
+  /* ---- Input: 16px supaya Brave/Chrome Android tidak zoom saat fokus ---- */
+  #app-root input[type="text"], #app-root input[type="search"], #app-root input[type="number"],
+  #app-root select, #app-root textarea, #app-root .filter-select, #app-root .conv-select, #app-root .prj-input {
+    font-size: 16px; min-height: 44px;
+  }
+  #app-root #search-input { height: 48px; font-size: 16px; padding-left: 40px; }
+  #app-root .search-wrap .clear-btn { width: 44px; height: 44px; }
+
+  /* ---- Filter: chip satu baris yang bisa digeser, bukan tumpukan yang makan layar ---- */
+  #app-root .filters {
+    flex-wrap: nowrap; overflow-x: auto; gap: 8px; margin: 8px -12px 0; padding: 2px 12px 6px;
+    scrollbar-width: none; scroll-snap-type: x proximity;
+  }
+  #app-root .filters::-webkit-scrollbar { display: none; }
+  #app-root .filters .toggle-btn { flex: 0 0 auto; scroll-snap-align: start; border-radius: 999px; }
+  #app-root .toggle-btn, #app-root .pr-add-clip-btn { min-height: 44px; padding: 0 14px; font-size: 13px; border-radius: 10px; }
+  #app-root .meta-row { flex-wrap: wrap; gap: 8px; }
+  #app-root .meta-row .filter-select { flex: 1 1 140px; }
+
+  /* ---- Converter: area tempel luas, aksi menempel di bawah supaya selalu terjangkau jempol ---- */
+  #app-root .conv-input { min-height: 160px; font-size: 16px; }
+  #app-root .conv-run-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  #app-root .conv-run-row > * { width: 100%; justify-content: center; }
+  #app-root .conv-actions {
+    position: sticky; bottom: 0; z-index: 3; margin: 0 -12px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface); border-top: 1px solid var(--border); flex-direction: column; gap: 8px;
+  }
+  #app-root .conv-actions-group { flex-wrap: wrap; gap: 8px; }
+  #app-root .conv-actions-group > * { flex: 1 1 140px; justify-content: center; }
+  #app-root .conv-actions-note { flex: 1 1 100%; text-align: center; }
+
+  /* ---- Cari SET / Riwayat / Dictionary / Project ---- */
+  #app-root .setcari-bar { flex-direction: column; align-items: stretch; gap: 8px; }
+  #app-root .setcari-seg { display: flex; gap: 8px; }
+  #app-root .setcari-seg .toggle-btn { flex: 1; justify-content: center; }
+  #app-root .riwayat-toolbar, #app-root .dict-toolbar { flex-wrap: wrap; gap: 8px; }
+  #app-root .riwayat-toolbar .filter-select, #app-root .dict-toolbar .filter-select { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  #app-root .riwayat-scope { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  #app-root .riwayat-scope-btn { min-height: 44px; flex: 0 0 auto; }
+  #app-root .dict-stats-row { overflow-x: auto; scrollbar-width: none; }
+  #app-root .dict-table-wrap, #app-root .conv-results { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #app-root .prj-trx-fields { flex-direction: column; align-items: stretch; }
+  #app-root .prj-harga { width: 100%; height: 44px; font-size: 16px; }
+
+  /* ---- Panel Clipboard ---- */
+  #app-root .clip-tab-row { overflow-x: auto; scrollbar-width: none; }
+  #app-root .clip-tab-row > * { min-height: 44px; flex: 0 0 auto; }
+  #app-root .clip-strip-actions .clip-header-icon-btn, #app-root .clip-strip-actions .clip-header-edit-btn,
+  #app-root .clip-strip-actions .btn-end-sesi { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+  #app-root .clip-footer { position: sticky; bottom: 0; background: var(--surface); padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+
+  /* ---- Modal -> bottom sheet layar penuh bawah ---- */
+  #app-root .modal-overlay, .modal-overlay.show { align-items: flex-end !important; padding: 0 !important; }
+  #app-root .modal-box, .modal-overlay .modal-box {
+    width: 100% !important; max-width: 100% !important; max-height: 92dvh; overflow-y: auto;
+    border-radius: 20px 20px 0 0 !important; padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* ══ Bar navigasi bawah (Material 3) ══ */
+  .konv-bottombar {
+    display: flex; flex: 0 0 auto; height: calc(var(--kb-bar-h) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--surface); border-top: 1px solid var(--border); position: relative; z-index: 20;
+  }
+  .kb-dest {
+    flex: 1 1 0; min-width: 0; border: 0; background: none; font-family: inherit; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    color: var(--text-muted); padding: 8px 0 6px;
+  }
+  .kb-pill {
+    position: relative; width: 56px; height: 30px; border-radius: 15px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background-color .18s, color .18s;
+  }
+  .kb-pill .ti { font-size: 22px; }
+  .kb-label { font-size: 11px; font-weight: 500; line-height: 1; }
+  .kb-dest.is-active { color: var(--accent-text); }
+  .kb-dest.is-active .kb-pill { background: var(--accent-bg); }
+  .kb-dest.is-active .kb-label { font-weight: 700; }
+  .kb-dest:active .kb-pill { background: var(--surface-3); }
+  .kb-dest:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 12px; }
+  .kb-dot { position: absolute; top: 1px; right: 9px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); box-sizing: content-box; }
+  .kb-dot[hidden], .konv-sheet-count[hidden] { display: none; }
+
+  /* ══ Sheet "Lainnya" ══ */
+  .konv-sheet { display: block; position: fixed; inset: 0; z-index: 80; }
+  .konv-sheet[hidden] { display: none; }
+  .konv-sheet-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .4); }
+  .konv-sheet-box {
+    position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface);
+    border-radius: 20px 20px 0 0; padding: 8px 8px calc(12px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, .18); animation: kbSheetUp .22s cubic-bezier(.2, 0, 0, 1);
+  }
+  .konv-sheet-grab { width: 36px; height: 4px; border-radius: 2px; background: var(--border-strong); margin: 4px auto 8px; }
+  .konv-sheet-item {
+    width: 100%; min-height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 16px;
+    border: 0; background: none; border-radius: 12px; font-family: inherit; font-size: 15px; font-weight: 500;
+    color: var(--text); text-align: left; cursor: pointer;
+  }
+  .konv-sheet-item .ti { font-size: 22px; color: var(--text-secondary); }
+  .konv-sheet-item:active { background: var(--surface-2); }
+  .konv-sheet-count { margin-left: auto; min-width: 22px; padding: 0 7px; height: 22px; line-height: 22px; border-radius: 11px; background: var(--accent-bg); color: var(--accent-text); font-size: 12px; font-weight: 700; text-align: center; }
+  @keyframes kbSheetUp { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .konv-sheet-box { animation: none; } .kb-pill { transition: none; } }
+}

@@ -45,6 +45,7 @@ import { installShiftSelect } from './shift-select.js';
 import { installProject } from './project.js';
 import { installAutoRecord } from './auto-record.js';
 import { installPermintaanRs } from './permintaan-rs.js';
+import { installMobileNav } from './mobile.js';
 // installSph di-lazy-load (dynamic import) -- lihat loadSphLazy() di bawah.
 
 // Independent vendor libs — gak saling bergantung satu sama lain, aman
@@ -298,10 +299,13 @@ function ensureStyle() {
   return Promise.all([
     ...SHARED_LINKS.map(({ id, href }) => loadLink(id, href)),
     loadLink('page-konversian-style', new URL('./style.css', import.meta.url).href),
+    // Lapisan HP: wajib setelah style.css (urutan cascade). Hanya aktif <=640px.
+    loadLink('page-konversian-mobile', new URL('./mobile.css', import.meta.url).href),
   ]);
 }
 
 let mountedContainer = null;
+let _mobileNavCleanup = null;
 // Module-level indirection for setSubroute() (real top-level export, near
 // the very bottom of this file) to reach switchSubTab(), which stays a
 // NESTED function inside mount() -- same pattern/reasoning as
@@ -5236,6 +5240,7 @@ S.convManualSearch = convManualSearch;
   installShiftSelect(S); // Shift+klik rentang + Centang yang tampil (conv-check, picker Kebutuhan RS, ek-cb Riwayat)
   installProject(S);
   installAutoRecord(S);
+  _mobileNavCleanup = installMobileNav(S); // bar navigasi bawah HP (mobile.js)
   installSphLazyStub(S);
   // Dulu dikerjakan di ujung installSph() (sph.js) -- dipindah ke sini supaya
   // gak ikut ke-lazy-load. Inline handler mobile tab switcher di markup:
@@ -5259,6 +5264,8 @@ export function setSubroute(sub) {
 }
 
 export function unmount() {
+  try { _mobileNavCleanup?.(); } catch (err) { console.error('unmount konversian: mobile nav cleanup gagal', err); }
+  _mobileNavCleanup = null;
   // Lepas semua listener global yang didaftarkan lewat S.onGlobal (paste, klik
   // menu riwayat, Escape modal link-gen, dst). Dijalankan paling awal supaya
   // tetap jalan walau bridge belum kebentuk (mount() crash di tengah).
