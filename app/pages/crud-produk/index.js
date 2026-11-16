@@ -48,6 +48,7 @@ import { installOrphan } from './orphan.js';
 import { installKategori } from './kategori.js';
 import { createCopyKit } from './copy.js';
 import { createTableColumns } from './kolom-tabel.js';
+import { installKalkulatorHarga } from './kalkulator-harga.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
 import { writeTableXlsx } from '../../../shared/exports/tabel-xlsx.js';
@@ -3169,6 +3170,17 @@ async function loadSetHarga(){
   if (error) { tbody.innerHTML = `<tr><td colspan="4">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
   renderHargaGroupInto(tbody, data || [], () => { loadSetHarga(); refreshSetHeader(); });
 }
+// Kalkulator nego: murni hitung. "Pakai ke kotak" cuma mengisi kotak Harga EKATALOG (sh_harga) -- belum menyimpan,
+// sama seperti "Hitung dari Komposisi": user tetap klik Tambah sendiri.
+installKalkulatorHarga(document.getElementById('kalkHarga'), {
+  onPakai: (ekat) => {
+    const el = document.getElementById('sh_harga');
+    el.value = String(ekat);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+    showToast('Harga EKATALOG diisi ' + Number(ekat).toLocaleString('id-ID') + ' (klik Tambah untuk menyimpan)');
+  }
+});
 document.getElementById('hitungKomposisiBtn').addEventListener('click', async () => {
   if (compRows.length === 0) { showToast('Belum ada item di komposisi set ini', true); return; }
   const btn = document.getElementById('hitungKomposisiBtn');

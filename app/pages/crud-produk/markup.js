@@ -243,6 +243,43 @@ export const CRUD_PRODUK_MARKUP = `
                     <button class="btn btn-ghost" id="addSetHargaBtn" type="button"><i class="ti ti-plus"></i> Tambah</button>
                   </div>
                   <div class="akd-hint">SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung &amp; disimpan otomatis dari Harga EKATALOG. "Hitung dari Komposisi" cuma mengisi kotak — kamu tetap bisa timpa manual (mis. buat pas-kan pagu) sebelum klik Tambah.</div>
+
+                  <!-- Kalkulator nego: murni hitung (tidak menyimpan). Logika di kalkulator-harga.js. -->
+                  <section class="kalk" id="kalkHarga" aria-labelledby="kalkTitle">
+                    <div class="kalk-head">
+                      <h4 id="kalkTitle"><i class="ti ti-calculator"></i> Kalkulator nego</h4>
+                      <span class="kalk-sub">Hanya menghitung, tidak menyimpan apa pun.</span>
+                    </div>
+                    <div class="kalk-body">
+                      <div class="kalk-in">
+                        <div class="f"><label for="kalkInput">Nilai (Rp)</label><input type="text" id="kalkInput" inputmode="decimal" autocomplete="off" placeholder="mis. 214.352.000" aria-describedby="kalkErr"/></div>
+                        <fieldset class="kalk-mode">
+                          <legend>Nilai ini adalah</legend>
+                          <label><input type="radio" name="kalkMode" value="ekat" checked/><span>Harga EKATALOG <small>after tax</small></span></label>
+                          <label><input type="radio" name="kalkMode" value="upload"/><span>Harga Upload <small>before tax</small></span></label>
+                        </fieldset>
+                        <div class="kalk-err" id="kalkErr">Isi angka rupiah yang valid, mis. 214.352.000</div>
+                      </div>
+                      <div class="kalk-out" aria-live="polite">
+                        <div class="kalk-row" data-side="upload">
+                          <div class="kalk-lbl">Harga Upload <small>before tax</small></div>
+                          <output class="kalk-val" id="kalkOutUpload">—</output>
+                          <button type="button" class="btn btn-ghost kalk-copy" data-kalk-copy="upload" title="Salin angka polos (tanpa titik)"><i class="ti ti-copy"></i> Salin</button>
+                        </div>
+                        <div class="kalk-row kalk-row-ppn">
+                          <div class="kalk-lbl">PPN <small>× 1,11</small></div>
+                          <output class="kalk-val" id="kalkOutPpn">—</output>
+                          <span></span>
+                        </div>
+                        <div class="kalk-row" data-side="ekat">
+                          <div class="kalk-lbl">Harga Tayang (EKATALOG) <small>after tax</small></div>
+                          <output class="kalk-val" id="kalkOutEkat">—</output>
+                          <button type="button" class="btn btn-ghost kalk-copy" data-kalk-copy="ekat" title="Salin angka polos (tanpa titik)"><i class="ti ti-copy"></i> Salin</button>
+                        </div>
+                        <button type="button" class="btn btn-ghost kalk-pakai" id="kalkPakai"><i class="ti ti-arrow-up-right"></i> Pakai ke kotak Harga EKATALOG</button>
+                      </div>
+                    </div>
+                  </section>
                 </div>
 
                 <div class="set-tab-panel" id="tab-akd">
