@@ -752,7 +752,7 @@ async function rpc(fn, params){
   // ══════════════════════════════════════════
   const BK_INITIAL = 30;
   let bkData = { synced_at: null, groups: [] };
-  let bkQ = '', bkSales = '', bkField = 'deadline', bkFrom = '', bkTo = '', bkBatal = false, bkAll = false, bkSalesJson = '';
+  let bkSort = 'terbaru', bkQ = '', bkSales = '', bkField = 'deadline', bkFrom = '', bkTo = '', bkBatal = false, bkAll = false, bkSalesJson = '';
   const bkOpen = new Set();
   function tglId(iso) {
     if (!iso) return '—';
@@ -787,6 +787,11 @@ async function rpc(fn, params){
         <div class="bk-controls">
           <input type="search" id="bk-q" class="db-select bk-search" placeholder="Cari RS, code name, sales, kode/nama barang…" aria-label="Cari booking" autocomplete="off" value="${esc(bkQ)}">
           <select id="bk-sales" class="db-select" aria-label="Filter sales"></select>
+          <select id="bk-sort" class="db-select" aria-label="Urutkan">
+            <option value="terbaru"${bkSort === 'terbaru' ? ' selected' : ''}>Terbaru (PO diterima)</option>
+            <option value="dl_dekat"${bkSort === 'dl_dekat' ? ' selected' : ''}>Deadline terdekat</option>
+            <option value="dl_jauh"${bkSort === 'dl_jauh' ? ' selected' : ''}>Deadline terjauh</option>
+          </select>
           <select id="bk-field" class="db-select" aria-label="Filter tanggal berdasarkan">
             <option value="deadline"${bkField === 'deadline' ? ' selected' : ''}>Deadline pabrik</option>
             <option value="tgl_po"${bkField === 'tgl_po' ? ' selected' : ''}>PO diterima</option>
@@ -821,6 +826,19 @@ async function rpc(fn, params){
       return !!d && (!bkFrom || d >= bkFrom) && (!bkTo || d <= bkTo);
     };
     const rows = bkData.groups.filter((g) => (bkBatal || !g.is_batal) && (!bkSales || g.sales === bkSales) && inRange(g) && (!q || bkHay(g).includes(q)));
+    // tanggal kosong selalu di paling bawah, apa pun arah urutannya
+    const dv = (g, k) => String(g[k] || '').slice(0, 10);
+    const cmp = (k, dir) => (a, b) => {
+      const x = dv(a, k), y = dv(b, k);
+      if (x === y) return 0;
+      if (!x) return 1;
+      if (!y) return -1;
+      return dir * (x < y ? -1 : 1);
+    };
+    const bySort = bkSort === 'dl_dekat' ? cmp('deadline', 1)
+      : bkSort === 'dl_jauh' ? cmp('deadline', -1)
+      : (a, b) => cmp('tgl_po', -1)(a, b) || cmp('deadline', -1)(a, b);
+    rows.sort(bySort);
     const itemTotal = rows.reduce((s, g) => s + (g.item_count || 0), 0);
     const lead = $('bk-lead');
     if (lead) lead.innerHTML = `<strong>${fmt(rows.length)}</strong> booking, ${fmt(itemTotal)} item${bkData.groups.some((g) => g.is_batal) && !bkBatal ? ' (yang batal disembunyikan)' : ''}.`;
@@ -1087,6 +1105,7 @@ function isSafeHttpUrl(u){
     if (!t || !t.id) return;
     if (t.id === 'bk-q') { bkQ = t.value; bkAll = false; renderBookingList(); }
     else if (t.id === 'bk-sales') { bkSales = t.value; bkAll = false; renderBookingList(); }
+    else if (t.id === 'bk-sort') { bkSort = (t.value === 'dl_dekat' || t.value === 'dl_jauh') ? t.value : 'terbaru'; bkAll = false; renderBookingList(); }
     else if (t.id === 'bk-field') { bkField = t.value === 'tgl_po' ? 'tgl_po' : 'deadline'; bkAll = false; renderBookingList(); }
     else if (t.id === 'bk-from') { bkFrom = t.value; bkAll = false; renderBookingList(); }
     else if (t.id === 'bk-to') { bkTo = t.value; bkAll = false; renderBookingList(); }
