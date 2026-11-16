@@ -220,3 +220,31 @@ a.wl-row:focus-visible{ outline-offset:-2px; }
 .detail-actions .btn{ text-decoration:none; }
 
 @media (prefers-reduced-motion:reduce){ #app-root *{ transition:none !important; } }
+/* ── Booking tracker ── */
+.bk-controls{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+.bk-search{ flex:1 1 280px; min-width:200px; }
+.bk-check{ display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--text-secondary); cursor:pointer; }
+.bk-th,.bk-head{ display:grid; grid-template-columns:minmax(150px,1.2fr) minmax(180px,1.6fr) minmax(110px,.8fr) 130px 110px; gap:12px; align-items:center; }
+.bk-th{ padding:8px 0; font-size:12px; font-weight:500; color:var(--text-muted); border-bottom:1px solid var(--border-strong); }
+.bk-th .num,.bk-head .num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.bk-item{ border-bottom:1px solid var(--border); }
+.bk-head{ width:100%; padding:11px 0; border:0; background:none; font:inherit; color:var(--text); text-align:left; cursor:pointer; }
+.bk-head:hover{ background:var(--surface-2); }
+.bk-head:focus-visible{ outline:2px solid var(--accent-text); outline-offset:-2px; }
+.bk-head > span{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bk-cn{ display:flex; align-items:center; gap:6px; font-weight:500; }
+.bk-chev{ flex:none; color:var(--text-muted); transition:transform .15s; }
+.bk-item.is-open .bk-chev{ transform:rotate(90deg); }
+.bk-flag{ flex:none; margin-left:6px; padding:1px 8px; border:1px solid var(--border-strong); border-radius:999px; font-size:11.5px; font-weight:500; color:var(--text-secondary); }
+.bk-flag.is-batal{ color:var(--danger); border-color:var(--danger); }
+.bk-body{ padding:4px 0 16px 20px; }
+.bk-meta{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px 20px; margin-bottom:12px; font-size:13px; }
+.bk-m span{ display:block; font-size:11.5px; color:var(--text-muted); }
+.tb tr.bk-batal td{ color:var(--text-muted); text-decoration:line-through; }
+@media (max-width:760px){
+  .bk-th{ display:none; }
+  .bk-head{ grid-template-columns:1fr auto; row-gap:2px; }
+  .bk-head > span:nth-child(2){ grid-column:1; }
+  .bk-head > span:nth-child(3),.bk-head > span:nth-child(4){ grid-column:1; font-size:12.5px; color:var(--text-muted); }
+  .bk-head > span.num{ grid-column:2; grid-row:1; }
+}

@@ -12,6 +12,7 @@
 //                      dari tabel akd (masa_berlaku) dan sesi_konversi (status, updated_at)
 //                      lewat RLS allowed_users.
 //   Populasi         : get_populasi_v2 (semua provinsi, kategori SET, terkirim), diringkas di sini.
+//   Booking tracker  : get_booking_tracker (tabel booking_tracker, diisi Apps Script dari sheet).
 //   Lainnya          : get_dashboard_*, get_wordtree_*.
 //
 // Event: satu set listener delegasi di container (data-action / data-nav / data-open-kode),
@@ -743,6 +744,116 @@ async function rpc(fn, params){
   }
 
   // ══════════════════════════════════════════
+  // BOOKING TRACKER
+  // Sumber: tabel booking_tracker (diisi Apps Script dari sheet "Booking Tracker"), dibaca lewat
+  // RPC get_booking_tracker yang sudah mengelompokkan baris-baris sheet per booking (Code RMP).
+  // Baris ringkas = sales, code name, RS, deadline. Klik baris -> daftar barang.
+  // Filter (cari/sales/batal) hanya mengubah daftar; kotak cari tidak dibangun ulang saat mengetik.
+  // ══════════════════════════════════════════
+  const BK_INITIAL = 30;
+  let bkData = { synced_at: null, groups: [] };
+  let bkQ = '', bkSales = '', bkBatal = false, bkAll = false, bkSalesJson = '';
+  const bkOpen = new Set();
+  function tglId(iso) {
+    if (!iso) return '—';
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
+    if (!m) return String(iso);
+    return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  async function loadBooking(el) {
+    const res = await rpc('get_booking_tracker', {});
+    bkData = { synced_at: (res && res.synced_at) || null, groups: (res && res.groups) || [] };
+    renderBooking(el);
+  }
+  function bkHay(g) {
+    if (!g._hay) {
+      g._hay = [g.code_rmp, g.no_po, g.distributor, g.kode_po_inaproc, g.sales, g.code_name, g.rs,
+        ...(g.items || []).map((i) => (i.kode || '') + ' ' + (i.deskripsi || ''))].join(' ').toLowerCase();
+    }
+    return g._hay;
+  }
+  function renderBooking(el) {
+    if (!el) return;
+    const sub = $('bk-sub');
+    if (sub) {
+      sub.textContent = bkData.synced_at
+        ? 'Disinkron dari sheet ' + new Date(bkData.synced_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : 'Dari sheet Booking Tracker';
+    }
+    if (!bkData.groups.length) { el.innerHTML = emptyHtml('Belum ada booking. Data masuk otomatis dari sheet Booking Tracker.'); return; }
+    if (!$('bk-list')) {
+      bkSalesJson = '';
+      el.innerHTML = `
+        <div class="bk-controls">
+          <input type="search" id="bk-q" class="db-select bk-search" placeholder="Cari RS, code name, sales, kode/nama barang…" aria-label="Cari booking" autocomplete="off" value="${esc(bkQ)}">
+          <select id="bk-sales" class="db-select" aria-label="Filter sales"></select>
+          <label class="bk-check"><input type="checkbox" id="bk-batal"${bkBatal ? ' checked' : ''}> Tampilkan yang batal</label>
+        </div>
+        <p class="pop-lead" id="bk-lead"></p>
+        <div id="bk-list"></div>`;
+    }
+    const sales = [...new Set(bkData.groups.map((g) => g.sales).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'id'));
+    if (bkSales && !sales.includes(bkSales)) bkSales = '';
+    const sj = JSON.stringify(sales);
+    const sel = $('bk-sales');
+    if (sel && sj !== bkSalesJson) {
+      bkSalesJson = sj;
+      sel.innerHTML = '<option value="">Semua sales</option>' + sales.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    }
+    if (sel) sel.value = bkSales;
+    renderBookingList();
+  }
+  function renderBookingList() {
+    const list = $('bk-list');
+    if (!list) return;
+    const q = bkQ.trim().toLowerCase();
+    const rows = bkData.groups.filter((g) => (bkBatal || !g.is_batal) && (!bkSales || g.sales === bkSales) && (!q || bkHay(g).includes(q)));
+    const itemTotal = rows.reduce((s, g) => s + (g.item_count || 0), 0);
+    const lead = $('bk-lead');
+    if (lead) lead.innerHTML = `<strong>${fmt(rows.length)}</strong> booking, ${fmt(itemTotal)} item${bkData.groups.some((g) => g.is_batal) && !bkBatal ? ' (yang batal disembunyikan)' : ''}.`;
+    if (!rows.length) { list.innerHTML = emptyHtml('Tidak ada booking yang cocok.'); return; }
+    const shown = bkAll ? rows : rows.slice(0, BK_INITIAL);
+    const meta = (label, v) => (v ? `<div class="bk-m"><span>${label}</span>${esc(v)}</div>` : '');
+    list.innerHTML = `
+      <div class="bk-th"><span>Code name</span><span>Rumah sakit</span><span>Sales</span><span>Deadline pabrik</span><span class="num">Barang</span></div>
+      ${shown.map((g) => {
+        const open = bkOpen.has(g.key);
+        const items = open ? `
+          <div class="bk-body">
+            <div class="bk-meta">
+              ${meta('Code RMP', g.code_rmp)}${meta('No PO distri', g.no_po)}${meta('Distributor', g.distributor)}${meta('Sumber order', g.sumber)}
+              ${meta('Kode PO INAPROC', g.kode_po_inaproc)}${meta('PO diterima', g.tgl_po ? tglId(g.tgl_po) : '')}
+              ${meta('PIC penerima', [g.pic_penerima, g.kontak].filter(Boolean).join(' · '))}${meta('Alamat kirim', g.alamat)}
+            </div>
+            <div class="tb-wrap"><table class="tb tb--static">
+              <thead><tr><th>Barang</th><th class="num">Qty</th><th>Status produksi</th><th>Marking</th><th>Keterangan</th></tr></thead>
+              <tbody>${(g.items || []).map((i) => `
+                <tr${i.batal ? ' class="bk-batal"' : ''}>
+                  <td><span class="tb-name">${esc(i.deskripsi || '—')}</span><span class="tb-sub">${esc(i.kode || '—')}</span></td>
+                  <td class="num">${i.qty === null || i.qty === undefined ? '—' : fmt1(i.qty)}${i.satuan ? ' ' + esc(i.satuan) : ''}</td>
+                  <td>${esc(i.status_produksi || '—')}</td>
+                  <td>${esc(i.marking || '—')}</td>
+                  <td>${esc(i.status_order || '')}${i.tgl_status ? ' · ' + esc(tglId(i.tgl_status)) : ''}</td>
+                </tr>`).join('')}</tbody>
+            </table></div>
+          </div>` : '';
+        const flag = g.is_batal ? '<span class="bk-flag is-batal">Batal</span>'
+          : (g.status_order ? `<span class="bk-flag">${esc(g.status_order)}</span>` : '');
+        return `
+        <div class="bk-item${open ? ' is-open' : ''}">
+          <button type="button" class="bk-head" data-action="bk-toggle" data-key="${esc(g.key)}" aria-expanded="${open}">
+            <span class="bk-cn"><i class="ti ti-chevron-right bk-chev" aria-hidden="true"></i>${esc(g.code_name || '—')}${flag}</span>
+            <span class="bk-rs" title="${esc(g.rs || '')}">${esc(g.rs || '—')}</span>
+            <span>${esc(g.sales || '—')}</span>
+            <span>${esc(tglId(g.deadline))}</span>
+            <span class="num">${fmt(g.item_count)} item${g.total_qty ? ' · ' + fmt1(g.total_qty) : ''}</span>
+          </button>${items}
+        </div>`;
+      }).join('')}
+      ${rows.length > BK_INITIAL ? `<div class="tb-foot"><span></span><button type="button" class="db-textbtn" data-action="bk-more">${bkAll ? 'Ringkas' : `Tampilkan ${rows.length - BK_INITIAL} lainnya`}</button></div>` : ''}`;
+  }
+
+  // ══════════════════════════════════════════
   // PANEL: tiap bagian dimuat dan gagal sendiri-sendiri
   // ══════════════════════════════════════════
   const PANELS = {
@@ -754,6 +865,7 @@ async function rpc(fn, params){
     populasi:    { el: 'db-populasi',    load: loadPopulasi },
     kategori:    { el: 'db-kategori',    load: loadKategori },
     distributor: { el: 'db-distributor', load: loadDistributor },
+    booking:     { el: 'db-booking',     load: loadBooking },
     kebutuhan:   { el: 'db-kebutuhan',   load: loadKebutuhan },
   };
   const rendered = new Set();   // panel yang pernah berhasil tampil
@@ -914,6 +1026,8 @@ function isSafeHttpUrl(u){
     'forecast-more':   () => { fcAll = !fcAll; renderStok($('db-stok')); },
     'dist-metric':     (el) => { distMetric = (el.dataset.m === 'rs' || el.dataset.m === 'po') ? el.dataset.m : 'volume'; setPressed(el); renderDistributor($('db-distributor')); },
     'dist-period':     (el) => { distDays = el.dataset.days === '0' ? 0 : (+el.dataset.days || 365); setPressed(el); runPanel('distributor', false); },
+    'bk-toggle':       (el) => { const k = el.dataset.key; if (bkOpen.has(k)) bkOpen.delete(k); else bkOpen.add(k); renderBookingList(); },
+    'bk-more':         () => { bkAll = !bkAll; renderBookingList(); },
     'pop-prov':        (el) => { popSel = el.dataset.prov || popSel; renderPopulasi($('db-populasi')); },
     'wt-pick':         (el) => pickIstilah(el.dataset.istilah),
     'retry':           (el) => runPanel(el.dataset.panel, false).then(renderFresh),
@@ -950,7 +1064,14 @@ function isSafeHttpUrl(u){
       t.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     }
   }
-  dashContainerHandlers = { click: onContainerClick, keydown: onContainerKeydown };
+  function onContainerInput(e) {
+    const t = e.target;
+    if (!t || !t.id) return;
+    if (t.id === 'bk-q') { bkQ = t.value; bkAll = false; renderBookingList(); }
+    else if (t.id === 'bk-sales') { bkSales = t.value; bkAll = false; renderBookingList(); }
+    else if (t.id === 'bk-batal') { bkBatal = !!t.checked; bkAll = false; renderBookingList(); }
+  }
+  dashContainerHandlers = { click: onContainerClick, keydown: onContainerKeydown, input: onContainerInput };
   Object.entries(dashContainerHandlers).forEach(([type, fn]) => container.addEventListener(type, fn));
   dashKeydownHandler = (e) => {
     if (e.key === 'Escape' && detailOverlay && detailOverlay.classList.contains('show')) closeDetailModal();
