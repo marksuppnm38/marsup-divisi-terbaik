@@ -1,11 +1,12 @@
 /**
  * Jalankan di Console (F12) saat sudah login di https://penyedia.inaproc.id/order?status=all
- * Output: TSV (otomatis ke clipboard + file .tsv). Hasil juga di window.__tsv
+ * Output: langsung ke clipboard (tinggal paste) + file .tsv cadangan.
+ * Hasil juga tersimpan di window.__tsv
  */
 (async function exportInaprocOrders() {
   // ====== PENGATURAN ======
-  const MANUFACTURER = "PNM";   // isi kolom MANUFACTURES ("" kalau mau kosong)
-  const LINK_EKATALOG = "PNM";  // isi kolom LINK EKATALOG ("" kalau mau kosong)
+  const MANUFACTURER = "PNM";   // kolom MANUFACTURES ("" kalau mau kosong)
+  const LINK_EKATALOG = "PNM";  // kolom LINK EKATALOG ("" kalau mau kosong)
   // ========================
 
   const API = "https://penyedia.inaproc.id/graphql";
@@ -151,7 +152,7 @@
   ];
   const lines = [HEADERS.join("\t")];
   window.__tsv = lines;
-  let idx = 0, nRows = 0;
+  let idx = 0, nRows = 0, nWarn = 0;
 
   for (const o of allOrders) {
     idx++;
@@ -179,20 +180,24 @@
       const groupId = (d.payments || []).find((p) => p.deliveryOrderGroupId)?.deliveryOrderGroupId;
       const deadlineFks = await getDeadlineFks(groupId);
 
-      const ongkirFee = d.shipmentSummary?.totalShipmentFee;
-      const ongkirTotal = d.shipmentSummary?.totalShipmentPrice;
+      const ongkirFee = d.shipmentSummary?.totalShipmentFee;       // sebelum pajak
+      const ongkirTotal = d.shipmentSummary?.totalShipmentPrice;   // include pajak
       const grandTotal = d.total;
 
-      const totalProduk = (d.items || []).reduce(
-        (s, it) => s + (it.subTotal || 0) + (it.tax?.ppn || 0) + (it.tax?.ppnBm || 0), 0);
+      // subTotal = harga deal x qty + PPN (sudah include pajak)
+      const totalProduk = (d.items || []).reduce((s, it) => s + (it.subTotal || 0), 0);
+      if (Math.abs(totalProduk + (ongkirTotal || 0) - (grandTotal || 0)) > 5) {
+        nWarn++;
+        console.warn(`  [CEK] ${d.orderNumber}: produk(${totalProduk}) + ongkir(${ongkirTotal}) != grand total(${grandTotal})`);
+      }
 
       const items = d.items && d.items.length ? d.items : [null];
       for (const it of items) {
         const qty = it?.qty || 0;
-        const hargaSebelumPajak = it ? (it.originalPrice ?? it.lastPrice ?? "") : "";
-        const ppnUnit = qty ? (it?.tax?.ppn || 0) / qty : 0;
-        const ppnBmUnit = qty ? (it?.tax?.ppnBm || 0) / qty : 0;
-        const satuanIncTax = it ? (it.lastPrice || 0) + ppnUnit + ppnBmUnit : "";
+        // lastPrice = harga deal (setelah negosiasi); originalPrice = harga tayang
+        const hargaSebelumPajak = it ? (it.lastPrice ?? it.originalPrice ?? "") : "";
+        // satuan include pajak = subTotal / qty
+        const satuanIncTax = it && qty ? (it.subTotal || 0) / qty : "";
 
         lines.push([
           d.orderNumber,
@@ -223,24 +228,30 @@
 
   if (nRows === 0) { console.error("Tidak ada data untuk di-export."); return; }
 
-  // ---------- 3. Output TSV ----------
+  // ---------- 3. Output: langsung ke clipboard ----------
   const tsv = lines.join("\n");
+  const tgl = new Date().toISOString().slice(0, 10);
 
-  try { copy(tsv); console.log("TSV sudah disalin ke clipboard (Ctrl+V untuk paste)."); }
+  let copied = false;
+  try { copy(tsv); copied = true; }                       // utilitas Console, paling andal
   catch (e) {
-    try { await navigator.clipboard.writeText(tsv); console.log("TSV sudah disalin ke clipboard."); }
-    catch (e2) { console.warn("Clipboard gagal (tab tidak fokus?), pakai file .tsv yang ter-download."); }
+    try { await navigator.clipboard.writeText(tsv); copied = true; }
+    catch (e2) { /* lanjut ke file */ }
   }
 
-  const blob = new Blob(["\uFEFF" + tsv], { type: "text/tab-separated-values;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `export_order_inaproc_${new Date().toISOString().slice(0, 10)}.tsv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Cadangan: file .tsv (tanpa BOM), selalu di-download
+  {
+    const blob = new Blob([tsv], { type: "text/tab-separated-values" });
+    Object.assign(document.createElement("a"), {
+      href: URL.createObjectURL(blob),
+      download: `export_order_inaproc_${tgl}.tsv`,
+    }).click();
+  }
 
-  console.log(`Selesai! ${nRows} baris.`);
+  console.log(
+    `Selesai! ${nRows} baris. Order dengan peringatan [CEK]: ${nWarn}. ` +
+    (copied
+      ? "Sudah ada di clipboard: klik SATU kali sel A1 di Google Sheets, lalu Ctrl+V."
+      : "Clipboard gagal, pakai file .tsv yang ter-download (File > Import di Sheets).")
+  );
 })();
