@@ -2131,3 +2131,30 @@
 }
 #app-root .clip-record-hint{margin-top:-4px;font-size:11.5px;line-height:1.4;color:var(--text-muted)}
 #app-root .clip-record-hint:empty{display:none}
+
+/* ============================================================
+   BARIS TOMBOL CIUTKAN (tab selain Cari Produk)
+   ------------------------------------------------------------
+   Di Konversi Berjalan / Riwayat / Converter / Cari SET / Dictionary / Project,
+   subtab-row cuma berisi tombol "Ciutkan panel" (tab-nya sendiri disembunyikan,
+   navigasinya di sidebar). Dulu baris itu ~38px tinggi dengan satu chevron
+   melayang di kanan, di atas konten yang sudah punya header sendiri. Sekarang:
+   - tinggi 32px (tombol 24px + 4px atas/bawah), tanpa padding-bottom panel-header
+   - tepi kanan chevron sejajar dengan inset konten (--pane-inset), sama seperti
+     tombol refresh / filter di bawahnya
+   - garis bawah tipis supaya baris ini terbaca sebagai pemisah, bukan ruang kosong
+   Cari Produk tidak berubah (searchbar + filter tetap di header).
+   ============================================================ */
+#app-root .panel-header:has(#subtab-cari:not(.active)){
+  padding:0 var(--pane-inset);
+}
+#app-root .panel-header:has(#subtab-cari:not(.active)) .subtab-row{
+  justify-content:flex-end;
+  min-height:0;
+  padding:4px 0;
+}
+#app-root .panel-header:has(#subtab-cari:not(.active)) .panel-collapse-btn{
+  width:24px;
+  height:24px;
+  margin:0;
+}
