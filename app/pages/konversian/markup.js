@@ -287,9 +287,19 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
         </div>
         <button class="pr-add-clip-btn" id="setcari-search-btn" type="button" disabled><i class="ti ti-search"></i> Cari SET Mendekati</button>
       </div>
-      <label class="setcari-sub-toggle" title="Item SET yang sekeluarga dengan produk input tapi beda ukuran (selisih ≤ 5 mm) ikut dihitung sebagai substitusi. Persen persis tetap ditampilkan terpisah.">
-        <input type="checkbox" id="setcari-sub-chk"> Termasuk substitusi ukuran (≤ 0,5 cm)
+      <label class="setcari-sub-toggle" title="Item SET yang sekeluarga dengan produk input tapi beda ukuran (dalam toleransi) ikut dihitung sebagai substitusi. Persen persis tetap ditampilkan terpisah.">
+        <input type="checkbox" id="setcari-sub-chk"> Termasuk substitusi ukuran
       </label>
+      <div class="setcari-sub-opts" id="setcari-sub-opts" hidden>
+        <label>Toleransi ukuran
+          <select id="setcari-tol" aria-label="Toleransi ukuran substitusi">
+            <option value="5.01">± 0,5 cm</option>
+            <option value="10.01">± 1 cm</option>
+            <option value="20.01">± 2 cm</option>
+          </select>
+        </label>
+        <label title="Biasanya TC (tungsten carbide) dan non-TC tidak boleh saling menggantikan. Nyalakan hanya bila memang diizinkan."><input type="checkbox" id="setcari-tc-chk"> Izinkan TC ↔ non-TC</label>
+      </div>
       <p class="setcari-source-label" id="setcari-source-label"><b>0</b> produk di Clipboard dibandingkan dengan isi tiap SET</p>
       <div id="setcari-paste-wrap" class="setcari-paste-wrap" style="display:none">
         <textarea id="setcari-paste-input" class="setcari-paste-input" aria-label="Kode produk, satu per baris atau dipisah koma" spellcheck="false" placeholder="Tempel kode produk, satu per baris (boleh juga dipisah koma)&#10;RB999-KE921-B99-U238&#10;RB999-KE921-B99-U109"></textarea>

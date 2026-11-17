@@ -2798,9 +2798,30 @@
    ============================================================ */
 #app-root:not([data-subtab="cari"]) #session-indicator.empty,
 #app-root:not([data-subtab="cari"]) #btn-sesi-baru{display:none}
-/* Cari SET: substitusi ukuran (v2) */
+/* Cari SET: substitusi ukuran + perbandingan dua sisi */
 #app-root .setcari-sub-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);margin:6px 0 2px;cursor:pointer}
-#app-root .setcari-item-line.sub{color:var(--warn)}
-#app-root .setcari-item-tag.sub{background:var(--warn-bg,var(--accent-bg));color:var(--warn,var(--accent-text))}
-#app-root .setcari-item-tag.beda{background:var(--surface-3);color:var(--text-muted)}
-#app-root .setcari-item-ganti{font-size:10.5px;color:var(--text-muted)}
+#app-root .setcari-sub-opts{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--text-secondary);margin:2px 0 4px 20px}
+#app-root .setcari-sub-opts[hidden]{display:none}
+#app-root .setcari-sub-opts label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+#app-root .setcari-sub-opts select{font:inherit;font-size:12px;padding:2px 6px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-primary,inherit)}
+#app-root .sc-cmp{display:flex;flex-direction:column;gap:0;font-size:11.5px;width:100%}
+#app-root .sc-cmp-summary{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-bottom:8px}
+#app-root .sc-cmp-copy{margin-left:auto}
+#app-root .sc-chip{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--surface-3);color:var(--text-secondary)}
+#app-root .sc-chip.st-persis{background:var(--accent-bg);color:var(--success)}
+#app-root .sc-chip.st-substitusi{background:var(--accent-bg);color:var(--warn)}
+#app-root .sc-cmp-head,#app-root .sc-cmp-row{display:grid;grid-template-columns:minmax(0,1fr) 108px minmax(0,1fr);gap:8px;align-items:start}
+#app-root .sc-cmp-head{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);padding:4px 0;border-bottom:1px solid var(--border)}
+#app-root .sc-cmp-row{padding:7px 0;border-bottom:1px dashed var(--border)}
+#app-root .sc-cmp-row:last-child{border-bottom:0}
+#app-root .sc-cmp-kode{font-family:var(--mono);overflow-wrap:anywhere}
+#app-root .sc-cmp-nama{color:var(--text-secondary);line-height:1.4}
+#app-root .sc-cmp-uk,#app-root .sc-cmp-qty{color:var(--text-muted);font-size:10.5px;font-variant-numeric:tabular-nums}
+#app-root .sc-cmp-kosong{color:var(--text-muted);font-style:italic}
+#app-root .sc-cmp-mid{display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center}
+#app-root .sc-cmp-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:var(--surface-3);color:var(--text-secondary);white-space:nowrap}
+#app-root .sc-cmp-sel{font-size:10px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+#app-root .sc-cmp-row.st-persis .sc-cmp-badge{background:var(--accent-bg);color:var(--success)}
+#app-root .sc-cmp-row.st-substitusi .sc-cmp-badge{background:var(--accent-bg);color:var(--warn)}
+#app-root .sc-cmp-row.st-hanya_input .sc-cmp-badge,#app-root .sc-cmp-row.st-tidak_dikenal .sc-cmp-badge{color:var(--danger,var(--text-muted))}
+#app-root .sc-cmp-row.st-hanya_set{opacity:.8}
