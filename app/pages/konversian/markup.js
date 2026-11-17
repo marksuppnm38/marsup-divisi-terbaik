@@ -50,10 +50,6 @@ export const KONVERSIAN_MARKUP = `
     <i class="ti ti-plus"></i>
     <span id="session-indicator-text">Mulai sesi baru</span>
   </button>
-  <!-- Aksi "Sesi Baru" yang selalu terjangkau dari SEMUA sub-modul (toolbar ini ada di semua tab).
-       Tanpa sesi, pill di sebelahnya sudah berlabel "Mulai sesi baru" → tombol ini disembunyikan
-       (realtime.js updateSessionIndicatorAndTitle) supaya gak dobel. -->
-  <button class="toolbar-new-sesi" id="btn-toolbar-sesi-baru" type="button" hidden title="Mulai Sesi Baru (Alt+Shift+M)" aria-keyshortcuts="Alt+Shift+M"><i class="ti ti-plus"></i><span>Sesi Baru</span></button>
   <!-- Gabungan status koneksi + siapa aja yang online, satu badge aja (dulu 2
        terpisah, kerasa penuh) — dot warna = status koneksi, avatar = presence.
        Detail (nama, status online/away, teks koneksi) muncul di tooltip. -->
