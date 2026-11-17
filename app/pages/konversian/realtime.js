@@ -854,6 +854,8 @@ function updateSessionIndicatorAndTitle(rsRaw, salesRaw) {
   const pillIcon = S.sessionIndicator.querySelector('i.ti');
   if (pillIcon) pillIcon.className = 'ti ' + (hasSesi ? 'ti-building-hospital' : 'ti-plus');
   S.sessionIndicator.title = hasSesi ? 'Klik untuk lihat daftar Konversi Berjalan' : 'Mulai sesi konversi baru';
+  const toolbarNewBtn = document.getElementById('btn-toolbar-sesi-baru');
+  if (toolbarNewBtn) toolbarNewBtn.hidden = !hasSesi;
   if (hasSesi) {
     // Cuma nama RS (Sales & PIC ada di strip header clipboard — gak diulang di dua tempat)
     const label = rsRaw || 'Sesi baru (RS belum diisi)';

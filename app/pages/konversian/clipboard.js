@@ -577,10 +577,19 @@ async function startNewSesi() {
   try { await startNewSesiInner(); } finally { startNewSesiBusy = false; }
 }
 async function startNewSesiInner() {
+  // Sesi yang lagi kepegang masih kosong melompong (belum ada produk, RS, maupun sales): jangan bikin
+  // sesi kosong kedua yang numpuk di Konversi Berjalan — pakai yang ini, cukup antar ke Cari Produk.
+  if (S.sesi.phase === 'active' && !S.clipboard.length && !S.inpRs.value.trim() && !S.inpSales.value.trim()) {
+    S.switchSubTab('cari');
+    if (window.innerWidth > 860) document.getElementById('search-input')?.focus();
+    showToast('Sesi ini masih kosong — langsung dipakai aja');
+    return;
+  }
   if (!(await S.lanjutkanTanpaDrive('mulai sesi baru'))) return;
   if (S.clipboard.length && !(await S.showConfirmModal({ title: 'Mulai Sesi Baru', text: 'Sesi yang sedang dibuka akan ditinggalkan — datanya tetap tersimpan, bisa dibuka lagi lewat daftar Konversi Berjalan.', okText: 'Ya, Mulai Baru' }))) return;
   S.sesi.detach('new');
-  S.switchSubTab('cari');
+  S.switchSubTab('cari'); // routed: URL + sidebar ikut pindah ke Cari Produk
+  if (window.innerWidth > 860) document.getElementById('search-input')?.focus();
 
   btnSesiBaru.disabled = true;
   btnClipIdleStart.disabled = true;

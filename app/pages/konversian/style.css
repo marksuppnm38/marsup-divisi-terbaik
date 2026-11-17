@@ -2765,3 +2765,12 @@
 }
 #app-root .sph-doc-actions .sph-doc-btn:not(.sph-doc-btn-primary):not(.btn-record):hover{background:var(--surface-2);color:var(--text)}
 .pr-modal-box .pr-active-note{margin-bottom:var(--sp-3)}
+
+/* ============================================================
+   "MULAI SESI BARU" HANYA DI CARI PRODUK (2026-11-17)
+   Pill (saat belum ada sesi) dan tombol di daftar Konversi Berjalan disembunyikan di sub-modul lain.
+   Pill yang sudah berisi nama RS tetap tampil di mana saja (penunjuk sesi aktif). data-subtab diset
+   oleh switchSubTab() di index.js.
+   ============================================================ */
+#app-root:not([data-subtab="cari"]) #session-indicator.empty,
+#app-root:not([data-subtab="cari"]) #btn-sesi-baru{display:none}

@@ -924,6 +924,7 @@ export async function mount(container, initialSub) {
   // sph-module.js — sph-module.js baca fungsi/variabel dari konversian.js
   // lewat shared scope, lihat komentar di kepala sph-module.js sendiri). ──
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-11-17: UX sesi baru — S.switchSubTab sekarang ROUTED (goSubTab: layar pindah + pnm:navigate biar URL & sorotan sidebar ikut; dulu dari Converter pencet "Mulai sesi baru" layar ke Cari Produk tapi sidebar tetap Converter); S.switchSubTabLocal = versi tanpa sinkron URL; setSubroute skip kalau tab sama (activeSubTab). "Mulai sesi baru" (pill idle + tombol di Konversi Berjalan) disembunyiin di luar Cari Produk lewat #app-root[data-subtab]; sesi aktif yang masih kosong gak dibikinin sesi kosong baru — Claude
 // 2026-11-12: SESI MACHINE (sesi-machine.js baru) — lifecycle sesi yang tadinya implisit (S.currentSesiId ditulis di 9 tempat, 5 salinan blok reset, ensureSesi() bisa bikin sesi dobel) jadi mesin fase eksplisit idle/creating/active/closed. Semua transisi lewat S.sesi.ensure/attach/close/detach; S.currentSesiId tinggal accessor BACA. Yang kesentuh: index.js (import+install, openSesi→attach, Record→close, resetLayarKalauSesiAktif→detach), clipboard.js (ensureSesi, Sesi Baru/Keluar/Selesaikan), dictionary.js (Muat Revisi), realtime.js (applySesiRow→close, seedKnownState). Fix ikutan: pagu sesi lama gak lagi kebawa ke sesi baru; ensureSesi gak lagi bikin sesi dobel — Claude
 // 2026-11-09: fix urutan "Paling relevan" — hit Dictionary (search_dictionary_hits, semua skor 1000) dulu selalu dipaksa ke atas, jadi cari "minor" menaruh MAYOR S. (dari riwayat customer) di atas MINOR S. Sekarang di mergeDictHits() (search.js) kalau pencarian biasa sudah punya kecocokan penuh (score >= 80), hit Dictionary tetap dapat badge tapi gak menyalip; yang belum ada di hasil utama ditaruh di bawah. Perilaku lama (naik ke atas) cuma jalan kalau hasil utama lemah/kosong — Claude
 // 2026-10-27: REORG checklist Kebutuhan RS — ±1000 baris (renderChecklist, tab section, rollup, picker produk, reconcileClipboardQty, autoFinalizePermintaan, callUpdatePermintaanItemMulti, normalizeMatchedItems) dipindah dari dictionary.js ke permintaan-rs.js. dictionary.js sekarang cuma Dictionary (saran inline + tab Dictionary) + modal generik + Riwayat SPH/Konversi (itu menyusul di langkah berikutnya). Tambahan ekspor: S.renderDictSuggestionHtml. Urutan install tidak berubah.
@@ -3119,8 +3120,11 @@ S.setClipClosed = setClipClosed;
 S.subtabProject = document.getElementById('subtab-project');
 S.panelBodyProject = document.getElementById('panel-body-project');
 
+let activeSubTab = null; // tab yang lagi tampil — dipakai setSubroute() biar gak render ulang tab yang sama
 function switchSubTab(tab) {
+  activeSubTab = tab;
   const rootEl = document.getElementById('app-root');
+  if (rootEl) rootEl.dataset.subtab = tab; // dipakai CSS: "Mulai sesi baru" cuma tampil di Cari Produk
   // Project = tab baca/analisis kayak Riwayat -> clipboard ikut ditutup otomatis.
   if (tab === 'riwayat' || tab === 'project') {
     if (rootEl && !rootEl.classList.contains('clip-closed')) setClipClosed(true, true);
@@ -3164,7 +3168,22 @@ function switchSubTab(tab) {
   if (tab === 'dictionary') S.loadDictionary();
   if (tab === 'setcari' && typeof S.updateSetcariSourceCount === 'function') S.updateSetcariSourceCount();
 }
-S.switchSubTab = switchSubTab;
+// Pindah sub-modul DARI DALAM KODE (Sesi Baru, buka sesi, pill sesi, Muat Revisi, dst).
+// Dulu langsung switchSubTab() → isi layar pindah, tapi URL + sorotan sidebar tetap di sub-modul lama
+// (mis. di Converter pencet "Mulai sesi baru": layar Cari Produk, sidebar masih "Converter").
+// Sekarang layar pindah seketika, lalu URL/sidebar disinkronkan lewat router (pnm:navigate →
+// navSetActive → setSubroute, yang dilewati karena activeSubTab sudah sama).
+// Klik sidebar TIDAK lewat sini (router → setSubroute → switchSubTab langsung).
+const SUBTAB_IDS = ['cari', 'sesi', 'riwayat', 'project', 'converter', 'setcari', 'dictionary'];
+function goSubTab(tab) {
+  switchSubTab(tab);
+  const path = '/konversian/' + tab;
+  if (SUBTAB_IDS.includes(tab) && location.pathname.startsWith('/konversian') && location.pathname !== path) {
+    window.dispatchEvent(new CustomEvent('pnm:navigate', { detail: { path } }));
+  }
+}
+S.switchSubTab = goSubTab;
+S.switchSubTabLocal = switchSubTab; // tanpa sinkron URL (dipakai saat mount / dari router)
 S.subtabCari.addEventListener('click', () => switchSubTab('cari'));
 S.subtabSesi.addEventListener('click', () => switchSubTab('sesi'));
 S.subtabRiwayat.addEventListener('click', () => switchSubTab('riwayat'));
@@ -3181,7 +3200,7 @@ S.subtabDictionary.addEventListener('click', () => switchSubTab('dictionary'));
     wrap.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
   }
 })();
-_switchSubTab = switchSubTab; // expose to the real top-level setSubroute() near the bottom of this file
+_switchSubTab = (tab) => { if (tab !== activeSubTab) switchSubTab(tab); }; // expose to the real top-level setSubroute() near the bottom of this file
 
 function sesiTimeAgo(iso) {
   if (!iso) return '-';
@@ -4674,7 +4693,7 @@ async function openSesi(id) {
     S.setClipHeaderCollapsed(!!S.inpRs.value.trim(), false);
     S.updateClipHeaderCompact();
     S.setSesiSavedStatus('Sesi dimuat ✓');
-    switchSubTab('cari');
+    goSubTab('cari');
     if (window.innerWidth <= 860 && typeof S.switchTab === 'function') S.switchTab('clip');
 
     // Permintaan RS yang nempel di sesi ini (kalau ada) ikut dimuat & ditampilin,
