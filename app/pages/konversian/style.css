@@ -2803,7 +2803,8 @@
 #app-root .setcari-sub-opts{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--text-secondary);margin:2px 0 4px 20px}
 #app-root .setcari-sub-opts[hidden]{display:none}
 #app-root .setcari-sub-opts label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
-#app-root .setcari-sub-opts select{font:inherit;font-size:12px;padding:2px 6px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text-primary,inherit)}
+#app-root .setcari-sub-opts .ui-select-btn{height:28px}
+#app-root .setcari-sub-opts .ui-select-label{max-width:none}
 #app-root .sc-cmp{display:flex;flex-direction:column;gap:0;font-size:11.5px;width:100%}
 #app-root .sc-cmp-summary{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-bottom:8px}
 #app-root .sc-cmp-copy{margin-left:auto}
@@ -2853,8 +2854,14 @@
 #app-root .sc-map-text{font-size:12px;overflow-wrap:anywhere}
 #app-root .sc-map-qty{flex:0 0 auto;font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums;margin-left:6px}
 #app-root .sc-map-raw .sc-map-qty{margin-left:0}
-#app-root .sc-map-sel{width:100%;min-width:0;font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:inherit;text-overflow:ellipsis}
-#app-root .sc-map-sel:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* Dropdown pemetaan = shared/ui-select.js (varian .ui-select-choice): selebar kolomnya, label dipotong
+   titik-titik, menu boleh lebih lebar dari tombol buat nama produk panjang. */
+#app-root .sc-map-row .ui-select{display:flex;width:100%;min-width:0}
+#app-root .sc-map-row .ui-select-btn{width:100%;min-width:0;height:28px}
+#app-root .sc-map-row .ui-select-label{flex:1 1 auto;min-width:0;max-width:none;text-align:left}
+#app-root .sc-map-row .ui-select-menu{max-width:min(560px,calc(100vw - 48px))}
+#app-root .sc-map-row .ui-select-opt span{overflow:hidden;text-overflow:ellipsis}
+#app-root .sc-map-row.conf-lemah .ui-select-btn,#app-root .sc-map-row.conf-none .ui-select-btn{border-style:dashed}
 #app-root .sc-map-conf{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--surface-3);color:var(--text-secondary);text-align:center;white-space:nowrap}
 #app-root .sc-map-row.conf-kuat .sc-map-conf{background:var(--accent-bg);color:var(--success)}
 #app-root .sc-map-row.conf-lemah .sc-map-conf{background:var(--accent-bg);color:var(--warn)}

@@ -292,7 +292,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
       </label>
       <div class="setcari-sub-opts" id="setcari-sub-opts">
         <label>Toleransi ukuran
-          <select id="setcari-tol" aria-label="Toleransi ukuran substitusi">
+          <select id="setcari-tol" class="conv-select" data-ui-icon="ti-ruler-2" aria-label="Toleransi ukuran substitusi">
             <option value="5.01">± 0,5 cm</option>
             <option value="10.01">± 1 cm</option>
             <option value="20.01">± 2 cm</option>

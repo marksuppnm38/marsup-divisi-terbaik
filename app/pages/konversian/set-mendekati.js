@@ -284,12 +284,12 @@ function renderSetcariMap() {
     const conf = confOf(e);
     const opts = (e.cands || []).map(c => {
       const sfx = c.ukuran === 'beda' ? ' (ukuran beda)' : (c.ukuran === 'dekat' ? ' (ukuran dekat)' : '');
-      return `<option value="${esc(c.kode)}"${c.kode === e.kode ? ' selected' : ''}>${esc(c.kode)} — ${esc(c.nama)}${sfx}</option>`;
+      return `<option value="${esc(c.kode)}"${c.kode === e.kode ? ' selected' : ''}>${esc(c.nama || c.kode)} (${esc(c.kode)})${sfx}</option>`;
     }).join('');
     const kosong = `<option value=""${!e.kode ? ' selected' : ''}>${e.skip ? 'Diabaikan' : ((e.cands || []).length ? 'Abaikan baris ini' : 'Belum ada produk yang cocok')}</option>`;
     return `<div class="sc-map-row conf-${conf}" data-i="${idx}">
       <div class="sc-map-raw"><span class="sc-map-text">${esc(e.raw)}</span>${e.qty ? `<span class="sc-map-qty">× ${e.qty}</span>` : ''}</div>
-      <select class="sc-map-sel" data-i="${idx}" aria-label="Produk untuk: ${esc(e.raw)}">${opts}${kosong}</select>
+      <select class="sc-map-sel conv-select" data-ui-icon="ti-link" data-i="${idx}" aria-label="Produk untuk ${esc(e.raw)}">${opts}${kosong}</select>
       <span class="sc-map-conf">${esc(e.error ? 'Gagal dicek' : (conf === 'skip' ? 'Diabaikan' : CONF_LABEL[conf]))}</span>
     </div>`;
   }).join('');
@@ -307,7 +307,10 @@ function renderSetcariMap() {
       pilihanUser.set(e.raw, sel.value || SETCARI_SKIP);
       e.skip = !sel.value;
       e.kode = sel.value || null;
+      const i = sel.dataset.i;
       renderSetcariMap();
+      // render ulang membuang tombol dropdown yang tadi fokus; kembalikan supaya keyboard tidak "jatuh"
+      setTimeout(() => { const b = box.querySelector(`.sc-map-row[data-i="${i}"] .ui-select-btn`); if (b) b.focus(); }, 0);
       scheduleSetcariRerun();
     });
   });
