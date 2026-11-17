@@ -156,7 +156,7 @@ export const KONVERSIAN_MARKUP = `
     <div class="panel-body" id="panel-body-sesi" style="display:none">
       <div class="pane-top">
       <div class="sesi-toolbar">
-        <button class="pr-add-clip-btn" id="btn-sesi-baru" type="button" title="Mulai Sesi Baru (Alt+Shift+N)" aria-keyshortcuts="Alt+Shift+N"><i class="ti ti-plus"></i> Mulai Sesi Baru</button>
+        <button class="pr-add-clip-btn" id="btn-sesi-baru" type="button" title="Mulai Sesi Baru (Alt+Shift+M)" aria-keyshortcuts="Alt+Shift+M"><i class="ti ti-plus"></i> Mulai Sesi Baru</button>
         <button class="toggle-btn" id="btn-sesi-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
       </div>
       </div>
@@ -381,7 +381,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
       <i class="ti ti-clipboard-plus clip-idle-icon"></i>
       <div class="clip-idle-title">Belum ada sesi</div>
       <p class="clip-idle-text">Sesi terbuat otomatis saat kamu menambahkan produk dari hasil pencarian. Mulai sekarang kalau ingin mengisi data RS lebih dulu.</p>
-      <button type="button" class="pr-add-clip-btn" id="btn-clip-idle-start" title="Mulai sesi baru (Alt+Shift+N)" aria-keyshortcuts="Alt+Shift+N"><i class="ti ti-plus"></i> Mulai sesi baru</button>
+      <button type="button" class="pr-add-clip-btn" id="btn-clip-idle-start" title="Mulai sesi baru (Alt+Shift+M)" aria-keyshortcuts="Alt+Shift+M"><i class="ti ti-plus"></i> Mulai sesi baru</button>
     </div>
     <!-- FIX: header+tabs+mode-toggle+summary dibungkus 1 wrapper sticky (lihat
          .clip-sticky-top di pnm-universal.css) supaya nempel jadi satu unit di

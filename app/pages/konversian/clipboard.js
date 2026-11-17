@@ -601,11 +601,12 @@ btnSesiBaru.addEventListener('click', startNewSesi);
 const btnClipIdleStart = document.getElementById('btn-clip-idle-start');
 btnClipIdleStart.addEventListener('click', startNewSesi);
 
-// Pintasan keyboard: Alt+Shift+N = Mulai Sesi Baru (sama persis dengan klik tombolnya, termasuk konfirmasi kalau
+// Pintasan keyboard: Alt+Shift+M = Mulai Sesi Baru (M = "Mulai"; sama persis dengan klik tombolnya, termasuk konfirmasi kalau
 // sesi yang lagi dibuka ada isinya). Lewat S.onGlobal -> otomatis lepas saat pindah dari modul Konversian.
-// Pakai e.code (bukan e.key): di Mac Alt+N menghasilkan karakter lain, e.key tidak bisa diandalkan.
+// Pakai e.code (bukan e.key): di Mac Alt+huruf menghasilkan karakter lain, e.key tidak bisa diandalkan.
+// JANGAN pakai Alt+Shift+N: itu "Split View" milik Chrome. Chrome juga memakai Alt+Shift+T/A/I/B; cek bentrok sebelum ganti.
 S.onGlobal(document, 'keydown', (e) => {
-  if (e.code !== 'KeyN' || !e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
+  if (e.code !== 'KeyM' || !e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
   e.preventDefault(); // tahan karakter yang dihasilkan Alt+N (Mac) / pintasan bawaan browser
   if (e.repeat || startNewSesiBusy || btnSesiBaru.disabled) return;
   if (document.querySelector('[class*="modal"].show, [class*="overlay"].show, [id*="modal"].show')) return; // ada dialog terbuka
