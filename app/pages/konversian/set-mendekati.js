@@ -97,6 +97,23 @@ S.setcariSrcClip.addEventListener('click', () => { S.setcariSourceTouched = true
 S.setcariSrcPaste.addEventListener('click', () => { S.setcariSourceTouched = true; setSetcariSourceMode('paste'); });
 S.setcariPasteInput.addEventListener('input', () => updateSetcariSourceCount());
 
+// Toggle "Termasuk substitusi": OFF = RPC lama (cari_set_mendekati), perilaku tidak berubah.
+// ON = cari_set_mendekati_v2 (famili + ukuran dekat). Ganti mode -> hasil lama dibersihkan
+// supaya persen persis/substitusi tidak tercampur dalam satu daftar.
+function setcariSubstitusiOn() {
+  const el = document.getElementById('setcari-sub-chk');
+  return !!(el && el.checked);
+}
+{
+  const chk = document.getElementById('setcari-sub-chk');
+  if (chk) chk.addEventListener('change', () => {
+    S.setcariList.innerHTML = '';
+    S.setcariBadge.style.display = 'none';
+    setcariSetStatus('');
+    showSetcariIntro();
+  });
+}
+
 function setcariSetStatus(msg, isError) {
   S.setcariStatus.textContent = msg || '';
   S.setcariStatus.classList.toggle('error', !!isError);
@@ -120,7 +137,10 @@ async function runCariSetMendekati() {
   S.setcariList.innerHTML = '';
   S.setcariBadge.style.display = 'none';
   try {
-    const { data, error } = await S.rpc('cari_set_mendekati', { kode_list: kodeList, batas: 30 });
+    const useSub = setcariSubstitusiOn();
+    const { data, error } = useSub
+      ? await S.rpc('cari_set_mendekati_v2', { kode_list: kodeList, izinkan_substitusi: true, batas: 30 })
+      : await S.rpc('cari_set_mendekati', { kode_list: kodeList, batas: 30 });
     if (error) throw new Error(error.message || 'Gagal mencari SET');
     if (!data || data.length === 0) {
       setcariSetStatus('');
@@ -132,7 +152,7 @@ async function runCariSetMendekati() {
     setcariSetStatus(`${data.length} SET ditemukan, diurutkan dari yang paling mirip.`);
     S.setcariBadge.textContent = data.length;
     S.setcariBadge.style.display = 'inline-block';
-    renderSetcariResults(data, kodeList);
+    renderSetcariResults(data, kodeList, useSub);
   } catch (err) {
     setcariSetStatus('Gagal mencari SET: ' + err.message, true);
   } finally {
@@ -140,19 +160,27 @@ async function runCariSetMendekati() {
   }
 }
 
-function renderSetcariResults(rows, kodeList) {
+function renderSetcariResults(rows, kodeList, useSub) {
   S.setcariList.innerHTML = rows.map(row => {
-    const pct = Math.round(row.skor_jaccard * 100);
-    const cls = setcariSkorClass(row.skor_jaccard);
+    const skor = useSub ? row.skor_substitusi : row.skor_jaccard;
+    const pct = Math.round((skor || 0) * 100);
+    const cls = setcariSkorClass(skor || 0);
+    const subInfo = useSub
+      ? (row.jumlah_substitusi > 0 ? `, <b>${row.jumlah_substitusi}</b> lewat substitusi ukuran` : '')
+        + (row.jumlah_famili_beda > 0 ? `, ${row.jumlah_famili_beda} sekeluarga tapi beda ukuran` : '')
+      : '';
+    const scoreTip = useSub
+      ? 'Kemiripan isi termasuk substitusi ukuran (selisih ≤ 5 mm, produk sekeluarga). Persis saja: ' + Math.round((row.skor_jaccard || 0) * 100) + '%'
+      : 'Kemiripan isi: item yang sama dibagi gabungan item input dan isi SET';
     const detailId = `setcari-detail-${row.set_id}`;
     return `<div class="setcari-card" data-set-id="${row.set_id}">
       <div class="setcari-card-top">
         <div class="setcari-card-id">
           <div class="setcari-kode">${S.escapeHtmlAttr(row.kode_set)}</div>
           ${row.nama_set ? `<div class="setcari-nama">${S.escapeHtmlAttr(row.nama_set)}</div>` : ''}
-          <div class="setcari-cocok">${row.jumlah_cocok} dari ${row.total_item_set} item SET cocok</div>
+          <div class="setcari-cocok">${row.jumlah_cocok} dari ${row.total_item_set} item SET cocok persis${subInfo}</div>
         </div>
-        <div class="setcari-score-wrap" title="Kemiripan isi: item yang sama dibagi gabungan item input dan isi SET">
+        <div class="setcari-score-wrap" title="${S.escapeHtmlAttr(scoreTip)}">
           <div class="setcari-score ${cls}">${pct}%</div>
           <div class="setcari-bar-track" role="img" aria-label="Kemiripan ${pct} persen"><div class="setcari-bar-fill" style="width:${pct}%"></div></div>
         </div>
@@ -166,7 +194,7 @@ function renderSetcariResults(rows, kodeList) {
   }).join('');
 
   S.setcariList.querySelectorAll('button[data-action="toggle-detail"]').forEach(btn => {
-    btn.addEventListener('click', () => toggleSetcariDetail(btn, kodeList));
+    btn.addEventListener('click', () => toggleSetcariDetail(btn, kodeList, useSub));
   });
   S.setcariList.querySelectorAll('button[data-action="add-clip"]').forEach(btn => {
     btn.addEventListener('click', () => addSetKodeToClip(btn.dataset.kode, btn));
@@ -202,7 +230,7 @@ async function addSetKodeToClip(kode, btn) {
 }
 S.addSetKodeToClip = addSetKodeToClip;
 
-async function toggleSetcariDetail(btn, kodeList) {
+async function toggleSetcariDetail(btn, kodeList, useSub) {
   const setId = btn.dataset.setId;
   const detailEl = S.setcariList.querySelector(`[data-detail-for="${setId}"]`);
   if (!detailEl) return;
@@ -214,13 +242,28 @@ async function toggleSetcariDetail(btn, kodeList) {
   }
   btn.textContent = 'Memuat…';
   try {
-    const { data, error } = await S.rpc('detail_isi_set', { p_set_id: Number(setId), kode_list: kodeList });
+    const { data, error } = useSub
+      ? await S.rpc('detail_isi_set_v2', { p_set_id: Number(setId), kode_list: kodeList })
+      : await S.rpc('detail_isi_set', { p_set_id: Number(setId), kode_list: kodeList });
     if (error) throw new Error(error.message || 'Gagal ambil detail SET');
-    const lines = (data || []).map(it => `
-      <div class="setcari-item-line ${it.cocok_dengan_input ? 'match' : ''}">
-        <span class="setcari-item-main"><span class="setcari-item-no">${it.urutan}</span><span class="setcari-item-kode">${S.escapeHtmlAttr(it.kode_item)}</span><span class="setcari-item-nama">${S.escapeHtmlAttr(it.nama_item || '')}</span></span>
-        <span class="setcari-item-qty">qty ${it.qty}${it.cocok_dengan_input ? '<span class="setcari-item-tag">cocok</span>' : ''}</span>
-      </div>`).join('');
+    const lines = (data || []).map(it => {
+      // v2: cocok_tipe; v1: cocok_dengan_input. Substitusi SELALU diberi lencana + selisih + produk yang digantikan.
+      const tipe = it.cocok_tipe || (it.cocok_dengan_input ? 'persis' : 'tidak');
+      const selisih = it.selisih_mm != null ? Number(it.selisih_mm) : null;
+      const selTxt = selisih != null ? (selisih === 0 ? 'ukuran sama' : `selisih ${+(selisih / 10).toFixed(2)} cm`) : '';
+      let tag = '';
+      if (tipe === 'persis') tag = '<span class="setcari-item-tag">cocok</span>';
+      else if (tipe === 'famili_dekat') tag = `<span class="setcari-item-tag sub" title="Pengganti untuk ${S.escapeHtmlAttr(it.pengganti_kode || '')}">substitusi · ${S.escapeHtmlAttr(selTxt)}</span>`;
+      else if (tipe === 'famili_beda') tag = `<span class="setcari-item-tag beda" title="Sekeluarga dengan ${S.escapeHtmlAttr(it.pengganti_kode || '')} tapi ukuran beda">beda ukuran · ${S.escapeHtmlAttr(selTxt)}</span>`;
+      const mengganti = (tipe === 'famili_dekat' || tipe === 'famili_beda') && it.pengganti_nama
+        ? `<div class="setcari-item-ganti">menggantikan: ${S.escapeHtmlAttr(it.pengganti_nama)}</div>` : '';
+      const cls = tipe === 'persis' ? 'match' : (tipe === 'famili_dekat' ? 'sub' : '');
+      return `
+      <div class="setcari-item-line ${cls}">
+        <span class="setcari-item-main"><span class="setcari-item-no">${it.urutan}</span><span class="setcari-item-kode">${S.escapeHtmlAttr(it.kode_item)}</span><span class="setcari-item-nama">${S.escapeHtmlAttr(it.nama_item || '')}${mengganti}</span></span>
+        <span class="setcari-item-qty">qty ${it.qty}${tag}</span>
+      </div>`;
+    }).join('');
     detailEl.innerHTML = lines || '<div class="setcari-detail-empty">SET ini tidak punya item.</div>';
     detailEl.style.display = 'flex';
     btn.textContent = 'Sembunyikan';

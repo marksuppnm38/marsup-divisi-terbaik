@@ -2798,3 +2798,9 @@
    ============================================================ */
 #app-root:not([data-subtab="cari"]) #session-indicator.empty,
 #app-root:not([data-subtab="cari"]) #btn-sesi-baru{display:none}
+/* Cari SET: substitusi ukuran (v2) */
+#app-root .setcari-sub-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);margin:6px 0 2px;cursor:pointer}
+#app-root .setcari-item-line.sub{color:var(--warn)}
+#app-root .setcari-item-tag.sub{background:var(--warn-bg,var(--accent-bg));color:var(--warn,var(--accent-text))}
+#app-root .setcari-item-tag.beda{background:var(--surface-3);color:var(--text-muted)}
+#app-root .setcari-item-ganti{font-size:10.5px;color:var(--text-muted)}
