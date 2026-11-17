@@ -1743,6 +1743,7 @@ S.btnExport.addEventListener('click', async () => {
     // berulang lintas set/lampiran, ini yang bikin file bengkak drastis saat "banyak
     // set". Fix: cache imgId per kode_produk, panggil wb.addImage cuma sekali per kode.
     const imgIdCache = {};
+    let imgEmbedFailToasted = false; // gagal nempel gambar = kasih tahu SEKALI per export (dulu ditelan diam-diam, file jadi tanpa gambar tanpa kabar)
     // Border tipis 4-sisi, dipakai di SEMUA sheet (header & data) biar hasilnya
     // kelihatan sebagai tabel yang jelas grid-nya — warna item gelap standar
     // (bukan abu-abu pucat) biar kelihatan kayak "All borders" manual di Google
@@ -1767,7 +1768,13 @@ S.btnExport.addEventListener('click', async () => {
           tl: { col: col - 0.9, row: row - 0.9 },
           ext: { width: w, height: h }
         });
-      } catch(e) {}
+      } catch(e) {
+        console.warn('[export] gagal nempel gambar', cacheKey, e);
+        if (!imgEmbedFailToasted) {
+          imgEmbedFailToasted = true;
+          S.showToast('Sebagian gambar gagal ditempel ke Excel — cek file hasil export', 'error');
+        }
+      }
     }
 
     // ── SHEET 1: SUMMARY ──

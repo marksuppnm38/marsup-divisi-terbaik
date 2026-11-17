@@ -1880,7 +1880,7 @@ async function getLampiranPagesForKode(kode_produk) {
         } catch (e) { /* lanjut coba auto */ }
       }
     }
-  } catch (e) {}
+  } catch (e) { /* sengaja diam: lookup lampiran tersimpan gagal → jatuh ke pencarian otomatis di bawah */ }
   try {
     const pages = await getPdfPagesBase64(await lampiranSignedUrl(kode_produk + '.pdf'));
     return { filename: kode_produk, pages };

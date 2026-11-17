@@ -814,7 +814,7 @@ export function installProject(S) {
     const lines = revertPreview(es).map(p => `• ${p.n} item dicabut dari "${p.nama}"` + (p.empty
       ? (p.prev ? ` — status kembali ke "${statusLabel(p.prev)}"` : ' — status tetap Klik e-Kat (status sebelumnya tidak tercatat)')
       : ' — status tetap Klik e-Kat (masih ada item klik lain)')).join('\n');
-    if (!confirm(`Batalkan konfirmasi ke Riwayat?\n${lines}`)) return;
+    if (!(await S.showConfirmModal({ title: 'Batalkan konfirmasi ke Riwayat?', text: lines, okText: 'Ya, batalkan konfirmasi', multiline: true, enterConfirms: false }))) return;
     try {
       const notes = await revertFromRiwayat(es);
       await api(`${KLIK}?transaksi_id=eq.${encodeURIComponent(trxId)}&riwayat_sesi_id=not.is.null`, { method: 'PATCH', body: JSON.stringify({ riwayat_sesi_id: null }) });
@@ -896,7 +896,7 @@ export function installProject(S) {
       } else {
         if (!st.activeTrx) return renderTable();
         const ent = (st.a.byKode.get(kode) || []).find(e => e.trx.id === st.activeTrx);
-        if (ent && ent.synced && confirm(`Item ini sudah tercatat di Riwayat ${(sesiById(ent.synced) || {}).nama_rs || 'konversi'}.\nCabut juga dari Riwayat? (OK = cabut, Batal = biarkan di Riwayat)`)) (await revertFromRiwayat([ent])).forEach(m => S.showToast(m));
+        if (ent && ent.synced && await S.showConfirmModal({ title: 'Cabut juga dari Riwayat?', text: `Item ini sudah tercatat di Riwayat ${(sesiById(ent.synced) || {}).nama_rs || 'konversi'}.`, okText: 'Ya, cabut dari Riwayat', cancelText: 'Biarkan di Riwayat', enterConfirms: false })) (await revertFromRiwayat([ent])).forEach(m => S.showToast(m));
         await api(`${KLIK}?${kEq(st.activeTrx, kode)}`, { method: 'DELETE' });
         st.d.klik = st.d.klik.filter(r => !(String(r.transaksi_id) === st.activeTrx && r.kode_produk === kode));
       }
@@ -1070,14 +1070,14 @@ export function installProject(S) {
         finally { el.disabled = false; }
       }
       if (act === 'del-prj') {
-        if (!confirm(`Hapus project "${st.d.project.nama}"?\nKonversinya TIDAK ikut terhapus — cuma dilepas dari project. Semua transaksi dan catatan klik project ini hilang.`)) return;
+        if (!(await S.showConfirmModal({ title: `Hapus project "${st.d.project.nama}"?`, text: 'Konversinya TIDAK ikut terhapus — cuma dilepas dari project. Semua transaksi dan catatan klik project ini hilang.', okText: 'Ya, hapus project', danger: true, enterConfirms: false }))) return;
         await api(`${PRJ}?id=eq.${encodeURIComponent(st.cur)}`, { method: 'DELETE' });
         S.showToast('Project dihapus.');
         return loadProjects();
       }
       if (act === 'picker-toggle') { const p = $('prj-picker'); const open = p.style.display === 'none'; p.style.display = open ? 'block' : 'none'; if (open) runPicker(); return; }
       if (act === 'pick-add') {
-        if (el.dataset.from && !confirm(`Konversi ini sekarang ada di project "${el.dataset.from}".\nPindahkan ke project ini? (pin klik di project lama untuk konversi ini ikut dilepas)`)) return;
+        if (el.dataset.from && !(await S.showConfirmModal({ title: 'Pindahkan ke project ini?', text: `Konversi ini sekarang ada di project "${el.dataset.from}". Pin klik di project lama untuk konversi ini ikut dilepas.`, okText: 'Ya, pindahkan', enterConfirms: false }))) return;
         el.disabled = true;
         await setSesiProject(el.dataset.id, st.cur);
         st.pickRows = (st.pickRows || []).filter(r => String(r.id) !== String(el.dataset.id));
@@ -1093,7 +1093,7 @@ export function installProject(S) {
       if (act === 'pick-more') { el.disabled = true; return runPicker(true); }
       if (act === 'rm-sesi') {
         const s = st.d.sesi.find(x => String(x.id) === el.dataset.id);
-        if (!confirm(`Keluarkan "${(s && s.nama_rs) || 'konversi ini'}" dari project?`)) return;
+        if (!(await S.showConfirmModal({ title: `Keluarkan "${(s && s.nama_rs) || 'konversi ini'}" dari project?`, text: 'Konversinya tetap ada, hanya dilepas dari project ini.', okText: 'Ya, keluarkan', enterConfirms: false }))) return;
         await setSesiProject(el.dataset.id, null);
         return reloadDetail();
       }
@@ -1132,9 +1132,9 @@ export function installProject(S) {
       }
       if (act === 'trx-del') {
         const t = st.a.trxList.find(x => x.id === el.dataset.id); if (!t) return;
-        if (!confirm(`Hapus "${trxTitle(t)}" beserta ${t.entries.length} item di dalamnya?`)) return;
+        if (!(await S.showConfirmModal({ title: `Hapus "${trxTitle(t)}"?`, text: `${t.entries.length} item di dalamnya ikut terhapus.`, okText: 'Ya, hapus transaksi', danger: true, enterConfirms: false }))) return;
         const synced = t.entries.filter(e => e.synced);
-        if (synced.length && confirm(`${synced.length} item transaksi ini sudah tercatat di Riwayat.\nCabut juga dari Riwayat? (OK = cabut, Batal = biarkan di Riwayat)`)) (await revertFromRiwayat(synced)).forEach(m => S.showToast(m));
+        if (synced.length && await S.showConfirmModal({ title: 'Cabut juga dari Riwayat?', text: `${synced.length} item transaksi ini sudah tercatat di Riwayat.`, okText: 'Ya, cabut dari Riwayat', cancelText: 'Biarkan di Riwayat', enterConfirms: false })) (await revertFromRiwayat(synced)).forEach(m => S.showToast(m));
         await api(`${TRX}?id=eq.${encodeURIComponent(t.id)}`, { method: 'DELETE' });
         st.d.trx = st.d.trx.filter(x => String(x.id) !== t.id);
         st.d.klik = st.d.klik.filter(r => String(r.transaksi_id) !== t.id);
