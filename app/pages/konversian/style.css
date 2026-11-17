@@ -2164,3 +2164,604 @@
   height:24px;
   margin:0;
 }
+
+
+/* ============================================================
+   BUAT SPH — meja kerja dokumen (2026-11-17)
+   ------------------------------------------------------------
+   Masalah sebelumnya: satu kolom isian panjang (6 field + 3 slot aset + opsi) lalu tombol
+   Generate di dasar, jadi tombol itu dan semua aksi hasil (Download, Record) harus di-scroll
+   untuk ditemukan; preview setinggi 60vh menumpuk di bawahnya.
+   Sekarang dua kolom, masing-masing punya satu tugas:
+     kiri  = isian surat, scroll sendiri, tombol Generate menempel di dasar kolom
+     kanan = kertas surat di atas "meja" (surface-2) + bar aksi yang selalu kelihatan
+   Spasi mengikuti basis 4/8 (--sp-*). Tidak ada warna baru: semua dari token yang sudah ada.
+   ============================================================ */
+#app-root .sph-panel{
+  display:grid;
+  grid-template-columns:minmax(300px,380px) minmax(0,1fr);
+  flex:1 1 auto;
+  min-height:0;
+  padding:0;
+  gap:0;
+  overflow:hidden;
+  align-content:stretch;
+}
+
+/* ---- kolom kiri: isian ---- */
+#app-root .sph-form{
+  flex:none;
+  max-width:none;
+  min-height:0;
+  min-width:0;
+  border-right:1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+}
+#app-root .sph-form-body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  padding:var(--sp-5) var(--sp-5) var(--sp-3);
+  scrollbar-gutter:stable;
+}
+#app-root .sph-group{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:var(--sp-3);
+  margin:0 0 var(--sp-6);
+  padding:0;
+  border:0;
+  min-width:0;
+}
+#app-root .sph-group-title{
+  grid-column:1 / -1;
+  margin:0;
+  font-size:13px;
+  font-weight:600;
+  letter-spacing:-.005em;
+  color:var(--text);
+}
+#app-root .sph-span-2{grid-column:1 / -1}
+#app-root .sph-group .form-group{margin:0;min-width:0}
+#app-root .sph-group .form-group label{
+  font-size:12px;
+  font-weight:500;
+  color:var(--text-secondary);
+  margin-bottom:var(--sp-1);
+}
+#app-root .sph-group .form-group input,
+#app-root .sph-group .form-group select{
+  height:36px;
+  padding:0 var(--sp-3);
+  font-size:13px;
+  border-radius:var(--radius);
+  transition:border-color .15s,box-shadow .15s,background-color .15s;
+}
+#app-root .sph-group .form-group select{padding-right:var(--sp-2)}
+#app-root .sph-group .form-group input:focus,
+#app-root .sph-group .form-group select:focus{
+  border-color:var(--accent);
+  background:var(--surface);
+  box-shadow:0 0 0 3px var(--accent-ring);
+}
+
+/* Slot aset: satu daftar bergaris, bukan tiga kartu terpisah */
+#app-root #sph-asset-slots{
+  border:1px solid var(--border);
+  border-radius:var(--radius-md);
+  overflow:hidden;
+  background:var(--surface);
+}
+#app-root .sph-asset-slot{
+  margin:0;
+  min-height:48px;
+  padding:var(--sp-2) var(--sp-3);
+  gap:var(--sp-3);
+  border:0;
+  border-top:1px solid var(--border);
+  border-radius:0;
+  font-size:12.5px;
+  color:var(--text);
+}
+#app-root .sph-asset-slot:first-child{border-top:0}
+#app-root .sph-asset-slot.ok{border-style:solid;border-color:var(--border);border-width:1px 0 0;color:var(--text)}
+#app-root .sph-asset-slot.ok:first-child{border-top-width:0}
+#app-root .sph-asset-slot.error{
+  border-width:1px 0 0;border-color:var(--border);
+  background:var(--danger-bg);color:var(--danger-text);
+}
+#app-root .sph-asset-slot.error:first-child{border-top-width:0}
+#app-root .sph-asset-slot:not(.ok):not(.error){background:var(--surface-2)}
+#app-root .sph-asset-slot img{
+  width:44px;height:28px;max-width:none;
+  object-fit:contain;
+  padding:2px;
+  border:1px solid var(--border);
+  border-radius:4px;
+  background:#fff;
+}
+#app-root .sph-asset-slot > i{color:var(--text-muted)}
+#app-root .sph-asset-slot .sph-asset-label{
+  display:flex;flex-direction:column;gap:1px;
+  font-weight:500;line-height:1.35;
+}
+#app-root .sph-asset-sub{font-size:11.5px;font-weight:400;color:var(--text-muted);line-height:1.4}
+#app-root .sph-asset-slot.error .sph-asset-sub{color:inherit;opacity:.9}
+#app-root .sph-asset-slot button{
+  height:28px;padding:0 var(--sp-3);
+  font-size:12px;font-weight:500;
+  border-radius:7px;
+  background:var(--surface);
+}
+#app-root .sph-asset-slot button:hover{background:var(--surface-3)}
+
+#app-root .sph-checkbox-row{
+  gap:var(--sp-3);
+  padding:var(--sp-1) 0 var(--sp-2);
+  font-size:12.5px;
+  line-height:1.5;
+}
+#app-root .sph-checkbox-row input{margin-top:2px;accent-color:var(--accent)}
+#app-root .sph-checkbox-row b{font-weight:600;color:var(--text)}
+
+/* Bar aksi kolom kiri: Generate selalu kelihatan, galat dan status tepat di dekatnya */
+#app-root .sph-actionbar{
+  flex:0 0 auto;
+  display:flex;
+  flex-direction:column;
+  gap:var(--sp-2);
+  padding:var(--sp-3) var(--sp-5) var(--sp-4);
+  border-top:1px solid var(--border);
+  background:var(--surface);
+}
+#app-root .sph-validation{
+  margin:0;
+  padding:var(--sp-2) var(--sp-3);
+  font-size:12px;
+  line-height:1.5;
+  border-radius:var(--radius);
+}
+#app-root .sph-btn-block.sph-generate{
+  height:40px;
+  font-size:13.5px;
+  border-radius:var(--radius-md);
+  background:var(--accent);
+  border-color:var(--accent);
+  color:#fff;
+}
+#app-root .sph-btn-block.sph-generate:hover:not(:disabled){filter:brightness(.92);background:var(--accent);color:#fff}
+#app-root .sph-btn-block.sph-generate:disabled{
+  background:var(--surface-2);border-color:var(--border);color:var(--text-muted);filter:none;
+}
+#app-root .sph-status{
+  min-height:16px;
+  font-size:12px;
+  line-height:1.4;
+  color:var(--text-muted);
+  text-align:center;
+}
+#app-root .sph-status:empty{min-height:0}
+
+/* ---- kolom kanan: kertas di atas meja ---- */
+#app-root .sph-preview-wrap{
+  flex:none;
+  min-width:0;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  background:var(--surface-2);
+}
+#app-root .sph-doc-bar{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--sp-3);
+  min-height:52px;
+  padding:var(--sp-2) var(--sp-4) var(--sp-2) var(--sp-5);
+  border-bottom:1px solid var(--border);
+  background:var(--surface);
+}
+#app-root .sph-doc-title{
+  display:flex;align-items:center;gap:var(--sp-2);
+  min-width:0;
+  font-size:13px;font-weight:600;color:var(--text);
+}
+#app-root .sph-doc-title i{font-size:16px;color:var(--text-muted)}
+#app-root .sph-doc-actions{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;justify-content:flex-end}
+#app-root .sph-doc-actions .sph-doc-btn{
+  width:auto;
+  height:32px;
+  padding:0 var(--sp-3);
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  font-size:12.5px;font-weight:600;
+  border-radius:var(--radius);
+  text-decoration:none;
+  margin:0;
+}
+#app-root .sph-doc-actions .sph-doc-btn-primary{
+  background:var(--accent);border:1px solid var(--accent);color:#fff;
+}
+#app-root .sph-doc-actions .sph-doc-btn-primary:hover{filter:brightness(.92);background:var(--accent);color:#fff}
+#app-root .sph-doc-actions .btn-record.sph-doc-btn{
+  height:32px;font-size:12.5px;font-weight:600;
+  background:var(--success-bg);color:var(--success-text);
+  border:1px solid transparent;
+}
+#app-root .sph-doc-actions .btn-record.sph-doc-btn:hover{filter:none;background:var(--success);color:#fff}
+
+#app-root .sph-stage{
+  flex:1 1 auto;
+  min-height:0;
+  position:relative;
+  display:flex;
+  justify-content:center;
+  padding:var(--sp-5);
+  overflow:auto;
+}
+#app-root #sph-preview-frame{
+  align-self:stretch;
+  width:100%;
+  max-width:840px;
+  height:auto;
+  min-height:0;
+  border:0;
+  border-radius:4px;
+  background:#fff;
+  box-shadow:0 1px 2px rgba(0,0,0,.22),0 10px 30px rgba(0,0,0,.26);
+}
+
+/* Keadaan kosong: siluet selembar surat, bukan ikon generik */
+#app-root .sph-empty{
+  margin:auto;
+  max-width:320px;
+  padding:0;
+  gap:var(--sp-4);
+  text-align:center;
+}
+#app-root .sph-empty > i{display:none}
+#app-root .sph-empty::before{
+  content:"";
+  display:block;
+  width:120px;height:160px;
+  margin:0 auto var(--sp-4);
+  border:1px solid var(--border-strong);
+  border-radius:4px;
+  background:
+    linear-gradient(var(--border-strong),var(--border-strong)) 16px 20px / 44px 4px no-repeat,
+    linear-gradient(var(--border),var(--border)) 16px 44px / 88px 3px no-repeat,
+    linear-gradient(var(--border),var(--border)) 16px 56px / 88px 3px no-repeat,
+    linear-gradient(var(--border),var(--border)) 16px 68px / 70px 3px no-repeat,
+    linear-gradient(var(--border),var(--border)) 16px 92px / 88px 3px no-repeat,
+    linear-gradient(var(--border),var(--border)) 16px 104px / 88px 3px no-repeat,
+    linear-gradient(var(--border),var(--border)) 16px 116px / 52px 3px no-repeat,
+    var(--surface);
+  box-shadow:var(--shadow);
+}
+#app-root .sph-empty p{margin:0;font-size:12.5px;line-height:1.6;color:var(--text-secondary)}
+
+/* Layar sempit: satu kolom, tombol Generate menempel di dasar layar */
+@media (max-width:900px){
+  #app-root .sph-panel{grid-template-columns:minmax(0,1fr);overflow-y:auto;align-content:start}
+  #app-root .sph-form{border-right:0;border-bottom:1px solid var(--border)}
+  #app-root .sph-form-body{overflow:visible;padding:var(--sp-4) var(--sp-4) var(--sp-2)}
+  #app-root .sph-actionbar{position:sticky;bottom:0;z-index:3;padding:var(--sp-3) var(--sp-4)}
+  #app-root .sph-stage{min-height:70vh;padding:var(--sp-4)}
+  #app-root .sph-doc-bar{padding-left:var(--sp-4)}
+}
+
+
+/* ============================================================
+   PERMINTAAN RS — modal (2026-11-17)
+   ------------------------------------------------------------
+   Rangka baru: kepala (judul + sub + tombol tutup) diam, isi scroll sendiri, baris aksi
+   menempel di dasar. Dulu seluruh kotak scroll bersama, jadi di daftar panjang tombol
+   Simpan hilang dari layar. Tombol utama sekarang benar-benar tombol utama di semua
+   langkah (dulu hanya "Lanjut" yang biru; Simpan & mulai sesi, Tambah item, dan
+   Simpan perubahan tampil abu-abu seperti tombol batal). Tanpa kotak di dalam kotak.
+   ============================================================ */
+.pr-modal-box{
+  display:flex;
+  flex-direction:column;
+  width:92vw;
+  max-width:600px;
+  max-height:min(88vh,780px);
+  padding:0;
+  overflow:hidden;
+  border:1px solid var(--border);
+  box-shadow:var(--shadow-lg);
+}
+.pr-modal-box .pr-head{
+  flex:0 0 auto;
+  display:flex;
+  align-items:flex-start;
+  gap:var(--sp-3);
+  padding:var(--sp-5) var(--sp-6) var(--sp-4);
+}
+.pr-modal-box .pr-head-text{flex:1;min-width:0}
+.pr-modal-box h3{margin:0 0 var(--sp-1);font-size:16px;font-weight:600;letter-spacing:-.01em;color:var(--text)}
+.pr-modal-box .pr-sub{margin:0;max-width:62ch;font-size:12.5px;line-height:1.55;color:var(--text-muted)}
+.pr-modal-box .pr-close{
+  flex:0 0 auto;
+  width:32px;height:32px;
+  margin:-4px -8px 0 0;
+  display:inline-flex;align-items:center;justify-content:center;
+  border:0;border-radius:var(--radius);
+  background:transparent;color:var(--text-muted);
+  font-size:18px;cursor:pointer;
+  transition:background-color .15s,color .15s;
+}
+.pr-modal-box .pr-close:hover{background:var(--surface-2);color:var(--text)}
+
+.pr-modal-box .pr-scroll{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  padding:var(--sp-1) var(--sp-6) 0;
+  border-top:1px solid var(--border);
+}
+.pr-modal-box .pr-scroll > div:first-of-type{margin-top:0}
+.pr-modal-box #pr-form-wrap,
+.pr-modal-box #pr-active-wrap,
+.pr-modal-box #pr-edit-wrap,
+.pr-modal-box #pr-review-wrap{padding-top:var(--sp-4)}
+
+/* Pesan status: menempel di atas area scroll supaya tidak jatuh di bawah baris aksi */
+.pr-modal-box #pr-status-msg{
+  position:sticky;top:0;z-index:4;
+  margin:var(--sp-3) 0 0;
+  padding:var(--sp-2) var(--sp-3);
+  min-height:0;
+  font-size:12.5px;line-height:1.5;
+  background:var(--surface-2);
+  border:1px solid var(--border);
+  border-left:3px solid currentColor;
+  border-radius:var(--radius);
+}
+.pr-modal-box #pr-status-msg:empty{display:none}
+
+/* Isian */
+.pr-modal-box .pr-row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 var(--sp-3)}
+.pr-modal-box .pr-span-2{grid-column:1 / -1}
+.pr-modal-box .pr-field{margin:0 0 var(--sp-4);min-width:0}
+.pr-modal-box .pr-field label{
+  display:block;
+  margin:0 0 6px;
+  font-size:12px;font-weight:600;color:var(--text-secondary);
+}
+.pr-modal-box .pr-opt{margin-left:6px;font-weight:400;color:var(--text-muted)}
+.pr-modal-box .pr-field input:not([type="file"]){
+  width:100%;height:38px;
+  padding:0 var(--sp-3);
+  font-size:13px;
+  border:1px solid var(--border-strong);
+  border-radius:var(--radius);
+  background:var(--surface-2);
+  color:var(--text);
+  transition:border-color .15s,box-shadow .15s,background-color .15s;
+}
+.pr-modal-box .pr-field textarea{
+  width:100%;min-height:168px;
+  padding:var(--sp-3);
+  font-size:12.5px;line-height:1.6;
+  border:1px solid var(--border-strong);
+  border-radius:var(--radius);
+  background:var(--surface-2);
+  resize:vertical;
+  transition:border-color .15s,box-shadow .15s,background-color .15s;
+}
+.pr-modal-box .pr-field input:not([type="file"]):focus,
+.pr-modal-box .pr-field textarea:focus{
+  outline:none;
+  background:var(--surface);
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-ring);
+}
+.pr-modal-box .pr-field input[type="file"]{
+  padding:var(--sp-5) var(--sp-4);
+  border:1.5px dashed var(--border-strong);
+  border-radius:var(--radius-md);
+  background:var(--surface-2);
+  color:var(--text-secondary);
+  font-size:12.5px;
+}
+.pr-modal-box .pr-field input[type="file"]::file-selector-button{
+  height:28px;margin-right:var(--sp-3);padding:0 var(--sp-3);
+  border:1px solid var(--border-strong);border-radius:7px;
+  background:var(--surface);color:var(--text);
+  font:inherit;font-size:12px;font-weight:500;cursor:pointer;
+}
+
+/* Sumber daftar: kontrol segmen */
+.pr-modal-box .pr-tabs{
+  display:flex;gap:2px;
+  margin:0 0 var(--sp-4);
+  padding:3px;
+  background:var(--surface-2);
+  border:1px solid var(--border);
+  border-radius:var(--radius-md);
+}
+.pr-modal-box .pr-tab{
+  flex:1;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:32px;padding:0 var(--sp-2);
+  border:1px solid transparent;border-radius:7px;
+  font-size:12.5px;font-weight:500;color:var(--text-muted);
+  transition:background-color .15s,color .15s;
+}
+.pr-modal-box .pr-tab i{font-size:15px}
+.pr-modal-box .pr-tab:hover:not(.active){color:var(--text)}
+.pr-modal-box .pr-tab.active{
+  background:var(--surface);color:var(--text);font-weight:600;
+  border-color:var(--border);box-shadow:var(--shadow);
+}
+.pr-modal-box .pr-ss-run{display:flex;align-items:center;gap:var(--sp-3);margin:0 0 var(--sp-3)}
+.pr-modal-box .pr-ss-status{font-size:12px;color:var(--text-muted)}
+.pr-modal-box .pr-hint{margin:0 0 var(--sp-2);max-width:62ch;font-size:12px;line-height:1.55;color:var(--text-muted)}
+
+/* Baris aksi: menempel di dasar, tombol utama di kanan */
+.pr-modal-box .pr-actions{
+  position:sticky;bottom:0;z-index:3;
+  display:flex;justify-content:flex-end;align-items:center;gap:var(--sp-2);
+  margin:var(--sp-2) calc(var(--sp-6) * -1) 0;
+  padding:var(--sp-3) var(--sp-6);
+  background:var(--surface);
+  border-top:1px solid var(--border);
+}
+.pr-modal-box .pr-actions button{
+  flex:0 0 auto;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:36px;min-width:84px;
+  padding:0 var(--sp-4);
+  border-radius:var(--radius);
+  font-size:13px;font-weight:600;
+  white-space:nowrap;
+  transition:background-color .15s,border-color .15s,filter .15s;
+}
+.pr-modal-box .pr-actions .pr-cancel{background:var(--surface);color:var(--text-secondary);border:1px solid var(--border-strong) !important}
+.pr-modal-box .pr-actions .pr-cancel:hover{background:var(--surface-2);color:var(--text)}
+.pr-modal-box .pr-actions .pr-primary,
+.pr-modal-box #pr-submit-btn{background:var(--accent);color:#fff;border:1px solid var(--accent)}
+.pr-modal-box .pr-actions .pr-primary:hover:not(:disabled){filter:brightness(.92)}
+.pr-modal-box .pr-actions button:disabled{
+  background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);
+  cursor:not-allowed;filter:none;
+}
+.pr-modal-box #pr-active-wrap .pr-actions #pr-active-close-btn{margin-right:auto}
+.pr-modal-box .pr-ss-run .pr-cancel{
+  height:32px;padding:0 var(--sp-3);
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--surface);color:var(--text);
+  border:1px solid var(--border-strong);border-radius:var(--radius);
+  font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;
+}
+.pr-modal-box .pr-ss-run .pr-cancel:hover:not(:disabled){background:var(--surface-2)}
+.pr-modal-box button:focus-visible,
+.pr-modal-box .pr-tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Ringkasan sesi (state aktif) */
+.pr-modal-box .pr-active-meta{
+  display:flex;flex-wrap:wrap;gap:var(--sp-3) var(--sp-5);
+  margin:0 0 var(--sp-4);
+  padding:var(--sp-3) var(--sp-4);
+  background:var(--surface-2);
+  border:1px solid var(--border);
+  border-radius:var(--radius-md);
+}
+.pr-modal-box .pr-meta-item{flex:1 1 84px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pr-modal-box .pr-meta-item:first-child{flex-basis:100%}
+.pr-modal-box .pr-meta-k{font-size:11.5px;color:var(--text-muted)}
+.pr-modal-box .pr-meta-v{font-size:13.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.pr-modal-box .pr-meta-sub{font-size:11.5px;color:var(--text-muted)}
+
+/* Daftar item: kolom qty dan status sejajar lurus antarbaris */
+.pr-modal-box .pr-active-list{
+  max-height:none;overflow:visible;margin:0;
+  border:1px solid var(--border);border-radius:var(--radius-md);
+}
+.pr-modal-box .pr-active-row{
+  display:grid;grid-template-columns:minmax(0,1fr) 48px 96px;align-items:center;gap:var(--sp-3);
+  padding:10px var(--sp-4);
+  border-top:1px solid var(--border);
+  font-size:13px;
+}
+.pr-modal-box .pr-active-row:first-child{border-top:0}
+.pr-modal-box .pr-active-name{display:flex;gap:var(--sp-2);min-width:0;overflow-wrap:anywhere}
+.pr-modal-box .pr-active-no{flex:0 0 1.8em;margin:0;text-align:right;font-weight:500;font-variant-numeric:tabular-nums}
+.pr-modal-box .pr-active-qty{text-align:right;font-size:12.5px;color:var(--text);font-weight:600}
+.pr-modal-box .pr-active-status{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:0;background:none;border-radius:0;
+  font-size:12px;font-weight:500;color:var(--text-muted);
+}
+.pr-modal-box .pr-active-status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto}
+.pr-modal-box .pr-active-status.ok{background:none;color:var(--success-text)}
+.pr-modal-box .pr-active-status.no{background:none;color:var(--danger-text)}
+.pr-modal-box .pr-active-note{margin:var(--sp-3) 0 var(--sp-1);max-width:62ch;font-size:12px;line-height:1.55;color:var(--text-muted)}
+.pr-modal-box .pr-active-note b{font-weight:600;color:var(--text-secondary)}
+
+/* Review + edit: tabel isian tanpa kotak pembungkus */
+.pr-modal-box .pr-review-box{margin:0;padding:0;background:none;border:0;border-radius:0}
+.pr-modal-box .pr-review-info{margin:0 0 var(--sp-3);max-width:62ch;font-size:12.5px;line-height:1.55;color:var(--text-secondary)}
+.pr-modal-box .pr-review-head,
+.pr-modal-box .pr-review-row{grid-template-columns:minmax(0,1fr) 72px 124px 32px;gap:var(--sp-2)}
+.pr-modal-box .pr-edit-head,
+.pr-modal-box .pr-edit-row{grid-template-columns:minmax(0,1fr) 72px 124px;gap:var(--sp-2)}
+.pr-modal-box .pr-review-head,
+.pr-modal-box .pr-edit-head{
+  position:sticky;top:0;z-index:2;
+  padding:var(--sp-2) 0;
+  background:var(--surface);
+  font-size:11.5px;font-weight:600;color:var(--text-muted);
+}
+.pr-modal-box .pr-review-head > :nth-child(2),
+.pr-modal-box .pr-review-head > :nth-child(3),
+.pr-modal-box .pr-edit-head > :nth-child(2),
+.pr-modal-box .pr-edit-head > :nth-child(3){text-align:right}
+.pr-modal-box .pr-review-list,
+.pr-modal-box .pr-edit-list{max-height:none;overflow:visible;margin:0}
+.pr-modal-box .pr-review-row,
+.pr-modal-box .pr-edit-row{padding:3px 0;border-top:0}
+.pr-modal-box .pr-review-row input,
+.pr-modal-box .pr-edit-row input{
+  height:36px;padding:0 10px;font-size:13px;
+  border:1px solid var(--border-strong);border-radius:var(--radius);
+  background:var(--surface-2);color:var(--text);
+  transition:border-color .15s,box-shadow .15s,background-color .15s;
+}
+.pr-modal-box .pr-review-row input:focus,
+.pr-modal-box .pr-edit-row input:focus{
+  outline:none;background:var(--surface);border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring);
+}
+.pr-modal-box .pr-rv-qty,
+.pr-modal-box .pr-rv-pagu,
+.pr-modal-box .pr-ed-qty,
+.pr-modal-box .pr-ed-pagusat{text-align:right;font-variant-numeric:tabular-nums}
+.pr-modal-box .pr-review-del{
+  width:32px;height:32px;padding:0;border-radius:var(--radius);
+  color:var(--text-muted);font-size:16px;
+  transition:background-color .15s,color .15s;
+}
+.pr-modal-box .pr-review-del:hover{opacity:1;background:var(--danger-bg);color:var(--danger-text)}
+.pr-modal-box .pr-review-add-btn{
+  width:100%;height:36px;margin:var(--sp-2) 0 var(--sp-4);
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  background:transparent;border:1px dashed var(--border-strong);border-radius:var(--radius);
+}
+.pr-modal-box .pr-review-empty{padding:var(--sp-6) var(--sp-4);font-size:12.5px;line-height:1.55;color:var(--text-muted)}
+
+.pr-modal-box .pr-edit-pagu{margin:0 0 var(--sp-4);padding:0 0 var(--sp-2);border-bottom:1px solid var(--border)}
+.pr-modal-box #pr-ed-pagu-total{max-width:260px;text-align:right;font-variant-numeric:tabular-nums}
+.pr-modal-box .pr-edit-pagu-sec{grid-template-columns:minmax(0,1fr) 200px;gap:var(--sp-3);padding:var(--sp-1) 0 var(--sp-3);font-size:12.5px;color:var(--text-secondary)}
+.pr-modal-box .pr-edit-pagu-sec b{font-weight:600;color:var(--text)}
+.pr-modal-box .pr-edit-pagu-sec input{
+  height:36px;padding:0 10px;font-size:13px;
+  border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface-2);
+  font-variant-numeric:tabular-nums;
+}
+.pr-modal-box .pr-edit-pagu-sec input:focus{outline:none;background:var(--surface);border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+
+/* HP: modal jadi lembar bawah, isian satu kolom */
+@media (max-width:640px){
+  .pr-modal-box{width:100vw;max-width:none;max-height:92vh;border-radius:var(--radius-lg) var(--radius-lg) 0 0}
+  .pr-modal-box .pr-head{padding:var(--sp-4) var(--sp-4) var(--sp-3)}
+  .pr-modal-box .pr-scroll{padding:var(--sp-1) var(--sp-4) 0}
+  .pr-modal-box .pr-actions{margin:var(--sp-2) calc(var(--sp-4) * -1) 0;padding:var(--sp-3) var(--sp-4)}
+  .pr-modal-box .pr-actions button{flex:1 1 0;min-width:0}
+  .pr-modal-box .pr-row2{grid-template-columns:minmax(0,1fr)}
+  .pr-modal-box .pr-tab{font-size:12px}
+  .pr-modal-box .pr-tab i{display:none}
+  .pr-modal-box .pr-review-head,.pr-modal-box .pr-review-row{grid-template-columns:minmax(0,1fr) 60px 96px 32px}
+  .pr-modal-box .pr-edit-head,.pr-modal-box .pr-edit-row{grid-template-columns:minmax(0,1fr) 60px 96px}
+  .pr-modal-box .pr-edit-pagu-sec{grid-template-columns:minmax(0,1fr)}
+}
+
+/* DOCX = aksi sekunder: netral, bukan biru pucat bergaris aksen seperti PDF-nya tombol utama */
+#app-root .sph-doc-actions .sph-doc-btn:not(.sph-doc-btn-primary):not(.btn-record){
+  background:var(--surface);color:var(--text);border:1px solid var(--border-strong);
+}
+#app-root .sph-doc-actions .sph-doc-btn:not(.sph-doc-btn-primary):not(.btn-record):hover{background:var(--surface-2);color:var(--text)}
+.pr-modal-box .pr-active-note{margin-bottom:var(--sp-3)}

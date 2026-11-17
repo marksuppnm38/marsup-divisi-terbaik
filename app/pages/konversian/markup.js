@@ -535,64 +535,90 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
            Detail logic-nya ada di sph-module.js (dipisah biar konversian.js gak makin
            membengkak), tapi tetep satu halaman/satu app buat user. -->
       <div class="clip-tab-panel" id="clip-tab-panel-sph" style="display:none">
+        <!-- Rangka dua kolom: kiri = isian surat (scroll sendiri, tombol Generate menempel di dasar
+             kolom), kanan = kertas preview di atas "meja" + bar aksi (Download / Record) yang
+             selalu kelihatan. Semua id dipertahankan; sph.js tidak perlu tahu soal rangka ini. -->
         <div class="sph-panel" id="sph-panel">
           <div class="sph-form" id="sph-form">
-            <div class="form-group">
-              <label>Perusahaan</label>
-              <select id="sph-company">
-                <option value="smy">PT Samaya Medika Indonesia (SMY)</option>
-                <option value="pnm">PT Pionir Nusantara Manufacturing (PNM)</option>
-                <option value="meto">PT Meto Cahaya Abadi (METO)</option>
-              </select>
+            <div class="sph-form-body">
+              <section class="sph-group" aria-labelledby="sph-g-surat">
+                <h4 class="sph-group-title" id="sph-g-surat">Surat</h4>
+                <div class="form-group sph-span-2">
+                  <label for="sph-company">Perusahaan</label>
+                  <select id="sph-company">
+                    <option value="smy">PT Samaya Medika Indonesia (SMY)</option>
+                    <option value="pnm">PT Pionir Nusantara Manufacturing (PNM)</option>
+                    <option value="meto">PT Meto Cahaya Abadi (METO)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="sph-prefix">Prefix nomor</label>
+                  <input id="sph-prefix" type="text" placeholder="SPH-SMY"/>
+                </div>
+                <div class="form-group">
+                  <label for="sph-nomor">Nomor urut</label>
+                  <input id="sph-nomor" type="text" placeholder="cth: 001" inputmode="numeric"/>
+                </div>
+                <div class="form-group sph-span-2">
+                  <label for="sph-tanggal">Tanggal surat</label>
+                  <input id="sph-tanggal" type="date"/>
+                </div>
+              </section>
+
+              <section class="sph-group" aria-labelledby="sph-g-tujuan">
+                <h4 class="sph-group-title" id="sph-g-tujuan">Penerima</h4>
+                <div class="form-group sph-span-2">
+                  <label for="sph-rs">Nama RS / Instansi</label>
+                  <input id="sph-rs" type="text" placeholder="Diisi otomatis dari form sesi"/>
+                </div>
+                <div class="form-group sph-span-2">
+                  <label for="sph-sales">Nama sales</label>
+                  <input id="sph-sales" type="text" placeholder="Diisi otomatis dari form sesi"/>
+                </div>
+              </section>
+
+              <section class="sph-group sph-group-assets" aria-labelledby="sph-g-aset">
+                <h4 class="sph-group-title" id="sph-g-aset">Kop, footer, dan tanda tangan</h4>
+                <div id="sph-asset-slots" class="sph-span-2"></div>
+              </section>
+
+              <label class="sph-checkbox-row">
+                <input type="checkbox" id="sph-include-lampiran" checked/>
+                <span><b>Sertakan lampiran</b> rincian per-set, item satuan, dan brosur PDF, sama seperti Export ke Excel.</span>
+              </label>
             </div>
-            <div class="sph-form-row">
-              <div class="form-group">
-                <label>Prefix Nomor</label>
-                <input id="sph-prefix" type="text" placeholder="SPH-SMY"/>
-              </div>
-              <div class="form-group">
-                <label>Nomor Urut</label>
-                <input id="sph-nomor" type="text" placeholder="cth: 001"/>
-              </div>
+
+            <div class="sph-actionbar">
+              <div id="sph-validation" class="sph-validation" role="alert" style="display:none"></div>
+              <button class="pr-add-clip-btn sph-btn-block sph-generate" id="sph-generate-btn" type="button">
+                <i class="ti ti-file-text"></i> Generate SPH
+              </button>
+              <div id="sph-status" class="sph-status" role="status" aria-live="polite"></div>
             </div>
-            <div class="form-group">
-              <label>Tanggal Surat</label>
-              <input id="sph-tanggal" type="date"/>
-            </div>
-            <div class="form-group">
-              <label>Nama RS / Instansi</label>
-              <input id="sph-rs" type="text" placeholder="Diisi otomatis dari form sesi"/>
-            </div>
-            <div class="form-group">
-              <label>Nama Sales</label>
-              <input id="sph-sales" type="text" placeholder="Diisi otomatis dari form sesi"/>
-            </div>
-            <div id="sph-asset-slots"></div>
-            <label class="sph-checkbox-row">
-              <input type="checkbox" id="sph-include-lampiran" checked/>
-              <span>Sertakan lampiran (rincian per-set, item satuan, dan brosur PDF — sama kayak Export ke Excel)</span>
-            </label>
-            <div id="sph-validation" class="sph-validation" style="display:none"></div>
-            <button class="pr-add-clip-btn sph-btn-block" id="sph-generate-btn" type="button">
-              <i class="ti ti-file-text"></i> Generate SPH
-            </button>
-            <div id="sph-status" class="sph-status"></div>
           </div>
+
           <div class="sph-preview-wrap" id="sph-preview-wrap">
-            <div class="clip-empty" id="sph-preview-empty">
-              <i class="ti ti-file-text"></i>
-              <p>Preview SPH bakal muncul di sini setelah di-generate. Item diambil langsung dari Clipboard (<span id="sph-item-count">0</span> produk).</p>
+            <div class="sph-doc-bar">
+              <div class="sph-doc-title"><i class="ti ti-file-text"></i><span>Preview surat</span></div>
+              <div class="sph-doc-actions">
+                <a class="pr-add-clip-btn sph-doc-btn sph-doc-btn-primary" id="sph-download-link" style="display:none" download>
+                  <i class="ti ti-download"></i> PDF
+                </a>
+                <a class="pr-add-clip-btn sph-doc-btn" id="sph-download-link-docx" style="display:none" download title="Versi Word yang bisa diedit, tampilan 1:1 dengan PDF (kop, tabel, TTD, footer, lampiran). Tabelnya tabel Word asli, copas ke Excel/Sheets selalu rapi.">
+                  <i class="ti ti-file-type-docx"></i> DOCX
+                </a>
+                <button class="btn-record sph-doc-btn" id="sph-record-btn" type="button" style="display:none">
+                  <i class="ti ti-clipboard-check"></i> Record SPH
+                </button>
+              </div>
             </div>
-            <iframe id="sph-preview-frame" title="Preview SPH" style="display:none"></iframe>
-            <a class="pr-add-clip-btn sph-btn-block" id="sph-download-link" style="display:none;margin-top:10px" download>
-              <i class="ti ti-download"></i> Download PDF
-            </a>
-            <a class="pr-add-clip-btn sph-btn-block" id="sph-download-link-docx" style="display:none;margin-top:8px" download title="Versi Word yang bisa diedit, tampilan 1:1 dengan PDF (kop, tabel, TTD, footer, lampiran). Tabelnya tabel Word asli — copas ke Excel/Sheets selalu rapi.">
-              <i class="ti ti-file-type-docx"></i> Download DOCX (bisa diedit)
-            </a>
-            <button class="btn-record" id="sph-record-btn" type="button" style="display:none">
-              <i class="ti ti-clipboard-check"></i> Record SPH
-            </button>
+            <div class="sph-stage">
+              <div class="clip-empty sph-empty" id="sph-preview-empty">
+                <i class="ti ti-file-text"></i>
+                <p>Preview muncul di sini setelah surat di-generate.<br>Isi surat diambil dari Clipboard (<span id="sph-item-count">0</span> produk).</p>
+              </div>
+              <iframe id="sph-preview-frame" title="Preview SPH" style="display:none"></iframe>
+            </div>
           </div>
         </div>
       </div>
@@ -860,9 +886,19 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
 <!-- PERMINTAAN RS MODAL -->
 <div class="modal-overlay" id="pr-modal">
 
-  <div class="pr-modal-box">
-    <h3 id="pr-modal-title">Catat Permintaan RS</h3>
-    <div class="pr-sub" id="pr-modal-sub">Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Ini murni buat data insight — bukan proses konversi otomatis.</div>
+  <div class="pr-modal-box" role="dialog" aria-modal="true" aria-labelledby="pr-modal-title">
+    <div class="pr-head">
+      <div class="pr-head-text">
+        <h3 id="pr-modal-title">Catat Permintaan RS</h3>
+        <div class="pr-sub" id="pr-modal-sub">Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Ini murni buat data insight — bukan proses konversi otomatis.</div>
+      </div>
+      <button type="button" class="pr-close" id="pr-close-x" aria-label="Tutup"><i class="ti ti-x"></i></button>
+    </div>
+
+    <div class="pr-scroll">
+    <!-- Pesan status/galat: menempel di atas area scroll supaya selalu kelihatan, bukan jatuh
+         di bawah tombol aksi yang menempel di dasar. Warna diset JS lewat style.color. -->
+    <div id="pr-status-msg" role="status" aria-live="polite"></div>
 
     <!-- STATE AKTIF: sesi ini sudah punya Permintaan RS. Modal TIDAK langsung
          nampilin form kosong (itu yang bikin kesan "ketimpa") — tapi nunjukin
@@ -871,11 +907,11 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
     <div id="pr-active-wrap" style="display:none">
       <div class="pr-active-meta" id="pr-active-meta"></div>
       <div class="pr-active-list" id="pr-active-list"></div>
-      <div class="pr-active-note">Satu sesi = satu Permintaan RS. <b>Tambah item</b> menambahkan ke daftar ini (yang lama tidak berubah). <b>Edit item</b> mengoreksi nama/qty/pagu item yang sudah ada, plus pagu total.</div>
+      <div class="pr-active-note">Satu sesi = satu Permintaan RS. <b>Tambah item</b> menambahkan ke daftar ini tanpa mengubah yang lama. <b>Edit item</b> mengoreksi nama, qty, dan pagu yang sudah ada.</div>
       <div class="pr-actions">
         <button class="pr-cancel" id="pr-active-close-btn" type="button">Tutup</button>
         <button class="pr-cancel" id="pr-active-edit-btn" type="button"><i class="ti ti-pencil"></i> Edit item</button>
-        <button id="pr-active-add-btn" type="button"><i class="ti ti-plus"></i> Tambah item</button>
+        <button class="pr-primary" id="pr-active-add-btn" type="button"><i class="ti ti-plus"></i> Tambah item</button>
       </div>
     </div>
 
@@ -884,20 +920,20 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
     <div id="pr-edit-wrap" style="display:none">
       <div class="pr-edit-pagu">
         <div class="pr-field">
-          <label>Pagu total (Rp)</label>
+          <label for="pr-ed-pagu-total">Pagu total (Rp)</label>
           <input type="text" inputmode="numeric" id="pr-ed-pagu-total" placeholder="belum diisi"/>
         </div>
         <!-- Cuma muncul kalau Permintaan RS ini sudah dipecah jadi section: 1 input per section -->
         <div id="pr-ed-pagu-sections"></div>
       </div>
       <div class="pr-review-box">
-        <div class="pr-review-info">Koreksi nama, qty, atau pagu satuan. Hanya yang kamu ubah yang disimpan. Status pencocokan item tidak berubah.</div>
+        <div class="pr-review-info">Koreksi nama, qty, atau pagu satuan. Hanya yang kamu ubah yang disimpan; status pencocokan item tidak berubah.</div>
         <div class="pr-edit-head"><span>Item diminta</span><span>Qty</span><span>Pagu satuan</span></div>
         <div class="pr-edit-list" id="pr-edit-rows"></div>
       </div>
       <div class="pr-actions">
         <button class="pr-cancel" id="pr-edit-back-btn" type="button">Kembali</button>
-        <button id="pr-edit-save-btn" type="button">Simpan perubahan</button>
+        <button class="pr-primary" id="pr-edit-save-btn" type="button">Simpan perubahan</button>
       </div>
     </div>
 
@@ -909,64 +945,62 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
     <!-- Login sudah ditangani di gerbang awal (satu login buat seluruh app) -->
     <div id="pr-form-wrap">
       <div id="pr-header-fields">
-      <div class="pr-row2">
-        <div class="pr-field">
-          <label>Nama RS / Instansi</label>
-          <input type="text" id="pr-nama-rs" placeholder="RS ABC"/>
+        <div class="pr-row2">
+          <div class="pr-field">
+            <label for="pr-nama-rs">Nama RS / Instansi</label>
+            <input type="text" id="pr-nama-rs" placeholder="RS ABC"/>
+          </div>
+          <div class="pr-field">
+            <label for="pr-tanggal">Tanggal</label>
+            <input type="date" id="pr-tanggal"/>
+          </div>
+          <div class="pr-field">
+            <label for="pr-pic-sales">PIC sales</label>
+            <input type="text" id="pr-pic-sales" placeholder="Nama sales" list="sales-datalist" autocomplete="off"/>
+          </div>
+          <!-- Satu datalist dipakai bareng oleh #inp-sales dan #pr-pic-sales, diisi dari
+               tabel \`sales\` (master, sudah dinormalisasi) lewat loadSalesOptions(). -->
+          <datalist id="sales-datalist"></datalist>
+          <div class="pr-field">
+            <label for="pr-pagu">Pagu (Rp) <span class="pr-opt">opsional</span></label>
+            <input type="text" inputmode="numeric" id="pr-pagu" placeholder="cth: 150.000.000"/>
+          </div>
         </div>
-        <div class="pr-field">
-          <label>Tanggal</label>
-          <input type="date" id="pr-tanggal"/>
-        </div>
-      </div>
-      <div class="pr-row2">
-        <div class="pr-field">
-          <label>PIC Sales</label>
-          <input type="text" id="pr-pic-sales" placeholder="Nama sales" list="sales-datalist" autocomplete="off"/>
-        </div>
-        <!-- Satu datalist dipakai bareng oleh #inp-sales dan #pr-pic-sales, diisi dari
-             tabel \`sales\` (master, sudah dinormalisasi) lewat loadSalesOptions(). -->
-        <datalist id="sales-datalist"></datalist>
-        <div class="pr-field">
-          <label>Pagu (Rp)</label>
-          <input type="text" inputmode="numeric" id="pr-pagu" placeholder="cth: 150.000.000"/>
-        </div>
-      </div>
       </div><!-- /pr-header-fields -->
 
-      <div class="pr-tabs">
-        <button class="pr-tab active" id="pr-tab-teks" type="button">Paste Teks</button>
-        <button class="pr-tab" id="pr-tab-excel" type="button">Upload Excel</button>
-        <button class="pr-tab" id="pr-tab-ss" type="button">Screenshot (OCR)</button>
+      <div class="pr-tabs" role="tablist" aria-label="Sumber daftar permintaan">
+        <button class="pr-tab active" id="pr-tab-teks" type="button"><i class="ti ti-clipboard-text"></i> Paste teks</button>
+        <button class="pr-tab" id="pr-tab-excel" type="button"><i class="ti ti-file-spreadsheet"></i> Upload Excel</button>
+        <button class="pr-tab" id="pr-tab-ss" type="button"><i class="ti ti-photo-scan"></i> Screenshot (OCR)</button>
       </div>
 
       <div id="pr-teks-wrap">
         <div class="pr-field">
-          <label>Daftar Permintaan (1 baris = 1 barang, qty boleh di depan/belakang)</label>
+          <label for="pr-teks">Daftar permintaan <span class="pr-opt">1 baris = 1 barang, qty boleh di depan atau belakang</span></label>
           <textarea id="pr-teks" placeholder="10 Trocar 5mm&#10;Laparoscopy set 2&#10;5 Infusion Pump"></textarea>
         </div>
       </div>
       <div id="pr-excel-wrap" style="display:none;">
         <div class="pr-field">
-          <label>File Excel Permintaan (kolom nama barang + qty, header bebas)</label>
+          <label for="pr-file">File Excel permintaan <span class="pr-opt">kolom nama barang + qty, header bebas</span></label>
           <input type="file" id="pr-file" accept=".xlsx,.xls"/>
         </div>
       </div>
       <div id="pr-ss-wrap" style="display:none;">
         <div class="pr-field">
-          <label>Screenshot Permintaan (foto/screenshot chat WA, dll)</label>
+          <label for="pr-ss-file">Screenshot permintaan <span class="pr-opt">foto atau screenshot chat WA, dll</span></label>
           <input type="file" id="pr-ss-file" accept="image/*"/>
         </div>
-        <div class="pr-actions" style="justify-content:flex-start;margin-top:8px">
-          <button id="pr-ss-run-btn" type="button">Baca Teks dari Gambar</button>
+        <div class="pr-ss-run">
+          <button id="pr-ss-run-btn" type="button" class="pr-cancel"><i class="ti ti-scan"></i> Baca teks dari gambar</button>
+          <div id="pr-ss-status" class="pr-ss-status"></div>
         </div>
-        <div id="pr-ss-status" style="font-size:12px;color:var(--text-muted);margin-top:6px"></div>
-        <div class="pr-sub" style="margin-top:6px">Cocok buat screenshot chat/list sederhana. Untuk screenshot tabel padat (banyak kolom), hasil OCR sering berantakan — lebih cepat ketik manual di tab "Paste Teks". Hasil OCR akan muncul di tab Paste Teks untuk dicek/diedit dulu sebelum disimpan.</div>
+        <div class="pr-hint">Cocok buat screenshot chat atau list sederhana. Untuk tabel padat (banyak kolom), hasil OCR sering berantakan, lebih cepat ketik manual di tab Paste teks. Hasil OCR muncul di tab Paste teks untuk dicek dulu sebelum disimpan.</div>
       </div>
 
       <div class="pr-actions">
         <button class="pr-cancel" id="pr-cancel-btn-2">Batal</button>
-        <button id="pr-submit-btn">Lanjut: Review Item</button>
+        <button class="pr-primary" id="pr-submit-btn">Lanjut: review item <i class="ti ti-arrow-right"></i></button>
       </div>
     </div>
 
@@ -982,11 +1016,10 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
       </div>
       <div class="pr-actions">
         <button class="pr-cancel" id="pr-review-back-btn" type="button">Kembali edit</button>
-        <button id="pr-review-save-btn" type="button">Simpan &amp; mulai sesi</button>
+        <button class="pr-primary" id="pr-review-save-btn" type="button">Simpan &amp; mulai sesi</button>
       </div>
     </div>
-
-    <div id="pr-status-msg"></div>
+    </div><!-- /pr-scroll -->
   </div>
 </div>
 

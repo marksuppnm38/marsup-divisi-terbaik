@@ -76,12 +76,13 @@ function renderPrActiveView() {
     const d = new Date(S.checklistTanggal);
     tgl = isNaN(d) ? String(S.checklistTanggal) : d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
   }
-  prActiveMeta.innerHTML = `
-    <span>RS: <b>${S.escapeHtmlAttr(S.checklistNamaRs || '-')}</b></span>
-    <span>Sales: <b>${S.escapeHtmlAttr(S.checklistSales || '-')}</b></span>
-    <span>Tanggal: <b>${S.escapeHtmlAttr(tgl)}</b></span>
-    ${S.checklistPagu != null ? `<span>Pagu: <b>${S.rupiah(S.checklistPagu)}</b></span>` : ''}
-    <span><b>${items.length}</b> item · ${done} terpenuhi</span>`;
+  const mi = (k, v, extra) => `<div class="pr-meta-item"><span class="pr-meta-k">${k}</span><b class="pr-meta-v">${v}</b>${extra || ''}</div>`;
+  prActiveMeta.innerHTML =
+    mi('RS / Instansi', S.escapeHtmlAttr(S.checklistNamaRs || '-')) +
+    mi('Sales', S.escapeHtmlAttr(S.checklistSales || '-')) +
+    mi('Tanggal', S.escapeHtmlAttr(tgl)) +
+    (S.checklistPagu != null ? mi('Pagu', S.rupiah(S.checklistPagu)) : '') +
+    mi('Item', `${items.length}`, `<span class="pr-meta-sub">${done} terpenuhi</span>`);
   prActiveList.innerHTML = items.length ? items.map((it, i) => `
     <div class="pr-active-row">
       <span class="pr-active-name"><span class="pr-active-no">${i + 1}.</span> ${S.escapeHtmlAttr(it.raw_text)}</span>
@@ -126,6 +127,8 @@ function closePrModal() { S.prModal.classList.remove('show'); }
 S.btnPermintaan.addEventListener('click', () => openPrModal());
 S.prCancelBtn2.addEventListener('click', () => { closePrModal(); resumeRecordAfterCancel(); });
 S.prModal.addEventListener('click', (e) => { if (e.target === S.prModal) { closePrModal(); resumeRecordAfterCancel(); } });
+const prCloseX = document.getElementById('pr-close-x');
+if (prCloseX) prCloseX.addEventListener('click', () => { closePrModal(); resumeRecordAfterCancel(); });
 
 // Kalau modal PR dibuka dari nudge tapi dibatalin (bukan submit), tetap balik
 // ke Record modal — user cuma ngecek/mikir ulang, bukan mau kabur dari flow.
@@ -397,6 +400,9 @@ S.prSubmitBtn.addEventListener('click', async () => {
   renderReviewRows();
   S.prFormWrap.style.display = 'none';
   S.prReviewWrap.style.display = '';
+  // Layar review punya judul sendiri; judul/sub mode (create/add) dipulihkan lagi pas "Kembali edit".
+  prTitleEl.textContent = 'Periksa item';
+  prSubEl.textContent = 'Cek hasil bacaan sebelum disimpan. Ubah nama, qty, atau pagu satuan bila perlu, dan hapus baris yang salah.';
 });
 
 // ---- Step 2: Layar Review — edit manual sebelum submit_permintaan_rs ----
@@ -477,6 +483,7 @@ S.prReviewAddBtn.addEventListener('click', () => {
 S.prReviewBackBtn.addEventListener('click', () => {
   S.prReviewWrap.style.display = 'none';
   S.prFormWrap.style.display = '';
+  prSetMode(prMode, true); // pulihkan judul + sub sesuai mode (keepReview: wrap form/review tidak disentuh)
 });
 
 // ── TULIS KE SERVER: item Permintaan RS (tambah / koreksi) ──

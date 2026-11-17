@@ -273,14 +273,14 @@ function sphAssetSlotHtml(kind, label, asset, status) {
     return `
       <div class="sph-asset-slot">
         <i class="ti ti-loader-2 sph-spin" style="font-size:16px"></i>
-        <div class="sph-asset-label">${label} — memuat aset default…</div>
+        <div class="sph-asset-label">${label} <span class="sph-asset-sub">memuat aset default…</span></div>
       </div>`;
   }
   if (status === 'ok' && asset) {
     return `
       <div class="sph-asset-slot ok">
         <img src="${/^data:image\//i.test(asset.dataUrl) ? asset.dataUrl.replace(/"/g, '%22') : ''}" alt="${label}"/>
-        <div class="sph-asset-label">${label} <span style="opacity:.7">— siap dipakai</span></div>
+        <div class="sph-asset-label">${label} <span class="sph-asset-sub">siap dipakai</span></div>
         <input type="file" accept="image/*" id="sph-asset-${kind}-input"/>
         <button type="button" id="sph-asset-${kind}-btn">Ganti</button>
       </div>`;
@@ -289,7 +289,7 @@ function sphAssetSlotHtml(kind, label, asset, status) {
     return `
       <div class="sph-asset-slot error">
         <i class="ti ti-alert-triangle" style="font-size:16px"></i>
-        <div class="sph-asset-label">${label} — gagal dimuat dari server (cek console buat detail). Coba lagi, atau upload manual.</div>
+        <div class="sph-asset-label">${label} <span class="sph-asset-sub">gagal dimuat dari server. Coba lagi atau upload manual.</span></div>
         <input type="file" accept="image/*" id="sph-asset-${kind}-input"/>
         <button type="button" id="sph-asset-${kind}-retry">Coba lagi</button>
         <button type="button" id="sph-asset-${kind}-btn">Upload</button>
@@ -299,7 +299,7 @@ function sphAssetSlotHtml(kind, label, asset, status) {
   return `
     <div class="sph-asset-slot">
       <i class="ti ti-upload" style="font-size:16px"></i>
-      <div class="sph-asset-label">${label} — belum ada default buat perusahaan ini. Upload manual (khusus surat ini aja, gak disimpan).</div>
+      <div class="sph-asset-label">${label} <span class="sph-asset-sub">belum ada default. Upload untuk surat ini saja, tidak disimpan.</span></div>
       <input type="file" accept="image/*" id="sph-asset-${kind}-input"/>
       <button type="button" id="sph-asset-${kind}-btn">Upload</button>
     </div>`;
