@@ -51,6 +51,13 @@ function parseSetcariPaste(raw) {
       : [{ raw_text: line, qty: null }];
     skipped += (parsed._skipped || []).length;
     parsed.forEach(it => {
+      // Parser Permintaan RS menganggap angka di ujung ("Trocar 10") sebagai qty. Di sini angka itu
+      // lebih sering ukuran ("Gunting perban 14"), dan ukuran dibutuhkan buat memetakan produk,
+      // jadi kalau tidak ada kata satuan (pcs/unit/set/...) angka itu dikembalikan ke teks.
+      const bersih = line.replace(/^\d+[.)]\s+/, '').replace(/^[*\-•●▪‣·]+\s*/, '').replace(/@.*$/, '').trim();
+      if (it.qty && /\s\d+$/.test(bersih) && !/\b(unit|set|pcs|buah|box|pak|lusin)\b/i.test(bersih)) {
+        it = Object.assign({}, it, { raw_text: bersih, qty: null });
+      }
       const key = it.raw_text.toLowerCase();
       if (seenTeks.has(key)) return;
       seenTeks.add(key);
@@ -80,16 +87,24 @@ function candidatesFromRows(rows) {
   (rows || []).forEach(r => {
     if (!r.kode_produk || seen.has(r.kode_produk)) return;
     seen.add(r.kode_produk);
-    out.push({ kode: r.kode_produk, nama: r.nama_produk || '', tier: r.tier || '', ukuran: r.ukuran || '' });
+    out.push({ kode: r.kode_produk, nama: r.nama_produk || '', tier: r.tier || '', ukuran: r.ukuran || '',
+      istilah: r.istilah || '', skor: Number(r.skor) || 0, isSet: !!r.is_set });
   });
-  return out.slice(0, 5);
+  return out.slice(0, 6);
 }
+// Urutan RPC sudah skor desc. Default dipilih hanya dari istilah dengan skor teratas (jangan loncat
+// ke istilah umum seperti "GUNTING" cuma karena ukurannya kebetulan cocok), lalu ukuran terbaik, bukan SET.
+const UKURAN_RANK = { cocok: 0, tidak_diminta: 0, tidak_diketahui: 1, dekat: 1, varian: 3, beda: 4 };
 function pickBestCand(cands) {
-  return cands.find(c => c.ukuran !== 'beda') || cands[0] || null;
+  if (!cands.length) return null;
+  const top = cands[0].skor;
+  const pool = cands.filter(c => c.skor === top && !c.isSet);
+  const use = pool.length ? pool : cands;
+  return use.slice().sort((a, b) => (UKURAN_RANK[a.ukuran] ?? 2) - (UKURAN_RANK[b.ukuran] ?? 2))[0];
 }
 function candConf(c) {
   if (!c) return 'none';
-  if (c.ukuran === 'beda') return 'lemah';
+  if (c.ukuran === 'beda' || c.ukuran === 'varian') return 'lemah';
   if (c.tier === 'exact' || c.tier === 'urutan') return 'kuat';
   if (c.tier === 'keluarga' || c.tier === 'katalog' || c.tier === 'varian') return 'sedang';
   return 'lemah';
@@ -391,7 +406,7 @@ function renderSetcariResults(rows, kodeList, useSub) {
         <div class="setcari-card-id">
           <div class="setcari-kode">${S.escapeHtmlAttr(row.kode_set)}</div>
           ${row.nama_set ? `<div class="setcari-nama">${S.escapeHtmlAttr(row.nama_set)}</div>` : ''}
-          <div class="setcari-cocok">${row.jumlah_cocok} dari ${kodeList.length} item diminta cocok persis${subInfo}. SET ini berisi ${row.total_item_set} item.</div>
+          <div class="setcari-cocok">${row.jumlah_cocok} dari ${row.total_item_input != null ? row.total_item_input : kodeList.length} item diminta cocok persis${subInfo}. SET ini berisi ${row.total_item_set} item.</div>
         </div>
         <div class="setcari-score-wrap" title="${S.escapeHtmlAttr(scoreTip)}">
           <div class="setcari-score ${cls}">${pct}%</div>
