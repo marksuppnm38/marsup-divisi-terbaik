@@ -671,6 +671,8 @@ const PRODUK_PAGE_SIZE = 30;
 let produkSearchCtl = null; // AbortController RPC search terakhir: search baru / search dikosongkan membatalkan yang lama
 let produkSearchSeq = 0;    // hanya naik saat search BERUBAH (bukan saat ganti halaman) -> hasil search basi dibuang
 let produkSearchRawRows = []; // hasil lengkap dari RPC search_produk_dengan_harga, BELUM difilter status
+let produkLoadSeq = 0; // nomor urut loadProduk: respons yang lebih lambat dari panggilan yang lebih baru dibuang, gak boleh nimpa tampilan
+let produkSearchRawQuery = null; // kata kunci yang dipakai untuk mengisi produkSearchRawRows (null = belum ada / search dikosongkan)
 let produkSearchDirty = false; // true = data berubah (hapus/simpan/bulk/verified): hasil search yang di-cache di produkSearchRawRows sudah basi, wajib query ulang
 let produkSearchAllRows = []; // produkSearchRawRows setelah difilter status_akd/link, di-page di client
 
@@ -996,7 +998,9 @@ async function loadProduk(q, page){
   const searchChanged = newQ !== (lastQuery ?? '').trim();
   // Query ulang ke DB kalau: kata kunci berganti, data baru berubah (dirty), atau dipanggil tanpa argumen
   // (= "muat ulang" dari simpan/hapus/bulk/orphan). Ganti halaman & filter chip cukup dari hasil di memori.
-  const refetchSearch = searchChanged || produkSearchDirty || q === undefined;
+  const refetchSearch = produkSearchRawQuery !== newQ || produkSearchDirty || q === undefined;
+  const mySeq = ++produkLoadSeq;
+  if (!newQ) produkSearchRawQuery = null; // search dikosongkan: ketik kata yang sama lagi nanti = query ulang, bukan pakai hasil lama
   lastQuery = newQ;
   produkPage = searchChanged ? 1 : (page || produkPage || 1);
   const qq = newQ;
@@ -1014,6 +1018,7 @@ async function loadProduk(q, page){
   const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
   if (needsHarga) await ensureProdukHargaSet();
   await ensureVerifiedSet();
+  if (mySeq !== produkLoadSeq) return; // sudah ada loadProduk yang lebih baru
   const needsStok = produkActiveFilters.some(f => f.dim === 'stok');
 
   let rows = [];
@@ -1050,6 +1055,7 @@ async function loadProduk(q, page){
       }
       } // end if (!fastSearchOk)
       produkSearchDirty = false; // hasil search sudah segar lagi
+      produkSearchRawQuery = qq;
     }
     if (needsStok && !(await ensureStokForIds(produkSearchRawRows.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
@@ -1122,6 +1128,7 @@ async function loadProduk(q, page){
   // renderPgBar(null, ...) throw. Bail out di sini daripada nunggu ketauan di
   // renderPgBar.
   if (!mountedContainer) return;
+  if (mySeq !== produkLoadSeq) return; // panggilan lebih baru sudah jalan: jangan timpa tampilannya
   produkLastTotal = Number(total) || 0;
   if (exportPanelRepaint) exportPanelRepaint();
   produkCount.textContent = Number(total).toLocaleString('id-ID') + ' produk' + (qq ? ` untuk "${qq}"` : '') +
@@ -1159,6 +1166,7 @@ async function loadProduk(q, page){
   // RPC) -- just never applied here. Reusing that same cached, RPC-backed
   // Set instead of a fresh row-limited query fixes it the same way.
   const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id)), copyKit.loadExtra(rows.map(r => r.id)), colKit.loadNeeds(rows.map(r => r.id))]);
+  if (mySeq !== produkLoadSeq || !mountedContainer) return; // ada await lagi di atas: cek ulang
   produkHargaExistIds = hargaExistIds;
 
   produkPageRows = rows;
@@ -3556,14 +3564,42 @@ async function deleteProdukInner(id, label){
 
   // Sisanya (harga, media, relasi AKD, komposisi SET ini sendiri) ikut kehapus
   // otomatis lewat CASCADE dalam satu statement ini.
-  const { error } = await sb.from('produk').delete().eq('id', id);
-  if (error) { showToast('Gagal hapus produk: ' + error.message, true); return; }
-  showToast(`Produk ${label ? label + ' ' : ''}dihapus beserta data terkaitnya`);
+  // .select('id') = minta DB mengembalikan baris yang BENAR-BENAR terhapus. Tanpa itu, delete yang ditolak
+  // policy (RLS) atau yang barisnya sudah hilang tetap balik tanpa error, dan toast sukses jadi bohong.
+  const { data: gone, error } = await sb.from('produk').delete().eq('id', id).select('id');
+  if (error) {
+    showToast(error.code === '23503' ? 'Produk masih dipakai data lain, jadi belum bisa dihapus.' : 'Gagal hapus produk: ' + error.message, true);
+    return;
+  }
+  let alreadyGone = false;
+  if (!gone || gone.length === 0) {
+    const { data: still, error: chkErr } = await sb.from('produk').select('id').eq('id', id).maybeSingle();
+    if (chkErr || still) { showToast('Produk tidak terhapus: database menolak tanpa pesan (kemungkinan izin akun ini). Tidak ada yang berubah.', true); return; }
+    alreadyGone = true; // sudah dihapus pihak lain duluan -> cukup segarkan daftar
+  }
+  showToast(alreadyGone
+    ? `Produk ${label ? label + ' ' : ''}sudah terhapus sebelumnya, daftar disegarkan`
+    : `Produk ${label ? label + ' ' : ''}dihapus beserta data terkaitnya`);
   closeModal();
+  copyKit.forget(id); // buang dari centang "N produk dipilih" biar gak ikut tersalin
   invalidateProdukStackCache();
+  syncSetViewAfterDelete(id);
   await animateProdukRowOut(id); // baris memudar dulu (kelihatan "yang ini hilang"), baru daftar dimuat ulang
   loadProduk();
   refreshProdukFilterCounts(true);
+}
+
+// Set Management: kalau detail SET yang barusan dihapus masih terbuka, tutup & balik ke daftar; kalau daftar set lagi tampil, muat ulang.
+function syncSetViewAfterDelete(id){
+  const detail = document.getElementById('setDetailWrap');
+  const detailOpen = !!detail && detail.style.display !== 'none';
+  if (detailOpen && String(currentSetId) === String(id)) {
+    currentSetId = null;
+    document.getElementById('setBackBtn').click(); // sembunyikan detail + loadSetList()
+    return;
+  }
+  const viewSet = document.getElementById('viewSet');
+  if (!detailOpen && viewSet && viewSet.style.display !== 'none') loadSetList();
 }
 
 // Baris/kartu produk yang baru dihapus memudar dulu sebelum daftar digambar ulang. Hormati prefers-reduced-motion.

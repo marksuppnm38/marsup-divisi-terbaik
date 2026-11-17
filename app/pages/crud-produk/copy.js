@@ -489,6 +489,14 @@ export function createCopyKit(ctx) {
     },
     /** Data harga/AKD dibuang tiap loadProduk() supaya tidak menyalin harga lama setelah edit. */
     invalidate() { extra.clear(); },
+    /** Buang produk yang sudah dihapus dari seleksi (centang lintas halaman) dan dari cache harga/AKD. */
+    forget(ids) {
+      const gone = new Set((Array.isArray(ids) ? ids : [ids]).map(String));
+      let hit = false;
+      for (const k of [...selected.keys()]) if (gone.has(String(k))) { selected.delete(k); hit = true; }
+      for (const k of [...extra.keys()]) if (gone.has(String(k))) extra.delete(k);
+      if (hit) { lastId = null; syncUi(); }
+    },
     /** Kotak pilih kecil di tepi kiri sel Kode (hanya tampil saat hover / ada seleksi). */
     selBox(p) {
       return `<input type="checkbox" class="sel-input" tabindex="-1" aria-label="Pilih ${esc(p.kode_produk)}"${selected.has(p.id) ? ' checked' : ''}/>`;
