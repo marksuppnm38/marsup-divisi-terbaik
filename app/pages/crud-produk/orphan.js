@@ -6,7 +6,7 @@
 // menghapus produk yang sudah kembali ada di sheet. Browser hanya memilih dan menampilkan pratinjau.
 // Sumber: view v_sync_* + sync_orphan_produk (diisi pushManifest di Apps Script ->
 // edge function sync-sheet type 'manifest' -> RPC reverse_check_commit).
-import { showToast, renderPgBar } from './ui-utils.js';
+import { showToast, renderPgBar, guardHapus } from './ui-utils.js';
 
 export function installOrphan(S) {
   const PAGE_SIZE = 50;
@@ -435,6 +435,7 @@ export function installOrphan(S) {
 
   async function openDelete() {
     if (st.del.busy) return;
+    if (!guardHapus()) return;
     const why = deleteBlockedReason();
     if (why) { showToast(why, true); return; }
     const kodes = [...st.sel].filter((k) => KODE_RE.test(k));
@@ -495,6 +496,7 @@ export function installOrphan(S) {
   async function runDelete() {
     const kodes = st.del.preview.filter((r) => r.outcome === 'can_delete').map((r) => r.kode_produk);
     if (!kodes.length || st.del.busy) return;
+    if (!guardHapus()) return;
     const why = deleteBlockedReason();
     if (why) { showToast(why, true); return; }
     st.del.busy = true;

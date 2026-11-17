@@ -29,7 +29,32 @@ const PNMAuth = (() => {
     return data; // { user, session }
   }
 
+  // ── Izin per-akun (kolom di tabel allowed_users) ──
+  // Ini cuma LAPISAN UI (sembunyiin tombol + pesan jelas). Yang benar-benar melarang tetap RLS di database
+  // (lihat db/migrations/001_boleh_hapus.sql). Makanya kalau gagal dimuat (kolom belum ada / jaringan), can()
+  // balik true: UI gak sok melarang, dan DB yang menentukan.
+  let _perms = null; // { role, is_superuser, boleh_hapus } | null
+
+  async function loadPerms(email) {
+    _perms = null;
+    try {
+      const { data, error } = await sb.from('allowed_users')
+        .select('role, is_superuser, boleh_hapus').eq('email', String(email || '').toLowerCase()).maybeSingle();
+      if (error) { console.warn('[PNMAuth.loadPerms] gagal, UI tidak membatasi (DB tetap menegakkan):', error.message); return null; }
+      _perms = data || null;
+    } catch (e) { console.warn('[PNMAuth.loadPerms]', e); }
+    return _perms;
+  }
+
+  function can(action) {
+    if (!_perms) return true;
+    if (_perms.is_superuser) return true;
+    if (action === 'hapus') return _perms.boleh_hapus !== false;
+    return true;
+  }
+
   async function logout() {
+    _perms = null;
     // signOut() bawaan SDK sudah otomatis:
     //  1) nembak /auth/v1/logout buat revoke refresh token di server
     //  2) hapus session dari localStorage (key PNM_AUTH_STORAGE_KEY)
@@ -77,7 +102,7 @@ const PNMAuth = (() => {
     return session;
   }
 
-  return { login, logout, getSession, getUser, getAccessToken, onAuthStateChange, requireAuth };
+  return { login, logout, getSession, getUser, getAccessToken, onAuthStateChange, requireAuth, loadPerms, can, perms: () => _perms };
 })();
 
 window.PNMAuth = PNMAuth;

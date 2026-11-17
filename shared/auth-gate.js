@@ -381,6 +381,8 @@ export async function initAuthGate({ onReady, onLoggedOut }) {
     }
     authedUserId = session.user.id;
     hasBeenReady = true;
+    await window.PNMAuth.loadPerms(email); // izin per-akun, dimuat SEBELUM modul mana pun di-mount
+    document.body.classList.toggle('no-delete', !window.PNMAuth.can('hapus'));
     hideGate();
     onReady(session);
   }

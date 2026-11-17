@@ -1583,6 +1583,9 @@ tbody tr.row-attention:hover{background:var(--amber-bg)}
 .btn-ghost:hover{background:var(--surface-2)}
 .btn-danger-ghost{background:var(--rust-bg);color:var(--rust);border:1px solid var(--rust)}
 .btn-danger-ghost:hover{opacity:.85}
+/* Akun tanpa izin hapus (allowed_users.boleh_hapus = false): tombol hapus disembunyikan, bukan sekadar dinonaktifkan.
+   Penegakan sebenarnya di RLS database; ini cuma supaya UI jujur. Tombol baru yang menghapus data: tambahkan class perm-hapus. */
+body.no-delete .perm-hapus,body.no-delete #deleteBtn,body.no-delete #deleteAkdBtn,body.no-delete #deleteKfaBtn,body.no-delete #orphanBulkDelete{display:none !important}
 .btn-sm{padding:6px 10px;font-size:12px;border-radius:var(--radius-sm)}
 
 /* ================= AUTH GATE ================= */

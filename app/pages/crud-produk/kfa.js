@@ -4,7 +4,7 @@
 // S.openAdd -- dipakai loadSyncUnmatched() buat tombol "Tambah Produk".
 // showToast/crudConfirm/crudAlert/renderPgBar tetap import langsung dari
 // ui-utils.js, konsisten sama akd-master.js. Logic TIDAK diubah.
-import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6 } from './ui-utils.js';
+import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6, guardHapus, barisTerhapus } from './ui-utils.js';
 import { orIlike } from '../../../shared/api.js';
 import { cariProdukBelumKfa } from './kfa-search.js';
 
@@ -144,9 +144,11 @@ document.getElementById('kfaSaveBtn').addEventListener('click', async () => {
 
 document.getElementById('deleteKfaBtn').addEventListener('click', async () => {
   if (!currentKfaId) return;
+  if (!guardHapus()) return;
   if (!await crudConfirm('Hapus record KFA ini? Kode KFA di produk (kalau ada) ikut kekosongin.', { danger: true, okLabel: 'Ya, Hapus' })) return;
-  const { error } = await S.sb.from('produk_kfa').delete().eq('id', currentKfaId);
-  if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
+  const delRes = await S.sb.from('produk_kfa').delete().eq('id', currentKfaId).select('id');
+  if (delRes.error) { showToast('Gagal hapus: ' + delRes.error.message, true); return; }
+  if (!barisTerhapus(delRes)) { showToast('Record KFA tidak terhapus: akun ini tidak punya izin, atau datanya sudah hilang.', true); return; }
   showToast('Record KFA dihapus');
   closeKfaModal();
   loadKfa(kfaPage);

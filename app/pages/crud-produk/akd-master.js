@@ -6,7 +6,7 @@
 // crudAlert/renderPgBar TETAP diimport langsung dari ui-utils.js (bukan
 // lewat S) karena keduanya sama-sama sudah level module, gak perlu
 // nebeng S. Logic di dalam TIDAK diubah sama sekali.
-import { showToast, crudConfirm, crudAlert, renderPgBar } from './ui-utils.js';
+import { showToast, crudConfirm, crudAlert, renderPgBar, guardHapus, barisTerhapus } from './ui-utils.js';
 import { orIlike } from '../../../shared/api.js';
 
 export function installAkdMaster(S) {
@@ -222,6 +222,7 @@ document.getElementById('akdSaveBtn').addEventListener('click', async () => {
 // baru minta dilepas dulu dari sana -- aman apapun aturan delete-nya di database.
 document.getElementById('deleteAkdBtn').addEventListener('click', async () => {
   if (!currentAkdId) return;
+  if (!guardHapus()) return;
   const id = currentAkdId;
   const { count } = await S.sb.from('produk_akd').select('id', { count: 'exact', head: true }).eq('akd_id', id);
   if (count) {
@@ -229,8 +230,9 @@ document.getElementById('deleteAkdBtn').addEventListener('click', async () => {
     return;
   }
   if (!await crudConfirm('Hapus AKD ini? Tindakan ini tidak bisa dibatalkan.', { danger: true, okLabel: 'Ya, Hapus' })) return;
-  const { error } = await S.sb.from('akd').delete().eq('id', id);
-  if (error) { showToast('Gagal hapus AKD: ' + error.message, true); return; }
+  const delRes = await S.sb.from('akd').delete().eq('id', id).select('id');
+  if (delRes.error) { showToast('Gagal hapus AKD: ' + delRes.error.message, true); return; }
+  if (!barisTerhapus(delRes)) { showToast('AKD tidak terhapus: akun ini tidak punya izin, atau datanya sudah hilang.', true); return; }
   showToast('AKD dihapus');
   closeAkdModal();
   loadAkd(akdPage);

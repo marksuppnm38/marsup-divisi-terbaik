@@ -40,7 +40,7 @@
 //      function scope yang sama.
 
 import { CRUD_PRODUK_MARKUP } from './markup.js';
-import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6, isAkdPlaceholder, sembunyikanAkdPlaceholder } from './ui-utils.js';
+import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6, isAkdPlaceholder, sembunyikanAkdPlaceholder, guardHapus, barisTerhapus } from './ui-utils.js';
 import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
@@ -608,7 +608,7 @@ const copyKit = createCopyKit({
   // Aksi cepat di menu klik kanan / tombol Salin (sama dengan yang ada di modal edit; hapus tetap lewat cek relasi + konfirmasi).
   rowActions: (p) => [
     { key: 'edit', label: p.tipe === 'SET' ? 'Buka set' : 'Edit produk', icon: 'pencil', run: () => { if (p.tipe === 'SET') goToSetDetail(p.id); else openEdit(p.id); } },
-    { key: 'hapus', label: 'Hapus produk…', icon: 'trash', danger: true, run: () => deleteProdukInner(p.id, p.kode_produk) },
+    ...(window.PNMAuth?.can?.('hapus') === false ? [] : [{ key: 'hapus', label: 'Hapus produk…', icon: 'trash', danger: true, run: () => deleteProdukInner(p.id, p.kode_produk) }]),
   ],
 });
 // Kolom tabel Produk yang bisa diatur (kolom-tabel.js): tampil/sembunyi, urutan, preset. Disimpan di localStorage.
@@ -2429,14 +2429,16 @@ function renderHargaGroupInto(tbody, rows, onAfterDelete){
       <td>${tahun}</td>
       <td>${ekat ? 'Rp ' + Number(ekat.harga).toLocaleString('id-ID') : '<span style="color:var(--text-muted);">— belum ada</span>'}</td>
       <td style="color:var(--text-muted);font-size:12px;">${turunan || '—'}</td>
-      <td>${ekat ? `<button class="btn btn-danger-ghost btn-sm" title="Hapus EKATALOG, SWASTA & UPLOAD tahun ${tahun}"><i class="ti ti-trash"></i></button>` : ''}</td>
+      <td>${ekat ? `<button class="btn btn-danger-ghost btn-sm perm-hapus" title="Hapus EKATALOG, SWASTA & UPLOAD tahun ${tahun}"><i class="ti ti-trash"></i></button>` : ''}</td>
     `;
     const delBtn = tr.querySelector('button');
     if (delBtn) delBtn.addEventListener('click', async () => {
+      if (!guardHapus()) return;
       if (!await crudConfirm(`Hapus harga tahun ${tahun} (EKATALOG, SWASTA & UPLOAD sekaligus)?`, { danger: true, okLabel: 'Ya, Hapus' })) return;
       const produkId = ekat.produk_id;
-      const { error } = await sb.from('produk_harga').delete().eq('produk_id', produkId).eq('tahun', tahun);
-      if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
+      const delRes = await sb.from('produk_harga').delete().eq('produk_id', produkId).eq('tahun', tahun).select('id');
+      if (delRes.error) { showToast('Gagal hapus: ' + delRes.error.message, true); return; }
+      if (!barisTerhapus(delRes)) { showToast('Tidak ada yang terhapus: akun ini tidak punya izin, atau harganya sudah hilang.', true); onAfterDelete(); return; }
       // FIX (urgent — harga mismatch): same missing invalidation as
       // addHargaBtn above, but for delete.
       invalidateProdukStackCache();
@@ -2509,7 +2511,7 @@ function renderMediaTable(){
       <td>${escapeHtml(m.judul || '—')}</td>
       <td><a class="media-link" href="${escapeHtml(m.url)}" target="_blank" rel="noopener">${escapeHtml(m.url)}</a></td>
       <td>${m.is_primary ? '<span class="badge-primary">Utama</span>' : '—'}</td>
-      <td><button class="btn btn-danger-ghost btn-sm" data-id="${m.id}" aria-label="Hapus media" title="Hapus media"><i class="ti ti-trash"></i></button></td>
+      <td><button class="btn btn-danger-ghost btn-sm perm-hapus" data-id="${m.id}" aria-label="Hapus media" title="Hapus media"><i class="ti ti-trash"></i></button></td>
     `;
     tr.querySelector('button').addEventListener('click', () => deleteMedia(m.id));
     // SECURITY FIX: bucket 'lampiran-unit' private -> URL public di kolom url
@@ -2550,9 +2552,11 @@ document.getElementById('addMediaBtn').addEventListener('click', async () => {
   loadMedia(currentProdukId);
 });
 async function deleteMedia(id){
+  if (!guardHapus()) return;
   if (!await crudConfirm('Hapus media ini?', { danger: true, okLabel: 'Ya, Hapus' })) return;
-  const { error } = await sb.from('produk_media').delete().eq('id', id);
-  if (error) { showToast('Gagal hapus: ' + error.message, true); return; }
+  const delRes = await sb.from('produk_media').delete().eq('id', id).select('id');
+  if (delRes.error) { showToast('Gagal hapus: ' + delRes.error.message, true); return; }
+  if (!barisTerhapus(delRes)) { showToast('Tidak ada yang terhapus: akun ini tidak punya izin, atau medianya sudah hilang.', true); loadMedia(currentProdukId); return; }
   showToast('Media dihapus');
   loadMedia(currentProdukId);
 }
@@ -3513,6 +3517,7 @@ const _origLoadProdukRowClick = null; // handled inline below via monkey-patch a
 //    situ, delete diBLOK dengan pesan jelas, bukan dibiarin gagal error Postgres mentah.
 deleteBtn.addEventListener('click', async () => {
   if (modalState !== 'edit' || !currentProdukId) return;
+  if (!guardHapus()) return;
   const session = modalSession;
   modalGo('busy'); // kunci Simpan/Hapus/Tutup selama cek relasi + konfirmasi + delete
   try {
@@ -3522,6 +3527,7 @@ deleteBtn.addEventListener('click', async () => {
   }
 });
 async function deleteProdukInner(id, label){
+  if (!guardHapus()) return;
   if (!label) label = produkPageRows.find(r => r.id === id)?.kode_produk || '';
 
   const [hargaR, mediaR, akdR, komposisiSendiriR, dipakaiDiSetLainR, inaprocR, permintaanR, konversiR] = await Promise.all([

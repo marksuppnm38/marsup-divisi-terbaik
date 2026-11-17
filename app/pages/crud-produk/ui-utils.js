@@ -5,6 +5,15 @@
 // jadi diekspor langsung sebagai named export, bukan lewat installXxx(S).
 // Logic di dalam TIDAK diubah sama sekali dari versi asli di index.js.
 
+export const PESAN_TANPA_IZIN_HAPUS = 'Akun kamu tidak punya izin menghapus data.';
+/** false (+ toast) kalau akun ini tidak boleh menghapus. Pagar kedua di handler; pagar pertama = tombol disembunyikan, pagar utama = RLS. */
+export function guardHapus(){
+  if (window.PNMAuth?.can?.('hapus') === false) { showToast(PESAN_TANPA_IZIN_HAPUS, true); return false; }
+  return true;
+}
+/** Hasil .delete().select('id'): true kalau ada baris yang benar-benar terhapus. 0 baris tanpa error = ditolak RLS / sudah hilang. */
+export function barisTerhapus(res){ return !res.error && Array.isArray(res.data) && res.data.length > 0; }
+
 export function showToast(msg, isError){
   // Body delegate ke shared/toast.js — signature & titik panggil di file
   // pemanggil sama sekali gak berubah, cuma implementasinya yang sekarang
