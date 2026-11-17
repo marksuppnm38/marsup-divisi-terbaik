@@ -671,6 +671,7 @@ const PRODUK_PAGE_SIZE = 30;
 let produkSearchCtl = null; // AbortController RPC search terakhir: search baru / search dikosongkan membatalkan yang lama
 let produkSearchSeq = 0;    // hanya naik saat search BERUBAH (bukan saat ganti halaman) -> hasil search basi dibuang
 let produkSearchRawRows = []; // hasil lengkap dari RPC search_produk_dengan_harga, BELUM difilter status
+let produkSearchDirty = false; // true = data berubah (hapus/simpan/bulk/verified): hasil search yang di-cache di produkSearchRawRows sudah basi, wajib query ulang
 let produkSearchAllRows = []; // produkSearchRawRows setelah difilter status_akd/link, di-page di client
 
 // ---- Filter status (chip bar di atas list Produk) ----
@@ -887,6 +888,7 @@ async function ensureVerifiedRows(){
   return produkVerifiedRows;
 }
 function invalidateProdukStackCache(){
+  produkSearchDirty = true; // search lagi aktif? loadProduk berikutnya harus ambil ulang dari DB, bukan pakai hasil lama
   produkHargaIdSet = null;
   produkVerifiedIdSet = null;
   produkVerifiedRows = null;
@@ -992,6 +994,9 @@ function produkAutoCols(){
 async function loadProduk(q, page){
   const newQ = (q ?? lastQuery ?? '').trim();
   const searchChanged = newQ !== (lastQuery ?? '').trim();
+  // Query ulang ke DB kalau: kata kunci berganti, data baru berubah (dirty), atau dipanggil tanpa argumen
+  // (= "muat ulang" dari simpan/hapus/bulk/orphan). Ganti halaman & filter chip cukup dari hasil di memori.
+  const refetchSearch = searchChanged || produkSearchDirty || q === undefined;
   lastQuery = newQ;
   produkPage = searchChanged ? 1 : (page || produkPage || 1);
   const qq = newQ;
@@ -1019,7 +1024,7 @@ async function loadProduk(q, page){
     // RPC ini ambil SEMUA hasil match sekaligus (gak dukung limit/offset dan gak dukung
     // filter status tambahan), jadi paging DAN filter status dilakukan di client dari
     // produkSearchRawRows — bukan query ulang tiap ganti halaman/filter.
-    if (searchChanged) {
+    if (refetchSearch) {
       // PERF: search_produk_list = pembungkus RPC search (ranking sama) yang langsung
       // balikin kolom list -> 1 round trip, bukan 2. Fallback ke jalur lama kalau belum ada.
       if (produkSearchCtl) produkSearchCtl.abort();
@@ -1044,6 +1049,7 @@ async function loadProduk(q, page){
         produkSearchRawRows = kodeList.map(k => byKode[k]).filter(Boolean);
       }
       } // end if (!fastSearchOk)
+      produkSearchDirty = false; // hasil search sudah segar lagi
     }
     if (needsStok && !(await ensureStokForIds(produkSearchRawRows.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
@@ -1125,6 +1131,11 @@ async function loadProduk(q, page){
     onPageChange: (p) => loadProduk(qq, p)
   });
 
+  // Hapus item terakhir di halaman 2+ -> halaman ini kosong padahal masih ada data di halaman sebelumnya: mundur otomatis.
+  if (rows.length === 0 && total > 0 && produkPage > 1) {
+    loadProduk(qq, Math.max(1, Math.ceil(total / PRODUK_PAGE_SIZE)));
+    return;
+  }
   if (rows.length === 0) {
     tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Tidak ada produk ditemukan.</td></tr>`;
     cardWrap.innerHTML = `<div class="stub-box" style="grid-column:1/-1;">Tidak ada produk ditemukan.</div>`;
@@ -3503,6 +3514,7 @@ deleteBtn.addEventListener('click', async () => {
   }
 });
 async function deleteProdukInner(id, label){
+  if (!label) label = produkPageRows.find(r => r.id === id)?.kode_produk || '';
 
   const [hargaR, mediaR, akdR, komposisiSendiriR, dipakaiDiSetLainR, inaprocR, permintaanR, konversiR] = await Promise.all([
     sb.from('produk_harga').select('id', { count: 'exact', head: true }).eq('produk_id', id),
@@ -3546,11 +3558,21 @@ async function deleteProdukInner(id, label){
   // otomatis lewat CASCADE dalam satu statement ini.
   const { error } = await sb.from('produk').delete().eq('id', id);
   if (error) { showToast('Gagal hapus produk: ' + error.message, true); return; }
-  showToast('Produk dan seluruh data terkait berhasil dihapus');
+  showToast(`Produk ${label ? label + ' ' : ''}dihapus beserta data terkaitnya`);
   closeModal();
   invalidateProdukStackCache();
+  await animateProdukRowOut(id); // baris memudar dulu (kelihatan "yang ini hilang"), baru daftar dimuat ulang
   loadProduk();
   refreshProdukFilterCounts(true);
+}
+
+// Baris/kartu produk yang baru dihapus memudar dulu sebelum daftar digambar ulang. Hormati prefers-reduced-motion.
+function animateProdukRowOut(id){
+  const sel = `[data-id="${CSS.escape(String(id))}"]`;
+  const els = [...tableBody.querySelectorAll('tr' + sel), ...cardWrap.querySelectorAll(sel)];
+  if (!els.length || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
+  els.forEach(el => { el.classList.add('row-leaving'); el.setAttribute('aria-hidden', 'true'); });
+  return new Promise(res => setTimeout(res, 260));
 }
 
   // ---- AKD MANAGEMENT ----
