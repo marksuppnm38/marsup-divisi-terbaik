@@ -5065,7 +5065,9 @@ async function enrichNonSetStok(results) {
     results.forEach(r => {
       const s = r.kode_asli ? stokMap.get(r.kode_asli) : null;
       r.stok_qty = s ? s.qty : null;
-      r.stok_status = s ? s.status : null; // null = belum ada data stok sama sekali buat kode ini
+      // Hasil search/Converter belum punya qty diminta → dianggap 1 (stok >= 1 = READY), bukan ambang
+      // tetap dari view. Item Clipboard menghitung ulang dengan qty-nya sendiri (S.stokStatusUntukQty).
+      r.stok_status = s ? S.stokStatusUntukQty({ stok_status: s.status, stok_qty: s.qty }, 1) : null; // null = belum ada data stok sama sekali buat kode ini
     });
   } catch { /* diamkan, stok cuma nice-to-have di tampilan search */ }
 }
@@ -5085,7 +5087,8 @@ async function enrichSetStok(results) {
     results.forEach(r => {
       const s = stokMap.get(r.kode_produk);
       r.stok_qty = s ? s.buildable_qty : null;         // dipakai bareng field yang sama kayak item biasa
-      r.stok_status = s ? s.status : 'DATA_TIDAK_LENGKAP'; // gak ada baris di view = komponen blm ke-cek sama sekali
+      // Sama seperti item biasa: tanpa qty diminta → 1 (bisa rakit >= 1 set = READY).
+      r.stok_status = s ? S.stokStatusUntukQty({ stok_status: s.status, stok_qty: s.buildable_qty }, 1) : 'DATA_TIDAK_LENGKAP'; // gak ada baris di view = komponen blm ke-cek sama sekali
       r.stok_komponen_terdata = s ? s.jumlah_komponen_terdata : 0;
       r.stok_komponen_total = s ? s.jumlah_komponen : null;
     });

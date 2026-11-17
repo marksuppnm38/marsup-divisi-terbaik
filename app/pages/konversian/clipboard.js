@@ -832,20 +832,63 @@ S.rupiah = rupiah;
 // stok_status/stok_qty (dan stok_komponen_terdata/total buat SET) — field ini
 // diisi enrichResultsWithStok(), dipanggil abis runSearch() DAN abis
 // finishConvBatch() di Converter.
-function stokBadgeHtml(r, isSet) {
+//
+// STOK BY QTY DIMINTA (Permintaan RS): READY/INDENT bukan lagi ambang tetap 5 pcs dari
+// view server, tapi "apakah stok cukup untuk qty yang diminta". Qty tidak ada/invalid
+// dianggap 1. Dua helper di bawah jadi SATU-SATUNYA tempat aturan ini hidup:
+//  - Cari Cepat / Converter (tanpa qty)  → qty 1 (lihat enrichResultsWithStok di index.js)
+//  - item Clipboard / Kebutuhan RS       → qty item (qty clipboard = qty Permintaan RS yang
+//                                          ikut sinkron, atau override manual user)
+S.qtyButuh = (qty) => {
+  const n = Math.floor(Number(qty));
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+};
+
+// `r` cukup punya stok_status + stok_qty (produk hasil search, item clipboard, atau shape sendiri).
+//  - tanpa data stok (null)            → null (caller yang tentukan placeholder)
+//  - SET dengan komponen belum lengkap → DATA_TIDAK_LENGKAP, tidak ditebak dari qty
+//  - ada angka stok                    → READY kalau stok >= qty diminta, selain itu INDENT.
+//    Untuk SET angkanya "bisa rakit N set" (buildable_qty), jadi perbandingannya sama.
+//  - status ada tapi angka stok tidak ada → percaya status dari server
+S.stokStatusUntukQty = (r, qty) => {
+  const st = r && r.stok_status;
+  if (st !== 'READY' && st !== 'INDENT') return st || null;
+  if (r.stok_qty == null || r.stok_qty === '') return st;
+  const stok = Number(r.stok_qty);
+  if (!Number.isFinite(stok)) return st;
+  return stok >= S.qtyButuh(qty) ? 'READY' : 'INDENT';
+};
+
+// `qty` = qty yang diminta (opsional, default 1). Dengan qty > 1 badge juga menampilkan
+// "butuh N" supaya jelas kenapa statusnya Ready/Indent.
+function stokBadgeHtml(r, isSet, qty) {
   // Hasil search sudah tampil, status stok masih di-fetch di belakang (lihat runSearch).
   if (r.stok_pending) return `<span class="mi stok-unknown"><i class="ti ti-loader-2"></i><span>Cek stok…</span></span>`;
-  return isSet
-    ? (r.stok_status === 'READY'
-        ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · bisa rakit ${r.stok_qty} set</span></span>`
-        : r.stok_status === 'INDENT'
-          ? `<span class="mi stok-indent"><i class="ti ti-clock"></i><span>Indent${r.stok_qty ? ' · bisa rakit '+r.stok_qty+' set' : ''}</span></span>`
-          : `<span class="mi stok-warn" data-set-kode="${S.escapeHtmlAttr(r.kode_produk || '')}" data-terdata="${r.stok_komponen_terdata||0}" data-total="${r.stok_komponen_total||''}" style="cursor:help"><i class="ti ti-alert-triangle"></i><span>${r.stok_komponen_total ? 'Stok ' + (r.stok_komponen_terdata||0) + '/' + r.stok_komponen_total : 'Stok blm lengkap'}</span></span>`)
-    : (r.stok_status === 'READY'
-        ? `<span class="mi stok-ready"><i class="ti ti-circle-check"></i><span>Ready · ${r.stok_qty} pcs</span></span>`
-        : r.stok_status === 'INDENT'
-          ? `<span class="mi stok-indent"><i class="ti ti-clock"></i><span>Indent${r.stok_qty ? ' · '+r.stok_qty+' pcs' : ''}</span></span>`
-          : `<span class="mi stok-unknown"><i class="ti ti-help"></i><span>Stok: -</span></span>`);
+  const need = S.qtyButuh(qty);
+  const status = S.stokStatusUntukQty(r, need);
+  const hasStok = r.stok_qty != null && r.stok_qty !== '';
+  const detail = hasStok ? (isSet ? `bisa rakit ${r.stok_qty} set` : `${r.stok_qty} pcs`) : '';
+  const butuhTxt = need > 1 ? `butuh ${need}` : '';
+  const title = hasStok ? S.escapeHtmlAttr(`${detail}, qty diminta ${need}`) : '';
+  const join = (...parts) => parts.filter(Boolean).join(' · ');
+  if (status === 'READY') {
+    return `<span class="mi stok-ready" title="${title}"><i class="ti ti-circle-check"></i><span>${S.escapeHtmlAttr(join('Ready', detail, butuhTxt))}</span></span>`;
+  }
+  if (status === 'INDENT') {
+    // Stok 0 tanpa qty diminta > 1 cukup "Indent" (sama seperti sebelumnya); kalau ada qty diminta,
+    // angka stok tetap ditampilkan walau 0 supaya terbaca "stok 0, butuh 10".
+    const showDetail = hasStok && (Number(r.stok_qty) > 0 || need > 1);
+    return `<span class="mi stok-indent" title="${title}"><i class="ti ti-clock"></i><span>${S.escapeHtmlAttr(join('Indent', showDetail ? detail : '', butuhTxt))}</span></span>`;
+  }
+  if (isSet) {
+    // data-set-kode memicu popover rincian komponen yang kurang; popover itu butuh jumlah komponen
+    // (cuma ada di hasil search), jadi di item Clipboard (tanpa angka itu) dipasang teks biasa saja.
+    const popAttrs = r.stok_komponen_total
+      ? ` data-set-kode="${S.escapeHtmlAttr(r.kode_produk || '')}" data-terdata="${r.stok_komponen_terdata||0}" data-total="${r.stok_komponen_total}" style="cursor:help"`
+      : '';
+    return `<span class="mi stok-warn"${popAttrs}><i class="ti ti-alert-triangle"></i><span>${r.stok_komponen_total ? 'Stok ' + (r.stok_komponen_terdata||0) + '/' + r.stok_komponen_total : 'Stok blm lengkap'}</span></span>`;
+  }
+  return `<span class="mi stok-unknown"><i class="ti ti-help"></i><span>Stok: -</span></span>`;
 }
 S.stokBadgeHtml = stokBadgeHtml;
 
@@ -1062,8 +1105,13 @@ function renderClipItemHtml(item) {
   // Kalau beda → itu override manual (bukan ketimpa diam-diam): badge "manual · RS n" +
   // tombol ↺ buat balik ke qty RS, aksi sadar user.
   const rsQty = typeof S.rsQtyForClipItem === 'function' ? S.rsQtyForClipItem(item) : null;
+  // Produk yang sama diminta di >1 kebutuhan/ruang: qty clipboard TIDAK dijumlah otomatis (diatur manual),
+  // jadi cukup tampilkan qty tiap permintaannya supaya jelas dari mana angkanya.
+  const rsList = typeof S.rsQtyListForClipItem === 'function' ? S.rsQtyListForClipItem(item) : [];
   let rsBadge = '';
-  if (rsQty != null) {
+  if (rsList.length > 1) {
+    rsBadge = `<span class="clip-rs-qty multi" title="Diminta di ${rsList.length} kebutuhan RS: ${rsList.join(' + ')}. Qty clipboard tidak dijumlah otomatis, atur sesuai kebutuhan.">RS ${rsList.join(' + ')}</span>`;
+  } else if (rsQty != null) {
     rsBadge = item.qty === rsQty
       ? `<span class="clip-rs-qty" title="Qty sesuai Permintaan RS">RS ${rsQty}</span>`
       : `<span class="clip-rs-qty override" title="Qty diubah manual. Permintaan RS: ${rsQty}">manual · RS ${rsQty}<button type="button" class="clip-rs-reset" data-kode="${kodeEsc}" data-qty="${rsQty}" title="Kembalikan ke qty Permintaan RS (${rsQty})" aria-label="Kembalikan ke qty Permintaan RS">↺</button></span>`;
@@ -1075,6 +1123,7 @@ function renderClipItemHtml(item) {
           <span class="clip-item-code">${kodeEsc}</span>
           ${S.isVerified(item) ? '<i class="ti ti-rosette-discount-check-filled" style="font-size:13px;color:#1d9bf0" title="Verified Product — tayang di INAPROC"></i>' : ''}
           ${rsBadge}
+          ${item.stok_status ? S.stokBadgeHtml(item, isSet, item.qty) : ''}
           <span class="clip-item-tipe" style="${tipeColor}">${tipeEsc}</span>
           ${hargaTampil?`<span class="clip-item-harga">${rupiah(totalHarga)}</span>`:'<span class="clip-item-code" style="color:var(--text-muted)">Harga N/A</span>'}
         </div>
@@ -1761,8 +1810,9 @@ S.btnExport.addEventListener('click', async () => {
         row.getCell(7).value = {text: S.linkLabelOutput(item.kode_produk), hyperlink: linkBersih};
         row.getCell(7).font = {color:{argb:'FF1D4ED8'}, underline:true};
       }
-      // DATA_TIDAK_LENGKAP ikut tampil "Indent" — sales cuma perlu tau Ready/Indent (lihat S.stokStatusOutput)
-      const stokOut = S.stokStatusOutput(item.stok_status);
+      // DATA_TIDAK_LENGKAP ikut tampil "Indent" — sales cuma perlu tau Ready/Indent (lihat S.stokStatusOutput).
+      // Ready/Indent dihitung terhadap qty item ini (= qty diminta RS), bukan ambang tetap.
+      const stokOut = S.stokStatusOutput(S.stokStatusUntukQty(item, item.qty));
       const stokLabel = stokOut === 'READY' ? 'Ready'
         : stokOut === 'INDENT' ? 'Indent'
         : '-';
