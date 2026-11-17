@@ -52,6 +52,7 @@ import { installKalkulatorHarga } from './kalkulator-harga.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
 import { writeTableXlsx } from '../../../shared/exports/tabel-xlsx.js';
+import { installShortcuts, applyShortcutHints, toggleCheatSheet } from '../../../shared/shortcuts.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -172,8 +173,10 @@ let exportPanelRepaint = null;
 let _switchView = null;
 let beforeUnloadHandler = null;
 let copyKitDestroy = null; // copy.js: tutup popover salin + buang cache saat halaman di-unmount
+let shortcutsDispose = null; // shared/shortcuts.js: lepas listener keydown pintasan + tutup daftar pintasan (?)
 
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-11-17: pintasan keyboard lewat registry shared/shortcuts.js: Ctrl+S / Ctrl+Enter = Simpan di modal Produk/AKD/KFA, "/" fokus kolom cari tiap tab (mengalahkan "/" sidebar di halaman ini), j/k pindah baris list Produk, Alt+Shift+P Tambah Produk, Alt+Shift+F Tambah Filter (+ Esc nutup panelnya), "?" = daftar pintasan; kartu Produk jadi bisa difokus keyboard — Claude
 // 2026-11-12: alur "salin dulu" di list Produk (copy.js): ikon salin Kode/Nama, menu Salin per baris, centang + salin TSV ke Excel/Sheets,
 //   kolom aksi baru (colspan 6 -> 7), kotak pilih muncul saat hover, kolom AKD menampilkan nomor AKD (list, kartu, modal, set, export: istilah status AKD jadi "sudah ada AKD / belum"), fetchAkdNoMap dapat opsi {silent}, klik baris diabaikan saat teks sedang diblok — Claude
 // 2026-11-11: baris "Cari produk" di sidebar global dihapus (kembar sama searchbar Produk); hint Ctrl K pindah ke dalam searchbar Produk,
@@ -1178,6 +1181,7 @@ async function loadProduk(q, page){
     const card = document.createElement('div');
     card.className = 'prod-card';
     card.dataset.id = p.id;
+    card.tabIndex = 0; // bisa dijangkau keyboard, sama seperti baris tabel: j/k, Enter/Spasi buka, x pilih
     card.innerHTML = `
       ${copyKit.moreBtnCard(p)}
       <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</div>
@@ -1186,6 +1190,9 @@ async function loadProduk(q, page){
       <div class="pc-foot">${stokPillHtml(p.id)}${flagsHtml}</div>
     `;
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
+    card.addEventListener('keydown', (e) => {
+      if (e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); card.click(); }
+    });
     cardWrap.appendChild(card);
   });
 }
@@ -1777,6 +1784,88 @@ cmdkKeydownHandler = e => {
   if (e.key === 'Escape' && cmdkOverlay.classList.contains('open')) closeCmdk();
 };
 document.addEventListener('keydown', cmdkKeydownHandler);
+
+// ---- Pintasan keyboard ----
+// Definisi (kombinasi, deskripsi, ruang lingkup) ada di shared/shortcuts.js: SATU registry buat semua halaman.
+// Di sini cuma handler-nya. Handler yang return false = "bukan urusan saya": event dilepas lewat, jadi "/" di
+// tab yang gak punya kolom cari tetap jatuh ke pencarian sidebar milik nav.js.
+// Ctrl+K (di atas), Enter / x / Ctrl+C di baris (copy.js) masih dipasang di tempatnya; di registry ditandai `external`.
+const SEARCH_INPUT_BY_VIEW = {
+  produk: 'topSearchInput', set: 'setSearchInput', akd: 'akdSearchBoxInput', kfa: 'kfaSearchBoxInput',
+  sync: 'syncSearchInput', orphan: 'orphanSearchInput', kategori: 'katSearchInput',
+};
+const SAVE_BTN_BY_OVERLAY = { modalOverlay: 'saveBtn', akdModalOverlay: 'akdSaveBtn', kfaModalOverlay: 'kfaSaveBtn' };
+const activeCrudView = () => document.getElementById('appWrap')?.dataset.view || '';
+const isShown = (el) => !!el && el.offsetParent !== null;
+
+// j / k: pindah fokus antar baris (tampilan tabel) atau kartu (tampilan kartu). Enter membuka produknya (handler baris/kartu).
+function moveProdukRow(step){
+  if (activeCrudView() !== 'produk') return false;
+  const a = document.activeElement;
+  if (a && a.closest && a.closest('[role="menu"],[role="dialog"]')) return false; // fokus di menu Salin / panel Kolom / panel Export
+  const root = [tableBody, cardWrap].find(isShown);
+  if (!root) return false;
+  const rows = [...root.querySelectorAll('[data-id]:not(.row-leaving)')];
+  if (!rows.length) return false;
+  const cur = rows.indexOf(a && a.closest ? a.closest('[data-id]') : null);
+  const n = cur < 0 ? 0 : Math.min(Math.max(cur + step, 0), rows.length - 1);
+  rows[n].focus();
+  rows[n].scrollIntoView({ block: 'nearest' });
+  return true;
+}
+
+shortcutsDispose = installShortcuts('crud-produk', {
+  'produk.search': () => {
+    const id = SEARCH_INPUT_BY_VIEW[activeCrudView()];
+    const input = id && document.getElementById(id);
+    if (!isShown(input)) return false; // tab ini gak punya kolom cari (atau lagi tersembunyi)
+    input.focus();
+    input.select();
+    return true;
+  },
+  'produk.nextRow': () => moveProdukRow(1),
+  'produk.prevRow': () => moveProdukRow(-1),
+  'produk.add': () => {
+    const btn = document.getElementById('addBtn');
+    if (activeCrudView() !== 'produk' || !isShown(btn) || btn.disabled) return false;
+    btn.click(); // sama persis dengan klik tombolnya (termasuk penolakan saat modal sedang menyimpan)
+    return true;
+  },
+  'produk.addFilter': () => {
+    if (activeCrudView() !== 'produk' || !isShown(produkAddFilterBtn)) return false;
+    produkAddFilterBtn.click(); // toggle, seperti kliknya
+    if (produkAddFilterPop.classList.contains('open')) produkAddFilterPop.querySelector('.afp-dim-btn')?.focus();
+    return true;
+  },
+  'produk.filterClose': () => {
+    if (!produkAddFilterPop.classList.contains('open')) return false;
+    produkAddFilterPop.classList.remove('open');
+    produkAddFilterBtn.focus();
+    return true;
+  },
+  'produk.help': () => { toggleCheatSheet('crud-produk'); return true; },
+  // Simpan = KLIK tombol Simpan dialog yang paling atas, jadi validasi, penolakan simpan dobel, dan alur
+  // "perubahan belum disimpan" jalan persis sama seperti klik biasa. Tombol disabled (lagi memuat/menyimpan) = ditelan.
+  'produk.save': () => {
+    if (document.querySelector('.confirm-overlay.open, .cmdk-overlay.open')) return false; // konfirmasi/palette di atas dialog
+    const open = document.querySelectorAll('.modal-overlay.open');
+    const top = open[open.length - 1];
+    const id = top && SAVE_BTN_BY_OVERLAY[top.id];
+    const btn = id && document.getElementById(id);
+    if (!btn) return false; // dialog tanpa tombol Simpan (mis. Log Aktivitas)
+    if (!btn.disabled) btn.click();
+    return true;
+  },
+});
+// Tooltip + aria-keyshortcuts tombol diambil dari registry, bukan diketik manual di markup.
+applyShortcutHints({
+  '#addBtn': 'produk.add',
+  '#produkAddFilterBtn': 'produk.addFilter',
+  '#saveBtn': 'produk.save',
+  '#akdSaveBtn': 'produk.save',
+  '#kfaSaveBtn': 'produk.save',
+  '#topSearchInput': { ids: ['produk.search', 'produk.cmdk'], base: 'Cari produk' },
+}, container);
 
 let cmdkSeq = 0;
 let cmdkCtl = null; // AbortController: request lama dibatalkan di jaringan, bukan cuma hasilnya dibuang
@@ -3684,6 +3773,7 @@ export function unmount() {
   exportPanelRepaint = null;
   if (beforeUnloadHandler) window.removeEventListener('beforeunload', beforeUnloadHandler);
   if (copyKitDestroy) { copyKitDestroy(); copyKitDestroy = null; }
+  if (shortcutsDispose) { shortcutsDispose(); shortcutsDispose = null; }
   filterPopOutsideClickHandler = null;
   resizeHandler = null;
   cmdkKeydownHandler = null;

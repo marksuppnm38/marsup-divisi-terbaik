@@ -120,7 +120,14 @@ function closeKfaModal(){ kfaModalOverlay.classList.remove('open'); currentKfaId
 document.getElementById('kfaModalCloseBtn').addEventListener('click', closeKfaModal);
 document.getElementById('kfaCancelBtn').addEventListener('click', closeKfaModal);
 
-document.getElementById('kfaSaveBtn').addEventListener('click', async () => {
+const kfaSaveBtn = document.getElementById('kfaSaveBtn');
+kfaSaveBtn.addEventListener('click', async () => {
+  // Simpan dobel (klik cepat / Ctrl+S dua kali) dulu bisa menembak update/insert dua kali.
+  if (kfaSaveBtn.disabled) return;
+  kfaSaveBtn.disabled = true;
+  try { await saveKfa(); } finally { kfaSaveBtn.disabled = false; }
+});
+async function saveKfa() {
   if (!currentKfaId) return;
   const kodeKfa = document.getElementById('k_kode_kfa').value.trim() || null;
   const payload = {
@@ -140,7 +147,7 @@ document.getElementById('kfaSaveBtn').addEventListener('click', async () => {
   closeKfaModal();
   loadKfa(kfaPage);
   refreshKfaFilterCounts();
-});
+}
 
 document.getElementById('deleteKfaBtn').addEventListener('click', async () => {
   if (!currentKfaId) return;

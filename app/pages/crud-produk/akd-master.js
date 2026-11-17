@@ -179,7 +179,14 @@ async function openEditAkd(id){
   }
 }
 
-document.getElementById('akdSaveBtn').addEventListener('click', async () => {
+const akdSaveBtn = document.getElementById('akdSaveBtn');
+akdSaveBtn.addEventListener('click', async () => {
+  // Simpan dobel (klik cepat / Ctrl+S dua kali) dulu bisa menembak update/insert dua kali.
+  if (akdSaveBtn.disabled) return;
+  akdSaveBtn.disabled = true;
+  try { await saveAkd(); } finally { akdSaveBtn.disabled = false; }
+});
+async function saveAkd() {
   const noAkd = document.getElementById('a_no_akd').value.trim();
   const tipeAkd = document.getElementById('a_tipe_akd').value;
   if (!noAkd) { showToast('No. AKD wajib diisi', true); return; }
@@ -213,7 +220,7 @@ document.getElementById('akdSaveBtn').addEventListener('click', async () => {
   closeAkdModal();
   loadAkdDistinctValues();
   loadAkd(akdPage);
-});
+}
 
 // ---- Hapus AKD ----
 // produk_akd.akd_id -> akd itu FK yang confdeltype-nya gak ada di daftar constraint
