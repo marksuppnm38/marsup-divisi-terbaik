@@ -46,11 +46,22 @@ function updateSetcariSourceCount() {
 }
 S.updateSetcariSourceCount = updateSetcariSourceCount;
 
-function updateSetcariEmptyHint() {
-  const p = S.setcariEmpty.querySelector('p');
-  p.textContent = S.setcariSourceMode === 'paste'
-    ? 'Tempel daftar kode produk di atas, satu per baris atau dipisah koma, lalu klik "Cari SET Mendekati".'
-    : 'Tambahkan produk ke Clipboard, lalu klik "Cari SET Mendekati" untuk melihat SET dengan isi paling mirip.';
+// Empty state punya 2 wajah: (1) intro penjelasan fungsi — tampil selama belum ada pencarian,
+// supaya user baru langsung ngerti ini buat apa; (2) pesan singkat kalau pencarian tidak
+// menemukan SET apa pun. Dua-duanya hidup di #setcari-empty, saling gantian.
+function showSetcariIntro() {
+  S.setcariEmpty.style.display = 'block';
+  const intro = document.getElementById('setcari-intro');
+  const msg = document.getElementById('setcari-empty-msg');
+  if (intro) intro.hidden = false;
+  if (msg) { msg.hidden = true; msg.textContent = ''; }
+}
+function showSetcariEmptyMsg(text) {
+  S.setcariEmpty.style.display = 'block';
+  const intro = document.getElementById('setcari-intro');
+  const msg = document.getElementById('setcari-empty-msg');
+  if (intro) intro.hidden = true;
+  if (msg) { msg.textContent = text; msg.hidden = false; }
 }
 
 // Pindah pintu sumber: hasil pencarian sebelumnya (dari sumber lain) udah
@@ -67,12 +78,23 @@ function setSetcariSourceMode(mode) {
   S.setcariList.innerHTML = '';
   S.setcariBadge.style.display = 'none';
   setcariSetStatus('');
-  S.setcariEmpty.style.display = 'block';
-  updateSetcariEmptyHint();
+  showSetcariIntro();
   updateSetcariSourceCount();
 }
-S.setcariSrcClip.addEventListener('click', () => setSetcariSourceMode('clip'));
-S.setcariSrcPaste.addEventListener('click', () => setSetcariSourceMode('paste'));
+// Pintu sumber dipilih otomatis waktu tab dibuka: Clipboard kosong -> langsung tampilkan kotak
+// paste-an (tab ini gak boleh kelihatan kosong melompong), Clipboard ada isi -> pakai Clipboard.
+// Berhenti ikut-ikutan begitu user milih sendiri (setcariSourceTouched), kalau kotak paste-an
+// sudah ada isinya, atau kalau hasil pencarian lagi tampil — jangan sampai ngerusak kerjaan user.
+S.setcariSourceTouched = false;
+function autoPickSetcariSource() {
+  if (S.setcariSourceTouched) return;
+  if (S.setcariList.children.length) return;
+  if (S.setcariPasteInput.value.trim()) return;
+  setSetcariSourceMode(S.clipboard.length ? 'clip' : 'paste');
+}
+S.autoPickSetcariSource = autoPickSetcariSource;
+S.setcariSrcClip.addEventListener('click', () => { S.setcariSourceTouched = true; setSetcariSourceMode('clip'); });
+S.setcariSrcPaste.addEventListener('click', () => { S.setcariSourceTouched = true; setSetcariSourceMode('paste'); });
 S.setcariPasteInput.addEventListener('input', () => updateSetcariSourceCount());
 
 function setcariSetStatus(msg, isError) {
@@ -102,10 +124,9 @@ async function runCariSetMendekati() {
     if (error) throw new Error(error.message || 'Gagal mencari SET');
     if (!data || data.length === 0) {
       setcariSetStatus('');
-      S.setcariEmpty.style.display = 'block';
-      S.setcariEmpty.querySelector('p').textContent = S.setcariSourceMode === 'paste'
+      showSetcariEmptyMsg(S.setcariSourceMode === 'paste'
         ? 'Tidak ada SET yang cocok dengan kode yang ditempel.'
-        : 'Tidak ada SET yang cocok dengan produk di Clipboard saat ini.';
+        : 'Tidak ada SET yang cocok dengan produk di Clipboard saat ini.');
       return;
     }
     setcariSetStatus(`${data.length} SET ditemukan, diurutkan dari yang paling mirip.`);

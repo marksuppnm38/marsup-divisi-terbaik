@@ -3166,7 +3166,10 @@ function switchSubTab(tab) {
   }
   if (tab === 'project' && typeof S.loadProjects === 'function') S.loadProjects();
   if (tab === 'dictionary') S.loadDictionary();
-  if (tab === 'setcari' && typeof S.updateSetcariSourceCount === 'function') S.updateSetcariSourceCount();
+  if (tab === 'setcari') {
+    if (typeof S.autoPickSetcariSource === 'function') S.autoPickSetcariSource();
+    if (typeof S.updateSetcariSourceCount === 'function') S.updateSetcariSourceCount();
+  }
 }
 // Pindah sub-modul DARI DALAM KODE (Sesi Baru, buka sesi, pill sesi, Muat Revisi, dst).
 // Dulu langsung switchSubTab() → isi layar pindah, tapi URL + sorotan sidebar tetap di sub-modul lama

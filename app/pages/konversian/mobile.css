@@ -70,6 +70,13 @@
   #app-root .conv-actions-copy .conv-select { grid-column: 1 / -1; width: 100%; }
   #app-root .conv-actions-copy .toggle-btn { justify-content: center; }
   #app-root .conv-actions-note { flex: 0 0 auto; text-align: center; margin-top: 0; }
+  /* Dropdown custom Converter (shared/ui-select.js, varian .ui-select-choice): selebar kolom, target sentuh 44px */
+  #app-root .conv-run-row > .ui-select { display: flex; }
+  #app-root .conv-actions-copy > .ui-select { grid-column: 1 / -1; display: flex; width: 100%; }
+  #app-root .conv-run-row .ui-select-btn,
+  #app-root .conv-actions-copy .ui-select-btn { width: 100%; min-height: 44px; justify-content: flex-start; font-size: 13px; }
+  #app-root .conv-run-row .ui-select-label,
+  #app-root .conv-actions-copy .ui-select-label { flex: 1; min-width: 0; max-width: none; text-align: left; }
 
   /* ---- Cari SET / Riwayat / Dictionary / Project ---- */
   #app-root .dict-toolbar { position: static; }

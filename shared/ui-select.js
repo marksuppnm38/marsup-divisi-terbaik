@@ -14,9 +14,20 @@
 // INSTALL: modul ini self-installing (import sekali dari nav-markup.js). Satu MutationObserver
 // di document.body menangkap select.filter-select yang muncul belakangan (halaman SPA).
 // Select yang sudah diproses ditandai data-ui-select="1" supaya gak diproses dua kali.
+//
+// 2026-11-17: cakupan diperluas ke select.conv-select (Converter: "Jenis kode" + "Kolom yang
+// disalin"). Beda perlakuan dari select.filter-select (yang itu = filter/urutan di toolbar):
+//  - Varian "pilihan" (bukan filter): tombol TIDAK ikut ter-highlight biru (nilai default-nya
+//    bukan "belum difilter", cuma pilihan biasa), label tidak dipotong 170px, menu boleh lebih
+//    lebar (opsi panjang kayak "Otomatis (kode produk atau kode asli)"). Ditandai class
+//    .ui-select-choice di wrapper.
+//  - Ikon bisa ditentukan per select lewat data-ui-icon="ti-xxx" (menang atas tebakan
+//    sort/filter).
+//  - aria-label select asli dipindah ke tombol (select asli aria-hidden, jadi tanpa ini
+//    pembaca layar cuma dengar nilai terpilih tanpa tahu itu pilihan apa).
 // Menu hidup DI DALAM wrapper (bukan di <body>) jadi otomatis hilang saat halaman di-unmount.
 
-const SELECTOR = 'select.filter-select';
+const SELECTOR = 'select.filter-select, select.conv-select';
 const ICON_SORT = 'ti-arrows-sort';
 const ICON_FILTER = 'ti-filter';
 
@@ -30,8 +41,10 @@ function enhance(select) {
   if (select.dataset.uiSelect === '1') return;
   select.dataset.uiSelect = '1';
 
+  // filter-select = filter/urutan toolbar (highlight kalau aktif); selain itu = pilihan biasa
+  const isChoice = !select.classList.contains('filter-select');
   const wrap = document.createElement('div');
-  wrap.className = 'ui-select';
+  wrap.className = 'ui-select' + (isChoice ? ' ui-select-choice' : '');
 
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -41,7 +54,8 @@ function enhance(select) {
 
   const icon = document.createElement('i');
   const isSort = /sort|urut/i.test(select.id + ' ' + (select.title || ''));
-  icon.className = 'ti ' + (isSort ? ICON_SORT : ICON_FILTER) + ' ui-select-icon';
+  const iconCls = select.dataset.uiIcon || (isSort ? ICON_SORT : ICON_FILTER);
+  icon.className = 'ti ' + iconCls + ' ui-select-icon';
   const label = document.createElement('span');
   label.className = 'ui-select-label';
   const chev = document.createElement('i');
@@ -52,6 +66,8 @@ function enhance(select) {
   menu.className = 'ui-select-menu';
   menu.setAttribute('role', 'listbox');
   menu.hidden = true;
+  const nativeLabel = select.getAttribute('aria-label') || '';
+  if (nativeLabel) menu.setAttribute('aria-label', nativeLabel);
 
   wrap.append(btn, menu);
   select.parentNode.insertBefore(wrap, select);
@@ -69,8 +85,10 @@ function enhance(select) {
     label.textContent = currentLabel();
     btn.disabled = select.disabled;
     btn.title = select.title || '';
-    // opsi kosong ("Semua Sales" value="") = belum difilter -> tampil netral; selain itu aktif
-    btn.classList.toggle('is-active', !isSort && select.value !== '');
+    if (nativeLabel) btn.setAttribute('aria-label', nativeLabel + ': ' + label.textContent);
+    // opsi kosong ("Semua Sales" value="") = belum difilter -> tampil netral; selain itu aktif.
+    // Varian pilihan (conv-select) gak pernah "aktif": nilainya cuma pilihan, bukan filter.
+    btn.classList.toggle('is-active', !isChoice && !isSort && select.value !== '');
     wrap.hidden = select.style.display === 'none';
   }
 

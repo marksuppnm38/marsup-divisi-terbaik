@@ -665,3 +665,10 @@ html[data-theme="dark"] .pw-nav-brand-mark .logo-dark { display: block; }
 .ui-select-opt.is-disabled { opacity: 0.45; cursor: not-allowed; }
 .ui-select-check { font-size: 14px; color: var(--accent); opacity: 0; flex-shrink: 0; }
 .ui-select-opt.is-selected .ui-select-check { opacity: 1; }
+
+/* Varian "pilihan" (select.conv-select di Converter): bukan filter, jadi label tidak dipotong
+   170px dan menu boleh lebih lebar buat opsi panjang. Tinggi 30px menyamai tombol di sebelahnya
+   (.pr-add-clip-btn / .toggle-btn di baris aksi Converter). */
+.ui-select-choice .ui-select-btn { height: 30px; }
+.ui-select-choice .ui-select-label { max-width: min(340px, 60vw); }
+.ui-select-choice .ui-select-menu { max-width: min(420px, calc(100vw - 32px)); }

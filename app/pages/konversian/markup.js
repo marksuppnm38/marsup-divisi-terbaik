@@ -235,7 +235,7 @@ export const KONVERSIAN_MARKUP = `
         <textarea id="conv-input" class="conv-input" aria-describedby="conv-hint" spellcheck="false" placeholder="RB999-KE921-B99-U238&#9;WSD S.
 RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
         <div class="conv-run-row">
-          <select id="conv-kunci" class="conv-select" aria-label="Jenis kode yang ditempel" title="Jenis kode yang ditempel. Otomatis mencoba kode produk dulu, lalu kode asli.">
+          <select id="conv-kunci" class="conv-select" data-ui-icon="ti-barcode" aria-label="Jenis kode yang ditempel" title="Jenis kode yang ditempel. Otomatis mencoba kode produk dulu, lalu kode asli.">
             <option value="auto">Otomatis (kode produk atau kode asli)</option>
             <option value="kode_produk">Kode produk</option>
             <option value="kode_asli">Kode asli</option>
@@ -256,7 +256,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
              input, baris yang tidak ketemu tetap ada dan ditandai. -->
         <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang dicentang ke Clipboard</button>
         <div class="conv-actions-copy" role="group" aria-label="Salin hasil tanpa membuat sesi">
-          <select id="conv-preset" class="conv-select" aria-label="Kolom yang disalin" title="Kolom yang disalin">
+          <select id="conv-preset" class="conv-select" data-ui-icon="ti-columns" aria-label="Kolom yang disalin" title="Kolom yang disalin">
             <option value="kdhl">Kode, deskripsi, harga, link</option>
             <option value="peta">Peta kode input ke kode produk dan kode asli</option>
             <option value="lengkap">Lengkap, dengan AKD, stok, dan catatan</option>
@@ -294,9 +294,36 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
       <div class="setcari-status" id="setcari-status" role="status" aria-live="polite"></div>
       </div>
       <div class="setcari-scroll">
-      <div class="clip-empty" id="setcari-empty">
-        <i class="ti ti-box-multiple"></i>
-        <p>Tambahkan produk ke Clipboard, lalu klik "Cari SET Mendekati" untuk melihat SET dengan isi paling mirip.</p>
+      <!-- Empty state = penjelasan fungsi (bukan cuma "kosong"). #setcari-intro tampil selama belum
+           ada pencarian; #setcari-empty-msg dipakai buat pesan hasil nihil (lihat set-mendekati.js). -->
+      <div class="clip-empty setcari-empty" id="setcari-empty">
+        <div class="setcari-intro" id="setcari-intro">
+          <i class="ti ti-box-multiple"></i>
+          <h3 class="setcari-intro-title">Cari SET yang isinya paling mirip</h3>
+          <p class="setcari-intro-desc">Punya daftar produk dan mau tahu SET mana di katalog yang paling cocok? Sistem membandingkan produkmu dengan isi tiap SET.</p>
+          <ol class="setcari-steps">
+            <li><span class="setcari-step-no">1</span><span><b>Tempel kode produk</b> di kotak atas, atau pakai produk dari Clipboard.</span></li>
+            <li><span class="setcari-step-no">2</span><span>Klik <b>Cari SET Mendekati</b>.</span></li>
+            <li><span class="setcari-step-no">3</span><span>SET muncul <b>urut dari yang paling mirip</b>, lengkap dengan persentase dan item yang cocok.</span></li>
+          </ol>
+          <div class="setcari-sample" aria-hidden="true">
+            <div class="setcari-sample-tag">Contoh tampilan hasil</div>
+            <div class="setcari-card">
+              <div class="setcari-card-top">
+                <div class="setcari-card-id">
+                  <div class="setcari-kode">KODE-SET-CONTOH</div>
+                  <div class="setcari-nama">Nama SET tampil di sini</div>
+                  <div class="setcari-cocok">7 dari 9 item SET cocok</div>
+                </div>
+                <div class="setcari-score-wrap">
+                  <div class="setcari-score high">78%</div>
+                  <div class="setcari-bar-track"><div class="setcari-bar-fill" style="width:78%"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="setcari-empty-msg" id="setcari-empty-msg" hidden></p>
       </div>
       <div class="setcari-list" id="setcari-list"></div>
       </div>

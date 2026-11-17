@@ -1930,6 +1930,30 @@
 #app-root .setcari-status{padding:0;margin:10px 0 0}
 #app-root .setcari-status:empty{display:none}
 
+/* Empty state Cari SET = penjelasan fungsi: judul, 3 langkah, contoh tampilan hasil.
+   Pakai ulang kelas kartu hasil (.setcari-card dkk) supaya contohnya identik dengan aslinya. */
+#app-root .setcari-empty{padding:28px 4px 8px}
+#app-root .setcari-intro{max-width:440px;margin:0 auto;display:flex;flex-direction:column;align-items:center;text-align:center}
+#app-root .setcari-intro[hidden],#app-root .setcari-empty-msg[hidden]{display:none}
+#app-root .setcari-intro > i{font-size:28px;margin-bottom:6px;color:var(--text-muted)}
+#app-root .setcari-intro-title{margin:0 0 6px;font-size:14px;font-weight:600;color:var(--text)}
+#app-root .setcari-intro-desc{margin:0 0 16px;font-size:12.5px;line-height:1.55;color:var(--text-secondary)}
+#app-root .setcari-steps{list-style:none;margin:0 0 18px;padding:0;width:100%;display:grid;gap:10px;text-align:left}
+#app-root .setcari-steps li{display:flex;align-items:flex-start;gap:10px;font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
+#app-root .setcari-steps li b{font-weight:600;color:var(--text)}
+#app-root .setcari-step-no{
+  flex:0 0 20px;height:20px;display:inline-grid;place-items:center;border-radius:50%;
+  background:var(--accent-bg);color:var(--accent-text);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;
+}
+#app-root .setcari-sample{
+  width:100%;padding:8px 12px 10px;text-align:left;opacity:.85;
+  border:1px dashed var(--border-strong);border-radius:var(--radius);
+  pointer-events:none;user-select:none;
+}
+#app-root .setcari-sample-tag{margin-bottom:2px;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted)}
+#app-root .setcari-sample .setcari-card{padding:6px 0 0}
+#app-root .setcari-empty-msg{margin:0;font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
+
 #app-root .setcari-list{gap:0;padding:0}
 #app-root .setcari-card{
   background:none;border:0;border-bottom:1px solid var(--border);
