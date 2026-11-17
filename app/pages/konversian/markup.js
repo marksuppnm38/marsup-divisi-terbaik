@@ -283,14 +283,14 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
       <div class="setcari-bar">
         <div class="setcari-seg" role="group" aria-label="Sumber kode produk">
           <button class="toggle-btn on" id="setcari-src-clip" type="button" aria-pressed="true"><i class="ti ti-clipboard-list"></i> <span class="toggle-btn-label">Dari Clipboard</span></button>
-          <button class="toggle-btn" id="setcari-src-paste" type="button" aria-pressed="false"><i class="ti ti-clipboard-text"></i> <span class="toggle-btn-label">Dari paste-an</span></button>
+          <button class="toggle-btn" id="setcari-src-paste" type="button" aria-pressed="false"><i class="ti ti-clipboard-text"></i> <span class="toggle-btn-label">Tempel dari sheet</span></button>
         </div>
         <button class="pr-add-clip-btn" id="setcari-search-btn" type="button" disabled><i class="ti ti-search"></i> Cari SET Mendekati</button>
       </div>
       <label class="setcari-sub-toggle" title="Item SET yang sekeluarga dengan produk input tapi beda ukuran (dalam toleransi) ikut dihitung sebagai substitusi. Persen persis tetap ditampilkan terpisah.">
-        <input type="checkbox" id="setcari-sub-chk"> Termasuk substitusi ukuran
+        <input type="checkbox" id="setcari-sub-chk" checked> Termasuk substitusi ukuran
       </label>
-      <div class="setcari-sub-opts" id="setcari-sub-opts" hidden>
+      <div class="setcari-sub-opts" id="setcari-sub-opts">
         <label>Toleransi ukuran
           <select id="setcari-tol" aria-label="Toleransi ukuran substitusi">
             <option value="5.01">± 0,5 cm</option>
@@ -302,7 +302,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
       </div>
       <p class="setcari-source-label" id="setcari-source-label"><b>0</b> produk di Clipboard dibandingkan dengan isi tiap SET</p>
       <div id="setcari-paste-wrap" class="setcari-paste-wrap" style="display:none">
-        <textarea id="setcari-paste-input" class="setcari-paste-input" aria-label="Kode produk, satu per baris atau dipisah koma" spellcheck="false" placeholder="Tempel kode produk, satu per baris (boleh juga dipisah koma)&#10;RB999-KE921-B99-U238&#10;RB999-KE921-B99-U109"></textarea>
+        <textarea id="setcari-paste-input" class="setcari-paste-input" aria-label="Daftar item permintaan, satu baris satu item" spellcheck="false" placeholder="Tempel daftar item dari sheet, satu baris satu item (qty boleh ikut)&#10;Gunting perban 14 cm 2 pcs&#10;Metzenbaum TC 18 cm&#10;Kode produk juga boleh, mis. RB999-KE921-B99-U238"></textarea>
       </div>
       <div class="setcari-status" id="setcari-status" role="status" aria-live="polite"></div>
       </div>
@@ -315,9 +315,9 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
           <h3 class="setcari-intro-title">Cari SET yang isinya paling mirip</h3>
           <p class="setcari-intro-desc">Punya daftar produk dan mau tahu SET mana di katalog yang paling cocok? Sistem membandingkan produkmu dengan isi tiap SET.</p>
           <ol class="setcari-steps">
-            <li><span class="setcari-step-no">1</span><span><b>Tempel kode produk</b> di kotak atas, atau pakai produk dari Clipboard.</span></li>
-            <li><span class="setcari-step-no">2</span><span>Klik <b>Cari SET Mendekati</b>.</span></li>
-            <li><span class="setcari-step-no">3</span><span>SET muncul <b>urut dari yang paling mirip</b>, lengkap dengan persentase dan item yang cocok.</span></li>
+            <li><span class="setcari-step-no">1</span><span><b>Tempel daftar item</b> dari sheet permintaan (nama biasa atau kode), atau pakai produk dari Clipboard.</span></li>
+            <li><span class="setcari-step-no">2</span><span>Klik <b>Cari SET Mendekati</b>. Cek <b>pemetaan</b> tiap baris ke produk kita, ganti kalau keliru.</span></li>
+            <li><span class="setcari-step-no">3</span><span>SET muncul <b>urut dari yang paling mirip</b>. Buka <b>Bandingkan</b>, lengkapi justifikasi, lalu <b>Salin tabel</b> ke Excel.</span></li>
           </ol>
           <div class="setcari-sample" aria-hidden="true">
             <div class="setcari-sample-tag">Contoh tampilan hasil</div>
@@ -338,6 +338,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
         </div>
         <p class="setcari-empty-msg" id="setcari-empty-msg" hidden></p>
       </div>
+      <div class="setcari-map" id="setcari-map" hidden></div>
       <div class="setcari-list" id="setcari-list"></div>
       </div>
     </div>

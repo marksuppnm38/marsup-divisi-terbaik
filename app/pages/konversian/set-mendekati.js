@@ -6,17 +6,16 @@ export function installSetMendekati(S) {
 // ══════════════════════════════════════════
 // CARI SET MENDEKATI: dulu tool HTML terpisah (kode_produk ditempel manual ke
 // textarea, lalu RPC cari_set_mendekati/detail_isi_set). Sekarang jadi subtab; sumber
-// kodenya otomatis dari item di Clipboard sesi ini, atau dari paste-an. RPC dipanggil
+// kodenya otomatis dari item di Clipboard sesi ini, atau dari paste-an sheet permintaan
+// (nama item biasa ATAU kode; nama dipetakan ke produk lewat suggest_dictionary, hasil
+// pemetaan bisa dikoreksi per baris). Hasil perbandingan punya kolom justifikasi (otomatis
+// dari data, bisa diedit) dan bisa disalin sebagai TSV ke Excel. RPC dipanggil
 // lewat helper rpc() yang sudah ada (pola sama dengan get_set_items dkk: pakai
 // ANON_KEY, bukan stokAccessToken, karena RPC ini read-only/security-definer).
 // ══════════════════════════════════════════
-// Kode sumber = kode_produk unik dari clipboard (kode_asli dipakai kalau ada,
-// sama kayak konvensi kode buat gambar/thumbnail di bagian lain app ini) —
-// ATAU dari textarea paste-an, tergantung pintu (setcariSourceMode) yang
-// lagi aktif. Satu titik dipanggil runCariSetMendekati() & updateSetcariSourceCount(),
-// jadi kedua pintu otomatis konsisten tanpa logic ganda.
-function setcariSourceKodeList() {
-  if (S.setcariSourceMode === 'paste') return parseSetcariPasteKode(S.setcariPasteInput.value);
+// Pintu Clipboard: kode sumber = kode_produk unik dari clipboard (kode_asli dipakai kalau ada,
+// sama kayak konvensi kode buat gambar/thumbnail di bagian lain app ini).
+function setcariClipboardKodeList() {
   const seen = new Set();
   const out = [];
   S.clipboard.forEach(c => {
@@ -26,21 +25,119 @@ function setcariSourceKodeList() {
   return out;
 }
 
-// Pisah per baris ATAU koma (dua-duanya sering kepake pas paste dari Excel/
-// chat WA) — kode produk sendiri gak pernah punya spasi/koma di dalamnya,
-// jadi aman displit begini. Dedupe biar gak nembak kode yang sama 2x.
-function parseSetcariPasteKode(raw) {
+// Pintu paste-an: satu baris = satu item permintaan. Baris yang isinya kode produk (token
+// ber-strip, tanpa spasi; boleh beberapa dipisah koma) dipakai apa adanya. Baris lain dianggap
+// teks permintaan ("Gunting perban 14 cm 2 pcs"): qty & basa-basi dibersihkan oleh parser
+// Permintaan RS (S.parseTeksPermintaan), lalu dipetakan ke produk oleh resolveSetcariEntries().
+const SETCARI_KODE_RE = /^[A-Za-z0-9]+(?:-[A-Za-z0-9]+){2,}$/;
+const SETCARI_SKIP = '__skip__';
+function parseSetcariPaste(raw) {
+  const entries = [];
+  const seenKode = new Set();
+  const seenTeks = new Set();
+  let skipped = 0;
+  String(raw || '').split('\n').map(l => l.trim()).filter(Boolean).forEach(line => {
+    const tokens = line.split(',').map(t => t.trim()).filter(Boolean);
+    if (tokens.length && tokens.every(t => SETCARI_KODE_RE.test(t))) {
+      tokens.forEach(kode => {
+        if (seenKode.has(kode)) return;
+        seenKode.add(kode);
+        entries.push({ raw: kode, qty: null, kodeLangsung: true, kode, cands: [] });
+      });
+      return;
+    }
+    const parsed = typeof S.parseTeksPermintaan === 'function'
+      ? S.parseTeksPermintaan(line)
+      : [{ raw_text: line, qty: null }];
+    skipped += (parsed._skipped || []).length;
+    parsed.forEach(it => {
+      const key = it.raw_text.toLowerCase();
+      if (seenTeks.has(key)) return;
+      seenTeks.add(key);
+      entries.push({ raw: it.raw_text, qty: it.qty || null, kodeLangsung: false, kode: null, cands: [] });
+    });
+  });
+  entries._skipped = skipped;
+  return entries;
+}
+
+// Kode yang dikirim ke RPC = hasil pemetaan (baris yang diabaikan / belum dikenali tidak ikut), unik.
+function kodeListFromEntries(entries) {
   const seen = new Set();
   const out = [];
-  raw.split(/[\n,]/).map(s => s.trim()).filter(Boolean).forEach(kode => {
-    if (!seen.has(kode)) { seen.add(kode); out.push(kode); }
-  });
+  (entries || []).forEach(e => { if (e.kode && !seen.has(e.kode)) { seen.add(e.kode); out.push(e.kode); } });
   return out;
 }
 
+// Pemetaan teks -> produk memakai mesin Dictionary yang sama dengan Kebutuhan RS (suggest_dictionary).
+// Cache per teks supaya cari ulang tidak menembak RPC lagi; pilihan manual user (ganti produk / abaikan)
+// diingat per teks dan menang atas tebakan sistem.
+const suggCache = new Map();
+const pilihanUser = new Map();
+function candidatesFromRows(rows) {
+  const seen = new Set();
+  const out = [];
+  (rows || []).forEach(r => {
+    if (!r.kode_produk || seen.has(r.kode_produk)) return;
+    seen.add(r.kode_produk);
+    out.push({ kode: r.kode_produk, nama: r.nama_produk || '', tier: r.tier || '', ukuran: r.ukuran || '' });
+  });
+  return out.slice(0, 5);
+}
+function pickBestCand(cands) {
+  return cands.find(c => c.ukuran !== 'beda') || cands[0] || null;
+}
+function candConf(c) {
+  if (!c) return 'none';
+  if (c.ukuran === 'beda') return 'lemah';
+  if (c.tier === 'exact' || c.tier === 'urutan') return 'kuat';
+  if (c.tier === 'keluarga' || c.tier === 'katalog' || c.tier === 'varian') return 'sedang';
+  return 'lemah';
+}
+const CONF_LABEL = { kuat: 'Pernah dipakai', sedang: 'Mirip', lemah: 'Perkiraan, cek dulu', none: 'Tidak dikenali' };
+
+async function resolveSetcariEntry(e) {
+  let cands = suggCache.get(e.raw);
+  e.error = null;
+  if (!cands) {
+    try {
+      const { data, error } = await S.rpc('suggest_dictionary', { p_text: e.raw, p_limit: 3 });
+      if (error) throw new Error(error.message || error.hint || 'suggest_dictionary gagal');
+      cands = candidatesFromRows(data);
+      suggCache.set(e.raw, cands);
+    } catch (err) {
+      cands = [];
+      e.error = err.message;
+    }
+  }
+  e.cands = cands;
+  const ov = pilihanUser.get(e.raw);
+  if (ov === SETCARI_SKIP) { e.skip = true; e.kode = null; }
+  else if (ov) { e.skip = false; e.kode = ov; }
+  else { e.skip = false; const best = pickBestCand(cands); e.kode = best ? best.kode : null; }
+}
+async function resolveSetcariEntries(entries) {
+  const todo = entries.filter(e => !e.kodeLangsung);
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      const e = todo[next++];
+      await resolveSetcariEntry(e);
+      done++;
+      setcariSetStatus(`Memetakan permintaan ke produk… ${done}/${todo.length}`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, todo.length) }, worker));
+}
+
+function setcariSourceCount() {
+  if (S.setcariSourceMode === 'paste') return parseSetcariPaste(S.setcariPasteInput.value).length;
+  return setcariClipboardKodeList().length;
+}
+
 function updateSetcariSourceCount() {
-  const n = setcariSourceKodeList().length;
-  const noun = S.setcariSourceMode === 'paste' ? 'kode dari paste-an' : 'produk di Clipboard';
+  const n = setcariSourceCount();
+  const noun = S.setcariSourceMode === 'paste' ? 'baris dari paste-an' : 'produk di Clipboard';
   S.setcariSourceLabel.innerHTML = `<b>${n}</b> ${noun} dibandingkan dengan isi tiap SET`;
   S.setcariSearchBtn.disabled = n === 0;
 }
@@ -77,6 +174,8 @@ function setSetcariSourceMode(mode) {
   S.setcariPasteWrap.style.display = mode === 'paste' ? 'block' : 'none';
   S.setcariList.innerHTML = '';
   S.setcariBadge.style.display = 'none';
+  S.setcariMap = [];
+  renderSetcariMap();
   setcariSetStatus('');
   showSetcariIntro();
   updateSetcariSourceCount();
@@ -112,6 +211,8 @@ function setcariOpts() {
 }
 {
   const resetHasil = () => {
+    S.setcariMap = [];
+    renderSetcariMap();
     S.setcariList.innerHTML = '';
     S.setcariBadge.style.display = 'none';
     setcariSetStatus('');
@@ -137,13 +238,114 @@ function setcariSkorClass(skor) {
   return 'low';
 }
 
+S.setcariMap = [];
+S.setcariMapOpen = null; // null = otomatis (terbuka kalau ada baris yang perlu dicek), true/false = pilihan user
+
+function esc(v) { return S.escapeHtmlAttr(v == null ? '' : String(v)); }
+
+// Panel "Pemetaan permintaan": tiap baris teks -> produk yang dipakai buat mencari SET. Baris dengan
+// kode langsung tidak ditampilkan (tidak ada yang perlu dikoreksi), hanya dihitung di ringkasan.
+function renderSetcariMap() {
+  const box = document.getElementById('setcari-map');
+  if (!box) return;
+  const entries = S.setcariMap || [];
+  const teks = entries.filter(e => !e.kodeLangsung);
+  if (!teks.length) { box.hidden = true; box.innerHTML = ''; return; }
+  const chosen = e => (e.cands || []).find(c => c.kode === e.kode) || null;
+  const confOf = e => e.skip ? 'skip' : (e.kode ? candConf(chosen(e)) : 'none');
+  const cnt = { kuat: 0, sedang: 0, lemah: 0, none: 0, skip: 0 };
+  teks.forEach(e => { cnt[confOf(e)]++; });
+  const perluCek = cnt.lemah + cnt.none;
+  const langsung = entries.length - teks.length;
+  const ringkas = [
+    `${teks.length - cnt.none - cnt.skip} dari ${teks.length} baris terpetakan`,
+    perluCek ? `${perluCek} perlu dicek` : '',
+    cnt.skip ? `${cnt.skip} diabaikan` : '',
+    langsung ? `${langsung} kode langsung` : ''
+  ].filter(Boolean).join(', ');
+  const open = S.setcariMapOpen == null ? perluCek > 0 : S.setcariMapOpen;
+  const rows = teks.map(e => {
+    const idx = entries.indexOf(e);
+    const conf = confOf(e);
+    const opts = (e.cands || []).map(c => {
+      const sfx = c.ukuran === 'beda' ? ' (ukuran beda)' : (c.ukuran === 'dekat' ? ' (ukuran dekat)' : '');
+      return `<option value="${esc(c.kode)}"${c.kode === e.kode ? ' selected' : ''}>${esc(c.kode)} — ${esc(c.nama)}${sfx}</option>`;
+    }).join('');
+    const kosong = `<option value=""${!e.kode ? ' selected' : ''}>${e.skip ? 'Diabaikan' : ((e.cands || []).length ? 'Abaikan baris ini' : 'Belum ada produk yang cocok')}</option>`;
+    return `<div class="sc-map-row conf-${conf}" data-i="${idx}">
+      <div class="sc-map-raw"><span class="sc-map-text">${esc(e.raw)}</span>${e.qty ? `<span class="sc-map-qty">× ${e.qty}</span>` : ''}</div>
+      <select class="sc-map-sel" data-i="${idx}" aria-label="Produk untuk: ${esc(e.raw)}">${opts}${kosong}</select>
+      <span class="sc-map-conf">${esc(e.error ? 'Gagal dicek' : (conf === 'skip' ? 'Diabaikan' : CONF_LABEL[conf]))}</span>
+    </div>`;
+  }).join('');
+  box.hidden = false;
+  box.innerHTML = `<details class="sc-map"${open ? ' open' : ''}>
+    <summary><span class="sc-map-title">Pemetaan permintaan</span><span class="sc-map-sum${perluCek ? ' warn' : ''}">${esc(ringkas)}</span></summary>
+    <div class="sc-map-rows">${rows}</div>
+  </details>`;
+  const det = box.querySelector('details');
+  det.addEventListener('toggle', () => { S.setcariMapOpen = det.open; });
+  box.querySelectorAll('select.sc-map-sel').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const e = (S.setcariMap || [])[Number(sel.dataset.i)];
+      if (!e) return;
+      pilihanUser.set(e.raw, sel.value || SETCARI_SKIP);
+      e.skip = !sel.value;
+      e.kode = sel.value || null;
+      renderSetcariMap();
+      scheduleSetcariRerun();
+    });
+  });
+}
+
+// Ganti pilihan produk di panel pemetaan -> cari ulang otomatis (tanpa resolve ulang), ditahan sebentar
+// supaya beberapa koreksi beruntun cuma menembak RPC sekali.
+let rerunTimer = null;
+function scheduleSetcariRerun() {
+  clearTimeout(rerunTimer);
+  rerunTimer = setTimeout(() => {
+    const kodeList = kodeListFromEntries(S.setcariMap);
+    searchSetcari(kodeList);
+  }, 350);
+}
+
 async function runCariSetMendekati() {
-  const kodeList = setcariSourceKodeList();
+  clearTimeout(rerunTimer);
+  const pasteMode = S.setcariSourceMode === 'paste';
+  S.setcariSearchBtn.disabled = true;
+  try {
+    if (!pasteMode) {
+      S.setcariMap = [];
+      renderSetcariMap();
+      const kodeList = setcariClipboardKodeList();
+      if (kodeList.length === 0) { setcariSetStatus('Clipboard masih kosong. Tambahkan produk dulu.', true); return; }
+      await searchSetcari(kodeList);
+      return;
+    }
+    const entries = parseSetcariPaste(S.setcariPasteInput.value);
+    if (entries.length === 0) { setcariSetStatus('Tempel daftar item dulu di kotak di atas.', true); return; }
+    S.setcariList.innerHTML = '';
+    S.setcariBadge.style.display = 'none';
+    S.setcariEmpty.style.display = 'none';
+    setcariSetStatus('Membaca permintaan…');
+    await resolveSetcariEntries(entries);
+    S.setcariMap = entries;
+    S.setcariMapOpen = null;
+    renderSetcariMap();
+    await searchSetcari(kodeListFromEntries(entries), entries._skipped || 0);
+  } finally {
+    S.setcariSearchBtn.disabled = setcariSourceCount() === 0;
+  }
+}
+
+async function searchSetcari(kodeList, barisDisaring) {
   if (kodeList.length === 0) {
-    setcariSetStatus(S.setcariSourceMode === 'paste' ? 'Tempel kode produk dulu di kotak di atas.' : 'Clipboard masih kosong. Tambahkan produk dulu.', true);
+    S.setcariList.innerHTML = '';
+    S.setcariBadge.style.display = 'none';
+    setcariSetStatus('');
+    showSetcariEmptyMsg('Belum ada baris yang terpetakan ke produk. Pilih produk di panel Pemetaan, atau tempel kode produk langsung.');
     return;
   }
-  S.setcariSearchBtn.disabled = true;
   setcariSetStatus('Mencari SET…');
   S.setcariEmpty.style.display = 'none';
   S.setcariList.innerHTML = '';
@@ -157,18 +359,17 @@ async function runCariSetMendekati() {
     if (!data || data.length === 0) {
       setcariSetStatus('');
       showSetcariEmptyMsg(S.setcariSourceMode === 'paste'
-        ? 'Tidak ada SET yang cocok dengan kode yang ditempel.'
+        ? 'Tidak ada SET yang cocok dengan item yang ditempel.'
         : 'Tidak ada SET yang cocok dengan produk di Clipboard saat ini.');
       return;
     }
-    setcariSetStatus(`${data.length} SET ditemukan, diurutkan dari yang paling mirip.`);
+    const catatan = barisDisaring ? ` ${barisDisaring} baris bukan item (judul/basa-basi) dilewati.` : '';
+    setcariSetStatus(`${data.length} SET ditemukan, diurutkan dari yang paling mirip.${catatan}`);
     S.setcariBadge.textContent = data.length;
     S.setcariBadge.style.display = 'inline-block';
     renderSetcariResults(data, kodeList, useSub);
   } catch (err) {
     setcariSetStatus('Gagal mencari SET: ' + err.message, true);
-  } finally {
-    S.setcariSearchBtn.disabled = setcariSourceKodeList().length === 0;
   }
 }
 
@@ -190,7 +391,7 @@ function renderSetcariResults(rows, kodeList, useSub) {
         <div class="setcari-card-id">
           <div class="setcari-kode">${S.escapeHtmlAttr(row.kode_set)}</div>
           ${row.nama_set ? `<div class="setcari-nama">${S.escapeHtmlAttr(row.nama_set)}</div>` : ''}
-          <div class="setcari-cocok">${row.jumlah_cocok} dari ${row.total_item_set} item SET cocok persis${subInfo}</div>
+          <div class="setcari-cocok">${row.jumlah_cocok} dari ${kodeList.length} item diminta cocok persis${subInfo}. SET ini berisi ${row.total_item_set} item.</div>
         </div>
         <div class="setcari-score-wrap" title="${S.escapeHtmlAttr(scoreTip)}">
           <div class="setcari-score ${cls}">${pct}%</div>
@@ -248,7 +449,8 @@ const STATUS_LABEL = {
   beda_ukuran:   { ico: '≈', txt: 'Beda ukuran' },
   hanya_set:     { ico: '+', txt: 'Tambahan di SET' },
   hanya_input:   { ico: '−', txt: 'Tidak ada di SET' },
-  tidak_dikenal: { ico: '?', txt: 'Kode tidak dikenal' }
+  tidak_dikenal: { ico: '?', txt: 'Kode tidak dikenal' },
+  belum_dipetakan: { ico: '?', txt: 'Belum dipetakan' }
 };
 function fmtUkuranCm(arr) {
   if (!arr || !arr.length) return '';
@@ -260,50 +462,117 @@ function fmtSelisihCm(mm) {
   return n === 0 ? 'ukuran sama' : 'selisih ' + (n / 10).toLocaleString('id-ID', { maximumFractionDigits: 2 }) + ' cm';
 }
 
-// Perbandingan dua sisi: kiri = yang diminta (input), kanan = isi SET. Tiap baris = satu pasangan
-// (persis / substitusi / beda ukuran) atau satu sisi saja (kurang / lebih). Pasangan dihitung server.
-function renderSetcariBanding(rows) {
+// Justifikasi otomatis dari data (selisih ukuran, TC <-> non-TC). Hanya usulan: kolomnya bisa diedit,
+// dan "fungsi setara" tetap keputusan manusia, jadi baris beda_ukuran diberi tanda perlu dicek.
+const isTcNama = nama => /\bTC\b|tungsten/i.test(nama || '');
+function justifikasiOtomatis(r) {
+  const selCm = (r.selisih_mm != null && Number(r.selisih_mm) > 0)
+    ? (Number(r.selisih_mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '';
+  switch (r.status) {
+    case 'persis': return '';
+    case 'substitusi':
+    case 'beda_ukuran': {
+      const parts = [];
+      if (selCm) parts.push(`Selisih ukuran ${selCm} cm`);
+      const tcIn = isTcNama(r.input_nama), tcSet = isTcNama(r.set_nama);
+      if (tcIn && !tcSet) parts.push('non-TC');
+      else if (!tcIn && tcSet) parts.push('versi TC');
+      if (r.status === 'substitusi') parts.push('fungsi sama');
+      return parts.join(', ') || (r.status === 'substitusi' ? 'Fungsi sama' : '');
+    }
+    case 'hanya_input': return 'Tidak tersedia di SET ini';
+    case 'hanya_set': return 'Tambahan di SET (tidak diminta)';
+    case 'belum_dipetakan': return 'Belum dipetakan ke produk';
+    case 'tidak_dikenal': return 'Kode tidak dikenal';
+    default: return '';
+  }
+}
+// Perlu dicek manusia sebelum dikirim: sekeluarga tapi beda ukuran, atau TC <-> non-TC.
+function justifikasiPerluCek(r) {
+  if (r.status === 'beda_ukuran') return true;
+  return (r.status === 'substitusi') && isTcNama(r.input_nama) !== isTcNama(r.set_nama);
+}
+
+function entryUntukKode(kode) {
+  return kode ? (S.setcariMap || []).find(e => e.kode === kode && !e.kodeLangsung) : null;
+}
+
+// Perbandingan: kiri = yang diminta (teks asli dari sheet kalau ada), tengah = status, kanan = isi SET,
+// ujung = justifikasi (bisa diedit). Baris mengikuti urutan permintaan; item SET yang tidak diminta di akhir;
+// baris permintaan yang belum dipetakan ke produk ikut ditampilkan supaya tabel yang disalin lengkap.
+function bandingRowsLengkap(rows, kodeList) {
+  const order = new Map(kodeList.map((k, i) => [k, i]));
+  const sorted = rows.slice().sort((a, b) => {
+    const ia = order.has(a.input_kode) ? order.get(a.input_kode) : 1e6;
+    const ib = order.has(b.input_kode) ? order.get(b.input_kode) : 1e6;
+    return ia - ib;
+  });
+  const belum = (S.setcariMap || []).filter(e => !e.kodeLangsung && !e.kode && !e.skip)
+    .map(e => ({ status: 'belum_dipetakan', input_kode: '', input_nama: e.raw, _raw: e.raw, _qty: e.qty }));
+  return sorted.concat(belum);
+}
+function renderSetcariBanding(rowsRaw, kodeList) {
+  const rows = bandingRowsLengkap(rowsRaw, kodeList);
   const cnt = {};
   rows.forEach(r => { cnt[r.status] = (cnt[r.status] || 0) + 1; });
   const chip = (st, label) => cnt[st] ? `<span class="sc-chip st-${st}">${cnt[st]} ${label}</span>` : '';
   const ringkas = [
     chip('persis', 'persis'), chip('substitusi', 'substitusi'), chip('beda_ukuran', 'beda ukuran'),
-    chip('hanya_input', 'tidak ada di SET'), chip('hanya_set', 'tambahan di SET'), chip('tidak_dikenal', 'kode tidak dikenal')
+    chip('hanya_input', 'tidak ada di SET'), chip('hanya_set', 'tambahan di SET'),
+    chip('belum_dipetakan', 'belum dipetakan'), chip('tidak_dikenal', 'kode tidak dikenal')
   ].join('');
   const cell = (kode, nama, ukuran, extra) => kode || nama
     ? `<div class="sc-cmp-kode">${S.escapeHtmlAttr(kode || '')}</div>
        <div class="sc-cmp-nama">${S.escapeHtmlAttr(nama || '')}</div>
        ${ukuran ? `<div class="sc-cmp-uk">${S.escapeHtmlAttr(ukuran)}</div>` : ''}${extra || ''}`
     : '<div class="sc-cmp-kosong">—</div>';
-  const body = rows.map(r => {
+  const body = rows.map((r, i) => {
     const lb = STATUS_LABEL[r.status] || { ico: '', txt: r.status };
     const sel = (r.status === 'substitusi' || r.status === 'beda_ukuran') ? fmtSelisihCm(r.selisih_mm) : '';
     const kalimat = r.status === 'substitusi'
       ? `${r.set_kode} dapat menggantikan ${r.input_kode} (${sel})`
       : r.status === 'beda_ukuran' ? `${r.set_kode} sekeluarga dengan ${r.input_kode} tetapi ukurannya berbeda (${sel})` : '';
-    const sisiInput = r.status === 'hanya_set' ? '<div class="sc-cmp-kosong">tidak diminta</div>'
-      : cell(r.input_kode, r.input_nama, fmtUkuranCm(r.input_ukuran_mm));
-    const sisiSet = (r.status === 'hanya_input' || r.status === 'tidak_dikenal') ? '<div class="sc-cmp-kosong">tidak ada di SET</div>'
-      : cell(r.set_kode, r.set_nama, fmtUkuranCm(r.set_ukuran_mm), r.set_qty != null ? `<div class="sc-cmp-qty">qty ${r.set_qty}</div>` : '');
+    const ent = entryUntukKode(r.input_kode);
+    r._qtyDiminta = r._qty != null ? r._qty : (ent && ent.qty) || null;
+    r._rawDiminta = r._raw || (ent && ent.raw) || '';
+    let sisiInput;
+    if (r.status === 'hanya_set') sisiInput = '<div class="sc-cmp-kosong">tidak diminta</div>';
+    else if (r.status === 'belum_dipetakan') sisiInput = `<div class="sc-cmp-raw">${esc(r._rawDiminta)}${r._qtyDiminta ? `<span class="sc-map-qty">× ${r._qtyDiminta}</span>` : ''}</div>`;
+    else {
+      const raw = r._rawDiminta
+        ? `<div class="sc-cmp-raw">${esc(r._rawDiminta)}${r._qtyDiminta ? `<span class="sc-map-qty">× ${r._qtyDiminta}</span>` : ''}</div>` : '';
+      sisiInput = raw + cell(r.input_kode, r.input_nama, fmtUkuranCm(r.input_ukuran_mm));
+    }
+    const qtyWarn = (r.set_qty != null && r._qtyDiminta && Number(r.set_qty) < Number(r._qtyDiminta))
+      ? `<div class="sc-cmp-qty warn">qty SET ${r.set_qty}, diminta ${r._qtyDiminta}</div>`
+      : (r.set_qty != null ? `<div class="sc-cmp-qty">qty ${r.set_qty}</div>` : '');
+    const sisiSet = (r.status === 'hanya_input' || r.status === 'tidak_dikenal' || r.status === 'belum_dipetakan')
+      ? `<div class="sc-cmp-kosong">${r.status === 'belum_dipetakan' ? 'belum ada produk' : 'tidak ada di SET'}</div>`
+      : cell(r.set_kode, r.set_nama, fmtUkuranCm(r.set_ukuran_mm), qtyWarn);
+    const cek = justifikasiPerluCek(r);
     return `<div class="sc-cmp-row st-${r.status}"${kalimat ? ` title="${S.escapeHtmlAttr(kalimat)}"` : ''}>
       <div class="sc-cmp-side">${sisiInput}</div>
       <div class="sc-cmp-mid"><span class="sc-cmp-badge">${lb.ico} ${lb.txt}</span>${sel ? `<span class="sc-cmp-sel">${S.escapeHtmlAttr(sel)}</span>` : ''}</div>
       <div class="sc-cmp-side">${sisiSet}</div>
+      <div class="sc-cmp-side">${r.status === 'persis' ? '<div class="sc-cmp-kosong">—</div>'
+        : `<input class="sc-cmp-just${cek ? ' cek' : ''}" type="text" data-i="${i}" value="${esc(justifikasiOtomatis(r))}" placeholder="Tulis alasan" aria-label="Justifikasi baris ${i + 1}"${cek ? ' title="Cek dulu: fungsi setara adalah penilaian manusia"' : ''}>`}</div>
     </div>`;
   }).join('');
-  return `<div class="sc-cmp">
+  const html = `<div class="sc-cmp">
     <div class="sc-cmp-summary">${ringkas || '<span class="sc-chip">Tidak ada data</span>'}
-      <button class="setcari-detail-btn sc-cmp-copy" type="button" data-action="copy-banding"><i class="ti ti-copy"></i> Salin</button></div>
-    <div class="sc-cmp-head"><div>Diminta (input)</div><div></div><div>Isi SET</div></div>
+      <button class="setcari-detail-btn sc-cmp-copy" type="button" data-action="copy-banding"><i class="ti ti-copy"></i> Salin tabel</button></div>
+    <div class="sc-cmp-head"><div>Diminta</div><div></div><div>Isi SET</div><div>Justifikasi</div></div>
     ${body}
   </div>`;
+  return { html, rows };
 }
-function bandingToTsv(rows) {
-  const head = ['Status', 'Kode diminta', 'Nama diminta', 'Kode SET', 'Nama SET', 'Qty SET', 'Selisih (cm)'];
-  const lines = rows.map(r => [
-    (STATUS_LABEL[r.status] || {}).txt || r.status, r.input_kode || '', r.input_nama || '',
+// TSV siap tempel ke Excel. Justifikasi diambil dari kolom yang tampil (sudah termasuk editan user).
+function bandingToTsv(rows, justTexts) {
+  const head = ['Diminta', 'Qty diminta', 'Kode produk diminta', 'Kode di SET', 'Nama di SET', 'Qty di SET', 'Status', 'Justifikasi'];
+  const lines = rows.map((r, i) => [
+    r._rawDiminta || r.input_nama || '', r._qtyDiminta == null ? '' : r._qtyDiminta, r.input_kode || '',
     r.set_kode || '', r.set_nama || '', r.set_qty == null ? '' : r.set_qty,
-    r.selisih_mm == null ? '' : (Number(r.selisih_mm) / 10)
+    (STATUS_LABEL[r.status] || {}).txt || r.status, justTexts[i] != null ? justTexts[i] : justifikasiOtomatis(r)
   ].map(v => String(v).replace(/[\t\r\n]+/g, ' ')).join('\t'));
   return [head.join('\t')].concat(lines).join('\n');
 }
@@ -327,11 +596,15 @@ async function toggleSetcariDetail(btn, kodeList, useSub) {
         p_set_id: Number(setId), kode_list: kodeList, p_toleransi_mm: o.tol, p_lintas_tc: o.lintasTc
       });
       if (error) throw new Error(error.message || 'Gagal membandingkan');
-      const rows = data || [];
-      detailEl.innerHTML = renderSetcariBanding(rows);
+      const { html, rows } = renderSetcariBanding(data || [], kodeList);
+      detailEl.innerHTML = html;
       const copyBtn = detailEl.querySelector('[data-action="copy-banding"]');
       if (copyBtn) copyBtn.addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText(bandingToTsv(rows)); S.showToast('Perbandingan disalin (format tabel, siap tempel ke Excel)'); }
+        const justTexts = rows.map((_, i) => {
+          const inp = detailEl.querySelector(`input.sc-cmp-just[data-i="${i}"]`);
+          return inp ? inp.value : '';
+        });
+        try { await navigator.clipboard.writeText(bandingToTsv(rows, justTexts)); S.showToast('Tabel disalin (siap tempel ke Excel)'); }
         catch (e) { S.showToast('Gagal menyalin: ' + e.message, 'error'); }
       });
     } else {

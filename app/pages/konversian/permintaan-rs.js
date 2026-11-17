@@ -323,6 +323,7 @@ function parseTeksPermintaan(teks) {
   items._skipped = skipped; // info baris yang disaring, dibaca sama pemanggil
   return items;
 }
+S.parseTeksPermintaan = parseTeksPermintaan; // dipakai juga oleh Cari SET (set-mendekati.js): paste teks permintaan -> baris + qty
 
 // ---- Parsing Excel: cari kolom nama barang & qty secara fleksibel ----
 async function parseExcelPermintaan(file) {

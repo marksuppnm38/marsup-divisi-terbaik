@@ -2810,13 +2810,15 @@
 #app-root .sc-chip{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--surface-3);color:var(--text-secondary)}
 #app-root .sc-chip.st-persis{background:var(--accent-bg);color:var(--success)}
 #app-root .sc-chip.st-substitusi{background:var(--accent-bg);color:var(--warn)}
-#app-root .sc-cmp-head,#app-root .sc-cmp-row{display:grid;grid-template-columns:minmax(0,1fr) 108px minmax(0,1fr);gap:8px;align-items:start}
-#app-root .sc-cmp-head{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);padding:4px 0;border-bottom:1px solid var(--border)}
+#app-root .sc-cmp-head,#app-root .sc-cmp-row{display:grid;grid-template-columns:minmax(0,1.1fr) 104px minmax(0,1fr) minmax(0,1.1fr);gap:10px;align-items:start}
+#app-root .sc-cmp-head{font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 0;border-bottom:1px solid var(--border)}
 #app-root .sc-cmp-row{padding:7px 0;border-bottom:1px dashed var(--border)}
 #app-root .sc-cmp-row:last-child{border-bottom:0}
 #app-root .sc-cmp-kode{font-family:var(--mono);overflow-wrap:anywhere}
 #app-root .sc-cmp-nama{color:var(--text-secondary);line-height:1.4}
 #app-root .sc-cmp-uk,#app-root .sc-cmp-qty{color:var(--text-muted);font-size:10.5px;font-variant-numeric:tabular-nums}
+#app-root .sc-cmp-qty.warn{color:var(--warn);font-weight:600}
+#app-root .sc-cmp-raw{font-size:12px;font-weight:600;line-height:1.4;color:var(--text);overflow-wrap:anywhere;margin-bottom:2px}
 #app-root .sc-cmp-kosong{color:var(--text-muted);font-style:italic}
 #app-root .sc-cmp-mid{display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center}
 #app-root .sc-cmp-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:var(--surface-3);color:var(--text-secondary);white-space:nowrap}
@@ -2825,3 +2827,44 @@
 #app-root .sc-cmp-row.st-substitusi .sc-cmp-badge{background:var(--accent-bg);color:var(--warn)}
 #app-root .sc-cmp-row.st-hanya_input .sc-cmp-badge,#app-root .sc-cmp-row.st-tidak_dikenal .sc-cmp-badge{color:var(--danger,var(--text-muted))}
 #app-root .sc-cmp-row.st-hanya_set{opacity:.8}
+#app-root .sc-chip.st-belum_dipetakan,#app-root .sc-chip.st-hanya_input{background:var(--surface-3);color:var(--danger,var(--text-secondary))}
+#app-root .sc-cmp-row.st-belum_dipetakan .sc-cmp-badge{color:var(--danger,var(--text-muted))}
+#app-root .sc-cmp-just{width:100%;box-sizing:border-box;font:inherit;font-size:11.5px;line-height:1.4;padding:5px 8px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:inherit}
+#app-root .sc-cmp-just::placeholder{color:var(--text-muted)}
+#app-root .sc-cmp-just:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+#app-root .sc-cmp-just.cek{border-style:dashed;border-color:var(--warn)}
+
+/* Pemetaan permintaan (Cari SET): teks dari sheet -> produk yang dipakai mencari. Memakai ulang
+   token & pola select/chip yang sudah ada di .setcari-sub-opts dan .sc-chip. */
+#app-root .setcari-map{padding:12px 0 4px}
+#app-root .setcari-map[hidden]{display:none}
+#app-root .sc-map summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;cursor:pointer;list-style:none;padding:2px 0}
+#app-root .sc-map summary::-webkit-details-marker{display:none}
+#app-root .sc-map summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+#app-root .sc-map-title{font-size:13px;font-weight:600;color:var(--text)}
+#app-root .sc-map-title::before{content:"\203A";display:inline-block;width:1em;color:var(--text-muted);transition:transform .15s}
+#app-root .sc-map[open] .sc-map-title::before{transform:rotate(90deg)}
+#app-root .sc-map-sum{font-size:12px;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+#app-root .sc-map-sum.warn{color:var(--warn);font-weight:600}
+#app-root .sc-map-rows{margin-top:8px;border-top:1px solid var(--border)}
+#app-root .sc-map-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) 112px;gap:10px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--border)}
+#app-root .sc-map-row:last-child{border-bottom:0}
+#app-root .sc-map-raw{display:flex;align-items:baseline;gap:6px;min-width:0}
+#app-root .sc-map-text{font-size:12px;overflow-wrap:anywhere}
+#app-root .sc-map-qty{flex:0 0 auto;font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums;margin-left:6px}
+#app-root .sc-map-raw .sc-map-qty{margin-left:0}
+#app-root .sc-map-sel{width:100%;min-width:0;font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:inherit;text-overflow:ellipsis}
+#app-root .sc-map-sel:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#app-root .sc-map-conf{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--surface-3);color:var(--text-secondary);text-align:center;white-space:nowrap}
+#app-root .sc-map-row.conf-kuat .sc-map-conf{background:var(--accent-bg);color:var(--success)}
+#app-root .sc-map-row.conf-lemah .sc-map-conf{background:var(--accent-bg);color:var(--warn)}
+#app-root .sc-map-row.conf-none .sc-map-conf{color:var(--danger,var(--text-muted))}
+#app-root .sc-map-row.conf-skip{opacity:.6}
+
+@media (max-width:760px){
+  #app-root .sc-cmp-head{display:none}
+  #app-root .sc-cmp-row{grid-template-columns:minmax(0,1fr);gap:6px}
+  #app-root .sc-cmp-mid{flex-direction:row;justify-content:flex-start}
+  #app-root .sc-map-row{grid-template-columns:minmax(0,1fr)}
+  #app-root .sc-map-conf{justify-self:start}
+}
