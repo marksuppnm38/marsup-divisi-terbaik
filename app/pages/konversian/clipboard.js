@@ -1661,7 +1661,22 @@ if (btnDriveUpload) {
 }
 
 // EXPORT EXCEL
+// Penjaga klik ganda: ada jeda async (cek nomor revisi → baru modal progres tampil) saat tombol masih bisa
+// diklik lagi → dulu bisa menjalankan 2 export paralel (2 file, 2 unduhan). Tombol dimatikan SINKRON di klik
+// pertama; klik berikutnya otomatis tidak terkirim (tombol disabled, jadi stepper convFlow pun tidak ikut reset).
+let exportBusy = false;
 S.btnExport.addEventListener('click', async () => {
+  if (exportBusy) return;
+  exportBusy = true;
+  S.btnExport.disabled = true;
+  try {
+    await runExportExcel();
+  } finally {
+    exportBusy = false;
+    S.btnExport.disabled = S.clipboard.length === 0; // sama dengan aturan di updateClipboard()
+  }
+});
+async function runExportExcel() {
   const namaRs = S.inpRs.value.trim() || 'RS';
   const namaSales = S.inpSales.value.trim() || 'Sales';
   const tanggal = new Date().toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'});
@@ -2258,7 +2273,7 @@ S.btnExport.addEventListener('click', async () => {
   } finally {
     S.exportModal.classList.remove('show');
   }
-});
+}
 
 // CLEAR ALL
 S.btnClearAll.addEventListener('click', async () => {
