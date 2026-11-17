@@ -776,6 +776,15 @@ async function sphFetchThumbForKodes(kodeAsliByKode, onProgress) {
   return map;
 }
 
+// Lebar teks TEBAL — dipakai DOCX buat garis aksen judul lampiran (PDF mengukur lebar judul
+// SETELAH balik ke font normal, jadi garisnya sedikit lebih pendek dari teks tebalnya).
+function sphBoldWidth(doc, text) {
+  doc.setFont('helvetica', 'bold');
+  const w = doc.getTextWidth(text);
+  doc.setFont('helvetica', 'normal');
+  return w;
+}
+
 // ===== LAMPIRAN — TABEL ITEM + THUMBNAIL =====
 // Dipakai utk lampiran per-SET (rincian instrumen satuan di dalam 1 set) dan
 // lampiran ITEM SATUAN (1 tabel gabungan). Layout-nya SAMA PERSIS kayak
@@ -802,6 +811,7 @@ async function sphDrawLampiranTablePage(doc, title, tableItems, safeBottom) {
     return yy + 8.5;
   }
 
+  const rowsModel = []; // dicatat buat versi .docx (lihat sphBuildDocxBlob) — gak mempengaruhi PDF
   let ly = sphAddPageWithFooter(doc);
   doc.setFontSize(SPH_FONT_SIZE);
   doc.setFont('helvetica', 'bold');
@@ -823,6 +833,8 @@ async function sphDrawLampiranTablePage(doc, title, tableItems, safeBottom) {
     const kodeLines = doc.splitTextToSize(item.kode_produk || '-', lWidths[1] - 3);
     const imgBoxH = 26;
     const rowH = Math.max(imgBoxH + 2, descLines.length * 5 + 3, kodeLines.length * 5 + 3);
+    const rowModel = { no: item.no ?? idx + 1, kode_produk: item.kode_produk || '-', deskripsi: item.deskripsi || '-', qty: item.qty ?? 1, rowH, img: null };
+    rowsModel.push(rowModel);
 
     if (ly + rowH > safeBottom) {
       ly = sphAddPageWithFooter(doc);
@@ -866,6 +878,7 @@ async function sphDrawLampiranTablePage(doc, title, tableItems, safeBottom) {
         const imgY = ly + (rowH - h) / 2;
         const compressed = await sphCompressImageForPdf(item.gambar, w, h);
         doc.addImage(compressed, 'JPEG', imgX, imgY, w, h);
+        rowModel.img = { dataUrl: compressed, w, h };
       } catch (e) { /* satu gambar gagal ditempel gak boleh gagalin seluruh lampiran */ }
     } else {
       doc.setFontSize(SPH_FONT_SIZE);
@@ -876,7 +889,8 @@ async function sphDrawLampiranTablePage(doc, title, tableItems, safeBottom) {
     ly += rowH;
   }
 
-  if (ly + 8.5 > safeBottom) { ly = sphAddPageWithFooter(doc); }
+  let totalOrphan = false; // sama dgn tabel utama: TOTAL sendirian di halaman baru = tanpa header kolom
+  if (ly + 8.5 > safeBottom) { ly = sphAddPageWithFooter(doc); totalOrphan = true; }
   doc.setFillColor(...SPH_BRAND);
   doc.setDrawColor(...SPH_BORDER_COLOR);
   doc.setLineWidth(SPH_BORDER_WIDTH);
@@ -887,6 +901,7 @@ async function sphDrawLampiranTablePage(doc, title, tableItems, safeBottom) {
   const totalQty = tableItems.reduce((s, i) => s + (i.qty || 0), 0);
   doc.text(String(totalQty), SPH_MARGIN_X + lWidths[0] + lWidths[1] + lWidths[2] + lWidths[3] / 2, ly + 5.8, { align: 'center' });
   doc.setTextColor(17, 24, 39);
+  return { kind: 'table', title: title.toUpperCase(), titleW: sphBoldWidth(doc, title.toUpperCase()), rows: rowsModel, totalQty, totalOrphan };
 }
 
 // ===== LAMPIRAN — HALAMAN PENUH (brosur PDF) =====
@@ -897,6 +912,7 @@ async function sphDrawLampiranTablePage(doc, title, tableItems, safeBottom) {
 // drag&drop lampiran yang berlaku universal per kode_produk.
 async function sphDrawLampiranUnitPages(doc, title, pages, safeBottom) {
   const tableW = SPH_PAGE_W - SPH_MARGIN_X * 2;
+  const pagesModel = []; // dicatat buat versi .docx — gak mempengaruhi PDF
   for (let idx = 0; idx < pages.length; idx++) {
     const pg = pages[idx];
     let ly = sphAddPageWithFooter(doc);
@@ -917,134 +933,333 @@ async function sphDrawLampiranUnitPages(doc, title, pages, safeBottom) {
     if (h > availH) { h = availH; w = (pg.width / pg.height) * h; }
     const imgX = SPH_MARGIN_X + (availW - w) / 2;
     const imgY = ly + (availH - h) / 2;
+    const pgModel = { availH, img: null };
+    pagesModel.push(pgModel);
     try {
       const dataUrl = 'data:image/jpeg;base64,' + pg.base64;
       const compressed = await sphCompressImageForPdf(dataUrl, w, h);
       doc.addImage(compressed, 'JPEG', imgX, imgY, w, h);
+      pgModel.img = { dataUrl: compressed, w, h };
     } catch (e) { /* halaman brosur rusak, lanjut ke halaman berikutnya */ }
   }
+  return { kind: 'pages', title: `LAMPIRAN — ${title}`, titleW: sphBoldWidth(doc, `LAMPIRAN — ${title}`), pages: pagesModel };
 }
 
 // ===== GENERATE =====
-// ===== EXPORT TABEL ITEM KE .DOCX (buat rekap/audit) =====
-// Bukan pengganti PDF (PDF tetap dokumen resmi buat kirim ke customer) — ini
-// cuma versi kedua khusus tabel item pakai <w:tbl> Word ASLI, biar pas
-// disimpan di Drive terus di-copas buat rekap/audit hasilnya SELALU rapi per
-// kolom di Excel/Sheets. PDF gak bisa dijamin gitu (jsPDF nempel teks di
-// koordinat X,Y mentah, gak ada info "ini tabel" di dalam filenya — beda
-// PDF viewer bisa beda urutan pas dicopas, lihat diskusi taknis terpisah).
-// Word/OOXML tabel selalu punya struktur baris/kolom eksplisit, jadi
-// copy-paste-nya gak pernah tergantung tebakan software.
-function sphBuildDocxBlob(items, meta) {
+// ===== EXPORT .DOCX — REPLIKA 1:1 DARI PDF =====
+// PDF tetap dokumen resmi buat kirim ke customer; .docx ini versi yang BISA DIEDIT
+// dengan tampilan sama persis: kop surat, footer, surat pengantar, tabel (lebar
+// kolom, tinggi baris, warna, zebra, garis grid), blok tanda tangan, dan semua
+// LAMPIRAN (rincian set, item satuan + thumbnail, brosur full-page).
+//
+// KENAPA BISA 1:1: builder ini TIDAK menghitung ulang layout sendiri. Semua angka
+// (lebar kolom mm, tinggi tiap baris, jumlah baris teks, dimensi gambar, ukuran
+// logo/TTD/footer) diambil dari "model layout" yang dicatat sphGenerate() saat
+// jsPDF menggambar — jadi kalau PDF-nya berubah, DOCX otomatis ikut.
+//
+// Prinsip pemetaan jsPDF (koordinat absolut mm) → Word (alur dokumen):
+//  • Font Arial 11pt = metrik identik dgn Helvetica jsPDF → pemotongan baris sama.
+//  • Teks di PDF digambar per BASELINE; di Word dikontrol lewat spacing before/after
+//    paragraf (single line = 12.65pt = persis lineHeight jsPDF). SPH_BASE_OFF_MM =
+//    jarak atas-kotak-baris → baseline.
+//  • Kop surat & footer = gambar FLOATING relatif ke HALAMAN (posisi mm sama dgn PDF),
+//    di header/footer section → muncul di tiap halaman seperti di PDF.
+//  • Halaman pertama beda dgn halaman lanjutan (titlePage): halaman lanjutan dapat
+//    "spacer" di header supaya isi turun ke bawah kop, seperti sphAddPageWithFooter().
+//  • Tiap LAMPIRAN = 1 section sendiri (mulai halaman baru, seperti PDF); tiap halaman
+//    brosur = 1 section supaya judulnya selalu persis di posisi yg sama.
+//  • Tabel pakai <w:tbl> asli (bukan gambar) → tetap bisa dicopas rapi ke Excel/Sheets.
+const SPH_MM_TW = 1440 / 25.4;                          // twips per mm
+const sphTw = (mm) => Math.round(mm * SPH_MM_TW);
+const sphEmu = (mm) => Math.round(mm * 36000);
+const sphPx = (mm) => (mm / 25.4) * 96;                // docx-js: ukuran gambar dalam px @96dpi
+const sphHex = (rgb) => rgb.map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+const SPH_LINE_MM = (SPH_FONT_SIZE * 1.15 * 25.4) / 72; // tinggi 1 baris = lineHeight jsPDF (4.46mm)
+const SPH_BASE_OFF_MM = 3.55;                           // atas kotak baris → baseline (Arial 11pt)
+const SPH_TEXT_RGB = [17, 24, 39];                      // warna teks setelah tabel (sama dgn PDF)
+const SPH_DOCX_FONT = 'Arial';
+const SPH_DOCX_HEADER_DIST_MM = 4;                      // header/footer cuma wadah gambar floating
+const SPH_DOCX_FOOTER_DIST_MM = 2;
+const SPH_DOCX_PAGE_W_TW = 11906, SPH_DOCX_PAGE_H_TW = 16838; // A4
+
+// dataURL (atau path same-origin kalau canvas ke-taint di file://) → bytes buat ImageRun.
+async function sphImageSrcToBytes(src) {
+  if (/^data:/i.test(src)) {
+    const comma = src.indexOf(',');
+    const bin = atob(src.slice(comma + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return { bytes, type: /jpe?g/i.test(src.slice(0, comma)) ? 'jpg' : 'png' };
+  }
+  const res = await fetch(src);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return { bytes: new Uint8Array(await res.arrayBuffer()), type: /\.jpe?g(\?|$)/i.test(src) ? 'jpg' : 'png' };
+}
+
+async function sphBuildDocxBlob(m) {
   const {
-    Document, Packer, Table, TableRow, TableCell, Paragraph, TextRun,
-    ExternalHyperlink, WidthType, AlignmentType, VerticalAlign, BorderStyle, HeadingLevel
+    Document, Packer, Table, TableRow, TableCell, Paragraph, TextRun, ImageRun, ExternalHyperlink, Header, Footer, Tab,
+    WidthType, AlignmentType, VerticalAlign, BorderStyle, ShadingType, HeightRule, TableLayoutType, LevelFormat,
+    SectionType, TabStopType, LineRuleType, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType
   } = window.docx;
 
-  const cellBorder = { style: BorderStyle.SINGLE, size: 2, color: 'CBD5E1' };
-  const borders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
+  const L = SPH_LINE_MM, BO = SPH_BASE_OFF_MM;
+  const contentMm = SPH_PAGE_W - SPH_MARGIN_X * 2;                 // 174mm
+  const contentTw = SPH_DOCX_PAGE_W_TW - 2 * sphTw(SPH_MARGIN_X);
+  const FONT = { ascii: SPH_DOCX_FONT, hAnsi: SPH_DOCX_FONT, cs: SPH_DOCX_FONT, eastAsia: SPH_DOCX_FONT };
+  const SZ = SPH_FONT_SIZE * 2;
+  const C_BRAND = sphHex(SPH_BRAND), C_BORDER = sphHex(SPH_BORDER_COLOR), C_ZEBRA = sphHex(SPH_ZEBRA_COLOR);
+  const C_TEXT = sphHex(SPH_TEXT_RGB), C_LINK = sphHex(SPH_LINK_COLOR), C_MUTED = '9CA3AF';
+  const warnings = [];
 
-  const headers = meta.modeSwastaOutput
-    ? ['No', 'Kode', 'Deskripsi', 'Qty', 'Harga', 'Total']
-    : ['No', 'Kode', 'Deskripsi', 'Qty', 'Harga', 'Total', 'E-Katalog v6'];
-  const widthsPct = meta.modeSwastaOutput
-    ? [6, 15, 39, 6, 17, 17]
-    : [6, 13, 27, 6, 15, 15, 18];
-
-  function headerCell(text, pct) {
-    return new TableCell({
-      width: { size: pct, type: WidthType.PERCENTAGE },
-      shading: { fill: '1D5BD4' },
-      verticalAlign: VerticalAlign.CENTER,
-      borders,
-      children: [new Paragraph({ children: [new TextRun({ text, bold: true, color: 'FFFFFF', size: 18 })] })],
-    });
+  // ---- aset (logo/footer/TTD) → bytes ----
+  async function loadAsset(asset, label) {
+    if (!asset) return null;
+    try { return await sphImageSrcToBytes(asset.dataUrl); }
+    catch (e) { console.error('[SPH-DOCX] gagal baca ' + label, e); warnings.push(label); return null; }
   }
-  function bodyCell(text, pct, opts = {}) {
-    return new TableCell({
-      width: { size: pct, type: WidthType.PERCENTAGE },
-      verticalAlign: VerticalAlign.CENTER,
-      borders,
-      shading: opts.shade ? { fill: 'F5F6F8' } : undefined,
-      children: [new Paragraph({
-        alignment: opts.align || AlignmentType.LEFT,
-        children: [new TextRun({ text: String(text), size: 18 })],
-      })],
-    });
-  }
-  function linkCell(url, pct, opts = {}) {
-    const children = url
-      ? [new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [new ExternalHyperlink({
-            link: url,
-            children: [new TextRun({ text: 'Lihat di e-Katalog', style: 'Hyperlink', size: 18 })],
-          })],
-        })]
-      : [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: '-', size: 18 })] })];
-    return new TableCell({
-      width: { size: pct, type: WidthType.PERCENTAGE },
-      verticalAlign: VerticalAlign.CENTER,
-      borders,
-      shading: opts.shade ? { fill: 'F5F6F8' } : undefined,
-      children,
-    });
+  const [hdrImg, ftrImg, ttdImg] = await Promise.all([
+    loadAsset(m.headerAsset, 'Kop Surat'), loadAsset(m.footerAsset, 'Footer'), loadAsset(m.ttdAsset, 'Tanda Tangan')
+  ]);
+  // gambar lampiran (thumbnail & halaman brosur) — SAMA persis dgn yang ditempel ke PDF (sudah dikompres)
+  for (const lp of (m.lampiran || [])) {
+    for (const it of (lp.kind === 'table' ? lp.rows : lp.pages)) {
+      if (!it.img) continue;
+      try { it.imgBytes = await sphImageSrcToBytes(it.img.dataUrl); }
+      catch (e) { console.error('[SPH-DOCX] gagal baca gambar lampiran', e); warnings.push('Gambar lampiran'); }
+    }
   }
 
-  const headerRow = new TableRow({ tableHeader: true, children: headers.map((h, i) => headerCell(h, widthsPct[i])) });
+  // ---- helper dasar ----
+  const run = (text, o = {}) => new TextRun({ text, font: FONT, size: SZ, bold: o.bold || undefined, color: o.color || C_TEXT });
+  const para = (children, o = {}) => new Paragraph({
+    children,
+    alignment: o.align,
+    spacing: { before: sphTw(o.before || 0), after: sphTw(o.after || 0) },
+    keepNext: o.keepNext || undefined, keepLines: o.keepLines || undefined,
+    indent: o.indent, tabStops: o.tabStops, border: o.border, numbering: o.numbering,
+    style: o.style,
+  });
+  const gap = (baselineToBaselineMm) => baselineToBaselineMm - L;   // spacing-after utk jarak baseline→baseline
 
-  const bodyRows = items.map((it, idx) => {
-    const shade = idx % 2 === 0;
-    const cells = [
-      bodyCell(it.no, widthsPct[0], { align: AlignmentType.CENTER, shade }),
-      bodyCell(it.kode_produk, widthsPct[1], { shade }),
-      bodyCell(it.deskripsi, widthsPct[2], { shade }),
-      bodyCell(it.qty, widthsPct[3], { align: AlignmentType.CENTER, shade }),
-      bodyCell(S.rupiah(it.harga), widthsPct[4], { align: AlignmentType.RIGHT, shade }),
-      bodyCell(S.rupiah(it.total), widthsPct[5], { align: AlignmentType.RIGHT, shade }),
+  const B = { style: BorderStyle.SINGLE, size: 4, color: C_BORDER };
+  const NB = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+  const GRID = { top: B, bottom: B, left: B, right: B };
+  const TBL_BORDERS = { top: B, bottom: B, left: B, right: B, insideHorizontal: B, insideVertical: B };
+  const PAD_TW = sphTw(1.5);                                          // padding teks sel = 1.5mm (sama dgn x+1.5 di PDF)
+  const cell = (w, children, o = {}) => new TableCell({
+    width: { size: w, type: WidthType.DXA },
+    columnSpan: o.span || undefined,
+    verticalAlign: o.vAlign || VerticalAlign.TOP,
+    margins: { top: sphTw(o.mTop === undefined ? 5.2 - BO : o.mTop), bottom: sphTw(o.mBottom || 0), left: o.padTw === undefined ? PAD_TW : o.padTw, right: o.padTw === undefined ? PAD_TW : o.padTw },
+    shading: o.fill ? { type: ShadingType.CLEAR, fill: o.fill, color: 'auto' } : undefined,
+    borders: o.borders || GRID,
+    children,
+  });
+  const row = (h, cells, o = {}) => new TableRow({
+    height: { value: sphTw(h), rule: HeightRule.ATLEAST }, cantSplit: true, tableHeader: o.header || undefined, children: cells,
+  });
+  const colTw = (mm) => { const tw = mm.map(sphTw); tw[tw.length - 1] += contentTw - tw.reduce((a, b) => a + b, 0); return tw; };
+  const mkTable = (cols, rows) => new Table({
+    width: { size: contentTw, type: WidthType.DXA }, columnWidths: cols, layout: TableLayoutType.FIXED, borders: TBL_BORDERS, rows,
+  });
+  const HDR_TOP = 5.8 - BO;                                           // baseline teks header/total bar = 5.8mm dari atas bar
+  const hdrCell = (w, text, o = {}) => cell(w, [para([run(text, { color: 'FFFFFF' })], { align: o.align })], { fill: C_BRAND, mTop: HDR_TOP, ...o });
+  const inlineImg = (img, wMm, hMm) => new ImageRun({ data: img.bytes, type: img.type, transformation: { width: sphPx(wMm), height: sphPx(hMm) } });
+  const floatImg = (img, xMm, yMm, wMm, hMm) => new ImageRun({
+    data: img.bytes, type: img.type, transformation: { width: sphPx(wMm), height: sphPx(hMm) },
+    floating: {
+      horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: sphEmu(xMm) },
+      verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: sphEmu(yMm) },
+      behindDocument: true, allowOverlap: true, lockAnchor: true, wrap: { type: TextWrappingType.NONE },
+    },
+  });
+  const IMG_STYLE = 'SphImg';                                          // paragraph style font 1pt → baris berisi gambar inline = tinggi gambar (tanpa descent font 11pt)
+
+  // ---- geometri halaman (sama dgn PDF) ----
+  const hasHdr = !!(hdrImg && m.headerH);
+  const contStart = SPH_MARGIN_TOP + (m.headerH ? m.headerH + 8 : 0);          // awal konten halaman lanjutan (sphAddPageWithFooter)
+  const firstBaseline = SPH_MARGIN_TOP + Math.max(m.headerH, 8) + 8;           // baseline tanggal di halaman 1
+  const bottomMm = SPH_PAGE_H - m.safeBottom;
+  const mkHeader = (spacerMm) => new Header({ children: [new Paragraph({
+    spacing: { before: 0, after: 0, line: Math.max(20, sphTw(spacerMm)), lineRule: LineRuleType.EXACT },
+    children: hasHdr ? [floatImg(hdrImg, SPH_MARGIN_X, SPH_MARGIN_TOP, m.headerW, m.headerH)] : [],
+  })] });
+  const mkFooter = () => new Footer({ children: [new Paragraph({
+    spacing: { before: 0, after: 0, line: 20, lineRule: LineRuleType.EXACT },
+    children: (ftrImg && m.footerH) ? [floatImg(ftrImg, 0, SPH_PAGE_H - m.footerH, SPH_PAGE_W, m.footerH)] : [],
+  })] });
+  // topBaselineMm = posisi baseline baris pertama di halaman PERTAMA section; halaman lanjutan
+  // dapat spacer di header supaya konten mulai di contStart (persis sphAddPageWithFooter).
+  const section = (topBaselineMm, children) => ({
+    properties: {
+      type: SectionType.NEXT_PAGE, titlePage: true,
+      page: {
+        size: { width: SPH_DOCX_PAGE_W_TW, height: SPH_DOCX_PAGE_H_TW },
+        margin: { top: sphTw(topBaselineMm - BO), bottom: sphTw(bottomMm), left: sphTw(SPH_MARGIN_X), right: sphTw(SPH_MARGIN_X), header: sphTw(SPH_DOCX_HEADER_DIST_MM), footer: sphTw(SPH_DOCX_FOOTER_DIST_MM) },
+      },
+    },
+    headers: { first: mkHeader(0), default: mkHeader(contStart - SPH_DOCX_HEADER_DIST_MM) },
+    footers: { first: mkFooter(), default: mkFooter() },
+    children,
+  });
+
+  // =========================================================
+  // SURAT PENGANTAR + TABEL RINGKASAN
+  // =========================================================
+  const blk = (t, afterMm, o = {}) => para([run(t, { color: '000000' })], { after: afterMm, ...o });  // teks sebelum tabel = hitam (default jsPDF)
+  const tabbed = (label, value, afterMm) => para(
+    [new TextRun({ children: [label, new Tab(), value], font: FONT, size: SZ, color: '000000' })],
+    { after: afterMm, tabStops: [{ type: TabStopType.LEFT, position: sphTw(22) }] });
+
+  const T = m.table, sw = m.modeSwastaOutput, cols = colTw(T.widths);
+  const mainRows = [row(8.5, T.headers.map((h, i) => hdrCell(cols[i], h)), { header: true })];
+  T.rows.forEach((r, idx) => {
+    const fill = idx % 2 === 0 ? C_ZEBRA : undefined;
+    const c = [
+      cell(cols[0], [para([run(String(r.no))])], { fill }),
+      cell(cols[1], [para([run(r.kode_produk)])], { fill }),
+      cell(cols[2], [para([run(r.deskripsi)])], { fill }),
+      cell(cols[3], [para([run(String(r.qty))], { align: AlignmentType.CENTER })], { fill }),
+      cell(cols[4], [para([run(S.rupiah(r.harga))], { align: AlignmentType.RIGHT })], { fill }),
+      cell(cols[5], [para([run(S.rupiah(r.total))], { align: AlignmentType.RIGHT })], { fill }),
     ];
-    if (!meta.modeSwastaOutput) cells.push(linkCell(it.link, widthsPct[6], { shade }));
-    return new TableRow({ children: cells });
+    if (!sw) {
+      // Link e-Katalog: warna biru TANPA garis bawah (sama dgn textWithLink di PDF).
+      const link = r.link
+        ? para([new ExternalHyperlink({ link: r.link, children: [new TextRun({ text: 'Lihat di e-Katalog', font: FONT, size: SZ, color: C_LINK })] })], { align: AlignmentType.CENTER })
+        : para([run('-', { color: C_MUTED })], { align: AlignmentType.CENTER });
+      // padding 0: jsPDF gak wrap teks link & menengahkannya di kolom 32mm (teksnya ±30mm > 29mm area padding) → di Word biar tetap 1 baris.
+      c.push(cell(cols[6], [link], { fill, padTw: 0 }));
+    }
+    mainRows.push(row(m.mainRowHeights[idx], c));
   });
+  // Bar TOTAL = 1 bar penuh tanpa garis kolom di dalamnya (sama dgn rect 'FD' di PDF): sel digabung, garis dalam dihilangkan.
+  const sum = (a, b) => cols.slice(a, b).reduce((x, y) => x + y, 0);
+  const totalCells = [
+    hdrCell(sum(0, 3), 'TOTAL VALUE', { span: 3, align: AlignmentType.RIGHT, borders: { top: B, bottom: B, left: B, right: NB } }),
+    hdrCell(sum(3, 6), S.rupiah(m.grandTotal), { span: 3, align: AlignmentType.RIGHT, borders: { top: B, bottom: B, left: NB, right: sw ? B : NB } }),
+  ];
+  if (!sw) totalCells.push(hdrCell(cols[6], '', { borders: { top: B, bottom: B, left: NB, right: B } }));
+  const mainTotalRow = row(8.5, totalCells);
+  if (!m.totalOrphan) mainRows.push(mainTotalRow);
+  // Penyangga 1pt antara dua tabel (kalau gak, Word menggabung 2 tabel yg bersebelahan jadi satu).
+  const sepPara = () => new Paragraph({ spacing: { before: 0, after: 0, line: 20, lineRule: LineRuleType.EXACT }, children: [] });
 
-  const preTotalCols = meta.modeSwastaOutput ? [0, 1, 2, 3, 4] : [0, 1, 2, 3, 4];
-  const labelSpanPct = widthsPct.slice(0, 5).reduce((a, b) => a + b, 0);
-  const valueSpanPct = widthsPct.slice(5).reduce((a, b) => a + b, 0);
-  const totalRow = new TableRow({
-    children: [
-      new TableCell({
-        columnSpan: 5,
-        width: { size: labelSpanPct, type: WidthType.PERCENTAGE },
-        shading: { fill: '1D5BD4' },
-        borders,
-        children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: 'TOTAL VALUE', bold: true, color: 'FFFFFF', size: 18 })] })],
-      }),
-      new TableCell({
-        columnSpan: meta.modeSwastaOutput ? 1 : 2,
-        width: { size: valueSpanPct, type: WidthType.PERCENTAGE },
-        shading: { fill: '1D5BD4' },
-        borders,
-        children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: S.rupiah(meta.grandTotal), bold: true, color: 'FFFFFF', size: 18 })] })],
-      }),
-    ],
-  });
+  const signIndent = { left: sphTw(m.signColX - SPH_MARGIN_X) };
+  const sigGap = m.sigH ? Math.max(0, m.nameGapActual - BO - m.sigTopOffset - m.sigH - 0.1) : m.nameGapActual - L;
+  const letter = [
+    blk(`Yogyakarta, ${m.tanggalSurat}`, gap(8), { align: AlignmentType.RIGHT }),
+    tabbed('No.', `: ${m.nomorSph}`, gap(6.5)),
+    tabbed('Hal', ': Penawaran Harga', gap(6.5)),
+    tabbed('Lamp.', ': Rincian Produk', gap(12)),
+    blk('Kepada Yth.', gap(6.5)),
+    blk(`Direktur Utama ${m.namaRs}`, gap(6.5)),
+    blk('Di Tempat', gap(12)),
+    blk('Dengan hormat,', gap(6.5)),
+    blk(m.introText, 7 + m.introLineCount * (5.5 - L) + BO),   // jarak intro→tabel di PDF: n*5.5+7 (bukan n*lineHeight)
+    mkTable(cols, mainRows),
+    ...(m.totalOrphan ? [sepPara(), mkTable(cols, [mainTotalRow])] : []),
+  ];
+  const closing = [
+    // Di halaman baru, baseline baris pertama = awal konten (before 0); kalau lanjut di bawah tabel: 6.5mm dari dasar bar TOTAL.
+    para([run('Ketentuan penawaran:')], { before: m.closingNewPage ? 0 : 6.5 - BO, after: gap(7), keepNext: true }),
+    para([run('Harga sudah termasuk PPn.')], { numbering: { reference: 'sph-bullet', level: 0 }, after: gap(6.5), keepNext: true }),
+    para([run('Harga belum termasuk biaya pengiriman (ongkos kirim).')], { numbering: { reference: 'sph-bullet', level: 0 }, after: gap(9), keepNext: true }),
+    para([run(m.closingText)], { after: 10 + m.closingLineCount * (5.5 - L) + BO, keepNext: true, keepLines: true }),
+    para([run('Marketing,')], { indent: signIndent, keepNext: true }),
+  ];
+  if (ttdImg && m.sigH) {
+    closing.push(para([inlineImg(ttdImg, m.sigW, m.sigH)], { indent: signIndent, before: m.sigTopOffset - (L - BO), keepNext: true, style: IMG_STYLE }));
+  }
+  closing.push(para([run(m.namaSales, { bold: true })], { indent: signIndent, before: sigGap }));
+  const sections = m.closingNewPage
+    ? [section(firstBaseline, letter), section(contStart, closing)]
+    : [section(firstBaseline, [...letter, ...closing])];
 
-  const table = new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [headerRow, ...bodyRows, totalRow] });
+  // =========================================================
+  // LAMPIRAN
+  // =========================================================
+  // Judul lampiran: tebal, di tengah, garis aksen brand selebar teks (indent kiri/kanan = sisa lebar → border cuma
+  // sepanjang teks, persis garis di bawah judul di PDF). -0.6mm per sisi sebagai napas biar judul gak wrap.
+  const lampTitle = (text, titleWmm, extraAfterMm = 0) => {
+    const side = titleWmm + 1.2 < contentMm ? (contentMm - titleWmm - 1.2) / 2 : 0;
+    return para([run(text, { bold: true })], {
+      align: AlignmentType.CENTER, keepNext: true, indent: { left: sphTw(side), right: sphTw(side) },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 11, color: C_BRAND, space: 5 } },
+      // Garis aksen = border bawah paragraf (jarak 5pt=1.76mm dari teks, tebal .5mm) → ±baseline+3mm seperti di PDF.
+      // Konten berikutnya (tabel / gambar brosur) mulai di baseline+9mm: sisa = 9 - (bawah kotak baris) - jarak border - tebal border.
+      // extraAfterMm = offset vertikal gambar brosur; digabung ke SINI (bukan jadi 'before' paragraf gambar) karena Word &
+      // LibreOffice beda soal after+before (jumlah vs ambil max) — satu sisi saja yang diberi spacing = hasil pasti sama.
+      after: 9 - (L - BO) - 1.76 - 0.5 + extraAfterMm,
+    });
+  };
+
+  for (const lp of (m.lampiran || [])) {
+    if (lp.kind === 'table') {
+      const lc = colTw([10, 30, 80, 14, 40]);
+      const lh = ['NO', 'KODE', 'DESKRIPSI', 'QTY', 'GAMBAR'];
+      const lrows = [row(8.5, lh.map((h, i) => hdrCell(lc[i], h)), { header: true })];
+      lp.rows.forEach((r, idx) => {
+        const fill = idx % 2 === 0 ? C_ZEBRA : undefined;
+        let imgCell;
+        if (r.img) {
+          const bytes = r.imgBytes;
+          imgCell = cell(lc[4], [para(bytes ? [inlineImg(bytes, r.img.w, r.img.h)] : [], { align: AlignmentType.CENTER, style: IMG_STYLE })], { fill, vAlign: VerticalAlign.CENTER, mTop: 0 });
+        } else {
+          imgCell = cell(lc[4], [para([run('Tidak ada gambar', { color: C_MUTED })], { align: AlignmentType.CENTER })], { fill, vAlign: VerticalAlign.CENTER, mTop: 0 });
+        }
+        lrows.push(row(r.rowH, [
+          cell(lc[0], [para([run(String(r.no))])], { fill }),
+          cell(lc[1], [para([run(r.kode_produk)])], { fill }),
+          cell(lc[2], [para([run(r.deskripsi)])], { fill }),
+          cell(lc[3], [para([run(String(r.qty))], { align: AlignmentType.CENTER })], { fill }),
+          imgCell,
+        ]));
+      });
+      const lTotalRow = row(8.5, [
+        hdrCell(lc[0] + lc[1] + lc[2], 'TOTAL', { span: 3, align: AlignmentType.RIGHT, borders: { top: B, bottom: B, left: B, right: NB } }),
+        hdrCell(lc[3], String(lp.totalQty), { align: AlignmentType.CENTER, borders: { top: B, bottom: B, left: NB, right: NB } }),
+        hdrCell(lc[4], '', { borders: { top: B, bottom: B, left: NB, right: B } }),
+      ]);
+      if (!lp.totalOrphan) lrows.push(lTotalRow);
+      sections.push(section(contStart, [
+        lampTitle(lp.title, lp.titleW),
+        mkTable(lc, lrows),
+        ...(lp.totalOrphan ? [sepPara(), mkTable(lc, [lTotalRow])] : []),
+        sepPara(),   // section wajib diakhiri paragraf setelah tabel
+      ]));
+    } else if (lp.kind === 'pages') {
+      for (const pg of lp.pages) {
+        let kids;
+        if (pg.img && pg.imgBytes) {
+          // Muat di sisa halaman: sisakan 2.2mm (pembulatan) biar gak melahirkan halaman kosong; posisi vertikal = tengah kotak (sama dgn PDF).
+          const k = Math.min(1, (pg.availH - 2.2) / pg.img.h);
+          const w = pg.img.w * k, h = pg.img.h * k;
+          kids = [
+            lampTitle(lp.title, lp.titleW, (pg.availH - h) / 2),
+            para([inlineImg(pg.imgBytes, w, h)], { align: AlignmentType.CENTER, style: IMG_STYLE }),
+          ];
+        } else kids = [lampTitle(lp.title, lp.titleW)];
+        sections.push(section(contStart, kids));
+      }
+    }
+  }
 
   const doc = new Document({
-    sections: [{
-      children: [
-        new Paragraph({ text: 'PENAWARAN HARGA', heading: HeadingLevel.HEADING_1 }),
-        new Paragraph({ children: [new TextRun({ text: `No.  : ${meta.nomorSph}` })] }),
-        new Paragraph({ children: [new TextRun({ text: `Tanggal : ${meta.tanggalSurat}` })] }),
-        new Paragraph({ children: [new TextRun({ text: `Kepada  : Direktur Utama ${meta.namaRs}` })] }),
-        new Paragraph({ text: '' }),
-        table,
-      ],
-    }],
+    creator: m.namaPt, title: m.nomorSph, description: `Surat Penawaran Harga ${m.namaRs}`,
+    styles: {
+      default: { document: { run: { font: FONT, size: SZ, color: C_TEXT }, paragraph: { spacing: { before: 0, after: 0 } } } },
+      paragraphStyles: [{ id: IMG_STYLE, name: 'Sph Image', basedOn: 'Normal', run: { size: 2 }, paragraph: { spacing: { before: 0, after: 0 } } }],
+    },
+    numbering: { config: [{ reference: 'sph-bullet', levels: [{
+      level: 0, format: LevelFormat.BULLET, text: '\u2022', alignment: AlignmentType.LEFT,
+      style: { paragraph: { indent: { left: sphTw(6.5), hanging: sphTw(3.5) } }, run: { font: FONT, color: C_TEXT } },
+    }] }] },
+    sections,
   });
-
-  return Packer.toBlob(doc);
+  const blob = await Packer.toBlob(doc);
+  return { blob, warnings };
 }
 
 async function sphGenerate() {
@@ -1197,10 +1412,12 @@ async function sphGenerate() {
     }
     y = drawTableHeader(y);
 
+    const mainRowHeights = []; // tinggi tiap baris (mm) — dipakai versi .docx biar tinggi baris identik
     items.forEach((item, idx) => {
       const descLines = doc.splitTextToSize(item.deskripsi, widths[2] - 3);
       const kodeLines = doc.splitTextToSize(item.kode_produk, widths[1] - 3);
       const rowH = Math.max(8, descLines.length * 5 + 3, kodeLines.length * 5 + 3);
+      mainRowHeights.push(rowH);
       if (y + rowH > safeBottom) {
         y = sphAddPageWithFooter(doc);
         y = drawTableHeader(y);
@@ -1262,7 +1479,9 @@ async function sphGenerate() {
       y += rowH;
     });
 
-    if (y + 8.5 > safeBottom) { y = sphAddPageWithFooter(doc); }
+    // Bar TOTAL yang kepental sendirian ke halaman baru TIDAK dapat header kolom di PDF → dicatat biar DOCX sama.
+    let totalOrphan = false;
+    if (y + 8.5 > safeBottom) { y = sphAddPageWithFooter(doc); totalOrphan = true; }
     doc.setFillColor(...SPH_BRAND);
     doc.setDrawColor(...SPH_BORDER_COLOR);
     doc.setLineWidth(SPH_BORDER_WIDTH);
@@ -1288,7 +1507,8 @@ async function sphGenerate() {
     const signBlockH = nameGapActual + 10;
     const totalClosingBlockH = ketentuanH + closingH + signBlockH;
 
-    if (y + totalClosingBlockH > safeBottom) { y = sphAddPageWithFooter(doc); }
+    let closingNewPage = false; // blok penutup mulai di halaman baru → di DOCX jadi section sendiri (baseline pas di awal konten)
+    if (y + totalClosingBlockH > safeBottom) { y = sphAddPageWithFooter(doc); closingNewPage = true; }
 
     doc.text('Ketentuan penawaran:', SPH_MARGIN_X, y); y += 7;
     doc.text('•  Harga sudah termasuk PPn.', SPH_MARGIN_X + 3, y); y += 6.5;
@@ -1319,6 +1539,7 @@ async function sphGenerate() {
     // getLampiranPagesForKode) — gak ada file Excel perantara. Tiga jenis
     // lampiran, urutannya ngikutin export: rincian per-SET dulu, lalu item
     // satuan gabungan, baru brosur PDF full-page.
+    const lampiranModel = []; // urutan sama dgn halaman lampiran di PDF → dipakai versi .docx
     if (sphIncludeLampiranCheckbox && sphIncludeLampiranCheckbox.checked && S.clipboard.length) {
       const sets = S.clipboard.filter(i => i.is_set);
       const satuans = S.clipboard.filter(i => !i.is_set && i.tipe !== 'UNIT');
@@ -1363,7 +1584,7 @@ async function sphGenerate() {
             gambarH: setImgDims[si.kode_produk] ? setImgDims[si.kode_produk].h : 1,
           }));
           sphStatusEl.textContent = `Menyusun lampiran "${setItem.nama_produk}"…`;
-          await sphDrawLampiranTablePage(doc, `Lampiran ${setItem.nama_produk}`, tableItems, safeBottom);
+          lampiranModel.push(await sphDrawLampiranTablePage(doc, `Lampiran ${setItem.nama_produk}`, tableItems, safeBottom));
         }
       }
 
@@ -1393,7 +1614,7 @@ async function sphGenerate() {
           gambarH: satuanImgDims[item.kode_produk] ? satuanImgDims[item.kode_produk].h : 1,
         }));
         sphStatusEl.textContent = 'Menyusun lampiran item satuan…';
-        await sphDrawLampiranTablePage(doc, 'Lampiran — Item Satuan', tableItems, safeBottom);
+        lampiranModel.push(await sphDrawLampiranTablePage(doc, 'Lampiran — Item Satuan', tableItems, safeBottom));
       }
 
       // -- 3. brosur PDF full-page, per item clipboard yang punya lampiran --
@@ -1405,7 +1626,7 @@ async function sphGenerate() {
         const { pages } = await S.getLampiranPagesForKode(item.kode_produk);
         if (!pages.length) continue; // gak ada brosur buat produk ini — lewati
         sphStatusEl.textContent = `Menyusun lampiran brosur "${item.nama_produk}"…`;
-        await sphDrawLampiranUnitPages(doc, item.nama_produk, pages, safeBottom);
+        lampiranModel.push(await sphDrawLampiranUnitPages(doc, item.nama_produk, pages, safeBottom));
       }
     }
 
@@ -1425,20 +1646,34 @@ async function sphGenerate() {
     sphDownloadLink.download = fileName;
     sphDownloadLink.style.display = 'flex';
 
-    // Versi .docx tabel item — buat rekap/audit cepat, gak dari PDF (lihat
-    // sphBuildDocxBlob). Kegagalan bikin docx JANGAN sampai gagalin PDF-nya
-    // yang udah jadi (PDF tetap dokumen utama) — cuma disembunyikan tombolnya.
+    // Versi .docx = replika 1:1 dari PDF (kop, surat, tabel, TTD, footer, lampiran) yang bisa diedit di Word.
+    // Dibangun dari model layout yang SAMA dgn yang barusan dipakai jsPDF (lihat sphBuildDocxBlob).
+    // Kegagalan bikin docx JANGAN sampai gagalin PDF-nya yang udah jadi (PDF tetap dokumen utama) —
+    // cuma disembunyikan tombolnya.
     try {
-      const docxBlob = await sphBuildDocxBlob(items, { nomorSph, namaRs, tanggalSurat, grandTotal, modeSwastaOutput: S.modeSwastaOutput });
+      sphStatusEl.textContent = 'Menyusun versi Word…';
+      const { blob: docxBlob, warnings: docxWarnings } = await sphBuildDocxBlob({
+        modeSwastaOutput: S.modeSwastaOutput,
+        headerAsset: sphHeaderAsset, headerW: company.headerWidthMm || 45, headerH,
+        footerAsset: sphFooterAsset, footerH: footerLayout.h || 0, safeBottom,
+        ttdAsset: sphTtdAsset, sigW, sigH: sigHForLayout, sigTopOffset: SIG_TOP_OFFSET, nameGapActual, signColX,
+        namaPt, namaRs, namaSales, nomorSph, tanggalSurat,
+        introText, introLineCount: introLines.length, closingText, closingLineCount: closingLines.length,
+        table: { headers, widths, rows: items }, mainRowHeights, totalOrphan, closingNewPage, grandTotal,
+        lampiran: lampiranModel,
+      });
       const docxUrl = URL.createObjectURL(docxBlob);
       if (sphDownloadLinkDocx) {
         sphDownloadLinkDocx.href = docxUrl;
         sphDownloadLinkDocx.download = fileBaseName + '.docx';
         sphDownloadLinkDocx.style.display = 'flex';
       }
+      if (docxWarnings.length) {
+        PNMToast.show('PERHATIAN: DOCX jadi TANPA ' + [...new Set(docxWarnings)].join(', ') + ' (gambar gagal dibaca). PDF tidak terpengaruh.', 'error', { duration: 10000 });
+      }
     } catch (eDocx) {
       if (sphDownloadLinkDocx) sphDownloadLinkDocx.style.display = 'none';
-      console.error('Gagal bikin docx rekap:', eDocx);
+      console.error('Gagal bikin docx:', eDocx);
     }
 
     sphStatusEl.textContent = `Siap — ${items.length} produk, total ${S.rupiah(grandTotal)}.`;

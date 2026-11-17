@@ -134,7 +134,6 @@ export const KONVERSIAN_MARKUP = `
       </div>
     </div>
     <div class="panel-body" id="panel-body-cari">
-      <div class="pane-scroll">
       <div id="err"></div>
       <div class="meta-row">
         <div id="meta"></div>
@@ -150,17 +149,13 @@ export const KONVERSIAN_MARKUP = `
       <div id="loading"></div>
       <div id="empty"><i class="ti ti-search-off"></i><p>Produk tidak ditemukan.<br>Coba kata kunci lain.</p></div>
       <div id="results"></div>
-      </div>
       <div id="pagination"></div>
     </div>
     <div class="panel-body" id="panel-body-sesi" style="display:none">
-      <div class="pane-top">
       <div class="sesi-toolbar">
         <button class="pr-add-clip-btn" id="btn-sesi-baru" type="button"><i class="ti ti-plus"></i> Mulai Sesi Baru</button>
         <button class="toggle-btn" id="btn-sesi-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
       </div>
-      </div>
-      <div class="pane-scroll">
       <div id="sesi-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat sesi…</div>
       <div id="sesi-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
       <div class="clip-empty" id="sesi-list-empty" style="display:none">
@@ -170,7 +165,6 @@ export const KONVERSIAN_MARKUP = `
       <!-- Kotak "Perlu tindakan" (auto-record.js): sembunyi sendiri kalau gak ada yang perlu dikerjain. -->
       <div id="todo-inbox" style="display:none"></div>
       <div id="sesi-list"></div>
-      </div>
     </div>
     <div class="panel-body" id="panel-body-riwayat" style="display:none">
       <!-- Compact single-purpose filter toolbar (search + 2 selects share one
@@ -183,7 +177,6 @@ export const KONVERSIAN_MARKUP = `
            one-off inline styles, so it also picks up whatever those look like
            app-wide instead of drifting from them. Same ids, same filter/summary
            behavior -- purely a markup/CSS restructure. -->
-      <div class="pane-top">
       <div class="riwayat-toolbar">
         <div class="search-wrap riwayat-toolbar-search">
           <i class="ti ti-search"></i>
@@ -201,6 +194,7 @@ export const KONVERSIAN_MARKUP = `
           <option value="bulanini">Bulan Ini</option>
           <option value="bulanlalu">Bulan Lalu</option>
         </select>
+        <button class="toggle-btn" id="btn-riwayat-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
       </div>
       <!-- Scope pencarian: "Barang" nyari ke isi konversi (kode/nama produk di
            konversi_item + sesi_konversi_item), "RS · PIC · Sales" nyari ke
@@ -210,8 +204,6 @@ export const KONVERSIAN_MARKUP = `
         <button type="button" class="riwayat-scope-btn" data-scope="barang"><i class="ti ti-package"></i> Barang</button>
         <button type="button" class="riwayat-scope-btn" data-scope="transaksi"><i class="ti ti-building-hospital"></i> RS · PIC · Sales</button>
       </div>
-      </div>
-      <div class="pane-scroll">
       <div class="riwayat-scope-note">Sesi yang sudah selesai — jadi order maupun enggak. Cari nama/kode barang buat tahu barang itu pernah masuk konversi mana.</div>
       <div id="riwayat-summary" class="riwayat-summary" style="display:none"></div>
       <div id="riwayat-list-loading" style="display:none;text-align:center;padding:24px;color:var(--text-muted)"><i class="ti ti-loader-2"></i> Memuat riwayat…</div>
@@ -221,7 +213,6 @@ export const KONVERSIAN_MARKUP = `
         <p>Belum ada sesi yang selesai.<br>Sesi yang di-Record atau di-Selesaikan bakal muncul di sini.</p>
       </div>
       <div id="riwayat-list"></div>
-      </div>
     </div>
     <!-- ===== PROJECT (2026-10-12): kelompok beberapa konversi satu instansi + klik e-Kat di level project.
          Isi dirender penuh oleh project.js ke #prj-root. ===== -->
@@ -229,7 +220,6 @@ export const KONVERSIAN_MARKUP = `
       <div id="prj-root"></div>
     </div>
     <div class="panel-body" id="panel-body-converter" style="display:none">
-      <div class="conv-scroll">
       <div class="conv-input-wrap">
         <p class="conv-hint" id="conv-hint">Tempel kode produk atau kode asli, satu baris per produk. Nama dari customer boleh ditambahkan setelah kode, dipisah tab atau spasi. Kode dicocokkan persis ke katalog.</p>
         <textarea id="conv-input" class="conv-input" aria-describedby="conv-hint" spellcheck="false" placeholder="RB999-KE921-B99-U238&#9;WSD S.
@@ -244,18 +234,19 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
           <button class="toggle-btn" id="btn-conv-retry-err" type="button" style="display:none"><i class="ti ti-refresh"></i> Ulangi yang error</button>
           <button class="toggle-btn" id="btn-conv-clear" type="button"><i class="ti ti-eraser"></i> Kosongkan</button>
         </div>
+        <div id="conv-status" class="conv-status" role="status" aria-live="polite"></div>
       </div>
-      <div id="conv-status" class="conv-status" role="status" aria-live="polite"></div>
       <div id="conv-results" class="conv-results"></div>
-      </div>
       <div id="conv-actions" class="conv-actions" style="display:none">
-        <!-- Footer ini menempel di dasar panel (bukan sticky di dalam area scroll).
-             Tombol kiri menulis ke sesi konversi di server. Grup kanan murni baca: hasil
-             Converter disalin ke Excel atau Sheet tanpa lewat Clipboard, jadi tidak membuat
-             sesi. Copy Tabel (converter-bulk.js) menjaga urutan dan jumlah baris sama dengan
-             input, baris yang tidak ketemu tetap ada dan ditandai. -->
-        <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang dicentang ke Clipboard</button>
-        <div class="conv-actions-copy" role="group" aria-label="Salin hasil tanpa membuat sesi">
+        <!-- Grup 1 menulis ke sesi konversi di server. Grup 2 murni baca: hasil
+             Converter disalin ke Excel/Sheet tanpa lewat Clipboard, jadi tidak
+             membuat sesi (lihat komentar Copy + Gambar di converter.js). Copy Tabel
+             (converter-bulk.js) menjaga urutan dan jumlah baris sama dengan input,
+             baris yang tidak ketemu tetap ada dan ditandai. -->
+        <div class="conv-actions-group">
+          <button class="pr-add-clip-btn" id="btn-conv-add-all" type="button"><i class="ti ti-clipboard-plus"></i> Tambah yang dicentang ke Clipboard</button>
+        </div>
+        <div class="conv-actions-group">
           <select id="conv-preset" class="conv-select" aria-label="Kolom yang disalin" title="Kolom yang disalin">
             <option value="kdhl">Kode, deskripsi, harga, link</option>
             <option value="peta">Peta kode input ke kode produk dan kode asli</option>
@@ -263,8 +254,8 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
           </select>
           <button class="toggle-btn" id="btn-conv-copy-tabel" type="button" title="Salin semua baris sebagai tabel (bukan cuma yang dicentang), siap ditempel ke Excel atau Sheet"><i class="ti ti-table-export"></i> Copy Tabel</button>
           <button class="toggle-btn" id="btn-conv-copy-gambar" type="button" title="Salin baris yang dicentang sebagai tabel berisi kode, deskripsi, qty, dan gambar. Di Google Sheets, tempel dengan Ctrl+Shift+V."><i class="ti ti-photo"></i> Copy + Gambar</button>
+          <span class="conv-actions-note">Menyalin tidak membuat sesi konversi.</span>
         </div>
-        <span class="conv-actions-note">Menyalin tidak membuat sesi konversi.</span>
       </div>
     </div>
 
@@ -279,7 +270,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
          lain / RS) yang mau langsung dicocokkan ke SET terdekat TANPA
          nambahin ke Clipboard dulu. ===== -->
     <div class="panel-body" id="panel-body-setcari" style="display:none">
-      <div class="setcari-top">
       <div class="setcari-bar">
         <div class="setcari-seg" role="group" aria-label="Sumber kode produk">
           <button class="toggle-btn on" id="setcari-src-clip" type="button" aria-pressed="true"><i class="ti ti-clipboard-list"></i> <span class="toggle-btn-label">Dari Clipboard</span></button>
@@ -292,21 +282,17 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
         <textarea id="setcari-paste-input" class="setcari-paste-input" aria-label="Kode produk, satu per baris atau dipisah koma" spellcheck="false" placeholder="Tempel kode produk, satu per baris (boleh juga dipisah koma)&#10;RB999-KE921-B99-U238&#10;RB999-KE921-B99-U109"></textarea>
       </div>
       <div class="setcari-status" id="setcari-status" role="status" aria-live="polite"></div>
-      </div>
-      <div class="setcari-scroll">
       <div class="clip-empty" id="setcari-empty">
         <i class="ti ti-box-multiple"></i>
         <p>Tambahkan produk ke Clipboard, lalu klik "Cari SET Mendekati" untuk melihat SET dengan isi paling mirip.</p>
       </div>
       <div class="setcari-list" id="setcari-list"></div>
-      </div>
     </div>
 
     <!-- ===== DICTIONARY: histori istilah customer vs produk Robust yang dipilih.
          Murni baca data historis (bukan AI). Berdiri sendiri, tidak menyentuh
          logic Search / Konversi / Riwayat / Converter yang sudah ada. ===== -->
     <div class="panel-body" id="panel-body-dictionary" style="display:none">
-      <div class="dict-scroll">
       <div class="dict-stats-row">
         <div class="dict-stat-card">
           <div class="dict-stat-value" id="dict-stat-istilah">—</div>
@@ -361,7 +347,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
           </thead>
           <tbody id="dict-table-body"></tbody>
         </table>
-      </div>
       </div>
       <div id="dict-pagination" class="dict-pagination" style="display:none"></div>
     </div>
@@ -587,8 +572,8 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
             <a class="pr-add-clip-btn sph-btn-block" id="sph-download-link" style="display:none;margin-top:10px" download>
               <i class="ti ti-download"></i> Download PDF
             </a>
-            <a class="pr-add-clip-btn sph-btn-block" id="sph-download-link-docx" style="display:none;margin-top:8px" download title="Tabel item versi Word — copas ke Excel/Sheets buat rekap/audit selalu rapi, gak kayak copas dari PDF">
-              <i class="ti ti-file-type-docx"></i> Download DOCX (buat rekap/audit)
+            <a class="pr-add-clip-btn sph-btn-block" id="sph-download-link-docx" style="display:none;margin-top:8px" download title="Versi Word yang bisa diedit, tampilan 1:1 dengan PDF (kop, tabel, TTD, footer, lampiran). Tabelnya tabel Word asli — copas ke Excel/Sheets selalu rapi.">
+              <i class="ti ti-file-type-docx"></i> Download DOCX (bisa diedit)
             </a>
             <button class="btn-record" id="sph-record-btn" type="button" style="display:none">
               <i class="ti ti-clipboard-check"></i> Record SPH
