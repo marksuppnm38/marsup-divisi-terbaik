@@ -1053,6 +1053,9 @@
 /* Fokus keyboard Riwayat */
 #app-root .riwayat-card:focus{outline:none}
 #app-root .riwayat-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Fokus keyboard Konversi Berjalan + baris hasil Converter (j/k) */
+#app-root .sesi-card:focus,#app-root .conv-row:focus{outline:none}
+#app-root .sesi-card:focus-visible,#app-root .conv-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #app-root .rp-btn:focus-visible,
 #app-root .ro-pill:focus-visible,
 #app-root .ro-item:focus-visible,

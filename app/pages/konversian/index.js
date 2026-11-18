@@ -38,7 +38,7 @@ import { installRealtime } from './realtime.js';
 import { installClipboard } from './clipboard.js';
 import { installSearch } from './search.js';
 import { installConverter } from './converter.js';
-import { installShortcuts, applyShortcutHints, toggleCheatSheet } from '../../../shared/shortcuts.js';
+import { installShortcuts, applyShortcutHints, toggleCheatSheet, isTyping } from '../../../shared/shortcuts.js';
 import { installConverterBulk } from './converter-bulk.js';
 import { installDictionary } from './dictionary.js';
 import { installSetMendekati } from './set-mendekati.js';
@@ -3301,7 +3301,7 @@ function renderSesiCard(s) {
       </div>
       <div class="riwayat-peek sesi-peek" data-id="${s.id}" data-loaded="0" data-stamp="${peekStamp}" style="display:${peekOpen ? 'block' : 'none'}"></div>`
     : '';
-  return `<div class="rcard sesi-card" data-id="${s.id}" style="position:relative">
+  return `<div class="rcard sesi-card" data-id="${s.id}" tabindex="0" role="article" aria-label="Sesi ${namaSafe} — Enter untuk buka" style="position:relative">
     <button class="sesi-delete-btn" data-id="${s.id}" data-nama="${namaSafe}" title="Hapus sesi ini" type="button"><i class="ti ti-trash"></i></button>
     <div class="rcard-top" style="padding-right:66px">
       <div class="rcard-name">${namaSafe}</div>
@@ -4374,7 +4374,8 @@ async function loadRiwayatList(keepPage) {
 // ===== Keyboard (shared/shortcuts.js) =====
 // Definisi kombinasi/deskripsi/ruang lingkup ada di registry shared/shortcuts.js (id "konv.*"); di sini cuma handler.
 // Handler yang return false = "bukan urusan saya": event dilepas lewat, jadi mis. "/" di tab yang gak punya
-// kolom cari tetap jatuh ke pencarian sidebar (nav.js). Alt+Shift+M (Sesi Baru) masih dipasang di clipboard.js.
+// kolom cari tetap jatuh ke pencarian sidebar (nav.js). Alt+Shift+M (Sesi Baru) masih dipasang di clipboard.js; panah/Enter/Esc di kolom
+// Cari Produk di search.js (keduanya `external` di registry). Record/Selesaikan Sesi/Keluar/Hapus/Logout SENGAJA tanpa pintasan.
 // Dulu tab Riwayat punya listener bubble sendiri (window.__konvRiwayatKeydown) yang kalah dari nav.js untuk "/";
 // sekarang semuanya lewat engine (fase capture). Pelepasnya didaftarkan ke _globalOffs -> ikut lepas di unmount().
 const KONV_FOCUS_BY_TAB = {
@@ -4385,22 +4386,92 @@ const KONV_FOCUS_BY_TAB = {
 const KONV_OWN_ARROWS = '[role="separator"],[role="slider"],[role="radiogroup"],[role="tablist"],[role="listbox"],[role="menu"],input[type="radio"],input[type="range"],#clip-resize-handle';
 const konvShown = (el) => !!el && el.offsetParent !== null;
 
-function konvMoveRiwayatCard(step) {
-  if (activeSubTab !== 'riwayat' || !S.riwayatList) return false;
-  const cards = [...S.riwayatList.querySelectorAll('.riwayat-card')];
-  if (!cards.length) return false;
+// Daftar yang bisa dijelajahi dengan j/k. closest = selektor kartu/baris untuk mencari posisi fokus sekarang.
+function konvListCfg() {
+  switch (activeSubTab) {
+    case 'sesi':
+      return { items: () => (S.sesiList ? [...S.sesiList.querySelectorAll('.sesi-card')] : []), closest: '.sesi-card' };
+    case 'riwayat':
+      return { items: () => (S.riwayatList ? [...S.riwayatList.querySelectorAll('.riwayat-card')] : []), closest: '.riwayat-card' };
+    case 'project': {
+      const root = document.getElementById('prj-root');
+      // Di tampilan detail project tidak ada daftar kartu -> j/k dilepas.
+      return { items: () => (root && !root.querySelector('.prj-detail') ? [...root.querySelectorAll('.prj-card')] : []), closest: '.prj-card' };
+    }
+    case 'dictionary':
+      return { items: () => [...document.querySelectorAll('#dict-table-body tr')], closest: 'tr' };
+    case 'converter':
+      // Hanya baris yang cocok ke katalog (yang punya kotak centang aktif).
+      return { items: () => (S.convResultsEl ? [...S.convResultsEl.querySelectorAll('.conv-row')] : []), closest: '.conv-row' };
+    default:
+      return null;
+  }
+}
+function konvMoveListItem(step) {
+  const cfg = konvListCfg();
+  if (!cfg) return false;
+  const items = cfg.items();
+  if (!items.length) return false;
   const a = document.activeElement;
-  const cur = cards.indexOf(a && a.closest ? a.closest('.riwayat-card') : null);
-  const n = cur < 0 ? 0 : Math.min(Math.max(cur + step, 0), cards.length - 1);
-  cards[n].focus();
-  cards[n].scrollIntoView({ block: 'nearest' });
+  const cur = items.indexOf(a && a.closest ? a.closest(cfg.closest) : null);
+  const n = cur < 0 ? 0 : Math.min(Math.max(cur + step, 0), items.length - 1);
+  const el = items[n];
+  if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1'); // baris Converter belum fokusable
+  el.focus();
+  el.scrollIntoView({ block: 'nearest' });
   return true;
+}
+// Baris Converter yang sedang difokus -> kotak centangnya.
+function konvConvFocusedCheck() {
+  const a = document.activeElement;
+  const row = a && a.closest ? a.closest('.conv-row') : null;
+  const chk = row && row.querySelector('.conv-check');
+  return chk && !chk.disabled ? { row, chk } : null;
 }
 function konvRiwayatPage(step, e) {
   if (activeSubTab !== 'riwayat' || (e.target.closest && e.target.closest(KONV_OWN_ARROWS))) return false;
   const btn = document.querySelector(`#riwayat-pager button[data-page="${S.riwayatPage + step}"]`);
   if (!btn || btn.disabled) return false; // gak ada halaman tujuan: panah dilepas (scroll biasa tetap jalan)
   btn.click();
+  return true;
+}
+
+// Klik tombol kalau kelihatan. Disabled = pintasan ditelan (tidak jatuh ke browser), sama dengan klik tombol mati.
+function konvClickIfShown(sel) {
+  const btn = typeof sel === 'string' ? document.getElementById(sel) : sel;
+  if (!konvShown(btn)) return false;
+  if (!btn.disabled) btn.click();
+  return true;
+}
+
+// Dialog -> tombol Simpan/Kirim-nya. Untuk dialog bertahap (Permintaan RS) dipilih tombol pertama yang
+// SEDANG tampil. Sengaja TIDAK ada: confirm-modal ("Ya, Lanjutkan" sering untuk hapus), export-modal, dst.
+const KONV_DIALOG_PRIMARY = {
+  'record-modal': ['record-submit-btn'],
+  'record-sph-modal': ['record-sph-submit-btn'],
+  'pr-modal': ['pr-edit-save-btn', 'pr-review-save-btn', 'pr-submit-btn'],
+  'lampiran-modal': ['lampiran-save-btn'],
+  'section-name-modal': ['section-name-modal-ok'],
+};
+function konvDialogSubmit() {
+  const open = [...document.querySelectorAll('.modal-overlay.show, .modal-overlay.open')].filter(konvShown);
+  const top = open[open.length - 1]; // dialog paling atas = yang terakhir di DOM
+  if (!top) return false;
+  const ids = KONV_DIALOG_PRIMARY[top.id];
+  if (!ids) return false; // dialog lain (konfirmasi, viewer gambar, ...): Ctrl+Enter tidak berarti apa-apa
+  const btn = ids.map((id) => document.getElementById(id)).find(konvShown);
+  if (!btn) return false;
+  if (!btn.disabled) btn.click();
+  return true;
+}
+
+// Panel clipboard: Kebutuhan RS <-> Clipboard <-> Buat SPH.
+const KONV_CLIP_TABS = ['kb', 'list', 'sph'];
+function konvClipStep(step) {
+  if (!konvShown(document.getElementById('clip-tab-row'))) return false;
+  const cur = KONV_CLIP_TABS.indexOf(document.querySelector('.clip-tab-btn.active')?.dataset.tab);
+  const next = KONV_CLIP_TABS[Math.min(Math.max((cur < 0 ? 1 : cur) + step, 0), KONV_CLIP_TABS.length - 1)];
+  if (typeof S.switchClipTab === 'function') S.switchClipTab(next);
   return true;
 }
 
@@ -4417,8 +4488,19 @@ const konvHandlers = {
     if (typeof input.select === 'function') input.select();
     return true;
   },
-  'konv.riwayat.next': () => konvMoveRiwayatCard(1),
-  'konv.riwayat.prev': () => konvMoveRiwayatCard(-1),
+  'konv.list.next': () => konvMoveListItem(1),
+  'konv.list.prev': () => konvMoveListItem(-1),
+  'konv.list.reload': () => {
+    switch (activeSubTab) {
+      case 'sesi': loadSesiList(); return true;
+      case 'riwayat': loadRiwayatList(true); return true; // true = tetap di halaman yang sama
+      case 'project':
+        if (document.querySelector('#prj-root .prj-detail') || typeof S.loadProjects !== 'function') return false;
+        S.loadProjects(); return true;
+      case 'dictionary': S.loadDictionary(); return true;
+      default: return false;
+    }
+  },
   'konv.riwayat.pageNext': (e) => konvRiwayatPage(1, e),
   'konv.riwayat.pagePrev': (e) => konvRiwayatPage(-1, e),
   'konv.riwayat.closeMenu': (e) => {
@@ -4430,18 +4512,55 @@ const konvHandlers = {
     open.querySelector('.ro-pill')?.focus();
     return true;
   },
-  // Ctrl/Cmd+Enter = KLIK tombolnya, jadi guard "lagi memproses" (disabled) tetap berlaku. Disabled = ditelan.
-  'konv.conv.run': () => {
-    if (activeSubTab !== 'converter') return false;
-    const btn = S.btnConvProses;
-    if (!konvShown(btn)) return false;
-    if (!btn.disabled) btn.click();
+  // Converter: x = centang/lepas baris yang difokus (pakai .click() supaya semua handler centang yang ada ikut jalan).
+  'konv.conv.check': () => {
+    const f = konvConvFocusedCheck();
+    if (!f) return false;
+    const idx = f.row.dataset.idx;
+    f.chk.click();
+    // Render ulang hasil bisa membuang fokus; kembalikan ke baris yang sama.
+    setTimeout(() => {
+      const row = S.convResultsEl && S.convResultsEl.querySelector(`.conv-row[data-idx="${idx}"]`);
+      if (row && !row.contains(document.activeElement)) { row.setAttribute('tabindex', '-1'); row.focus(); }
+    }, 0);
     return true;
   },
+  // Ctrl/Cmd+C di Converter: salin yang dicentang, TAPI hanya kalau user tidak sedang menyalin teks biasa.
+  'konv.conv.copy': (e) => {
+    if (isTyping(e.target)) return false;
+    if (String(window.getSelection && window.getSelection()).length) return false;
+    return konvClickIfShown(S.btnConvCopyGambar);
+  },
+  // Mod+Enter = KLIK tombol aksi utama tab, jadi guard "lagi memproses" (disabled) tetap berlaku.
+  'konv.primary': () => {
+    // Fokus di dalam panel Buat SPH -> Generate SPH menang atas tab di kiri.
+    const sphPanel = document.getElementById('clip-tab-panel-sph');
+    if (sphPanel && konvShown(sphPanel) && sphPanel.contains(document.activeElement)) return konvClickIfShown('sph-generate-btn');
+    if (activeSubTab === 'converter') return konvClickIfShown(S.btnConvProses);
+    if (activeSubTab === 'setcari') return konvClickIfShown('setcari-search-btn');
+    if (sphPanel && konvShown(sphPanel)) return konvClickIfShown('sph-generate-btn');
+    return false;
+  },
+  'konv.dialog.submit': () => konvDialogSubmit(),
   'konv.dict.add': () => {
     if (activeSubTab !== 'dictionary') return false;
-    const btn = document.getElementById('btn-dict-tambah');
-    if (!konvShown(btn) || btn.disabled) return false;
+    return konvClickIfShown('btn-dict-tambah');
+  },
+  // Filter Cari Produk (Alt+Shift, jalan sambil mengetik). Panel pencarian lagi dilipat -> tombolnya tidak tampil -> dilepas.
+  'konv.filter.instrument': () => activeSubTab === 'cari' && konvClickIfShown('ti-instrument'),
+  'konv.filter.set': () => activeSubTab === 'cari' && konvClickIfShown('ti-set'),
+  'konv.filter.unit': () => activeSubTab === 'cari' && konvClickIfShown('ti-unit'),
+  'konv.filter.verified': () => activeSubTab === 'cari' && konvClickIfShown('tverif'),
+  'konv.filter.swasta': () => activeSubTab === 'cari' && konvClickIfShown('tswasta'),
+  // Panel clipboard & output.
+  'konv.clip.toggle': () => konvClickIfShown('hdr-clip-count-wrap'),
+  'konv.clip.prev': () => konvClipStep(-1),
+  'konv.clip.next': () => konvClipStep(1),
+  'konv.export': () => konvClickIfShown('btn-export'),
+  'konv.drive': () => {
+    const btn = document.getElementById('btn-drive-upload');
+    if (!konvShown(btn)) return false;
+    if (btn.disabled) { S.showToast('Simpan ke Drive aktif setelah Export ke Excel (dan sesi punya Permintaan RS).', 'error'); return true; }
     btn.click();
     return true;
   },
@@ -4457,8 +4576,26 @@ applyShortcutHints({
   '#search-input': { ids: ['konv.search'], base: 'Cari produk' },
   '#riwayat-search-input': { ids: ['konv.search'], base: 'Cari riwayat' },
   '#dict-search-input': { ids: ['konv.search'], base: 'Cari di dictionary' },
-  '#btn-conv-proses': { ids: ['konv.conv.run'], base: 'Cocokkan ke katalog' },
+  '#btn-conv-proses': { ids: ['konv.primary'], base: 'Cocokkan ke katalog' },
+  '#setcari-search-btn': { ids: ['konv.primary'], base: 'Cari SET Mendekati' },
+  '#sph-generate-btn': { ids: ['konv.primary'], base: 'Generate SPH' },
   '#btn-dict-tambah': { ids: ['konv.dict.add'], base: 'Tambah istilah' },
+  '#btn-conv-copy-gambar': { ids: ['konv.conv.copy'], base: 'Salin baris yang dicentang' },
+  '#ti-instrument': { ids: ['konv.filter.instrument'], base: 'Instrumen' },
+  '#ti-set': { ids: ['konv.filter.set'], base: 'Set' },
+  '#ti-unit': { ids: ['konv.filter.unit'], base: 'Unit' },
+  '#tverif': { ids: ['konv.filter.verified'], base: 'Hanya produk Verified (centang biru INAPROC)' },
+  '#tswasta': { ids: ['konv.filter.swasta'], base: 'Harga Swasta' },
+  '#hdr-clip-count-wrap': { ids: ['konv.clip.toggle'], base: 'Buka/tutup clipboard' },
+  '#btn-export': { ids: ['konv.export'], base: 'Export ke Excel' },
+  '#btn-drive-upload': { ids: ['konv.drive'], base: 'Simpan ke Drive' },
+  '#record-submit-btn': { ids: ['konv.dialog.submit'], base: 'Kirim ke Sheet' },
+  '#record-sph-submit-btn': { ids: ['konv.dialog.submit'], base: 'Kirim ke Sheet' },
+  '#pr-submit-btn': { ids: ['konv.dialog.submit'], base: 'Lanjut: review item' },
+  '#pr-review-save-btn': { ids: ['konv.dialog.submit'], base: 'Simpan & mulai sesi' },
+  '#pr-edit-save-btn': { ids: ['konv.dialog.submit'], base: 'Simpan perubahan' },
+  '#lampiran-save-btn': { ids: ['konv.dialog.submit'], base: 'Simpan' },
+  '#section-name-modal-ok': { ids: ['konv.dialog.submit'], base: 'Simpan' },
 }, container);
 if (S.riwayatSearchInput) {
   S.riwayatSearchInput.addEventListener('keydown', (e) => {
@@ -4566,6 +4703,12 @@ async function loadSesiList() {
     S.sesiList.innerHTML = data.map(renderSesiCard).join('');
     S.sesiList.querySelectorAll('.sesi-card').forEach(card => {
       card.addEventListener('click', () => openSesi(card.dataset.id));
+      // Sama seperti kartu Riwayat: Enter / Spasi di kartu yang difokus = buka (tombol di dalam kartu tidak ikut).
+      card.addEventListener('keydown', (e) => {
+        if (e.target !== card || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        openSesi(card.dataset.id);
+      });
     });
     S.sesiList.querySelectorAll('.sesi-delete-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {

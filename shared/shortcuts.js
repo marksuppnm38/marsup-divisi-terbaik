@@ -53,6 +53,13 @@ export const BROWSER_RESERVED = [
 //   overrides  id pintasan global yang sengaja dikalahkan halaman ini (engine memasang listener di
 //              fase capture + stopImmediatePropagation, jadi halaman menang)
 //   knownConflict id pintasan lain yang BENTROK dan belum diperbaiki (muncul sebagai WARN)
+//   tab        (opsional) sub-tab di dalam halaman tempat pintasan ini hidup, string atau array. Dua
+//              pintasan dengan kombinasi sama TIDAK bentrok kalau tab-nya tidak beririsan (mis. Enter
+//              di tab Cari Produk vs Enter di tab Riwayat). Tanpa `tab` = berlaku di semua tab.
+//
+// SENGAJA TANPA PINTASAN (mengubah data atau membuang pekerjaan, harus lewat klik): Record Konversi,
+// Selesaikan Sesi, Keluar dari Sesi, Hapus semua, Logout. Record tetap dikirim dengan Ctrl+Enter DI DALAM
+// dialognya (konv.dialog.submit), jadi tetap ada langkah klik yang disengaja.
 export const SHORTCUTS = [
   // ─── global ───
   { id: 'nav.search', page: '*', combo: '/', scope: 'page', external: 'app/pages/nav/nav.js',
@@ -87,28 +94,63 @@ export const SHORTCUTS = [
     desc: 'Tutup panel Tambah Filter', group: 'Dialog & panel' },
 
   // ─── konversian ───
-  // Dipasang lewat engine ini (handler di konversian/index.js), KECUALI Alt+Shift+M yang masih
-  // dipasang di clipboard.js (external). "/" dan j/k/panah milik tab Riwayat dulu dipasang manual
-  // (bubble) dan kalah dari nav.js; sekarang jalan di fase capture jadi menang atas sidebar.
+  // Dipasang lewat engine ini (handler di konversian/index.js), KECUALI yang bertanda `external`:
+  // Alt+Shift+M masih dipasang di clipboard.js, dan tombol panah / Enter / Esc di kolom Cari Produk
+  // dipasang di search.js (dicatat di sini supaya muncul di cheat sheet dan bentrok kelihatan).
+  // "/" dan j/k/panah jalan di fase capture jadi menang atas sidebar.
   { id: 'konv.sesiBaru', page: 'konversian', combo: 'Alt+Shift+M', scope: 'page', external: 'app/pages/konversian/clipboard.js',
     desc: 'Mulai Sesi Baru', group: 'Aksi' },
   { id: 'konv.help', page: 'konversian', combo: '?', scope: 'page',
     desc: 'Tampilkan daftar pintasan ini', group: 'Aksi' },
-  { id: 'konv.conv.run', page: 'konversian', combo: 'Mod+Enter', scope: 'page',
-    desc: 'Converter: cocokkan ke katalog (jalan juga saat mengetik)', group: 'Aksi' },
-  { id: 'konv.dict.add', page: 'konversian', combo: 'n', scope: 'page',
+  { id: 'konv.primary', page: 'konversian', combo: 'Mod+Enter', scope: 'page',
+    desc: 'Aksi utama tab ini: Cocokkan ke katalog / Cari SET Mendekati / Generate SPH (jalan juga saat mengetik)', group: 'Aksi' },
+  { id: 'konv.dict.add', page: 'konversian', combo: 'n', scope: 'page', tab: 'dictionary',
     desc: 'Dictionary: tambah istilah', group: 'Aksi' },
+  { id: 'konv.clip.toggle', page: 'konversian', combo: 'Alt+Shift+K', scope: 'page',
+    desc: 'Buka / tutup panel clipboard', group: 'Aksi' },
+  { id: 'konv.export', page: 'konversian', combo: 'Alt+Shift+X', scope: 'page',
+    desc: 'Export ke Excel', group: 'Aksi' },
+  { id: 'konv.drive', page: 'konversian', combo: 'Alt+Shift+U', scope: 'page',
+    desc: 'Simpan ke Drive (setelah Export)', group: 'Aksi' },
 
   { id: 'konv.search', page: 'konversian', combo: '/', scope: 'page', overrides: 'nav.search',
     desc: 'Fokus ke kolom cari / input di tab ini', group: 'Cari & daftar' },
-  { id: 'konv.riwayat.next', page: 'konversian', combo: 'j', scope: 'page', repeat: true,
-    desc: 'Riwayat: kartu berikutnya', group: 'Cari & daftar' },
-  { id: 'konv.riwayat.prev', page: 'konversian', combo: 'k', scope: 'page', repeat: true,
-    desc: 'Riwayat: kartu sebelumnya', group: 'Cari & daftar' },
-  { id: 'konv.riwayat.pageNext', page: 'konversian', combo: 'ArrowRight', scope: 'page',
+  // Kolom Cari Produk (search.js): sudah lama jalan, sekarang dicatat supaya kelihatan di cheat sheet.
+  { id: 'konv.cari.next', page: 'konversian', combo: 'ArrowDown', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',
+    desc: 'Cari Produk: hasil / saran berikutnya', group: 'Cari & daftar' },
+  { id: 'konv.cari.prev', page: 'konversian', combo: 'ArrowUp', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',
+    desc: 'Cari Produk: hasil / saran sebelumnya', group: 'Cari & daftar' },
+  { id: 'konv.cari.add', page: 'konversian', combo: 'Enter', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',
+    desc: 'Cari Produk: tambah hasil yang disorot ke clipboard (sorot dulu dengan ↓)', group: 'Cari & daftar' },
+  { id: 'konv.cari.esc', page: 'konversian', combo: 'Escape', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',
+    desc: 'Cari Produk: lepas sorotan / tutup saran', group: 'Cari & daftar' },
+  { id: 'konv.filter.instrument', page: 'konversian', combo: 'Alt+Shift+1', scope: 'page', tab: 'cari',
+    desc: 'Cari Produk: filter Instrumen (jalan juga saat mengetik)', group: 'Cari & daftar' },
+  { id: 'konv.filter.set', page: 'konversian', combo: 'Alt+Shift+2', scope: 'page', tab: 'cari',
+    desc: 'Cari Produk: filter Set', group: 'Cari & daftar' },
+  { id: 'konv.filter.unit', page: 'konversian', combo: 'Alt+Shift+3', scope: 'page', tab: 'cari',
+    desc: 'Cari Produk: filter Unit', group: 'Cari & daftar' },
+  { id: 'konv.filter.verified', page: 'konversian', combo: 'Alt+Shift+V', scope: 'page', tab: 'cari',
+    desc: 'Cari Produk: filter Verified', group: 'Cari & daftar' },
+  { id: 'konv.filter.swasta', page: 'konversian', combo: 'Alt+Shift+W', scope: 'page', tab: 'cari',
+    desc: 'Cari Produk: filter Harga Swasta', group: 'Cari & daftar' },
+
+  { id: 'konv.list.next', page: 'konversian', combo: 'j', scope: 'page', repeat: true, tab: ['sesi', 'riwayat', 'project', 'converter', 'dictionary'],
+    desc: 'Daftar: baris / kartu berikutnya (Konversi Berjalan, Riwayat, Project, Converter, Dictionary)', group: 'Cari & daftar' },
+  { id: 'konv.list.prev', page: 'konversian', combo: 'k', scope: 'page', repeat: true, tab: ['sesi', 'riwayat', 'project', 'converter', 'dictionary'],
+    desc: 'Daftar: baris / kartu sebelumnya', group: 'Cari & daftar' },
+  { id: 'konv.list.open', page: 'konversian', combo: 'Enter', scope: 'page', tab: ['sesi', 'riwayat', 'project', 'dictionary'], external: 'app/pages/konversian/index.js',
+    desc: 'Daftar: buka kartu / baris yang difokus', group: 'Cari & daftar' },
+  { id: 'konv.list.reload', page: 'konversian', combo: 'r', scope: 'page', tab: ['sesi', 'riwayat', 'project', 'dictionary'],
+    desc: 'Daftar: muat ulang', group: 'Cari & daftar' },
+  { id: 'konv.riwayat.pageNext', page: 'konversian', combo: 'ArrowRight', scope: 'page', tab: 'riwayat',
     desc: 'Riwayat: halaman berikutnya', group: 'Cari & daftar' },
-  { id: 'konv.riwayat.pagePrev', page: 'konversian', combo: 'ArrowLeft', scope: 'page',
+  { id: 'konv.riwayat.pagePrev', page: 'konversian', combo: 'ArrowLeft', scope: 'page', tab: 'riwayat',
     desc: 'Riwayat: halaman sebelumnya', group: 'Cari & daftar' },
+  { id: 'konv.conv.check', page: 'konversian', combo: 'x', scope: 'page', tab: 'converter',
+    desc: 'Converter: centang / lepas baris yang disorot', group: 'Cari & daftar' },
+  { id: 'konv.conv.copy', page: 'konversian', combo: 'Mod+C', scope: 'page', tab: 'converter',
+    desc: 'Converter: salin baris yang dicentang (Copy + Gambar), kecuali ada teks yang diblok', group: 'Cari & daftar' },
 
   { id: 'konv.tab.cari', page: 'konversian', combo: '1', scope: 'page', desc: 'Buka tab Cari Produk', group: 'Pindah tab' },
   { id: 'konv.tab.sesi', page: 'konversian', combo: '2', scope: 'page', desc: 'Buka tab Konversi Berjalan', group: 'Pindah tab' },
@@ -117,8 +159,14 @@ export const SHORTCUTS = [
   { id: 'konv.tab.converter', page: 'konversian', combo: '5', scope: 'page', desc: 'Buka tab Converter', group: 'Pindah tab' },
   { id: 'konv.tab.setcari', page: 'konversian', combo: '6', scope: 'page', desc: 'Buka tab Cari SET', group: 'Pindah tab' },
   { id: 'konv.tab.dictionary', page: 'konversian', combo: '7', scope: 'page', desc: 'Buka tab Dictionary', group: 'Pindah tab' },
+  { id: 'konv.clip.prev', page: 'konversian', combo: '[', scope: 'page',
+    desc: 'Panel clipboard: ke panel kiri (Kebutuhan RS ← Clipboard ← Buat SPH)', group: 'Pindah tab' },
+  { id: 'konv.clip.next', page: 'konversian', combo: ']', scope: 'page',
+    desc: 'Panel clipboard: ke panel kanan', group: 'Pindah tab' },
 
-  { id: 'konv.riwayat.closeMenu', page: 'konversian', combo: 'Escape', scope: 'page', allowTyping: true,
+  { id: 'konv.dialog.submit', page: 'konversian', combo: 'Mod+Enter', scope: 'modal',
+    desc: 'Simpan / Kirim di dialog (Record Konversi, Record SPH, Permintaan RS, Lampiran, Nama section)', group: 'Dialog & panel' },
+  { id: 'konv.riwayat.closeMenu', page: 'konversian', combo: 'Escape', scope: 'page', allowTyping: true, tab: 'riwayat',
     desc: 'Riwayat: tutup menu status kartu', group: 'Dialog & panel' },
 ];
 
@@ -421,12 +469,13 @@ export function validateRegistry() {
   const scopesOverlap = (a, b) => scopeOf(a) === 'any' || scopeOf(b) === 'any' || scopeOf(a) === scopeOf(b)
     || (['page', 'popover'].includes(scopeOf(a)) && ['page', 'popover'].includes(scopeOf(b)));
   const pagesOverlap = (a, b) => a.page === '*' || b.page === '*' || a.page === b.page;
+  const tabsOverlap = (a, b) => !a.tab || !b.tab || toArray(a.tab).some((t) => toArray(b.tab).includes(t));
 
   for (let i = 0; i < flat.length; i++) {
     for (let j = i + 1; j < flat.length; j++) {
       const a = flat[i], b = flat[j];
       if (a.s === b.s || a.n !== b.n) continue;
-      if (!pagesOverlap(a.s, b.s) || !scopesOverlap(a.s, b.s)) continue;
+      if (!pagesOverlap(a.s, b.s) || !scopesOverlap(a.s, b.s) || !tabsOverlap(a.s, b.s)) continue;
       if (a.s.overrides === b.s.id || b.s.overrides === a.s.id) continue;
       const msg = `bentrok: ${a.s.id} dan ${b.s.id} sama-sama ${a.raw}`;
       if (a.s.knownConflict === b.s.id || b.s.knownConflict === a.s.id) warnings.push(`${msg} (diketahui, belum diperbaiki)`);
