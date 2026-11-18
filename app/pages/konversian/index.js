@@ -4561,7 +4561,14 @@ const konvHandlers = {
   // Selesaikan / Keluar dari Sesi = KLIK tombolnya (bukan memanggil logikanya langsung), jadi konfirmasi "Ya, Selesaikan"
   // dan guard "export belum masuk Drive" tetap jalan. Tombol mati (belum ada sesi aktif) = pintasan ditelan, sama dengan klik.
   'konv.sesi.selesai': () => konvClickIfShown('btn-end-sesi'),
-  'konv.sesi.keluar': () => konvClickIfShown('btn-leave-sesi'),
+  // Keluar dari Sesi hidup di menu "⋯" (display:none sampai difokus), jadi TIDAK boleh disyaratkan kelihatan seperti
+  // konvClickIfShown -- cukup ada dan tidak disabled. Klik tombolnya tetap jalan lewat handler aslinya (guard Drive dll).
+  'konv.sesi.keluar': () => {
+    const btn = document.getElementById('btn-leave-sesi');
+    if (!btn) return false;
+    if (!btn.disabled) btn.click();
+    return true;
+  },
   'konv.drive': () => {
     const btn = document.getElementById('btn-drive-upload');
     if (!konvShown(btn)) return false;
