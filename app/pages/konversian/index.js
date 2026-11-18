@@ -38,6 +38,7 @@ import { installRealtime } from './realtime.js';
 import { installClipboard } from './clipboard.js';
 import { installSearch } from './search.js';
 import { installConverter } from './converter.js';
+import { installShortcuts, applyShortcutHints, toggleCheatSheet } from '../../../shared/shortcuts.js';
 import { installConverterBulk } from './converter-bulk.js';
 import { installDictionary } from './dictionary.js';
 import { installSetMendekati } from './set-mendekati.js';
@@ -4370,47 +4371,96 @@ async function loadRiwayatList(keepPage) {
 
 // Klik tile ringkasan = filter status (klik lagi / klik tile Sesi / "Hapus filter" = lepas).
 // Delegasi di container karena innerHTML tile di-render ulang tiap kali.
-// ===== Keyboard: tab Riwayat =====
-//   /  fokus ke kolom cari      j / k  pindah antar kartu      ← / →  halaman sebelum/berikut
-//   Esc  tutup menu status (atau kosongkan search kalau lagi di kolom cari)
-// Listener document-level -> disimpan di window biar bisa dilepas di unmount() dan gak numpuk
-// kalau modul di-mount ulang.
-function riwayatKeyHandler(e) {
-  if (!S.subtabRiwayat || !S.subtabRiwayat.classList.contains('active')) return;
-  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
-  if (document.querySelector('[class*="modal"].show, [class*="overlay"].show, [id*="modal"].show')) return;
-  if (e.key === 'Escape') {
-    const open = document.querySelector('.riwayat-card.ro-open');
-    if (open) { open.classList.remove('ro-open'); open.querySelector('.ro-pill')?.focus(); e.preventDefault(); }
-    return;
-  }
-  const t = e.target;
-  if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-  if (e.key === '/') {
-    if (!S.riwayatSearchInput) return;
-    e.preventDefault();
-    S.riwayatSearchInput.focus();
-    S.riwayatSearchInput.select();
-  } else if (e.key === 'j' || e.key === 'k') {
-    const cards = [...S.riwayatList.querySelectorAll('.riwayat-card')];
-    if (!cards.length) return;
-    const cur = cards.indexOf(document.activeElement && document.activeElement.closest ? document.activeElement.closest('.riwayat-card') : null);
-    const n = cur < 0 ? 0 : (e.key === 'j' ? Math.min(cur + 1, cards.length - 1) : Math.max(cur - 1, 0));
-    e.preventDefault();
-    cards[n].focus();
-    cards[n].scrollIntoView({ block: 'nearest' });
-  } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-    const target = S.riwayatPage + (e.key === 'ArrowRight' ? 1 : -1);
-    const b = document.querySelector(`#riwayat-pager button[data-page="${target}"]`);
-    if (b && !b.disabled) { e.preventDefault(); b.click(); }
-  }
+// ===== Keyboard (shared/shortcuts.js) =====
+// Definisi kombinasi/deskripsi/ruang lingkup ada di registry shared/shortcuts.js (id "konv.*"); di sini cuma handler.
+// Handler yang return false = "bukan urusan saya": event dilepas lewat, jadi mis. "/" di tab yang gak punya
+// kolom cari tetap jatuh ke pencarian sidebar (nav.js). Alt+Shift+M (Sesi Baru) masih dipasang di clipboard.js.
+// Dulu tab Riwayat punya listener bubble sendiri (window.__konvRiwayatKeydown) yang kalah dari nav.js untuk "/";
+// sekarang semuanya lewat engine (fase capture). Pelepasnya didaftarkan ke _globalOffs -> ikut lepas di unmount().
+const KONV_FOCUS_BY_TAB = {
+  cari: 'search-input', riwayat: 'riwayat-search-input', converter: 'conv-input',
+  setcari: 'setcari-paste-input', dictionary: 'dict-search-input',
+};
+// Elemen yang punya semantik panah sendiri: panah di sini BUKAN pindah halaman Riwayat.
+const KONV_OWN_ARROWS = '[role="separator"],[role="slider"],[role="radiogroup"],[role="tablist"],[role="listbox"],[role="menu"],input[type="radio"],input[type="range"],#clip-resize-handle';
+const konvShown = (el) => !!el && el.offsetParent !== null;
+
+function konvMoveRiwayatCard(step) {
+  if (activeSubTab !== 'riwayat' || !S.riwayatList) return false;
+  const cards = [...S.riwayatList.querySelectorAll('.riwayat-card')];
+  if (!cards.length) return false;
+  const a = document.activeElement;
+  const cur = cards.indexOf(a && a.closest ? a.closest('.riwayat-card') : null);
+  const n = cur < 0 ? 0 : Math.min(Math.max(cur + step, 0), cards.length - 1);
+  cards[n].focus();
+  cards[n].scrollIntoView({ block: 'nearest' });
+  return true;
 }
-if (window.__konvRiwayatKeydown) document.removeEventListener('keydown', window.__konvRiwayatKeydown);
-window.__konvRiwayatKeydown = riwayatKeyHandler;
-document.addEventListener('keydown', riwayatKeyHandler);
+function konvRiwayatPage(step, e) {
+  if (activeSubTab !== 'riwayat' || (e.target.closest && e.target.closest(KONV_OWN_ARROWS))) return false;
+  const btn = document.querySelector(`#riwayat-pager button[data-page="${S.riwayatPage + step}"]`);
+  if (!btn || btn.disabled) return false; // gak ada halaman tujuan: panah dilepas (scroll biasa tetap jalan)
+  btn.click();
+  return true;
+}
+
+const konvHandlers = {
+  'konv.help': () => { toggleCheatSheet('konversian'); return true; },
+  'konv.search': () => {
+    const id = KONV_FOCUS_BY_TAB[activeSubTab];
+    const input = id && document.getElementById(id);
+    if (!input) return false; // tab Konversi Berjalan / Project: gak ada kolom cari -> biar jatuh ke sidebar
+    // Panel pencarian Cari Produk bisa lagi dilipat: buka dulu, sama seperti klik rail-nya.
+    if (activeSubTab === 'cari' && !konvShown(input)) setPanelSearchCollapsed(false);
+    if (!konvShown(input)) return false;
+    input.focus();
+    if (typeof input.select === 'function') input.select();
+    return true;
+  },
+  'konv.riwayat.next': () => konvMoveRiwayatCard(1),
+  'konv.riwayat.prev': () => konvMoveRiwayatCard(-1),
+  'konv.riwayat.pageNext': (e) => konvRiwayatPage(1, e),
+  'konv.riwayat.pagePrev': (e) => konvRiwayatPage(-1, e),
+  'konv.riwayat.closeMenu': (e) => {
+    if (activeSubTab !== 'riwayat') return false;
+    if (e.target === S.riwayatSearchInput) return false; // Esc di kolom cari = kosongkan/blur (handler kolomnya sendiri)
+    const open = document.querySelector('.riwayat-card.ro-open');
+    if (!open) return false;
+    open.classList.remove('ro-open');
+    open.querySelector('.ro-pill')?.focus();
+    return true;
+  },
+  // Ctrl/Cmd+Enter = KLIK tombolnya, jadi guard "lagi memproses" (disabled) tetap berlaku. Disabled = ditelan.
+  'konv.conv.run': () => {
+    if (activeSubTab !== 'converter') return false;
+    const btn = S.btnConvProses;
+    if (!konvShown(btn)) return false;
+    if (!btn.disabled) btn.click();
+    return true;
+  },
+  'konv.dict.add': () => {
+    if (activeSubTab !== 'dictionary') return false;
+    const btn = document.getElementById('btn-dict-tambah');
+    if (!konvShown(btn) || btn.disabled) return false;
+    btn.click();
+    return true;
+  },
+};
+// 1..7 = pindah tab, urutan sama dengan sidebar (SUBTAB_IDS). Lewat S.switchSubTab (routed) supaya URL + sorotan sidebar ikut.
+for (const tab of SUBTAB_IDS) {
+  konvHandlers['konv.tab.' + tab] = () => { if (tab !== activeSubTab) S.switchSubTab(tab); return true; };
+}
+_globalOffs.push(installShortcuts('konversian', konvHandlers));
+// Tooltip + aria-keyshortcuts diambil dari registry, bukan diketik manual di markup.
+applyShortcutHints({
+  '#btn-sesi-baru': { ids: ['konv.sesiBaru'], base: 'Mulai Sesi Baru' },
+  '#search-input': { ids: ['konv.search'], base: 'Cari produk' },
+  '#riwayat-search-input': { ids: ['konv.search'], base: 'Cari riwayat' },
+  '#dict-search-input': { ids: ['konv.search'], base: 'Cari di dictionary' },
+  '#btn-conv-proses': { ids: ['konv.conv.run'], base: 'Cocokkan ke katalog' },
+  '#btn-dict-tambah': { ids: ['konv.dict.add'], base: 'Tambah istilah' },
+}, container);
 if (S.riwayatSearchInput) {
-  S.riwayatSearchInput.setAttribute('aria-keyshortcuts', '/');
-  S.riwayatSearchInput.title = 'Pintasan: / cari · j/k pindah kartu · ←/→ halaman';
   S.riwayatSearchInput.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     e.preventDefault();
@@ -5374,10 +5424,6 @@ export function unmount() {
   _globalOffs = [];
   offs.forEach(off => { try { off(); } catch (err) { console.error('unmount konversian: lepas listener global gagal', err); } });
 
-  if (window.__konvRiwayatKeydown) {
-    document.removeEventListener('keydown', window.__konvRiwayatKeydown);
-    window.__konvRiwayatKeydown = null;
-  }
   const bridge = window.__konvBridge;
   if (bridge) {
     try { bridge.authUnsub?.(); } catch (err) { console.error('unmount konversian: authUnsub gagal', err); }

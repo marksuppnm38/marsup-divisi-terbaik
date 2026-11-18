@@ -86,26 +86,44 @@ export const SHORTCUTS = [
   { id: 'produk.filterClose', page: 'crud-produk', combo: 'Escape', scope: 'popover', allowTyping: true,
     desc: 'Tutup panel Tambah Filter', group: 'Dialog & panel' },
 
-  // ─── konversian (semua masih dipasang manual di konversian/*.js) ───
+  // ─── konversian ───
+  // Dipasang lewat engine ini (handler di konversian/index.js), KECUALI Alt+Shift+M yang masih
+  // dipasang di clipboard.js (external). "/" dan j/k/panah milik tab Riwayat dulu dipasang manual
+  // (bubble) dan kalah dari nav.js; sekarang jalan di fase capture jadi menang atas sidebar.
   { id: 'konv.sesiBaru', page: 'konversian', combo: 'Alt+Shift+M', scope: 'page', external: 'app/pages/konversian/clipboard.js',
     desc: 'Mulai Sesi Baru', group: 'Aksi' },
-  // Riwayat: handler-nya jalan di fase bubble DAN mengabaikan event yang sudah di-preventDefault,
-  // sedangkan nav.js memanggil preventDefault lebih dulu -> "/" di sini kemungkinan besar terpotong
-  // jadi fokus ke pencarian sidebar. Belum dites di browser. Diperbaiki saat paket Konversian.
-  { id: 'konv.riwayat.search', page: 'konversian', combo: '/', scope: 'page', external: 'app/pages/konversian/index.js',
-    knownConflict: 'nav.search', desc: 'Riwayat: fokus ke kolom cari', group: 'Cari & daftar' },
-  { id: 'konv.riwayat.next', page: 'konversian', combo: 'j', scope: 'page', external: 'app/pages/konversian/index.js',
+  { id: 'konv.help', page: 'konversian', combo: '?', scope: 'page',
+    desc: 'Tampilkan daftar pintasan ini', group: 'Aksi' },
+  { id: 'konv.conv.run', page: 'konversian', combo: 'Mod+Enter', scope: 'page',
+    desc: 'Converter: cocokkan ke katalog (jalan juga saat mengetik)', group: 'Aksi' },
+  { id: 'konv.dict.add', page: 'konversian', combo: 'n', scope: 'page',
+    desc: 'Dictionary: tambah istilah', group: 'Aksi' },
+
+  { id: 'konv.search', page: 'konversian', combo: '/', scope: 'page', overrides: 'nav.search',
+    desc: 'Fokus ke kolom cari / input di tab ini', group: 'Cari & daftar' },
+  { id: 'konv.riwayat.next', page: 'konversian', combo: 'j', scope: 'page', repeat: true,
     desc: 'Riwayat: kartu berikutnya', group: 'Cari & daftar' },
-  { id: 'konv.riwayat.prev', page: 'konversian', combo: 'k', scope: 'page', external: 'app/pages/konversian/index.js',
+  { id: 'konv.riwayat.prev', page: 'konversian', combo: 'k', scope: 'page', repeat: true,
     desc: 'Riwayat: kartu sebelumnya', group: 'Cari & daftar' },
-  { id: 'konv.riwayat.pageNext', page: 'konversian', combo: 'ArrowRight', scope: 'page', external: 'app/pages/konversian/index.js',
+  { id: 'konv.riwayat.pageNext', page: 'konversian', combo: 'ArrowRight', scope: 'page',
     desc: 'Riwayat: halaman berikutnya', group: 'Cari & daftar' },
-  { id: 'konv.riwayat.pagePrev', page: 'konversian', combo: 'ArrowLeft', scope: 'page', external: 'app/pages/konversian/index.js',
+  { id: 'konv.riwayat.pagePrev', page: 'konversian', combo: 'ArrowLeft', scope: 'page',
     desc: 'Riwayat: halaman sebelumnya', group: 'Cari & daftar' },
+
+  { id: 'konv.tab.cari', page: 'konversian', combo: '1', scope: 'page', desc: 'Buka tab Cari Produk', group: 'Pindah tab' },
+  { id: 'konv.tab.sesi', page: 'konversian', combo: '2', scope: 'page', desc: 'Buka tab Konversi Berjalan', group: 'Pindah tab' },
+  { id: 'konv.tab.riwayat', page: 'konversian', combo: '3', scope: 'page', desc: 'Buka tab Riwayat', group: 'Pindah tab' },
+  { id: 'konv.tab.project', page: 'konversian', combo: '4', scope: 'page', desc: 'Buka tab Project', group: 'Pindah tab' },
+  { id: 'konv.tab.converter', page: 'konversian', combo: '5', scope: 'page', desc: 'Buka tab Converter', group: 'Pindah tab' },
+  { id: 'konv.tab.setcari', page: 'konversian', combo: '6', scope: 'page', desc: 'Buka tab Cari SET', group: 'Pindah tab' },
+  { id: 'konv.tab.dictionary', page: 'konversian', combo: '7', scope: 'page', desc: 'Buka tab Dictionary', group: 'Pindah tab' },
+
+  { id: 'konv.riwayat.closeMenu', page: 'konversian', combo: 'Escape', scope: 'page', allowTyping: true,
+    desc: 'Riwayat: tutup menu status kartu', group: 'Dialog & panel' },
 ];
 
 const PAGE_LABELS = { 'crud-produk': 'CRUD Produk', konversian: 'Konversian' };
-const GROUP_ORDER = ['Cari & daftar', 'Aksi', 'Dialog & panel'];
+const GROUP_ORDER = ['Cari & daftar', 'Pindah tab', 'Aksi', 'Dialog & panel'];
 
 const toArray = (v) => (Array.isArray(v) ? v : [v]);
 const byId = (id) => SHORTCUTS.find((s) => s.id === id);
