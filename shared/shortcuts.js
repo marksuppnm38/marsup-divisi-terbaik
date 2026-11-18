@@ -58,8 +58,12 @@ export const BROWSER_RESERVED = [
 //              di tab Cari Produk vs Enter di tab Riwayat). Tanpa `tab` = berlaku di semua tab.
 //
 // SENGAJA TANPA PINTASAN (mengubah data atau membuang pekerjaan, harus lewat klik): Record Konversi,
-// Selesaikan Sesi, Keluar dari Sesi, Hapus semua, Logout. Record tetap dikirim dengan Ctrl+Enter DI DALAM
-// dialognya (konv.dialog.submit), jadi tetap ada langkah klik yang disengaja.
+// Hapus semua, Logout. Record tetap dikirim dengan Ctrl+Enter DI DALAM dialognya (konv.dialog.submit),
+// jadi tetap ada langkah klik yang disengaja.
+// Selesaikan Sesi (Alt+Shift+S) dan Keluar dari Sesi (Alt+Shift+L) SEKARANG punya pintasan (2026-11-18):
+// keduanya cuma MENGKLIK tombolnya, jadi pengaman bawaan tetap jalan -- Selesaikan Sesi tetap membuka dialog
+// konfirmasi "Ya, Selesaikan" (pintasan TIDAK menyelesaikan sesi langsung), Keluar dari Sesi cuma membersihkan
+// tampilan lokal (sesi tetap 'berjalan' di server).
 export const SHORTCUTS = [
   // ─── global ───
   { id: 'nav.search', page: '*', combo: '/', scope: 'page', external: 'app/pages/nav/nav.js',
@@ -92,6 +96,8 @@ export const SHORTCUTS = [
     desc: 'Simpan (dialog Produk, AKD, KFA)', group: 'Dialog & panel' },
   { id: 'produk.filterClose', page: 'crud-produk', combo: 'Escape', scope: 'popover', allowTyping: true,
     desc: 'Tutup panel Tambah Filter', group: 'Dialog & panel' },
+  { id: 'produk.closeDialog', page: 'crud-produk', combo: 'Escape', scope: 'modal', allowTyping: true,
+    desc: 'Tutup dialog yang terbuka (Produk, AKD, KFA, Log Aktivitas)', group: 'Dialog & panel' },
 
   // ─── konversian ───
   // Dipasang lewat engine ini (handler di konversian/index.js), KECUALI yang bertanda `external`:
@@ -99,7 +105,11 @@ export const SHORTCUTS = [
   // dipasang di search.js (dicatat di sini supaya muncul di cheat sheet dan bentrok kelihatan).
   // "/" dan j/k/panah jalan di fase capture jadi menang atas sidebar.
   { id: 'konv.sesiBaru', page: 'konversian', combo: 'Alt+Shift+M', scope: 'page', external: 'app/pages/konversian/clipboard.js',
-    desc: 'Mulai Sesi Baru', group: 'Aksi' },
+    desc: 'Mulai Sesi Baru', group: 'Sesi' },
+  { id: 'konv.sesi.selesai', page: 'konversian', combo: 'Alt+Shift+S', scope: 'page',
+    desc: 'Selesaikan Sesi (tetap minta konfirmasi dulu)', group: 'Sesi' },
+  { id: 'konv.sesi.keluar', page: 'konversian', combo: 'Alt+Shift+L', scope: 'page',
+    desc: 'Keluar dari Sesi (sesi tetap berjalan)', group: 'Sesi' },
   { id: 'konv.help', page: 'konversian', combo: '?', scope: 'page',
     desc: 'Tampilkan daftar pintasan ini', group: 'Aksi' },
   { id: 'konv.primary', page: 'konversian', combo: 'Mod+Enter', scope: 'page',
@@ -181,7 +191,7 @@ export const SHORTCUTS = [
 ];
 
 const PAGE_LABELS = { 'crud-produk': 'CRUD Produk', konversian: 'Konversian' };
-const GROUP_ORDER = ['Cari & daftar', 'Pindah tab', 'Aksi', 'Dialog & panel'];
+const GROUP_ORDER = ['Sesi', 'Pindah tab', 'Cari & daftar', 'Aksi', 'Dialog & panel'];
 
 const toArray = (v) => (Array.isArray(v) ? v : [v]);
 const byId = (id) => SHORTCUTS.find((s) => s.id === id);
@@ -248,7 +258,8 @@ export function isDialogOpen() {
 
 const KEY_LABEL = { Escape: 'Esc', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' };
 
-export function formatCombo(raw) {
+// Potongan tombol satu kombinasi, urutan tampil: ["Alt", "Shift", "S"] (Mac: ["⌥", "⇧", "S"]).
+export function comboParts(raw) {
   const c = parseCombo(raw);
   const k = KEY_LABEL[c.key] || (isBare(c) ? c.key : (c.key.length === 1 ? c.key.toUpperCase() : c.key));
   const mods = [];
@@ -256,7 +267,11 @@ export function formatCombo(raw) {
   if (c.meta) mods.push(IS_MAC ? '⌘' : 'Win');
   if (c.alt) mods.push(IS_MAC ? '⌥' : 'Alt');
   if (c.shift) mods.push(IS_MAC ? '⇧' : 'Shift');
-  return IS_MAC ? mods.join('') + k : [...mods, k].join('+');
+  return [...mods, k];
+}
+
+export function formatCombo(raw) {
+  return comboParts(raw).join(IS_MAC ? '' : '+');
 }
 
 function ariaCombo(raw) {
@@ -348,14 +363,21 @@ function ensureSheetStyle() {
   const st = document.createElement('style');
   st.id = 'pnm-shortcuts-style';
   st.textContent = `
-.pnm-sc-card{max-width:520px}
-.pnm-sc-group{margin:18px 0 4px;font-size:12px;font-weight:600;color:var(--text-secondary)}
-.pnm-sc-group:first-of-type{margin-top:14px}
-.pnm-sc-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:7px 0;font-size:13px;color:var(--text)}
-.pnm-sc-row + .pnm-sc-row{border-top:1px solid var(--border)}
-.pnm-sc-keys{display:inline-flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px 6px;color:var(--text-muted);font-size:12px}
-.pnm-sc-kbd{padding:1px 6px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface-2);color:var(--text-secondary);font-family:var(--font-mono,ui-monospace,monospace);font-size:11.5px;line-height:1.5;white-space:nowrap}
-.pnm-sc-note{margin-top:16px;font-size:12px;color:var(--text-muted)}
+.modal-overlay.pnm-sc-overlay{align-items:center;padding:24px 16px}
+.pnm-sc-card{max-width:780px;max-height:min(720px,calc(100vh - 48px));max-height:min(720px,calc(100dvh - 48px));display:flex;flex-direction:column;padding:0;overflow:hidden}
+.pnm-sc-card .modal-head{margin:0;padding:20px 24px 14px;border-bottom:1px solid var(--border)}
+.pnm-sc-card .modal-close{margin:-2px -6px 0 0}
+.pnm-sc-card .modal-title{margin-bottom:0}
+.pnm-sc-card .modal-sub{margin:2px 0 0}
+.pnm-sc-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 24px 12px;columns:2 300px;column-gap:44px}
+.pnm-sc-group{break-after:avoid;margin:0;padding:18px 0 6px;font-size:12px;font-weight:600;color:var(--text-secondary)}
+.pnm-sc-row{break-inside:avoid;display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:5px 0;font-size:13px;line-height:1.4;color:var(--text)}
+.pnm-sc-keys{display:inline-flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;max-width:50%;gap:4px 8px}
+.pnm-sc-combo{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.pnm-sc-plus,.pnm-sc-or{font-size:11.5px;color:var(--text-muted)}
+.pnm-sc-kbd{min-width:22px;padding:1px 6px 0;text-align:center;border:1px solid var(--border-strong);border-bottom-width:2px;border-radius:var(--radius-sm);background:var(--surface-2);color:var(--text-secondary);font-family:var(--font-mono,ui-monospace,monospace);font-size:11.5px;line-height:1.6;white-space:nowrap}
+.pnm-sc-note{margin:0;padding:12px 24px 16px;border-top:1px solid var(--border);font-size:12px;line-height:1.5;color:var(--text-muted)}
+@media (max-width:520px){.pnm-sc-card .modal-head{padding:16px 16px 12px}.pnm-sc-body{padding:0 16px 8px}.pnm-sc-note{padding:12px 16px 14px}.pnm-sc-row{flex-direction:column;align-items:flex-start;gap:4px}.pnm-sc-keys{justify-content:flex-start;max-width:none}}
 `;
   document.head.appendChild(st);
 }
@@ -406,23 +428,30 @@ export function toggleCheatSheet(page) {
   head.append(titleWrap, closeBtn);
   card.append(head);
 
+  const body = el('div', 'pnm-sc-body');
   const groups = [...new Set(defs.map((d) => d.group || 'Lainnya'))]
     .sort((a, b) => (GROUP_ORDER.indexOf(a) + 1 || 99) - (GROUP_ORDER.indexOf(b) + 1 || 99));
   for (const g of groups) {
-    card.append(el('div', 'pnm-sc-group', g));
+    body.append(el('div', 'pnm-sc-group', g));
     for (const d of defs.filter((x) => (x.group || 'Lainnya') === g)) {
       const row = el('div', 'pnm-sc-row');
       row.append(el('span', null, d.desc));
       const keys = el('span', 'pnm-sc-keys');
       toArray(d.combo).forEach((c, i) => {
-        if (i) keys.append(document.createTextNode('atau'));
-        keys.append(el('kbd', 'pnm-sc-kbd', formatCombo(c)));
+        if (i) keys.append(el('span', 'pnm-sc-or', 'atau'));
+        const combo = el('span', 'pnm-sc-combo');
+        comboParts(c).forEach((part, n) => {
+          if (n && !IS_MAC) combo.append(el('span', 'pnm-sc-plus', '+'));
+          combo.append(el('kbd', 'pnm-sc-kbd', part));
+        });
+        keys.append(combo);
       });
       row.append(keys);
-      card.append(row);
+      body.append(row);
     }
   }
-  card.append(el('div', 'pnm-sc-note', 'Pintasan tombol tunggal tidak jalan saat kamu sedang mengetik di kolom input. Tekan ? atau Esc untuk menutup.'));
+  card.append(body);
+  card.append(el('p', 'pnm-sc-note', 'Tombol tunggal (j, k, 1–7, dst.) tidak jalan saat kamu mengetik di kolom input; kombinasi Alt+Shift jalan di mana saja. Tekan ? atau Esc untuk menutup.'));
 
   overlay.append(card);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeCheatSheet(); });

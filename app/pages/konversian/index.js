@@ -4375,7 +4375,7 @@ async function loadRiwayatList(keepPage) {
 // Definisi kombinasi/deskripsi/ruang lingkup ada di registry shared/shortcuts.js (id "konv.*"); di sini cuma handler.
 // Handler yang return false = "bukan urusan saya": event dilepas lewat, jadi mis. "/" di tab yang gak punya
 // kolom cari tetap jatuh ke pencarian sidebar (nav.js). Alt+Shift+M (Sesi Baru) masih dipasang di clipboard.js; panah/Enter/Esc di kolom
-// Cari Produk di search.js (keduanya `external` di registry). Record/Selesaikan Sesi/Keluar/Hapus/Logout SENGAJA tanpa pintasan.
+// Cari Produk di search.js (keduanya `external` di registry). Record/Hapus/Logout SENGAJA tanpa pintasan. Selesaikan Sesi (Alt+Shift+S) & Keluar dari Sesi (Alt+Shift+L) cuma mengklik tombolnya, jadi dialog konfirmasi Selesaikan Sesi tetap muncul.
 // Dulu tab Riwayat punya listener bubble sendiri (window.__konvRiwayatKeydown) yang kalah dari nav.js untuk "/";
 // sekarang semuanya lewat engine (fase capture). Pelepasnya didaftarkan ke _globalOffs -> ikut lepas di unmount().
 const KONV_FOCUS_BY_TAB = {
@@ -4558,6 +4558,10 @@ const konvHandlers = {
   'konv.clip.prev': () => konvClipStep(-1),
   'konv.clip.next': () => konvClipStep(1),
   'konv.export': () => konvClickIfShown('btn-export'),
+  // Selesaikan / Keluar dari Sesi = KLIK tombolnya (bukan memanggil logikanya langsung), jadi konfirmasi "Ya, Selesaikan"
+  // dan guard "export belum masuk Drive" tetap jalan. Tombol mati (belum ada sesi aktif) = pintasan ditelan, sama dengan klik.
+  'konv.sesi.selesai': () => konvClickIfShown('btn-end-sesi'),
+  'konv.sesi.keluar': () => konvClickIfShown('btn-leave-sesi'),
   'konv.drive': () => {
     const btn = document.getElementById('btn-drive-upload');
     if (!konvShown(btn)) return false;
@@ -4574,6 +4578,8 @@ _globalOffs.push(installShortcuts('konversian', konvHandlers));
 // Tooltip + aria-keyshortcuts diambil dari registry, bukan diketik manual di markup.
 applyShortcutHints({
   '#btn-sesi-baru': { ids: ['konv.sesiBaru'], base: 'Mulai Sesi Baru' },
+  '#btn-end-sesi': 'konv.sesi.selesai',
+  '#btn-leave-sesi': 'konv.sesi.keluar',
   '#search-input': { ids: ['konv.search'], base: 'Cari produk' },
   '#riwayat-search-input': { ids: ['konv.search'], base: 'Cari riwayat' },
   '#dict-search-input': { ids: ['konv.search'], base: 'Cari di dictionary' },

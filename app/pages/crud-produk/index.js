@@ -1795,6 +1795,10 @@ const SEARCH_INPUT_BY_VIEW = {
   sync: 'syncSearchInput', orphan: 'orphanSearchInput', kategori: 'katSearchInput',
 };
 const SAVE_BTN_BY_OVERLAY = { modalOverlay: 'saveBtn', akdModalOverlay: 'akdSaveBtn', kfaModalOverlay: 'kfaSaveBtn' };
+// Esc = KLIK tombol X dialog paling atas (bukan menutup paksa), jadi guard "perubahan belum disimpan" dan penolakan
+// saat sedang menyimpan tetap jalan persis seperti klik biasa. Dialog yang sudah mengurus Esc-nya sendiri (konfirmasi
+// generik, hapus orphan, Ctrl+K) dan widget yang sedang terbuka di dalam dialog (dropdown, kolom qty) tidak diganggu.
+const CLOSE_BTN_BY_OVERLAY = { modalOverlay: 'modalCloseBtn', akdModalOverlay: 'akdModalCloseBtn', kfaModalOverlay: 'kfaModalCloseBtn', logModalOverlay: 'logModalCloseBtn' };
 const activeCrudView = () => document.getElementById('appWrap')?.dataset.view || '';
 const isShown = (el) => !!el && el.offsetParent !== null;
 
@@ -1844,6 +1848,19 @@ shortcutsDispose = installShortcuts('crud-produk', {
     return true;
   },
   'produk.help': () => { toggleCheatSheet('crud-produk'); return true; },
+  'produk.closeDialog': (e) => {
+    if (document.querySelector('#genericConfirmOverlay.open, #orphDelOverlay.open, .cmdk-overlay.open')) return false;
+    if (e.target.closest && e.target.closest('.cr-qty, .is-open, [aria-expanded="true"]')) return false;
+    const stay = document.querySelector('#unsavedConfirmOverlay.open');
+    if (stay) { document.getElementById('unsavedStayBtn').click(); return true; } // Esc di konfirmasi = Tetap Edit (aman, tidak membuang apa pun)
+    const open = document.querySelectorAll('.modal-overlay.open');
+    const top = open[open.length - 1];
+    const id = top && CLOSE_BTN_BY_OVERLAY[top.id];
+    const btn = id && document.getElementById(id);
+    if (!btn) return false; // mis. daftar pintasan (?) yang ada di paling atas: biarkan dia menutup dirinya sendiri
+    btn.click();
+    return true;
+  },
   // Simpan = KLIK tombol Simpan dialog yang paling atas, jadi validasi, penolakan simpan dobel, dan alur
   // "perubahan belum disimpan" jalan persis sama seperti klik biasa. Tombol disabled (lagi memuat/menyimpan) = ditelan.
   'produk.save': () => {
@@ -1865,6 +1882,10 @@ applyShortcutHints({
   '#akdSaveBtn': 'produk.save',
   '#kfaSaveBtn': 'produk.save',
   '#topSearchInput': { ids: ['produk.search', 'produk.cmdk'], base: 'Cari produk' },
+  '#modalCloseBtn': 'produk.closeDialog',
+  '#akdModalCloseBtn': 'produk.closeDialog',
+  '#kfaModalCloseBtn': 'produk.closeDialog',
+  '#logModalCloseBtn': 'produk.closeDialog',
 }, container);
 
 let cmdkSeq = 0;
