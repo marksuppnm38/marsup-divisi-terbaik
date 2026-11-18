@@ -4550,6 +4550,7 @@ const konvHandlers = {
   'konv.filter.instrument': () => activeSubTab === 'cari' && konvClickIfShown('ti-instrument'),
   'konv.filter.set': () => activeSubTab === 'cari' && konvClickIfShown('ti-set'),
   'konv.filter.unit': () => activeSubTab === 'cari' && konvClickIfShown('ti-unit'),
+  'konv.filter.akd': () => activeSubTab === 'cari' && konvClickIfShown('takd'),
   'konv.filter.verified': () => activeSubTab === 'cari' && konvClickIfShown('tverif'),
   'konv.filter.swasta': () => activeSubTab === 'cari' && konvClickIfShown('tswasta'),
   // Panel clipboard & output.
@@ -4584,6 +4585,7 @@ applyShortcutHints({
   '#ti-instrument': { ids: ['konv.filter.instrument'], base: 'Instrumen' },
   '#ti-set': { ids: ['konv.filter.set'], base: 'Set' },
   '#ti-unit': { ids: ['konv.filter.unit'], base: 'Unit' },
+  '#takd': { ids: ['konv.filter.akd'], base: 'AKD' },
   '#tverif': { ids: ['konv.filter.verified'], base: 'Hanya produk Verified (centang biru INAPROC)' },
   '#tswasta': { ids: ['konv.filter.swasta'], base: 'Harga Swasta' },
   '#hdr-clip-count-wrap': { ids: ['konv.clip.toggle'], base: 'Buka/tutup clipboard' },
