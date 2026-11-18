@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         KFA Alkes Automation - Pionir
 // @namespace    pionir-marsup
-// @version      2.3
-// @description  Automasi SKU -> cangkang + validasi KFA di kamus-alkes.kemkes.go.id (v2.3: fix item kepilih salah (aktifkan item sebelum klik), Search More aman, deteksi tag nyasar; v2.2: exact match wajib + Search More, deteksi produk sudah valid; v2.1: saran zoom; v2.0: diagnosa lengkap, cek via RPC, layout guard, panel ringkas)
+// @version      2.4
+// @description  Automasi SKU -> cangkang + validasi KFA di kamus-alkes.kemkes.go.id (v2.4: tombol "Get NIE REGALKES" diganti "Sync & Validasi NIE REGALKES" (selector by name, ada di statusbar), deteksi dialog setelah Sync, Validate dicari by name; v2.3: fix item kepilih salah, Search More aman, deteksi tag nyasar; v2.2: exact match wajib + Search More; v2.1: saran zoom; v2.0: diagnosa lengkap, cek via RPC, layout guard, panel ringkas)
 // @match        https://kamus-alkes.kemkes.go.id/*
 // @grant        none
 // ==/UserScript==
@@ -22,8 +22,11 @@
   //     pindah ke layout MOBILE (tab/tombol disembunyiin). Split screen? Zoom
   //     browser out (Ctrl + minus) sampai lebar >= 900px.
   //  6. Jangan pindah tab browser selama run (timer di-throttle browser).
+  //  7. v2.4: Proses B sekarang klik "Sync & Validasi NIE REGALKES" (tombol baru
+  //     di statusbar). Habis sync, script nunggu tombol Validate aktif (atau Kode
+  //     KFA PA langsung terisi kalau server sudah auto-validate).
   // ============================================================
-  const VERSION = '2.3';
+  const VERSION = '2.4';
   const STORAGE_KEY = 'kfa_automation_queue_v1';
   const RESULTS_KEY = 'kfa_automation_results_v1';
   const AUTORESUME_PROSES_A_KEY = 'kfa_autoresume_prosesA_v1';
@@ -40,6 +43,9 @@
     configure: 'button[name="configure_product"], button[name="reconfigure_product"]',
     typeInput: '.o_field_many2manytags input.o_input, .o_field_many2manytags input[type="text"]',
     typeField: '.o_field_many2manytags, .o_field_widget[name="value_ids"]',
+    // v2.4 (capture 2026-11-18): tombol statusbar produk varian
+    syncNie: 'button[name="action_sync_validate_nie_regalkes"]',
+    validate: 'button[name="action_validate_product"]',
   };
   const BTN = {
     save: { sel: '.o_form_buttons_edit .o_form_button_save, .o_form_buttons_edit button.btn-primary', text: 'Save' },
@@ -58,6 +64,9 @@
     VALIDATE_DONE_TIMEOUT_MS: 30000,
     KFA_CODE_TIMEOUT_MS: 30000,
     MANUAL_VALIDATE_TIMEOUT_MS: 300000,
+    SYNC_BTN_TIMEOUT_MS: 15000,       // v2.4: nunggu tombol Sync & Validasi NIE REGALKES muncul
+    SYNC_RESULT_TIMEOUT_MS: 45000,    // v2.4: nunggu hasil sync per percobaan
+    SYNC_MIN_WAIT_MS: 1500,           // v2.4: jeda minimum abis klik Sync (biar Validate "lama" nggak kebaca)
     RETRY_COUNT: 2,
     PROSES_A_RETRY_COUNT: 3,
     PROSES_A_TABLE_TIMEOUT_MS: 30000,
@@ -156,6 +165,8 @@
       s.tipeRow = !!row;
       s.tipeBadges = row ? row.querySelectorAll('.o_tag, .badge').length : null;
       s.tipeInput = !!(row && row.querySelector(SEL.typeInput));
+      s.syncBtnVisible = !!findSyncNieBtn();
+      s.validateBtnVisible = !!getVisibleValidateButtonEl();
       s.buttons = visibleButtonTexts();
       s.activeElement = describeEl(document.activeElement);
       const q = loadQueue();
@@ -168,7 +179,7 @@
     return s;
   }
   function compactState(s) {
-    return `viewport ${s.viewport}${s.odooMobileLayout ? ' ⚠MOBILE-LAYOUT' : ''} | edit=${s.editMode} | blockUI=${s.blockUI} | tab=${s.activeTab} | tipeRow=${s.tipeRow} badges=${s.tipeBadges} input=${s.tipeInput} | modal=${s.modal || '-'} | hidden=${s.tabHidden} focus=${s.windowFocused} | btn=[${(s.buttons || []).join(' / ')}]`;
+    return `viewport ${s.viewport}${s.odooMobileLayout ? ' ⚠MOBILE-LAYOUT' : ''} | edit=${s.editMode} | blockUI=${s.blockUI} | tab=${s.activeTab} | tipeRow=${s.tipeRow} badges=${s.tipeBadges} input=${s.tipeInput} | sync=${s.syncBtnVisible} validate=${s.validateBtnVisible} | modal=${s.modal || '-'} | hidden=${s.tabHidden} focus=${s.windowFocused} | btn=[${(s.buttons || []).join(' / ')}]`;
   }
   // Catat kegagalan + snapshot kondisi halaman. Return null biar bisa `return fail(...)`.
   function fail(msg) {
@@ -398,9 +409,22 @@
   }
   function isEditMode() { return !!(findBtn('save') || findBtn('discard')); }
   function hasVisibleValidateButton() { return !!getVisibleValidateButtonEl(); }
+  // v2.4: cari by name="action_validate_product" dulu (teks tombol bisa kena overlay shortcut "Validate V"), fallback ke teks.
   function getVisibleValidateButtonEl() {
+    const byName = Array.from(document.querySelectorAll(SEL.validate)).find((b) => !b.closest('#kfa-panel') && !b.closest('.modal') && isVisible(b));
+    if (byName) return byName;
     const m = Array.from(document.querySelectorAll('span')).find((el) => el.textContent.trim() === 'Validate' && isVisible(el) && !el.closest('#kfa-panel'));
     return m ? (m.closest('button') || m) : null;
+  }
+  // v2.4: tombol baru "Sync & Validasi NIE REGALKES" (dulu "Get NIE REGALKES"). By name dulu, fallback teks (baru & lama).
+  function findSyncNieBtn() {
+    const byName = Array.from(document.querySelectorAll(SEL.syncNie)).find((b) => !b.closest('#kfa-panel') && !b.closest('.modal') && isVisible(b));
+    if (byName) return byName;
+    const cand = Array.from(document.querySelectorAll('button')).find((b) => {
+      if (b.closest('#kfa-panel') || b.closest('.modal') || !isVisible(b)) return false;
+      return /(sync\s*&\s*validasi|get)\s+nie\s+regalkes/i.test(norm(b.textContent));
+    });
+    return cand || null;
   }
   function isBtnDisabled(el) {
     return !!(el.disabled || el.classList?.contains('disabled') || el.classList?.contains('o_disabled') || el.getAttribute?.('aria-disabled') === 'true');
@@ -1075,32 +1099,47 @@
     setNativeValue(nieInput, nie);
     if (tkdn !== undefined && tkdn !== '') setNativeValue(tkdnInput, String(tkdn));
     await sleep(300);
-    // v2.2: Get NIE REGALKES maks 2x, tiap percobaan nunggu 45d; deteksi produk yang sudah valid.
+    // v2.4: tombol "Get NIE REGALKES" -> "Sync & Validasi NIE REGALKES" (button[name=action_sync_validate_nie_regalkes], di statusbar).
+    // Maks 2x percobaan. Tiap percobaan: klik -> tunggu hasil: (a) Kode KFA PA langsung terisi (sudah valid),
+    // (b) tombol Validate kelihatan & aktif, atau (c) dialog error muncul (ditutup, lalu retry).
     const statusbarNow = () => {
-      const a = document.querySelector('.o_statusbar_status .o_arrow_button.btn-primary');
+      const a = document.querySelector('.o_statusbar_status .o_arrow_button.btn-primary, .o_statusbar_status button[title="Current state"]');
       return a ? norm(a.textContent) : null;
     };
     const kfaPaNow = () => {
       const t = document.querySelector('span[name="kfa_pa_code"]')?.textContent.trim();
       return isValidKfaCode(t) ? t : null;
     };
-    let outcome = null;
+    let outcome = null, lastModal = '';
     for (let attempt = 1; attempt <= 2 && !outcome; attempt++) {
-      if (!clickByText('span', 'Get NIE REGALKES', { visibleOnly: true })) return fail('Tombol "Get NIE REGALKES" nggak ketemu.');
-      log(`⏳ Nunggu data Regalkes ke-fetch (percobaan ${attempt}/2)...`);
-      await settleAfterAction('klik Get NIE REGALKES');
-      setStatus(`Proses B: nunggu Validate (percobaan ${attempt}/2)`, kodeProduk);
-      outcome = await waitUntil('tombol Validate / produk sudah valid', () => {
-        if (hasVisibleValidateButton()) return 'VALIDATE';
+      const syncBtn = await waitUntil('tombol Sync & Validasi NIE REGALKES', findSyncNieBtn, { timeout: CONFIG.SYNC_BTN_TIMEOUT_MS, interval: 300 });
+      if (!syncBtn) return fail('Tombol "Sync & Validasi NIE REGALKES" nggak ketemu (selector: button[name="action_sync_validate_nie_regalkes"]). Mungkin UI berubah lagi -- kirim capture baru.');
+      if (isBtnDisabled(syncBtn)) { await sleep(800); }
+      syncBtn.click();
+      log(`⏳ Klik Sync & Validasi NIE REGALKES, nunggu data Regalkes ke-fetch (percobaan ${attempt}/2)...`);
+      await settleAfterAction('klik Sync & Validasi NIE REGALKES');
+      await sleep(CONFIG.SYNC_MIN_WAIT_MS);   // jangan langsung percaya tombol Validate yang mungkin sudah kelihatan sebelum sync kelar
+      setStatus(`Proses B: nunggu hasil Sync (percobaan ${attempt}/2)`, kodeProduk);
+      outcome = await waitUntil('hasil Sync NIE (Validate aktif / KFA PA terisi / dialog)', () => {
+        if (isUnexpectedModalVisible()) { lastModal = getUnexpectedModalText(); return 'MODAL'; }
         if (kfaPaNow()) return 'ALREADY';
+        const v = getVisibleValidateButtonEl();
+        if (v && !isBtnDisabled(v)) return 'VALIDATE';
         return null;
-      }, { timeout: 45000, interval: 400, logEvery: 10000 });
+      }, { timeout: CONFIG.SYNC_RESULT_TIMEOUT_MS, interval: 400, logEvery: 10000 });
+      if (outcome === 'MODAL') {
+        log(`⚠️ Dialog muncul abis Sync & Validasi NIE: "${lastModal}"`, 'error');
+        dismissUnexpectedModal();
+        await sleep(500);
+        await settleAfterAction('tutup dialog Sync');
+        outcome = null;
+      }
     }
     if (!outcome) {
-      return fail(`Tombol Validate nggak muncul & Kode KFA (PA) kosong setelah 2x Get NIE REGALKES. Status record: "${statusbarNow()}". Cek manual NIE "${nie}" -- Regalkes gagal / NIE nggak valid.`);
+      return fail(`Tombol Validate nggak aktif & Kode KFA (PA) kosong setelah 2x Sync & Validasi NIE REGALKES. Status record: "${statusbarNow()}".${lastModal ? ` Dialog terakhir: "${lastModal}".` : ''} Cek manual NIE "${nie}" -- Regalkes gagal / NIE nggak valid.`);
     }
     if (outcome === 'ALREADY') {
-      log(`ℹ️ Produk "${kodeProduk}" ternyata SUDAH ter-validate (Kode KFA PA sudah ada) -- skip Validate, ambil kodenya.`);
+      log(`ℹ️ Produk "${kodeProduk}" SUDAH ter-validate (Kode KFA PA sudah ada) -- skip Validate, ambil kodenya.`);
       return finishProsesB(kodeProduk, true);
     }
     if (!autoFlags.autovalidate) {
