@@ -78,6 +78,14 @@ export const SHORTCUTS = [
     desc: 'Baris berikutnya', group: 'Cari & daftar' },
   { id: 'produk.prevRow', page: 'crud-produk', combo: 'k', scope: 'page', repeat: true,
     desc: 'Baris sebelumnya', group: 'Cari & daftar' },
+  { id: 'produk.arrowNext', page: 'crud-produk', combo: 'ArrowDown', scope: 'page', repeat: true, allowTyping: true,
+    desc: 'Baris berikutnya (↓ juga jalan dari kolom cari)', group: 'Cari & daftar' },
+  { id: 'produk.arrowPrev', page: 'crud-produk', combo: 'ArrowUp', scope: 'page', repeat: true, allowTyping: true,
+    desc: 'Baris sebelumnya', group: 'Cari & daftar' },
+  { id: 'produk.extendNext', page: 'crud-produk', combo: 'Shift+ArrowDown', scope: 'page', repeat: true, allowTyping: true,
+    desc: 'Perluas pilihan ke baris berikutnya (rentang)', group: 'Cari & daftar' },
+  { id: 'produk.extendPrev', page: 'crud-produk', combo: 'Shift+ArrowUp', scope: 'page', repeat: true, allowTyping: true,
+    desc: 'Perluas pilihan ke baris sebelumnya (rentang)', group: 'Cari & daftar' },
   { id: 'produk.open', page: 'crud-produk', combo: 'Enter', scope: 'page', external: 'app/pages/crud-produk/index.js',
     desc: 'Buka produk yang sedang difokus', group: 'Cari & daftar' },
   { id: 'produk.select', page: 'crud-produk', combo: 'x', scope: 'page', external: 'app/pages/crud-produk/copy.js',
@@ -139,7 +147,7 @@ export const SHORTCUTS = [
   { id: 'konv.cari.copy', page: 'konversian', combo: 'Mod+C', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',
     desc: 'Cari Produk: copy info produk yang disorot / rentang pilihan (sama kayak tombol Copy), kecuali ada teks yang diblok', group: 'Cari & daftar' },
   { id: 'konv.cari.add', page: 'konversian', combo: 'Enter', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',
-    desc: 'Cari Produk: tambah hasil yang disorot ke clipboard (sorot dulu dengan ↓)', group: 'Cari & daftar' },
+    desc: 'Cari Produk: tambah hasil yang disorot ke clipboard, atau SEMUA yang terpilih kalau ada rentang Shift+↓ (yang sudah ada dilewati)', group: 'Cari & daftar' },
   { id: 'konv.cari.esc', page: 'konversian', combo: 'Escape', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',
     desc: 'Cari Produk: lepas sorotan / tutup saran', group: 'Cari & daftar' },
   { id: 'konv.filter.instrument', page: 'konversian', combo: 'Alt+Shift+1', scope: 'page', tab: 'cari',
@@ -222,7 +230,8 @@ function matchEvent(e, c) {
   if (c.mod) { if (e.ctrlKey === e.metaKey) return false; } // tepat satu dari Ctrl / Cmd
   else if (c.ctrl !== e.ctrlKey || c.meta !== e.metaKey) return false;
   // Tombol polos: e.key apa adanya (Shift sudah terkandung di "?" atau "J").
-  if (isBare(c)) return e.key === c.key;
+  // Tombol non-karakter (panah, Enter, Escape): Shift harus sama persis, supaya "↓" dan "Shift+↓" bisa jadi dua pintasan berbeda.
+  if (isBare(c)) return e.key === c.key && (c.key.length === 1 || c.shift === e.shiftKey);
   if (c.shift !== e.shiftKey) return false;
   if (c.alt) return e.code === codeFor(c.key);
   return String(e.key).toLowerCase() === c.key.toLowerCase();
@@ -406,7 +415,9 @@ export function toggleCheatSheet(page) {
 
   const pageDefs = SHORTCUTS.filter((s) => s.page === page);
   const overridden = new Set(pageDefs.map((s) => s.overrides).filter(Boolean));
-  const defs = SHORTCUTS.filter((s) => (s.page === page || s.page === '*') && !overridden.has(s.id));
+  // Yang disembunyikan cuma pintasan GLOBAL yang dikalahkan halaman ini (mis. "/" milik sidebar); pintasan halaman yang
+  // di-`overrides` pintasan halaman lain (mis. ↓ vs Shift+↓) tetap tampil.
+  const defs = SHORTCUTS.filter((s) => (s.page === page || s.page === '*') && !(s.page === '*' && overridden.has(s.id)));
 
   const overlay = el('div', 'modal-overlay open show pnm-sc-overlay');
   overlay.setAttribute('role', 'dialog');
@@ -474,7 +485,7 @@ export function toggleCheatSheet(page) {
 
 function normalize(raw) {
   const c = parseCombo(raw);
-  const mods = [c.alt && 'alt', (c.mod || c.ctrl) && 'ctrl', c.meta && 'meta', c.shift && !isBare(c) && 'shift'].filter(Boolean);
+  const mods = [c.alt && 'alt', (c.mod || c.ctrl) && 'ctrl', c.meta && 'meta', c.shift && (!isBare(c) || c.key.length > 1) && 'shift'].filter(Boolean);
   return [...mods, c.key.toLowerCase()].join('+');
 }
 

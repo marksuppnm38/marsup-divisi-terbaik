@@ -1003,15 +1003,23 @@ async function handleClipToggleClick(kode, action) {
 
 S.handleClipToggleClick = handleClipToggleClick; // dipakai tombol "Tambahkan ke Konversi" di kartu hasil (search.js)
 
-function addToClip(kode) {
+// opts.quiet: tanpa toast per produk (dipakai tambah-banyak, yang merangkum hasilnya sendiri).
+// opts.noToggle: produk yang sudah ada di clipboard DILEWATI, bukan dikeluarkan.
+// Mengembalikan 'added' | 'removed' | 'dup' | 'firm' | 'stok' | 'missing' (pemanggil lama mengabaikannya).
+function addToClip(kode, opts) {
+  const quiet = !!(opts && opts.quiet);
   const r = S.lastResults.find(x => x.kode_produk === kode);
-  if (!r) return;
-  if (S.clipboard.some(c => c.kode_produk === r.kode_produk)) { removeFromClip(r.kode_produk); return; }
+  if (!r) return 'missing';
+  if (S.clipboard.some(c => c.kode_produk === r.kode_produk)) {
+    if (opts && opts.noToggle) return 'dup';
+    removeFromClip(r.kode_produk);
+    return 'removed';
+  }
   // Status stok masih di-fetch di belakang (lihat runSearch) — item ini bakal ke-snapshot dengan
   // stok kosong dan ikut ke-persist ke sesi + Export. Tolak sementara; pending otomatis lepas
   // begitu stok datang atau timeout (jadi gak bisa nyangkut selamanya di koneksi jelek).
-  if (!S.modeSwasta && !S.isProdukFirm(r)) { if (S.showToast) S.showToast('Produk belum firm (link V6 masih ada catatan) — tidak dipakai buat konversi.', 'error'); return; }
-  if (r.stok_pending) { if (S.showToast) S.showToast('Stok masih dicek, coba lagi sebentar'); return; }
+  if (!S.modeSwasta && !S.isProdukFirm(r)) { if (!quiet && S.showToast) S.showToast('Produk belum firm (link V6 masih ada catatan) — tidak dipakai buat konversi.', 'error'); return 'firm'; }
+  if (r.stok_pending) { if (!quiet && S.showToast) S.showToast('Stok masih dicek, coba lagi sebentar'); return 'stok'; }
   const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
   const newItem = {
     kode_produk: r.kode_produk,
@@ -1038,8 +1046,50 @@ function addToClip(kode) {
   updateClipboard();
   S.renderResults(S.lastResults);
   persistAddItem(newItem); // simpan ke sesi (async, gak nunggu biar UI tetep responsif)
+  return 'added';
 }
 S.addToClip = addToClip;
+
+// Tambah SEMUA produk rentang pilihan keyboard (Shift+↑↓ lalu Enter) ke Konversi sekaligus.
+// Beda dari tombol Tambah di kartu: yang sudah ada di Konversi DILEWATI (tidak ikut dikeluarkan), konfirmasi "Mulai
+// Konversi Baru?" cuma sekali untuk seluruh rentang, dan hasilnya dirangkum dalam satu toast.
+let clipAddManyBusy = false;
+async function handleClipAddMany(kodes) {
+  if (clipAddManyBusy) return; // Enter ditekan lagi selagi konfirmasi masih terbuka
+  clipAddManyBusy = true;
+  try {
+    const uniq = [...new Set(kodes)];
+    const todo = uniq.filter(k => !S.clipboard.some(c => c.kode_produk === k));
+    if (!todo.length) { if (S.showToast) S.showToast('Semua produk yang dipilih sudah ada di Konversi'); return; }
+    const isFirstCommit = !S.currentSesiId;
+    if (isFirstCommit) {
+      const ok = await S.showConfirmModal({
+        title: 'Mulai Konversi Baru?',
+        text: `${todo.length} produk terpilih bakal masuk ke sesi konversi baru. Kalau cuma mau cari info produk (harga/link/gambar) buat dikirim ke pelanggan, gak perlu ini — tombol Copy di kartu (atau Ctrl+C) udah cukup.`,
+        okText: `Ya, Tambah ${todo.length} Produk`
+      });
+      if (!ok) return;
+    }
+    const n = { added: 0, firm: 0, stok: 0, missing: 0 };
+    for (const k of todo) {
+      const res = addToClip(k, { quiet: true, noToggle: true });
+      if (res === 'added') n.added++; else if (res in n) n[res]++;
+    }
+    const notes = [];
+    if (uniq.length - todo.length) notes.push(`${uniq.length - todo.length} sudah ada`);
+    if (n.firm) notes.push(`${n.firm} belum firm`);
+    if (n.stok) notes.push(`${n.stok} stoknya masih dicek, coba lagi sebentar`);
+    if (n.missing) notes.push(`${n.missing} tidak ditemukan di hasil`);
+    if (S.showToast) {
+      const head = n.added ? `${n.added} produk ditambahkan ke Konversi` : 'Tidak ada produk yang ditambahkan';
+      S.showToast(head + (notes.length ? ' — dilewati: ' + notes.join(', ') : ''), n.added ? undefined : 'error');
+    }
+    if (isFirstCommit && n.added && typeof S.switchDoor === 'function') S.switchDoor('konversi');
+  } finally {
+    clipAddManyBusy = false;
+  }
+}
+S.handleClipAddMany = handleClipAddMany; // dipakai Enter di Cari Produk saat ada rentang Shift+↑↓ (search.js)
 function removeFromClip(kode) {
   const removed = S.clipboard.find(c => c.kode_produk === kode);
   S.clipboard = S.clipboard.filter(c => c.kode_produk !== kode);

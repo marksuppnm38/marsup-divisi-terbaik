@@ -52,7 +52,7 @@ import { installKalkulatorHarga } from './kalkulator-harga.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
 import { writeTableXlsx } from '../../../shared/exports/tabel-xlsx.js';
-import { installShortcuts, applyShortcutHints, toggleCheatSheet } from '../../../shared/shortcuts.js';
+import { installShortcuts, applyShortcutHints, toggleCheatSheet, isTyping } from '../../../shared/shortcuts.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -1803,7 +1803,8 @@ const activeCrudView = () => document.getElementById('appWrap')?.dataset.view ||
 const isShown = (el) => !!el && el.offsetParent !== null;
 
 // j / k: pindah fokus antar baris (tampilan tabel) atau kartu (tampilan kartu). Enter membuka produknya (handler baris/kartu).
-function moveProdukRow(step){
+// extend=true (Shift+↑/↓): selain pindah fokus, pilih rentang dari baris awal sampai baris tujuan (lihat copyKit.extendRange).
+function moveProdukRow(step, extend = false){
   if (activeCrudView() !== 'produk') return false;
   const a = document.activeElement;
   if (a && a.closest && a.closest('[role="menu"],[role="dialog"]')) return false; // fokus di menu Salin / panel Kolom / panel Export
@@ -1813,9 +1814,21 @@ function moveProdukRow(step){
   if (!rows.length) return false;
   const cur = rows.indexOf(a && a.closest ? a.closest('[data-id]') : null);
   const n = cur < 0 ? 0 : Math.min(Math.max(cur + step, 0), rows.length - 1);
+  const prev = cur >= 0 ? rows[cur] : null;
   rows[n].focus();
   rows[n].scrollIntoView({ block: 'nearest' });
+  if (extend) copyKit.extendRange((prev || rows[n]).dataset.id, rows[n].dataset.id);
+  else copyKit.endExtend();
   return true;
+}
+
+// Panah ↓/↑ (dan Shift+panah) jalan juga dari kolom cari Produk, seperti Cari Produk di Konversian; di kolom input lain
+// panah tetap milik kolomnya. Shift+panah di kolom cari dilepas: itu memperluas blok teks, bukan memilih baris.
+function arrowProdukRow(e, step, extend){
+  if (isTyping(e.target)) {
+    if (e.target.id !== SEARCH_INPUT_BY_VIEW.produk || extend) return false;
+  }
+  return moveProdukRow(step, extend);
 }
 
 shortcutsDispose = installShortcuts('crud-produk', {
@@ -1827,6 +1840,10 @@ shortcutsDispose = installShortcuts('crud-produk', {
     input.select();
     return true;
   },
+  'produk.arrowNext': (e) => arrowProdukRow(e, 1, false),
+  'produk.arrowPrev': (e) => arrowProdukRow(e, -1, false),
+  'produk.extendNext': (e) => arrowProdukRow(e, 1, true),
+  'produk.extendPrev': (e) => arrowProdukRow(e, -1, true),
   'produk.nextRow': () => moveProdukRow(1),
   'produk.prevRow': () => moveProdukRow(-1),
   'produk.add': () => {

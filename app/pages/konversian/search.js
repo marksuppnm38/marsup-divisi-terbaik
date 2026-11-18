@@ -729,7 +729,13 @@ S.searchInput.addEventListener('keydown', e => {
   else if (e.key === 'Escape') { if (cur >= 0) setKbdCard(-1); S.acBox.style.display='none'; }
   else if (e.key === 'Enter') {
     const card = cur >= 0 ? S.resultsEl.querySelectorAll('.rcard')[cur] : null;
-    if (card) { e.preventDefault(); card.querySelector('.btn-clip-toggle')?.click(); }
+    if (card) {
+      e.preventDefault();
+      // Ada rentang Shift+↑↓ -> tambahkan SEMUA yang terpilih (yang sudah ada di Konversi dilewati). Tanpa rentang: tombol kartu seperti biasa.
+      const range = (S.kbdAnchor ?? -1) >= 0 && S.kbdAnchor !== cur ? kbdSelectedKodes() : [];
+      if (range.length > 1 && typeof S.handleClipAddMany === 'function') S.handleClipAddMany(range);
+      else card.querySelector('.btn-clip-toggle')?.click();
+    }
     else { S.acBox.style.display='none'; runSearch(); }
   }
 });

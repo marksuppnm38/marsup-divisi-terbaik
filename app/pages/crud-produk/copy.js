@@ -109,6 +109,8 @@ export function createCopyKit(ctx) {
   const byId = new Map();      // String(id) -> baris di halaman yang tampil
   let pageRows = [];
   let lastId = null;           // anchor Shift+klik
+  let extAnchor = null;        // anchor Shift+panah (rentang dari baris yang difokus waktu mulai)
+  let extPre = null;           // seleksi SEBELUM Shift+panah mulai: rentang ditambahkan di atasnya, mengecil = ikut dilepas
   let cols = readCols();
   let withHeader = readHdr();
   let busy = false;
@@ -369,6 +371,7 @@ export function createCopyKit(ctx) {
   }
 
   function setSelected(p, on, shift) {
+    extAnchor = null; extPre = null;
     if (shift && lastId != null) {
       const a = pageRows.findIndex((r) => String(r.id) === String(lastId));
       const b = pageRows.findIndex((r) => r.id === p.id);
@@ -463,13 +466,14 @@ export function createCopyKit(ctx) {
     root.addEventListener('contextmenu', onContext);
   });
   barPage?.addEventListener('click', () => {
+    extAnchor = null; extPre = null;
     pageRows.forEach((r) => selected.set(r.id, r));
     lastId = null;
     syncUi();
   });
   barCopy?.addEventListener('click', copySelected);
   barCols?.addEventListener('click', () => openCols({ rect: barCols.getBoundingClientRect() }, barCols));
-  barClear?.addEventListener('click', () => { selected.clear(); lastId = null; syncUi(); });
+  barClear?.addEventListener('click', () => { selected.clear(); lastId = null; extAnchor = null; extPre = null; syncUi(); });
   syncUi();
 
   // ---------- API untuk index.js ----------
@@ -477,6 +481,7 @@ export function createCopyKit(ctx) {
     /** Panggil sebelum render baris (rows = baris halaman yang akan tampil; [] saat loading / kosong / error). */
     setPage(rows) {
       pageRows = rows || [];
+      extAnchor = null; extPre = null;
       byId.clear();
       pageRows.forEach((r) => byId.set(String(r.id), r));
       lastId = null;
@@ -495,8 +500,27 @@ export function createCopyKit(ctx) {
       let hit = false;
       for (const k of [...selected.keys()]) if (gone.has(String(k))) { selected.delete(k); hit = true; }
       for (const k of [...extra.keys()]) if (gone.has(String(k))) extra.delete(k);
-      if (hit) { lastId = null; syncUi(); }
+      if (hit) { lastId = null; extAnchor = null; extPre = null; syncUi(); }
     },
+    /**
+     * Shift+↑/↓: pilih rentang dari baris awal (anchor) sampai baris yang kini difokus. Anchor = baris yang difokus saat
+     * Shift+panah PERTAMA ditekan (fallbackAnchorId) dan tetap sampai endExtend(). Pilihan lama tetap utuh; rentang yang
+     * mengecil ikut dilepas lagi (seperti Excel). Mengembalikan false kalau salah satu id bukan baris halaman ini.
+     */
+    extendRange(fallbackAnchorId, id) {
+      if (extAnchor == null) { extAnchor = String(fallbackAnchorId); extPre = new Map(selected); }
+      const a = pageRows.findIndex((r) => String(r.id) === extAnchor);
+      const b = pageRows.findIndex((r) => String(r.id) === String(id));
+      if (a < 0 || b < 0) { extAnchor = null; extPre = null; return false; }
+      selected.clear();
+      extPre.forEach((v, k) => selected.set(k, v));
+      for (let i = Math.min(a, b); i <= Math.max(a, b); i++) selected.set(pageRows[i].id, pageRows[i]);
+      lastId = pageRows[b].id;
+      syncUi();
+      return true;
+    },
+    /** Panah biasa (tanpa Shift) mengakhiri rentang: pilihan tetap, anchor baru dimulai di Shift+panah berikutnya. */
+    endExtend() { extAnchor = null; extPre = null; },
     /** Kotak pilih kecil di tepi kiri sel Kode (hanya tampil saat hover / ada seleksi). */
     selBox(p) {
       return `<input type="checkbox" class="sel-input" tabindex="-1" aria-label="Pilih ${esc(p.kode_produk)}"${selected.has(p.id) ? ' checked' : ''}/>`;
