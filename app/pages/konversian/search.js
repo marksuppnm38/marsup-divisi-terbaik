@@ -281,7 +281,7 @@ async function runSearch(opts) {
       S.metaEl.append(b, '?');
     });
   }
-  S.kbdCardIdx = -1;
+  S.kbdCardIdx = -1; S.kbdAnchor = -1;
   renderResults(S.lastResults);
   if (!dictRescued) mergeDictHits(q, { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false }, dataRaw, mySeq); // non-blocking (kalau sudah rescue, hasilnya sudah dari Dictionary)
   if (S.pnmSettings.autoComplete) {
@@ -302,7 +302,7 @@ async function runSearch(opts) {
     const kbdIdx = S.kbdCardIdx ?? -1;
     applySort(); // perlu kalau mode sort berbasis stok (READY/INDENT dulu); idempotent di mode lain
     renderResults(S.lastResults);
-    if (kbdIdx >= 0) setKbdCard(kbdIdx); // jaga highlight keyboard biar gak hilang pas re-render
+    if (kbdIdx >= 0) setKbdCard(kbdIdx, 'keep'); // jaga highlight + rentang pilihan keyboard biar gak hilang pas re-render
   };
   await Promise.race([enrich, timer]);
   data.forEach(r => { delete r.stok_pending; });
@@ -493,8 +493,8 @@ function renderResults(data) {
     });
   });
   renderPagination(data.length);
-  if (S._kbdLastPage !== S.currentPage) { S.kbdCardIdx = -1; S._kbdLastPage = S.currentPage; }
-  if ((S.kbdCardIdx ?? -1) >= 0) setKbdCard(S.kbdCardIdx);
+  if (S._kbdLastPage !== S.currentPage) { S.kbdCardIdx = -1; S.kbdAnchor = -1; S._kbdLastPage = S.currentPage; }
+  if ((S.kbdCardIdx ?? -1) >= 0) setKbdCard(S.kbdCardIdx, 'keep');
 }
 S.renderResults = renderResults;
 
@@ -504,25 +504,52 @@ S.renderResults = renderResults;
 //   ↓ / ↑  pindah sorotan antar kartu     Enter  tambah/keluarkan dari Konversi
 //   Esc    hapus sorotan                  (ketik lagi = pencarian baru, sorotan reset)
 // Saat autocomplete terbuka, perilaku lama (↓/↑/Enter pilih saran) tidak berubah.
+//   Shift+↓ / Shift+↑   perluas pilihan jadi rentang kartu (kayak Shift+klik di Explorer)
+//   Ctrl/⌘+C            copy info produk kartu yang disorot / seluruh rentang pilihan
+//                       (sama persis isinya kayak tombol Copy; skip kalau ada teks ke-blok
+//                       di kolom cari, biar Ctrl+C biasa buat teks query tetap jalan)
 S.kbdCardIdx = -1;
-function setKbdCard(idx) {
+S.kbdAnchor = -1;   // ujung lain rentang pilihan (Shift+↑↓); -1 = gak ada rentang, cuma satu sorotan
+// mode: undefined = pindah biasa (rentang dibuang) · 'extend' = Shift (rentang dipertahankan/diperluas)
+//       'keep' = re-render ulang, rentang dibiarkan apa adanya
+function setKbdCard(idx, mode) {
   const cards = Array.from(S.resultsEl.querySelectorAll('.rcard'));
-  cards.forEach(c => c.classList.remove('kbd-active'));
-  if (!cards.length || idx < 0) { S.kbdCardIdx = -1; return; }
+  cards.forEach(c => c.classList.remove('kbd-active', 'kbd-sel'));
+  if (!cards.length || idx < 0) { S.kbdCardIdx = -1; S.kbdAnchor = -1; return; }
+  const prev = S.kbdCardIdx ?? -1;
   S.kbdCardIdx = Math.min(idx, cards.length - 1);
+  if (mode === 'extend') { if ((S.kbdAnchor ?? -1) < 0) S.kbdAnchor = prev >= 0 ? Math.min(prev, cards.length - 1) : S.kbdCardIdx; }
+  else if (mode !== 'keep') S.kbdAnchor = -1;
+  if (S.kbdAnchor >= cards.length) S.kbdAnchor = cards.length - 1;
   const c = cards[S.kbdCardIdx];
   c.classList.add('kbd-active');
+  if (S.kbdAnchor >= 0 && S.kbdAnchor !== S.kbdCardIdx) {
+    const lo = Math.min(S.kbdAnchor, S.kbdCardIdx), hi = Math.max(S.kbdAnchor, S.kbdCardIdx);
+    for (let i = lo; i <= hi; i++) cards[i].classList.add('kbd-sel');
+  }
   c.scrollIntoView({ block: 'nearest' });
 }
 
-// COPY SATU PRODUK: kode, deskripsi, harga, link — siap paste ke WA.
+// Kode produk yang lagi dipilih lewat keyboard, urut dari atas ke bawah.
+function kbdSelectedKodes() {
+  const cur = S.kbdCardIdx ?? -1;
+  if (cur < 0) return [];
+  const cards = Array.from(S.resultsEl.querySelectorAll('.rcard'));
+  const a = (S.kbdAnchor ?? -1) >= 0 ? S.kbdAnchor : cur;
+  const lo = Math.min(a, cur), hi = Math.max(a, cur);
+  return cards.slice(lo, hi + 1)
+    .map(c => c.querySelector('.btn-copy-produk')?.dataset.kode)
+    .filter(Boolean);
+}
+
+// COPY PRODUK: kode, deskripsi, harga, link — siap paste ke WA.
+// Satu kode (tombol Copy di kartu) atau array kode (Shift+↑↓ lalu Ctrl+C) — satu produk
+// satu baris, kolom dipisah tab, jadi paste ke Sheets langsung rapi per baris.
 // Link e-Katalog cuma relevan di mode e-Katalog — di mode Swasta link_v6
 // gak ikut kecopy, konsisten sama badge katalog (baris di atas), sheet
 // SUMMARY, dan sheet Kebutuhan RS di Export Excel yang juga nyembunyiin
 // kolom Link pas modeSwastaOutput true.
-function copyProdukToClipboard(kode) {
-  const r = S.lastResults.find(x => x.kode_produk === kode);
-  if (!r) return;
+function produkCopyLine(r) {
   const harga = S.modeSwasta ? r.harga_swasta : r.harga_ekat;
   const lines = [
     r.kode_produk || '-',
@@ -531,7 +558,15 @@ function copyProdukToClipboard(kode) {
     S.modeSwasta ? '' : (S.cleanLinkV6(r.link_v6) || '')
   ];
   if (S.pnmSettings && S.pnmSettings.outputVerified && S.isVerified(r)) lines.push('Verified');
-  const text = lines.join('\t');
+  return lines.join('\t');
+}
+
+function copyProdukToClipboard(kodeOrKodes) {
+  const kodes = Array.isArray(kodeOrKodes) ? kodeOrKodes : [kodeOrKodes];
+  const rows = kodes.map(k => S.lastResults.find(x => x.kode_produk === k)).filter(Boolean);
+  if (!rows.length) return;
+  const text = rows.map(produkCopyLine).join('\n');
+  const okMsg = rows.length > 1 ? `${rows.length} produk disalin ✓` : 'Disalin ke clipboard ✓';
 
   function fallbackCopy(str) {
     const ta = document.createElement('textarea');
@@ -544,18 +579,20 @@ function copyProdukToClipboard(kode) {
     let ok = false;
     try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
     document.body.removeChild(ta);
+    // fallback nyuri fokus (textarea.focus) — balikin ke kolom cari biar navigasi keyboard lanjut
+    try { S.searchInput.focus(); } catch (e) { /* abaikan */ }
     return ok;
   }
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(() => {
-      S.showToast('Disalin ke clipboard ✓');
+      S.showToast(okMsg);
     }).catch(() => {
-      if (fallbackCopy(text)) S.showToast('Disalin ke clipboard ✓');
+      if (fallbackCopy(text)) S.showToast(okMsg);
       else S.showToast('Gagal menyalin, coba lagi', 'error');
     });
   } else {
-    if (fallbackCopy(text)) S.showToast('Disalin ke clipboard ✓');
+    if (fallbackCopy(text)) S.showToast(okMsg);
     else S.showToast('Gagal menyalin, coba lagi', 'error');
   }
 } // <- INI PENUTUP FUNCTION-NYA, PASTIKAN ADA
@@ -676,8 +713,19 @@ S.searchInput.addEventListener('keydown', e => {
   }
   // autocomplete tertutup → keyboard dipakai buat jalan di hasil pencarian
   const cur = S.kbdCardIdx ?? -1;
-  if (e.key === 'ArrowDown' && S.resultsEl.querySelector('.rcard')) { e.preventDefault(); setKbdCard(cur + 1); }
-  else if (e.key === 'ArrowUp' && cur >= 0) { e.preventDefault(); setKbdCard(cur - 1); }
+  // Ctrl/⌘+C: copy kartu yang disorot / rentang Shift+↑↓. Kalau ada teks ke-blok di kolom
+  // cari, biarin Ctrl+C bawaan browser (user mau copy query-nya).
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 'c') {
+    const inp = S.searchInput;
+    if (cur >= 0 && inp.selectionStart === inp.selectionEnd) {
+      const kodes = kbdSelectedKodes();
+      if (kodes.length) { e.preventDefault(); copyProdukToClipboard(kodes); }
+    }
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) { /* kombinasi lain: bukan urusan navigasi kartu */ }
+  else if (e.key === 'ArrowDown' && S.resultsEl.querySelector('.rcard')) { e.preventDefault(); setKbdCard(cur + 1, e.shiftKey ? 'extend' : undefined); }
+  else if (e.key === 'ArrowUp' && cur >= 0) { e.preventDefault(); setKbdCard(cur - 1, e.shiftKey ? 'extend' : undefined); }
   else if (e.key === 'Escape') { if (cur >= 0) setKbdCard(-1); S.acBox.style.display='none'; }
   else if (e.key === 'Enter') {
     const card = cur >= 0 ? S.resultsEl.querySelectorAll('.rcard')[cur] : null;

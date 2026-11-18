@@ -120,6 +120,14 @@ export const SHORTCUTS = [
     desc: 'Cari Produk: hasil / saran berikutnya', group: 'Cari & daftar' },
   { id: 'konv.cari.prev', page: 'konversian', combo: 'ArrowUp', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',
     desc: 'Cari Produk: hasil / saran sebelumnya', group: 'Cari & daftar' },
+  // Shift+panah: validator mengabaikan Shift di tombol polos, jadi dianggap sama dengan panah biasa -> ditandai overrides
+  // (bukan bentrok sungguhan: search.js membedakan lewat e.shiftKey).
+  { id: 'konv.cari.extendNext', page: 'konversian', combo: 'Shift+ArrowDown', scope: 'page', tab: 'cari', allowTyping: true, overrides: 'konv.cari.next', external: 'app/pages/konversian/search.js',
+    desc: 'Cari Produk: perluas pilihan ke hasil berikutnya (rentang)', group: 'Cari & daftar' },
+  { id: 'konv.cari.extendPrev', page: 'konversian', combo: 'Shift+ArrowUp', scope: 'page', tab: 'cari', allowTyping: true, overrides: 'konv.cari.prev', external: 'app/pages/konversian/search.js',
+    desc: 'Cari Produk: perluas pilihan ke hasil sebelumnya (rentang)', group: 'Cari & daftar' },
+  { id: 'konv.cari.copy', page: 'konversian', combo: 'Mod+C', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',
+    desc: 'Cari Produk: copy info produk yang disorot / rentang pilihan (sama kayak tombol Copy), kecuali ada teks yang diblok', group: 'Cari & daftar' },
   { id: 'konv.cari.add', page: 'konversian', combo: 'Enter', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',
     desc: 'Cari Produk: tambah hasil yang disorot ke clipboard (sorot dulu dengan ↓)', group: 'Cari & daftar' },
   { id: 'konv.cari.esc', page: 'konversian', combo: 'Escape', scope: 'page', tab: 'cari', allowTyping: true, external: 'app/pages/konversian/search.js',

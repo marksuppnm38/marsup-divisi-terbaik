@@ -1538,7 +1538,7 @@
   margin:0 calc(-1 * var(--pane-inset)) 8px;padding:8px var(--pane-inset);background:var(--surface);min-height:40px;
 }
 #app-root #meta{font-size:11.5px;color:var(--text-muted);min-width:0}
-#app-root #meta[data-nav]:not(:empty)::after{content:"  ·  ↑↓ pilih  ·  Enter tambah";color:var(--text-muted);opacity:.75}
+#app-root #meta[data-nav]:not(:empty)::after{content:"  ·  ↑↓ pilih  ·  ⇧↑↓ multi  ·  Ctrl+C copy  ·  Enter tambah";color:var(--text-muted);opacity:.75}
 #app-root #sort-select{height:26px;font-size:11.5px;padding:0 24px 0 8px;border-radius:6px;flex:0 0 auto}
 #app-root #results{display:flex;flex-direction:column;gap:6px}
 
@@ -1551,6 +1551,7 @@
 #app-root #results .rcard.selected{border-color:var(--accent);background:var(--accent-bg)}
 #app-root #results .rcard.selected::after{content:none}            /* "Di Konversi" di tombol sudah jadi penanda */
 #app-root #results .rcard.kbd-active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+#app-root #results .rcard.kbd-sel{border-color:var(--accent);background:var(--accent-bg);box-shadow:inset 3px 0 0 var(--accent)}   /* rentang Shift+↑↓ */
 
 #app-root #results .rcard-top{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:0;padding:0}
 #app-root #results .rcard-name{
