@@ -415,7 +415,8 @@ export function installAutoRecord(S) {
       b._restore = restore;
       if (act === 'qrec' || act === 'qrec-sheet') {
         const { sheetError } = await quickRecord(id, { sheet: act === 'qrec-sheet' });
-        S.showToast(sheetError ? 'Record tersimpan ✓, tapi Sheet gagal: ' + sheetError : (act === 'qrec-sheet' ? 'Record tersimpan & terkirim ke Sheet ✓' : 'Record tersimpan ✓'), sheetError ? 'error' : undefined);
+        if (sheetError) S.showToast('Record tersimpan, tapi Sheet gagal', 'warning', { detail: sheetError });
+        else S.showToast(act === 'qrec-sheet' ? 'Record tersimpan dan terkirim ke Sheet' : 'Record tersimpan');
       } else if (act === 'sheet') {
         await sendRecordToSheetById(id);
         S.showToast('Terkirim ke Sheet ✓');

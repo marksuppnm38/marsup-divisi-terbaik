@@ -6,6 +6,9 @@
    jadi SATU definisi kanonik (versi blur punya crud-produk), .open dan .show
    sekarang sama-sama trigger style yang sama. Efek visual ke modal konversian
    nyaris nol karena versi blur ini emang udah menang duluan sebelum fix ini. — Claude
+   2026-11-18: blok TOAST ditulis ulang jadi satu sistem (#pnm-toasts + .pnm-toast--<type>, dibuat
+   shared/toast.js). Dua blok lama yang saling tindih (.toast legacy + #toast-container nowrap) dibuang;
+   .toast/.toast-success/.toast-error/.toast-presence sudah tidak ada. — Claude
    2026-11-08: Fase A motion (transitions-dev) — token motion di :root, guard reduced-motion
    global di akhir file, toast jadi satu sistem (transition + @starting-style, tanpa @keyframes
    toastIn/toastOut), transition:all diganti properti eksplisit (--transition-state). — Claude
@@ -526,10 +529,35 @@ tr.row-active td{background:var(--accent-bg)!important}
 .err-banner{background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);border-radius:8px;padding:10px 14px;font-size:12.5px;margin-bottom:16px;display:none;align-items:center;gap:8px}
 .err-banner.show{display:flex}
 
-.toast-container{position:fixed;bottom:20px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
-.toast{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12.5px;display:flex;align-items:center;gap:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);min-width:200px}
-.toast.success{border-color:var(--success-border);color:var(--success)}
-.toast.error{border-color:var(--danger-border);color:var(--danger)}
+/* TOAST — satu sistem, dibuat oleh shared/toast.js (PNMToast). Host tunggal #pnm-toasts di <body>.
+   Hierarki = tingkat urgensi: success/info/presence netral & hilang sendiri; error/warning bertint,
+   lebih lama, ada tombol tutup. Lebar dibatasi (pesan panjang membungkus, bukan melebar keluar layar).
+   Gerak: transisi opacity+transform pakai token motion (--toast-open/--toast-close); .is-in dipasang
+   lewat JS, jadi gak bergantung ke @starting-style. */
+#pnm-toasts{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:3100;display:flex;flex-direction:column;align-items:center;gap:8px;width:max-content;max-width:min(440px,calc(100vw - 32px));pointer-events:none}
+.pnm-toast{--t-bg:var(--surface);--t-border:var(--border-strong);--t-accent:var(--text-muted);--t-title:var(--text);pointer-events:auto;box-sizing:border-box;max-width:100%;display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:10px;align-items:start;padding:10px 12px;background:var(--t-bg);border:1px solid var(--t-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);color:var(--t-title);font:500 13px/1.4 var(--font-body);opacity:0;transform:translateY(var(--distance-base)) scale(var(--scale-medium));transition:opacity var(--toast-open) var(--ease-smooth-out),transform var(--toast-open) var(--ease-smooth-out)}
+.pnm-toast.is-in{opacity:1;transform:none}
+.pnm-toast.is-leaving{opacity:0;transform:translateY(var(--distance-base)) scale(var(--scale-medium));transition-duration:var(--toast-close)}
+.pnm-toast.is-dismissible{cursor:pointer}
+.pnm-toast__icon{font-size:16px;line-height:18px;color:var(--t-accent)}
+.pnm-toast__body{min-width:0;overflow-wrap:anywhere;text-wrap:pretty}
+.pnm-toast__title,.pnm-toast__detail{margin:0}
+.pnm-toast__detail{margin-top:2px;color:var(--text-secondary);font-size:12.5px;font-weight:400;line-height:1.45}
+.pnm-toast__aside{display:flex;align-items:center;gap:6px;min-height:18px}
+.pnm-toast__count{padding:1px 6px;border-radius:999px;background:color-mix(in srgb,var(--t-accent) 14%,transparent);color:var(--t-accent);font-size:11px;font-weight:600;line-height:16px}
+.pnm-toast__close{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin:-3px -4px -3px 0;padding:0;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-muted);font-size:14px;cursor:pointer;transition:background var(--duration-quick) var(--ease),color var(--duration-quick) var(--ease)}
+.pnm-toast__close:hover{background:color-mix(in srgb,var(--t-accent) 12%,transparent);color:var(--t-title)}
+.pnm-toast__close:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.pnm-toast--success{--t-accent:var(--success-text)}
+.pnm-toast--info{--t-accent:var(--accent)}
+.pnm-toast--error{--t-bg:var(--danger-bg);--t-border:var(--danger-border);--t-accent:var(--danger);--t-title:var(--danger-text)}
+.pnm-toast--warning{--t-bg:var(--warning-bg);--t-border:var(--warning-border);--t-accent:var(--warn);--t-title:var(--warn-text)}
+.pnm-toast--presence{--t-bg:var(--surface-2);--t-border:var(--border);--t-title:var(--text-secondary);font-weight:400}
+@media(max-width:520px){#pnm-toasts{width:calc(100vw - 24px);max-width:none}.pnm-toast{width:100%}}
+@media(prefers-reduced-motion:reduce){.pnm-toast,.pnm-toast.is-leaving{transition:none}}
+/* Titik pasang lama di markup halaman (#toast-container, #toastContainer, .toast-container) sengaja dibiarkan,
+   tapi sekarang kosong dan gak dipakai: toast tampil di #pnm-toasts. Disembunyikan biar gak ikut jadi item layout. */
+#toast-container,#toastContainer,.toast-container{display:none}
 .copy-kode-btn{background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;display:inline-flex;align-items:center;font-size:11px;margin-left:4px;border-radius:4px}
 .copy-kode-btn:hover{color:var(--accent);background:var(--accent-bg)}
 .bulk-bar{display:none;align-items:center;gap:10px;padding:9px 16px;background:var(--accent-bg);border-bottom:1px solid var(--border)}
@@ -1294,21 +1322,6 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:8
 #offline-banner.show{display:flex}
 #offline-banner i{font-size:15px}
 
-/* TOAST */
-#toast-container{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
-/* Gerak toast = SATU sistem buat dua skema container (#toast-container & .toast-container) dan
-   semua pembuat toast (PNMToast, showToast lokal dashboard/populasi). Masuk lewat @starting-style
-   (jalan walau elemen gak dikasih .show — dulu toast dashboard/populasi cuma kedip lalu hilang),
-   keluar lewat .fade-out. .show dibiarkan ada biar kompatibel sama PNMToast. Tanpa blur (hemat). */
-.toast{background:var(--text);color:var(--bg);font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:20px;opacity:1;transform:none;transition:opacity var(--toast-open) var(--ease-smooth-out),transform var(--toast-open) var(--ease-smooth-out);display:flex;align-items:center;gap:7px;white-space:nowrap}
-@starting-style{.toast{opacity:0;transform:translateY(var(--distance-base)) scale(var(--scale-medium))}}
-.toast.show{opacity:1;transform:none}
-.toast.fade-out{opacity:0;transform:translateY(var(--distance-base)) scale(var(--scale-medium));transition-duration:var(--toast-close)}
-@media(prefers-reduced-motion:reduce){.toast{transition:none}}
-.toast-success{background:var(--success);color:#fff}
-.toast-error{background:var(--danger);color:#fff}
-.toast-presence{background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border-strong)}
-.toast i{font-size:15px}
 .pr-nudge{display:none;align-items:flex-start;gap:8px;background:var(--warning-bg);border:1px solid var(--warning-border);color:var(--warning);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.5;margin-bottom:14px}
 .pr-nudge.show{display:flex}
 .pr-nudge i{font-size:16px;flex-shrink:0;margin-top:1px}

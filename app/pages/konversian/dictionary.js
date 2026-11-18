@@ -1197,7 +1197,7 @@ async function muatRevisiKeClipboard(idx, btnEl) {
 
     S.showToast(`${mapped.length} produk dari REV${row.revisi || 0} dimuat ke clipboard ✓`);
     if (notFound.length) {
-      S.showToast(`${notFound.length} produk (${notFound.slice(0, 3).join(', ')}${notFound.length > 3 ? ', …' : ''}) gak ketemu lagi di katalog — gambar/link/badge stok gak ikut kebawa, tapi nama/qty/harga tetap ada dari catatan lama`, 'error');
+      S.showToast(`${notFound.length} produk tidak ada lagi di katalog`, 'warning', { detail: `${notFound.slice(0, 3).join(', ')}${notFound.length > 3 ? ', …' : ''}. Gambar, link, dan badge stok tidak ikut terbawa; nama, qty, dan harga tetap dari catatan lama.` });
     }
   } catch (err) {
     S.showToast('Gagal muat revisi ke clipboard: ' + err.message, 'error');

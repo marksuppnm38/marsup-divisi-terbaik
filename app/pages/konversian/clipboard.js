@@ -171,11 +171,10 @@ S.APP_TITLE_BASE = APP_TITLE_BASE;
 // Notifikasi kecil yang muncul-hilang sendiri — dipakai buat kasih feedback instan
 // untuk aksi yang sebelumnya senyap (bikin sesi, selesaikan sesi), biar user gak
 // ragu-ragu apakah aksinya beneran kejadian atau enggak.
-function showToast(msg, type = 'success') {
-  // Body delegate ke shared/toast.js — signature & 32 titik panggil di file
-  // ini sama sekali gak berubah, cuma implementasinya yang sekarang satu
-  // sumber sama crud-produk.js (lihat shared/toast.js buat detail/alasan).
-  PNMToast.show(msg, type);
+function showToast(msg, type = 'success', opts) {
+  // Body delegate ke shared/toast.js. `opts` ({ detail, duration }) diteruskan apa adanya;
+  // tipe yang dikenal: success, error, warning, info, presence.
+  PNMToast.show(msg, type, opts);
 }
 S.showToast = showToast;
 
@@ -1018,7 +1017,7 @@ function addToClip(kode, opts) {
   // Status stok masih di-fetch di belakang (lihat runSearch) — item ini bakal ke-snapshot dengan
   // stok kosong dan ikut ke-persist ke sesi + Export. Tolak sementara; pending otomatis lepas
   // begitu stok datang atau timeout (jadi gak bisa nyangkut selamanya di koneksi jelek).
-  if (!S.modeSwasta && !S.isProdukFirm(r)) { if (!quiet && S.showToast) S.showToast('Produk belum firm (link V6 masih ada catatan) — tidak dipakai buat konversi.', 'error'); return 'firm'; }
+  if (!S.modeSwasta && !S.isProdukFirm(r)) { if (!quiet && S.showToast) S.showToast('Produk belum firm', 'warning', { detail: 'Link V6 masih ada catatan, jadi tidak dipakai untuk konversi.' }); return 'firm'; }
   if (r.stok_pending) { if (!quiet && S.showToast) S.showToast('Stok masih dicek, coba lagi sebentar'); return 'stok'; }
   const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
   const newItem = {
@@ -2304,7 +2303,7 @@ async function runExportExcel() {
     if (S.autoRecordCurrent) S.autoRecordCurrent('export').catch((err) => {
       // Fire-and-forget tetap (tidak menahan export), tapi kegagalan JANGAN senyap: user perlu tahu Riwayat belum tercatat.
       console.error('[auto-record export] gagal:', err);
-      showToast('Export berhasil, tapi Riwayat belum tercatat otomatis. Klik "Record Konversi" agar tercatat.', 'error');
+      showToast('Export berhasil, tapi Riwayat belum tercatat', 'warning', { detail: 'Klik "Record Konversi" agar tercatat.' });
     });
     if (btnDriveUpload) btnDriveUpload.disabled = false;
     // File BARU ini belum ada di Drive → tandai pending & denyutkan langkah 2 sampai di-upload.
@@ -2338,7 +2337,7 @@ S.btnClearAll.addEventListener('click', async () => {
         if (!res.ok) throw new Error('HTTP ' + res.status);
       } catch (err) {
         console.error('[clear all] gagal hapus item di server:', err);
-        showToast('Gagal menghapus item di server, clipboard TIDAK dikosongkan. Coba lagi. (' + err.message + ')', 'error');
+        showToast('Gagal menghapus item di server', 'error', { detail: 'Clipboard belum dikosongkan. Coba lagi. (' + err.message + ')' });
         return;
       }
     }
@@ -2376,7 +2375,7 @@ async function persistModeSwastaOutput(swasta) {
     }), 'Gagal simpan mode harga');
   } catch (err) {
     console.error('Gagal simpan mode harga ke server', err);
-    showToast('Mode harga ganti di layar ini, tapi gagal kesimpen ke server — kolaborator lain belum ikut kesinkron. Coba lagi.', 'error');
+    showToast('Mode harga berubah di layar ini, tapi gagal disimpan', 'error', { detail: 'Kolaborator lain belum ikut tersinkron. Coba lagi.' });
   }
 }
 if (S.comEkatBtn) S.comEkatBtn.addEventListener('click', () => persistModeSwastaOutput(false));

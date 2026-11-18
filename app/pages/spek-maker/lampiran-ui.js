@@ -386,7 +386,7 @@ export function mountLampiran(panel, deps) {
         const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
         triggerDownload(await zip.generateAsync({ type: 'blob' }), `lampiran-set-${stamp}.zip`);
       }
-      if (bermasalah) toast(`Terunduh. Perhatian: ${bermasalah} set masih punya peringatan (gambar/deskripsi/qty kosong).`, 'error');
+      if (bermasalah) toast('Terunduh, tapi ada set yang belum lengkap', 'warning', { detail: `${bermasalah} set punya gambar, deskripsi, atau qty yang kosong.` });
       else toast('PDF terunduh');
     } catch (err) {
       toast(err.message || 'Gagal membuat PDF', 'error');

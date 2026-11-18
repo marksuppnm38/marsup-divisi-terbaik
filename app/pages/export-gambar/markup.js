@@ -100,5 +100,4 @@ export const EXPORT_GAMBAR_MARKUP = `
   </main>
 </div>
 
-<div id="toastRoot" class="eg-toast-root" aria-live="assertive"></div>
 `;

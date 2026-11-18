@@ -159,7 +159,7 @@ export function installConverterBulk(S) {
 
     if (missing) {
       // RPC belum dipasang -> jalur lama (kode_produk saja), supaya Converter tetap hidup.
-      S.showToast('Fungsi resolve_kode_bulk belum dipasang di database. Converter memakai mode lama: lebih lambat dan hanya membaca kode produk.', 'error');
+      S.showToast('Converter memakai mode lama', 'warning', { detail: 'Fungsi resolve_kode_bulk belum dipasang di database, jadi pencarian lebih lambat dan hanya membaca kode produk.' });
       if (typeof S.matchOneKode !== 'function') throw new Error('resolve_kode_bulk belum dipasang');
       const rows = [];
       for (let i = 0; i < parsed.length; i++) {

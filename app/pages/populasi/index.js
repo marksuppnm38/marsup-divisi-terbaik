@@ -175,17 +175,13 @@ function localISODate(d = new Date()) {
 }
 function showError(msg) { $('err-text').textContent = msg; $('err-banner').classList.add('show'); }
 function clearError() { $('err-banner').classList.remove('show'); }
-function showToast(msg, type = 'success') {
-  const c = $('toast-container');
-  if (!c) return;
-  const t = document.createElement('div');
-  t.className = `toast ${type}`;
-  const ic = document.createElement('i');
-  ic.className = `ti ti-${type === 'success' ? 'check-circle' : 'warning-circle'}`;
-  t.appendChild(ic);
-  t.appendChild(document.createTextNode(' ' + msg));
-  c.appendChild(t);
-  setTimeout(() => { t.classList.add('fade-out'); setTimeout(() => t.remove(), 250); }, 2600);
+// Toast = pembungkus tipis ke shared/toast.js (PNMToast), satu sistem dengan modul lain.
+// shared/toast.js dimuat malas di pemanggilan pertama kalau belum ada.
+function showToast(msg, type = 'success', opts) {
+  if (window.PNMToast) { window.PNMToast.show(msg, type, opts); return; }
+  loadScript('/shared/toast.js')
+    .then(() => window.PNMToast && window.PNMToast.show(msg, type, opts))
+    .catch(() => {});
 }
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* abaikan */ } }

@@ -596,7 +596,7 @@ S.prReviewSaveBtn.addEventListener('click', async () => {
     // ── MODE ADD: nambah ke Permintaan RS yang sudah ada. Gak nyentuh header, gak bikin permintaan baru. ──
     if (prMode === 'add') {
       const n = await addItemsToActivePermintaan(items);
-      S.showToast(`${n} item ditambahkan ke Permintaan RS (total ${S.checklistItems.length})`);
+      S.showToast(`${n} item ditambahkan ke Permintaan RS`, 'success', { detail: `Total ${S.checklistItems.length} item.` });
       closePrModal();
       S.prTeks.value = ''; S.prFile.value = '';
       if (S.resumeRecordAfterPr) { S.resumeRecordAfterPr = false; S.openRecordModal(); }
@@ -673,7 +673,7 @@ S.prReviewSaveBtn.addEventListener('click', async () => {
     // dikasih tau sekarang — bukan baru sadar nanti pas reopen bahwa datanya "hilang".
     const persistedId = await S.loadChecklistForSesi(sesiId);
     if (persistedId == null || persistedId !== result.permintaan_id) {
-      PNMToast.show('Permintaan RS terkirim, tapi belum terbaca balik dari sesi ini. Coba buka ulang sesi untuk memastikan.', 'error', { duration: 6000 });
+      PNMToast.show('Permintaan RS terkirim, tapi belum terbaca balik', 'warning', { detail: 'Buka ulang sesi untuk memastikan.' });
     }
 
     S.prTeks.value = ''; S.prFile.value = '';

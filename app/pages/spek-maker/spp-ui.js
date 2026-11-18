@@ -309,7 +309,7 @@ export function mountSpp(panel, deps) {
     try {
       await loadScript(cfg.JSPDF_SRC, cfg.JSPDF_SRI);
       const fonts = await loadSppFonts();
-      if (!fonts) toast('Font Calibri (Carlito) gagal dimuat, pakai Helvetica. Tata letak tetap sama.', 'error');
+      if (!fonts) toast('Font Calibri (Carlito) gagal dimuat', 'warning', { detail: 'Memakai Helvetica; tata letak tetap sama.' });
       if (!alive) return;
 
       const c = SPP_COMPANIES[company];

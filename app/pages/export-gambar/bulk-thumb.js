@@ -403,7 +403,7 @@ export function mountBulkThumb(panel, deps) {
       if (live()) renderAll();
       setProgress(0, 0, '');
       if (cancel) toast(`Dibatalkan. ${berhasil} PNG sempat dibuat.`, 'error');
-      else if (gagal.length) toast(`Selesai: ${berhasil} PNG, ${gagal.length} gagal (ditandai di daftar).`, 'error', 6000);
+      else if (gagal.length) toast(`${berhasil} PNG selesai, ${gagal.length} gagal`, 'warning', { detail: 'Yang gagal ditandai di daftar.' });
       else toast(`Selesai: ${berhasil} PNG terunduh`, 'success');
     } catch (err) {
       setProgress(0, 0, '');

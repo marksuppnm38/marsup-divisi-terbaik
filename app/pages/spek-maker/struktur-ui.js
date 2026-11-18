@@ -263,7 +263,7 @@ export function mountStruktur(panel, deps) {
         const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
         triggerDownload(await zip.generateAsync({ type: 'blob' }), `struktur-harga-${stamp}.zip`);
       }
-      if (bermasalah) toast(`Terunduh. Perhatian: ${bermasalah} dokumen masih punya data kosong/peringatan.`, 'error');
+      if (bermasalah) toast('Terunduh, tapi ada dokumen yang belum lengkap', 'warning', { detail: `${bermasalah} dokumen masih punya data kosong atau peringatan.` });
       else toast('PDF terunduh');
     } catch (err) {
       toast(err.message || 'Gagal membuat PDF', 'error');

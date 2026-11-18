@@ -260,19 +260,13 @@ async function openDetail(kode){
     document.getElementById('dm-body').innerHTML = `<div class="detail-loading" style="color:var(--danger)">Gagal memuat: ${esc(e.message)}</div>`;
   }
 }
-function showToast(msg, type='success'){
-  const c = document.getElementById('toast-container');
-  const t = document.createElement('div');
-  t.className = `toast ${type}`;
-  const ic = document.createElement('i');
-  ic.className = `ti ti-${type==='success'?'check-circle':'warning-circle'}`;
-  t.appendChild(ic);
-  t.appendChild(document.createTextNode(' ' + msg));
-  c.appendChild(t);
-  setTimeout(() => {
-    t.classList.add('fade-out');
-    setTimeout(() => t.remove(), 250);
-  }, 2200);
+// Toast = pembungkus tipis ke shared/toast.js (PNMToast), satu sistem dengan modul lain.
+// shared/toast.js dimuat malas di pemanggilan pertama kalau belum ada.
+function showToast(msg, type = 'success', opts){
+  if (window.PNMToast) { window.PNMToast.show(msg, type, opts); return; }
+  loadScript('/shared/toast.js')
+    .then(() => window.PNMToast && window.PNMToast.show(msg, type, opts))
+    .catch(() => {});
 }
 function copyKode(e, kode){
   e.stopPropagation();
@@ -1002,7 +996,7 @@ async function unduhPricelist(btn){
     const hargaMap = await fetchHargaLatestMap(sb, rows.map(r => r.id));
     const { priced, skippedNoLink, skippedNoHarga } =
       selectPricelistRows(rows, hargaMap, r => parseLinkV6(r.link_v6).state === 'bersih');
-    if (!priced.length) { showToast('Belum ada produk yang punya Link V6 dan harga e-Katalog untuk pilihan ini.', 'error'); return; }
+    if (!priced.length) { showToast('Tidak ada produk yang siap diekspor', 'error', { detail: 'Pilihan ini belum punya produk dengan Link V6 bersih dan harga e-Katalog.' }); return; }
     const label = { INSTRUMENT: 'Instrumen', SET: 'Set', UNIT: 'Unit' }[tipe];
     writePricelistXlsx(window.XLSX, priced, hargaMap, {
       subtitle: label ? `Tipe: ${label}` : 'Semua produk',

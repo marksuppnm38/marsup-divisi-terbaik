@@ -97,5 +97,4 @@ export const SPEK_MAKER_MARKUP = `
   <input type="file" id="smFileInput" accept="image/*" hidden>
 </div>
 
-<div id="smToastRoot" class="sm-toast-root" aria-live="assertive"></div>
 `;

@@ -1535,7 +1535,7 @@ async function exportTampilanIni(){
     uses.has('akdNama') ? colKit.loadNeeds(ids) : true,
   ]);
   if (!okExtra || !okNeeds) { showToast('Gagal mengambil harga / AKD — export dibatalkan', true); return; }
-  if (!okStok) showToast('Status stok gagal dimuat (SQL migrasi stok sudah dijalankan?) — kolom stok dikosongkan.', true);
+  if (!okStok) showToast('Status stok gagal dimuat', 'warning', { detail: 'Kolom stok dikosongkan. Cek apakah SQL migrasi stok sudah dijalankan.' });
 
   let skippedNoLink = 0, skippedNoHarga = 0;
   if (siapJual) {
@@ -1545,7 +1545,7 @@ async function exportTampilanIni(){
     skippedNoHarga = withLink.length - priced.length;
     priced.sort((a, b) => (a.nama_produk || '').localeCompare(b.nama_produk || '', 'id'));
     rows = priced;
-    if (!rows.length) { showToast('Tidak ada produk yang sekaligus punya Link V6 bersih & harga E-Katalog di hasil filter ini.', true); return; }
+    if (!rows.length) { showToast('Tidak ada produk yang siap diekspor', true, { detail: 'Hasil filter ini belum punya produk dengan Link V6 bersih dan harga e-Katalog.' }); return; }
   }
 
   const columns = colKit.exportColumns();
@@ -2565,7 +2565,7 @@ function renderHargaGroupInto(tbody, rows, onAfterDelete){
       const produkId = ekat.produk_id;
       const delRes = await sb.from('produk_harga').delete().eq('produk_id', produkId).eq('tahun', tahun).select('id');
       if (delRes.error) { showToast('Gagal hapus: ' + delRes.error.message, true); return; }
-      if (!barisTerhapus(delRes)) { showToast('Tidak ada yang terhapus: akun ini tidak punya izin, atau harganya sudah hilang.', true); onAfterDelete(); return; }
+      if (!barisTerhapus(delRes)) { showToast('Tidak ada yang terhapus', true, { detail: 'Akun ini tidak punya izin, atau harganya sudah hilang.' }); onAfterDelete(); return; }
       // FIX (urgent — harga mismatch): same missing invalidation as
       // addHargaBtn above, but for delete.
       invalidateProdukStackCache();
@@ -2683,7 +2683,7 @@ async function deleteMedia(id){
   if (!await crudConfirm('Hapus media ini?', { danger: true, okLabel: 'Ya, Hapus' })) return;
   const delRes = await sb.from('produk_media').delete().eq('id', id).select('id');
   if (delRes.error) { showToast('Gagal hapus: ' + delRes.error.message, true); return; }
-  if (!barisTerhapus(delRes)) { showToast('Tidak ada yang terhapus: akun ini tidak punya izin, atau medianya sudah hilang.', true); loadMedia(currentProdukId); return; }
+  if (!barisTerhapus(delRes)) { showToast('Tidak ada yang terhapus', true, { detail: 'Akun ini tidak punya izin, atau medianya sudah hilang.' }); loadMedia(currentProdukId); return; }
   showToast('Media dihapus');
   loadMedia(currentProdukId);
 }
@@ -3096,7 +3096,7 @@ async function linkNewProdukToSet(newProdukId, tipe){
   pendingSetLink = null;
   if (!link) return;
   if (tipe === 'SET') {
-    showToast('Produk tersimpan, tapi tipe SET tidak boleh jadi isi set lain — tidak dimasukkan ke komposisi', true);
+    showToast('Produk tersimpan, tapi tidak masuk komposisi', 'warning', { detail: 'Produk bertipe SET tidak boleh menjadi isi set lain.' });
     return;
   }
   const { error } = await sb.from('produk_set_item').insert({ set_id: link.setId, produk_id: newProdukId, qty: link.qty });
@@ -3104,7 +3104,7 @@ async function linkNewProdukToSet(newProdukId, tipe){
     showToast('Produk tersimpan, tapi gagal masuk komposisi set: ' + error.message, true);
     return;
   }
-  showToast(`Produk ditambahkan dan dimasukkan ke komposisi set (qty ${link.qty})`);
+  showToast(`Produk ditambahkan ke komposisi set (qty ${link.qty})`);
   if (currentSetId === link.setId) { await loadComposition(); await refreshSetHeader(); }
 }
 function renderComposition(){
@@ -3306,7 +3306,7 @@ document.getElementById('compPasteProsesBtn').addEventListener('click', async ()
   });
   btn.disabled = false;
   if (error) { showToast('Gagal simpan komposisi: ' + error.message, true); return; }
-  showToast(`Selesai — ${data?.processed ?? items.length} baris komposisi tersimpan`);
+  showToast(`${data?.processed ?? items.length} baris komposisi tersimpan`);
   document.getElementById('compPasteArea').value = '';
   document.getElementById('compPastePreviewWrap').style.display = 'none';
   document.getElementById('compPasteSummary').innerHTML = '';
@@ -3383,7 +3383,7 @@ document.getElementById('hitungKomposisiBtn').addEventListener('click', async ()
     const { total, itemTanpaHarga } = hasil;
     document.getElementById('sh_harga').value = Math.round(total);
     if (itemTanpaHarga.length > 0) {
-      showToast(`Dihitung, tapi ${itemTanpaHarga.length} item belum punya harga EKATALOG (tidak ikut terhitung): ${itemTanpaHarga.slice(0,3).join(', ')}${itemTanpaHarga.length>3?', ...':''}`, true);
+      showToast(`Dihitung, tapi ${itemTanpaHarga.length} item belum punya harga e-Katalog`, 'warning', { detail: `Tidak ikut terhitung: ${itemTanpaHarga.slice(0,3).join(', ')}${itemTanpaHarga.length>3?', …':''}.` });
     } else {
       showToast('Harga terisi dari total komposisi — masih bisa diedit manual sebelum disimpan');
     }
@@ -3701,13 +3701,15 @@ async function deleteProdukInner(id, label){
   // policy (RLS) atau yang barisnya sudah hilang tetap balik tanpa error, dan toast sukses jadi bohong.
   const { data: gone, error } = await sb.from('produk').delete().eq('id', id).select('id');
   if (error) {
-    showToast(error.code === '23503' ? 'Produk masih dipakai data lain, jadi belum bisa dihapus.' : 'Gagal hapus produk: ' + error.message, true);
+    error.code === '23503'
+      ? showToast('Produk belum bisa dihapus', true, { detail: 'Produk masih dipakai data lain.' })
+      : showToast('Gagal menghapus produk', true, { detail: error.message });
     return;
   }
   let alreadyGone = false;
   if (!gone || gone.length === 0) {
     const { data: still, error: chkErr } = await sb.from('produk').select('id').eq('id', id).maybeSingle();
-    if (chkErr || still) { showToast('Produk tidak terhapus: database menolak tanpa pesan (kemungkinan izin akun ini). Tidak ada yang berubah.', true); return; }
+    if (chkErr || still) { showToast('Produk tidak terhapus', true, { detail: 'Database menolak tanpa pesan, kemungkinan karena izin akun ini. Tidak ada yang berubah.' }); return; }
     alreadyGone = true; // sudah dihapus pihak lain duluan -> cukup segarkan daftar
   }
   showToast(alreadyGone

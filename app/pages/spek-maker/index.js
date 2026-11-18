@@ -79,8 +79,7 @@ function loadScript(src, integrity) {
     scriptPromises.set(src, new Promise((resolve, reject) => {
       const s = document.createElement('script');
       s.src = src;
-      s.integrity = integrity;
-      s.crossOrigin = 'anonymous';
+      if (integrity) { s.integrity = integrity; s.crossOrigin = 'anonymous'; } // file lokal (mis. toast.js) tanpa SRI
       s.onload = () => resolve();
       s.onerror = () => { scriptPromises.delete(src); reject(new Error('Gagal memuat ' + src)); };
       document.head.appendChild(s);
@@ -177,18 +176,14 @@ let saved = null;           // { uid, tab, fields, items, nextId }
 
 const narrowMQ = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 980px)') : { matches: false };
 
-function toast(msg, type = 'success') {
-  const host = document.getElementById('smToastRoot');
-  if (!host) return;
-  const t = el('div', 'toast ' + type);
-  t.appendChild(el('span', 'dot'));
-  t.appendChild(el('span', '', msg));
-  host.appendChild(t);
-  requestAnimationFrame(() => t.classList.add('in'));
-  setTimeout(() => {
-    t.classList.remove('in');
-    setTimeout(() => t.remove(), 200);
-  }, 3200);
+// Toast = pembungkus tipis ke shared/toast.js (PNMToast), satu sistem dengan modul lain.
+// `opts` boleh angka (durasi ms, gaya lama) atau { detail, duration }.
+function toast(msg, type = 'success', opts) {
+  const extra = typeof opts === 'number' ? { duration: opts } : opts;
+  if (window.PNMToast) { window.PNMToast.show(msg, type, extra); return; }
+  loadScript('/shared/toast.js')
+    .then(() => window.PNMToast && window.PNMToast.show(msg, type, extra))
+    .catch(() => {});
 }
 
 // ---- data ----------------------------------------------------------------
@@ -507,7 +502,7 @@ async function downloadAll() {
       triggerDownload(blob, `spek-${stamp}.zip`);
     }
     if (empty || noImg) {
-      toast(`Terunduh. Perhatian: ${empty} tanpa deskripsi, ${noImg} tanpa gambar.`, 'error');
+      toast('PDF terunduh, tapi belum lengkap', 'warning', { detail: `${empty} tanpa deskripsi, ${noImg} tanpa gambar.` });
     } else {
       toast('PDF terunduh');
     }
@@ -932,7 +927,6 @@ export function unmount() {
   handlers.forEach((off) => off());
   handlers = [];
   if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
-  document.getElementById('smToastRoot')?.remove();
   document.getElementById(STYLE_ID)?.remove();
   items = [];
   previewId = null;

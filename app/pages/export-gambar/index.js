@@ -10,9 +10,8 @@
 // dashboard/stok; style.css hanya berisi bagian spesifik halaman, semuanya di-scope
 // di bawah `.eg-page`.
 //
-// toast()/#toastRoot lokal di file ini TIDAK sama dengan shared/toast.js (PNMToast):
-// implementasi ringan sendiri dengan styling flat. Menyatukannya dengan PNMToast
-// adalah keputusan terpisah.
+// toast() lokal di file ini sekarang pembungkus tipis ke shared/toast.js (PNMToast),
+// satu sistem dengan modul lain (dulu implementasi sendiri + #toastRoot).
 
 import { EXPORT_GAMBAR_MARKUP } from './markup.js';
 import { mountBulkThumb } from './bulk-thumb.js';
@@ -263,18 +262,14 @@ export async function mount(container) {
           previewTimer = setTimeout(() => { if (isMounted) mergeAndPreview(); }, delay);
       }
   
-      // Toast notification helper — feedback ke user, bukan cuma console
-      function toast(message, type = "error", duration = 4000) {
-          const root = container.querySelector('#' + "toastRoot");
-          const el = document.createElement("div");
-          el.className = `toast ${type}`;
-          el.innerHTML = `<span class="dot" aria-hidden="true"></span><span>${escapeHtml(message)}</span>`;
-          root.appendChild(el);
-          requestAnimationFrame(() => el.classList.add("in"));
-          setTimeout(() => {
-              el.classList.remove("in");
-              setTimeout(() => el.remove(), 400);
-          }, duration);
+      // Toast notification helper — feedback ke user, bukan cuma console.
+      // Pembungkus ke shared/toast.js; arg ketiga boleh angka (durasi ms) atau { detail, duration }.
+      function toast(message, type = "error", extra) {
+          const opts = typeof extra === "number" ? { duration: extra } : extra;
+          if (window.PNMToast) { window.PNMToast.show(message, type, opts); return; }
+          loadScript('/shared/toast.js')
+              .then(() => window.PNMToast && window.PNMToast.show(message, type, opts))
+              .catch(() => {});
       }
   
       function setButtonLoading(btn, isLoading, loadingLabel) {

@@ -342,7 +342,7 @@ export function installKategori(S) {
       });
       const tag = semua ? 'semua' : [m.id, st.spes && st.spes.toLowerCase().replace(/[^a-z0-9]+/g, '-'), st.kat && st.kat.toLowerCase().replace(/[^a-z0-9]+/g, '-')].filter(Boolean).join('_');
       XLSX.writeFile(wb, `katalog_kategori_spesialisasi_${tag}_${tgl}.xlsx`);
-      showToast(`Export selesai: ${fmt(rows.length)} produk, ${wb.SheetNames.length} sheet`);
+      showToast('Export selesai', 'success', { detail: `${fmt(rows.length)} produk dalam ${wb.SheetNames.length} sheet.` });
     } catch (e) {
       showToast('Gagal export: ' + (e.message || e), true);
     } finally {

@@ -14,11 +14,11 @@ export function guardHapus(){
 /** Hasil .delete().select('id'): true kalau ada baris yang benar-benar terhapus. 0 baris tanpa error = ditolak RLS / sudah hilang. */
 export function barisTerhapus(res){ return !res.error && Array.isArray(res.data) && res.data.length > 0; }
 
-export function showToast(msg, isError){
-  // Body delegate ke shared/toast.js — signature & titik panggil di file
-  // pemanggil sama sekali gak berubah, cuma implementasinya yang sekarang
-  // satu sumber sama konversian.js (lihat shared/toast.js buat detail).
-  PNMToast.show(msg, isError ? 'error' : 'success', { duration: isError ? 4500 : 3000 });
+export function showToast(msg, kind, opts){
+  // Body delegate ke shared/toast.js. `kind` boleh boolean lama (true = error) atau nama tipe
+  // ('warning', 'info', ...). Durasi ditentukan toast.js dari panjang teks, kecuali `opts.duration`.
+  const type = kind === true ? 'error' : (typeof kind === 'string' ? kind : 'success');
+  PNMToast.show(msg, type, opts);
 }
 
 // Pengganti window.confirm()/alert() bawaan browser -- dibangun di atas

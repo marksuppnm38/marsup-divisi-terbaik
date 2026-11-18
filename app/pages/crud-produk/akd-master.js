@@ -239,7 +239,7 @@ document.getElementById('deleteAkdBtn').addEventListener('click', async () => {
   if (!await crudConfirm('Hapus AKD ini? Tindakan ini tidak bisa dibatalkan.', { danger: true, okLabel: 'Ya, Hapus' })) return;
   const delRes = await S.sb.from('akd').delete().eq('id', id).select('id');
   if (delRes.error) { showToast('Gagal hapus AKD: ' + delRes.error.message, true); return; }
-  if (!barisTerhapus(delRes)) { showToast('AKD tidak terhapus: akun ini tidak punya izin, atau datanya sudah hilang.', true); return; }
+  if (!barisTerhapus(delRes)) { showToast('AKD tidak terhapus', true, { detail: 'Akun ini tidak punya izin, atau datanya sudah hilang.' }); return; }
   showToast('AKD dihapus');
   closeAkdModal();
   loadAkd(akdPage);

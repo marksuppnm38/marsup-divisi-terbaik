@@ -2323,7 +2323,7 @@ async function copySetRincianWithImages(items, imgs, btnEl) {
     S.showToast('Gagal copy ke clipboard — coba tombol .xlsx aja', 'error');
     return;
   }
-  S.showToast(`Tersalin ${items.length} baris + gambar ✓ — paste biasa ke Excel; di Google Sheet pakai Ctrl+Shift+V`);
+  S.showToast(`Tersalin ${items.length} baris + gambar`, 'success', { detail: 'Excel: tempel biasa. Google Sheets: Ctrl+Shift+V.' });
   if (btnEl) {
     const original = btnEl.innerHTML;
     btnEl.innerHTML = '<i class="ti ti-check"></i><span>Tersalin!</span>';
@@ -2443,7 +2443,7 @@ async function copySetRincianToClipboard(items, btnEl) {
     document.body.removeChild(ta);
   }
 
-  S.showToast(`Tersalin ${items.length} baris (kode, deskripsi, qty) — siap paste ke Google Sheet ✓`);
+  S.showToast(`Tersalin ${items.length} baris (kode, deskripsi, qty)`, 'success', { detail: 'Siap ditempel ke Google Sheets.' });
   if (btnEl) {
     const original = btnEl.innerHTML;
     btnEl.innerHTML = '<i class="ti ti-check"></i><span>Tersalin!</span>';
@@ -3268,7 +3268,7 @@ async function sweepSesiMandek(rows) {
       } catch { /* satu sesi gagal jangan matiin yang lain */ }
     }
   } finally { sesiSweepRunning = false; }
-  if (closed) S.showToast(`${closed} sesi mandek > ${SESI_STALE_DAYS} hari otomatis ditutup → Riwayat`);
+  if (closed) S.showToast(`${closed} sesi mandek otomatis ditutup`, 'info', { detail: `Tidak aktif lebih dari ${SESI_STALE_DAYS} hari. Lihat di Riwayat.` });
   return closed > 0;
 }
 
@@ -3820,8 +3820,8 @@ function persistKlikEkat(sesiId, card) {
       refreshEkatUI(card);
       renderRiwayatSummary(S.riwayatDataCache);
       const missingCol = err.code === 'PGRST204' || err.code === '42703' || /klik_ekat_(items|qty)/i.test(err.message);
-      S.showToast(missingCol ? 'Kolom klik_ekat_items/klik_ekat_qty belum ada di sesi_konversi — jalankan migration SQL terbaru'
-        : `Gagal simpan item yang di-klik: ${err.message}`, 'error');
+      if (missingCol) S.showToast('Item yang di-klik belum bisa disimpan', 'error', { detail: 'Kolom klik_ekat_items/klik_ekat_qty belum ada di sesi_konversi. Jalankan migration SQL terbaru.' });
+      else S.showToast('Gagal menyimpan item yang di-klik', 'error', { detail: err.message });
     }
   }, 350);
 }
@@ -4323,7 +4323,8 @@ async function loadRiwayatList(keepPage) {
         if (withSheet) S.showToast('Mengirim ke Sheet… (bisa beberapa detik)');
         try {
           const { sheetError } = await S.quickRecord(btn.dataset.id, { sheet: withSheet });
-          S.showToast(sheetError ? 'Record tersimpan ✓, tapi Sheet gagal: ' + sheetError : (withSheet ? 'Record tersimpan & terkirim ke Sheet ✓' : 'Record tersimpan ✓'), sheetError ? 'error' : undefined);
+          if (sheetError) S.showToast('Record tersimpan, tapi Sheet gagal', 'warning', { detail: sheetError });
+          else S.showToast(withSheet ? 'Record tersimpan dan terkirim ke Sheet' : 'Record tersimpan');
           loadRiwayatList(true);
           if (S.loadTodoInbox) S.loadTodoInbox(true);
         } catch (err) { S.showToast('Gagal Record: ' + err.message, 'error'); restore(); }
@@ -4572,7 +4573,7 @@ const konvHandlers = {
   'konv.drive': () => {
     const btn = document.getElementById('btn-drive-upload');
     if (!konvShown(btn)) return false;
-    if (btn.disabled) { S.showToast('Simpan ke Drive aktif setelah Export ke Excel (dan sesi punya Permintaan RS).', 'error'); return true; }
+    if (btn.disabled) { S.showToast('Simpan ke Drive belum aktif', 'warning', { detail: 'Export ke Excel dulu, dan pastikan sesi punya Permintaan RS.' }); return true; }
     btn.click();
     return true;
   },

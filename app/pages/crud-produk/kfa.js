@@ -155,7 +155,7 @@ document.getElementById('deleteKfaBtn').addEventListener('click', async () => {
   if (!await crudConfirm('Hapus record KFA ini? Kode KFA di produk (kalau ada) ikut kekosongin.', { danger: true, okLabel: 'Ya, Hapus' })) return;
   const delRes = await S.sb.from('produk_kfa').delete().eq('id', currentKfaId).select('id');
   if (delRes.error) { showToast('Gagal hapus: ' + delRes.error.message, true); return; }
-  if (!barisTerhapus(delRes)) { showToast('Record KFA tidak terhapus: akun ini tidak punya izin, atau datanya sudah hilang.', true); return; }
+  if (!barisTerhapus(delRes)) { showToast('Record KFA tidak terhapus', true, { detail: 'Akun ini tidak punya izin, atau datanya sudah hilang.' }); return; }
   showToast('Record KFA dihapus');
   closeKfaModal();
   loadKfa(kfaPage);
@@ -386,7 +386,7 @@ async function confirmSetKomposisi(row){
   if (!komposisi.length) return true;
   const tipeMap = await fetchProdukTipeMap(komposisi.map(k => k?.kode_produk));
   if (!tipeMap) {
-    showToast('Gagal mengecek komposisi ke database, cek manual di Set Management setelah set dibuat', true);
+    showToast('Komposisi belum bisa dicek ke database', 'warning', { detail: 'Cek manual di Set Management setelah set dibuat.' });
     return true;
   }
   const { total, missing, nested } = summarizeKomposisi(komposisi, tipeMap);
@@ -936,7 +936,7 @@ async function loadSyncUnmatched(){
       // (produk bisa dibuat dari jalur lain). Yang gagal ditulis DIBIARKAN di sync_unmatched_produk
       // supaya dicoba lagi saat tab dibuka berikutnya, bukan hilang diam-diam.
       const hr = await tulisHargaDariSync(sudahAdaRows);
-      if (hr.written) showToast(`${hr.written} harga dari sheet disinkronkan ke produk yang sudah ada`);
+      if (hr.written) showToast(`${hr.written} harga disinkronkan ke produk yang ada`);
       const del = Array.from(sudahAdaSet).filter(k => !hr.failed.has(k));
       for (let i = 0; i < del.length; i += 200) {
         S.sb.from('sync_unmatched_produk').delete().in('kode_produk', del.slice(i, i + 200))

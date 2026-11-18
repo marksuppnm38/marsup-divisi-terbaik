@@ -390,7 +390,7 @@ export function mountBulk(panel, deps) {
       }
       setProgress(0, 0, '');
       if (cancel) toast(`Dibatalkan. ${berhasil} PDF sempat dibuat.`, 'error');
-      else if (gagal.length) toast(`Selesai: ${berhasil} PDF, ${gagal.length} gagal (ditandai di daftar).`, 'error');
+      else if (gagal.length) toast(`${berhasil} PDF selesai, ${gagal.length} gagal`, 'warning', { detail: 'Yang gagal ditandai di daftar.' });
       else toast(`Selesai: ${berhasil} PDF terunduh`);
       if (gagal.length) console.warn('bulk gagal:', gagal);
     } catch (err) {

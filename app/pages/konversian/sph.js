@@ -1634,7 +1634,7 @@ async function sphGenerate() {
     const blob = doc.output('blob');
     if (sphDrawFailed.length) {
       // Dulu: PDF jadi tanpa logo/TTD tanpa pemberitahuan. Sekarang user diberi tahu sebelum kirim ke customer.
-      PNMToast.show('PERHATIAN: PDF jadi TANPA ' + [...new Set(sphDrawFailed)].join(', ') + ' (gambar gagal dimuat). Cek slot aset lalu Generate ulang sebelum dikirim.', 'error', { duration: 10000 });
+      PNMToast.show('PDF jadi tanpa ' + [...new Set(sphDrawFailed)].join(', '), 'warning', { detail: 'Gambar gagal dimuat. Cek slot aset lalu Generate ulang sebelum dikirim.', duration: 10000 });
     }
     const url = URL.createObjectURL(blob);
     sphPreviewFrame.src = url;
@@ -1669,7 +1669,7 @@ async function sphGenerate() {
         sphDownloadLinkDocx.style.display = 'flex';
       }
       if (docxWarnings.length) {
-        PNMToast.show('PERHATIAN: DOCX jadi TANPA ' + [...new Set(docxWarnings)].join(', ') + ' (gambar gagal dibaca). PDF tidak terpengaruh.', 'error', { duration: 10000 });
+        PNMToast.show('DOCX jadi tanpa ' + [...new Set(docxWarnings)].join(', '), 'warning', { detail: 'Gambar gagal dibaca. PDF tidak terpengaruh.', duration: 10000 });
       }
     } catch (eDocx) {
       if (sphDownloadLinkDocx) sphDownloadLinkDocx.style.display = 'none';

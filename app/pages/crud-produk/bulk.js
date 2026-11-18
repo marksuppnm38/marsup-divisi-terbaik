@@ -360,7 +360,7 @@ document.getElementById('bulkInaprocPreviewBtn').addEventListener('click', async
   }
   for (const p of byNomor.values()) parsed.push(p);
   if (dilewatiKarenaDuplikat > 0) {
-    showToast(`${dilewatiKarenaDuplikat} baris duplikat (nomor permohonan sama) dilewati — dipilih yang tgl_pengajuan-nya paling baru`, false);
+    showToast(`${dilewatiKarenaDuplikat} baris duplikat dilewati`, 'info', { detail: 'Nomor permohonan sama; dipakai yang tgl_pengajuan terbaru.' });
   }
 
   const kodeList = [...new Set(parsed.map(p => p.kode).filter(Boolean))];
@@ -437,7 +437,7 @@ document.getElementById('bulkInaprocProsesBtn').addEventListener('click', async 
   // bilang "masih ada sesi" padahal sesi itu sebenarnya udah mati di server.
   const { data: refreshData, error: refreshError } = await S.sb.auth.refreshSession();
   if (refreshError || !refreshData?.session) {
-    showToast('Sesi login kamu udah habis — refresh halaman & login ulang dulu sebelum proses', true);
+    showToast('Sesi login sudah habis', true, { detail: 'Muat ulang halaman dan login lagi sebelum memproses.' });
     btn.disabled = false;
     btn.textContent = btnLabelAsal;
     return;
@@ -480,7 +480,7 @@ document.getElementById('bulkInaprocProsesBtn').addEventListener('click', async 
 
   if (berhentiKarenaAuth) {
     const sisaRows = rows.slice(diprosesRows);
-    showToast(`Berhenti di baris ${diprosesRows + 1}/${rows.length} — sesi login expired. Refresh halaman, login ulang, lalu klik Proses lagi buat lanjutin ${sisaRows.length} baris sisanya.`, true);
+    showToast(`Berhenti di baris ${diprosesRows + 1} dari ${rows.length}`, true, { detail: `Sesi login habis. Muat ulang halaman, login lagi, lalu klik Proses untuk melanjutkan ${sisaRows.length} baris sisanya.` });
     // ganti isi bulkInaprocRows dengan sisa baris yang belum ke-proses, biar preview & tombol tetap muncul
     bulkInaprocRows = bulkInaprocRows.filter(r => r.status_ !== 'ok').concat(sisaRows);
     renderBulkInaprocPreview();
@@ -687,7 +687,7 @@ document.getElementById('bulkVerifiedProsesBtn').addEventListener('click', async
       if (mErr) showToast('Sinkron OK, tapi simpan pilihan ambigu gagal: ' + mErr.message, true);
       else manualOk = mRes && mRes.written != null ? mRes.written : picks.length;
     }
-    showToast(`Selesai — ${data.matched} produk verified (+${data.gain}, -${data.lose})` + (manualOk ? ` · ${manualOk} ambigu kamu putuskan` : ''));
+    showToast(`Selesai: ${data.matched} produk verified (+${data.gain}, -${data.lose})`, 'success', manualOk ? { detail: `${manualOk} kasus ambigu diputuskan manual.` } : undefined);
     resetBulkVerified();
     S.invalidateProdukStackCache();
     S.loadProduk();
