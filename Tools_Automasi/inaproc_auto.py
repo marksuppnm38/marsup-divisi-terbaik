@@ -38,11 +38,6 @@ from datetime import datetime
 from pathlib import Path
 
 SUPABASE_BASE_URL = "https://ptkzbsemihcyndidjoor.supabase.co/storage/v1/object/public/perizinan"
-SUPABASE_ANON_KEY = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0a2ti"
-    "c2VtaWhjzW5kaXNqb29yIMwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0Njc4MzgsImV4cCI6MjA5"
-    "ODAzMzgzOH0.QsCqmcqQcXvz1f8bLkagvMbAGUBbBP-3Wa5Aore5OMo"
-)
 CPAKB_PATH = "Sertifikat CPAKB PNM KBLI 32509 K1.pdf"
 KATEGORI_LABEL = "Kategori Alkes: Kode Unik KFA"
 BASE_URL = "https://penyedia.inaproc.id/"
@@ -81,11 +76,8 @@ def fetch_to_tempfile(path: str) -> str:
     set_input_files needs a real path, not bytes."""
     encoded = "/".join(urllib.parse.quote(seg) for seg in path.split("/"))
     url = f"{SUPABASE_BASE_URL}/{encoded}"
-    req = urllib.request.Request(
-        url,
-        headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"},
-    )
-    with urllib.request.urlopen(req) as resp:
+    # Endpoint /object/public/ memang publik: gak perlu apikey/Authorization sama sekali.
+    with urllib.request.urlopen(url) as resp:
         if resp.status != 200:
             raise RuntimeError(f"Gagal ambil file ({resp.status}) di {url}")
         data = resp.read()

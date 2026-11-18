@@ -10,8 +10,8 @@ export function installSetMendekati(S) {
 // (nama item biasa ATAU kode; nama dipetakan ke produk lewat suggest_dictionary, hasil
 // pemetaan bisa dikoreksi per baris). Hasil perbandingan punya kolom justifikasi (otomatis
 // dari data, bisa diedit) dan bisa disalin sebagai TSV ke Excel. RPC dipanggil
-// lewat helper rpc() yang sudah ada (pola sama dengan get_set_items dkk: pakai
-// ANON_KEY, bukan stokAccessToken, karena RPC ini read-only/security-definer).
+// lewat helper rpc() yang sudah ada (pola sama dengan get_set_items dkk): rpc() jalan
+// lewat sesiFetch() -> Authorization pakai token sesi user yang login (BUKAN anon).
 // ══════════════════════════════════════════
 // Pintu Clipboard: kode sumber = kode_produk unik dari clipboard (kode_asli dipakai kalau ada,
 // sama kayak konvensi kode buat gambar/thumbnail di bagian lain app ini).

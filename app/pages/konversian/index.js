@@ -1001,7 +1001,9 @@ const rt = (typeof window.supabase !== 'undefined' && window.supabase.createClie
       // jalan (itu penyebab kenapa role-nya selalu balik jadi 'anon'). Callback ini
       // baca stokAccessToken langsung dari closure, jadi otomatis dapet nilai
       // terbaru kapan pun dipanggil — gak perlu manual re-sync di titik lain lagi.
-      accessToken: async () => S.stokAccessToken || ANON_KEY
+      // Tanpa fallback ke ANON_KEY: kalau belum ada sesi, kembalikan null (bukan kunci anon
+      // yang diam-diam dipakai sebagai Bearer). Akses tabel/channel tetap dijaga RLS di server.
+      accessToken: async () => S.stokAccessToken || null
     })
   : null;
 S.rt = rt;
