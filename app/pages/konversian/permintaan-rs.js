@@ -2,6 +2,8 @@
 // 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
 // lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
 // di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
+import { resolveItems, summarize, extractSpecs, buildVariants } from './auto-konversi/index.js';
+
 export function installPermintaanRs(S) {
 // ══════════════════════════════════════════
 // MODUL PERMINTAAN RS: catat permintaan (teks/Excel), cocokkan ke katalog,
@@ -17,7 +19,7 @@ export function installPermintaanRs(S) {
 // section/finalize/Drive semua keyed ke permintaan_id). Jadi "buka lagi" TIDAK pernah bikin
 // Permintaan RS kedua di sesi yang sama.
 let prMode = 'create';
-const PR_SUB_CREATE = 'Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Ini murni buat data insight — bukan proses konversi otomatis.';
+const PR_SUB_CREATE = 'Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Di layar Periksa item ada tombol "Cocokkan otomatis" (Auto-Match) — hasilnya usulan, staff yang memutuskan.';
 const prTitleEl = document.getElementById('pr-modal-title');
 const prSubEl = document.getElementById('pr-modal-sub');
 const prActiveWrap = document.getElementById('pr-active-wrap');
@@ -397,6 +399,7 @@ S.prSubmitBtn.addEventListener('click', async () => {
   // Review biar staff bisa cek/edit nama, qty, dan isi pagu satuan per item
   // (opsional) sebelum benar-benar disimpan ke server.
   reviewItems = items.map(it => ({ raw_text: it.raw_text, qty: it.qty, pagu_satuan: it.pagu_satuan ?? null }));
+  reviewMatch = items.map(() => null);
   reviewSumber = sumber;
   renderReviewRows();
   S.prFormWrap.style.display = 'none';
@@ -410,6 +413,14 @@ S.prSubmitBtn.addEventListener('click', async () => {
 let reviewItems = [];      // {raw_text, qty, pagu_satuan}
 let reviewSumber = 'TEKS';
 let reviewSkipped = [];    // baris mentah yang otomatis disaring pas parsing (info doang, ditampilkan)
+
+// ── AUTO-MATCH (auto-konversi/): usulan produk per baris di layar Review ──
+// reviewMatch paralel dengan reviewItems: null | { hasil, kode, nama, pakai }.
+// Cuma USULAN: item tetap disimpan persis seperti biasa. Baris yang dicentang "Pakai" baru
+// dipasang SESUDAH tersimpan (applyAutoMatches), lewat jalur yang sama dgn tombol "+ Tambah & Pakai".
+let reviewMatch = [];
+let amRunning = false;
+const AM_LABEL = { AUTO: 'Cocok', REVIEW: 'Cek dulu', UNKNOWN: 'Tidak ketemu' };
 
 function escapeHtmlAttr(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -429,8 +440,38 @@ function renderReviewRows() {
       <input class="pr-rv-qty" inputmode="numeric" value="${it.qty != null ? it.qty : ''}" placeholder="Qty"/>
       <input class="pr-rv-pagu" inputmode="numeric" value="${it.pagu_satuan != null ? Number(it.pagu_satuan).toLocaleString('id-ID') : ''}" placeholder="opsional"/>
       <button type="button" class="pr-review-del" data-idx="${idx}" aria-label="Hapus baris"><i class="ti ti-trash"></i></button>
+      ${amRowHtml(reviewMatch[idx], idx)}
     </div>
   `).join('') : '<div class="pr-review-empty">Belum ada item. Tambah baris manual di bawah, atau klik "Kembali edit".</div>';
+  renderAmSummary();
+}
+
+function amRowHtml(m, idx) {
+  if (!m) return '';
+  const h = m.hasil;
+  const badge = `<span class="pr-am-badge pr-am-${h.status.toLowerCase()}">${AM_LABEL[h.status] || h.status}</span>`;
+  if (!h.kode_produk) {
+    return `<div class="pr-am">${badge}<span class="pr-am-txt"><small>${escapeHtmlAttr(h.reason)}</small></span></div>`;
+  }
+  const cands = (h.candidates || []).filter((c, i, a) => a.findIndex(x => x.kode === c.kode) === i);
+  const pilih = cands.length > 1
+    ? `<select class="pr-am-sel" data-idx="${idx}" aria-label="Pilih produk lain">${cands.map(c =>
+        `<option value="${escapeHtmlAttr(c.kode)}"${c.kode === m.kode ? ' selected' : ''}>${escapeHtmlAttr(c.kode)} — ${escapeHtmlAttr(c.nama)}</option>`).join('')}</select>`
+    : `<b>${escapeHtmlAttr(m.kode)}</b> — ${escapeHtmlAttr(m.nama)}`;
+  return `<div class="pr-am">${badge}<span class="pr-am-txt">${pilih}<small>${escapeHtmlAttr(h.reason)}</small></span>`
+    + `<label class="pr-am-use"><input type="checkbox" class="pr-am-chk" data-idx="${idx}"${m.pakai ? ' checked' : ''}/> Pakai</label></div>`;
+}
+
+function renderAmSummary() {
+  const el = document.getElementById('pr-am-summary');
+  if (!el) return;
+  const ms = reviewMatch.filter(Boolean);
+  if (!ms.length) { el.style.display = 'none'; el.textContent = ''; return; }
+  const n = { AUTO: 0, REVIEW: 0, UNKNOWN: 0 };
+  ms.forEach(m => { n[m.hasil.status]++; });
+  const dipakai = ms.filter(m => m.pakai && m.kode).length;
+  el.style.display = '';
+  el.textContent = `Auto-Match: ${n.AUTO} cocok · ${n.REVIEW} perlu dicek · ${n.UNKNOWN} tidak ketemu — ${dipakai} dicentang "Pakai" (akan langsung dipasang ke Kebutuhan RS setelah disimpan).`;
 }
 
 // Baca ulang isi input di DOM balik ke array reviewItems — dipanggil sebelum
@@ -467,16 +508,99 @@ S.prReviewRows.addEventListener('click', (e) => {
   syncReviewItemsFromDom();
   const idx = parseInt(btn.dataset.idx, 10);
   reviewItems.splice(idx, 1);
+  reviewMatch.splice(idx, 1);
   renderReviewRows();
 });
 
 S.prReviewAddBtn.addEventListener('click', () => {
   syncReviewItemsFromDom();
   reviewItems.push({ raw_text: '', qty: null, pagu_satuan: null });
+  reviewMatch.push(null);
   renderReviewRows();
   const lastNama = S.prReviewRows.querySelector('.pr-review-row:last-child .pr-rv-nama');
   if (lastNama) lastNama.focus();
 });
+
+// Ubah nama baris -> usulan lamanya sudah tidak berlaku, buang (jangan sampai produk salah ikut terpasang).
+S.prReviewRows.addEventListener('input', (e) => {
+  if (!e.target.classList.contains('pr-rv-nama')) return;
+  const row = e.target.closest('.pr-review-row');
+  const idx = row ? parseInt(row.dataset.idx, 10) : -1;
+  if (idx < 0 || !reviewMatch[idx]) return;
+  reviewMatch[idx] = null;
+  const am = row.querySelector('.pr-am');
+  if (am) am.remove();
+  renderAmSummary();
+});
+S.prReviewRows.addEventListener('change', (e) => {
+  const idx = parseInt(e.target.dataset ? e.target.dataset.idx : '', 10);
+  if (isNaN(idx) || !reviewMatch[idx]) return;
+  if (e.target.classList.contains('pr-am-chk')) {
+    reviewMatch[idx].pakai = e.target.checked;
+  } else if (e.target.classList.contains('pr-am-sel')) {
+    const c = (reviewMatch[idx].hasil.candidates || []).find(x => x.kode === e.target.value);
+    if (c) { reviewMatch[idx].kode = c.kode; reviewMatch[idx].nama = c.nama; reviewMatch[idx].pakai = true; }
+    const chk = e.target.closest('.pr-am').querySelector('.pr-am-chk');
+    if (chk) chk.checked = reviewMatch[idx].pakai;
+  } else return;
+  renderAmSummary();
+});
+
+const prAutoBtn = document.getElementById('pr-review-auto-btn');
+if (prAutoBtn) prAutoBtn.addEventListener('click', async () => {
+  if (amRunning) return;
+  syncReviewItemsFromDom();
+  const idxs = reviewItems.map((_, i) => i).filter(i => reviewItems[i].raw_text);
+  if (!idxs.length) return;
+  amRunning = true;
+  prAutoBtn.disabled = true;
+  const label0 = prAutoBtn.innerHTML;
+  try {
+    const items = idxs.map(i => ({
+      nama: reviewItems[i].raw_text, qty: reviewItems[i].qty,
+      specs: extractSpecs(reviewItems[i].raw_text), variants: buildVariants(reviewItems[i].raw_text)
+    }));
+    const res = await resolveItems(items, S.rpc, {
+      onProgress: (n, t) => { prAutoBtn.textContent = `Mencocokkan ${n}/${t}…`; }
+    });
+    res.forEach((r, k) => {
+      const h = r.hasil;
+      reviewMatch[idxs[k]] = { hasil: h, kode: h.kode_produk, nama: h.nama_produk, pakai: h.status === 'AUTO' };
+    });
+    renderReviewRows();
+    const sm = summarize(res);
+    S.showToast(`Auto-Match selesai: ${sm.AUTO} cocok, ${sm.REVIEW} perlu dicek, ${sm.UNKNOWN} tidak ketemu`, 'success');
+  } catch (err) {
+    S.showToast('Auto-Match gagal: ' + err.message, 'error');
+  } finally {
+    amRunning = false;
+    prAutoBtn.disabled = false;
+    prAutoBtn.innerHTML = label0;
+  }
+});
+
+// Pasang usulan yang dicentang "Pakai" ke item yang BARU disimpan. Jalur sama dengan "+ Tambah & Pakai"
+// di Kebutuhan RS: masukkan produk ke Clipboard (kalau belum ada) lalu tandai TERPENUHI.
+// Item dicari lewat raw_text di antara item BARU saja (beforeIds = id yang sudah ada sebelum simpan).
+async function applyAutoMatches(pending, beforeIds) {
+  if (!pending || !pending.length) return;
+  const used = new Set();
+  let ok = 0, gagal = 0;
+  for (const p of pending) {
+    const item = (S.checklistItems || []).find(it =>
+      !beforeIds.has(it.id) && !used.has(it.id) && String(it.raw_text || '').trim() === p.raw_text);
+    if (!item) { gagal++; continue; }
+    used.add(item.id);
+    try {
+      if (!S.clipboard.some(c => c.kode_produk === p.kode)) await S.addSetKodeToClip(p.kode, document.createElement('button'));
+      if (!S.clipboard.some(c => c.kode_produk === p.kode)) { gagal++; continue; }
+      await markItemTerpenuhiWithSingleProduk(item, p.kode);
+      if (item.status === 'TERPENUHI') ok++; else gagal++;
+    } catch (err) { console.error('[auto-match] gagal pasang', p.kode, err); gagal++; }
+  }
+  S.showToast(`Auto-Match: ${ok} item terpasang otomatis`, ok ? 'success' : 'error',
+    gagal ? { detail: `${gagal} item tidak terpasang — pilih manual di Kebutuhan RS.` } : undefined);
+}
 
 // "Kembali edit" cuma balik ke form input (teks/excel/screenshot) — item hasil
 // parse yang lagi di-review dibuang, jadi kalau lanjut lagi nanti diparse ulang
@@ -589,16 +713,25 @@ S.prReviewSaveBtn.addEventListener('click', async () => {
     return;
   }
 
+  // Usulan Auto-Match yang dicentang "Pakai", dicatat SEKARANG (sebelum async) — dipasang setelah item tersimpan.
+  const pendingMatches = [];
+  reviewItems.forEach((it, i) => {
+    const m = reviewMatch[i];
+    if (it.raw_text && m && m.pakai && m.kode) pendingMatches.push({ raw_text: it.raw_text, kode: m.kode });
+  });
+
   S.prReviewSaveBtn.disabled = true;
   S.prReviewSaveBtn.textContent = 'Menyimpan…';
 
   try {
     // ── MODE ADD: nambah ke Permintaan RS yang sudah ada. Gak nyentuh header, gak bikin permintaan baru. ──
     if (prMode === 'add') {
+      const beforeIds = new Set((S.checklistItems || []).map(it => it.id));
       const n = await addItemsToActivePermintaan(items);
       S.showToast(`${n} item ditambahkan ke Permintaan RS`, 'success', { detail: `Total ${S.checklistItems.length} item.` });
       closePrModal();
       S.prTeks.value = ''; S.prFile.value = '';
+      await applyAutoMatches(pendingMatches, beforeIds);
       if (S.resumeRecordAfterPr) { S.resumeRecordAfterPr = false; S.openRecordModal(); }
       return;
     }
@@ -679,6 +812,7 @@ S.prReviewSaveBtn.addEventListener('click', async () => {
     S.prTeks.value = ''; S.prFile.value = '';
     closePrModal();
     if (typeof S.switchDoor === 'function') S.switchDoor('konversi');
+    await applyAutoMatches(pendingMatches, new Set());
 
     // Kalau tadi masuk ke sini lewat nudge di Record modal, balik lagi ke situ
     // biar user lanjut dari titik yang sama (bukan ilang, harus klik Record lagi).

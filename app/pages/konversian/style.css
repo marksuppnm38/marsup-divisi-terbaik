@@ -2879,3 +2879,16 @@
   #app-root .sc-map-row{grid-template-columns:minmax(0,1fr)}
   #app-root .sc-map-conf{justify-self:start}
 }
+
+/* ── Auto-Match di layar Periksa item (Permintaan RS) ── */
+.pr-modal-box .pr-review-row .pr-am{grid-column:1/-1;display:flex;align-items:flex-start;gap:var(--sp-2);padding:2px 0 var(--sp-2);font-size:12.5px;line-height:1.45;color:var(--text-secondary)}
+.pr-modal-box .pr-am-badge{flex:none;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid transparent;white-space:nowrap}
+.pr-modal-box .pr-am-auto{background:var(--success-bg);color:var(--success-text);border-color:var(--success-border)}
+.pr-modal-box .pr-am-review{background:var(--warning-bg);color:var(--warning);border-color:var(--warning-border)}
+.pr-modal-box .pr-am-unknown{background:var(--danger-bg);color:var(--danger-text);border-color:var(--danger-border)}
+.pr-modal-box .pr-am-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}
+.pr-modal-box .pr-am-txt small{font-size:11.5px;color:var(--text-muted)}
+.pr-modal-box .pr-review-row select.pr-am-sel{width:100%;height:30px;padding:0 8px;font-size:12.5px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface-2);color:var(--text)}
+.pr-modal-box .pr-am-use{flex:none;display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.pr-modal-box .pr-review-row input.pr-am-chk{width:16px;height:16px;padding:0;margin:0;accent-color:var(--accent)}
+.pr-modal-box .pr-am-summary{margin:0 0 var(--sp-3);padding:var(--sp-2) var(--sp-3);font-size:12.5px;line-height:1.5;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)}

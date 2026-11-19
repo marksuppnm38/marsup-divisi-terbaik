@@ -1054,9 +1054,11 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
         </div>
         <div class="pr-review-list" id="pr-review-rows"></div>
         <button class="pr-review-add-btn" id="pr-review-add-btn" type="button"><i class="ti ti-plus"></i>Tambah baris manual</button>
+        <div class="pr-am-summary" id="pr-am-summary" style="display:none;"></div>
       </div>
       <div class="pr-actions">
         <button class="pr-cancel" id="pr-review-back-btn" type="button">Kembali edit</button>
+        <button class="pr-cancel" id="pr-review-auto-btn" type="button"><i class="ti ti-wand"></i> Cocokkan otomatis</button>
         <button class="pr-primary" id="pr-review-save-btn" type="button">Simpan &amp; mulai sesi</button>
       </div>
     </div>
