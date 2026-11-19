@@ -3,4 +3,6 @@
 export { parseRequestText, parseLine, extractSpecs, buildVariants, parsePriceShorthand } from './parser.js';
 export { parseCompetitorSet, competitorQueries, coreName, splitEponym } from './competitor.js';
 export { resolveItem, resolveItems, summarize, pickBestCand, candConf, isAmbiguous, familyOf } from './resolver.js';
+export { understand, compareAttrs, describeDiff, DECISIVE } from './understand.js';
+export { loadLexicon, makeLexicon, buildQueryLadder, lexiconHits, EMPTY_LEXICON } from './lexicon.js';
 export { notUsableReason, makeFirmCheck } from './firm.js';

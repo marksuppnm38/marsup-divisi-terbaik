@@ -2933,6 +2933,11 @@
 #app-root .kb-am-prod.kb-am-none{color:var(--text-muted);white-space:normal}
 #app-root .kb-item-header .kb-am-use{align-self:center;flex:none;padding:4px 11px;font-size:11px}
 #app-root .kb-am-cands{margin-top:2px}
+/* alasan REVIEW: tag pendek di baris, chip sub-filter di bar, dan beda spesifikasi per kandidat */
+#app-root .kb-am-why{flex:none;padding:0 6px;border-radius:999px;font-size:10px;font-weight:600;line-height:16px;color:var(--warn-text);background:var(--warning-bg);border:1px solid var(--warning-border)}
+#app-root .kb-am-reasons{margin-top:6px}
+#app-root .kb-am-reasons .kb-filter-chip{font-size:11px}
+#app-root .kb-am-diff{display:inline-block;margin:2px 6px 0 0;padding:0 6px;border-radius:4px;font-size:11px;line-height:16px;color:var(--warn-text);background:var(--warning-bg)}
 
 @media (max-width:640px){
   .pr-modal-box .pr-actions-review{flex-wrap:wrap}

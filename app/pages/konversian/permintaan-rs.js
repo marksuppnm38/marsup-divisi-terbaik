@@ -2,7 +2,7 @@
 // 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
 // lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
 // di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
-import { resolveItems, summarize, extractSpecs, buildVariants, makeFirmCheck } from './auto-konversi/index.js';
+import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck } from './auto-konversi/index.js';
 
 export function installPermintaanRs(S) {
 // ══════════════════════════════════════════
@@ -428,6 +428,36 @@ const AM_PREF_KEY = 'pnm.konversian.automatch';
 let amAutoOn = true;       // switch di footer layar Periksa item: jalankan Auto-Match otomatis setelah simpan
 try { amAutoOn = localStorage.getItem(AM_PREF_KEY) !== '0'; } catch (_) { /* storage diblok: default aktif */ }
 const amBarEl = document.getElementById('kb-am-bar');
+let amReason = 'all';      // sub-filter alasan, hanya berlaku saat filter = REVIEW ('all' | reason_key)
+let amLexicon = null;      // kamus token hasil riwayat (get_kamus_token); null = belum dimuat. Gagal muat = kosong, mesin tetap jalan.
+async function getAmLexicon(force) {
+  if (!amLexicon || force) amLexicon = await loadLexicon(S.rpc);
+  return amLexicon;
+}
+
+// Log usulan & keputusan (tabel automatch_log, lihat README/auto-konversi-queries.sql Q4). Best-effort: gagal log
+// TIDAK boleh mengganggu kerja staff, jadi semua error ditelan.
+function amLog(rows) {
+  if (!rows.length) return;
+  try { Promise.resolve(S.rpc('log_automatch', { p_rows: rows })).catch(() => {}); } catch (_) { /* abaikan */ }
+}
+function amLogDecision(itemId, status, links) {
+  const m = amMap.get(itemId);
+  if (!m) return;
+  const kodes = (links || []).map(l => l.kode_produk);
+  const aksi = status === 'TERPENUHI' ? (kodes.length === 1 && kodes[0] === m.kode ? 'diterima' : 'diganti')
+    : status === 'TIDAK_TERPENUHI' ? 'ditolak' : null;
+  if (!aksi) return;
+  const key = aksi + '|' + kodes.join(',');
+  if (m.loggedKey === key) return;          // keputusan yang sama jangan dicatat dua kali
+  m.loggedKey = key;
+  const it = S.checklistItems.find(x => x.id === itemId);
+  amLog([{
+    permintaan_id: S.checklistPermintaanId != null ? String(S.checklistPermintaanId) : null, item_id: String(itemId),
+    raw_text: it ? it.raw_text : '', usulan_kode: m.kode || null, status: m.hasil.status, confidence: m.hasil.confidence,
+    reason_key: m.hasil.reason_key || null, diff: m.hasil.diff || [], keputusan_kode: kodes.join(',') || null, aksi
+  }]);
+}
 
 // Filter usulan: produk belum firm (link V6 ada catatan) / SINGLE USE / sudah dihapus dibuang dari kandidat,
 // aturan sama dgn tombol "Pakai" (addSetKodeToClip menolak yang belum firm). Satu request produk?kode_produk=in.(…)
@@ -520,6 +550,11 @@ S.prReviewAddBtn.addEventListener('click', () => {
 // jadi tidak ada jalur tulis baru ke server.
 // ══════════════════════════════════════════
 const AM_EMPTY_HTML = '<div class="kb-section-empty">Tidak ada item dengan hasil ini di tampilan ini.</div>';
+// Label pendek alasan REVIEW (chip sub-filter dan tag di baris). Urutan = urutan tampil.
+const AM_WHY = {
+  atribut_beda: 'spek beda', ukuran_seri: 'ukuran seri', ukuran_dekat: 'ukuran dekat', ukuran_beda: 'ukuran beda',
+  ambigu: 'ambigu', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang'
+};
 const AM_UKURAN_TXT = { cocok: 'ukuran cocok', dekat: 'ukuran dekat (≤ 0,5 cm)', beda: 'ukuran beda', varian: 'varian lain' };
 
 function amFor(item) {
@@ -532,9 +567,22 @@ function amCounts() {
   return n;
 }
 
+function amReasonCounts() {
+  const n = {};
+  S.checklistItems.forEach(it => {
+    const m = amFor(it);
+    if (m && m.hasil.status === 'REVIEW') { const k = m.hasil.reason_key || 'perkiraan'; n[k] = (n[k] || 0) + 1; }
+  });
+  return n;
+}
+
 function amFilterItems(items) {
   if (amFilter === 'all' || !amMap.size) return items;
-  return items.filter(it => { const m = amFor(it); return !!m && m.hasil.status === amFilter; });
+  return items.filter(it => {
+    const m = amFor(it);
+    if (!m || m.hasil.status !== amFilter) return false;
+    return amFilter !== 'REVIEW' || amReason === 'all' || (m.hasil.reason_key || 'perkiraan') === amReason;
+  });
 }
 
 function amInClip(kode) { return S.clipboard.some(c => c.kode_produk === kode); }
@@ -549,7 +597,8 @@ function amLineHtml(item) {
   const isi = m.kode
     ? `<span class="kb-am-prod"><b>${escapeHtmlAttr(m.kode)}</b> ${escapeHtmlAttr(m.nama || '')}</span>`
     : `<span class="kb-am-prod kb-am-none">${escapeHtmlAttr(h.reason)}</span>`;
-  return `<div class="kb-am-line ${h.status.toLowerCase()}"><span class="kb-am-label">${label}</span>${isi}</div>`;
+  const why = h.status === 'REVIEW' && AM_WHY[h.reason_key] ? `<span class="kb-am-why">${AM_WHY[h.reason_key]}</span>` : '';
+  return `<div class="kb-am-line ${h.status.toLowerCase()}" title="${escapeHtmlAttr(h.reason)}"><span class="kb-am-label">${label}</span>${why}${isi}</div>`;
 }
 
 // Tombol Pakai di header baris (hanya kalau ada produk usulan). Kelas & action = saran Dictionary.
@@ -574,13 +623,16 @@ function amCandidatesHtml(item) {
       ? `<button type="button" class="kb-dict-sugg-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${kode}">Pakai</button>`
       : `<button type="button" class="kb-dict-sugg-attach" data-action="attach-suggestion" data-id="${item.id}" data-kode="${kode}" title="Belum ada di Clipboard sesi ini — ditambahkan dulu">+ Tambah & Pakai</button>`;
     const meta = [AM_UKURAN_TXT[c.ukuran], c.src === 'katalog' ? 'dari katalog' : (c.freq ? `${c.freq.toLocaleString('id-ID')}× dipakai` : '')].filter(Boolean).join(' · ');
-    return `<div class="kb-dict-sugg-row"><div class="kb-dict-sugg-info"><span class="kb-dict-sugg-nama">${kode} — ${escapeHtmlAttr(c.nama)}</span>${meta ? `<span class="kb-dict-sugg-freq">${escapeHtmlAttr(meta)}</span>` : ''}</div>${btn}</div>`;
+    const diff = (c.diff || []).map(d => `<span class="kb-am-diff">${escapeHtmlAttr(d)}</span>`).join('');
+    return `<div class="kb-dict-sugg-row"><div class="kb-dict-sugg-info"><span class="kb-dict-sugg-nama">${kode} — ${escapeHtmlAttr(c.nama)}</span>${meta ? `<span class="kb-dict-sugg-freq">${escapeHtmlAttr(meta)}</span>` : ''}${diff}</div>${btn}</div>`;
   }).join('');
   const blk = (h.blocked && h.blocked.length)
     ? `<div class="kb-dict-sugg-hint">${h.blocked.length} usulan disembunyikan: ${h.blocked.slice(0, 2).map(b => escapeHtmlAttr(b.kode + ' — ' + b.alasan)).join('; ')}${h.blocked.length > 2 ? '; …' : ''}</div>` : '';
+  const lex = (h.lexicon_hits || []).map(x =>
+    `<div class="kb-dict-sugg-hint">“${escapeHtmlAttr(x.token)}” dikenali dari riwayat sebagai ${escapeHtmlAttr(x.kanonik)} (${x.n}×, ${Math.round(x.share * 100)}%).</div>`).join('');
   return `<div class="kb-dict-suggestion kb-am-cands">
     <div class="kb-dict-suggestion-label"><i class="ti ti-wand"></i> Usulan Auto-Match</div>
-    <div class="kb-dict-sugg-hint">${escapeHtmlAttr(h.reason)}</div>${rows}${blk}
+    <div class="kb-dict-sugg-hint">${escapeHtmlAttr(h.reason)}</div>${lex}${rows}${blk}
   </div>`;
 }
 
@@ -592,6 +644,8 @@ function renderAmBar() {
   const n = amCounts();
   const total = n.AUTO + n.REVIEW + n.UNKNOWN;
   if (amFilter !== 'all' && !n[amFilter]) amFilter = 'all'; // filter yang sudah kosong dilepas, bukan dibiarkan menampilkan daftar kosong
+  const rc = amReasonCounts();
+  if (amFilter !== 'REVIEW' || (amReason !== 'all' && !rc[amReason])) amReason = 'all';
 
   if (amRunning) {
     amBarEl.hidden = false;
@@ -609,6 +663,10 @@ function renderAmBar() {
   }
   const chip = (key, label, count) =>
     `<button type="button" class="kb-filter-chip${amFilter === key ? ' active' : ''}${count ? '' : ' zero'}" data-am="filter" data-key="${key}" aria-pressed="${amFilter === key}">${label}<span class="kb-filter-count">${count}</span></button>`;
+  const rchip = (key, count) =>
+    `<button type="button" class="kb-filter-chip${amReason === key ? ' active' : ''}" data-am="reason" data-key="${key}" aria-pressed="${amReason === key}">${AM_WHY[key] || key}<span class="kb-filter-count">${count}</span></button>`;
+  const reasonRow = amFilter === 'REVIEW' && Object.keys(rc).length > 1
+    ? `<div class="kb-am-chips kb-am-reasons" aria-label="Alasan perlu dicek">${Object.keys(AM_WHY).filter(k => rc[k]).map(k => rchip(k, rc[k])).join('')}</div>` : '';
   amBarEl.hidden = false;
   amBarEl.innerHTML = `<div class="kb-am-row">
     <div class="kb-am-chips">${chip('AUTO', 'Cocok', n.AUTO)}${chip('REVIEW', 'Cek dulu', n.REVIEW)}${chip('UNKNOWN', 'Tidak ketemu', n.UNKNOWN)}</div>
@@ -617,7 +675,7 @@ function renderAmBar() {
       <button type="button" class="kb-am-link" data-am="rerun" title="Cari ulang usulan (data produk/riwayat bisa berubah)">Ulangi</button>
       <button type="button" class="kb-am-link" data-am="clear" title="Sembunyikan semua usulan (keputusan yang sudah dipasang tidak berubah)">Sembunyikan</button>
     </div>
-  </div>`;
+  </div>${reasonRow}`;
 }
 
 // Jalankan pencocokan untuk item yang BELUM diputuskan (PENDING). onlyIds (Set) = batasi ke item tertentu,
@@ -635,10 +693,13 @@ async function runWorkspaceAutoMatch(onlyIds) {
       nama: it.raw_text,
       qty: it.qty_diminta != null ? Number(it.qty_diminta) : null,
       specs: extractSpecs(it.raw_text),
-      variants: buildVariants(it.raw_text)
+      variants: buildVariants(it.raw_text),
+      understood: understand(it.raw_text)
     }));
     firmCheck.clear(); // link_v6 bisa berubah sejak pencocokan terakhir — ambil ulang
+    const lexicon = await getAmLexicon(false);
     const res = await resolveItems(items, S.rpc, {
+      lexicon,
       firmCheck: S.modeSwastaOutput ? null : firmCheck,
       onProgress: (n, t) => { amProgress = { n, t }; renderAmBar(); }
     });
@@ -646,7 +707,12 @@ async function runWorkspaceAutoMatch(onlyIds) {
       const h = r.hasil;
       amMap.set(targets[k].id, { hasil: h, kode: h.kode_produk, nama: h.nama_produk });
     });
-    amFilter = 'all';
+    amLog(res.map((r, k) => ({
+      permintaan_id: S.checklistPermintaanId != null ? String(S.checklistPermintaanId) : null, item_id: String(targets[k].id),
+      raw_text: targets[k].raw_text, usulan_kode: r.hasil.kode_produk || null, status: r.hasil.status, confidence: r.hasil.confidence,
+      reason_key: r.hasil.reason_key || null, diff: r.hasil.diff || [], keputusan_kode: null, aksi: 'diusulkan'
+    })));
+    amFilter = 'all'; amReason = 'all';
     const sm = summarize(res);
     S.showToast(`Auto-Match selesai: ${sm.AUTO} cocok, ${sm.REVIEW} perlu dicek, ${sm.UNKNOWN} tidak ketemu`, 'success');
   } catch (err) {
@@ -696,9 +762,10 @@ if (amBarEl) amBarEl.addEventListener('click', (e) => {
   if (!b || b.disabled) return;
   const act = b.dataset.am;
   if (act === 'run') runWorkspaceAutoMatch();
-  else if (act === 'rerun') { amMap.clear(); amFilter = 'all'; runWorkspaceAutoMatch(); }
-  else if (act === 'clear') { amMap.clear(); amFilter = 'all'; renderChecklist(); }
-  else if (act === 'filter') { amFilter = (amFilter === b.dataset.key) ? 'all' : b.dataset.key; renderChecklist(); }
+  else if (act === 'rerun') { amMap.clear(); amFilter = 'all'; amReason = 'all'; amLexicon = null; runWorkspaceAutoMatch(); }
+  else if (act === 'clear') { amMap.clear(); amFilter = 'all'; amReason = 'all'; renderChecklist(); }
+  else if (act === 'filter') { amFilter = (amFilter === b.dataset.key) ? 'all' : b.dataset.key; amReason = 'all'; renderChecklist(); }
+  else if (act === 'reason') { amReason = (amReason === b.dataset.key) ? 'all' : b.dataset.key; renderChecklist(); }
   else if (act === 'apply') applyAllAuto();
 });
 
@@ -2250,6 +2317,7 @@ async function callUpdatePermintaanItemMulti(itemId, status, links) {
     const errData = await res.json().catch(() => ({}));
     throw new Error(errData.message || errData.hint || 'Gagal update item');
   }
+  amLogDecision(itemId, status, links); // semua jalur (Pakai, bulk, picker manual) lewat sini → satu titik pencatatan
 }
 S.callUpdatePermintaanItemMulti = callUpdatePermintaanItemMulti;
 

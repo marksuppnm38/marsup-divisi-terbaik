@@ -112,3 +112,32 @@ node --test app/pages/konversian/auto-konversi/auto-konversi.test.mjs
 - Format yang didukung: tabel `No | Kode | Deskripsi | Qty` ala Falcon. Vendor lain kemungkinan butuh pola baris tambahan (ada cadangan tanpa kolom kode).
 - PDF hasil scan (gambar) butuh OCR dulu; PoC ini mengandalkan PDF yang teksnya bisa diekstraksi.
 - Item non-instrumen (mis. `STORING CASE`) ikut terbaca dan hampir pasti UNKNOWN — wajar, biarkan staff yang memutuskan.
+
+
+## Pemahaman atribut + lexicon (vendor-agnostik)
+
+Tujuan: mengenali deskripsi vendor mana pun **dan** istilah customer yang aneh ("korentang", "babcock", "bengkok")
+tanpa tabel per-vendor dan tanpa menghardcode arti kata.
+
+| Lapisan | File | Fungsi |
+|---|---|---|
+| Pahami | `understand.js` | Teks apa pun → `{ inti, tokens, attrs }`. `attrs` = ukuran, ujung (SH/BL/…), bentuk, gigi, nomor, mm, fig. Kata yang tak dikenal tetap jadi `inti`. "bengkok" = bentuk bila ada kata jenis ("klem bengkok"), tapi nama produk bila berdiri sendiri. |
+| Nilai | `compareAttrs()` | Kandidat & permintaan lewat fungsi yang sama → per atribut `cocok / dekat / beda / tak_ada`. |
+| Kamus | `lexicon.js` + SQL Q3 | Kata aneh → jenis katalog, **dipelajari dari riwayat** (`kamus_token`). Hanya entri n ≥ 3 dan konsisten ≥ 60% yang dipakai. Kata ambigu ("bengkok", share ~50%) otomatis tidak dipakai. |
+| Putuskan | `resolver.js` | Riwayat kuat → tidak menyentuh katalog. Selain itu katalog ikut dicari lewat tangga query (asli → inti+atribut → buang kata satu-satu → kanonik lexicon) dan kandidat dinilai per atribut. |
+
+Aturan baru:
+- Atribut penentu berselisih (ujung, bentuk, gigi, nomor, mm, fig) → **tidak boleh AUTO**, alasannya menyebut atributnya (`reason_key = atribut_beda`).
+  Pengecualian: riwayat exact/urutan yang dipakai ≥ 3× (staff berulang kali memutuskan begitu = kesetaraan yang sudah dipelajari).
+- Dua ukuran sama dekat (minta 17, ada 16,5 dan 17,5) → `ukuran_seri`, bukan menebak.
+- Setiap hasil membawa `reason_key`, `diff`, `attrs`, `lexicon_hits`. UI: tag alasan di baris, sub-filter alasan di bar saat filter "Cek dulu", chip beda spesifikasi per kandidat.
+
+Data & pengukuran (`README/auto-konversi-queries.sql`):
+- Q3 `kamus_token` + `get_kamus_token()`; refresh: `select refresh_kamus_token();` (ulangi berkala).
+- Q4 `automatch_log` + `log_automatch()` + view `automatch_akurasi`. Tiap usulan dan keputusan staff tercatat
+  (`diterima` / `diganti` / `ditolak`) lewat satu-satunya jalur tulis (`callUpdatePermintaanItemMulti`). Gagal log tidak mengganggu UI.
+- `node auto-konversi/replay.mjs eval.json --katalog-saja` mengukur top-1/top-5 dan **AUTO yang salah** terhadap keputusan lama.
+  Selalu pakai `--katalog-saja` untuk menilai item baru; tanpa itu hasil menggelembung karena riwayat berisi jawabannya.
+
+Belum dikerjakan: layout tabel lebar (memakai area kiri yang kosong), review lewat keyboard, bulk-putuskan per kelompok alasan,
+dan aturan kesetaraan ukuran yang dipelajari ("17 cm ≈ 17,5 cm") — butuh data `automatch_log` dulu.

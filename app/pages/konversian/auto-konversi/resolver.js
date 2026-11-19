@@ -2,10 +2,11 @@
 // ══════════════════════════════════════════
 // TAHAP 2 — RESOLVE: item hasil parse -> usulan produk Robust + tingkat keyakinan.
 //
-// Tidak ada AI/embedding/fuzzy baru. Mesin pencocokannya SAMA dengan yang sudah dipakai
-// Kebutuhan RS & Cari SET: RPC suggest_dictionary (riwayat istilah customer) — resolver
-// ini cuma menambahkan (1) coba beberapa varian ejaan, (2) fallback ke katalog,
-// (3) aturan keputusan AUTO / REVIEW / UNKNOWN.
+// Tidak ada AI/embedding/fuzzy baru. Sumber kandidat: (1) RPC suggest_dictionary (riwayat istilah customer),
+// (2) pencarian katalog lewat tangga query dari understand() + lexicon hasil riwayat (lexicon.js).
+// Tiap kandidat DINILAI per atribut (understand.js: ukuran, ujung, bentuk, gigi, nomor, mm) — kandidat yang
+// berselisih di atribut penentu tidak boleh AUTO dan alasan REVIEW-nya menyebut atribut yang mana.
+// Aturan keputusan AUTO / REVIEW / UNKNOWN di bawah.
 //
 // Prinsip: AUTO hanya kalau riwayat KUAT, TIDAK AMBIGU, dan ukuran cocok. Satu istilah
 // customer yang pernah dipenuhi beberapa produk itu wajar (lihat new-feat-dictionary.md),
@@ -15,6 +16,9 @@
 // Aturan pickBestCand/candConf SENGAJA disalin dari set-mendekati.js (di sana ada di dalam
 // closure & tidak diekspor; modul lama tidak diubah).
 // ══════════════════════════════════════════
+
+import { understand, compareAttrs, describeDiff } from './understand.js';
+import { buildQueryLadder, lexiconHits } from './lexicon.js';
 
 const UKURAN_RANK = { cocok: 0, tidak_diminta: 0, tidak_diketahui: 1, dekat: 1, varian: 3, beda: 4 };
 const CONF_RANK = { none: 0, lemah: 1, sedang: 2, kuat: 3 };
@@ -45,9 +49,15 @@ export function pickBestCand(cands) {
     (UKURAN_RANK[a.ukuran] ?? 2) - (UKURAN_RANK[b.ukuran] ?? 2) || b.freq - a.freq)[0];
 }
 
+// Riwayat yang kuat DAN berulang (≥3×): staff berkali-kali memutuskan begitu, termasuk kalau spesifikasinya
+// tampak beda (kesetaraan yang sudah dipelajari). Selain itu, beda atribut penentu = tidak yakin.
+const riwayatBerulang = (c) => (c.tier === 'exact' || c.tier === 'urutan') && (c.freq || 0) >= 3;
+const attrBeda = (c) => !!(c && c.fit && c.fit.beda.length);
+
 export function candConf(c) {
   if (!c) return 'none';
   if (c.ukuran === 'beda' || c.ukuran === 'varian') return 'lemah';
+  if (attrBeda(c) && !riwayatBerulang(c)) return 'lemah';
   if (c.tier === 'exact' || c.tier === 'urutan') return 'kuat';
   if (c.tier === 'keluarga' || c.tier === 'katalog' || c.tier === 'varian') return 'sedang';
   return 'lemah';
@@ -95,22 +105,56 @@ async function viaDictionary(rpc, text) {
   return candidatesFromRows(data);
 }
 
-// Fallback: cari langsung ke katalog. Selalu 'katalog' tier -> paling banter 'sedang'.
-async function viaCatalog(rpc, text, wantedCm) {
+// Cari ke katalog. Selalu 'katalog' tier -> paling banter 'sedang'. skor dibedakan per QUERY (makin longgar makin rendah),
+// bukan per baris: urutan relevansi antar-baris ditentukan penilaian atribut, bukan posisi di hasil pencarian.
+async function viaCatalog(rpc, text, wantedCm, qi = 0) {
   const { data, error } = await rpc('search_produk_dengan_harga', { q: text, p_tipe: null, only_akd: false, only_kfa: false });
   if (error) throw new Error(error.message || error.hint || 'search_produk_dengan_harga gagal');
-  return (data || []).slice(0, 6).map((p, i) => ({
+  return (data || []).slice(0, 8).map((p) => ({
     kode: p.kode_produk, nama: p.nama_produk || '', tier: 'katalog', ukuran: ukuranLabel(wantedCm, p.nama_produk),
-    istilah: text, skor: 1 - i * 0.01, freq: 0, isSet: p.tipe === 'SET', src: 'katalog'
+    istilah: text, skor: 1 - qi * 0.05, freq: 0, isSet: p.tipe === 'SET', src: 'katalog'
   }));
+}
+
+// Nilai tiap kandidat terhadap atribut yang diminta. Kedua sisi lewat understand() yang sama.
+function annotate(cands, itemAttrs) {
+  cands.forEach((c) => {
+    c.attrs = understand(c.nama).attrs;
+    c.fit = compareAttrs(itemAttrs, c.attrs);
+    c.diff = describeDiff(itemAttrs, c.attrs, c.fit);
+  });
+}
+
+// Pilih terbaik: kandidat dengan beda atribut paling sedikit dulu, baru aturan lama (skor istilah teratas, ukuran, freq).
+function pickBestFit(cands) {
+  if (!cands.length) return null;
+  const nb = (c) => (c.fit ? c.fit.beda.length : 0);
+  const min = Math.min(...cands.map(nb));
+  return pickBestCand(cands.filter((c) => nb(c) === min));
+}
+
+// Skor perbandingan lintas sumber (kecil = lebih baik): beda atribut, lalu keyakinan, lalu ukuran.
+const compScore = (c) => (c.fit ? c.fit.beda.length : 0) * 100 + (3 - (CONF_RANK[candConf(c)] || 0)) * 10 + (UKURAN_RANK[c.ukuran] ?? 2);
+
+// Dua ukuran sama dekat (mis. minta 17 cm, ada 16,5 dan 17,5) = pertanyaan yang tidak bisa dijawab mesin.
+function ukuranSeri(best, cands) {
+  if (!best || best.ukuran !== 'dekat' || !best.fit || best.fit.selisih == null) return null;
+  const fam = familyOf(best.kode, best.isSet);
+  const other = cands.find((c) => c.kode !== best.kode && c.ukuran === 'dekat' && c.fit && !c.fit.beda.length
+    && c.fit.selisih === best.fit.selisih && c.fit.ukuran_ada !== best.fit.ukuran_ada && familyOf(c.kode, c.isSet) === fam);
+  return other ? [best.fit.ukuran_ada, other.fit.ukuran_ada].sort((a, b) => a - b) : null;
 }
 
 // ── Putuskan untuk SATU item ──
 export async function resolveItem(item, rpc, opts = {}) {
-  const queries = opts.queries || item.variants || [item.nama];
-  const wantedCm = item.specs ? item.specs.ukuran_cm : null;
+  const u = item.understood || understand(item.nama || item.deskripsi || '');
+  const wantedCm = item.specs ? item.specs.ukuran_cm : u.attrs.ukuran_cm;
+  const itemAttrs = { ...u.attrs, ukuran_cm: wantedCm };
+  const dictQueries = opts.queries || item.variants || [item.nama];
+  const catQueries = opts.queries || buildQueryLadder(item, u, opts.lexicon);
   const tried = [];
-  let cands = [];
+  let dictCands = [];
+  let catCands = [];
   let error = null;
 
   // Filter produk yang tidak boleh dipakai (belum firm / SINGLE USE / sudah dihapus) — opts.firmCheck, lihat firm.js.
@@ -138,70 +182,98 @@ export async function resolveItem(item, rpc, opts = {}) {
   //    Hasil query berikutnya (lebih longgar) hanya menggantikan kalau keyakinannya LEBIH TINGGI —
   //    kalau sama atau lebih rendah, hasil dari query yang lebih spesifik dipertahankan.
   let bestRank = 0;
-  for (const q of queries) {
-    try {
-      const c = await usable(await viaDictionary(rpc, q));
-      tried.push({ q, via: 'dictionary', n: c.length });
-      if (c.length) {
-        const rank = CONF_RANK[candConf(pickBestCand(c))] || 0;
-        if (rank > bestRank) { cands = c; bestRank = rank; }
-        if (rank === CONF_RANK.kuat) break;
-      }
-    } catch (e) { error = e.message; tried.push({ q, via: 'dictionary', error: e.message }); }
+  if (opts.dictionary !== false) {
+    for (const q of dictQueries) {
+      try {
+        const c = await usable(await viaDictionary(rpc, q));
+        tried.push({ q, via: 'dictionary', n: c.length });
+        if (c.length) {
+          annotate(c, itemAttrs);
+          const rank = CONF_RANK[candConf(pickBestFit(c))] || 0;
+          if (rank > bestRank) { dictCands = c; bestRank = rank; }
+          if (rank === CONF_RANK.kuat) break;
+        }
+      } catch (e) { error = e.message; tried.push({ q, via: 'dictionary', error: e.message }); }
+    }
   }
 
-  // 2) Fallback katalog kalau Dictionary tidak menghasilkan apa-apa
-  if (!cands.length && opts.catalogFallback !== false) {
-    for (const q of queries) {
+  // 2) Katalog — kalau Dictionary kosong ATAU belum 'kuat'. Berhenti begitu ada kandidat yang atributnya
+  //    tidak berselisih dan ukurannya cocok/tidak diminta; kalau tidak, kumpulkan sampai 6 kandidat unik.
+  //    Kandidat katalog hanya mengalahkan Dictionary kalau penilaiannya LEBIH baik (lihat compScore).
+  if (opts.catalogFallback !== false && bestRank < CONF_RANK.kuat) {
+    const seen = new Set(dictCands.map(c => c.kode));
+    for (let qi = 0; qi < catQueries.length; qi++) {
+      const q = catQueries[qi];
       try {
-        const c = await usable(await viaCatalog(rpc, q, wantedCm));
+        const c = (await usable(await viaCatalog(rpc, q, wantedCm, qi))).filter(x => !seen.has(x.kode));
         tried.push({ q, via: 'katalog', n: c.length });
-        if (c.length) { cands = c; break; }
+        annotate(c, itemAttrs);
+        c.forEach(x => { seen.add(x.kode); catCands.push(x); });
+        if (c.some(x => !x.fit.beda.length && (x.ukuran === 'cocok' || x.ukuran === 'tidak_diminta')) || catCands.length >= 6) break;
       } catch (e) { error = e.message; tried.push({ q, via: 'katalog', error: e.message }); }
     }
   }
 
-  const best = pickBestCand(cands);
+  const bestDict = pickBestFit(dictCands);
+  const bestCat = pickBestFit(catCands);
+  const best = bestCat && (!bestDict || compScore(bestCat) < compScore(bestDict)) ? bestCat : bestDict;
+  const cands = [best, ...dictCands, ...catCands.slice().sort((a, b) => compScore(a) - compScore(b))]
+    .filter((c, i, a) => c && a.findIndex(x => x.kode === c.kode) === i);
   const conf = candConf(best);
-  let status, reason, ukuranDefault = false;
+  let status, reason, reasonKey, ukuranDefault = false;
 
   if (!best) {
     status = 'UNKNOWN';
     if (blocked.size) {
       const b = [...blocked.values()];
+      reasonKey = 'diblokir';
       reason = `Produk yang cocok ada, tapi tidak boleh dipakai konversi: ${b.slice(0, 2).map(x => `${x.kode} (${x.alasan})`).join(', ')}${b.length > 2 ? `, +${b.length - 2} lagi` : ''}.`;
     } else {
+      reasonKey = error ? 'error' : 'tak_ketemu';
       reason = error ? `Gagal mencari: ${error}` : 'Tidak ada di riwayat maupun katalog.';
     }
+  } else if (attrBeda(best) && !riwayatBerulang(best)) {
+    // Atribut penentu berselisih (mis. ujung BL/BL diminta, produk SH/BL): jangan ditebak, sebut yang mana.
+    status = 'REVIEW'; reasonKey = 'atribut_beda';
+    reason = `Spesifikasi beda — ${best.diff.join('; ')}.`;
   } else if (conf !== 'kuat') {
     status = 'REVIEW';
-    reason = best.ukuran === 'beda' || best.ukuran === 'varian' ? 'Produk ketemu tapi ukurannya beda.'
-      : best.src === 'katalog' ? 'Hanya ketemu lewat pencarian katalog (belum pernah ada di riwayat).'
-      : 'Kecocokan perkiraan, belum pernah dipakai persis.';
+    if (best.ukuran === 'beda' || best.ukuran === 'varian') { reasonKey = 'ukuran_beda'; reason = 'Produk ketemu tapi ukurannya beda.'; }
+    else if (best.src === 'katalog') { reasonKey = 'hanya_katalog'; reason = 'Hanya ketemu lewat pencarian katalog (belum pernah ada di riwayat).'; }
+    else { reasonKey = 'perkiraan'; reason = 'Kecocokan perkiraan, belum pernah dipakai persis.'; }
   } else if (isAmbiguous(cands, best)) {
-    status = 'REVIEW';
+    status = 'REVIEW'; reasonKey = 'ambigu';
     reason = `Istilah ini pernah dipenuhi beberapa jenis produk berbeda tanpa yang dominan — pilih yang sesuai.`;
   } else if (best.ukuran === 'dekat') {
-    status = 'REVIEW'; reason = 'Ukuran dekat tapi tidak persis (selisih ≤ 0,5 cm).';
+    status = 'REVIEW';
+    const seri = ukuranSeri(best, cands);
+    if (seri) { reasonKey = 'ukuran_seri'; reason = `Dua ukuran sama dekat dengan yang diminta (${seri.join(' dan ')} cm) — pilih yang sesuai.`; }
+    else { reasonKey = 'ukuran_dekat'; reason = 'Ukuran dekat tapi tidak persis (selisih ≤ 0,5 cm).'; }
   } else if (unverified) {
-    status = 'REVIEW'; reason = 'Status firm / SINGLE USE belum bisa dicek — cek manual sebelum dipakai.';
+    status = 'REVIEW'; reasonKey = 'firm_belum_dicek';
+    reason = 'Status firm / SINGLE USE belum bisa dicek — cek manual sebelum dipakai.';
   } else if (blocked.size) {
     // Ada produk lain untuk istilah ini yang dibuang (belum firm / SINGLE USE): yang tersisa belum tentu
     // pengganti yang tepat, jadi jangan AUTO.
-    status = 'REVIEW';
+    status = 'REVIEW'; reasonKey = 'ada_dibuang';
     reason = `Ada usulan lain yang dibuang (${[...blocked.values()].slice(0, 2).map(x => `${x.kode}: ${x.alasan}`).join(', ')}) — pastikan produk ini pengganti yang tepat.`;
   } else {
     status = 'AUTO';
     ukuranDefault = best.ukuran === 'tidak_diminta' && cands.some(c => c.kode !== best.kode && familyOf(c.kode, c.isSet) === familyOf(best.kode, best.isSet));
+    reasonKey = attrBeda(best) ? 'riwayat_berulang_beda_spek' : 'riwayat_kuat';
     reason = `Pernah dipakai persis${best.freq ? ` (${best.freq}×)` : ''}, ${ukuranDefault ? 'ukuran default (yang paling sering dipakai)' : 'ukuran cocok'}.`;
+    if (attrBeda(best)) reason += ` Spesifikasi tampak beda (${best.diff.join('; ')}), tapi staff sudah berulang kali memutuskan begini.`;
   }
 
   return {
-    status, reason, confidence: conf, ukuran_default: ukuranDefault,
+    status, reason, reason_key: reasonKey, confidence: conf, ukuran_default: ukuranDefault,
     family: best ? familyOf(best.kode, best.isSet) : null,
     kode_produk: best ? best.kode : null,
     nama_produk: best ? best.nama : null,
-    candidates: cands.slice(0, 5),
+    diff: best ? best.diff : [],
+    attrs: itemAttrs,
+    lexicon_hits: lexiconHits(u, opts.lexicon),
+    candidates: cands.slice(0, 6),
     blocked: [...blocked.values()], unverified,
     tried
   };
@@ -226,13 +298,16 @@ export async function resolveItems(items, rpc, opts = {}) {
 
 export function summarize(results) {
   const n = { AUTO: 0, REVIEW: 0, UNKNOWN: 0 };
+  const alasan = {};
   let qtyAuto = 0, qtyAll = 0;
   results.forEach(r => {
     n[r.hasil.status]++;
+    const k = r.hasil.reason_key || 'lain';
+    alasan[k] = (alasan[k] || 0) + 1;
     const q = r.item.qty || 0;
     qtyAll += q;
     if (r.hasil.status === 'AUTO') qtyAuto += q;
   });
   const total = results.length;
-  return { ...n, total, pctAuto: total ? Math.round((n.AUTO / total) * 100) : 0, qtyAuto, qtyAll };
+  return { ...n, alasan, total, pctAuto: total ? Math.round((n.AUTO / total) * 100) : 0, qtyAuto, qtyAll };
 }

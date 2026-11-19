@@ -11,6 +11,7 @@
 //     buat dicari ke Dictionary
 // ══════════════════════════════════════════
 import { TYPO_FIXES, NOISE_WORDS } from './aliases.js';
+import { understand } from './understand.js';
 
 const UNIT_WORDS = 'UNIT|SET|PCS|PC|BUAH|BOX|PAK|LUSIN|BH|ROLL';
 const QTY_CELL = new RegExp(`^(\\d+)(?:\\s*(?:${UNIT_WORDS}))?\\.?$`, 'i');
@@ -138,6 +139,7 @@ export function buildVariants(nama) {
 function enrich(item) {
   item.specs = extractSpecs(item.nama);
   item.variants = buildVariants(item.nama);
+  item.understood = understand(item.nama); // atribut + inti nama, dipakai resolver untuk menilai kandidat
   return item;
 }
 
