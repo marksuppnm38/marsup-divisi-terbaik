@@ -19,7 +19,7 @@ export function installPermintaanRs(S) {
 // section/finalize/Drive semua keyed ke permintaan_id). Jadi "buka lagi" TIDAK pernah bikin
 // Permintaan RS kedua di sesi yang sama.
 let prMode = 'create';
-const PR_SUB_CREATE = 'Simpan daftar permintaan RS (paste teks atau upload Excel), otomatis dicocokkan ke katalog produk. Di layar Periksa item ada tombol "Cocokkan otomatis" (Auto-Match) — hasilnya usulan, staff yang memutuskan.';
+const PR_SUB_CREATE = 'Simpan daftar permintaan RS (paste teks, upload Excel, atau screenshot). Setelah disimpan, usulan produk per item muncul di Kebutuhan RS — kamu yang memutuskan.';
 const prTitleEl = document.getElementById('pr-modal-title');
 const prSubEl = document.getElementById('pr-modal-sub');
 const prActiveWrap = document.getElementById('pr-active-wrap');
@@ -399,7 +399,6 @@ S.prSubmitBtn.addEventListener('click', async () => {
   // Review biar staff bisa cek/edit nama, qty, dan isi pagu satuan per item
   // (opsional) sebelum benar-benar disimpan ke server.
   reviewItems = items.map(it => ({ raw_text: it.raw_text, qty: it.qty, pagu_satuan: it.pagu_satuan ?? null }));
-  reviewMatch = items.map(() => null);
   reviewSumber = sumber;
   renderReviewRows();
   S.prFormWrap.style.display = 'none';
@@ -414,13 +413,21 @@ let reviewItems = [];      // {raw_text, qty, pagu_satuan}
 let reviewSumber = 'TEKS';
 let reviewSkipped = [];    // baris mentah yang otomatis disaring pas parsing (info doang, ditampilkan)
 
-// ── AUTO-MATCH (auto-konversi/): usulan produk per baris di layar Review ──
-// reviewMatch paralel dengan reviewItems: null | { hasil, kode, nama, pakai }.
-// Cuma USULAN: item tetap disimpan persis seperti biasa. Baris yang dicentang "Pakai" baru
-// dipasang SESUDAH tersimpan (applyAutoMatches), lewat jalur yang sama dgn tombol "+ Tambah & Pakai".
-let reviewMatch = [];
+// ── AUTO-MATCH (auto-konversi/): state usulan produk, dipakai di Kebutuhan RS (workspace) ──
+// Dulu pencocokan dikerjakan di layar "Periksa item" (modal sempit; usulan hilang saat modal ditutup,
+// tidak terlihat rekan, tanpa stok/harga). Sekarang modal cuma INTAKE (baca → cek → simpan), dan pencocokan
+// jalan di Kebutuhan RS setelah item tersimpan. Usulan = state lokal (amMap), TIDAK ditulis ke DB;
+// yang tertulis hanya KEPUTUSAN (TERPENUHI + produk), lewat jalur yang sama dgn tombol Pakai saran Dictionary.
+const amMap = new Map();   // item.id -> { hasil, kode, nama } (usulan teratas; kandidat lain di hasil.candidates)
 let amRunning = false;
+let amApplying = false;
+let amProgress = { n: 0, t: 0 };
+let amFilter = 'all';      // 'all' | 'AUTO' | 'REVIEW' | 'UNKNOWN'
 const AM_LABEL = { AUTO: 'Cocok', REVIEW: 'Cek dulu', UNKNOWN: 'Tidak ketemu' };
+const AM_PREF_KEY = 'pnm.konversian.automatch';
+let amAutoOn = true;       // switch di footer layar Periksa item: jalankan Auto-Match otomatis setelah simpan
+try { amAutoOn = localStorage.getItem(AM_PREF_KEY) !== '0'; } catch (_) { /* storage diblok: default aktif */ }
+const amBarEl = document.getElementById('kb-am-bar');
 
 // Filter usulan: produk belum firm (link V6 ada catatan) / SINGLE USE / sudah dihapus dibuang dari kandidat,
 // aturan sama dgn tombol "Pakai" (addSetKodeToClip menolak yang belum firm). Satu request produk?kode_produk=in.(…)
@@ -453,41 +460,8 @@ function renderReviewRows() {
       <input class="pr-rv-qty" inputmode="numeric" value="${it.qty != null ? it.qty : ''}" placeholder="Qty"/>
       <input class="pr-rv-pagu" inputmode="numeric" value="${it.pagu_satuan != null ? Number(it.pagu_satuan).toLocaleString('id-ID') : ''}" placeholder="opsional"/>
       <button type="button" class="pr-review-del" data-idx="${idx}" aria-label="Hapus baris"><i class="ti ti-trash"></i></button>
-      ${amRowHtml(reviewMatch[idx], idx)}
     </div>
   `).join('') : '<div class="pr-review-empty">Belum ada item. Tambah baris manual di bawah, atau klik "Kembali edit".</div>';
-  renderAmSummary();
-}
-
-function amRowHtml(m, idx) {
-  if (!m) return '';
-  const h = m.hasil;
-  const diblokir = h.status === 'UNKNOWN' && h.blocked && h.blocked.length;
-  const badge = `<span class="pr-am-badge pr-am-${h.status.toLowerCase()}">${diblokir ? 'Tidak dipakai' : (AM_LABEL[h.status] || h.status)}</span>`;
-  if (!h.kode_produk) {
-    return `<div class="pr-am">${badge}<span class="pr-am-txt"><small>${escapeHtmlAttr(h.reason)}</small></span></div>`;
-  }
-  const blk = (h.blocked && h.blocked.length)
-    ? `<small class="pr-am-blk">${h.blocked.length} usulan disembunyikan: ${h.blocked.slice(0, 2).map(b => escapeHtmlAttr(b.kode + ' — ' + b.alasan)).join('; ')}${h.blocked.length > 2 ? '; …' : ''}</small>` : '';
-  const cands = (h.candidates || []).filter((c, i, a) => a.findIndex(x => x.kode === c.kode) === i);
-  const pilih = cands.length > 1
-    ? `<select class="pr-am-sel" data-idx="${idx}" aria-label="Pilih produk lain">${cands.map(c =>
-        `<option value="${escapeHtmlAttr(c.kode)}"${c.kode === m.kode ? ' selected' : ''}>${escapeHtmlAttr(c.kode)} — ${escapeHtmlAttr(c.nama)}</option>`).join('')}</select>`
-    : `<b>${escapeHtmlAttr(m.kode)}</b> — ${escapeHtmlAttr(m.nama)}`;
-  return `<div class="pr-am">${badge}<span class="pr-am-txt">${pilih}<small>${escapeHtmlAttr(h.reason)}</small>${blk}</span>`
-    + `<label class="pr-am-use"><input type="checkbox" class="pr-am-chk" data-idx="${idx}"${m.pakai ? ' checked' : ''}/> Pakai</label></div>`;
-}
-
-function renderAmSummary() {
-  const el = document.getElementById('pr-am-summary');
-  if (!el) return;
-  const ms = reviewMatch.filter(Boolean);
-  if (!ms.length) { el.style.display = 'none'; el.textContent = ''; return; }
-  const n = { AUTO: 0, REVIEW: 0, UNKNOWN: 0 };
-  ms.forEach(m => { n[m.hasil.status]++; });
-  const dipakai = ms.filter(m => m.pakai && m.kode).length;
-  el.style.display = '';
-  el.textContent = `Auto-Match: ${n.AUTO} cocok · ${n.REVIEW} perlu dicek · ${n.UNKNOWN} tidak ketemu — ${dipakai} dicentang "Pakai" (akan langsung dipasang ke Kebutuhan RS setelah disimpan).`;
 }
 
 // Baca ulang isi input di DOM balik ke array reviewItems — dipanggil sebelum
@@ -524,101 +498,228 @@ S.prReviewRows.addEventListener('click', (e) => {
   syncReviewItemsFromDom();
   const idx = parseInt(btn.dataset.idx, 10);
   reviewItems.splice(idx, 1);
-  reviewMatch.splice(idx, 1);
   renderReviewRows();
 });
 
 S.prReviewAddBtn.addEventListener('click', () => {
   syncReviewItemsFromDom();
   reviewItems.push({ raw_text: '', qty: null, pagu_satuan: null });
-  reviewMatch.push(null);
   renderReviewRows();
   const lastNama = S.prReviewRows.querySelector('.pr-review-row:last-child .pr-rv-nama');
   if (lastNama) lastNama.focus();
 });
 
-// Ubah nama baris -> usulan lamanya sudah tidak berlaku, buang (jangan sampai produk salah ikut terpasang).
-S.prReviewRows.addEventListener('input', (e) => {
-  if (!e.target.classList.contains('pr-rv-nama')) return;
-  const row = e.target.closest('.pr-review-row');
-  const idx = row ? parseInt(row.dataset.idx, 10) : -1;
-  if (idx < 0 || !reviewMatch[idx]) return;
-  reviewMatch[idx] = null;
-  const am = row.querySelector('.pr-am');
-  if (am) am.remove();
-  renderAmSummary();
-});
-S.prReviewRows.addEventListener('change', (e) => {
-  const idx = parseInt(e.target.dataset ? e.target.dataset.idx : '', 10);
-  if (isNaN(idx) || !reviewMatch[idx]) return;
-  if (e.target.classList.contains('pr-am-chk')) {
-    reviewMatch[idx].pakai = e.target.checked;
-  } else if (e.target.classList.contains('pr-am-sel')) {
-    const c = (reviewMatch[idx].hasil.candidates || []).find(x => x.kode === e.target.value);
-    if (c) { reviewMatch[idx].kode = c.kode; reviewMatch[idx].nama = c.nama; reviewMatch[idx].pakai = true; }
-    const chk = e.target.closest('.pr-am').querySelector('.pr-am-chk');
-    if (chk) chk.checked = reviewMatch[idx].pakai;
-  } else return;
-  renderAmSummary();
-});
+// ══════════════════════════════════════════
+// AUTO-MATCH DI KEBUTUHAN RS (workspace)
+// Alur: Periksa item (cek hasil baca) → Simpan → item masuk Kebutuhan RS → usulan produk muncul per baris.
+// Aturan keputusan tetap di auto-konversi/resolver.js (AUTO / REVIEW / UNKNOWN). Di sini cuma tampilan + aksi:
+//  - baris belum diputuskan menampilkan usulan teratas + tombol Pakai (satu klik),
+//  - baris dibuka = semua kandidat, masing-masing dengan tombol Pakai,
+//  - bar di atas daftar: filter per hasil + "Pakai N yang cocok" (hanya yang AUTO, tidak pernah REVIEW/UNKNOWN).
+// Tombol Pakai memakai action yang SAMA dengan saran Dictionary (use-suggestion / attach-suggestion),
+// jadi tidak ada jalur tulis baru ke server.
+// ══════════════════════════════════════════
+const AM_EMPTY_HTML = '<div class="kb-section-empty">Tidak ada item dengan hasil ini di tampilan ini.</div>';
+const AM_UKURAN_TXT = { cocok: 'ukuran cocok', dekat: 'ukuran dekat (≤ 0,5 cm)', beda: 'ukuran beda', varian: 'varian lain' };
 
-const prAutoBtn = document.getElementById('pr-review-auto-btn');
-if (prAutoBtn) prAutoBtn.addEventListener('click', async () => {
-  if (amRunning) return;
-  syncReviewItemsFromDom();
-  const idxs = reviewItems.map((_, i) => i).filter(i => reviewItems[i].raw_text);
-  if (!idxs.length) return;
+function amFor(item) {
+  return item && item.status === 'PENDING' ? (amMap.get(item.id) || null) : null;
+}
+
+function amCounts() {
+  const n = { AUTO: 0, REVIEW: 0, UNKNOWN: 0 };
+  S.checklistItems.forEach(it => { const m = amFor(it); if (m && n[m.hasil.status] != null) n[m.hasil.status]++; });
+  return n;
+}
+
+function amFilterItems(items) {
+  if (amFilter === 'all' || !amMap.size) return items;
+  return items.filter(it => { const m = amFor(it); return !!m && m.hasil.status === amFilter; });
+}
+
+function amInClip(kode) { return S.clipboard.some(c => c.kode_produk === kode); }
+
+// Baris usulan di bawah nama item (baris ketutup): label hasil + produk teratas, satu baris.
+function amLineHtml(item) {
+  const m = amFor(item);
+  if (!m) return '';
+  const h = m.hasil;
+  const diblokir = h.status === 'UNKNOWN' && h.blocked && h.blocked.length;
+  const label = diblokir ? 'Tidak dipakai' : (AM_LABEL[h.status] || h.status);
+  const isi = m.kode
+    ? `<span class="kb-am-prod"><b>${escapeHtmlAttr(m.kode)}</b> ${escapeHtmlAttr(m.nama || '')}</span>`
+    : `<span class="kb-am-prod kb-am-none">${escapeHtmlAttr(h.reason)}</span>`;
+  return `<div class="kb-am-line ${h.status.toLowerCase()}"><span class="kb-am-label">${label}</span>${isi}</div>`;
+}
+
+// Tombol Pakai di header baris (hanya kalau ada produk usulan). Kelas & action = saran Dictionary.
+function amQuickBtnHtml(item) {
+  const m = amFor(item);
+  if (!m || !m.kode) return '';
+  const kode = escapeHtmlAttr(m.kode);
+  return amInClip(m.kode)
+    ? `<button type="button" class="kb-dict-sugg-use kb-am-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${kode}" title="Pasang ${kode} ke item ini">Pakai</button>`
+    : `<button type="button" class="kb-dict-sugg-attach kb-am-use" data-action="attach-suggestion" data-id="${item.id}" data-kode="${kode}" title="Belum ada di Clipboard — ditambahkan dulu, lalu dipasang ke item ini">+ Pakai</button>`;
+}
+
+// Isi detail baris (baris terbuka): alasan + semua kandidat, tiap kandidat punya tombol Pakai.
+function amCandidatesHtml(item) {
+  const m = amFor(item);
+  if (!m) return '';
+  const h = m.hasil;
+  const cands = (h.candidates || []).filter((c, i, a) => a.findIndex(x => x.kode === c.kode) === i);
+  const rows = cands.map(c => {
+    const kode = escapeHtmlAttr(c.kode);
+    const btn = amInClip(c.kode)
+      ? `<button type="button" class="kb-dict-sugg-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${kode}">Pakai</button>`
+      : `<button type="button" class="kb-dict-sugg-attach" data-action="attach-suggestion" data-id="${item.id}" data-kode="${kode}" title="Belum ada di Clipboard sesi ini — ditambahkan dulu">+ Tambah & Pakai</button>`;
+    const meta = [AM_UKURAN_TXT[c.ukuran], c.src === 'katalog' ? 'dari katalog' : (c.freq ? `${c.freq.toLocaleString('id-ID')}× dipakai` : '')].filter(Boolean).join(' · ');
+    return `<div class="kb-dict-sugg-row"><div class="kb-dict-sugg-info"><span class="kb-dict-sugg-nama">${kode} — ${escapeHtmlAttr(c.nama)}</span>${meta ? `<span class="kb-dict-sugg-freq">${escapeHtmlAttr(meta)}</span>` : ''}</div>${btn}</div>`;
+  }).join('');
+  const blk = (h.blocked && h.blocked.length)
+    ? `<div class="kb-dict-sugg-hint">${h.blocked.length} usulan disembunyikan: ${h.blocked.slice(0, 2).map(b => escapeHtmlAttr(b.kode + ' — ' + b.alasan)).join('; ')}${h.blocked.length > 2 ? '; …' : ''}</div>` : '';
+  return `<div class="kb-dict-suggestion kb-am-cands">
+    <div class="kb-dict-suggestion-label"><i class="ti ti-wand"></i> Usulan Auto-Match</div>
+    <div class="kb-dict-sugg-hint">${escapeHtmlAttr(h.reason)}</div>${rows}${blk}
+  </div>`;
+}
+
+// Bar di atas daftar (#kb-am-bar, di luar #kb-list supaya tidak ikut ter-scroll):
+//   belum ada hasil → ajakan + tombol; jalan → progres angka; ada hasil → filter + aksi.
+function renderAmBar() {
+  if (!amBarEl) return;
+  const pending = S.checklistItems.filter(i => i.status === 'PENDING').length;
+  const n = amCounts();
+  const total = n.AUTO + n.REVIEW + n.UNKNOWN;
+  if (amFilter !== 'all' && !n[amFilter]) amFilter = 'all'; // filter yang sudah kosong dilepas, bukan dibiarkan menampilkan daftar kosong
+
+  if (amRunning) {
+    amBarEl.hidden = false;
+    amBarEl.innerHTML = `<div class="kb-am-row"><span class="kb-am-status" role="status"><i class="ti ti-loader-2 kb-am-spin"></i>Mencocokkan ${amProgress.n} dari ${amProgress.t} item…</span></div>`;
+    return;
+  }
+  if (!total) {
+    if (!pending) { amBarEl.hidden = true; amBarEl.innerHTML = ''; return; }
+    amBarEl.hidden = false;
+    amBarEl.innerHTML = `<div class="kb-am-row">
+      <span class="kb-am-status">${pending} item belum dicek</span>
+      <button type="button" class="kb-am-btn" data-am="run"><i class="ti ti-wand"></i> Cocokkan otomatis</button>
+    </div>`;
+    return;
+  }
+  const chip = (key, label, count) =>
+    `<button type="button" class="kb-filter-chip${amFilter === key ? ' active' : ''}${count ? '' : ' zero'}" data-am="filter" data-key="${key}" aria-pressed="${amFilter === key}">${label}<span class="kb-filter-count">${count}</span></button>`;
+  amBarEl.hidden = false;
+  amBarEl.innerHTML = `<div class="kb-am-row">
+    <div class="kb-am-chips">${chip('AUTO', 'Cocok', n.AUTO)}${chip('REVIEW', 'Cek dulu', n.REVIEW)}${chip('UNKNOWN', 'Tidak ketemu', n.UNKNOWN)}</div>
+    <div class="kb-am-acts">
+      ${n.AUTO ? `<button type="button" class="kb-am-btn primary" data-am="apply"${amApplying ? ' disabled' : ''}>${amApplying ? 'Memasang…' : `Pakai ${n.AUTO} yang cocok`}</button>` : ''}
+      <button type="button" class="kb-am-link" data-am="rerun" title="Cari ulang usulan (data produk/riwayat bisa berubah)">Ulangi</button>
+      <button type="button" class="kb-am-link" data-am="clear" title="Sembunyikan semua usulan (keputusan yang sudah dipasang tidak berubah)">Sembunyikan</button>
+    </div>
+  </div>`;
+}
+
+// Jalankan pencocokan untuk item yang BELUM diputuskan (PENDING). onlyIds (Set) = batasi ke item tertentu,
+// mis. item yang baru ditambahkan. Gagal di satu item tidak menggagalkan yang lain (ditangani resolver).
+async function runWorkspaceAutoMatch(onlyIds) {
+  if (amRunning || amApplying) return;
+  const targets = S.checklistItems.filter(it =>
+    it.status === 'PENDING' && String(it.raw_text || '').trim() && (!onlyIds || onlyIds.has(it.id)));
+  if (!targets.length) { S.showToast('Semua item sudah diputuskan — tidak ada yang perlu dicocokkan.'); return; }
   amRunning = true;
-  prAutoBtn.disabled = true;
-  const label0 = prAutoBtn.innerHTML;
+  amProgress = { n: 0, t: targets.length };
+  renderAmBar();
   try {
-    const items = idxs.map(i => ({
-      nama: reviewItems[i].raw_text, qty: reviewItems[i].qty,
-      specs: extractSpecs(reviewItems[i].raw_text), variants: buildVariants(reviewItems[i].raw_text)
+    const items = targets.map(it => ({
+      nama: it.raw_text,
+      qty: it.qty_diminta != null ? Number(it.qty_diminta) : null,
+      specs: extractSpecs(it.raw_text),
+      variants: buildVariants(it.raw_text)
     }));
-    firmCheck.clear(); // link_v6 bisa berubah sejak klik terakhir — ambil ulang
+    firmCheck.clear(); // link_v6 bisa berubah sejak pencocokan terakhir — ambil ulang
     const res = await resolveItems(items, S.rpc, {
       firmCheck: S.modeSwastaOutput ? null : firmCheck,
-      onProgress: (n, t) => { prAutoBtn.textContent = `Mencocokkan ${n}/${t}…`; }
+      onProgress: (n, t) => { amProgress = { n, t }; renderAmBar(); }
     });
     res.forEach((r, k) => {
       const h = r.hasil;
-      reviewMatch[idxs[k]] = { hasil: h, kode: h.kode_produk, nama: h.nama_produk, pakai: h.status === 'AUTO' };
+      amMap.set(targets[k].id, { hasil: h, kode: h.kode_produk, nama: h.nama_produk });
     });
-    renderReviewRows();
+    amFilter = 'all';
     const sm = summarize(res);
     S.showToast(`Auto-Match selesai: ${sm.AUTO} cocok, ${sm.REVIEW} perlu dicek, ${sm.UNKNOWN} tidak ketemu`, 'success');
   } catch (err) {
     S.showToast('Auto-Match gagal: ' + err.message, 'error');
   } finally {
     amRunning = false;
-    prAutoBtn.disabled = false;
-    prAutoBtn.innerHTML = label0;
+    renderChecklist();
   }
-});
+}
+S.runWorkspaceAutoMatch = runWorkspaceAutoMatch;
 
-// Pasang usulan yang dicentang "Pakai" ke item yang BARU disimpan. Jalur sama dengan "+ Tambah & Pakai"
-// di Kebutuhan RS: masukkan produk ke Clipboard (kalau belum ada) lalu tandai TERPENUHI.
-// Item dicari lewat raw_text di antara item BARU saja (beforeIds = id yang sudah ada sebelum simpan).
-async function applyAutoMatches(pending, beforeIds) {
-  if (!pending || !pending.length) return;
-  const used = new Set();
+// "Pakai N yang cocok": HANYA usulan berstatus AUTO. Berurutan (bukan paralel) karena menambah produk ke Clipboard
+// dan menulis status item lewat jalur yang sama dgn tombol Pakai satuan. Item yang sudah diputuskan rekan dilewati.
+async function applyAllAuto() {
+  if (amRunning || amApplying) return;
+  const picks = S.checklistItems
+    .map(it => ({ item: it, m: amFor(it) }))
+    .filter(x => x.m && x.m.hasil.status === 'AUTO' && x.m.kode);
+  if (!picks.length) return;
+  amApplying = true;
+  renderAmBar();
   let ok = 0, gagal = 0;
-  for (const p of pending) {
-    const item = (S.checklistItems || []).find(it =>
-      !beforeIds.has(it.id) && !used.has(it.id) && String(it.raw_text || '').trim() === p.raw_text);
-    if (!item) { gagal++; continue; }
-    used.add(item.id);
-    try {
-      if (!S.clipboard.some(c => c.kode_produk === p.kode)) await S.addSetKodeToClip(p.kode, document.createElement('button'));
-      if (!S.clipboard.some(c => c.kode_produk === p.kode)) { gagal++; continue; }
-      await markItemTerpenuhiWithSingleProduk(item, p.kode);
-      if (item.status === 'TERPENUHI') ok++; else gagal++;
-    } catch (err) { console.error('[auto-match] gagal pasang', p.kode, err); gagal++; }
+  try {
+    for (const { item, m } of picks) {
+      if (item.status !== 'PENDING') continue;
+      try {
+        if (!amInClip(m.kode)) await S.addSetKodeToClip(m.kode, document.createElement('button'));
+        if (!amInClip(m.kode)) { gagal++; continue; }
+        await markItemTerpenuhiWithSingleProduk(item, m.kode);
+        if (item.status === 'TERPENUHI') { ok++; amMap.delete(item.id); } else gagal++;
+      } catch (err) { console.error('[auto-match] gagal pasang', m.kode, err); gagal++; }
+    }
+  } finally {
+    amApplying = false;
+    // Lanjutkan kerja di yang masih perlu keputusan: buka baris "Cek dulu" pertama (kalau ada).
+    const next = S.checklistItems.find(it => { const x = amFor(it); return x && x.hasil.status === 'REVIEW'; });
+    S.checklistExpandedId = next ? next.id : null;
+    renderChecklist();
+    if (next && typeof S.maybeFetchSuggestionForExpanded === 'function') S.maybeFetchSuggestionForExpanded();
   }
-  S.showToast(`Auto-Match: ${ok} item terpasang otomatis`, ok ? 'success' : 'error',
+  S.showToast(`Auto-Match: ${ok} item terpasang`, ok ? 'success' : 'error',
     gagal ? { detail: `${gagal} item tidak terpasang — pilih manual di Kebutuhan RS.` } : undefined);
 }
+
+if (amBarEl) amBarEl.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-am]');
+  if (!b || b.disabled) return;
+  const act = b.dataset.am;
+  if (act === 'run') runWorkspaceAutoMatch();
+  else if (act === 'rerun') { amMap.clear(); amFilter = 'all'; runWorkspaceAutoMatch(); }
+  else if (act === 'clear') { amMap.clear(); amFilter = 'all'; renderChecklist(); }
+  else if (act === 'filter') { amFilter = (amFilter === b.dataset.key) ? 'all' : b.dataset.key; renderChecklist(); }
+  else if (act === 'apply') applyAllAuto();
+});
+
+// Switch footer layar Periksa item: jalankan Auto-Match otomatis begitu item tersimpan? (diingat per browser)
+const prAmOpt = document.getElementById('pr-am-opt');
+const prAmSwitch = document.getElementById('pr-am-switch');
+function paintAmSwitch() {
+  if (!prAmSwitch) return;
+  prAmSwitch.classList.toggle('on', amAutoOn);
+  prAmSwitch.setAttribute('aria-checked', String(amAutoOn));
+}
+function toggleAmSwitch() {
+  amAutoOn = !amAutoOn;
+  try { localStorage.setItem(AM_PREF_KEY, amAutoOn ? '1' : '0'); } catch (_) { /* tidak fatal */ }
+  paintAmSwitch();
+}
+paintAmSwitch();
+if (prAmOpt) prAmOpt.addEventListener('click', toggleAmSwitch);
+if (prAmSwitch) prAmSwitch.addEventListener('keydown', (e) => {
+  if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleAmSwitch(); }
+});
 
 // "Kembali edit" cuma balik ke form input (teks/excel/screenshot) — item hasil
 // parse yang lagi di-review dibuang, jadi kalau lanjut lagi nanti diparse ulang
@@ -731,13 +832,6 @@ S.prReviewSaveBtn.addEventListener('click', async () => {
     return;
   }
 
-  // Usulan Auto-Match yang dicentang "Pakai", dicatat SEKARANG (sebelum async) — dipasang setelah item tersimpan.
-  const pendingMatches = [];
-  reviewItems.forEach((it, i) => {
-    const m = reviewMatch[i];
-    if (it.raw_text && m && m.pakai && m.kode) pendingMatches.push({ raw_text: it.raw_text, kode: m.kode });
-  });
-
   S.prReviewSaveBtn.disabled = true;
   S.prReviewSaveBtn.textContent = 'Menyimpan…';
 
@@ -749,7 +843,11 @@ S.prReviewSaveBtn.addEventListener('click', async () => {
       S.showToast(`${n} item ditambahkan ke Permintaan RS`, 'success', { detail: `Total ${S.checklistItems.length} item.` });
       closePrModal();
       S.prTeks.value = ''; S.prFile.value = '';
-      await applyAutoMatches(pendingMatches, beforeIds);
+      // Auto-Match jalan di Kebutuhan RS, hanya untuk item yang BARU ditambahkan (tidak menunggu: modal sudah tutup).
+      if (amAutoOn) {
+        const baru = new Set((S.checklistItems || []).filter(it => !beforeIds.has(it.id)).map(it => it.id));
+        if (baru.size) runWorkspaceAutoMatch(baru);
+      }
       if (S.resumeRecordAfterPr) { S.resumeRecordAfterPr = false; S.openRecordModal(); }
       return;
     }
@@ -830,7 +928,7 @@ S.prReviewSaveBtn.addEventListener('click', async () => {
     S.prTeks.value = ''; S.prFile.value = '';
     closePrModal();
     if (typeof S.switchDoor === 'function') S.switchDoor('konversi');
-    await applyAutoMatches(pendingMatches, new Set());
+    if (amAutoOn) runWorkspaceAutoMatch(); // semua item sesi ini baru; hasil muncul bertahap di Kebutuhan RS
 
     // Kalau tadi masuk ke sini lewat nudge di Record modal, balik lagi ke situ
     // biar user lanjut dari titik yang sama (bukan ilang, harus klik Record lagi).
@@ -1266,7 +1364,9 @@ function renderChecklistItemHtml(item) {
   // produk, item ini otomatis kebuka juga — gak masuk akal ada picker di
   // dalam baris yang keciutin.
   const isExpanded = isPicking || S.checklistExpandedId === item.id;
-  const cls = (isDone ? 'terpenuhi' : isNa ? 'tidak-terpenuhi' : '') + (isExpanded ? ' expanded' : ' collapsed');
+  const am = amFor(item);
+  const cls = (isDone ? 'terpenuhi' : isNa ? 'tidak-terpenuhi' : '') + (isExpanded ? ' expanded' : ' collapsed')
+    + (am ? ' am-' + am.hasil.status.toLowerCase() : '');
 
   const qtyTxt = item.qty_diminta ? ` · qty ${item.qty_diminta}` : '';
   const paguTxt = item.pagu_satuan != null ? ` · pagu satuan ${S.rupiah(item.pagu_satuan)}` : '';
@@ -1290,7 +1390,9 @@ function renderChecklistItemHtml(item) {
     <div class="kb-item-header-text">
       <div class="kb-item-text">${S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
       ${!isExpanded ? compactMatchedTxt : ''}
+      ${!isExpanded ? amLineHtml(item) : ''}
     </div>
+    ${!isExpanded ? amQuickBtnHtml(item) : ''}
     <button type="button" class="kb-item-copy" data-action="copy-text" data-id="${item.id}" title="Copy deskripsi permintaan" aria-label="Copy deskripsi permintaan"><i class="ti ti-copy"></i></button>
     <i class="ti ti-chevron-down kb-item-chevron"></i>
   </div>`;
@@ -1333,6 +1435,7 @@ function renderChecklistItemHtml(item) {
       const sugg = S.dictSuggestionCache[item.id];
       const suggHtml = S.renderDictSuggestionHtml(item, sugg);
       bodyHtml = `
+        ${amCandidatesHtml(item)}
         ${suggHtml}
         <div class="kb-item-actions">
           <button class="kb-bisa-btn" data-action="bisa" data-id="${item.id}">✓ Bisa Dipenuhi</button>
@@ -1572,6 +1675,7 @@ S.kbList.addEventListener('dragstart', e => {
 
 function renderChecklist() {
   updateKbCounts();
+  renderAmBar(); // sebelum daftar dirender: bar yang melepas filter kosong (amFilter) harus jalan dulu
   renderSectionTabs();
 
   const globalPagu = S.checklistSections.length
@@ -1588,7 +1692,8 @@ function renderChecklist() {
   if (!S.checklistSections.length) {
     // Belum ada section (Permintaan RS single-sheet, atau RPC belum di-update
     // buat ngirim field sections) — tampilin flat kayak sebelumnya, gak ada regresi.
-    S.kbList.innerHTML = S.checklistItems.map(renderChecklistItemHtml).join('');
+    const flat = amFilterItems(S.checklistItems);
+    S.kbList.innerHTML = flat.length ? flat.map(renderChecklistItemHtml).join('') : (amFilter === 'all' ? '' : AM_EMPTY_HTML);
     return;
   }
 
@@ -1605,7 +1710,8 @@ function renderChecklist() {
     const groups = S.checklistSections.map(s => ({ section: s, items: bySection.get(s.id) }));
     if (bySection.get(null).length) groups.push({ section: null, items: bySection.get(null) });
     S.kbList.innerHTML = groups.map(g => {
-      if (!g.items.length) return '';
+      const vis = amFilterItems(g.items); // filter Auto-Match hanya menyaring baris; rollup tetap dihitung dari SEMUA item section
+      if (!vis.length) return '';
       const rollup = computeSectionRollup(g.items, g.section ? g.section.pagu : null);
       const title = g.section ? S.escapeHtmlAttr(g.section.nama_section) : 'Tanpa section';
       return `<div class="kb-section-group" data-section-id="${g.section ? g.section.id : 'null'}">
@@ -1613,7 +1719,7 @@ function renderChecklist() {
           <span class="kb-section-title">${title}</span>
           ${kbRollupHtml(rollup, 'sm')}
         </div>
-        <div class="kb-section-items">${g.items.map(renderChecklistItemHtml).join('')}</div>
+        <div class="kb-section-items">${vis.map(renderChecklistItemHtml).join('')}</div>
       </div>`;
     }).join('');
     return;
@@ -1635,7 +1741,11 @@ function renderChecklist() {
       ${kbRollupHtml(rollup, 'sm')}
       ${paguRow}
     </div>
-    ${items.length ? items.map(renderChecklistItemHtml).join('') : '<div class="kb-section-empty">Belum ada baris di section ini. Drag baris dari tab lain ke sini, atau tambah lewat Permintaan RS.</div>'}`;
+    ${(() => {
+      const vis = amFilterItems(items);
+      if (vis.length) return vis.map(renderChecklistItemHtml).join('');
+      return items.length ? AM_EMPTY_HTML : '<div class="kb-section-empty">Belum ada baris di section ini. Drag baris dari tab lain ke sini, atau tambah lewat Permintaan RS.</div>';
+    })()}`;
 }
 S.renderChecklist = renderChecklist;
 
@@ -1678,6 +1788,7 @@ function patchChecklistItem(id, changes) {
   if (S.checklistPickingId === id) return; // lagi dipilihin produknya sama user lokal, jangan diganggu dulu
   Object.assign(item, changes);
   updateKbCounts();
+  renderAmBar(); // status item bisa berubah dari rekan → hitungan usulan ikut bergeser
   const node = S.kbList.querySelector(`.kb-item[data-id="${CSS.escape(String(id))}"]`);
   if (node) {
     const temp = document.createElement('div');

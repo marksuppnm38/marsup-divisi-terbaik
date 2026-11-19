@@ -2880,16 +2880,62 @@
   #app-root .sc-map-conf{justify-self:start}
 }
 
-/* ── Auto-Match di layar Periksa item (Permintaan RS) ── */
-.pr-modal-box .pr-review-row .pr-am{grid-column:1/-1;display:flex;align-items:flex-start;gap:var(--sp-2);padding:2px 0 var(--sp-2);font-size:12.5px;line-height:1.45;color:var(--text-secondary)}
-.pr-modal-box .pr-am-badge{flex:none;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid transparent;white-space:nowrap}
-.pr-modal-box .pr-am-auto{background:var(--success-bg);color:var(--success-text);border-color:var(--success-border)}
-.pr-modal-box .pr-am-review{background:var(--warning-bg);color:var(--warning);border-color:var(--warning-border)}
-.pr-modal-box .pr-am-unknown{background:var(--danger-bg);color:var(--danger-text);border-color:var(--danger-border)}
-.pr-modal-box .pr-am-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}
-.pr-modal-box .pr-am-txt small{font-size:11.5px;color:var(--text-muted)}
-.pr-modal-box .pr-review-row select.pr-am-sel{width:100%;height:30px;padding:0 8px;font-size:12.5px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface-2);color:var(--text)}
-.pr-modal-box .pr-am-use{flex:none;display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;white-space:nowrap}
-.pr-modal-box .pr-review-row input.pr-am-chk{width:16px;height:16px;padding:0;margin:0;accent-color:var(--accent)}
-.pr-modal-box .pr-am-summary{margin:0 0 var(--sp-3);padding:var(--sp-2) var(--sp-3);font-size:12.5px;line-height:1.5;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)}
-.pr-modal-box .pr-am-txt small.pr-am-blk{color:var(--warning)}
+/* ============================================================
+   AUTO-MATCH (2026-11-19): pencocokan produk pindah dari modal "Periksa item" ke Kebutuhan RS.
+   - Modal: cuma switch "Cocokkan setelah disimpan" di footer (memakai ulang .pref-switch).
+   - Kebutuhan RS: bar di atas daftar (memakai ulang .kb-filter-chip), baris usulan di bawah nama item,
+     tombol Pakai memakai ulang .kb-dict-sugg-use / .kb-dict-sugg-attach, detail memakai ulang .kb-dict-suggestion.
+   Status hasil dibawa oleh garis kiri tipis + kata (Cocok / Cek dulu / Tidak ketemu), bukan titik atau pil warna-warni.
+   ============================================================ */
+.pr-modal-box .pr-am-opt{margin-right:auto;display:flex;align-items:center;gap:var(--sp-2);min-width:0;cursor:pointer;user-select:none}
+.pr-modal-box .pr-am-opt-label{font-size:12.5px;line-height:1.3;color:var(--text-secondary)}
+.pr-modal-box .pr-am-opt:hover .pr-am-opt-label{color:var(--text)}
+.pr-modal-box .pr-am-opt .pref-switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+#app-root .kb-am-bar{flex:0 0 auto;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border)}
+#app-root .kb-am-bar[hidden]{display:none}
+#app-root .kb-am-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;min-height:30px}
+#app-root .kb-am-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+#app-root .kb-am-chips{display:flex;flex-wrap:wrap;gap:6px}
+#app-root .kb-am-acts{display:flex;align-items:center;gap:12px;margin-left:auto}
+#app-root .kb-am-btn{
+  height:28px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;
+  border:1px solid var(--accent);border-radius:var(--radius);
+  background:var(--accent-bg);color:var(--accent-text);
+  font:inherit;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;
+  transition:filter .15s,background-color .15s;
+}
+#app-root .kb-am-btn.primary{background:var(--accent);color:#fff}
+#app-root .kb-am-btn:hover:not(:disabled){filter:brightness(.94)}
+#app-root .kb-am-btn:disabled{opacity:.6;cursor:progress}
+#app-root .kb-am-link{
+  padding:0;border:0;background:none;font:inherit;font-size:11.5px;font-weight:600;
+  color:var(--text-muted);text-decoration:underline;text-underline-offset:2px;cursor:pointer;
+}
+#app-root .kb-am-link:hover{color:var(--text)}
+#app-root .kb-am-btn:focus-visible,
+#app-root .kb-am-link:focus-visible,
+#app-root .kb-am-chips .kb-filter-chip:focus-visible,
+#app-root .kb-item-header .kb-am-use:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){#app-root .kb-am-spin{animation:spin 1s linear infinite}}
+
+/* Baris item belum diputuskan yang punya usulan: garis kiri = tingkat keyakinan, kata = hasilnya */
+#app-root .kb-item.am-auto{box-shadow:inset 2px 0 0 var(--success)}
+#app-root .kb-item.am-review{box-shadow:inset 2px 0 0 var(--warning)}
+#app-root .kb-item.am-unknown{box-shadow:inset 2px 0 0 var(--border-strong)}
+#app-root .kb-am-line{display:flex;align-items:baseline;gap:8px;min-width:0;margin-top:2px;font-size:11px;line-height:1.4}
+#app-root .kb-am-label{flex:none;font-weight:600}
+#app-root .kb-am-line.auto .kb-am-label{color:var(--success-text)}
+#app-root .kb-am-line.review .kb-am-label{color:var(--warn-text)}
+#app-root .kb-am-line.unknown .kb-am-label{color:var(--danger-text)}
+#app-root .kb-am-prod{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary)}
+#app-root .kb-am-prod b{font-weight:600;color:var(--text)}
+#app-root .kb-am-prod.kb-am-none{color:var(--text-muted);white-space:normal}
+#app-root .kb-item-header .kb-am-use{align-self:center;flex:none;padding:4px 11px;font-size:11px}
+#app-root .kb-am-cands{margin-top:2px}
+
+@media (max-width:640px){
+  .pr-modal-box .pr-actions-review{flex-wrap:wrap}
+  .pr-modal-box .pr-am-opt{flex:1 1 100%}
+  #app-root .kb-am-acts{margin-left:0}
+}
