@@ -6,8 +6,10 @@
 //
 // eval.json = hasil Q5 di README/auto-konversi-queries.sql: [{ raw_text, matched_kode_produk }, ...]
 //
-// --katalog-saja : lewati Dictionary. WAJIB untuk mengukur kemampuan menebak item BARU. Tanpa ini hasil menggelembung,
-//                  karena riwayat berisi keputusan item itu sendiri (jawaban bocor: exact match ke dirinya).
+// Dictionary: bila eval.json memuat `id`, tiap item dikeluarkan dari riwayat saat dinilai (p_exclude_item = leave-one-out),
+//             jadi hasilnya tidak lagi bocor ke keputusan item itu sendiri. Teks yang sama dari item LAIN tetap terhitung
+//             (itu perilaku nyata di produksi). Tanpa `id`, hasil Dictionary menggelembung.
+// --katalog-saja : lewati Dictionary sama sekali; ukuran paling ketat untuk kemampuan menebak item yang belum pernah ada.
 // --lexicon      : pakai get_kamus_token (agak bocor juga: kamus dibangun dari riwayat yang sama).
 //
 // Keluaran: top-1 / top-5 hit rate dan, per status, berapa yang top-1-nya benar.
@@ -32,6 +34,7 @@ const rpc = async (name, params) => {
 
 const rows = JSON.parse(readFileSync(file, 'utf8')).slice(0, limit);
 const parsed = rows.map((r) => ({ r, item: parseRequestText(`${String(r.raw_text).replace(/\t/g, ' ')}\t1`).items[0] })).filter((x) => x.item);
+parsed.forEach((x) => { if (x.r.id != null) x.item.excludeId = x.r.id; });
 const items = parsed.map((x) => x.item), gold = parsed.map((x) => x.r.matched_kode_produk);
 const lexicon = pakaiLexicon ? await loadLexicon(rpc) : undefined;
 if (pakaiLexicon) console.log(`lexicon: ${lexicon.size} token${lexicon.error ? ' (error: ' + lexicon.error + ')' : ''}`);
@@ -51,7 +54,7 @@ res.forEach((r, i) => {
   if (h.status === 'AUTO' && !ok1) salah.push({ teks: items[i].nama, usulan: h.kode_produk, seharusnya: g, alasan: h.reason });
 });
 const pct = (a, b) => (b ? (100 * a / b).toFixed(1) + '%' : '-');
-console.log(`\nmode: ${katalogSaja ? 'katalog saja (tanpa Dictionary)' : 'Dictionary + katalog (hasil menggelembung, lihat catatan)'}`);
+console.log(`\nmode: ${katalogSaja ? 'katalog saja (tanpa Dictionary)' : 'Dictionary + katalog (leave-one-out bila eval.json memuat id)'}`);
 console.log(`item: ${items.length}   top-1: ${pct(top1, items.length)}   top-5: ${pct(top5, items.length)}`);
 for (const [st, v] of Object.entries(stat)) console.log(`  ${st.padEnd(8)} ${String(v.n).padStart(4)} item   top-1 benar ${pct(v.benar, v.n)}`);
 if (salah.length) { console.log(`\nAUTO YANG SALAH (${salah.length}) — ini yang harus nol:`); salah.slice(0, 20).forEach((x) => console.log(' ', JSON.stringify(x))); }

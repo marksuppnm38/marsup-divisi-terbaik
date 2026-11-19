@@ -88,8 +88,7 @@ export function isAmbiguous(cands, best) {
 
 // ── ukuran dari nama produk (buat fallback katalog; RPC dictionary sudah kasih label sendiri) ──
 function sizeFromName(nama) {
-  const m = /(\d+(?:[.,]\d+)?)\s*cm(?![a-z])/i.exec(nama || '');
-  return m ? parseFloat(m[1].replace(',', '.')) : null;
+  return understand(nama).attrs.ukuran_cm; // cm, atau mm panjang yang dikonversi (katalog Jerman: "140MM")
 }
 function ukuranLabel(wanted, nama) {
   if (wanted == null) return 'tidak_diminta';
@@ -99,18 +98,21 @@ function ukuranLabel(wanted, nama) {
   return d === 0 ? 'cocok' : d <= 0.5 ? 'dekat' : 'beda';
 }
 
-async function viaDictionary(rpc, text) {
-  const { data, error } = await rpc('suggest_dictionary', { p_text: text, p_limit: 3 });
+async function viaDictionary(rpc, text, excludeItem) {
+  // p_exclude_item: item itu sendiri dikeluarkan dari riwayat (dipakai evaluasi leave-one-out; di UI item masih PENDING jadi tidak ada efeknya)
+  const params = { p_text: text, p_limit: 3 };
+  if (excludeItem != null) params.p_exclude_item = excludeItem;
+  const { data, error } = await rpc('suggest_dictionary', params);
   if (error) throw new Error(error.message || error.hint || 'suggest_dictionary gagal');
   return candidatesFromRows(data);
 }
 
 // Cari ke katalog. Selalu 'katalog' tier -> paling banter 'sedang'. skor dibedakan per QUERY (makin longgar makin rendah),
 // bukan per baris: urutan relevansi antar-baris ditentukan penilaian atribut, bukan posisi di hasil pencarian.
-async function viaCatalog(rpc, text, wantedCm, qi = 0) {
+async function viaCatalog(rpc, text, wantedCm, qi = 0, maxRows = 60) {
   const { data, error } = await rpc('search_produk_dengan_harga', { q: text, p_tipe: null, only_akd: false, only_kfa: false });
   if (error) throw new Error(error.message || error.hint || 'search_produk_dengan_harga gagal');
-  return (data || []).slice(0, 8).map((p) => ({
+  return (data || []).slice(0, maxRows).map((p) => ({
     kode: p.kode_produk, nama: p.nama_produk || '', tier: 'katalog', ukuran: ukuranLabel(wantedCm, p.nama_produk),
     istilah: text, skor: 1 - qi * 0.05, freq: 0, isSet: p.tipe === 'SET', src: 'katalog'
   }));
@@ -185,7 +187,7 @@ export async function resolveItem(item, rpc, opts = {}) {
   if (opts.dictionary !== false) {
     for (const q of dictQueries) {
       try {
-        const c = await usable(await viaDictionary(rpc, q));
+        const c = await usable(await viaDictionary(rpc, q, opts.excludeItemId != null ? opts.excludeItemId : item.excludeId));
         tried.push({ q, via: 'dictionary', n: c.length });
         if (c.length) {
           annotate(c, itemAttrs);
@@ -205,11 +207,12 @@ export async function resolveItem(item, rpc, opts = {}) {
     for (let qi = 0; qi < catQueries.length; qi++) {
       const q = catQueries[qi];
       try {
-        const c = (await usable(await viaCatalog(rpc, q, wantedCm, qi))).filter(x => !seen.has(x.kode));
+        const c = (await usable(await viaCatalog(rpc, q, wantedCm, qi, opts.catalogRows || 60))).filter(x => !seen.has(x.kode));
         tried.push({ q, via: 'katalog', n: c.length });
         annotate(c, itemAttrs);
         c.forEach(x => { seen.add(x.kode); catCands.push(x); });
-        if (c.some(x => !x.fit.beda.length && (x.ukuran === 'cocok' || x.ukuran === 'tidak_diminta')) || catCands.length >= 6) break;
+        // Pencarian katalog mengembalikan sampai 150 baris berperingkat teks (bukan atribut): ambil banyak, nilai sendiri per atribut.
+        if (c.some(x => !x.fit.beda.length && (x.ukuran === 'cocok' || x.ukuran === 'tidak_diminta'))) break;
       } catch (e) { error = e.message; tried.push({ q, via: 'katalog', error: e.message }); }
     }
   }

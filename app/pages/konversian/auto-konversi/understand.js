@@ -28,6 +28,10 @@ const tipCode = (w) => (/^(SH|SHARP|TAJAM)$/.test(w) ? 'SH' : 'BL');
 
 const ORIENT_STR = /\b(STR|STRAIGHT|LURUS)\b\.?/;
 const ORIENT_CVD = /\b(CVD|CURVED|CURVE|MELENGKUNG|BENGKOK)\b\.?/;
+const ORIENT_ANG = /\b(ANGLED|ANG)\b\.?/;   // "ANGLED" ≠ "CURVED": bentuk berbeda, jangan disamakan
+
+// Kata ukuran gaya Indonesia. Bukan kata jenis: "bengkok sedang" = nierbekken ukuran sedang, bukan sesuatu yang bengkok.
+const SIZE_WORDS = new Set(['KECIL', 'SEDANG', 'BESAR', 'PANJANG', 'PENDEK', 'TERKECIL', 'TERBESAR', 'UKURAN', 'UK', 'B/S', 'S', 'M', 'L', 'XL']);
 
 export function understand(text) {
   let t = spaces(String(text == null ? '' : text).toUpperCase());
@@ -56,14 +60,22 @@ export function understand(text) {
   eat(/\bFIG\.?\s*(\d+(?:\s*\+\s*\d+)*)/, (m) => { attrs.fig = m[1].replace(/\s+/g, ''); });
   eat(/\b(?:NO|NOMOR)\.?\s*(\d+)\b/, (m) => { attrs.nomor = parseInt(m[1], 10); });
   if (!eat(ORIENT_STR, () => { attrs.orientasi = 'lurus'; })) {
-    eat(ORIENT_CVD, (m) => { attrs.orientasi = 'bengkok'; bengkokWord = m[1] === 'BENGKOK'; });
+    if (!eat(ORIENT_CVD, (m) => { attrs.orientasi = 'bengkok'; bengkokWord = m[1] === 'BENGKOK'; })) {
+      eat(ORIENT_ANG, () => { attrs.orientasi = 'sudut'; });
+    }
+  }
+  // Satu-satunya ukuran berupa mm panjang (≥ 80 mm, mis. "PEAN FORCEPS CVD 140MM", "..., 145 MM (5 3/4\")") = panjang instrumen
+  // dalam mm (gaya katalog Jerman), bukan lebar bagian. Samakan ke cm supaya bisa dibandingkan dengan "14 cm".
+  if (attrs.ukuran_cm == null && attrs.mm.length === 1 && attrs.mm[0] >= 80 && attrs.mm[0] <= 600) {
+    attrs.ukuran_cm = Math.round(attrs.mm[0]) / 10; attrs.ukuran_inferred = true; attrs.mm = [];
   }
 
   let tokens = t.replace(/[,;()]+/g, ' ').replace(/\s*\.\s*/g, ' ').split(/\s+/).filter((w) => w && /[A-Z0-9]/.test(w));
 
   // "BENGKOK" yang berdiri sendiri (tanpa kata jenis lain) adalah NAMA produk, bukan sifat bentuk.
   // Contoh: "KLEM BENGKOK" → jenis KLEM + orientasi bengkok; "BENGKOK" saja → istilah produk.
-  if (bengkokWord && !tokens.length) { attrs.orientasi = null; tokens = ['BENGKOK']; }
+  // Kata ukuran ("sedang", "besar") tidak dihitung sebagai kata jenis: "bengkok sedang" juga nama produk (nierbekken).
+  if (bengkokWord && !tokens.some((w) => !SIZE_WORDS.has(w))) { attrs.orientasi = null; tokens = ['BENGKOK', ...tokens]; }
 
   return { norm: spaces(String(text == null ? '' : text).toUpperCase()), inti: tokens.join(' '), tokens, attrs };
 }

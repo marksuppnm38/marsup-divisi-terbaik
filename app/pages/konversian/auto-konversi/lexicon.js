@@ -18,7 +18,7 @@ import { understand } from './understand.js';
 
 export const EMPTY_LEXICON = Object.freeze({ size: 0, error: null, lookup: () => null });
 
-export function makeLexicon(rows, { minShare = 0.6, minN = 3 } = {}) {
+export function makeLexicon(rows, { minShare = 0.5, minN = 3 } = {}) {
   const map = new Map();
   (rows || []).forEach((r) => {
     const token = String(r.token || '').toUpperCase();
@@ -43,8 +43,11 @@ export async function loadLexicon(rpc, opts) {
 const join = (...p) => p.filter((x) => x != null && x !== '').join(' ').replace(/\s+/g, ' ').trim();
 const attrText = (a) => join(a.ujung, a.orientasi === 'lurus' ? 'STR' : a.orientasi === 'bengkok' ? 'CVD' : '', a.ukuran_cm != null ? `${a.ukuran_cm} CM` : '');
 
-// Urutan: asli (sudah dicoba di Dictionary) → bentuk katalog → buang kata satu-satu (eponim/merek vendor
-// sering tidak ada di nama katalog) → inti saja → ekspansi lexicon. Dedup, maksimum `max`.
+// Catatan perilaku search_produk_dengan_harga (dari definisinya): hasil bersih HANYA kalau SEMUA token query cocok (prefiks);
+// kalau ada satu token yang tidak ada di katalog (mis. "MAYO", atau "BL/BL" yang tidak pernah ada), jatuh ke pencocokan
+// sebagian yang berisik. Karena itu urutannya: asli → tingkat KELUARGA (inti saja, dan buang kata satu-satu, tanpa atribut)
+// → baru yang memakai atribut. Atribut dinilai di sisi kita (compareAttrs), bukan dititipkan ke pencarian teks.
+// Dedup, maksimum `max`.
 export function buildQueryLadder(item, u, lexicon, max = 8) {
   u = u || understand(item.nama || item.deskripsi || '');
   const a = u.attrs;
@@ -53,19 +56,17 @@ export function buildQueryLadder(item, u, lexicon, max = 8) {
 
   (item.variants || [u.norm]).forEach(push);
   if (u.inti) {
-    push(join(u.inti, attrText(a)));
-    if (u.tokens.length >= 3) {
-      u.tokens.forEach((_, i) => push(join(u.tokens.filter((__, j) => j !== i).join(' '), attrText(a))));
-    }
     push(u.inti);
+    if (u.tokens.length >= 3) u.tokens.forEach((_, i) => push(u.tokens.filter((__, j) => j !== i).join(' ')));
+    push(join(u.inti, attrText(a)));
   }
   if (lexicon && lexicon.size) {
     u.tokens.forEach((tok) => {
       const e = lexicon.lookup(tok);
       if (!e) return;
       const rest = u.tokens.filter((t) => t !== tok).join(' ');
-      push(join(e.kanonik, rest, attrText(a)));
-      push(join(e.kanonik, attrText(a)));
+      push(join(e.kanonik, rest));
+      push(e.kanonik);
     });
   }
   return out.slice(0, max);

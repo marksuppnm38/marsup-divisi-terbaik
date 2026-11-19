@@ -141,3 +141,17 @@ Data & pengukuran (`README/auto-konversi-queries.sql`):
 
 Belum dikerjakan: layout tabel lebar (memakai area kiri yang kosong), review lewat keyboard, bulk-putuskan per kelompok alasan,
 dan aturan kesetaraan ukuran yang dipelajari ("17 cm ≈ 17,5 cm") — butuh data `automatch_log` dulu.
+
+
+### Temuan dari data nyata (hasil Q0–Q2) dan penyesuaiannya
+- `search_produk_dengan_harga` hanya memberi hasil bersih bila SEMUA token query cocok (prefiks); jika satu saja tidak ada di katalog
+  ("MAYO", atau "BL/BL" yang tidak ada), jatuh ke pencocokan sebagian yang berisik. Tangga query kini mulai dari tingkat **keluarga**
+  (inti nama, lalu buang kata satu-satu), tanpa atribut; atribut dinilai di sisi kita. Baris yang diambil naik dari 8 ke 60 karena
+  peringkat DB berbasis teks, bukan atribut.
+- Katalog merek Jerman memakai MM untuk panjang ("PEAN FORCEPS CVD 140MM", "145 MM (5 3/4")"). mm tunggal ≥ 80 dibaca sebagai panjang (cm = mm/10).
+- Kode ujung di katalog: `SH/SH`, `BL/BL`, `SH/BL`, `SHARP/SHARP`, `BLUNT/BLUNT`, `SHARP/BLUNT` — semuanya dinormalkan. `ANGLED` bentuk tersendiri (bukan CURVED).
+- "bengkok" tanpa kata jenis lain (juga "bengkok sedang/besar", "bengkok 20 cm") = nama produk (nierbekken); "klem bengkok" = bentuk.
+- Kamus lama berbasis nama produk utuh terlalu granular (mis. "KIDNEY DISH 250X140X40 MM"; "KORENTANG" terpecah ke 3 nama sponge forceps → share 0,33).
+  Kini kamus berbasis **kata nama produk** (tanpa token berangka/satuan), hanya kata yang ada di ≥ 50% hasil keputusan dan tidak umum di katalog (> 6% nama).
+  Item `is_junk`, produk non-aktif, dan SET tidak ikut.
+- `suggest_dictionary` punya `p_exclude_item` → evaluasi leave-one-out (Q5 memuat `id`, `replay.mjs` memakainya).
