@@ -114,7 +114,10 @@ async function viaCatalog(rpc, text, wantedCm, qi = 0, maxRows = 60) {
   if (error) throw new Error(error.message || error.hint || 'search_produk_dengan_harga gagal');
   return (data || []).slice(0, maxRows).map((p) => ({
     kode: p.kode_produk, nama: p.nama_produk || '', tier: 'katalog', ukuran: ukuranLabel(wantedCm, p.nama_produk),
-    istilah: text, skor: 1 - qi * 0.05, freq: 0, isSet: p.tipe === 'SET', src: 'katalog'
+    istilah: text, skor: 1 - qi * 0.05, freq: 0, isSet: p.tipe === 'SET', src: 'katalog',
+    // search_produk_dengan_harga: skor = jumlah skor token + 80 bila SEMUA token cocok, -200 bila tidak.
+    // Jadi skor > 0 ~ semua kata query ada di indeks; skor < 0 = kecocokan sebagian yang berisik. null = tidak diketahui (mock/test).
+    full: p.score == null ? null : Number(p.score) > 0
   }));
 }
 
@@ -212,10 +215,16 @@ export async function resolveItem(item, rpc, opts = {}) {
         annotate(c, itemAttrs);
         c.forEach(x => { seen.add(x.kode); catCands.push(x); });
         // Pencarian katalog mengembalikan sampai 150 baris berperingkat teks (bukan atribut): ambil banyak, nilai sendiri per atribut.
-        if (c.some(x => !x.fit.beda.length && (x.ukuran === 'cocok' || x.ukuran === 'tidak_diminta'))) break;
+        if (c.some(x => x.full !== false && !x.fit.beda.length && (x.ukuran === 'cocok' || x.ukuran === 'tidak_diminta'))) break;
       } catch (e) { error = e.message; tried.push({ q, via: 'katalog', error: e.message }); }
     }
   }
+
+  // Atribut cocok (STR, 24 CM) bukan bukti produknya relevan: hasil sebagian (kata kuncinya tak ada di katalog) hanya
+  // kebetulan punya atribut yang sama. Bila ada yang penuh, buang yang sebagian; bila semuanya sebagian, anggap tidak dikenal.
+  let hanyaSebagian = 0;
+  if (catCands.some(x => x.full === true)) catCands = catCands.filter(x => x.full !== false);
+  else if (catCands.length && catCands.every(x => x.full === false)) { hanyaSebagian = catCands.length; catCands = []; }
 
   const bestDict = pickBestFit(dictCands);
   const bestCat = pickBestFit(catCands);
@@ -232,8 +241,10 @@ export async function resolveItem(item, rpc, opts = {}) {
       reasonKey = 'diblokir';
       reason = `Produk yang cocok ada, tapi tidak boleh dipakai konversi: ${b.slice(0, 2).map(x => `${x.kode} (${x.alasan})`).join(', ')}${b.length > 2 ? `, +${b.length - 2} lagi` : ''}.`;
     } else {
-      reasonKey = error ? 'error' : 'tak_ketemu';
-      reason = error ? `Gagal mencari: ${error}` : 'Tidak ada di riwayat maupun katalog.';
+      reasonKey = error ? 'error' : hanyaSebagian ? 'tak_dikenal' : 'tak_ketemu';
+      reason = error ? `Gagal mencari: ${error}`
+        : hanyaSebagian ? 'Kata kuncinya tidak ada di nama produk katalog mana pun — kemungkinan istilah baru. Pilih manual (pilihanmu dipelajari).'
+        : 'Tidak ada di riwayat maupun katalog.';
     }
   } else if (attrBeda(best) && !riwayatBerulang(best)) {
     // Atribut penentu berselisih (mis. ujung BL/BL diminta, produk SH/BL): jangan ditebak, sebut yang mana.

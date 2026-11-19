@@ -331,3 +331,24 @@ test('resolver+firm: tanpa firmCheck (mode Swasta) perilaku lama tidak berubah; 
   assert.equal((await resolveItem(it, rpc)).status, 'AUTO');
   assert.equal((await resolveItem(it, rpc, { firmCheck: fcFrom({}) })).status, 'AUTO');
 });
+// ───────────── Relevansi hasil katalog: atribut cocok ≠ produk relevan ─────────────
+test('katalog hanya memberi kecocokan SEBAGIAN (score < 0): istilah asing tidak disodori produk acak', async () => {
+  const [it] = parseRequestText('KORENTANG LURUS 24CM\t1').items;
+  const rpc = async (fn) => fn === 'suggest_dictionary' ? { data: [] } : { data: [
+    { kode_produk: 'X1', nama_produk: 'RETRACTOR, STR., 24 CM', tipe: 'INSTRUMENT', score: -120 },
+    { kode_produk: 'X2', nama_produk: 'PROBE, STR., 24 CM', tipe: 'INSTRUMENT', score: -130 }] };
+  const h = await resolveItem(it, rpc);
+  assert.equal(h.status, 'UNKNOWN');
+  assert.equal(h.reason_key, 'tak_dikenal');
+  assert.equal(h.kode_produk, null);
+});
+
+test('katalog: kecocokan penuh (score > 0) menang atas yang sebagian, dan yang sebagian dibuang', async () => {
+  const [it] = parseRequestText('MAYO OPERATING SCISSORS STR BL/BL 17CM\t1').items;
+  const rpc = async (fn, a) => fn === 'suggest_dictionary' ? { data: [] } : { data: /MAYO/.test(a.q)
+    ? [{ kode_produk: 'J1', nama_produk: 'ATR. FCPS., DE BAKEY, STR. CVD., 17 CM', tipe: 'INSTRUMENT', score: -90 }]
+    : [{ kode_produk: 'G1', nama_produk: 'OPERATING SCISSORS, BL/BL, STR., 17 CM', tipe: 'INSTRUMENT', score: 140 }] };
+  const h = await resolveItem(it, rpc);
+  assert.equal(h.kode_produk, 'G1');
+  assert.ok(!h.candidates.some(c => c.kode === 'J1'));
+});
