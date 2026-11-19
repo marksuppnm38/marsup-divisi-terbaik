@@ -150,6 +150,17 @@ function ukuranSeri(best, cands) {
   return other ? [best.fit.ukuran_ada, other.fit.ukuran_ada].sort((a, b) => a - b) : null;
 }
 
+// Pemeriksaan acak (audit): sebagian kecil usulan AUTO sengaja diturunkan jadi REVIEW supaya staff benar-benar memeriksanya.
+// Tanpa ini AUTO dipasang massal ("Pakai N yang cocok") dan log selalu mencatat 'diterima' -> akurasi AUTO terlihat 100% padahal
+// tidak ada yang memeriksa. Deterministik per teks (hash), jadi menjalankan ulang Auto-Match tidak bisa "mencari" sampel yang enak.
+export function auditPick(text, rate) {
+  if (!(rate > 0)) return false;
+  let h = 2166136261;
+  const s = String(text == null ? '' : text).trim().toUpperCase();
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return (h % 10000) / 10000 < rate;
+}
+
 // ── Putuskan untuk SATU item ──
 export async function resolveItem(item, rpc, opts = {}) {
   const u = item.understood || understand(item.nama || item.deskripsi || '');
@@ -232,7 +243,7 @@ export async function resolveItem(item, rpc, opts = {}) {
   const cands = [best, ...dictCands, ...catCands.slice().sort((a, b) => compScore(a) - compScore(b))]
     .filter((c, i, a) => c && a.findIndex(x => x.kode === c.kode) === i);
   const conf = candConf(best);
-  let status, reason, reasonKey, ukuranDefault = false;
+  let status, reason, reasonKey, ukuranDefault = false, audit = false, reasonKeyAsli = null;
 
   if (!best) {
     status = 'UNKNOWN';
@@ -277,10 +288,14 @@ export async function resolveItem(item, rpc, opts = {}) {
     reasonKey = attrBeda(best) ? 'riwayat_berulang_beda_spek' : 'riwayat_kuat';
     reason = `Pernah dipakai persis${best.freq ? ` (${best.freq}×)` : ''}, ${ukuranDefault ? 'ukuran default (yang paling sering dipakai)' : 'ukuran cocok'}.`;
     if (attrBeda(best)) reason += ` Spesifikasi tampak beda (${best.diff.join('; ')}), tapi staff sudah berulang kali memutuskan begini.`;
+    if (auditPick(item.nama || item.deskripsi || '', opts.auditRate)) {
+      audit = true; reasonKeyAsli = reasonKey; status = 'REVIEW'; reasonKey = 'audit_acak';
+      reason = `Pemeriksaan acak: usulan ini sebenarnya sudah yakin (${reason}) — dicek untuk mengukur akurasi. Cukup konfirmasi bila benar.`;
+    }
   }
 
   return {
-    status, reason, reason_key: reasonKey, confidence: conf, ukuran_default: ukuranDefault,
+    status, reason, reason_key: reasonKey, reason_key_asli: reasonKeyAsli, audit, confidence: conf, ukuran_default: ukuranDefault,
     family: best ? familyOf(best.kode, best.isSet) : null,
     kode_produk: best ? best.kode : null,
     nama_produk: best ? best.nama : null,

@@ -352,3 +352,31 @@ test('katalog: kecocokan penuh (score > 0) menang atas yang sebagian, dan yang s
   assert.equal(h.kode_produk, 'G1');
   assert.ok(!h.candidates.some(c => c.kode === 'J1'));
 });
+
+// ───────────── Audit acak: AUTO yang tidak pernah diperiksa tidak boleh dianggap akurat ─────────────
+import { auditPick } from './resolver.js';
+
+const rpcAuto = () => mockRpc({ 'NEEDLEHOLDER 14.5 CM': [row({ istilah: 'NEEDLEHOLDER 14.5 CM', kode_produk: 'RB20-KE001-B014-U07', nama_produk: 'NEEDLEHOLDER, 14.5 CM', ukuran: 'cocok', freq: 10 })] });
+
+test('audit: rate 0 -> AUTO tetap AUTO; rate 1 -> REVIEW audit_acak, usulan sama, alasan asli dicatat', async () => {
+  const [it] = parseRequestText('NEEDLEHOLDER 14.5 CM\t1').items;
+  const a = await resolveItem(it, rpcAuto());
+  assert.equal(a.status, 'AUTO'); assert.equal(a.audit, false);
+  const b = await resolveItem(it, rpcAuto(), { auditRate: 1 });
+  assert.equal(b.status, 'REVIEW'); assert.equal(b.audit, true);
+  assert.equal(b.reason_key, 'audit_acak'); assert.equal(b.reason_key_asli, 'riwayat_kuat');
+  assert.equal(b.kode_produk, a.kode_produk);
+});
+
+test('audit: deterministik per teks, dan sebarannya mendekati rate', () => {
+  assert.equal(auditPick('klem bengkok 14 cm', 0.3), auditPick('  KLEM BENGKOK 14 CM ', 0.3));
+  let n = 0; for (let i = 0; i < 2000; i++) if (auditPick('item ' + i, 0.2)) n++;
+  assert.ok(n > 300 && n < 500, 'dapat ' + n);
+  assert.equal(auditPick('x', 0), false);
+});
+
+test('audit: hanya menyentuh AUTO — REVIEW dan UNKNOWN tidak ikut', async () => {
+  const [it] = parseRequestText('SESUATU YANG ANEH 99CM\t1').items;
+  const h = await resolveItem(it, mockRpc({}), { auditRate: 1 });
+  assert.equal(h.audit, false); assert.notEqual(h.reason_key, 'audit_acak');
+});

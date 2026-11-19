@@ -428,6 +428,11 @@ const AM_PREF_KEY = 'pnm.konversian.automatch';
 let amAutoOn = true;       // switch di footer layar Periksa item: jalankan Auto-Match otomatis setelah simpan
 try { amAutoOn = localStorage.getItem(AM_PREF_KEY) !== '0'; } catch (_) { /* storage diblok: default aktif */ }
 const amBarEl = document.getElementById('kb-am-bar');
+// Persentase usulan AUTO yang sengaja diminta diperiksa staff (lihat auditPick di resolver.js). Selama log masih sedikit,
+// naikkan (0.15–0.3); setelah presisi AUTO stabil (view automatch_presisi_audit) turunkan ke 0.05.
+const AM_AUDIT_RATE = 0.15;
+// Cara keputusan diambil, ikut dicatat di log: 'bulk' = tombol "Pakai N yang cocok" (tidak ada yang memeriksa satu per satu), 'satuan' = lainnya.
+let amVia = 'satuan';
 let amReason = 'all';      // sub-filter alasan, hanya berlaku saat filter = REVIEW ('all' | reason_key)
 let amLexicon = null;      // kamus token hasil riwayat (get_kamus_token); null = belum dimuat. Gagal muat = kosong, mesin tetap jalan.
 async function getAmLexicon(force) {
@@ -440,6 +445,16 @@ async function getAmLexicon(force) {
 function amLog(rows) {
   if (!rows.length) return;
   try { Promise.resolve(S.rpc('log_automatch', { p_rows: rows })).catch(() => {}); } catch (_) { /* abaikan */ }
+}
+// Kolom tambahan log (migrasi log_automatch_v2.sql): cukup untuk menghitung akurasi per jalur, top-5, dan audit.
+function amLogExtra(h) {
+  const c0 = (h.candidates && h.candidates[0]) || {};
+  return {
+    audit: !!h.audit, reason_asli: h.reason_key_asli || null, src: c0.src || null, tier: c0.tier || null,
+    family: h.family || null, ukuran_default: !!h.ukuran_default,
+    cands: (h.candidates || []).slice(0, 5).map(c => c.kode),
+    lexicon_hits: (h.lexicon_hits || []).map(x => x.token)
+  };
 }
 function amLogDecision(itemId, status, links) {
   const m = amMap.get(itemId);
@@ -455,7 +470,8 @@ function amLogDecision(itemId, status, links) {
   amLog([{
     permintaan_id: S.checklistPermintaanId != null ? String(S.checklistPermintaanId) : null, item_id: String(itemId),
     raw_text: it ? it.raw_text : '', usulan_kode: m.kode || null, status: m.hasil.status, confidence: m.hasil.confidence,
-    reason_key: m.hasil.reason_key || null, diff: m.hasil.diff || [], keputusan_kode: kodes.join(',') || null, aksi
+    reason_key: m.hasil.reason_key || null, diff: m.hasil.diff || [], keputusan_kode: kodes.join(',') || null, aksi,
+    ...amLogExtra(m.hasil), via: amVia
   }]);
 }
 
@@ -553,7 +569,8 @@ const AM_EMPTY_HTML = '<div class="kb-section-empty">Tidak ada item dengan hasil
 // Label pendek alasan REVIEW (chip sub-filter dan tag di baris). Urutan = urutan tampil.
 const AM_WHY = {
   atribut_beda: 'spek beda', ukuran_seri: 'ukuran seri', ukuran_dekat: 'ukuran dekat', ukuran_beda: 'ukuran beda',
-  ambigu: 'ambigu', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang'
+  ambigu: 'ambigu', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang',
+  audit_acak: 'pemeriksaan acak'
 };
 const AM_UKURAN_TXT = { cocok: 'ukuran cocok', dekat: 'ukuran dekat (≤ 0,5 cm)', beda: 'ukuran beda', varian: 'varian lain' };
 
@@ -700,6 +717,7 @@ async function runWorkspaceAutoMatch(onlyIds) {
     const lexicon = await getAmLexicon(false);
     const res = await resolveItems(items, S.rpc, {
       lexicon,
+      auditRate: AM_AUDIT_RATE,
       firmCheck: S.modeSwastaOutput ? null : firmCheck,
       onProgress: (n, t) => { amProgress = { n, t }; renderAmBar(); }
     });
@@ -710,7 +728,8 @@ async function runWorkspaceAutoMatch(onlyIds) {
     amLog(res.map((r, k) => ({
       permintaan_id: S.checklistPermintaanId != null ? String(S.checklistPermintaanId) : null, item_id: String(targets[k].id),
       raw_text: targets[k].raw_text, usulan_kode: r.hasil.kode_produk || null, status: r.hasil.status, confidence: r.hasil.confidence,
-      reason_key: r.hasil.reason_key || null, diff: r.hasil.diff || [], keputusan_kode: null, aksi: 'diusulkan'
+      reason_key: r.hasil.reason_key || null, diff: r.hasil.diff || [], keputusan_kode: null, aksi: 'diusulkan',
+      ...amLogExtra(r.hasil), via: null
     })));
     amFilter = 'all'; amReason = 'all';
     const sm = summarize(res);
@@ -733,6 +752,7 @@ async function applyAllAuto() {
     .filter(x => x.m && x.m.hasil.status === 'AUTO' && x.m.kode);
   if (!picks.length) return;
   amApplying = true;
+  amVia = 'bulk';
   renderAmBar();
   let ok = 0, gagal = 0;
   try {
@@ -747,6 +767,7 @@ async function applyAllAuto() {
     }
   } finally {
     amApplying = false;
+    amVia = 'satuan';
     // Lanjutkan kerja di yang masih perlu keputusan: buka baris "Cek dulu" pertama (kalau ada).
     const next = S.checklistItems.find(it => { const x = amFor(it); return x && x.hasil.status === 'REVIEW'; });
     S.checklistExpandedId = next ? next.id : null;
