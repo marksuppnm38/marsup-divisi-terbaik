@@ -2892,3 +2892,4 @@
 .pr-modal-box .pr-am-use{flex:none;display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;white-space:nowrap}
 .pr-modal-box .pr-review-row input.pr-am-chk{width:16px;height:16px;padding:0;margin:0;accent-color:var(--accent)}
 .pr-modal-box .pr-am-summary{margin:0 0 var(--sp-3);padding:var(--sp-2) var(--sp-3);font-size:12.5px;line-height:1.5;color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)}
+.pr-modal-box .pr-am-txt small.pr-am-blk{color:var(--warning)}

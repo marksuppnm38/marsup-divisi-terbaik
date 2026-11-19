@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { parseRequestText, parseLine, extractSpecs, parseCompetitorSet, resolveItem, resolveItems, summarize, isAmbiguous } from './index.js';
+import { parseRequestText, parseLine, extractSpecs, parseCompetitorSet, resolveItem, resolveItems, summarize, isAmbiguous, notUsableReason, makeFirmCheck } from './index.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const fx = (n) => readFileSync(join(dir, 'fixtures', n), 'utf8');
@@ -248,4 +248,86 @@ test('sumber kompetitor memakai keputusan yang sama: riwayat kuat + ukuran cocok
   assert.equal((await resolveItem(kelly, kuat, { queries: kelly.queries })).status, 'AUTO');
   const katalog = mockRpc({}, { 'KELLY ARTERY FORCEPS 14 CM': [{ kode_produk: 'K-9', nama_produk: 'FORCEPS, KELLY, 14 CM', tipe: 'INSTRUMENT' }] });
   assert.equal((await resolveItem(kelly, katalog, { queries: kelly.queries })).status, 'REVIEW');
+});
+
+// ───────────── FILTER FIRM / SINGLE USE ─────────────
+// Salinan kecil S.parseLinkV6 (index.js) — resolver sengaja tidak mengimpor kode DOM.
+const parseLinkV6 = (raw) => {
+  const t = String(raw == null ? '' : raw).replace(/[\u00a0\u200b-\u200d\ufeff]/g, ' ').trim();
+  if (!t) return { state: 'kosong' };
+  if (/^https?:\/\/\S+$/i.test(t)) return { state: 'bersih' };
+  const m = t.match(/https?:\/\/\S+/i);
+  return m ? { state: 'catatan' } : { state: 'invalid' };
+};
+const U = 'https://katalog.inaproc.id/x';
+const fcFrom = (blok) => async (ks) => new Map(ks.filter(k => blok[k]).map(k => [k, blok[k]]));
+
+test('notUsableReason: URL bersih/kosong/"-" boleh; URL+catatan = belum firm; SINGLE USE (dengan/tanpa URL) diblokir', () => {
+  assert.equal(notUsableReason(U, parseLinkV6), null);
+  assert.equal(notUsableReason('', parseLinkV6), null);
+  assert.equal(notUsableReason(null, parseLinkV6), null);
+  assert.equal(notUsableReason('-', parseLinkV6), null);
+  assert.match(notUsableReason(U + ' UPDATE HARGA', parseLinkV6), /belum firm/);
+  assert.equal(notUsableReason('SINGLE USE', parseLinkV6), 'SINGLE USE');          // tanpa URL: isProdukFirm biasa meloloskan ini
+  assert.equal(notUsableReason(U + ' single-use', parseLinkV6), 'SINGLE USE');
+});
+
+test('makeFirmCheck: batch + cache, kode hilang = tidak ada di katalog, error tidak meracuni cache', async () => {
+  let calls = 0, fail = false;
+  const fc = makeFirmCheck({
+    parseLinkV6, chunk: 2,
+    fetchRows: async (ks) => { calls++; if (fail) throw new Error('HTTP 500'); return ks.filter(k => k !== 'HILANG').map(k => ({ kode_produk: k, link_v6: k === 'SU' ? 'SINGLE USE' : U })); }
+  });
+  const bl = await fc(['A', 'SU', 'HILANG', 'A']);
+  assert.deepEqual([...bl.entries()], [['SU', 'SINGLE USE'], ['HILANG', 'tidak ada di katalog']]);
+  assert.equal(calls, 2);                       // 3 kode unik, chunk 2
+  await fc(['A', 'SU']); assert.equal(calls, 2); // dari cache
+  fail = true;
+  await assert.rejects(() => fc(['BARU']), /HTTP 500/);
+  fail = false;
+  assert.equal((await fc(['BARU'])).size, 0);    // diulang berhasil: tidak ada sisa error di cache
+});
+
+test('resolver+firm: kandidat teratas SINGLE USE dibuang, sisanya dinilai — tidak boleh AUTO (ada yang dibuang)', async () => {
+  const rpc = mockRpc({ 'GUNTING BENANG': [
+    row({ istilah: 'GUNTING BENANG', kode_produk: 'S-1', nama_produk: 'Gunting Benang Sekali Pakai', freq: 10 }),
+    row({ istilah: 'GUNTING BENANG', kode_produk: 'S-2', nama_produk: 'Gunting Benang', freq: 3 })] });
+  const [it] = parseRequestText('GUNTING BENANG\t5').items;
+  const h = await resolveItem(it, rpc, { firmCheck: fcFrom({ 'S-1': 'SINGLE USE' }) });
+  assert.equal(h.kode_produk, 'S-2');
+  assert.equal(h.status, 'REVIEW');
+  assert.deepEqual(h.blocked.map(b => [b.kode, b.alasan]), [['S-1', 'SINGLE USE']]);
+  assert.ok(!h.candidates.some(c => c.kode === 'S-1'));
+});
+
+test('resolver+firm: semua kandidat riwayat diblokir -> jatuh ke katalog (yang boleh dipakai), bukan berhenti', async () => {
+  const rpc = mockRpc(
+    { 'KLEM ARTERI': [row({ istilah: 'KLEM ARTERI', kode_produk: 'X-1', nama_produk: 'Klem Lama', freq: 9 })] },
+    { 'KLEM ARTERI': [{ kode_produk: 'K-9', nama_produk: 'Artery Forceps 14cm', tipe: 'INSTRUMENT' }] });
+  const [it] = parseRequestText('KLEM ARTERI\t2').items;
+  const h = await resolveItem(it, rpc, { firmCheck: fcFrom({ 'X-1': 'belum firm (link V6 ada catatan)' }) });
+  assert.equal(h.kode_produk, 'K-9'); assert.equal(h.status, 'REVIEW');
+  assert.equal(h.blocked.length, 1);
+});
+
+test('resolver+firm: semua yang cocok diblokir -> UNKNOWN dengan alasan jelas (bukan "tidak ada")', async () => {
+  const rpc = mockRpc({ 'BOR ORTHO': [row({ istilah: 'BOR ORTHO', kode_produk: 'RBP-KEO-1', nama_produk: 'Drill', freq: 4 })] });
+  const [it] = parseRequestText('BOR ORTHO\t1').items;
+  const h = await resolveItem(it, rpc, { firmCheck: fcFrom({ 'RBP-KEO-1': 'SINGLE USE' }) });
+  assert.equal(h.status, 'UNKNOWN'); assert.equal(h.kode_produk, null);
+  assert.match(h.reason, /RBP-KEO-1 \(SINGLE USE\)/); assert.doesNotMatch(h.reason, /Tidak ada di riwayat/);
+});
+
+test('resolver+firm: cek status gagal -> kandidat tetap tampil tapi TIDAK boleh AUTO (unverified)', async () => {
+  const rpc = mockRpc({ 'PINSET DURA': [row({ istilah: 'PINSET DURA', kode_produk: 'P-1', nama_produk: 'Dura Forceps', freq: 12 })] });
+  const [it] = parseRequestText('PINSET DURA\t5').items;
+  const h = await resolveItem(it, rpc, { firmCheck: async () => { throw new Error('HTTP 401'); } });
+  assert.equal(h.kode_produk, 'P-1'); assert.equal(h.status, 'REVIEW'); assert.equal(h.unverified, true);
+});
+
+test('resolver+firm: tanpa firmCheck (mode Swasta) perilaku lama tidak berubah; produk bersih tetap AUTO', async () => {
+  const rpc = mockRpc({ 'PINSET DURA': [row({ istilah: 'PINSET DURA', kode_produk: 'P-1', nama_produk: 'Dura Forceps', freq: 12 })] });
+  const [it] = parseRequestText('PINSET DURA\t5').items;
+  assert.equal((await resolveItem(it, rpc)).status, 'AUTO');
+  assert.equal((await resolveItem(it, rpc, { firmCheck: fcFrom({}) })).status, 'AUTO');
 });

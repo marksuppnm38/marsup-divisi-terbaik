@@ -113,13 +113,34 @@ export async function resolveItem(item, rpc, opts = {}) {
   let cands = [];
   let error = null;
 
+  // Filter produk yang tidak boleh dipakai (belum firm / SINGLE USE / sudah dihapus) — opts.firmCheck, lihat firm.js.
+  // Dipasang di SETIAP sumber kandidat sebelum dinilai, supaya produk terlarang tidak sempat jadi "terbaik"
+  // dan menghentikan pencarian (break di loop Dictionary) sebelum kandidat yang boleh dipakai ketemu.
+  const blocked = new Map();
+  let unverified = false;
+  const usable = async (list) => {
+    if (!opts.firmCheck || !list.length) return list;
+    try {
+      const bl = await opts.firmCheck(list.map(x => x.kode));
+      const keep = [];
+      list.forEach(x => {
+        if (bl.has(x.kode)) blocked.set(x.kode, { kode: x.kode, nama: x.nama, alasan: bl.get(x.kode) });
+        else keep.push(x);
+      });
+      return keep;
+    } catch (e) {
+      unverified = true; error = error || `Status firm gagal dicek: ${e.message}`;
+      return list; // jangan buang diam-diam; ditandai dan tidak boleh AUTO (lihat di bawah)
+    }
+  };
+
   // 1) Dictionary, per varian. Berhenti begitu ada kandidat dengan keyakinan 'kuat'.
   //    Hasil query berikutnya (lebih longgar) hanya menggantikan kalau keyakinannya LEBIH TINGGI —
   //    kalau sama atau lebih rendah, hasil dari query yang lebih spesifik dipertahankan.
   let bestRank = 0;
   for (const q of queries) {
     try {
-      const c = await viaDictionary(rpc, q);
+      const c = await usable(await viaDictionary(rpc, q));
       tried.push({ q, via: 'dictionary', n: c.length });
       if (c.length) {
         const rank = CONF_RANK[candConf(pickBestCand(c))] || 0;
@@ -133,7 +154,7 @@ export async function resolveItem(item, rpc, opts = {}) {
   if (!cands.length && opts.catalogFallback !== false) {
     for (const q of queries) {
       try {
-        const c = await viaCatalog(rpc, q, wantedCm);
+        const c = await usable(await viaCatalog(rpc, q, wantedCm));
         tried.push({ q, via: 'katalog', n: c.length });
         if (c.length) { cands = c; break; }
       } catch (e) { error = e.message; tried.push({ q, via: 'katalog', error: e.message }); }
@@ -146,7 +167,12 @@ export async function resolveItem(item, rpc, opts = {}) {
 
   if (!best) {
     status = 'UNKNOWN';
-    reason = error ? `Gagal mencari: ${error}` : 'Tidak ada di riwayat maupun katalog.';
+    if (blocked.size) {
+      const b = [...blocked.values()];
+      reason = `Produk yang cocok ada, tapi tidak boleh dipakai konversi: ${b.slice(0, 2).map(x => `${x.kode} (${x.alasan})`).join(', ')}${b.length > 2 ? `, +${b.length - 2} lagi` : ''}.`;
+    } else {
+      reason = error ? `Gagal mencari: ${error}` : 'Tidak ada di riwayat maupun katalog.';
+    }
   } else if (conf !== 'kuat') {
     status = 'REVIEW';
     reason = best.ukuran === 'beda' || best.ukuran === 'varian' ? 'Produk ketemu tapi ukurannya beda.'
@@ -157,6 +183,13 @@ export async function resolveItem(item, rpc, opts = {}) {
     reason = `Istilah ini pernah dipenuhi beberapa jenis produk berbeda tanpa yang dominan — pilih yang sesuai.`;
   } else if (best.ukuran === 'dekat') {
     status = 'REVIEW'; reason = 'Ukuran dekat tapi tidak persis (selisih ≤ 0,5 cm).';
+  } else if (unverified) {
+    status = 'REVIEW'; reason = 'Status firm / SINGLE USE belum bisa dicek — cek manual sebelum dipakai.';
+  } else if (blocked.size) {
+    // Ada produk lain untuk istilah ini yang dibuang (belum firm / SINGLE USE): yang tersisa belum tentu
+    // pengganti yang tepat, jadi jangan AUTO.
+    status = 'REVIEW';
+    reason = `Ada usulan lain yang dibuang (${[...blocked.values()].slice(0, 2).map(x => `${x.kode}: ${x.alasan}`).join(', ')}) — pastikan produk ini pengganti yang tepat.`;
   } else {
     status = 'AUTO';
     ukuranDefault = best.ukuran === 'tidak_diminta' && cands.some(c => c.kode !== best.kode && familyOf(c.kode, c.isSet) === familyOf(best.kode, best.isSet));
@@ -169,6 +202,7 @@ export async function resolveItem(item, rpc, opts = {}) {
     kode_produk: best ? best.kode : null,
     nama_produk: best ? best.nama : null,
     candidates: cands.slice(0, 5),
+    blocked: [...blocked.values()], unverified,
     tried
   };
 }

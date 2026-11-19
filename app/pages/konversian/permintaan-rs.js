@@ -2,7 +2,7 @@
 // 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
 // lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
 // di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
-import { resolveItems, summarize, extractSpecs, buildVariants } from './auto-konversi/index.js';
+import { resolveItems, summarize, extractSpecs, buildVariants, makeFirmCheck } from './auto-konversi/index.js';
 
 export function installPermintaanRs(S) {
 // ══════════════════════════════════════════
@@ -422,6 +422,19 @@ let reviewMatch = [];
 let amRunning = false;
 const AM_LABEL = { AUTO: 'Cocok', REVIEW: 'Cek dulu', UNKNOWN: 'Tidak ketemu' };
 
+// Filter usulan: produk belum firm (link V6 ada catatan) / SINGLE USE / sudah dihapus dibuang dari kandidat,
+// aturan sama dgn tombol "Pakai" (addSetKodeToClip menolak yang belum firm). Satu request produk?kode_produk=in.(…)
+// per 80 kode, di-cache per klik "Cocokkan otomatis". Mode Swasta (S.modeSwastaOutput) tidak difilter, sama seperti di tempat lain.
+const firmCheck = makeFirmCheck({
+  parseLinkV6: (v) => S.parseLinkV6(v),
+  fetchRows: async (kodes) => {
+    const inList = kodes.map(k => `"${String(k).replace(/"/g, '')}"`).join(',');
+    const res = await S.sesiFetch(`produk?kode_produk=in.(${encodeURIComponent(inList)})&select=kode_produk,link_v6`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+});
+
 function escapeHtmlAttr(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -449,16 +462,19 @@ function renderReviewRows() {
 function amRowHtml(m, idx) {
   if (!m) return '';
   const h = m.hasil;
-  const badge = `<span class="pr-am-badge pr-am-${h.status.toLowerCase()}">${AM_LABEL[h.status] || h.status}</span>`;
+  const diblokir = h.status === 'UNKNOWN' && h.blocked && h.blocked.length;
+  const badge = `<span class="pr-am-badge pr-am-${h.status.toLowerCase()}">${diblokir ? 'Tidak dipakai' : (AM_LABEL[h.status] || h.status)}</span>`;
   if (!h.kode_produk) {
     return `<div class="pr-am">${badge}<span class="pr-am-txt"><small>${escapeHtmlAttr(h.reason)}</small></span></div>`;
   }
+  const blk = (h.blocked && h.blocked.length)
+    ? `<small class="pr-am-blk">${h.blocked.length} usulan disembunyikan: ${h.blocked.slice(0, 2).map(b => escapeHtmlAttr(b.kode + ' — ' + b.alasan)).join('; ')}${h.blocked.length > 2 ? '; …' : ''}</small>` : '';
   const cands = (h.candidates || []).filter((c, i, a) => a.findIndex(x => x.kode === c.kode) === i);
   const pilih = cands.length > 1
     ? `<select class="pr-am-sel" data-idx="${idx}" aria-label="Pilih produk lain">${cands.map(c =>
         `<option value="${escapeHtmlAttr(c.kode)}"${c.kode === m.kode ? ' selected' : ''}>${escapeHtmlAttr(c.kode)} — ${escapeHtmlAttr(c.nama)}</option>`).join('')}</select>`
     : `<b>${escapeHtmlAttr(m.kode)}</b> — ${escapeHtmlAttr(m.nama)}`;
-  return `<div class="pr-am">${badge}<span class="pr-am-txt">${pilih}<small>${escapeHtmlAttr(h.reason)}</small></span>`
+  return `<div class="pr-am">${badge}<span class="pr-am-txt">${pilih}<small>${escapeHtmlAttr(h.reason)}</small>${blk}</span>`
     + `<label class="pr-am-use"><input type="checkbox" class="pr-am-chk" data-idx="${idx}"${m.pakai ? ' checked' : ''}/> Pakai</label></div>`;
 }
 
@@ -560,7 +576,9 @@ if (prAutoBtn) prAutoBtn.addEventListener('click', async () => {
       nama: reviewItems[i].raw_text, qty: reviewItems[i].qty,
       specs: extractSpecs(reviewItems[i].raw_text), variants: buildVariants(reviewItems[i].raw_text)
     }));
+    firmCheck.clear(); // link_v6 bisa berubah sejak klik terakhir — ambil ulang
     const res = await resolveItems(items, S.rpc, {
+      firmCheck: S.modeSwastaOutput ? null : firmCheck,
       onProgress: (n, t) => { prAutoBtn.textContent = `Mencocokkan ${n}/${t}…`; }
     });
     res.forEach((r, k) => {
