@@ -48,6 +48,7 @@ import { installOrphan } from './orphan.js';
 import { installKategori } from './kategori.js';
 import { createCopyKit } from './copy.js';
 import { createTableColumns } from './kolom-tabel.js';
+import { fetchKeluargaOptions, fetchKeluargaMap, fetchRowsByKeluarga, pesanKeluarga, urutKeluarga } from './keluarga.js';
 import { installKalkulatorHarga } from './kalkulator-harga.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
@@ -711,7 +712,12 @@ const BRAND_NONE = '__NONE__';
 // halaman AKD, karena semua dimensinya adalah properti produk (golongan, tipe,
 // is_active, status_inaproc, ketersediaan harga) — bukan properti AKD.
 let produkActiveFilters = []; // [{ dim, value, label }]
-let produkDistinct = { tipe: [], golongan: [], status_inaproc: [], brand: [] };
+let produkDistinct = { tipe: [], golongan: [], status_inaproc: [], brand: [], keluarga: [] };
+// Keluarga set (2026-11-20): nama dasar set tanpa nomor varian (MAYOR S. 2 -> MAYOR S). Sumber: view v_keluarga_set /
+// v_produk_keluarga (supabase/03_keluarga_set.sql). Opsi filter dimuat sekali saat dimensi dibuka (cache sessionStorage 30 menit),
+// filternya sendiri dikerjakan di jalur client (lihat loadProduk) karena RPC get_produk_list tidak mengenal keluarga.
+let produkKeluargaN = new Map(); // nama keluarga -> jumlah varian (label opsi filter)
+const keluargaAktif = () => produkActiveFilters.some(f => f.dim === 'keluarga');
 let produkVerifiedIdSet = null; // Set<produk_id> berbadge Verified (RPC get_verified_produk_ids, 1 baris jsonb)
 let produkVerifiedRows = null;  // cache baris produk berbadge (dipakai chip "Verified" — ~700 baris, cukup ditarik sekali)
 let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
@@ -722,6 +728,8 @@ const PRODUK_FILTER_DIMS = [
   { key: 'tipe', label: 'Tipe', icon: 'ti-category-2', dynamic: 'tipe', multi: true },
   { key: 'golongan', label: 'Golongan', icon: 'ti-tag', dynamic: 'golongan' },
   { key: 'brand', label: 'Brand', icon: 'ti-building-factory-2', dynamic: 'brand' },
+  // Keluarga set: pilih banyak keluarga sekaligus (ada ratusan, jadi ada kotak cari). Hanya menyaring SET.
+  { key: 'keluarga', label: 'Keluarga set', icon: 'ti-folders', dynamic: 'keluarga', multi: true, searchable: true },
   { key: 'is_active', label: 'Status Aktif', icon: 'ti-toggle-right', options: [
       { value: 'aktif', label: 'Aktif' },
       { value: 'nonaktif', label: 'Nonaktif' },
@@ -907,6 +915,47 @@ async function ensureVerifiedRows(){
     .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
   return produkVerifiedRows;
 }
+// ---- Keluarga set: opsi filter + keluarga per baris ----
+// Opsi (nama keluarga + jumlah varian) dimuat sekali dan di-cache 30 menit, sama pola loadProdukDistinctValues.
+// Gagal (mis. migrasi supabase/03_keluarga_set.sql belum dijalankan) TIDAK mengganggu halaman: dimensi Keluarga saja
+// yang kosong, dengan toast yang menjelaskan.
+let _keluargaOptInflight = null;
+async function ensureKeluargaOptions(){
+  if (produkDistinct.keluarga.length) return;
+  const apply = rows => {
+    produkDistinct.keluarga = rows.map(r => r.keluarga);
+    produkKeluargaN = new Map(rows.map(r => [r.keluarga, r.n]));
+  };
+  const cached = pwCacheGet('keluarga_opsi_v1', 30 * 60 * 1000);
+  if (cached && cached.fresh && Array.isArray(cached.data) && cached.data.length) { apply(cached.data); return; }
+  if (!_keluargaOptInflight) {
+    _keluargaOptInflight = (async () => {
+      const { rows, error } = await fetchKeluargaOptions(sb);
+      if (error) { showToast(pesanKeluarga(error), true); if (cached && Array.isArray(cached.data)) apply(cached.data); return; }
+      apply(rows);
+      pwCacheSet('keluarga_opsi_v1', rows);
+    })();
+  }
+  try { await _keluargaOptInflight; } finally { _keluargaOptInflight = null; }
+}
+// Isi row.keluarga untuk baris yang belum punya (jalur search / chip Verified: barisnya datang dari RPC lain yang tidak
+// membawa keluarga). Non-SET dapat '' supaya tidak ditanya ulang. false = gagal (toast sudah ditampilkan).
+async function attachKeluarga(rows){
+  const need = rows.filter(r => r.keluarga === undefined);
+  if (!need.length) return true;
+  const { map, error } = await fetchKeluargaMap(sb, need.map(r => r.id));
+  if (error) { showToast(pesanKeluarga(error), true); return false; }
+  need.forEach(r => { r.keluarga = map.get(r.id) || ''; });
+  return true;
+}
+let _keluargaNeedsToastAt = 0;
+function toastKeluargaNeeds(ok){
+  const msg = ok === false && colKit.needsError();
+  if (!msg || Date.now() - _keluargaNeedsToastAt < 15000) return; // sekali per 15 detik, jangan spam tiap ganti halaman
+  _keluargaNeedsToastAt = Date.now();
+  showToast(msg, true);
+}
+
 function invalidateProdukStackCache(){
   produkSearchDirty = true; // search lagi aktif? loadProduk berikutnya harus ambil ulang dari DB, bukan pakai hasil lama
   produkHargaIdSet = null;
@@ -967,6 +1016,7 @@ function produkRowMatchesFilter(row, filt){
     }
     case 'link_v6': return filt.value === 'ada' ? !!row.link_v6 : !row.link_v6;
     case 'stok': { const sk = produkStokCache.get(row.id); return !!sk && sk.status === filt.value; }
+    case 'keluarga': return (filt.values || [filt.value]).includes(row.keluarga); // row.keluarga diisi attachKeluarga() / view v_produk_keluarga
     default: return true;
   }
 }
@@ -1002,6 +1052,7 @@ const FILTER_COLS_DIM = {
   tipe: ['tipe'],
   golongan: ['golongan'],
   brand: ['brand'],
+  keluarga: ['keluarga'],
   is_active: ['aktif'],
   status_inaproc: ['status_inaproc', 'link'],
   harga: ['ekat', 'swasta', 'tahun'],
@@ -1081,6 +1132,7 @@ async function loadProduk(q, page){
     if (needsStok && !(await ensureStokForIds(produkSearchRawRows.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
     }
+    if (keluargaAktif()) await attachKeluarga(produkSearchRawRows); // search_produk_list tidak membawa keluarga
     const matcher = PRODUK_FILTERS[produkActiveFilter];
     let filtered = matcher ? produkSearchRawRows.filter(matcher) : produkSearchRawRows;
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
@@ -1098,6 +1150,25 @@ async function loadProduk(q, page){
     if (needsStok && !(await ensureStokForIds(all.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
     }
+    if (keluargaAktif()) await attachKeluarga(all);
+    produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
+    if (keluargaAktif()) filtered = [...filtered].sort(urutKeluarga); // dikelompokkan per keluarga, bukan per waktu ubah
+    produkCurrentFilteredFull = filtered;
+    total = filtered.length;
+    rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
+  } else if (keluargaAktif()) {
+    // Filter Keluarga set tanpa search. RPC get_produk_list tidak mengenal keluarga, jadi set di keluarga yang dipilih
+    // dimuat dari view v_produk_keluarga (belasan baris per keluarga, paling banyak beberapa ratus untuk banyak keluarga
+    // sekaligus), lalu chip status + filter lain dipasang di client dengan matcher yang sama dengan jalur search / Verified.
+    // Hasil sudah urut per keluarga lalu nomor varian, jadi MAYOR S., MAYOR S. 2, MAYOR S. 3 berkumpul.
+    const kf = produkActiveFilters.find(f => f.dim === 'keluarga');
+    const { rows: kRows, error: kErr } = await fetchRowsByKeluarga(sb, kf.values || [kf.value], PRODUK_LIST_COLUMNS + ', keluarga');
+    if (kErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">${escapeHtml(pesanKeluarga(kErr))}</td></tr>`; return; }
+    if (needsStok && !(await ensureStokForIds(kRows.map(r => r.id)))) {
+      showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
+    }
+    const matcher = PRODUK_FILTERS[produkActiveFilter];
+    let filtered = matcher ? kRows.filter(matcher) : kRows;
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
     produkCurrentFilteredFull = filtered;
     total = filtered.length;
@@ -1186,9 +1257,10 @@ async function loadProduk(q, page){
   // case (see ensureProdukHargaSet()'s comment above, get_produk_harga_ids
   // RPC) -- just never applied here. Reusing that same cached, RPC-backed
   // Set instead of a fresh row-limited query fixes it the same way.
-  const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id)), copyKit.loadExtra(rows.map(r => r.id)), colKit.loadNeeds(rows.map(r => r.id))]);
+  const [hargaExistIds, , , needsOk] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id)), copyKit.loadExtra(rows.map(r => r.id)), colKit.loadNeeds(rows.map(r => r.id))]);
   if (mySeq !== produkLoadSeq || !mountedContainer) return; // ada await lagi di atas: cek ulang
   produkHargaExistIds = hargaExistIds;
+  toastKeluargaNeeds(needsOk); // kolom Keluarga set gagal dimuat (mis. migrasi belum dijalankan) -> kolomnya kosong, user diberi tahu
 
   produkPageRows = rows;
   copyKit.setPage(rows);
@@ -1253,8 +1325,9 @@ async function applyProdukColumns(){
   colKit.renderHead();
   if (!produkPageRows.length) return; // lagi memuat / kosong / error: tidak ada baris untuk digambar ulang
   const ids = produkPageRows.map(r => r.id);
-  await Promise.all([colKit.loadNeeds(ids), copyKit.loadExtra(ids)]);
+  const [needsOk] = await Promise.all([colKit.loadNeeds(ids), copyKit.loadExtra(ids)]);
   if (!mountedContainer) return;
+  toastKeluargaNeeds(needsOk);
   paintProdukRows();
 }
 
@@ -1322,7 +1395,11 @@ function renderProdukFilterPopStep1(){
   </div>`;
   document.getElementById('produkAfpClose').addEventListener('click', (e) => { e.stopPropagation(); produkAddFilterPop.classList.remove('open'); });
   produkAddFilterPop.querySelectorAll('.afp-dim-btn').forEach(b => {
-    b.addEventListener('click', (e) => { e.stopPropagation(); renderProdukFilterPopStep2(b.dataset.dim); });
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (b.dataset.dim === 'keluarga') await ensureKeluargaOptions(); // ratusan opsi, dimuat sekali saat dimensi pertama kali dibuka
+      renderProdukFilterPopStep2(b.dataset.dim);
+    });
   });
 }
 function renderProdukFilterPopStep2(dimKey){
@@ -1331,6 +1408,8 @@ function renderProdukFilterPopStep2(dimKey){
   if (dim.dynamic) {
     options = (produkDistinct[dim.dynamic] || []).map(v => ({ value: v, label: v }));
     if (dim.key === 'brand') options = [...options, { value: BRAND_NONE, label: 'Tanpa brand' }]; // produk yang kolom brand-nya masih kosong
+    // Keluarga: label opsi memuat jumlah varian (MAYOR S (7)); `chip` = nama polos untuk label filter aktif
+    if (dim.key === 'keluarga') options = options.map(o => ({ value: o.value, label: `${o.value} (${produkKeluargaN.get(o.value) || 0})`, chip: o.value }));
     if (!options.length) options = [{ value: '', label: '(belum ada data terisi)' }];
   }
 
@@ -1349,6 +1428,7 @@ function renderProdukFilterPopStep2(dimKey){
           <div class="afp-subtitle">Bisa pilih lebih dari satu</div>
         </div>
       </div>
+      ${dim.searchable ? `<input type="search" class="afp-search" id="produkAfpSearch" placeholder="Cari ${escapeHtml(dim.label.toLowerCase())}…" aria-label="Cari ${escapeHtml(dim.label.toLowerCase())}" autocomplete="off"/>` : ''}
       <div class="afp-list">
         ${options.map(o => `<label class="afp-check-row${o.value === '' ? ' disabled' : ''}">
             <input type="checkbox" data-value="${escapeHtml(o.value)}" ${selected.has(o.value) ? 'checked' : ''} ${o.value === '' ? 'disabled' : ''}/>
@@ -1358,14 +1438,26 @@ function renderProdukFilterPopStep2(dimKey){
       <button class="afp-apply-btn" id="produkAfpApply">Terapkan</button>
     </div>`;
     document.getElementById('produkAfpBack').addEventListener('click', (e) => { e.stopPropagation(); renderProdukFilterPopStep1(); });
+    const afpSearch = document.getElementById('produkAfpSearch');
+    if (afpSearch) {
+      // Kotak cari: sembunyikan opsi yang tidak cocok. Opsi yang sudah dicentang tapi tersembunyi tetap ikut diterapkan.
+      afpSearch.addEventListener('click', (e) => e.stopPropagation());
+      afpSearch.addEventListener('input', () => {
+        const q = afpSearch.value.trim().toLowerCase();
+        produkAddFilterPop.querySelectorAll('.afp-check-row').forEach(r => { r.hidden = !!q && !r.textContent.toLowerCase().includes(q); });
+      });
+      afpSearch.focus();
+    }
     document.getElementById('produkAfpApply').addEventListener('click', (e) => {
       e.stopPropagation();
       const values = Array.from(produkAddFilterPop.querySelectorAll('input[type="checkbox"]:checked')).map(c => c.dataset.value);
       if (values.length === 0) {
         removeProdukFilter(dimKey);
       } else {
-        const labels = values.map(v => (options.find(o => o.value === v) || {}).label || v);
-        addProdukFilterMulti(dimKey, values, dim.label + ': ' + labels.join(', '));
+        const labels = values.map(v => { const o = options.find(x => x.value === v) || {}; return o.chip || o.label || v; });
+        // lebih dari 3 pilihan -> ringkas supaya chip filter tidak melebar ("MAYOR S, MINOR S, HECTING S +4 lainnya")
+        const ringkas = labels.length > 3 ? `${labels.slice(0, 3).join(', ')} +${labels.length - 3} lainnya` : labels.join(', ');
+        addProdukFilterMulti(dimKey, values, dim.label + ': ' + ringkas);
       }
       produkAddFilterPop.classList.remove('open');
     });
@@ -1409,7 +1501,7 @@ function removeProdukFilter(dim){
 }
 function renderProdukFilterChips(){
   const el = document.getElementById('produkFilterChips');
-  el.innerHTML = produkActiveFilters.map(f => `<span class="adv-filter-chip" data-dim="${f.dim}">${escapeHtml(f.label)}<button title="Hapus filter ini"><i class="ti ti-x"></i></button></span>`).join('');
+  el.innerHTML = produkActiveFilters.map(f => `<span class="adv-filter-chip" data-dim="${f.dim}" title="${escapeHtml(f.values ? f.values.join(', ') : f.label)}">${escapeHtml(f.label)}<button title="Hapus filter ini"><i class="ti ti-x"></i></button></span>`).join('');
   el.querySelectorAll('.adv-filter-chip button').forEach(btn => {
     btn.addEventListener('click', () => removeProdukFilter(btn.parentElement.dataset.dim));
   });
@@ -1421,9 +1513,10 @@ function renderProdukFilterChips(){
 // gak keduplikasi/berisiko divergen di 2 tempat.
 async function getRowsToExport(){
   let rowsToExport;
-  if (lastQuery.trim() || produkActiveFilter === 'verified') {
-    // Search aktif ATAU chip Verified -> hasil match sudah lengkap di produkSearchAllRows (RPC search
-    // gak paging), filter tambahan sudah diterapkan di client -> produkCurrentFilteredFull.
+  if (lastQuery.trim() || produkActiveFilter === 'verified' || keluargaAktif()) {
+    // Search aktif, chip Verified, ATAU filter Keluarga set -> hasil match sudah lengkap di client
+    // (RPC search gak paging; Verified & Keluarga dimuat penuh dari view), filter tambahan sudah
+    // diterapkan di client -> produkCurrentFilteredFull.
     rowsToExport = produkCurrentFilteredFull || [];
   } else {
     // Gak ada search -> tarik SEMUA baris yang cocok chip status + filter tambahan
@@ -1551,9 +1644,13 @@ async function exportTampilanIni(){
   const [okExtra, okStok, okNeeds] = await Promise.all([
     uses.has('extra') ? copyKit.loadExtra(ids) : true,
     uses.has('stok') ? ensureStokForIds(ids) : true,
-    uses.has('akdNama') ? colKit.loadNeeds(ids) : true,
+    (uses.has('akdNama') || uses.has('keluarga')) ? colKit.loadNeeds(ids) : true,
   ]);
-  if (!okExtra || !okNeeds) { showToast('Gagal mengambil harga / AKD — export dibatalkan', true); return; }
+  if (!okExtra || !okNeeds) {
+    // kolom Keluarga set kosong diam-diam di file yang akan di-paste ke sheet itu berbahaya -> batalkan, jelaskan alasannya
+    showToast(!okNeeds && colKit.needsError() ? colKit.needsError() + ' Export dibatalkan.' : 'Gagal mengambil harga / AKD — export dibatalkan', true);
+    return;
+  }
   if (!okStok) showToast('Status stok gagal dimuat', 'warning', { detail: 'Kolom stok dikosongkan. Cek apakah SQL migrasi stok sudah dijalankan.' });
 
   let skippedNoLink = 0, skippedNoHarga = 0;

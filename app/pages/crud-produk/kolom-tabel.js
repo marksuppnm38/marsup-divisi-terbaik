@@ -17,8 +17,11 @@
 //     dibaca langsung dari baris yang sudah dimuat loadProduk()
 //   - harga & No. AKD: cache milik copy.js (helpers.extraOf / helpers.akdNoOf), sudah dimuat sebelum render
 //   - stok: helpers.stokCell (cache stok index.js)
-//   - Nama AKD (deskripsi AKD): satu-satunya data baru, diambil modul ini sendiri HANYA kalau kolomnya tampil.
+//   - Nama AKD (deskripsi AKD) dan Keluarga set: data baru, diambil modul ini sendiri HANYA kalau kolomnya tampil.
+//     Keluarga set dibaca dari baris kalau sudah ada (jalur filter Keluarga memuat baris dari view v_produk_keluarga),
+//     kalau belum dari view yang sama per id halaman (lihat keluarga.js).
 import { parseLinkV6, sembunyikanAkdPlaceholder } from './ui-utils.js';
+import { fetchKeluargaMap, pesanKeluarga } from './keluarga.js';
 
 const LS_KEY = 'pnm_crud_produk_tbl_cols_v1';
 
@@ -54,6 +57,10 @@ export const TABLE_COLS = [
   { key: 'golongan', label: 'Golongan', td: 'tipe-cell',
     render: (p, c) => p.golongan ? `${esc(p.golongan)}${c.h.btn('golongan', 'Salin golongan')}` : '—',
     xl: [{ label: 'Golongan', w: 18, get: (p) => p.golongan }] },
+  // Keluarga set = nama dasar set tanpa nomor varian (MAYOR S. 2 -> MAYOR S). Hanya set yang punya keluarga.
+  { key: 'keluarga', label: 'Keluarga set', td: 'tipe-cell', needs: 'keluarga',
+    render: (p, c) => c.keluarga ? esc(c.keluarga) : '—',
+    xl: [{ id: 'keluarga', label: 'Keluarga Set', w: 34, get: (p, c) => c.keluarga || null }] },
   { key: 'brand', label: 'Brand', td: 'tipe-cell',
     render: (p) => p.brand ? esc(p.brand) : '—',
     xl: [{ label: 'Brand', fmt: 'center', w: 12, get: (p) => p.brand || null }] },
@@ -118,6 +125,8 @@ export const COL_PRESETS = [
   // siapJual: preset ini menyalakan/mematikan opsi export "Hanya produk siap jual" (lihat index.js onPreset)
   { id: 'harga', label: 'Pricelist sales', cols: ['nama', 'brand', 'ekat', 'swasta', 'tahun', 'verified', 'link'], siapJual: true },
   { id: 'akd', label: 'AKD lengkap', cols: ['nama', 'no_akd', 'nama_akd', 'status_inaproc'] },
+  // Per keluarga: set dikelompokkan ke keluarganya (MAYOR S. 2 -> MAYOR S), cocok dikombinasi filter Brand / Link V6 lalu paste ke sheet DB
+  { id: 'keluarga', label: 'Per keluarga', cols: ['nama', 'keluarga', 'brand', 'link', 'aktif'], siapJual: false },
   { id: 'audit', label: 'Audit lengkap', cols: ['nama', 'tipe', 'golongan', 'brand', 'no_akd', 'akd', 'status_inaproc', 'ekat', 'swasta', 'tahun', 'stok', 'nilai', 'aktif', 'link', 'verified'], siapJual: false },
 ];
 const DEFAULT_VISIBLE = COL_PRESETS[0].cols;
@@ -166,6 +175,8 @@ export function createTableColumns(opts) {
   const { sb, headRow, tableBody, helpers: h, onChange, onPreset } = opts;
   let state = readState();
   const akdNamaCache = new Map(); // produk_id -> [{ no, nama }]
+  const keluargaCache = new Map(); // produk_id -> keluarga (hanya set yang punya)
+  let needsError = '';             // pesan kegagalan muat terakhir (kolom tambahan), '' = baik-baik saja
   let pop = null, popAnchor = null, popCleanup = null;
 
   const save = () => {
@@ -205,12 +216,23 @@ export function createTableColumns(opts) {
     return true;
   }
 
+  // ---------- data tambahan: Keluarga set ----------
+  // Baris yang sudah membawa `keluarga` (jalur filter Keluarga) tidak ditanya ulang.
+  async function loadKeluarga(ids) {
+    const need = ids.filter((id) => !keluargaCache.has(id));
+    if (!need.length) return true;
+    const { map, error } = await fetchKeluargaMap(sb, need);
+    if (error) { console.warn('kolom-tabel: gagal ambil Keluarga set', error.message || error); needsError = pesanKeluarga(error); return false; }
+    need.forEach((id) => keluargaCache.set(id, map.get(id) || '')); // '' = bukan set / tidak punya keluarga, jangan ditanya lagi
+    return true;
+  }
+
   // ---------- gambar tabel ----------
   function renderHead() {
     headRow.innerHTML = visibleCols().map((c) => `<th${c.num ? ' class="num"' : ''}>${esc(c.label)}</th>`).join('')
       + '<th class="c-act"><span class="sr-only">Salin</span></th>';
   }
-  const ctxOf = (p, extraCtx) => ({ h, x: h.extraOf(p.id), akdNama: akdNamaCache.get(p.id) || [], flags: '', flagsText: '', ...extraCtx });
+  const ctxOf = (p, extraCtx) => ({ h, x: h.extraOf(p.id), akdNama: akdNamaCache.get(p.id) || [], keluarga: p.keluarga || keluargaCache.get(p.id) || '', flags: '', flagsText: '', ...extraCtx });
   const xcols = () => visibleCols().flatMap((c) => (c.xl || []).map((x) => ({ ...x, key: c.key })));
   function rowHtml(p, extraCtx) {
     const ctx = ctxOf(p, extraCtx);
@@ -327,11 +349,16 @@ export function createTableColumns(opts) {
     rowHtml,
     /** jumlah kolom di tabel (kolom data + kolom aksi) -> untuk colspan baris status */
     span() { return visibleCols().length + 1; },
-    /** Muat data tambahan yang dibutuhkan kolom yang sedang tampil (saat ini: Nama AKD). */
+    /** Muat data tambahan yang dibutuhkan kolom yang sedang tampil (Nama AKD, Keluarga set). false = ada yang gagal (lihat needsError()). */
     async loadNeeds(ids) {
-      if (visibleCols().some((c) => c.needs === 'akdNama')) return loadAkdNama(ids);
-      return true;
+      const cols = visibleCols(), jobs = [];
+      needsError = '';
+      if (cols.some((c) => c.needs === 'akdNama')) jobs.push(loadAkdNama(ids));
+      if (cols.some((c) => c.needs === 'keluarga')) jobs.push(loadKeluarga(ids));
+      return (await Promise.all(jobs)).every(Boolean);
     },
+    /** Pesan kegagalan muat kolom tambahan terakhir (khusus Keluarga set; '' kalau tidak ada / bukan dari Keluarga). */
+    needsError() { return needsError; },
     // ---------- export: "yang terlihat di tabel = yang diexport" ----------
     /** Kolom Excel sesuai kolom yang tampil sekarang (urutan sama): [{ id?, key, label, fmt, w, f? }]. */
     exportColumns() { return xcols().map(({ get, ...rest }) => rest); },
@@ -357,10 +384,10 @@ export function createTableColumns(opts) {
     /** Key kolom yang muncul karena filter aktif (bukan pilihan user) -> ditandai di panel Export. */
     autoKeys() { return autoExtra(); },
     /** Dibuang tiap loadProduk() supaya Nama AKD tidak basi setelah edit. */
-    invalidate() { akdNamaCache.clear(); },
+    invalidate() { akdNamaCache.clear(); keluargaCache.clear(); },
     /** Kolom yang diminta filter aktif (urutan = urutan tampil). Panggil sebelum renderHead(). */
     setAuto(keys) { autoKeys = (keys || []).filter((x) => MOVABLE.includes(x)); },
     openPicker,
-    destroy() { closePicker(); tableBody.removeEventListener('click', onLinkClick, true); akdNamaCache.clear(); },
+    destroy() { closePicker(); tableBody.removeEventListener('click', onLinkClick, true); akdNamaCache.clear(); keluargaCache.clear(); },
   };
 }

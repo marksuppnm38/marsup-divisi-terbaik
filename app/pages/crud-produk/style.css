@@ -1049,3 +1049,7 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 #katSetBody tr:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #viewKategori #katKelompok th.c-act,#viewKategori #katKelompok td.c-act{width:1%;padding-left:6px;white-space:nowrap;text-align:right}
 @media (hover:none),(max-width:760px){#katSetBody .sel-input{left:9px;opacity:1}}
+/* ---- Filter "Keluarga set": kotak cari di popover Tambah Filter (ratusan opsi) ---- */
+.afp-search{width:100%;box-sizing:border-box;margin:0 0 8px;padding:8px 11px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font:inherit;font-size:13px}
+.afp-search:focus{outline:2px solid var(--accent);outline-offset:-1px;background:var(--surface)}
+.afp-check-row[hidden]{display:none}
