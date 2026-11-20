@@ -727,6 +727,7 @@ export const CRUD_PRODUK_MARKUP = `
               </select>
             </div>
             <div class="f full"><label for="f_nama_produk">Nama produk</label><input type="text" id="f_nama_produk"/></div>
+            <div class="f"><label for="f_brand">Brand</label><input type="text" id="f_brand" list="f_brand_list" autocomplete="off" spellcheck="false" placeholder="mis. ROBUST"/><datalist id="f_brand_list"></datalist></div>
           </div>
         </section>
 

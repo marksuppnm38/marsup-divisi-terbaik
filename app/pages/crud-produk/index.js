@@ -700,14 +700,18 @@ function applyProdukFilterToQuery(query, filterKey){
   return query;
 }
 
-const PRODUK_LIST_COLUMNS = 'id, kode_produk, nama_produk, tipe, golongan, is_active, status_akd, status_inaproc, link_v6, updated_at';
+const PRODUK_LIST_COLUMNS = 'id, kode_produk, nama_produk, tipe, golongan, brand, is_active, status_akd, status_inaproc, link_v6, updated_at';
+
+// Brand (2026-11-20): produk.brand text nullable, nilai disimpan UPPERCASE (ROBUST, ADLER, ...). Filter "Tanpa brand"
+// memakai nilai khusus ini (harus sama dengan yang dikenali RPC get_produk_list -> sql/02_brand_produk.sql).
+const BRAND_NONE = '__NONE__';
 
 // ---- Filter bertumpuk ("+ Tambah Filter") — di-AND-kan di atas chip status di atas
 // DAN di atas search yang lagi aktif. Sengaja dipasang di sini (Produk), bukan di
 // halaman AKD, karena semua dimensinya adalah properti produk (golongan, tipe,
 // is_active, status_inaproc, ketersediaan harga) — bukan properti AKD.
 let produkActiveFilters = []; // [{ dim, value, label }]
-let produkDistinct = { tipe: [], golongan: [], status_inaproc: [] };
+let produkDistinct = { tipe: [], golongan: [], status_inaproc: [], brand: [] };
 let produkVerifiedIdSet = null; // Set<produk_id> berbadge Verified (RPC get_verified_produk_ids, 1 baris jsonb)
 let produkVerifiedRows = null;  // cache baris produk berbadge (dipakai chip "Verified" — ~700 baris, cukup ditarik sekali)
 let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
@@ -717,6 +721,7 @@ let produkCurrentFilteredFull = null; // hasil filter lengkap dari jalur search 
 const PRODUK_FILTER_DIMS = [
   { key: 'tipe', label: 'Tipe', icon: 'ti-category-2', dynamic: 'tipe', multi: true },
   { key: 'golongan', label: 'Golongan', icon: 'ti-tag', dynamic: 'golongan' },
+  { key: 'brand', label: 'Brand', icon: 'ti-building-factory-2', dynamic: 'brand' },
   { key: 'is_active', label: 'Status Aktif', icon: 'ti-toggle-right', options: [
       { value: 'aktif', label: 'Aktif' },
       { value: 'nonaktif', label: 'Nonaktif' },
@@ -812,6 +817,14 @@ function pwCacheSet(key, data){
   try { sessionStorage.setItem(PW_CACHE_PREFIX + key, JSON.stringify({ t: Date.now(), d: data })); } catch (e) {}
 }
 
+// Datalist brand di form Edit Produk: saran dari brand yang sudah ada, supaya ketikan gak melenceng
+// ("Adler" vs "ADLER" vs "Adler "). Disimpan UPPERCASE di saveProdukInner.
+function syncBrandDatalist(){
+  const dl = document.getElementById('f_brand_list');
+  if (!dl) return;
+  dl.innerHTML = (produkDistinct.brand || []).map(b => `<option value="${escapeHtml(b)}"></option>`).join('');
+}
+
 let _distinctInflight = null;
 async function loadProdukDistinctValues(){
   // DISTINCT dihitung penuh di Postgres (tanpa limit baris). Hasilnya di-cache 30 menit
@@ -820,8 +833,10 @@ async function loadProdukDistinctValues(){
     produkDistinct.tipe = data?.tipe || [];
     produkDistinct.golongan = data?.golongan || [];
     produkDistinct.status_inaproc = data?.status_inaproc || [];
+    produkDistinct.brand = data?.brand || [];
+    syncBrandDatalist();
   };
-  const cached = pwCacheGet('distinct_filters', 30 * 60 * 1000);
+  const cached = pwCacheGet('distinct_filters_v2', 30 * 60 * 1000);
   if (cached) { applyData(cached.data); if (cached.fresh) return; }
   if (_distinctInflight) return _distinctInflight;
   _distinctInflight = (async () => {
@@ -832,7 +847,7 @@ async function loadProdukDistinctValues(){
       return;
     }
     applyData(data);
-    pwCacheSet('distinct_filters', data);
+    pwCacheSet('distinct_filters_v2', data);
   })();
   try { await _distinctInflight; } finally { _distinctInflight = null; }
 }
@@ -943,6 +958,7 @@ function produkRowMatchesFilter(row, filt){
   switch (filt.dim) {
     case 'tipe': return filt.values ? filt.values.includes(row.tipe) : row.tipe === filt.value;
     case 'golongan': return row.golongan === filt.value;
+    case 'brand': return filt.value === BRAND_NONE ? !String(row.brand || '').trim() : String(row.brand || '').trim().toUpperCase() === filt.value;
     case 'is_active': return filt.value === 'aktif' ? !!row.is_active : !row.is_active;
     case 'status_inaproc': return row.status_inaproc === filt.value;
     case 'harga': {
@@ -968,6 +984,7 @@ function buildProdukDimParams(){
     else if (f.dim === 'status_inaproc') params.p_status_inaproc = f.value;
     else if (f.dim === 'harga') params.p_harga = f.value;
     else if (f.dim === 'link_v6') params.p_link_v6 = f.value;
+    else if (f.dim === 'brand') params.p_brand = f.value; // sama kayak p_stok: sengaja tanpa default null, RPC lama (sebelum SQL brand) gak kenal p_brand
     else if (f.dim === 'stok') params.p_stok = f.value; // sengaja gak ada default null: RPC lama (sebelum SQL migrasi) gak kenal p_stok
   });
   return params;
@@ -984,6 +1001,7 @@ const FILTER_COLS_CHIP = {
 const FILTER_COLS_DIM = {
   tipe: ['tipe'],
   golongan: ['golongan'],
+  brand: ['brand'],
   is_active: ['aktif'],
   status_inaproc: ['status_inaproc', 'link'],
   harga: ['ekat', 'swasta', 'tahun'],
@@ -1186,7 +1204,7 @@ async function loadProduk(q, page){
       ${copyKit.moreBtnCard(p)}
       <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</div>
       <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</div>
-      <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}</span>${sealHtml(p.status_akd, p.id)}</div>
+      <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}${p.brand ? ' · ' + escapeHtml(p.brand) : ''}</span>${sealHtml(p.status_akd, p.id)}</div>
       <div class="pc-foot">${stokPillHtml(p.id)}${flagsHtml}</div>
     `;
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
@@ -1312,6 +1330,7 @@ function renderProdukFilterPopStep2(dimKey){
   let options = dim.options;
   if (dim.dynamic) {
     options = (produkDistinct[dim.dynamic] || []).map(v => ({ value: v, label: v }));
+    if (dim.key === 'brand') options = [...options, { value: BRAND_NONE, label: 'Tanpa brand' }]; // produk yang kolom brand-nya masih kosong
     if (!options.length) options = [{ value: '', label: '(belum ada data terisi)' }];
   }
 
@@ -2101,7 +2120,7 @@ function resetForm(){
   if (staleSetNote) staleSetNote.remove(); // sisa dari openEdit produk SET sebelumnya
   document.querySelectorAll('.prod-tab.hidden-for-set').forEach(b => b.classList.remove('hidden-for-set'));
   document.getElementById('inaprocIndikator').style.display = 'none';
-  ['f_kode_asli','f_kode_produk','f_nama_produk','f_no_akd','f_masa_berlaku','f_golongan',
+  ['f_kode_asli','f_kode_produk','f_nama_produk','f_brand','f_no_akd','f_masa_berlaku','f_golongan',
    'f_kode_kfa','f_kode_cangkang','f_nama_cangkang','f_berat_gram','f_link_v6',
    'f_spesifikasi','m_deskripsi_vendor','m_family'
   ].forEach(id => document.getElementById(id).value = '');
@@ -2198,6 +2217,7 @@ async function openEdit(produkId){
   document.getElementById('f_kode_produk').value = p.kode_produk || '';
   document.getElementById('f_nama_produk').value = p.nama_produk || '';
   document.getElementById('f_tipe').value = p.tipe || '';
+  document.getElementById('f_brand').value = p.brand || '';
   document.getElementById('f_no_akd').value = p.no_akd || '';
   document.getElementById('f_masa_berlaku').value = p.masa_berlaku || '';
   document.getElementById('f_golongan').value = p.golongan || '';
@@ -2732,6 +2752,7 @@ async function saveProdukInner(session){
     kode_produk: kodeProduk,
     nama_produk: document.getElementById('f_nama_produk').value || null,
     tipe,
+    brand: document.getElementById('f_brand').value.trim().replace(/\s+/g, ' ').toUpperCase() || null, // selalu UPPERCASE biar filter & pill gak pecah (Adler/ADLER)
     // kode_kfa/kode_cangkang/nama_cangkang SENGAJA tidak dikirim dari sini --
     // field itu read-only di Info Dasar, satu-satunya jalur tulis yang sah
     // adalah modal KFA Management (tabel produk_kfa). Trigger DB yang nyinkron
@@ -2751,6 +2772,11 @@ async function saveProdukInner(session){
   }
   if (result.error) { showToast('Gagal simpan produk: ' + result.error.message, true); return false; }
 
+  if (payload.brand && !produkDistinct.brand.includes(payload.brand)) { // brand baru: langsung muncul di saran & filter tanpa nunggu cache 30 menit
+    produkDistinct.brand = [...produkDistinct.brand, payload.brand].sort();
+    syncBrandDatalist();
+    try { sessionStorage.removeItem(PW_CACHE_PREFIX + 'distinct_filters_v2'); } catch (e) { /* abaikan */ }
+  }
   showToast(currentProdukId ? 'Produk diperbarui' : 'Produk ditambahkan');
   modalDirty = false; // data form sekarang sudah sama persis dengan yang di database
   currentProdukId = result.data.id;

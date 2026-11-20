@@ -37,6 +37,7 @@ export const COPY_FIELDS = [
   { key: 'nama', label: 'Nama produk', menu: true, def: true, get: (p) => p.nama_produk },
   { key: 'tipe', label: 'Tipe', menu: true, def: true, get: (p) => p.tipe },
   { key: 'golongan', label: 'Golongan', menu: true, def: true, get: (p) => p.golongan },
+  { key: 'brand', label: 'Brand', menu: true, get: (p) => p.brand || '' },
   { key: 'akd', label: 'No. AKD', menu: true, def: true, needs: 'extra', get: (p, c) => (c.x ? c.x.akd.join(', ') : (p.no_akd || '')) },
   { key: 'status_akd', label: 'Status AKD', get: (p, c) => c.seal(p.status_akd) },
   { key: 'status_inaproc', label: 'Status INAPROC', get: (p) => p.status_inaproc },

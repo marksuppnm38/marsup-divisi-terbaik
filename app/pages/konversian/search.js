@@ -45,6 +45,63 @@ function renderSkeletons(count) {
   }).join('');
 }
 
+// ---- BRAND (2026-11-20) ----
+// Kolom produk.brand (text, nullable: ROBUST / ADLER / kosong). RPC pencarian TIDAK mengembalikannya, jadi
+// diambil terpisah lewat 1 query ringan ke tabel produk (per 150 kode), lalu di-cache per kode_produk di
+// browser (hasil pencarian yang berulang gak nembak DB lagi). Pill brand dibentuk dari brand yang MUNCUL di
+// hasil pencarian sekarang (bukan daftar tetap), jadi brand baru otomatis ikut tanpa ubah kode.
+// Filter dipasang di runSearch (sejajar dengan Verified), jadi paginasi/sort/keyboard tetap konsisten.
+S.selectedBrand = null;   // nilai UPPERCASE, null = semua brand
+S.brandCounts = null;     // Map<brand, jumlah> dari hasil SEBELUM filter brand
+const brandCache = new Map(); // kode_produk -> brand UPPERCASE ('' = produk memang tanpa brand)
+function brandLabel(b) { return b ? b.charAt(0) + b.slice(1).toLowerCase() : ''; }
+async function enrichBrand(rows) {
+  const need = [...new Set((rows || []).map(r => r.kode_produk).filter(k => k && !brandCache.has(k)))];
+  for (let i = 0; i < need.length; i += 150) {
+    const chunk = need.slice(i, i + 150);
+    try {
+      const inList = chunk.map(k => `"${String(k).replace(/"/g, '')}"`).join(',');
+      const res = await S.sesiFetch(`produk?kode_produk=in.(${inList})&select=kode_produk,brand`);
+      if (!res.ok) continue; // gagal: JANGAN dicatat sebagai "tanpa brand", coba lagi di pencarian berikutnya
+      const got = await res.json();
+      got.forEach(x => brandCache.set(x.kode_produk, String(x.brand || '').trim().toUpperCase()));
+      chunk.forEach(k => { if (!brandCache.has(k)) brandCache.set(k, ''); });
+    } catch (e) { /* brand cuma pelengkap tampilan, jangan blokir pencarian */ }
+  }
+  (rows || []).forEach(r => { if (brandCache.has(r.kode_produk)) r.brand = brandCache.get(r.kode_produk); });
+}
+S.enrichBrand = enrichBrand;
+function countBrand(rows) {
+  const m = new Map();
+  (rows || []).forEach(r => { if (r.brand) m.set(r.brand, (m.get(r.brand) || 0) + 1); });
+  return m;
+}
+function renderBrandPills() {
+  const box = document.getElementById('brand-pills');
+  if (!box) return;
+  const sel = S.selectedBrand;
+  const list = S.brandCounts ? [...S.brandCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])) : [];
+  if (sel && !list.some(([b]) => b === sel)) list.push([sel, S.brandCounts ? 0 : null]);
+  // Satu brand saja di hasil & tidak ada yang dipilih = pill gak ada gunanya, jangan menuh-menuhin baris filter
+  if (list.length < 2 && !sel) { box.innerHTML = ''; return; }
+  box.innerHTML = '<span class="brand-sep" aria-hidden="true"></span>' + list.map(([b, n]) =>
+    `<button type="button" class="toggle-btn brand-btn${b === sel ? ' on' : ''}" data-brand="${S.escapeHtmlAttr(b)}" aria-pressed="${b === sel}" title="${b === sel ? 'Klik lagi untuk tampilkan semua brand' : 'Hanya brand ' + S.escapeHtmlAttr(brandLabel(b))}">${S.escapeHtmlAttr(brandLabel(b))}${n == null ? '' : `<span class="brand-n">${n}</span>`}</button>`
+  ).join('');
+}
+(function wireBrandPills() {
+  const box = document.getElementById('brand-pills');
+  if (!box) return;
+  box.addEventListener('click', (e) => {
+    const btn = e.target.closest('.brand-btn');
+    if (!btn) return;
+    const b = btn.dataset.brand;
+    S.selectedBrand = (S.selectedBrand === b) ? null : b;
+    renderBrandPills();
+    S.currentPage = 1;
+    if (S.searchInput.value.trim()) runSearch({ reuse: true }); // pakai hasil RPC yang sama, brand dari cache
+  });
+})();
+
 // SEARCH
 let searchSeq = 0;
 // Baris meta di atas hasil: "N produk ditemukan (M produk belum firm disembunyikan) [Tampilkan]".
@@ -114,6 +171,9 @@ async function mergeDictHits(q, args, dataRaw, mySeq) {
   }
   let freshOk = S.filterFirm(fresh, S.modeSwasta);
   if (S.onlyVerified) freshOk = freshOk.filter(S.isVerified);
+  await enrichBrand(freshOk); // brand hasil Dictionary (maks 10 baris, 1 query kecil)
+  if (mySeq !== searchSeq) return;
+  if (S.selectedBrand) freshOk = freshOk.filter(r => r.brand === S.selectedBrand);
   if (!flagged.length && !freshOk.length) return;
   freshOk.forEach(r => { r.stok_pending = true; });
   // Kalau pencarian biasa SUDAH punya kecocokan penuh (score >= 80 = semua kata ketemu; kecocokan sebagian
@@ -246,6 +306,32 @@ async function runSearch(opts) {
     if (mySeq !== searchSeq) return;
     if (fix) { S.corrected = { from: qInput, to: fix }; return runSearch({ qOverride: fix }); }
   }
+  // BRAND: kalau semua brand sudah ada di cache (atau ada brand yang dipilih) tunggu — tanpa network kalau cache penuh.
+  // Kalau belum dan gak ada filter brand, hasil tetap tampil duluan; brand menyusul bareng badge stok (lihat bawah).
+  if (data && data.length) {
+    if (S.selectedBrand || data.every(r => brandCache.has(r.kode_produk))) {
+      await enrichBrand(data);
+      if (mySeq !== searchSeq) return;
+      S.brandCounts = countBrand(data);
+      if (S.selectedBrand) {
+        const sebelum = data.length;
+        data = data.filter(r => r.brand === S.selectedBrand);
+        hiddenNote += ` (${sebelum - data.length} brand lain disembunyikan)`;
+        if (!data.length) {
+          renderBrandPills();
+          S.emptyEl.style.display = 'block';
+          setSearchMeta(`Tidak ada hasil brand ${brandLabel(S.selectedBrand)} untuk "${qInput}"`, notFirmCount, showingNotFirm, ` (${sebelum} produk brand lain disembunyikan — klik pill brand untuk menampilkan semua)`);
+          delete S.metaEl.dataset.nav; S.acBox.style.display = 'none';
+          return;
+        }
+      }
+    } else {
+      S.brandCounts = null;
+    }
+  } else {
+    S.brandCounts = null;
+  }
+  renderBrandPills();
   if (!data || !data.length) { S.emptyEl.style.display='block'; setSearchMeta('Tidak ada hasil untuk "'+qInput+'"', notFirmCount, showingNotFirm, hiddenNote); delete S.metaEl.dataset.nav; S.acBox.style.display='none'; return; }
   S.lastResults = data;
   // PERF: dulu di sini `await enrichResultsWithStok()` DULU baru render, jadi tiap pencarian
@@ -296,7 +382,13 @@ async function runSearch(opts) {
   // "Stok: -" (sama kayak dulu kalau fetch stok gagal) dan tombol Tambah dibuka lagi — gak nyangkut.
   const STOK_TIMEOUT_MS = 5000;
   let timedOut = false;
-  const enrich = Promise.resolve(S.enrichResultsWithStok(data)).catch(() => { /* stok cuma nice-to-have */ });
+  const needBrandLater = !S.selectedBrand && !data.every(r => brandCache.has(r.kode_produk)); // brand menyusul bareng stok
+  const enrich = Promise.all([
+    Promise.resolve(S.enrichResultsWithStok(data)).catch(() => { /* stok cuma nice-to-have */ }),
+    needBrandLater ? enrichBrand(data) : null
+  ]).then(() => {
+    if (needBrandLater && mySeq === searchSeq) { S.brandCounts = countBrand(data); renderBrandPills(); }
+  });
   const timer = new Promise(res => setTimeout(() => { timedOut = true; res(); }, STOK_TIMEOUT_MS));
   const refreshAfterStok = () => {
     const kbdIdx = S.kbdCardIdx ?? -1;
@@ -439,6 +531,7 @@ function renderResults(data) {
           <span class="mi mi-kode" title="Kode produk"><i class="ti ti-barcode"></i><span>${kode||'—'}</span></span>
           ${r.no_akd?`<span class="mi" title="No. AKD"><i class="ti ti-certificate"></i><span>${noAkdEsc}</span></span>`:''}
           ${r.kode_kfa?`<span class="mi" title="Kode KFA"><i class="ti ti-tag"></i><span>${kodeKfaEsc}</span></span>`:''}
+          ${r.brand?`<span class="mi mi-brand" title="Brand"><i class="ti ti-building-factory-2"></i><span>${S.escapeHtmlAttr(brandLabel(r.brand))}</span></span>`:''}
           ${stokBadge}
         </div>
         <div class="rcard-tools">
@@ -657,6 +750,7 @@ function reset() {
   S.hintEl.style.display = 'block';
   S.errEl.style.display = 'none';
   S.acBox.style.display = 'none';
+  S.brandCounts = null; renderBrandPills(); // gak ada pencarian = gak ada daftar brand (pilihan brand tetap diingat)
 }
 
 // EVENTS

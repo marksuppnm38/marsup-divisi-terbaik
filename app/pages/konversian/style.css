@@ -3082,3 +3082,13 @@
 #app-root .kb-am-chips .kb-filter-chip[data-key="REVIEW"]::before{background:var(--warning)}
 #app-root .kb-am-chips .kb-filter-chip[data-key="AUTO"]::before{background:var(--success)}
 #app-root .kb-am-why{margin-right:6px}
+
+/* ── Pill Brand (Cari Produk) — dibentuk dari brand yang muncul di hasil. display:contents = pill ikut mengalir
+      di baris .filters (nowrap + scroll di laptop kecil, wrap di bawah) tanpa pembungkus tambahan. ── */
+#app-root .brand-pills{display:contents}
+#app-root .brand-pills .brand-sep{flex:0 0 1px;align-self:center;height:14px;margin:0 2px;background:var(--border-strong)}
+#app-root .filters .brand-btn{gap:6px}
+#app-root .filters .brand-btn .brand-n{font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--text-muted);opacity:.9}
+#app-root .filters .brand-btn.on .brand-n{color:inherit;opacity:.8}
+#app-root .filters .brand-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#app-root #results .rcard-meta .mi-brand span{font-weight:600}

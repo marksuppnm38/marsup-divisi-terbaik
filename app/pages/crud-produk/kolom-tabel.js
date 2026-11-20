@@ -54,6 +54,9 @@ export const TABLE_COLS = [
   { key: 'golongan', label: 'Golongan', td: 'tipe-cell',
     render: (p, c) => p.golongan ? `${esc(p.golongan)}${c.h.btn('golongan', 'Salin golongan')}` : '—',
     xl: [{ label: 'Golongan', w: 18, get: (p) => p.golongan }] },
+  { key: 'brand', label: 'Brand', td: 'tipe-cell',
+    render: (p) => p.brand ? esc(p.brand) : '—',
+    xl: [{ label: 'Brand', fmt: 'center', w: 12, get: (p) => p.brand || null }] },
   { key: 'akd', label: 'AKD', td: 'akd-cell',
     render: (p, c) => `${c.h.seal(p)}${c.h.akdNoOf(p.id).length ? c.h.btn('akd', 'Salin No. AKD') : ''}`,
     xl: [{ label: 'Status AKD', fmt: 'status', w: 15, get: (p, c) => c.h.sealLabel(p.status_akd) }] },
@@ -113,9 +116,9 @@ const MOVABLE = TABLE_COLS.filter((c) => !c.locked).map((c) => c.key);
 export const COL_PRESETS = [
   { id: 'standar', label: 'Standar', cols: ['nama', 'tipe', 'akd', 'stok', 'flags'] },
   // siapJual: preset ini menyalakan/mematikan opsi export "Hanya produk siap jual" (lihat index.js onPreset)
-  { id: 'harga', label: 'Pricelist sales', cols: ['nama', 'ekat', 'swasta', 'tahun', 'verified', 'link'], siapJual: true },
+  { id: 'harga', label: 'Pricelist sales', cols: ['nama', 'brand', 'ekat', 'swasta', 'tahun', 'verified', 'link'], siapJual: true },
   { id: 'akd', label: 'AKD lengkap', cols: ['nama', 'no_akd', 'nama_akd', 'status_inaproc'] },
-  { id: 'audit', label: 'Audit lengkap', cols: ['nama', 'tipe', 'golongan', 'no_akd', 'akd', 'status_inaproc', 'ekat', 'swasta', 'tahun', 'stok', 'nilai', 'aktif', 'link', 'verified'], siapJual: false },
+  { id: 'audit', label: 'Audit lengkap', cols: ['nama', 'tipe', 'golongan', 'brand', 'no_akd', 'akd', 'status_inaproc', 'ekat', 'swasta', 'tahun', 'stok', 'nilai', 'aktif', 'link', 'verified'], siapJual: false },
 ];
 const DEFAULT_VISIBLE = COL_PRESETS[0].cols;
 

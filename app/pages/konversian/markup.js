@@ -130,6 +130,7 @@ export const KONVERSIAN_MARKUP = `
           <button class="toggle-btn" id="takd"><i class="ti ti-certificate"></i> AKD</button>
           <button class="toggle-btn" id="tverif" title="Hanya produk Verified (centang biru INAPROC)"><i class="ti ti-rosette-discount-check-filled" style="color:#1d9bf0"></i> Verified</button>
           <button class="toggle-btn" id="tswasta"><i class="ti ti-building-store"></i> Harga Swasta</button>
+          <span id="brand-pills" class="brand-pills" role="group" aria-label="Filter brand"></span>
         </div>
       </div>
     </div>
