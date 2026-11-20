@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { parseRequestText, parseLine, extractSpecs, parseCompetitorSet, resolveItem, resolveItems, summarize, isAmbiguous, notUsableReason, makeFirmCheck } from './index.js';
+import { parseRequestText, parseLine, extractSpecs, parseCompetitorSet, resolveItem, resolveItems, summarize, isAmbiguous, assessProduk, makeFirmCheck } from './index.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const fx = (n) => readFileSync(join(dir, 'fixtures', n), 'utf8');
@@ -241,6 +241,19 @@ test('keluarga berbeda tanpa dominan tetap REVIEW; SET beda kode = produk beda (
     { istilah: 'MINOR', src: 'riwayat', kode: 'RB999-KE921-B99-U93', freq: 7, isSet: true }], { istilah: 'MINOR', kode: 'RB999-KE921-B99-U12', isSet: true }));
 });
 
+test('permintaan umum (SET MINOR): satu SET unggul ≥2× dari runner-up -> bukan ambigu, AUTO; yang lain jadi alternatif', async () => {
+  const mk = (kode, freq) => row({ istilah: 'SET MINOR', kode_produk: kode, nama_produk: 'Minor Set ' + kode, freq, is_set: true });
+  const rpc = mockRpc({ 'SET MINOR': [mk('RB999-KE921-B99-U12', 11), mk('RB999-KE921-B99-U103', 4), mk('RB999-KE921-B99-U407', 3)] });
+  const [it] = parseRequestText('SET MINOR\t2').items;
+  const h = await resolveItem(it, rpc);
+  assert.equal(h.status, 'AUTO'); assert.equal(h.kode_produk, 'RB999-KE921-B99-U12');
+  assert.ok(h.candidates.length >= 3);                      // alternatif tetap tampil
+  // 10× vs 8× tetap ambigu (tidak unggul 2×)
+  assert.ok(isAmbiguous([
+    { istilah: 'M', src: 'riwayat', kode: 'RB999-KE921-B99-U12', freq: 10, isSet: true },
+    { istilah: 'M', src: 'riwayat', kode: 'RB999-KE921-B99-U93', freq: 8, isSet: true }], { istilah: 'M', kode: 'RB999-KE921-B99-U12', isSet: true }));
+});
+
 test('sumber kompetitor memakai keputusan yang sama: riwayat kuat + ukuran cocok -> AUTO; hanya katalog -> REVIEW', async () => {
   const set = parseCompetitorSet(fx('falcon-appendectomy-hernia.txt'));
   const kelly = set.items.find(i => i.kode_kompetitor === '08-125-14');
@@ -260,27 +273,37 @@ const parseLinkV6 = (raw) => {
   return m ? { state: 'catatan' } : { state: 'invalid' };
 };
 const U = 'https://katalog.inaproc.id/x';
-const fcFrom = (blok) => async (ks) => new Map(ks.filter(k => blok[k]).map(k => [k, blok[k]]));
+// blok: kode -> 'ALASAN KERAS' (string) | ['kurang', ...] (bisa diperbaiki). Bentuk Map sama dengan hasil makeFirmCheck.
+const fcFrom = (blok) => async (ks) => new Map(ks.filter(k => blok[k]).map(k => [k, Array.isArray(blok[k]) ? { keras: null, kurang: blok[k] } : { keras: blok[k], kurang: [] }]));
+const AKD = ['AKD 20401012345'];
 
-test('notUsableReason: URL bersih/kosong/"-" boleh; URL+catatan = belum firm; SINGLE USE (dengan/tanpa URL) diblokir', () => {
-  assert.equal(notUsableReason(U, parseLinkV6), null);
-  assert.equal(notUsableReason('', parseLinkV6), null);
-  assert.equal(notUsableReason(null, parseLinkV6), null);
-  assert.equal(notUsableReason('-', parseLinkV6), null);
-  assert.match(notUsableReason(U + ' UPDATE HARGA', parseLinkV6), /belum firm/);
-  assert.equal(notUsableReason('SINGLE USE', parseLinkV6), 'SINGLE USE');          // tanpa URL: isProdukFirm biasa meloloskan ini
-  assert.equal(notUsableReason(U + ' single-use', parseLinkV6), 'SINGLE USE');
+test('assessProduk: SINGLE USE = KERAS; belum firm / link kosong / tanpa AKD = BISA DIPERBAIKI; lengkap = OK', () => {
+  const ok = assessProduk({ link_v6: U, akd: AKD }, parseLinkV6);
+  assert.deepEqual(ok, { keras: null, kurang: [] });
+  assert.deepEqual(assessProduk({ link_v6: 'SINGLE USE', akd: AKD }, parseLinkV6), { keras: 'SINGLE USE', kurang: [] }); // tanpa URL pun keras
+  assert.equal(assessProduk({ link_v6: U + ' single-use', akd: AKD }, parseLinkV6).keras, 'SINGLE USE');
+  assert.equal(assessProduk({ link_v6: U + ' UPDATE HARGA', akd: AKD }, parseLinkV6).keras, null);
+  assert.match(assessProduk({ link_v6: U + ' UPDATE HARGA', akd: AKD }, parseLinkV6).kurang[0], /belum firm/);
+  assert.deepEqual(assessProduk({ link_v6: '', akd: AKD }, parseLinkV6).kurang, ['link V6 belum dibuat']);
+  assert.deepEqual(assessProduk({ link_v6: U, akd: [] }, parseLinkV6).kurang, ['AKD belum ada']);
+  assert.deepEqual(assessProduk({ link_v6: U, akd: ['TIDAK ADA'] }, parseLinkV6).kurang, ['AKD belum ada']);   // placeholder = tidak punya AKD
+  assert.deepEqual(assessProduk({ link_v6: U, akd: ['TIDAK ADA', 'AKD 1'] }, parseLinkV6).kurang, []);        // ada AKD asli → placeholder diabaikan
+  assert.deepEqual(assessProduk({ link_v6: '', akd: [] }, parseLinkV6).kurang, ['link V6 belum dibuat', 'AKD belum ada']);
+  assert.deepEqual(assessProduk({ link_v6: U }, parseLinkV6).kurang, ['AKD belum bisa dicek']);                // gagal tertutup
 });
 
-test('makeFirmCheck: batch + cache, kode hilang = tidak ada di katalog, error tidak meracuni cache', async () => {
+test('makeFirmCheck: hanya yang TIDAK OK masuk Map; batch + cache; kode hilang = keras; error tidak meracuni cache', async () => {
   let calls = 0, fail = false;
   const fc = makeFirmCheck({
     parseLinkV6, chunk: 2,
-    fetchRows: async (ks) => { calls++; if (fail) throw new Error('HTTP 500'); return ks.filter(k => k !== 'HILANG').map(k => ({ kode_produk: k, link_v6: k === 'SU' ? 'SINGLE USE' : U })); }
+    fetchRows: async (ks) => { calls++; if (fail) throw new Error('HTTP 500'); return ks.filter(k => k !== 'HILANG').map(k => ({ kode_produk: k, link_v6: k === 'SU' ? 'SINGLE USE' : U, akd: k === 'NOAKD' ? [] : AKD })); }
   });
-  const bl = await fc(['A', 'SU', 'HILANG', 'A']);
-  assert.deepEqual([...bl.entries()], [['SU', 'SINGLE USE'], ['HILANG', 'tidak ada di katalog']]);
-  assert.equal(calls, 2);                       // 3 kode unik, chunk 2
+  const bl = await fc(['A', 'SU', 'HILANG', 'NOAKD', 'A']);
+  assert.deepEqual([...bl.entries()], [
+    ['SU', { keras: 'SINGLE USE', kurang: [] }],
+    ['HILANG', { keras: 'tidak ada di katalog', kurang: [] }],
+    ['NOAKD', { keras: null, kurang: ['AKD belum ada'] }]]);
+  assert.equal(calls, 2);                       // 4 kode unik, chunk 2
   await fc(['A', 'SU']); assert.equal(calls, 2); // dari cache
   fail = true;
   await assert.rejects(() => fc(['BARU']), /HTTP 500/);
@@ -323,6 +346,33 @@ test('resolver+firm: cek status gagal -> kandidat tetap tampil tapi TIDAK boleh 
   const [it] = parseRequestText('PINSET DURA\t5').items;
   const h = await resolveItem(it, rpc, { firmCheck: async () => { throw new Error('HTTP 401'); } });
   assert.equal(h.kode_produk, 'P-1'); assert.equal(h.status, 'REVIEW'); assert.equal(h.unverified, true);
+});
+
+test('resolver+siap: cocok KUAT tapi belum siap -> TETAP jadi usulan, REVIEW belum_siap (bukan AUTO, bukan hilang) + daftar kurang', async () => {
+  const rpc = mockRpc({ 'PINSET DURA': [row({ istilah: 'PINSET DURA', kode_produk: 'P-1', nama_produk: 'Dura Forceps', freq: 12 })] });
+  const [it] = parseRequestText('PINSET DURA\t5').items;
+  const h = await resolveItem(it, rpc, { firmCheck: fcFrom({ 'P-1': ['AKD belum ada', 'link V6 belum dibuat'] }) });
+  assert.equal(h.kode_produk, 'P-1');                 // tidak dibuang
+  assert.equal(h.status, 'REVIEW'); assert.equal(h.reason_key, 'belum_siap');
+  assert.deepEqual(h.siap, { ok: false, kurang: ['AKD belum ada', 'link V6 belum dibuat'] });
+  assert.match(h.reason, /AKD belum ada, link V6 belum dibuat/);
+  assert.equal(h.blocked.length, 0);                  // bukan blokir keras
+  assert.deepEqual(h.candidates[0].siap.kurang, ['AKD belum ada', 'link V6 belum dibuat']); // kartu usulan bisa menampilkannya
+});
+
+test('resolver+siap: cocok kuat + siap tetap AUTO; keras dibuang sementara yang belum-siap tetap tampil sebagai kandidat', async () => {
+  const rpc = mockRpc({ 'PINSET DURA': [row({ istilah: 'PINSET DURA', kode_produk: 'P-1', nama_produk: 'Dura Forceps', freq: 12 })] });
+  const [it] = parseRequestText('PINSET DURA\t5').items;
+  const h = await resolveItem(it, rpc, { firmCheck: fcFrom({}) });
+  assert.equal(h.status, 'AUTO'); assert.deepEqual(h.siap, { ok: true, kurang: [] });
+  const rpc2 = mockRpc({ 'GUNTING BENANG': [
+    row({ istilah: 'GUNTING BENANG', kode_produk: 'S-1', nama_produk: 'Gunting Benang Sekali Pakai', freq: 10 }),
+    row({ istilah: 'GUNTING BENANG', kode_produk: 'S-2', nama_produk: 'Gunting Benang', freq: 3 })] });
+  const [it2] = parseRequestText('GUNTING BENANG\t5').items;
+  const h2 = await resolveItem(it2, rpc2, { firmCheck: fcFrom({ 'S-1': 'SINGLE USE', 'S-2': ['AKD belum ada'] }) });
+  assert.deepEqual(h2.blocked.map(b => b.kode), ['S-1']);          // keras: dibuang
+  assert.ok(h2.candidates.some(c => c.kode === 'S-2' && !c.siap.ok)); // belum siap: tetap kandidat
+  assert.notEqual(h2.status, 'AUTO');
 });
 
 test('resolver+firm: tanpa firmCheck (mode Swasta) perilaku lama tidak berubah; produk bersih tetap AUTO', async () => {

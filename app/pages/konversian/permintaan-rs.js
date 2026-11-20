@@ -476,16 +476,24 @@ function amLogDecision(itemId, status, links) {
   }]);
 }
 
-// Filter usulan: produk belum firm (link V6 ada catatan) / SINGLE USE / sudah dihapus dibuang dari kandidat,
-// aturan sama dgn tombol "Pakai" (addSetKodeToClip menolak yang belum firm). Satu request produk?kode_produk=in.(…)
-// per 80 kode, di-cache per klik "Cocokkan otomatis". Mode Swasta (S.modeSwastaOutput) tidak difilter, sama seperti di tempat lain.
+// Kesiapan jual usulan (lihat auto-konversi/firm.js): SINGLE USE / sudah dihapus = dibuang dari kandidat; belum firm /
+// link V6 belum ada / AKD belum ada = tetap jadi usulan tapi TIDAK di-AUTO. Dua request per 80 kode (produk, lalu produk_akd —
+// relasi produk_akd -> akd(no_akd) sama dgn crud-produk/index.js), di-cache per klik "Cocokkan otomatis".
+// Mode Swasta (S.modeSwastaOutput) tidak difilter, sama seperti di tempat lain.
 const firmCheck = makeFirmCheck({
   parseLinkV6: (v) => S.parseLinkV6(v),
   fetchRows: async (kodes) => {
     const inList = kodes.map(k => `"${String(k).replace(/"/g, '')}"`).join(',');
-    const res = await S.sesiFetch(`produk?kode_produk=in.(${encodeURIComponent(inList)})&select=kode_produk,link_v6`);
+    const res = await S.sesiFetch(`produk?kode_produk=in.(${encodeURIComponent(inList)})&select=id,kode_produk,link_v6`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    return res.json();
+    const rows = await res.json();
+    if (!rows.length) return rows;
+    // Error di sini sengaja DILEMPAR (bukan dianggap "tanpa AKD"): firmCheck menandainya belum terverifikasi, bukan salah vonis.
+    const resAkd = await S.sesiFetch(`produk_akd?produk_id=in.(${rows.map(r => r.id).join(',')})&select=produk_id,akd:akd_id(no_akd)`);
+    if (!resAkd.ok) throw new Error('HTTP ' + resAkd.status + ' (AKD)');
+    const akdBy = new Map();
+    (await resAkd.json()).forEach(l => { if (l.akd && l.akd.no_akd) { if (!akdBy.has(l.produk_id)) akdBy.set(l.produk_id, []); akdBy.get(l.produk_id).push(l.akd.no_akd); } });
+    return rows.map(r => ({ kode_produk: r.kode_produk, link_v6: r.link_v6, akd: akdBy.get(r.id) || [] }));
   }
 });
 
@@ -570,7 +578,7 @@ const AM_EMPTY_HTML = '<div class="kb-section-empty">Tidak ada item dengan hasil
 // Label pendek alasan REVIEW (chip sub-filter dan tag di baris). Urutan = urutan tampil.
 const AM_WHY = {
   atribut_beda: 'spek beda', ukuran_seri: 'ukuran seri', ukuran_dekat: 'ukuran dekat', ukuran_beda: 'ukuran beda',
-  ambigu: 'ambigu', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang',
+  ambigu: 'ambigu', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', belum_siap: 'perlu disiapkan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang',
   audit_acak: 'pemeriksaan acak'
 };
 const AM_UKURAN_TXT = { cocok: 'ukuran cocok', dekat: 'ukuran dekat (≤ 0,5 cm)', beda: 'ukuran beda', varian: 'varian lain' };
@@ -648,6 +656,14 @@ function amRequestHtml(item) {
   return tokensToHtml(bd.diminta, escapeHtmlAttr, 'Beda dari produk usulan');
 }
 
+// Klik "Pakai" MANUAL pada produk yang belum siap dijual: cuma peringatan (toast), TIDAK memblokir — staff kadang sengaja
+// memilihnya. Blokir keras (SINGLE USE / tidak ada di katalog) tidak sampai sini: produknya memang tidak jadi usulan.
+function amWarnBelumSiap(item, kode) {
+  const m = amFor(item);
+  const c = m && (m.hasil.candidates || []).find(x => x.kode === kode);
+  if (c && c.siap && !c.siap.ok) S.showToast('Produk ini belum siap dijual', 'warning', { detail: `${kode}: ${c.siap.kurang.join(', ')}.` });
+}
+
 function amUseBtnHtml(item, kode) {
   const k = escapeHtmlAttr(kode);
   return amInClip(kode)
@@ -662,11 +678,13 @@ function amCandRowHtml(item, c, top) {
   const asal = c.src === 'katalog' ? 'dari katalog' : (c.src === 'varian' ? 'ukuran lain' : (c.freq ? `${c.freq.toLocaleString('id-ID')}× dipakai` : ''));
   // Beda spesifikasi yang tidak tertangkap penanda di nama (mis. mm, fig): tetap disebut, jangan hilang diam-diam.
   const catatan = (c.diff || []).length && !bd.adaBeda ? `<span class="kb-cmp-note">${escapeHtmlAttr(c.diff.join('; '))}</span>` : '';
+  // Cocok tapi belum siap dijual (AKD/link V6/firm): sebut apa yang kurang. Teks dari data → escape.
+  const siapNote = c.siap && !c.siap.ok ? `<span class="kb-cmp-note">perlu disiapkan: ${escapeHtmlAttr(c.siap.kurang.join(', '))}</span>` : '';
   const ukTitle = AM_UKURAN_TXT[c.ukuran] ? ` title="${escapeHtmlAttr(AM_UKURAN_TXT[c.ukuran])}"` : '';
   return `<div class="kb-cmp-row${top ? ' top' : ''}">
     <div class="kb-cmp-info">
       <div class="kb-cmp-name">${top ? '<span class="kb-cmp-arrow" aria-hidden="true">→</span>' : ''}${tokensToHtml(bd.produk, escapeHtmlAttr, judul)}</div>
-      <div class="kb-cmp-sub"><span class="kb-cmp-kode"${ukTitle}>${escapeHtmlAttr(c.kode)}</span>${asal ? `<span>${escapeHtmlAttr(asal)}</span>` : ''}${catatan}</div>
+      <div class="kb-cmp-sub"><span class="kb-cmp-kode"${ukTitle}>${escapeHtmlAttr(c.kode)}</span>${asal ? `<span>${escapeHtmlAttr(asal)}</span>` : ''}${catatan}${siapNote}</div>
     </div>
     ${amUseBtnHtml(item, c.kode)}
   </div>`;
@@ -684,7 +702,7 @@ function amCandidatesHtml(item) {
   const lex = (h.lexicon_hits || []).map(x =>
     `<div class="kb-cmp-hint">“${escapeHtmlAttr(x.token)}” dikenali dari riwayat sebagai ${escapeHtmlAttr(x.kanonik)} (${x.n}×, ${Math.round(x.share * 100)}%).</div>`).join('');
   const blk = (h.blocked && h.blocked.length)
-    ? `<div class="kb-cmp-hint">${h.blocked.length} usulan disembunyikan: ${h.blocked.slice(0, 2).map(b => escapeHtmlAttr(b.kode + ' — ' + b.alasan)).join('; ')}${h.blocked.length > 2 ? '; …' : ''}</div>` : '';
+    ? `<div class="kb-cmp-hint">${h.blocked.length} usulan tidak bisa dipakai (dibuang): ${h.blocked.slice(0, 2).map(b => escapeHtmlAttr(b.kode + ' — ' + b.alasan)).join('; ')}${h.blocked.length > 2 ? '; …' : ''}</div>` : '';
   const altToggle = alts.length && top
     ? `<button type="button" class="kb-cmp-alt-toggle" data-action="toggle-alt" data-id="${item.id}" aria-expanded="${open}"><i class="ti ti-chevron-right" aria-hidden="true"></i>${alts.length} alternatif</button>` : '';
   const altRows = alts.length && (open || !top)
@@ -2181,6 +2199,7 @@ S.kbList.addEventListener('click', async (e) => {
     // tombolnya beneran ke-render dengan benar).
     const kode = el.dataset.kode;
     if (!S.clipboard.some(c => c.kode_produk === kode)) return;
+    amWarnBelumSiap(item, kode);
     btn.disabled = true;
     await S.markItemTerpenuhiWithSingleProduk(item, kode);
     return;
@@ -2195,6 +2214,7 @@ S.kbList.addEventListener('click', async (e) => {
     const kode = el.dataset.kode;
     await S.addSetKodeToClip(kode, btn);
     if (!S.clipboard.some(c => c.kode_produk === kode)) return; // gagal, addSetKodeToClip udah nampilin toast errornya
+    amWarnBelumSiap(item, kode);
     await S.markItemTerpenuhiWithSingleProduk(item, kode);
     return;
   }

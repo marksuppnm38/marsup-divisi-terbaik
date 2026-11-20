@@ -73,7 +73,10 @@ export function familyOf(kode, isSet) {
 
 // Ambigu = istilah teratas pernah dipenuhi >1 KELUARGA berbeda DAN tidak ada yang dominan.
 // Beda ukuran dalam keluarga yang sama BUKAN ambigu (keluarga pasti, ukuran diputuskan dari teks / default).
-// Dominan = ≥ 70% pemakaian dan minimal 3×.
+// Dominan = minimal 3× dipakai DAN (≥ 70% pemakaian ATAU ≥ 2× pemakaian keluarga runner-up).
+// Kenapa ada jalur "unggul 2×": permintaan umum ("SET MINOR") memang tidak menunjuk satu produk dan ini konversi, bukan
+// pencocokan 1:1 — kalau satu pilihan jelas paling sering dipakai (mis. 11× vs 4× vs 3×), pasang itu; yang lain tetap tampil
+// sebagai alternatif. Ambigu sungguhan (10× vs 8×) tetap REVIEW.
 export function isAmbiguous(cands, best) {
   if (!best) return false;
   const sameTerm = cands.filter(c => c.istilah === best.istilah && c.src === 'riwayat');
@@ -82,8 +85,10 @@ export function isAmbiguous(cands, best) {
   sameTerm.forEach(c => { const f = familyOf(c.kode, c.isSet); fam.set(f, (fam.get(f) || 0) + c.freq); });
   if (fam.size <= 1) return false;
   const total = [...fam.values()].reduce((a, b) => a + b, 0);
-  const top = fam.get(familyOf(best.kode, best.isSet));
-  return !(top >= 3 && total > 0 && top / total >= 0.7);
+  const myFam = familyOf(best.kode, best.isSet);
+  const top = fam.get(myFam);
+  const runnerUp = Math.max(0, ...[...fam.entries()].filter(([f]) => f !== myFam).map(([, n]) => n));
+  return !(top >= 3 && total > 0 && (top / total >= 0.7 || top >= 2 * runnerUp));
 }
 
 // ── ukuran dari nama produk (buat fallback katalog; RPC dictionary sudah kasih label sendiri) ──
@@ -173,9 +178,11 @@ export async function resolveItem(item, rpc, opts = {}) {
   let catCands = [];
   let error = null;
 
-  // Filter produk yang tidak boleh dipakai (belum firm / SINGLE USE / sudah dihapus) — opts.firmCheck, lihat firm.js.
-  // Dipasang di SETIAP sumber kandidat sebelum dinilai, supaya produk terlarang tidak sempat jadi "terbaik"
-  // dan menghentikan pencarian (break di loop Dictionary) sebelum kandidat yang boleh dipakai ketemu.
+  // Kesiapan jual — opts.firmCheck, lihat firm.js. Dipasang di SETIAP sumber kandidat sebelum dinilai.
+  //   keras  (SINGLE USE / sudah dihapus) : dibuang -> `blocked`, supaya tidak sempat jadi "terbaik" dan menghentikan
+  //                                         pencarian (break di loop Dictionary) sebelum kandidat lain ketemu.
+  //   kurang (AKD/link V6/firm)           : TETAP jadi kandidat, diberi `siap: { ok:false, kurang }`. Produk yang benar tapi
+  //                                         belum disiapkan tidak boleh hilang; ia cuma tidak boleh AUTO (lihat keputusan di bawah).
   const blocked = new Map();
   let unverified = false;
   const usable = async (list) => {
@@ -184,8 +191,10 @@ export async function resolveItem(item, rpc, opts = {}) {
       const bl = await opts.firmCheck(list.map(x => x.kode));
       const keep = [];
       list.forEach(x => {
-        if (bl.has(x.kode)) blocked.set(x.kode, { kode: x.kode, nama: x.nama, alasan: bl.get(x.kode) });
-        else keep.push(x);
+        const r = bl.get(x.kode);
+        if (r && r.keras) { blocked.set(x.kode, { kode: x.kode, nama: x.nama, alasan: r.keras }); return; }
+        x.siap = { ok: !(r && r.kurang.length), kurang: r ? r.kurang.slice() : [] };
+        keep.push(x);
       });
       return keep;
     } catch (e) {
@@ -274,11 +283,15 @@ export async function resolveItem(item, rpc, opts = {}) {
     const seri = ukuranSeri(best, cands);
     if (seri) { reasonKey = 'ukuran_seri'; reason = `Dua ukuran sama dekat dengan yang diminta (${seri.join(' dan ')} cm) — pilih yang sesuai.`; }
     else { reasonKey = 'ukuran_dekat'; reason = 'Ukuran dekat tapi tidak persis (selisih ≤ 0,5 cm).'; }
+  } else if (best.siap && !best.siap.ok) {
+    // Cocok kuat tapi belum siap dijual: usulan TETAP tampil (bukan hilang), cuma tidak dipasang otomatis.
+    status = 'REVIEW'; reasonKey = 'belum_siap';
+    reason = `Cocok, tapi belum siap dijual: ${best.siap.kurang.join(', ')}. Tidak dipasang otomatis — siapkan dulu, atau pakai manual kalau memang disengaja.`;
   } else if (unverified) {
     status = 'REVIEW'; reasonKey = 'firm_belum_dicek';
-    reason = 'Status firm / SINGLE USE belum bisa dicek — cek manual sebelum dipakai.';
+    reason = 'Status firm / AKD / SINGLE USE belum bisa dicek — cek manual sebelum dipakai.';
   } else if (blocked.size) {
-    // Ada produk lain untuk istilah ini yang dibuang (belum firm / SINGLE USE): yang tersisa belum tentu
+    // Ada produk lain untuk istilah ini yang dibuang (SINGLE USE / sudah dihapus): yang tersisa belum tentu
     // pengganti yang tepat, jadi jangan AUTO.
     status = 'REVIEW'; reasonKey = 'ada_dibuang';
     reason = `Ada usulan lain yang dibuang (${[...blocked.values()].slice(0, 2).map(x => `${x.kode}: ${x.alasan}`).join(', ')}) — pastikan produk ini pengganti yang tepat.`;
@@ -303,7 +316,7 @@ export async function resolveItem(item, rpc, opts = {}) {
     attrs: itemAttrs,
     lexicon_hits: lexiconHits(u, opts.lexicon),
     candidates: cands.slice(0, 6),
-    blocked: [...blocked.values()], unverified,
+    siap: best ? (best.siap || null) : null, blocked: [...blocked.values()], unverified,
     tried
   };
 }
