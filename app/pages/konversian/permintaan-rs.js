@@ -461,7 +461,8 @@ function amLogDecision(itemId, status, links) {
   const m = amMap.get(itemId);
   if (!m) return;
   const kodes = (links || []).map(l => l.kode_produk);
-  const aksi = status === 'TERPENUHI' ? (kodes.length === 1 && kodes[0] === m.kode ? 'diterima' : 'diganti')
+  // Bundle skenario yang memuat usulan teratas = usulan DITERIMA (bukan "diganti"), supaya akurasi AUTO tidak terlihat turun.
+  const aksi = status === 'TERPENUHI' ? ((kodes.length === 1 && kodes[0] === m.kode) || (m.hasil.bundle && kodes.includes(m.kode)) ? 'diterima' : 'diganti')
     : status === 'TIDAK_TERPENUHI' ? 'ditolak' : null;
   if (!aksi) return;
   const key = aksi + '|' + kodes.join(',');
@@ -707,9 +708,14 @@ function amCandidatesHtml(item) {
     ? `<button type="button" class="kb-cmp-alt-toggle" data-action="toggle-alt" data-id="${item.id}" aria-expanded="${open}"><i class="ti ti-chevron-right" aria-hidden="true"></i>${alts.length} alternatif</button>` : '';
   const altRows = alts.length && (open || !top)
     ? `<div class="kb-cmp-alts">${alts.map(c => amCandRowHtml(item, c, false)).join('')}</div>` : '';
+  // Permintaan umum: tawarkan SEMUA yang siap sebagai skenario (tiap produk @ qty diminta). Tidak pernah dipasang diam-diam
+  // oleh "Pakai N yang cocok" — isi penawaran ke RS berubah, jadi harus diklik sadar.
+  const nb = h.bundle && h.bundle.length >= 2 && item.status === 'PENDING' ? h.bundle.length : 0;
+  const dq = Number(item.qty_diminta);
+  const bundleBtn = nb ? `<div class="kb-cmp-hint"><button type="button" class="kb-am-btn" data-action="use-bundle" data-id="${item.id}" title="Pasang ${nb} produk sekaligus, masing-masing @ qty diminta">Pakai semua ${nb} sebagai skenario</button> permintaan umum — tiap produk @ ${dq >= 1 ? escapeHtmlAttr(String(dq)) : 'qty diminta'}, buat bandingan anggaran.</div>` : '';
   return `<div class="kb-cmp">
     <p class="kb-cmp-why">${escapeHtmlAttr(h.reason)}</p>${lex}
-    ${top ? amCandRowHtml(item, top, true) : ''}
+    ${top ? amCandRowHtml(item, top, true) : ''}${bundleBtn}
     ${altToggle}${altRows}${blk}
   </div>`;
 }
@@ -1297,6 +1303,13 @@ S.advanceToNextPending = advanceToNextPending;
 // (produk baru aja ditambahin ke Clipboard). Satu titik biar dua jalur itu gak
 // duplikasi logic konfirmasi status.
 async function markItemTerpenuhiWithSingleProduk(item, kode) {
+  return markItemTerpenuhiWithProduk(item, [kode]);
+}
+
+// Satu atau BANYAK produk untuk satu item. Banyak = bundle "skenario" (Auto-Match, permintaan umum): tiap produk
+// diberi qty_alokasi = qty diminta (BUKAN dibagi) — RS minta 2, tiap opsi ditawarkan 2 pcs sebagai skenario anggaran.
+// Jalur tulisnya sama dengan picker manual (callUpdatePermintaanItemMulti, replace-all), jadi tidak ada RPC baru.
+async function markItemTerpenuhiWithProduk(item, kodes) {
   const itemId = item.id;
   try {
     S.markLocalWrite(S.PERMINTAAN_ITEM_TABLE, itemId, 'status', 'TERPENUHI');
@@ -1304,12 +1317,14 @@ async function markItemTerpenuhiWithSingleProduk(item, kode) {
     // gak pernah ikut dan user harus ngisi qty dua kali. Qty diminta kosong/invalid → null
     // (qty clipboard dibiarkan apa adanya, gak dipaksa 1).
     const dq = Number(item.qty_diminta);
-    const clipItem = S.clipboard.find(c => c.kode_produk === kode);
-    const links = [{
-      produk_id: clipItem && clipItem.produk_id != null ? clipItem.produk_id : null,
-      kode_produk: kode,
-      qty_alokasi: (!isNaN(dq) && dq >= 1) ? dq : null
-    }];
+    const links = kodes.map(kode => {
+      const clipItem = S.clipboard.find(c => c.kode_produk === kode);
+      return {
+        produk_id: clipItem && clipItem.produk_id != null ? clipItem.produk_id : null,
+        kode_produk: kode,
+        qty_alokasi: (!isNaN(dq) && dq >= 1) ? dq : null
+      };
+    });
     const oldLinks = item.matched_items || [];
     await S.callUpdatePermintaanItemMulti(itemId, 'TERPENUHI', links);
     item.status = 'TERPENUHI';
@@ -1326,6 +1341,7 @@ async function markItemTerpenuhiWithSingleProduk(item, kode) {
   }
 }
 S.markItemTerpenuhiWithSingleProduk = markItemTerpenuhiWithSingleProduk;
+S.markItemTerpenuhiWithProduk = markItemTerpenuhiWithProduk;
 
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2202,6 +2218,24 @@ S.kbList.addEventListener('click', async (e) => {
     amWarnBelumSiap(item, kode);
     btn.disabled = true;
     await S.markItemTerpenuhiWithSingleProduk(item, kode);
+    return;
+  }
+
+  if (action === 'use-bundle') {
+    // Pasang SEMUA produk bundle (Auto-Match, permintaan umum) @ qty diminta. Produk yang belum ada di Clipboard ditambahkan
+    // dulu (berurutan, sama dgn "Pakai N yang cocok"); yang gagal ditambah dilewati dan diberi tahu.
+    const m = amFor(item);
+    const kodes = m && m.hasil.bundle ? m.hasil.bundle.map(b => b.kode) : [];
+    if (kodes.length < 2) return;
+    btn.disabled = true;
+    const okKodes = [];
+    for (const kode of kodes) {
+      if (!amInClip(kode)) await S.addSetKodeToClip(kode, document.createElement('button'));
+      if (amInClip(kode)) okKodes.push(kode);
+    }
+    if (!okKodes.length) { btn.disabled = false; return; } // addSetKodeToClip sudah menampilkan toast errornya
+    if (okKodes.length < kodes.length) S.showToast(`${kodes.length - okKodes.length} produk bundle gagal ditambahkan`, 'warning', { detail: 'Sisanya tetap dipasang.' });
+    await markItemTerpenuhiWithProduk(item, okKodes);
     return;
   }
 

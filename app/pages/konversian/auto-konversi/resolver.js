@@ -17,7 +17,7 @@
 // closure & tidak diekspor; modul lama tidak diubah).
 // ══════════════════════════════════════════
 
-import { understand, compareAttrs, describeDiff } from './understand.js';
+import { understand, compareAttrs, describeDiff, DECISIVE } from './understand.js';
 import { buildQueryLadder, lexiconHits } from './lexicon.js';
 
 const UKURAN_RANK = { cocok: 0, tidak_diminta: 0, tidak_diketahui: 1, dekat: 1, varian: 3, beda: 4 };
@@ -166,6 +166,22 @@ export function auditPick(text, rate) {
   return (h % 10000) / 10000 < rate;
 }
 
+// ── Bundle "skenario" untuk permintaan UMUM ──
+// Permintaan yang tidak menunjuk spesifikasi apa pun (mis. "SET MINOR": tanpa ukuran/ujung/bentuk/gigi/nomor) bukan
+// pertanyaan "produk mana?" melainkan "apa saja yang kita punya?". Jawabannya satu BUNDLE: semua produk yang pernah dipakai
+// untuk istilah itu, masing-masing ditawarkan dengan qty diminta (skenario anggaran: "kalau dibelikan A segini, B segini").
+// Hanya yang SIAP dijual (siap.ok) yang masuk — yang belum siap tetap tampil di kartu sebagai kandidat, tapi tidak ikut ditawarkan.
+// Sumber = riwayat yang kuat (exact/urutan), bukan seluruh katalog: katalog bisa meledak jadi puluhan dan belum teruji.
+export const BUNDLE_MAX = 12;
+export function buildBundle(best, cands, itemAttrs) {
+  if (!best || candConf(best) !== 'kuat') return null;
+  const hasVal = (v) => (Array.isArray(v) ? v.length > 0 : v != null);
+  if (itemAttrs.ukuran_cm != null || DECISIVE.some((k) => hasVal(itemAttrs[k]))) return null; // ada yang diminta spesifik → bukan umum
+  const ok = (c) => c.src === 'riwayat' && (c.tier === 'exact' || c.tier === 'urutan') && !attrBeda(c) && (!c.siap || c.siap.ok);
+  const list = cands.filter(ok).sort((a, b) => b.freq - a.freq).slice(0, BUNDLE_MAX);
+  return list.length >= 2 ? list.map((c) => ({ kode: c.kode, nama: c.nama, freq: c.freq, isSet: c.isSet })) : null;
+}
+
 // ── Putuskan untuk SATU item ──
 export async function resolveItem(item, rpc, opts = {}) {
   const u = item.understood || understand(item.nama || item.deskripsi || '');
@@ -252,6 +268,7 @@ export async function resolveItem(item, rpc, opts = {}) {
   const cands = [best, ...dictCands, ...catCands.slice().sort((a, b) => compScore(a) - compScore(b))]
     .filter((c, i, a) => c && a.findIndex(x => x.kode === c.kode) === i);
   const conf = candConf(best);
+  const bundle = buildBundle(best, [...dictCands, ...catCands], itemAttrs); // sebelum cands dipotong 6
   let status, reason, reasonKey, ukuranDefault = false, audit = false, reasonKeyAsli = null;
 
   if (!best) {
@@ -316,7 +333,7 @@ export async function resolveItem(item, rpc, opts = {}) {
     attrs: itemAttrs,
     lexicon_hits: lexiconHits(u, opts.lexicon),
     candidates: cands.slice(0, 6),
-    siap: best ? (best.siap || null) : null, blocked: [...blocked.values()], unverified,
+    siap: best ? (best.siap || null) : null, bundle, blocked: [...blocked.values()], unverified,
     tried
   };
 }

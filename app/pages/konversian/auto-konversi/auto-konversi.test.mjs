@@ -254,6 +254,21 @@ test('permintaan umum (SET MINOR): satu SET unggul ≥2× dari runner-up -> buka
     { istilah: 'M', src: 'riwayat', kode: 'RB999-KE921-B99-U93', freq: 8, isSet: true }], { istilah: 'M', kode: 'RB999-KE921-B99-U12', isSet: true }));
 });
 
+test('bundle skenario: permintaan umum -> semua produk riwayat yang SIAP; yang belum siap/ada spesifikasi diminta tidak ikut', async () => {
+  const mk = (kode, freq) => row({ istilah: 'SET MINOR', kode_produk: kode, nama_produk: 'Minor Set ' + kode, freq, is_set: true });
+  const rpc = mockRpc({ 'SET MINOR': [mk('RB999-KE921-B99-U12', 11), mk('RB999-KE921-B99-U103', 4), mk('RB999-KE921-B99-U407', 3)] });
+  const [it] = parseRequestText('SET MINOR\t2').items;
+  const h = await resolveItem(it, rpc, { firmCheck: fcFrom({ 'RB999-KE921-B99-U407': ['AKD belum ada'] }) });
+  assert.deepEqual(h.bundle.map(b => b.kode), ['RB999-KE921-B99-U12', 'RB999-KE921-B99-U103']); // U407 belum siap → tidak ditawarkan
+  assert.ok(h.candidates.some(c => c.kode === 'RB999-KE921-B99-U407'));                          // tapi tetap tampil sebagai kandidat
+  // tanpa firmCheck (Swasta): semua masuk
+  assert.equal((await resolveItem(it, rpc)).bundle.length, 3);
+  // permintaan spesifik (ada ukuran) -> bukan bundle
+  const rpc2 = mockRpc({ 'PINSET DURA 14CM': [row({ istilah: 'PINSET DURA 14CM', kode_produk: 'P-1', nama_produk: 'Dura Forceps 14cm', freq: 12 }), row({ istilah: 'PINSET DURA 14CM', kode_produk: 'P-2', nama_produk: 'Dura Forceps 14cm B', freq: 9 })] });
+  const [it2] = parseRequestText('PINSET DURA 14CM\t5').items;
+  assert.equal((await resolveItem(it2, rpc2)).bundle, null);
+});
+
 test('sumber kompetitor memakai keputusan yang sama: riwayat kuat + ukuran cocok -> AUTO; hanya katalog -> REVIEW', async () => {
   const set = parseCompetitorSet(fx('falcon-appendectomy-hernia.txt'));
   const kelly = set.items.find(i => i.kode_kompetitor === '08-125-14');
