@@ -18,7 +18,7 @@
 // ══════════════════════════════════════════
 
 import { understand, compareAttrs, describeDiff, DECISIVE } from './understand.js';
-import { buildQueryLadder, lexiconHits } from './lexicon.js';
+import { buildQueryLadder, lexiconHits, punyaPenentu, queryTanpaJenis } from './lexicon.js';
 
 const UKURAN_RANK = { cocok: 0, tidak_diminta: 0, tidak_diketahui: 1, dekat: 1, varian: 3, beda: 4 };
 const CONF_RANK = { none: 0, lemah: 1, sedang: 2, kuat: 3 };
@@ -115,8 +115,8 @@ async function viaDictionary(rpc, text, excludeItem) {
 
 // Cari ke katalog. Selalu 'katalog' tier -> paling banter 'sedang'. skor dibedakan per QUERY (makin longgar makin rendah),
 // bukan per baris: urutan relevansi antar-baris ditentukan penilaian atribut, bukan posisi di hasil pencarian.
-async function viaCatalog(rpc, text, wantedCm, qi = 0, maxRows = 60) {
-  const { data, error } = await rpc('search_produk_dengan_harga', { q: text, p_tipe: null, only_akd: false, only_kfa: false });
+async function viaCatalog(rpc, text, wantedCm, qi = 0, maxRows = 60, tipe = null) {
+  const { data, error } = await rpc('search_produk_dengan_harga', { q: text, p_tipe: tipe || null, only_akd: false, only_kfa: false });
   if (error) throw new Error(error.message || error.hint || 'search_produk_dengan_harga gagal');
   return (data || []).slice(0, maxRows).map((p) => ({
     kode: p.kode_produk, nama: p.nama_produk || '', tier: 'katalog', ukuran: ukuranLabel(wantedCm, p.nama_produk),
@@ -199,7 +199,16 @@ export async function resolveItem(item, rpc, opts = {}) {
   const itemAttrs = { ...u.attrs, ukuran_cm: wantedCm };
   const itemKey = namaKey(item.nama || item.deskripsi || '');
   const dictQueries = opts.queries || item.variants || [item.nama];
-  const catQueries = opts.queries || buildQueryLadder(item, u, opts.lexicon);
+  // Rencana query katalog. Query TANPA kata jenis (+ p_tipe) paling dulu; tangga lama tetap sebagai fallback (p_tipe null).
+  // opts.queries meng-override semuanya.
+  const jq = opts.queries ? null : queryTanpaJenis(u);
+  const catPlan = opts.queries
+    ? opts.queries.map((q) => ({ q, tipe: null }))
+    : [...(jq ? [jq] : []), ...buildQueryLadder(item, u, opts.lexicon).map((q) => ({ q, tipe: null }))];
+  // Ada kata penentu selain kata jenis -> Dictionary tier 'umum' (istilah generik, mis. "SET") tidak boleh jadi best.
+  const penentu = punyaPenentu(u);
+  const isUmum = (c) => c.tier === 'umum';
+  let umumCands = [];
   const tried = [];
   let dictCands = [];
   let catCands = [];
@@ -237,8 +246,9 @@ export async function resolveItem(item, rpc, opts = {}) {
   if (opts.dictionary !== false) {
     for (const q of dictQueries) {
       try {
-        const c = await usable(await viaDictionary(rpc, q, opts.excludeItemId != null ? opts.excludeItemId : item.excludeId));
+        let c = await usable(await viaDictionary(rpc, q, opts.excludeItemId != null ? opts.excludeItemId : item.excludeId));
         tried.push({ q, via: 'dictionary', n: c.length });
+        if (penentu) { umumCands.push(...c.filter(isUmum)); c = c.filter((x) => !isUmum(x)); }
         if (c.length) {
           annotate(c, itemAttrs, itemKey);
           const rank = CONF_RANK[candConf(pickBestFit(c))] || 0;
@@ -254,16 +264,16 @@ export async function resolveItem(item, rpc, opts = {}) {
   //    Kandidat katalog hanya mengalahkan Dictionary kalau penilaiannya LEBIH baik (lihat compScore).
   if (opts.catalogFallback !== false && bestRank < CONF_RANK.kuat) {
     const seen = new Set(dictCands.map(c => c.kode));
-    for (let qi = 0; qi < catQueries.length; qi++) {
-      const q = catQueries[qi];
+    for (let qi = 0; qi < catPlan.length; qi++) {
+      const { q, tipe } = catPlan[qi];
       try {
-        const c = (await usable(await viaCatalog(rpc, q, wantedCm, qi, opts.catalogRows || 60))).filter(x => !seen.has(x.kode));
-        tried.push({ q, via: 'katalog', n: c.length });
+        const c = (await usable(await viaCatalog(rpc, q, wantedCm, qi, opts.catalogRows || 60, tipe))).filter(x => !seen.has(x.kode));
+        tried.push({ q, via: 'katalog', ...(tipe ? { tipe } : {}), n: c.length });
         annotate(c, itemAttrs, itemKey);
         c.forEach(x => { seen.add(x.kode); catCands.push(x); });
         // Pencarian katalog mengembalikan sampai 150 baris berperingkat teks (bukan atribut): ambil banyak, nilai sendiri per atribut.
         if (c.some(x => x.full !== false && !x.fit.beda.length && (x.ukuran === 'cocok' || x.ukuran === 'tidak_diminta'))) break;
-      } catch (e) { error = e.message; tried.push({ q, via: 'katalog', error: e.message }); }
+      } catch (e) { error = e.message; tried.push({ q, via: 'katalog', ...(tipe ? { tipe } : {}), error: e.message }); }
     }
   }
 
@@ -278,7 +288,9 @@ export async function resolveItem(item, rpc, opts = {}) {
   const bestDict = pickBestFit(dictCands);
   const bestCat = pickBestFit(catCands);
   const best = bestCat && (!bestDict || compScore(bestCat) < compScore(bestDict)) ? bestCat : bestDict;
-  const cands = [best, ...dictCands, ...catCands.slice().sort((a, b) => compScore(a) - compScore(b))]
+  // Kandidat 'umum' yang dibuang dari pemilihan best tetap tampil di AKHIR sebagai alternatif.
+  annotate(umumCands, itemAttrs, itemKey); umumCands.forEach((x) => { x.namaPersis = false; });
+  const cands = [best, ...dictCands, ...catCands.slice().sort((a, b) => compScore(a) - compScore(b)), ...umumCands]
     .filter((c, i, a) => c && a.findIndex(x => x.kode === c.kode) === i);
   const conf = candConf(best);
   const bundle = buildBundle(best, [...dictCands, ...catCands], itemAttrs); // sebelum cands dipotong 6

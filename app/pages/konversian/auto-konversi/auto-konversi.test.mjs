@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { parseRequestText, parseLine, extractSpecs, parseCompetitorSet, resolveItem, resolveItems, summarize, isAmbiguous, assessProduk, makeFirmCheck } from './index.js';
+import { understand, parseRequestText, parseLine, extractSpecs, parseCompetitorSet, resolveItem, resolveItems, summarize, isAmbiguous, assessProduk, makeFirmCheck } from './index.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const fx = (n) => readFileSync(join(dir, 'fixtures', n), 'utf8');
@@ -133,10 +133,15 @@ function mockRpc(table, catalog = {}) {
   const rpc = async (name, params) => {
     calls.push([name, params.p_text || params.q]);
     if (name === 'suggest_dictionary') return { data: table[params.p_text] || [] };
-    if (name === 'search_produk_dengan_harga') return { data: catalog[params.q] || [] };
+    if (name === 'search_produk_dengan_harga') {
+      rpc.catalogCalls.push({ q: params.q, p_tipe: params.p_tipe });
+      // kunci 'Q|TIPE' hanya untuk panggilan dengan p_tipe; kunci 'Q' untuk p_tipe null (perilaku lama)
+      return { data: (params.p_tipe ? catalog[`${params.q}|${params.p_tipe}`] : catalog[params.q]) || [] };
+    }
     return { error: { message: 'rpc tak dikenal' } };
   };
   rpc.calls = calls;
+  rpc.catalogCalls = [];
   return rpc;
 }
 
@@ -459,4 +464,61 @@ test('audit: hanya menyentuh AUTO — REVIEW dan UNKNOWN tidak ikut', async () =
   const [it] = parseRequestText('SESUATU YANG ANEH 99CM\t1').items;
   const h = await resolveItem(it, mockRpc({}), { auditRate: 1 });
   assert.equal(h.audit, false); assert.notEqual(h.reason_key, 'audit_acak');
+});
+// ───────────── kata jenis (SET): umum tak boleh jadi best; katalog dicari tanpa kata jenis + p_tipe ─────────────
+const umumMinor = (istilah) => row({ istilah: 'SET', tier: 'umum', skor: 0.634, kode_produk: 'RB999-KE921-B99-U6', nama_produk: 'MINOR S. 6', freq: 5, is_set: true });
+const katSet = (kode, nama) => ({ kode_produk: kode, nama_produk: nama, tipe: 'SET', score: 85 });
+
+test('"Set cesarean": Dictionary hanya baris umum -> Minor bukan best; katalog q=CAESAREAN + p_tipe=SET -> REVIEW hanya_katalog', async () => {
+  const rpc = mockRpc(
+    { 'SET CESAREAN': [umumMinor()], 'SET CAESAREAN': [umumMinor()] },
+    { 'CAESAREAN|SET': [katSet('RB999-KE930-B99-U1', 'SECTIO CAESAREAN S.'), katSet('RB999-KE930-B99-U2', 'SECTIO CAESAREAN S. II'), katSet('RB999-KE930-B99-U3', 'SECTIO CAESAREAN S. III')] });
+  const [it] = parseRequestText('Set cesarean\t2').items;
+  const h = await resolveItem(it, rpc);
+  assert.notEqual(h.kode_produk, 'RB999-KE921-B99-U6');
+  assert.match(h.nama_produk, /CAESAREAN/);
+  assert.equal(h.status, 'REVIEW'); assert.equal(h.reason_key, 'hanya_katalog');
+  assert.deepEqual(rpc.catalogCalls[0], { q: 'CAESAREAN', p_tipe: 'SET' });     // query tanpa kata jenis paling dulu
+  assert.equal(h.candidates[h.candidates.length - 1].kode, 'RB999-KE921-B99-U6'); // umum tetap ada, di akhir
+  assert.equal(h.bundle, null);                                                  // tak ada bundle dari katalog
+});
+
+test('Dictionary 3 baris exact "SET CESAREAN" + 1 umum -> bundle 3 produk, Minor tidak ikut bundle', async () => {
+  const mk = (kode, freq) => row({ istilah: 'SET CESAREAN', kode_produk: kode, nama_produk: 'Sectio Caesarean ' + kode, freq, is_set: true });
+  const rpc = mockRpc({ 'SET CESAREAN': [mk('RB999-KE930-B99-U1', 11), mk('RB999-KE930-B99-U2', 4), mk('RB999-KE930-B99-U3', 3), umumMinor()] });
+  const [it] = parseRequestText('SET CESAREAN\t1').items;
+  const h = await resolveItem(it, rpc);
+  assert.equal(h.bundle.length, 3);
+  assert.ok(h.bundle.every(b => b.kode !== 'RB999-KE921-B99-U6'));
+  assert.ok(h.candidates.some(c => c.kode === 'RB999-KE921-B99-U6'));
+  assert.equal(rpc.catalogCalls.length, 0);
+});
+
+test('"SET" saja: baris umum tetap boleh jadi best (perilaku lama), tanpa p_tipe', async () => {
+  const rpc = mockRpc({ 'SET': [umumMinor()] });
+  const [it] = parseRequestText('SET\t1').items;
+  const h = await resolveItem(it, rpc);
+  assert.equal(h.kode_produk, 'RB999-KE921-B99-U6');
+  assert.equal(h.reason_key, 'perkiraan');
+  assert.ok(rpc.catalogCalls.every(c => c.p_tipe === null));
+});
+
+test('"SET MINOR" dengan riwayat exact tetap AUTO; tanpa kata jenis (KLEM BENGKOK) katalog dipanggil dengan p_tipe null', async () => {
+  const rpc = mockRpc({}, { 'KLEM BENGKOK': [{ kode_produk: 'K-1', nama_produk: 'Klem Bengkok', tipe: 'INSTRUMENT' }] });
+  const [it] = parseRequestText('KLEM BENGKOK\t2').items;
+  await resolveItem(it, rpc);
+  assert.ok(rpc.catalogCalls.length > 0 && rpc.catalogCalls.every(c => c.p_tipe === null));
+  // opts.queries tetap meng-override: tak ada query tanpa kata jenis
+  const rpc2 = mockRpc({}, {});
+  const [s] = parseRequestText('SET CESAREAN\t1').items;
+  await resolveItem(s, rpc2, { queries: ['SET CESAREAN'] });
+  assert.deepEqual(rpc2.catalogCalls, [{ q: 'SET CESAREAN', p_tipe: null }]);
+});
+
+test('typo: cesarean/caesar/cesar -> CAESAREAN, curret -> CURET (understand + variants)', () => {
+  assert.deepEqual(understand('cesarean').tokens, ['CAESAREAN']);
+  assert.deepEqual(understand('SET CESAR').tokens, ['SET', 'CAESAREAN']);
+  assert.deepEqual(understand('curret').tokens, ['CURET']);
+  assert.deepEqual(parseRequestText('SET CESAREAN\t1').items[0].variants, ['SET CESAREAN', 'SET CAESAREAN']);
+  assert.deepEqual(understand('SET CAESAREAN').tokens, ['SET', 'CAESAREAN']);
 });

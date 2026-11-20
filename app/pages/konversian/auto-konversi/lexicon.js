@@ -15,6 +15,7 @@
 //    karena riwayat menyimpan ejaan customer apa adanya).
 // ══════════════════════════════════════════
 import { understand } from './understand.js';
+import { JENIS_WORDS } from './aliases.js';
 
 export const EMPTY_LEXICON = Object.freeze({ size: 0, error: null, lookup: () => null });
 
@@ -70,6 +71,21 @@ export function buildQueryLadder(item, u, lexicon, max = 8) {
     });
   }
   return out.slice(0, max);
+}
+
+// Kata penentu = token selain kata jenis (JENIS_WORDS). Permintaan yang isinya HANYA kata jenis ("SET") tidak punya penentu.
+export function punyaPenentu(u) {
+  return !!(u && u.tokens && u.tokens.some((t) => !JENIS_WORDS.has(t)));
+}
+
+// Query katalog TANPA kata jenis + p_tipe = kata jenis itu. null bila tak ada kata jenis atau tak ada token lain.
+// Mis. "SET CAESAREAN" -> { q: 'CAESAREAN', tipe: 'SET' } (search_produk_dengan_harga butuh SEMUA kata cocok, padahal nama set di katalog tak memuat "SET").
+export function queryTanpaJenis(u) {
+  if (!u || !u.tokens) return null;
+  const jenis = u.tokens.find((t) => JENIS_WORDS.has(t));
+  const rest = u.tokens.filter((t) => !JENIS_WORDS.has(t));
+  if (!jenis || !rest.length) return null;
+  return { q: rest.join(' '), tipe: jenis };
 }
 
 // Token mana di item ini yang dikenali lexicon (buat ditampilkan: "KORENTANG → SPONGE HOLDING FORCEPS (dari riwayat)").

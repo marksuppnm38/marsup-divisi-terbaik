@@ -18,8 +18,14 @@ export const TYPO_FIXES = [
   [/ARTERYFORCEPS/g, 'ARTERY FORCEPS'], // kata nempel hasil ekstraksi PDF
   [/USATISSUE/g, 'USA TISSUE'],
   [/SPATULAFLEXIBLE/g, 'SPATULA FLEXIBLE'],
-  [/\bFORCEP\b/g, 'FORCEPS']
+  [/\bFORCEP\b/g, 'FORCEPS'],
+  [/\b(?:CESAREAN|CAESAR|CESAR)\b/g, 'CAESAREAN'], // katalog: "SECTIO CAESAREAN S."
+  [/\bCURRET\b/g, 'CURET']
 ];
+
+// Kata JENIS produk (bukan penentu). Kalau permintaan memuat kata ini DAN kata lain, kata ini dibuang dari query katalog
+// dan dipakai sebagai filter p_tipe (nama set di katalog sering tak memuat kata "SET"). Tambah di sini bila ada jenis lain.
+export const JENIS_WORDS = new Set(['SET']);
 
 // Kata generik instrumen (bukan nama orang / eponim). Dipakai buat memisahkan
 // "KELLY" (eponim) dari "ARTERY FORCEPS" (jenis) pada deskripsi kompetitor.
