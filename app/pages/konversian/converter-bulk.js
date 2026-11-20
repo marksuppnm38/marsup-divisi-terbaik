@@ -282,7 +282,8 @@ export function installConverterBulk(S) {
   }
 
   // Dibuat murni (gak nyentuh DOM/clipboard) supaya gampang dites.
-  S.buildConvTable = function buildConvTable(rows, presetKey) {
+  S.buildConvTable = function buildConvTable(rows, presetKey, theme) {
+    const hdrBg = (theme && theme.hex) || '#1D5BD4';
     const preset = PRESETS[presetKey] || PRESETS.kdhl;
     const clean = (s) => String(s ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ').trim();
     const head = preset.cols.map(headerOf);
@@ -290,7 +291,7 @@ export function installConverterBulk(S) {
     const body = rows.map((r, i) => preset.cols.map(c => cellValue(c, r, i, hasInputCol)));
     const plain = [head, ...body].map(line => line.map(clean).join('\t')).join('\n');
     const hasProblem = (r) => !r.produk;
-    const th = head.map(h => `<th style="border:1px solid #000;background:#1D5BD4;color:#fff">${esc(h)}</th>`).join('');
+    const th = head.map(h => `<th style="border:1px solid #000;background:${hdrBg};color:#fff">${esc(h)}</th>`).join('');
     const trs = body.map((line, i) => {
       const bg = hasProblem(rows[i]) ? ' style="background:#FDE8E8"' : '';
       const tds = line.map((v, ci) => {
@@ -308,7 +309,8 @@ export function installConverterBulk(S) {
   if (btnCopyTabel) {
     btnCopyTabel.addEventListener('click', async () => {
       if (!S.convRows || !S.convRows.length) { S.showToast('Belum ada hasil untuk disalin. Cocokkan kode dulu.', 'error'); return; }
-      const { html, plain, nBaris, nTidak } = S.buildConvTable(S.convRows, presetEl ? presetEl.value : 'kdhl');
+      const theme = await S.rowsBrandTheme(S.convRows);
+      const { html, plain, nBaris, nTidak } = S.buildConvTable(S.convRows, presetEl ? presetEl.value : 'kdhl', theme);
       const ok = await S.writeRichClipboard(html, plain);
       if (!ok) { S.showToast('Gagal menyalin ke clipboard. Coba lagi.', 'error'); return; }
       S.showToast(`Tersalin ${nBaris} baris, urutannya sama dengan input` + (nTidak ? `. ${nTidak} baris belum terselesaikan dan ditandai merah.` : '.'));

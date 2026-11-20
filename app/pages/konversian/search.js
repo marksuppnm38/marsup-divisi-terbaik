@@ -71,6 +71,39 @@ async function enrichBrand(rows) {
   (rows || []).forEach(r => { if (brandCache.has(r.kode_produk)) r.brand = brandCache.get(r.kode_produk); });
 }
 S.enrichBrand = enrichBrand;
+
+// Warna lampiran SET per brand (2026-11-20). ROBUST = biru (default, sama seperti sebelumnya), ADLER = merah.
+// Brand lain / kosong / gagal fetch -> biru, jadi lampiran lama gak berubah.
+const BRAND_THEMES = {
+  ADLER: { hex: '#CC0000', argb: 'FFCC0000', lightArgb: 'FFFDECEC' },
+  DEFAULT: { hex: '#1D5BD4', argb: 'FF1D5BD4', lightArgb: 'FFEFF4FF' }
+};
+S.brandTheme = (brand) => BRAND_THEMES[String(brand || '').trim().toUpperCase()] || BRAND_THEMES.DEFAULT;
+// Tema untuk SEKUMPULAN baris (sheet/tabel): kalau SEMUA baris yang punya brand satu brand yang sama -> warna brand itu.
+// Campur brand / gak ada brand / gagal fetch -> biru default (netral), bukan nebak brand dominan.
+S.rowsBrandTheme = async function (rows) {
+  try {
+    const probe = (rows || []).map(r => (r && r.produk) || r).filter(r => r && r.kode_produk).map(r => ({ kode_produk: r.kode_produk }));
+    if (!probe.length) return BRAND_THEMES.DEFAULT;
+    await enrichBrand(probe);
+    const brands = new Set(probe.map(r => r.brand || ''));
+    return brands.size === 1 ? S.brandTheme([...brands][0]) : BRAND_THEMES.DEFAULT;
+  } catch (e) { return BRAND_THEMES.DEFAULT; }
+};
+// Brand sebuah SET: pakai brand set itu sendiri; kalau kosong, brand terbanyak di isi set-nya.
+S.setBrandTheme = async function (kodeSet, items) {
+  try {
+    const probe = [{ kode_produk: kodeSet }, ...(items || []).map(i => ({ kode_produk: i.kode_produk }))];
+    await enrichBrand(probe);
+    let brand = probe[0].brand || '';
+    if (!brand) {
+      const m = new Map();
+      probe.slice(1).forEach(r => { if (r.brand) m.set(r.brand, (m.get(r.brand) || 0) + 1); });
+      brand = [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    }
+    return S.brandTheme(brand);
+  } catch (e) { return BRAND_THEMES.DEFAULT; }
+};
 function countBrand(rows) {
   const m = new Map();
   (rows || []).forEach(r => { if (r.brand) m.set(r.brand, (m.get(r.brand) || 0) + 1); });

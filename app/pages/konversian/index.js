@@ -2070,7 +2070,7 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
   // cuma nambahin kolom gambar di TSV yang udah ada.
   const copyImgBtn = document.getElementById('lampiran-copy-gambar-btn');
   if (copyImgBtn) {
-    copyImgBtn.addEventListener('click', () => copySetRincianWithImages(items, imgs, copyImgBtn));
+    copyImgBtn.addEventListener('click', () => copySetRincianWithImages(items, imgs, copyImgBtn, kode_produk));
   }
   const xlsxBtn = document.getElementById('lampiran-xlsx-btn');
   if (xlsxBtn) {
@@ -2259,7 +2259,8 @@ S.preparePasteImages = preparePasteImages;
 // kejadian di lapangan, solusi PALING PASTI adalah tombol .xlsx di bawah
 // (downloadSetRincianXlsx), yang nge-embed gambar BENERAN ke file (bukan link),
 // gak kena masalah token expired sama sekali.
-async function copySetRincianWithImages(items, imgs, btnEl) {
+async function copySetRincianWithImages(items, imgs, btnEl, kodeSet) {
+  const theme = await S.setBrandTheme(kodeSet, items); // ROBUST biru / ADLER merah
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const clean = (s) => String(s ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ').trim();
 
@@ -2284,7 +2285,7 @@ async function copySetRincianWithImages(items, imgs, btnEl) {
   const COL_W = [38, 140, 240, 46, BOX + 14]; // NO, KODE, DESKRIPSI, QTY, GAMBAR
   const TABLE_W = COL_W.reduce((a, b) => a + b, 0);
   const TD = 'border:1px solid #000;padding:2px 4px;vertical-align:middle;background:#fff';
-  const TH = 'border:1px solid #000;padding:2px 4px;vertical-align:middle;background:#1D5BD4;color:#fff;text-align:center';
+  const TH = `border:1px solid #000;padding:2px 4px;vertical-align:middle;background:${theme.hex};color:#fff;text-align:center`;
   S.showToast('Menyiapkan gambar…');
   const dims = await preparePasteImages(items.map((it) => urlMap.get(thumbKeyForItem(it)) || ''), imgs || []);
 
@@ -2306,8 +2307,8 @@ async function copySetRincianWithImages(items, imgs, btnEl) {
     `<table border="1" cellspacing="0" cellpadding="0" width="${TABLE_W}" style="border-collapse:collapse;table-layout:fixed;width:${TABLE_W}px">` +
     `<colgroup>${COL_W.map(w => `<col width="${w}" style="width:${w}px">`).join('')}</colgroup>` +
     `<thead><tr>` +
-    ['NO', 'KODE PNM', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR']
-      .map((h, c) => `<th width="${COL_W[c]}" bgcolor="#1D5BD4" style="${TH}">${h}</th>`).join('') +
+    ['NO', 'KODE', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR']
+      .map((h, c) => `<th width="${COL_W[c]}" bgcolor="${theme.hex}" style="${TH}">${h}</th>`).join('') +
     `</tr></thead><tbody>${rowsHtml}</tbody></table>`;
 
   const plain = items.map((it) => {
@@ -2356,23 +2357,24 @@ async function downloadSetRincianXlsx(kodeSet, items, imgs, btnEl) {
       bottom: { style: 'thin', color: { argb: 'FF000000' } },
       right: { style: 'thin', color: { argb: 'FF000000' } }
     };
+    const theme = await S.setBrandTheme(kodeSet, items); // ROBUST biru / ADLER merah
     const wb = new ExcelJS.Workbook();
     wb.creator = 'PT Pionir Nusantara Manufacturing';
     wb.created = new Date();
     const ws = wb.addWorksheet(String(kodeSet).replace(/[\\/?*[\]:]/g, '').substring(0, 31) || 'RINCIAN SET');
 
     ws.getRow(1).getCell(1).value = `RINCIAN SET — ${kodeSet}`;
-    ws.getRow(1).getCell(1).font = { bold: true, size: 13, color: { argb: 'FF1D5BD4' } };
-    ws.getRow(1).getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF4FF' } };
+    ws.getRow(1).getCell(1).font = { bold: true, size: 13, color: { argb: theme.argb } };
+    ws.getRow(1).getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: theme.lightArgb } };
     ws.mergeCells('A1:E1');
     ws.getRow(1).height = 30;
 
     const hdrRow = ws.getRow(2);
-    ['NO', 'KODE PNM', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR'].forEach((h, i) => {
+    ['NO', 'KODE', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR'].forEach((h, i) => {
       const cell = hdrRow.getCell(i + 1);
       cell.value = h;
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D5BD4' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: theme.argb } };
       cell.alignment = { vertical: 'middle', horizontal: 'center' };
       cell.border = GRID_BORDER;
     });

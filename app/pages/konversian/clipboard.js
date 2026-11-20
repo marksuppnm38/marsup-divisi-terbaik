@@ -1882,6 +1882,9 @@ async function runExportExcel() {
       }
     }
 
+    // Warna header sheet non-set: 1 brand saja di clipboard -> warna brand (ADLER merah), campur/kosong -> biru.
+    const exportTheme = await S.rowsBrandTheme(S.clipboard);
+
     // ── SHEET 1: SUMMARY ──
     const wsSummary = wb.addWorksheet('SUMMARY');
     // header info
@@ -1903,7 +1906,7 @@ async function runExportExcel() {
       const cell = sumHdrRow.getCell(i+1);
       cell.value = h;
       cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
-      cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF1D5BD4'}};
+      cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:exportTheme.argb}};
       cell.alignment = {vertical:'middle', horizontal:'center'};
       cell.border = GRID_BORDER;
     });
@@ -2017,7 +2020,7 @@ async function runExportExcel() {
           const cell = kbHdrRow.getCell(i+1);
           cell.value = h;
           cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
-          cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF1D5BD4'}};
+          cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:exportTheme.argb}};
           cell.alignment = {vertical:'middle', horizontal:'center'};
           cell.border = GRID_BORDER;
         });
@@ -2156,13 +2159,14 @@ async function runExportExcel() {
     // ── SHEETS PER SET ──
     for (const setItem of sets) {
       const items = setItemsMap[setItem.kode_produk] || [];
+      const theme = await S.setBrandTheme(setItem.kode_produk, items); // ROBUST biru / ADLER merah
       const sheetName = setItem.nama_produk.replace(/[\\\/\?\*\[\]:]/g,'').substring(0,31);
       const ws = wb.addWorksheet(sheetName);
 
       // header
       ws.getRow(1).getCell(1).value = setItem.nama_produk;
-      ws.getRow(1).getCell(1).font = {bold:true, size:13, color:{argb:'FF1D5BD4'}};
-      ws.getRow(1).getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFEFF4FF'}};
+      ws.getRow(1).getCell(1).font = {bold:true, size:13, color:{argb:theme.argb}};
+      ws.getRow(1).getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:theme.lightArgb}};
       ws.mergeCells('A1:E1');
       ws.getRow(1).height = 30;
 
@@ -2171,11 +2175,11 @@ async function runExportExcel() {
       ws.getRow(3).height = 4;
 
       const hdrRow = ws.getRow(4);
-      ['NO','KODE PNM','DESKRIPSI BARANG','QTY','GAMBAR'].forEach((h, i) => {
+      ['NO','KODE','DESKRIPSI BARANG','QTY','GAMBAR'].forEach((h, i) => {
         const cell = hdrRow.getCell(i+1);
         cell.value = h;
         cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
-        cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF1D5BD4'}};
+        cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:theme.argb}};
         cell.alignment = {vertical:'middle', horizontal:'center'};
         cell.border = GRID_BORDER;
       });
@@ -2210,19 +2214,20 @@ async function runExportExcel() {
 
     // ── SHEET RINCIAN GAMBAR (satuan only) ──
     if (satuans.length > 0) {
+      const gambarTheme = await S.rowsBrandTheme(satuans);
       const wsGambar = wb.addWorksheet('RINCIAN GAMBAR');
       wsGambar.getRow(1).getCell(1).value = 'RINCIAN GAMBAR — ITEM SATUAN';
-      wsGambar.getRow(1).getCell(1).font = {bold:true, size:13, color:{argb:'FF1D5BD4'}};
-      wsGambar.getRow(1).getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFEFF4FF'}};
+      wsGambar.getRow(1).getCell(1).font = {bold:true, size:13, color:{argb:gambarTheme.argb}};
+      wsGambar.getRow(1).getCell(1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:gambarTheme.lightArgb}};
       wsGambar.mergeCells('A1:E1');
       wsGambar.getRow(1).height = 30;
 
       const hdrRow = wsGambar.getRow(2);
-      ['NO','KODE PNM','DESKRIPSI BARANG','QTY','GAMBAR'].forEach((h,i) => {
+      ['NO','KODE','DESKRIPSI BARANG','QTY','GAMBAR'].forEach((h,i) => {
         const cell = hdrRow.getCell(i+1);
         cell.value = h;
         cell.font = {bold:true, color:{argb:'FFFFFFFF'}};
-        cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF1D5BD4'}};
+        cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:gambarTheme.argb}};
         cell.alignment = {vertical:'middle', horizontal:'center'};
         cell.border = GRID_BORDER;
       });

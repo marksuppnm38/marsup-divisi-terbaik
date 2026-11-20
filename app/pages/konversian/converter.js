@@ -331,6 +331,7 @@ if (S.btnConvCopyGambar) {
       return (r.tipe && r.tipe.toLowerCase() === 'set') ? '' : (urlMap.get(S.thumbKeyForItem(r)) || '');
     }));
 
+    const theme = await S.rowsBrandTheme(rows); // 1 brand -> warna brand (ADLER merah), campur -> biru
     const rowsHtml = rows.map((row, i) => {
       const r = row.produk;
       const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
@@ -351,8 +352,8 @@ if (S.btnConvCopyGambar) {
       `<table border="1" cellspacing="0" cellpadding="0" width="${TABLE_W}" style="border-collapse:collapse;table-layout:fixed;width:${TABLE_W}px">` +
       `<colgroup>${COL_W.map(w => `<col width="${w}" style="width:${w}px">`).join('')}</colgroup>` +
       `<thead><tr>` +
-      ['NO', 'KODE PNM', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR']
-        .map(h => `<th style="border:1px solid #000;background:#1D5BD4;color:#fff">${h}</th>`).join('') +
+      ['NO', 'KODE', 'DESKRIPSI BARANG', 'QTY', 'GAMBAR']
+        .map(h => `<th style="border:1px solid #000;background:${theme.hex};color:#fff">${h}</th>`).join('') +
       `</tr></thead><tbody>${rowsHtml}</tbody></table>`;
 
     const plain = rows.map((row, i) => {
