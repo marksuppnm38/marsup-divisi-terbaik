@@ -3,6 +3,7 @@
 // lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
 // di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
 import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck } from './auto-konversi/index.js';
+import { bandingkan, tokensToHtml } from './auto-konversi/bandingkan.js';
 
 export function installPermintaanRs(S) {
 // ══════════════════════════════════════════
@@ -612,7 +613,7 @@ function amLineHtml(item) {
   const diblokir = h.status === 'UNKNOWN' && h.blocked && h.blocked.length;
   const label = diblokir ? 'Tidak dipakai' : (AM_LABEL[h.status] || h.status);
   const isi = m.kode
-    ? `<span class="kb-am-prod"><b>${escapeHtmlAttr(m.kode)}</b> ${escapeHtmlAttr(m.nama || '')}</span>`
+    ? `<span class="kb-am-prod">${escapeHtmlAttr(m.nama || m.kode)}<span class="kb-am-kode">${escapeHtmlAttr(m.kode)}</span></span>`
     : `<span class="kb-am-prod kb-am-none">${escapeHtmlAttr(h.reason)}</span>`;
   const why = h.status === 'REVIEW' && AM_WHY[h.reason_key] ? `<span class="kb-am-why">${AM_WHY[h.reason_key]}</span>` : '';
   return `<div class="kb-am-line ${h.status.toLowerCase()}" title="${escapeHtmlAttr(h.reason)}"><span class="kb-am-label">${label}</span>${why}${isi}</div>`;
@@ -628,28 +629,70 @@ function amQuickBtnHtml(item) {
     : `<button type="button" class="kb-dict-sugg-attach kb-am-use" data-action="attach-suggestion" data-id="${item.id}" data-kode="${kode}" title="Belum ada di Clipboard — ditambahkan dulu, lalu dipasang ke item ini">+ Pakai</button>`;
 }
 
-// Isi detail baris (baris terbuka): alasan + semua kandidat, tiap kandidat punya tombol Pakai.
+// Alternatif (kandidat selain usulan teratas): buka/tutup per item, bertahan walau baris dirender ulang.
+// Default terbuka hanya kalau pilihannya memang antar-setara (ambigu / ukuran seri) atau tidak ada usulan teratas.
+const amAltPref = new Map(); // item.id -> boolean
+function amAltOpen(item, h) {
+  if (amAltPref.has(item.id)) return amAltPref.get(item.id);
+  return !h.kode_produk || h.reason_key === 'ambigu' || h.reason_key === 'ukuran_seri';
+}
+
+// Teks permintaan dengan penanda selisih terhadap usulan teratas (dipakai di judul baris yang terbuka).
+// null = tidak ada usulan teratas / tidak ada selisih yang perlu ditandai → pemanggil pakai teks polos.
+function amRequestHtml(item) {
+  const m = amFor(item);
+  if (!m || !m.kode) return null;
+  const top = (m.hasil.candidates || []).find(c => c.kode === m.kode);
+  if (!top) return null;
+  const bd = bandingkan(item.raw_text, top.nama);
+  return tokensToHtml(bd.diminta, escapeHtmlAttr, 'Beda dari produk usulan');
+}
+
+function amUseBtnHtml(item, kode) {
+  const k = escapeHtmlAttr(kode);
+  return amInClip(kode)
+    ? `<button type="button" class="kb-dict-sugg-use kb-cmp-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${k}" title="Pasang ${k} ke item ini">Pakai</button>`
+    : `<button type="button" class="kb-dict-sugg-attach kb-cmp-use" data-action="attach-suggestion" data-id="${item.id}" data-kode="${k}" title="Belum ada di Clipboard sesi ini — ditambahkan dulu, lalu dipasang ke item ini">+ Pakai</button>`;
+}
+
+// Satu kandidat: nama produk (selisihnya ditandai), baris kecil kode + asal usulan, tombol Pakai.
+function amCandRowHtml(item, c, top) {
+  const bd = bandingkan(item.raw_text, c.nama);
+  const judul = bd.selisih.map(x => `${x.nama}: minta ${x.minta}, produk ${x.ada}`).join('; ');
+  const asal = c.src === 'katalog' ? 'dari katalog' : (c.src === 'varian' ? 'ukuran lain' : (c.freq ? `${c.freq.toLocaleString('id-ID')}× dipakai` : ''));
+  // Beda spesifikasi yang tidak tertangkap penanda di nama (mis. mm, fig): tetap disebut, jangan hilang diam-diam.
+  const catatan = (c.diff || []).length && !bd.adaBeda ? `<span class="kb-cmp-note">${escapeHtmlAttr(c.diff.join('; '))}</span>` : '';
+  const ukTitle = AM_UKURAN_TXT[c.ukuran] ? ` title="${escapeHtmlAttr(AM_UKURAN_TXT[c.ukuran])}"` : '';
+  return `<div class="kb-cmp-row${top ? ' top' : ''}">
+    <div class="kb-cmp-info">
+      <div class="kb-cmp-name">${top ? '<span class="kb-cmp-arrow" aria-hidden="true">→</span>' : ''}${tokensToHtml(bd.produk, escapeHtmlAttr, judul)}</div>
+      <div class="kb-cmp-sub"><span class="kb-cmp-kode"${ukTitle}>${escapeHtmlAttr(c.kode)}</span>${asal ? `<span>${escapeHtmlAttr(asal)}</span>` : ''}${catatan}</div>
+    </div>
+    ${amUseBtnHtml(item, c.kode)}
+  </div>`;
+}
+
+// Isi detail baris (baris terbuka): alasan, usulan teratas, lalu alternatif (dilipat kecuali pilihannya setara).
 function amCandidatesHtml(item) {
   const m = amFor(item);
   if (!m) return '';
   const h = m.hasil;
   const cands = (h.candidates || []).filter((c, i, a) => a.findIndex(x => x.kode === c.kode) === i);
-  const rows = cands.map(c => {
-    const kode = escapeHtmlAttr(c.kode);
-    const btn = amInClip(c.kode)
-      ? `<button type="button" class="kb-dict-sugg-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${kode}">Pakai</button>`
-      : `<button type="button" class="kb-dict-sugg-attach" data-action="attach-suggestion" data-id="${item.id}" data-kode="${kode}" title="Belum ada di Clipboard sesi ini — ditambahkan dulu">+ Tambah & Pakai</button>`;
-    const meta = [AM_UKURAN_TXT[c.ukuran], c.src === 'katalog' ? 'dari katalog' : (c.freq ? `${c.freq.toLocaleString('id-ID')}× dipakai` : '')].filter(Boolean).join(' · ');
-    const diff = (c.diff || []).map(d => `<span class="kb-am-diff">${escapeHtmlAttr(d)}</span>`).join('');
-    return `<div class="kb-dict-sugg-row"><div class="kb-dict-sugg-info"><span class="kb-dict-sugg-nama">${kode} — ${escapeHtmlAttr(c.nama)}</span>${meta ? `<span class="kb-dict-sugg-freq">${escapeHtmlAttr(meta)}</span>` : ''}${diff}</div>${btn}</div>`;
-  }).join('');
-  const blk = (h.blocked && h.blocked.length)
-    ? `<div class="kb-dict-sugg-hint">${h.blocked.length} usulan disembunyikan: ${h.blocked.slice(0, 2).map(b => escapeHtmlAttr(b.kode + ' — ' + b.alasan)).join('; ')}${h.blocked.length > 2 ? '; …' : ''}</div>` : '';
+  const top = cands.find(c => c.kode === h.kode_produk) || null;
+  const alts = cands.filter(c => c !== top);
+  const open = amAltOpen(item, h);
   const lex = (h.lexicon_hits || []).map(x =>
-    `<div class="kb-dict-sugg-hint">“${escapeHtmlAttr(x.token)}” dikenali dari riwayat sebagai ${escapeHtmlAttr(x.kanonik)} (${x.n}×, ${Math.round(x.share * 100)}%).</div>`).join('');
-  return `<div class="kb-dict-suggestion kb-am-cands">
-    <div class="kb-dict-suggestion-label"><i class="ti ti-wand"></i> Usulan Auto-Match</div>
-    <div class="kb-dict-sugg-hint">${escapeHtmlAttr(h.reason)}</div>${lex}${rows}${blk}
+    `<div class="kb-cmp-hint">“${escapeHtmlAttr(x.token)}” dikenali dari riwayat sebagai ${escapeHtmlAttr(x.kanonik)} (${x.n}×, ${Math.round(x.share * 100)}%).</div>`).join('');
+  const blk = (h.blocked && h.blocked.length)
+    ? `<div class="kb-cmp-hint">${h.blocked.length} usulan disembunyikan: ${h.blocked.slice(0, 2).map(b => escapeHtmlAttr(b.kode + ' — ' + b.alasan)).join('; ')}${h.blocked.length > 2 ? '; …' : ''}</div>` : '';
+  const altToggle = alts.length && top
+    ? `<button type="button" class="kb-cmp-alt-toggle" data-action="toggle-alt" data-id="${item.id}" aria-expanded="${open}"><i class="ti ti-chevron-right" aria-hidden="true"></i>${alts.length} alternatif</button>` : '';
+  const altRows = alts.length && (open || !top)
+    ? `<div class="kb-cmp-alts">${alts.map(c => amCandRowHtml(item, c, false)).join('')}</div>` : '';
+  return `<div class="kb-cmp">
+    <p class="kb-cmp-why">${escapeHtmlAttr(h.reason)}</p>${lex}
+    ${top ? amCandRowHtml(item, top, true) : ''}
+    ${altToggle}${altRows}${blk}
   </div>`;
 }
 
@@ -678,19 +721,20 @@ function renderAmBar() {
     </div>`;
     return;
   }
-  const chip = (key, label, count) =>
-    `<button type="button" class="kb-filter-chip${amFilter === key ? ' active' : ''}${count ? '' : ' zero'}" data-am="filter" data-key="${key}" aria-pressed="${amFilter === key}">${label}<span class="kb-filter-count">${count}</span></button>`;
+  // Urutan = urutan kerja: yang butuh keputusan dulu. Chip kosong tidak ditampilkan (kecuali yang sedang aktif).
+  const chip = (key, label, count) => (count || amFilter === key)
+    ? `<button type="button" class="kb-filter-chip${amFilter === key ? ' active' : ''}" data-am="filter" data-key="${key}" aria-pressed="${amFilter === key}">${label}<span class="kb-filter-count">${count}</span></button>` : '';
   const rchip = (key, count) =>
     `<button type="button" class="kb-filter-chip${amReason === key ? ' active' : ''}" data-am="reason" data-key="${key}" aria-pressed="${amReason === key}">${AM_WHY[key] || key}<span class="kb-filter-count">${count}</span></button>`;
   const reasonRow = amFilter === 'REVIEW' && Object.keys(rc).length > 1
     ? `<div class="kb-am-chips kb-am-reasons" aria-label="Alasan perlu dicek">${Object.keys(AM_WHY).filter(k => rc[k]).map(k => rchip(k, rc[k])).join('')}</div>` : '';
   amBarEl.hidden = false;
   amBarEl.innerHTML = `<div class="kb-am-row">
-    <div class="kb-am-chips">${chip('AUTO', 'Cocok', n.AUTO)}${chip('REVIEW', 'Cek dulu', n.REVIEW)}${chip('UNKNOWN', 'Tidak ketemu', n.UNKNOWN)}</div>
+    <div class="kb-am-chips" role="group" aria-label="Saring hasil pencocokan">${chip('REVIEW', 'Cek dulu', n.REVIEW)}${chip('AUTO', 'Cocok', n.AUTO)}${chip('UNKNOWN', 'Tidak ketemu', n.UNKNOWN)}</div>
     <div class="kb-am-acts">
       ${n.AUTO ? `<button type="button" class="kb-am-btn primary" data-am="apply"${amApplying ? ' disabled' : ''}>${amApplying ? 'Memasang…' : `Pakai ${n.AUTO} yang cocok`}</button>` : ''}
-      <button type="button" class="kb-am-link" data-am="rerun" title="Cari ulang usulan (data produk/riwayat bisa berubah)">Ulangi</button>
-      <button type="button" class="kb-am-link" data-am="clear" title="Sembunyikan semua usulan (keputusan yang sudah dipasang tidak berubah)">Sembunyikan</button>
+      <button type="button" class="kb-am-ico" data-am="rerun" title="Cocokkan ulang (data produk/riwayat bisa berubah)" aria-label="Cocokkan ulang"><i class="ti ti-wand" aria-hidden="true"></i></button>
+      <button type="button" class="kb-am-ico" data-am="clear" title="Sembunyikan semua usulan (keputusan yang sudah dipasang tidak berubah)" aria-label="Sembunyikan semua usulan"><i class="ti ti-eye-off" aria-hidden="true"></i></button>
     </div>
   </div>${reasonRow}`;
 }
@@ -1460,9 +1504,11 @@ function renderChecklistItemHtml(item) {
   const paguTxt = item.pagu_satuan != null ? ` · pagu satuan ${S.rupiah(item.pagu_satuan)}` : '';
 
   // ---- Baris ringkas (selalu kelihatan, ini yang diklik buat buka/tutup) ----
-  const statusIcon = isDone ? '<i class="ti ti-circle-check" style="color:var(--success)"></i>'
-    : isNa ? '<i class="ti ti-circle-x" style="color:var(--danger)"></i>'
-    : '<i class="ti ti-circle-dashed" style="color:var(--text-muted)"></i>';
+  const statusIcon = isDone ? '<i class="ti ti-circle-check"></i>'
+    : isNa ? '<i class="ti ti-circle-x"></i>'
+    : '<i class="ti ti-circle-dashed"></i>';
+  // Baris terbuka yang punya usulan: teks permintaan memuat penanda selisih terhadap usulan teratas.
+  const reqMarked = isExpanded && isPending ? amRequestHtml(item) : null;
   let compactMatchedTxt = '';
   if (isDone && item.matched_items && item.matched_items.length) {
     const first = item.matched_items[0];
@@ -1476,7 +1522,7 @@ function renderChecklistItemHtml(item) {
   const headerHtml = `<div class="kb-item-header" data-action="toggle-expand" data-id="${item.id}">
     <span class="kb-item-status-icon">${statusIcon}</span>
     <div class="kb-item-header-text">
-      <div class="kb-item-text">${S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
+      <div class="kb-item-text">${reqMarked || S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
       ${!isExpanded ? compactMatchedTxt : ''}
       ${!isExpanded ? amLineHtml(item) : ''}
     </div>
@@ -1521,7 +1567,9 @@ function renderChecklistItemHtml(item) {
         </div>`;
     } else if (isPending) {
       const sugg = S.dictSuggestionCache[item.id];
-      const suggHtml = S.renderDictSuggestionHtml(item, sugg);
+      // Satu sumber usulan di layar: kalau Auto-Match sudah punya hasil, blok saran Dictionary (data RPC yang sama,
+      // subset dari hasil Auto-Match) tidak dirender lagi. Tanpa hasil Auto-Match, blok lama tetap jadi cadangan.
+      const suggHtml = am ? '' : S.renderDictSuggestionHtml(item, sugg);
       bodyHtml = `
         ${amCandidatesHtml(item)}
         ${suggHtml}
@@ -1591,9 +1639,12 @@ function computeSectionRollup(items, pagu) {
 function kbRollupHtml(r, size) {
   const cls = size === 'sm' ? 'kb-section-rollup' : 'kb-global-rollup';
   const selisihCls = r.selisih == null ? '' : (r.selisih >= 0 ? 'positif' : 'negatif');
+  const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
+  const prog = size === 'sm' ? ''
+    : `<span class="kb-prog" role="progressbar" aria-label="Kebutuhan terpenuhi" aria-valuemin="0" aria-valuemax="${r.total}" aria-valuenow="${r.done}"><i style="width:${pct}%"></i></span>`;
   return `<div class="${cls}">
-    <span>${r.done}/${r.total} terpenuhi</span>
-    <span>${S.rupiah(r.harga)}${r.anyIncomplete ? '<i class="ti ti-alert-triangle" title="Ada produk match yang harganya belum kehitung (cek clipboard)"></i>' : ''}</span>
+    <span class="kb-rollup-done">${size === 'sm' ? `${r.done}/${r.total}` : `<b>${r.done}</b> dari ${r.total}`} terpenuhi</span>${prog}
+    <span class="kb-rollup-harga">${S.rupiah(r.harga)}${r.anyIncomplete ? '<i class="ti ti-alert-triangle" title="Ada produk match yang harganya belum kehitung (cek clipboard)"></i>' : ''}</span>
     ${r.pagu != null ? `<span>pagu ${S.rupiah(r.pagu)}</span><span class="kb-selisih ${selisihCls}">${r.selisih >= 0 ? 'sisa ' : 'lebih '}${S.rupiah(Math.abs(r.selisih))}</span>` : ''}
   </div>`;
 }
@@ -1611,7 +1662,12 @@ function renderSectionTabs() {
   // ikut disembunyiin — bug, bikin gak ada cara mulai bikin section pertama
   // dari UI. Sekarang: selalu tampil begitu ada Permintaan RS aktif ("Semua"
   // + "+" minimal selalu ada), biar bisa bootstrap section pertama kapan pun.
-  if (!S.checklistPermintaanId) { S.kbSectionTabs.style.display = 'none'; return; }
+  const addBtn = document.getElementById('kb-add-section-btn');
+  const hasSections = S.checklistSections.length > 0;
+  // Belum ada section: "Semua | Tanpa section | +" cuma mengulang daftar yang sama. Cukup satu tombol kecil
+  // "+ Section" (cara memulai section pertama tetap ada). Tab muncul begitu ada section.
+  if (addBtn) addBtn.style.display = (S.checklistPermintaanId && !hasSections) ? '' : 'none';
+  if (!S.checklistPermintaanId || !hasSections) { S.kbSectionTabs.style.display = 'none'; S.kbSectionTabs.innerHTML = ''; return; }
   S.kbSectionTabs.style.display = 'flex';
   const countBySection = new Map(S.checklistSections.map(s => [s.id, 0]));
   countBySection.set(null, 0);
@@ -1631,6 +1687,22 @@ function renderSectionTabs() {
   tabs.push(`<button type="button" class="kb-tab kb-tab-add" data-tab="add" title="Tambah section"><i class="ti ti-plus"></i></button>`);
   S.kbSectionTabs.innerHTML = tabs.join('');
 }
+
+async function addSectionFlow() {
+  const nama = await S.showSectionNameModal({
+    mode: 'add',
+    existingNames: S.checklistSections.map(s => s.nama_section)
+  });
+  if (!nama) return;
+  const { data, error } = await S.rpc('add_permintaan_section', { p_permintaan_id: S.checklistPermintaanId, p_nama_section: nama });
+  if (error) { PNMToast.error('Gagal nambah section: ' + (error.message || 'error')); return; }
+  const row = Array.isArray(data) ? data[0] : data;
+  S.checklistSections.push(row);
+  S.activeSectionTab = row.id;
+  renderChecklist();
+}
+const kbAddSectionBtn = document.getElementById('kb-add-section-btn');
+if (kbAddSectionBtn) kbAddSectionBtn.addEventListener('click', () => { addSectionFlow(); });
 
 S.kbSectionTabs.addEventListener('click', async e => {
   const deleteBtn = e.target.closest('.kb-tab-delete');
@@ -1659,20 +1731,7 @@ S.kbSectionTabs.addEventListener('click', async e => {
   const btn = e.target.closest('.kb-tab');
   if (!btn) return;
   const tab = btn.dataset.tab;
-  if (tab === 'add') {
-    const nama = await S.showSectionNameModal({
-      mode: 'add',
-      existingNames: S.checklistSections.map(s => s.nama_section)
-    });
-    if (!nama) return;
-    const { data, error } = await S.rpc('add_permintaan_section', { p_permintaan_id: S.checklistPermintaanId, p_nama_section: nama });
-    if (error) { PNMToast.error('Gagal nambah section: ' + (error.message || 'error')); return; }
-    const row = Array.isArray(data) ? data[0] : data;
-    S.checklistSections.push(row);
-    S.activeSectionTab = row.id;
-    renderChecklist();
-    return;
-  }
+  if (tab === 'add') { await addSectionFlow(); return; }
   S.activeSectionTab = tab === 'semua' ? null : (tab === 'orphan' ? 'orphan' : Number(tab));
   renderChecklist();
 });
@@ -2105,6 +2164,13 @@ S.kbList.addEventListener('click', async (e) => {
     S.checklistExpandedId = (S.checklistExpandedId === itemId) ? null : itemId;
     renderChecklist();
     S.maybeFetchSuggestionForExpanded();
+    return;
+  }
+
+  if (action === 'toggle-alt') {
+    const m = amFor(item);
+    amAltPref.set(itemId, !amAltOpen(item, m ? m.hasil : {}));
+    S.patchChecklistItem(itemId, {}); // render ulang baris ini saja (scroll daftar tidak loncat)
     return;
   }
 

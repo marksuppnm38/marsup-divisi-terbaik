@@ -2944,3 +2944,137 @@
   .pr-modal-box .pr-am-opt{flex:1 1 100%}
   #app-root .kb-am-acts{margin-left:0}
 }
+/* ══════════════════════════════════════════════════════════════════════
+   REBASE UI KEBUTUHAN RS (2026-11-19) — blok ini sengaja PALING AKHIR; hapus blok = balik ke tampilan sebelumnya.
+   Prinsip: satu hal terbuka, sisanya diam. Hijau/biru hanya untuk aksi & status, amber hanya untuk SELISIH.
+   1. Pita atas jadi dua: ringkasan progres (bar + harga) dan saring hasil (chip + aksi). Tab section hanya kalau ada section.
+   2. Baris: daftar berpemisah tipis (bukan kotak berbingkai), status lewat ikon + kata, baris selesai mundur.
+   3. Kartu usulan = pembanding: nama produk (selisihnya digarisbawahi amber), kode kecil, satu tombol Pakai, alternatif dilipat.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Pita ringkasan ── */
+#app-root .kb-head{padding:10px 16px 6px;align-items:center}
+#app-root .kb-summary{flex:1 1 auto;min-width:0}
+#app-root .kb-summary .kb-global-rollup{display:flex;align-items:center;gap:10px;margin:0;font-size:12px;color:var(--text-muted);flex-wrap:nowrap;min-width:0}
+#app-root .kb-summary .kb-global-rollup > span:first-child{display:inline}
+#app-root .kb-rollup-done{white-space:nowrap;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+#app-root .kb-rollup-done b{color:var(--text);font-weight:600}
+#app-root .kb-prog{flex:0 1 96px;min-width:48px;height:4px;border-radius:999px;background:var(--surface-3);overflow:hidden}
+#app-root .kb-prog i{display:block;height:100%;border-radius:inherit;background:var(--success);transition:width .3s ease}
+#app-root .kb-rollup-harga{white-space:nowrap;font-variant-numeric:tabular-nums;margin-left:auto}
+#app-root .kb-head-btns{gap:6px;align-items:center}
+#app-root .kb-refresh-status{font-size:11px;color:var(--text-muted);white-space:nowrap}
+#app-root .kb-add-section-btn{
+  height:26px;padding:0 8px;display:inline-flex;align-items:center;gap:4px;border:1px dashed var(--border-strong);
+  border-radius:6px;background:transparent;color:var(--text-muted);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;
+}
+#app-root .kb-add-section-btn:hover{color:var(--text);border-color:var(--text-muted)}
+
+/* ── 2. Saring hasil ── */
+#app-root .kb-am-bar{padding:4px 16px 8px;border-bottom:1px solid var(--border)}
+#app-root .kb-am-row{min-height:30px;gap:8px 12px}
+#app-root .kb-am-chips{gap:4px}
+#app-root .kb-am-chips .kb-filter-chip{
+  height:26px;padding:0 10px;border-color:transparent;background:transparent;color:var(--text-muted);font-size:12px;
+}
+#app-root .kb-am-chips .kb-filter-chip:hover{background:var(--surface-2);color:var(--text)}
+#app-root .kb-am-chips .kb-filter-chip.active{background:var(--surface-3);border-color:var(--border-strong);color:var(--text)}
+#app-root .kb-am-chips .kb-filter-chip.active .kb-filter-count{background:var(--surface);color:var(--text-secondary)}
+#app-root .kb-am-chips .kb-filter-count{background:transparent;padding:0;min-width:0;color:inherit;font-variant-numeric:tabular-nums}
+#app-root .kb-am-acts{gap:6px}
+#app-root .kb-am-ico{
+  width:26px;height:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;
+  background:transparent;color:var(--text-muted);cursor:pointer;transition:background-color .12s,color .12s;
+}
+#app-root .kb-am-ico i{font-size:15px}
+#app-root .kb-am-ico:hover{background:var(--surface-2);color:var(--text)}
+#app-root .kb-am-ico:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ── 3. Daftar: berpemisah tipis, bukan kotak-kotak ── */
+#app-root .kb-list{padding:0 8px 8px}
+#app-root .kb-item{
+  margin:0;border-radius:0;border:0;border-bottom:1px solid var(--border);background:transparent;box-shadow:none;
+}
+#app-root .kb-item.terpenuhi,#app-root .kb-item.tidak-terpenuhi,
+#app-root .kb-item.am-auto,#app-root .kb-item.am-review,#app-root .kb-item.am-unknown{box-shadow:none;background:transparent}
+#app-root .kb-item-header{padding:9px 8px;min-height:40px;border-radius:6px}
+#app-root .kb-item-header:hover{background:var(--surface-2)}
+#app-root .kb-item-text{font-size:12.5px;line-height:1.45;color:var(--text)}
+/* status = bentuk ikon + warna ikon (bukan bilah warna di sisi) */
+#app-root .kb-item-status-icon i{font-size:16px;color:var(--text-muted)}
+#app-root .kb-item.terpenuhi .kb-item-status-icon i{color:var(--success)}
+#app-root .kb-item.tidak-terpenuhi .kb-item-status-icon i{color:var(--danger)}
+#app-root .kb-item.am-review .kb-item-status-icon i{color:var(--warning)}
+#app-root .kb-item.am-auto .kb-item-status-icon i{color:var(--success)}
+/* selesai = mundur: satu baris redup, tanpa latar hijau */
+#app-root .kb-item.terpenuhi.collapsed .kb-item-text{color:var(--text-secondary)}
+#app-root .kb-item.terpenuhi.collapsed .kb-item-compact-matched{color:var(--text-muted)}
+#app-root .kb-item.terpenuhi.collapsed .kb-item-header{padding:6px 8px;min-height:32px}
+/* terbuka = satu-satunya kartu: latar sedikit terangkat */
+#app-root .kb-item.expanded{
+  margin:6px 0;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);
+}
+#app-root .kb-item.expanded .kb-item-header:hover{background:transparent}
+#app-root .kb-item.expanded .kb-item-detail{padding:0 12px 12px 34px}
+
+/* baris usulan di bawah nama (baris tertutup) */
+#app-root .kb-am-line{gap:6px;margin-top:3px;font-size:11.5px}
+#app-root .kb-am-label{font-weight:600}
+#app-root .kb-am-prod{color:var(--text-secondary)}
+#app-root .kb-am-kode,#app-root .kb-cmp-kode{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10.5px;color:var(--text-muted);letter-spacing:0}
+#app-root .kb-am-kode{margin-left:8px}
+#app-root .kb-am-why{padding:0;border:0;background:transparent;font-weight:500;font-size:11px;line-height:inherit;color:var(--warn-text)}
+#app-root .kb-am-why::before{content:'· ';color:var(--text-muted)}
+#app-root .kb-item-header .kb-am-use{padding:0 12px;height:26px;display:inline-flex;align-items:center;font-size:11.5px;border-radius:8px}
+
+/* ── 4. Kartu usulan (pembanding) ── */
+#app-root .kb-cmp{display:flex;flex-direction:column;gap:2px}
+#app-root .kb-cmp-why{margin:0 0 6px;font-size:12px;line-height:1.45;color:var(--text-secondary);max-width:62ch}
+#app-root .kb-cmp-hint{margin:0 0 4px;font-size:11.5px;line-height:1.4;color:var(--text-muted)}
+#app-root .kb-cmp-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}
+#app-root .kb-cmp-info{min-width:0;flex:1 1 auto}
+#app-root .kb-cmp-name{font-size:12.5px;line-height:1.45;color:var(--text-secondary);overflow-wrap:anywhere}
+#app-root .kb-cmp-row.top .kb-cmp-name{color:var(--text);font-weight:500}
+#app-root .kb-cmp-arrow{margin-right:6px;color:var(--text-muted);font-weight:400}
+#app-root .kb-cmp-sub{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin-top:2px;font-size:11px;color:var(--text-muted)}
+#app-root .kb-cmp-row.top .kb-cmp-sub{margin-left:18px}
+#app-root .kb-cmp-note{color:var(--warn-text)}
+#app-root .kb-cmp-use{flex:none;height:28px;padding:0 14px;display:inline-flex;align-items:center;font-size:12px;font-weight:600;border-radius:8px;white-space:nowrap}
+#app-root .kb-cmp-row:not(.top) .kb-cmp-use{height:24px;padding:0 10px;font-size:11.5px;font-weight:500}
+/* penanda selisih: garis bawah (bukan warna saja) */
+#app-root .kb-tok{border-radius:2px;text-decoration-line:underline;text-underline-offset:3px}
+#app-root .kb-tok.beda{color:var(--warn-text);text-decoration-style:solid;text-decoration-color:var(--warning);text-decoration-thickness:2px;font-weight:600}
+#app-root .kb-tok.hilang{color:var(--text-muted);text-decoration-style:dotted;text-decoration-color:var(--text-muted);text-decoration-thickness:1px}
+/* alternatif */
+#app-root .kb-cmp-alt-toggle{
+  align-self:flex-start;margin:4px 0 0 -4px;padding:3px 6px;display:inline-flex;align-items:center;gap:4px;border:0;border-radius:6px;
+  background:transparent;color:var(--text-muted);font:inherit;font-size:11.5px;font-weight:500;cursor:pointer;
+}
+#app-root .kb-cmp-alt-toggle:hover{color:var(--text);background:var(--surface-3)}
+#app-root .kb-cmp-alt-toggle i{font-size:13px;transition:transform .15s ease}
+#app-root .kb-cmp-alt-toggle[aria-expanded="true"] i{transform:rotate(90deg)}
+#app-root .kb-cmp-alts{margin-top:2px;border-top:1px solid var(--border)}
+#app-root .kb-cmp-alts .kb-cmp-row{border-bottom:1px solid var(--border);padding:7px 0}
+#app-root .kb-cmp-alts .kb-cmp-row:last-child{border-bottom:0}
+
+/* aksi manual di bawah kartu: ada, tapi tidak berebut perhatian dengan Pakai */
+#app-root .kb-item.expanded .kb-item-actions{justify-content:flex-end;gap:6px;margin-top:10px}
+#app-root .kb-item.expanded .kb-item-actions button{flex:0 0 auto;padding:5px 12px;font-size:11.5px;font-weight:500;background:transparent;border-radius:8px}
+#app-root .kb-item.expanded .kb-bisa-btn{color:var(--text-secondary);border:1px solid var(--border-strong) !important}
+#app-root .kb-item.expanded .kb-tidak-btn{color:var(--text-muted);border:1px solid var(--border) !important}
+#app-root .kb-item.expanded .kb-bisa-btn:hover{background:var(--success-bg);color:var(--success-text)}
+#app-root .kb-item.expanded .kb-tidak-btn:hover{background:var(--danger-bg);color:var(--danger-text)}
+
+@media (max-width:640px){
+  #app-root .kb-cmp-row{flex-wrap:wrap}
+  #app-root .kb-cmp-use{margin-left:18px}
+  #app-root .kb-item.expanded .kb-item-detail{padding-left:12px}
+  #app-root .kb-rollup-harga{margin-left:0}
+}
+/* titik status di chip saring: warna sama dengan ikon di baris (kata tetap membawa maknanya) */
+#app-root .kb-am-chips .kb-filter-chip[data-key="REVIEW"]::before,
+#app-root .kb-am-chips .kb-filter-chip[data-key="AUTO"]::before,
+#app-root .kb-am-chips .kb-filter-chip[data-key="UNKNOWN"]::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--border-strong)}
+#app-root .kb-am-chips .kb-filter-chip[data-key="REVIEW"]::before{background:var(--warning)}
+#app-root .kb-am-chips .kb-filter-chip[data-key="AUTO"]::before{background:var(--success)}
+#app-root .kb-am-why{margin-right:6px}
