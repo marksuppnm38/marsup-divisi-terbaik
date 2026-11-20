@@ -712,7 +712,7 @@ function amCandidatesHtml(item) {
   // oleh "Pakai N yang cocok" — isi penawaran ke RS berubah, jadi harus diklik sadar.
   const nb = h.bundle && h.bundle.length >= 2 && item.status === 'PENDING' ? h.bundle.length : 0;
   const dq = Number(item.qty_diminta);
-  const bundleBtn = nb ? `<div class="kb-cmp-hint"><button type="button" class="kb-am-btn" data-action="use-bundle" data-id="${item.id}" title="Pasang ${nb} produk sekaligus, masing-masing @ qty diminta">Pakai semua ${nb} sebagai skenario</button> permintaan umum — tiap produk @ ${dq >= 1 ? escapeHtmlAttr(String(dq)) : 'qty diminta'}, buat bandingan anggaran.</div>` : '';
+  const bundleBtn = nb ? `<div class="kb-cmp-hint"><button type="button" class="kb-am-btn" data-action="use-bundle" data-id="${item.id}" title="Pasang ${nb} opsi sekaligus, masing-masing @ qty diminta">Tawarkan semua ${nb} opsi</button> permintaan umum — tiap opsi @ ${dq >= 1 ? escapeHtmlAttr(String(dq)) : 'qty diminta'}, buat bandingan anggaran.</div>` : '';
   return `<div class="kb-cmp">
     <p class="kb-cmp-why">${escapeHtmlAttr(h.reason)}</p>${lex}
     ${top ? amCandRowHtml(item, top, true) : ''}${bundleBtn}
