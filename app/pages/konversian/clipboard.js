@@ -366,6 +366,7 @@ async function persistAddItem(item) {
   setSesiSavedStatus('Menyimpan…');
   try {
     const sesiId = await ensureSesi();
+    const postedQty = item.qty; // qty yang ikut terkirim di POST ini
     const res = await sesiFetch(SESI_ITEM_TABLE, {
       method: 'POST',
       headers: { 'Prefer': 'return=representation' },
@@ -392,6 +393,8 @@ async function persistAddItem(item) {
     await assertOk(res, 'Gagal simpan item');
     const rows = await res.json();
     item._sesiItemId = rows[0] && rows[0].id;
+    // Qty diubah selagi POST masih jalan (persistUpdateQty belum punya id waktu itu) -> susulkan.
+    if (item._sesiItemId && item.qty !== postedQty) persistUpdateQty(item);
     await touchSesiUpdatedAt(sesiId);
     setSesiSavedStatus('Tersimpan ✓');
   } catch (err) {
@@ -422,26 +425,64 @@ async function persistRemoveItem(item) {
   }
 }
 
-let qtySaveTimer = null;
+// Simpan qty ke server — debounce PER ITEM, bukan satu timer global.
+// Dulu satu `qtySaveTimer` dipakai bareng semua item: tiap panggilan membatalkan timer
+// item sebelumnya, jadi kalau beberapa item berubah berdekatan (sync qty dari Permintaan
+// RS = loop banyak item, atau +/- di dua baris berurutan) cuma item TERAKHIR yang masuk
+// DB. Clipboard di layar benar, tapi DB — yang dibaca "Copy ke Sheet" Konversi Berjalan —
+// tertinggal.
+const qtySaveTimers = new Map(); // _sesiItemId -> { timer, item, sesiId }
+const qtyInflight = new Set();   // promise PATCH yang lagi jalan
+
+async function saveQtyNow(item, sesiId) {
+  try {
+    const qtyRes = await sesiFetch(`${SESI_ITEM_TABLE}?id=eq.${item._sesiItemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ qty: item.qty })
+    });
+    await assertOk(qtyRes, 'Gagal simpan qty');
+    await touchSesiUpdatedAt(sesiId);
+    if (S.sesiPeekCache) S.sesiPeekCache.delete(String(sesiId)); // isi "Lihat isi" sesi ini sudah usang
+    if (!qtySaveTimers.size && qtyInflight.size <= 1) setSesiSavedStatus('Tersimpan ✓');
+  } catch (err) {
+    setSesiSavedStatus('Gagal simpan qty: ' + err.message, true);
+  }
+}
+
+function runQtySave(item, sesiId) {
+  const p = saveQtyNow(item, sesiId);
+  qtyInflight.add(p);
+  p.finally(() => qtyInflight.delete(p));
+  return p;
+}
+
 function persistUpdateQty(item) {
-  if (!S.currentSesiId || !item._sesiItemId) return;
+  if (!S.currentSesiId) return;
+  // Item baru saja ditambah & POST-nya belum balik (belum punya id): persistAddItem
+  // yang menyusulkan qty terbaru begitu id-nya ada.
+  if (!item._sesiItemId) return;
   setSesiSavedStatus('Menyimpan…');
-  clearTimeout(qtySaveTimer);
-  qtySaveTimer = setTimeout(async () => {
-    try {
-      const qtyRes = await sesiFetch(`${SESI_ITEM_TABLE}?id=eq.${item._sesiItemId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ qty: item.qty })
-      });
-      await assertOk(qtyRes, 'Gagal simpan qty');
-      await touchSesiUpdatedAt(S.currentSesiId);
-      setSesiSavedStatus('Tersimpan ✓');
-    } catch (err) {
-      setSesiSavedStatus('Gagal simpan qty: ' + err.message, true);
-    }
+  const key = item._sesiItemId;
+  const sesiId = S.currentSesiId;
+  const prev = qtySaveTimers.get(key);
+  if (prev) clearTimeout(prev.timer);
+  const timer = setTimeout(() => {
+    qtySaveTimers.delete(key);
+    runQtySave(item, sesiId);
   }, 400);
+  qtySaveTimers.set(key, { timer, item, sesiId });
 }
 S.persistUpdateQty = persistUpdateQty;
+
+// Tulis SEKARANG semua qty yang masih nunggu debounce, lalu tunggu PATCH yang lagi jalan.
+// Dipanggil sebelum baca isi sesi dari server (Copy ke Sheet / Lihat isi di Konversi Berjalan).
+async function flushQtySaves() {
+  const pending = [...qtySaveTimers.values()];
+  qtySaveTimers.clear();
+  pending.forEach(e => { clearTimeout(e.timer); runQtySave(e.item, e.sesiId); });
+  await Promise.all([...qtyInflight]);
+}
+S.flushQtySaves = flushQtySaves;
 
 // Nama RS / Sales / PIC diketik → sesi ikut keupdate (bikin baru kalau belum ada)
 let headerSaveTimer = null;

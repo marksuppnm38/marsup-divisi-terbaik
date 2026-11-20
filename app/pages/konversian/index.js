@@ -3328,11 +3328,28 @@ function sesiPeekStamp(s, itemCount) { return `${s.updated_at || ''}|${itemCount
 
 async function fetchSesiItems(sesiId, stamp) {
   const key = String(sesiId);
+  // Sesi yang lagi kebuka di clipboard: isi di layar (S.clipboard) itulah yang benar.
+  // Tulis dulu qty yang masih nunggu debounce, jangan pakai cache, dan samakan hasil
+  // baca server dengan qty di layar (sekaligus nyembuhin DB kalau sempat tertinggal).
+  const isCurrent = String(S.currentSesiId || '') === key;
+  if (isCurrent && typeof S.flushQtySaves === 'function') {
+    try { await S.flushQtySaves(); } catch (_) { /* lanjut, ditimpa qty layar di bawah */ }
+  }
   const hit = S.sesiPeekCache.get(key);
-  if (hit && hit.stamp === stamp) return hit.items;
+  if (!isCurrent && hit && hit.stamp === stamp) return hit.items;
   const res = await S.sesiFetch(`${S.SESI_ITEM_TABLE}?sesi_id=eq.${encodeURIComponent(sesiId)}&select=kode_produk,nama_produk,qty,harga_ekat&order=nama_produk.asc`);
   if (!res.ok) throw new Error('Gagal memuat isi sesi.');
   const items = (await res.json()).map(i => ({ kode: i.kode_produk, nama: i.nama_produk, qty: i.qty, harga: i.harga_ekat }));
+  if (isCurrent && Array.isArray(S.clipboard)) {
+    const mem = new Map(S.clipboard.map(c => [c.kode_produk, c]));
+    items.forEach(i => {
+      const c = mem.get(i.kode);
+      if (c && c.qty != null && Number(c.qty) !== Number(i.qty)) {
+        i.qty = c.qty;
+        if (c._sesiItemId && typeof S.persistUpdateQty === 'function') S.persistUpdateQty(c);
+      }
+    });
+  }
   S.sesiPeekCache.set(key, { stamp, items });
   return items;
 }
@@ -3351,7 +3368,7 @@ async function loadSesiPeek(sesiId, box) {
     }
     attachLinks(items).catch(() => {}); // prefetch link e-Katalog biar Copy ke Sheet langsung jalan
     const total = items.reduce((a, i) => a + ((i.harga != null && i.qty != null) ? Number(i.harga) * Number(i.qty) : 0), 0);
-    const rowsHtml = items.map((i, ix) => `<tr data-i="${ix}" data-q=""${S.escapeHtmlAttr(`${i.kode || ''} ${i.nama || ''}`.toLowerCase())}">
+    const rowsHtml = items.map((i, ix) => `<tr data-i="${ix}" data-q="${S.escapeHtmlAttr(`${i.kode || ''} ${i.nama || ''}`.toLowerCase())}">
         <td class="kode">${S.escapeHtmlAttr(i.kode || '')}</td><td>${S.escapeHtmlAttr(i.nama || '')}</td>
         <td class="num">${i.qty ?? '-'}</td>
         <td class="num">${riwayatRp(i.harga)}</td>
