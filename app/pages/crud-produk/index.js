@@ -3791,6 +3791,12 @@ function animateProdukRowOut(id){
   S.openEdit = openEdit;
   S.goToSetDetail = goToSetDetail;
   S.ensureXlsx = ensureXlsx; // export Excel di kategori.js (xlsx-js-style lazy, sama dengan Export Pricelist)
+  // Kelompok set (kategori.js) memakai alur salin yang sama dengan list Produk (copy.js), jadi butuh helper yang sama.
+  S.fetchAkdNoMap = (ids, opts) => fetchAkdNoMap(ids, opts);
+  S.stokOf = (id) => produkStokCache.get(id);
+  S.ensureStok = (ids) => ensureStokForIds(ids);
+  S.stokLabel = STOK_LABEL;
+  S.sealLabel = (st) => SEAL_LABELS[st] || 'Belum ada AKD';
   installKategori(S);
 
   // Kick off the initial data load now -- moved here from near the top of
@@ -3839,6 +3845,7 @@ export function unmount() {
   exportPanelRepaint = null;
   if (beforeUnloadHandler) window.removeEventListener('beforeunload', beforeUnloadHandler);
   if (copyKitDestroy) { copyKitDestroy(); copyKitDestroy = null; }
+  if (S.destroyKategori) { S.destroyKategori(); S.destroyKategori = null; }
   if (shortcutsDispose) { shortcutsDispose(); shortcutsDispose = null; }
   filterPopOutsideClickHandler = null;
   resizeHandler = null;

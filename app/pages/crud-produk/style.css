@@ -1038,3 +1038,14 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .kalk-pagu-tax{margin-left:auto;height:26px;padding:0 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text)}
 .kalk-pagu-tax[hidden],#kalkPaguBox[hidden]{display:none}
 .kalk-in input:disabled{opacity:.55;cursor:not-allowed}
+/* ---- Kelompok set (kategori.js): alur salin sama dengan list Produk (copy.js), jadi aturan #tableBody diulang untuk #katSetBody ---- */
+#katSetBody tr.is-selected td,#katSetBody tr.is-selected:hover td{background:var(--accent-soft)}
+#katSetBody .kode-cell{position:relative;white-space:nowrap;color:var(--text);font-size:12px;padding-left:32px}
+#viewKategori #katKelompok thead th:first-child{padding-left:32px}
+#katSetBody .sel-input{left:9px}
+#katSetBody tr:hover .sel-input,#katSetBody.has-sel .sel-input{opacity:1}
+#katSetBody td:hover .cp-btn{opacity:1}
+#katSetBody tr:hover .cp-more,#katSetBody tr:focus-within .cp-more{opacity:1}
+#katSetBody tr:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#viewKategori #katKelompok th.c-act,#viewKategori #katKelompok td.c-act{width:1%;padding-left:6px;white-space:nowrap;text-align:right}
+@media (hover:none),(max-width:760px){#katSetBody .sel-input{left:9px;opacity:1}}

@@ -645,6 +645,7 @@ export const CRUD_PRODUK_MARKUP = `
           </div>
           <div class="produk-head-actions">
             <button class="icon-btn" id="katRefreshBtn" type="button" title="Muat ulang hasil terakhir (bukan hitung ulang; lihat refresh_katalog_klasifikasi)" aria-label="Muat ulang"><i class="ti ti-refresh"></i></button>
+            <button class="btn" id="katCopyAllBtn" type="button" style="display:none;" title="Salin semua set di kelompok ini (kolom sesuai pengaturan Kolom)"><i class="ti ti-copy"></i> Salin semua</button>
             <button class="btn excel-export-btn" id="katExportViewBtn" style="display:none;" title="Export produk sesuai tab, filter, dan pencarian yang sedang aktif"><i class="ti ti-file-spreadsheet"></i> Export tampilan ini</button>
             <button class="btn btn-accent excel-export-btn" id="katExportAllBtn" title="Satu workbook: Ringkasan + satu sheet per spesialisasi (set &amp; instrumen) + satu sheet per kategori alat. Untuk dasar pengajuan nomor izin edar."><i class="ti ti-file-spreadsheet"></i> Export Excel (izin edar)</button>
           </div>
@@ -659,6 +660,21 @@ export const CRUD_PRODUK_MARKUP = `
         <div class="kat-filters" id="katChips"></div>
         <div class="vbody">
           <div id="katBody"></div>
+          <!-- Kelompok set: container tetap (tidak ditimpa innerHTML) karena alur salin (copy.js) memasang listener di tbody-nya sekali saja. -->
+          <div id="katKelompok" style="display:none;">
+            <div class="table-card akd-table-scroll"><table>
+              <thead><tr><th>Kode</th><th>Nama</th><th class="c-act"><span class="sr-only">Salin</span></th></tr></thead>
+              <tbody id="katSetBody"></tbody>
+            </table></div>
+            <div class="kat-note" id="katKelompokNote"></div>
+          </div>
+        </div>
+        <div class="copy-bar" id="katCopyBar" role="region" aria-label="Salin set terpilih" hidden>
+          <span class="cb-count" id="katCopyBarCount" aria-live="polite"></span>
+          <button type="button" class="cb-btn cb-primary" id="katCopyBarCopy"><i class="ti ti-copy"></i> Salin sebagai tabel</button>
+          <button type="button" class="cb-btn" id="katCopyBarCols" aria-haspopup="dialog">Kolom</button>
+          <button type="button" class="cb-link cb-page" id="katCopyBarPage">Pilih semua di kelompok ini</button>
+          <button type="button" class="cb-link" id="katCopyBarClear">Batal pilih</button>
         </div>
         <div class="pg-bar" id="katPagination" style="display:none;"></div>
       </div>

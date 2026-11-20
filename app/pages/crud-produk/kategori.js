@@ -2,7 +2,12 @@
 //   get_katalog_kategori_ringkasan -> matriks kategori x spesialisasi seluruh katalog (sekali per muat)
 //   get_katalog_kategori_daftar    -> daftar produk berpaginasi (set / instrumen satuan / unit & alat)
 // Pola sama kayak orphan.js/akd-master.js: installKategori(S) dipanggil di mount(), S.loadKategori dipakai switchView().
+//
+// Mode "Kelompok set" (2026-11-20): kelompok Minor / Mayor / Vaginal dari NAMA set aktif (bukan dari cache klasifikasi,
+// jadi set baru langsung ikut). Set yang namanya mengandung "vagin" masuk kelompok Vaginal dan TIDAK ikut Minor/Mayor.
+// Alur salin memakai copy.js yang sama dengan list Produk (centang, Shift+klik, Ctrl+C, klik kanan, pilih kolom).
 import { showToast, renderPgBar } from './ui-utils.js';
+import { createCopyKit } from './copy.js';
 
 export function installKategori(S) {
   const PAGE_SIZE = 30;
@@ -15,6 +20,7 @@ export function installKategori(S) {
   const MODES = [
     { id: 'ringkasan', label: 'Ringkasan', icon: 'ti-layout-grid' },
     { id: 'set', label: 'Set', icon: 'ti-stack-2', kat: ['SET'] },
+    { id: 'kelompok', label: 'Kelompok set', icon: 'ti-folders' },
     { id: 'instrumen', label: 'Instrumen satuan', icon: 'ti-tool', kat: ['INSTRUMEN SATUAN'] },
     { id: 'alat', label: 'Unit & alat', icon: 'ti-device-desktop', kat: ALAT },
   ];
@@ -23,7 +29,48 @@ export function installKategori(S) {
     'peta?': ['Dugaan (peta)', 'warn'], 'rmp?': ['Dugaan (RMP)', 'warn'], kosong: ['Belum ada petunjuk', 'bad'],
     label: ['Label set', ''], isi: ['Dugaan dari isi set', 'warn'],
   };
-  const st = { mode: 'ringkasan', page: 1, q: '', spes: '', kat: '', cek: false, ring: null, req: 0 };
+  const st = { mode: 'ringkasan', page: 1, q: '', spes: '', kat: '', cek: false, ring: null, req: 0, grp: 'minor', kel: null, kelReq: 0 };
+
+  // ---- Kelompok set: aturan dari nama set ----
+  // Vaginal diperiksa PERTAMA supaya "MINOR VAGINAL S." / "MAYOR VAGINAL S." / "SMALL VAGINAL S." tidak masuk Minor atau Mayor.
+  const RE_VAGINAL = /vagin/i, RE_MINOR = /\bminor\b/i, RE_MAYOR = /\b(mayor|major)\b/i;
+  const KEL = [
+    { id: 'minor', label: 'Semua minor', ket: 'set minor, tanpa set vaginal' },
+    { id: 'mayor', label: 'Semua mayor', ket: 'set mayor, tanpa set vaginal' },
+    { id: 'vaginal', label: 'Vaginal', ket: 'semua set vaginal (minor, mayor, dan lainnya)' },
+  ];
+  const KEL_COLS = 'id, kode_produk, nama_produk, tipe, golongan, brand, is_active, status_akd, status_inaproc, link_v6';
+  // Penyaring kasar di server (ilike); penentu akhirnya klasifikasi kelKelompok() di bawah.
+  const KEL_OR = 'nama_produk.ilike.%minor%,nama_produk.ilike.%mayor%,nama_produk.ilike.%major%,nama_produk.ilike.%vagin%,kode_produk.ilike.%vagin%';
+  const kelKelompok = (r) => {
+    const t = `${r.nama_produk || ''} ${r.kode_produk || ''}`;
+    if (RE_VAGINAL.test(t)) return 'vaginal';
+    const nama = r.nama_produk || '';
+    const minor = RE_MINOR.test(nama), mayor = RE_MAYOR.test(nama);
+    if (minor && !mayor) return 'minor';
+    if (mayor && !minor) return 'mayor';
+    return null; // tidak menyebut minor/mayor, atau menyebut dua-duanya (ambigu) -> tidak masuk kelompok mana pun
+  };
+  const kelVaginalLabel = (r) => (RE_MINOR.test(r.nama_produk || '') ? 'Minor vaginal' : RE_MAYOR.test(r.nama_produk || '') ? 'Mayor vaginal' : 'Vaginal');
+  const kelSort = (a, b) => String(a.nama_produk || '').localeCompare(String(b.nama_produk || ''), 'id', { numeric: true, sensitivity: 'base' });
+  const kelRows = (id) => (st.kel || []).filter((r) => kelKelompok(r) === id);
+  const kelCari = (r) => {
+    const q = st.q.trim().toLowerCase();
+    return !q || `${r.kode_produk} ${r.nama_produk}`.toLowerCase().includes(q);
+  };
+  const kelTampil = () => kelRows(st.grp).filter(kelCari);
+
+  // Alur salin yang sama dengan list Produk. tbody-nya container tetap (#katSetBody) karena listener dipasang sekali.
+  const kit = createCopyKit({
+    sb: S.sb, tableBody: document.getElementById('katSetBody'), cardWrap: document.createElement('div'), showToast,
+    ids: { bar: 'katCopyBar', count: 'katCopyBarCount', copy: 'katCopyBarCopy', cols: 'katCopyBarCols', clear: 'katCopyBarClear', page: 'katCopyBarPage' },
+    fetchAkdNoMap: (ids, opts) => S.fetchAkdNoMap(ids, opts),
+    stokOf: (id) => S.stokOf(id),
+    ensureStok: (ids) => S.ensureStok(ids),
+    get stokLabel() { return S.stokLabel; },
+    sealLabel: (x) => S.sealLabel(x),
+    rowActions: (p) => [{ key: 'buka', label: 'Buka set', icon: 'pencil', run: () => S.goToSetDetail && S.goToSetDetail(p.id) }],
+  });
 
   const esc = (v) => S.escapeHtml(v == null ? '' : String(v));
   const $ = (id) => document.getElementById(id);
@@ -63,10 +110,15 @@ export function installKategori(S) {
 
   function render() {
     renderModeBar();
-    const ringkasan = st.mode === 'ringkasan';
+    const ringkasan = st.mode === 'ringkasan', kelompok = st.mode === 'kelompok';
+    $('katBody').style.display = kelompok ? 'none' : '';
+    $('katKelompok').style.display = kelompok ? '' : 'none';
+    $('katCopyAllBtn').style.display = kelompok ? '' : 'none';
+    if (!kelompok) kit.clearSelection(); // bar salin ikut hilang di tab lain
     $('katToolbar').style.display = ringkasan ? 'none' : '';
     $('katChips').style.display = ringkasan ? 'none' : '';
-    $('katExportViewBtn').style.display = ringkasan ? 'none' : '';
+    $('katExportViewBtn').style.display = ringkasan || kelompok ? 'none' : '';
+    if (kelompok) return renderKelompok();
     if (!st.ring) return;
     if (!st.ring.dihitung_at) return belumDihitung();
     const tot = Number(st.ring.total || 0), cek = Number(st.ring.perlu_cek || 0);
@@ -87,7 +139,8 @@ export function installKategori(S) {
 
   function renderModeBar() {
     $('katModeBar').innerHTML = MODES.map((m) => {
-      const n = m.kat && st.ring ? fmt(sum(katDi(m))) : null;
+      const n = m.id === 'kelompok' ? (st.kel ? fmt(KEL.reduce((a, k) => a + kelRows(k.id).length, 0)) : null)
+        : m.kat && st.ring ? fmt(sum(katDi(m))) : null;
       return `<button class="orph-tab${st.mode === m.id ? ' active' : ''}" data-kmode="${m.id}"><i class="ti ${m.icon}"></i><span>${m.label}</span>${n != null ? `<span class="orph-tab-count">${n}</span>` : ''}</button>`;
     }).join('');
   }
@@ -134,6 +187,53 @@ export function installKategori(S) {
         <tfoot><tr><td><b>Total</b></td><td class="num"><b>${fmt(colSum('set'))}</b></td><td class="num"><b>${fmt(colSum('ins'))}</b></td>${adaLain ? `<td class="num"><b>${fmt(colSum('lain'))}</b></td>` : ''}<td class="num"><b>${fmt(colSum('set') + colSum('ins') + colSum('lain'))}</b></td></tr></tfoot>
       </table></div>
       <div class="kat-note">Unit &amp; alat tidak punya spesialisasi (belum ada sumbernya), jadi tampil per kategori di kartu atas. Angka ⚠ = perlu dicek (dugaan sistem, belum ada petunjuk, atau golongan belum dipetakan).</div>`;
+  }
+
+  // ---- Mode Kelompok set ----
+  async function loadKelompok() {
+    const my = ++st.kelReq;
+    const { data, error } = await S.sb.from('produk').select(KEL_COLS)
+      .eq('tipe', 'SET').eq('is_active', true).or(KEL_OR).order('nama_produk').limit(1000);
+    if (my !== st.kelReq) return;
+    if (error) {
+      $('katCount').textContent = 'Gagal memuat';
+      $('katSetBody').innerHTML = `<tr class="state-row"><td colspan="3">${esc(error.message || error)}</td></tr>`;
+      kit.setPage([]);
+      showToast('Gagal memuat kelompok set: ' + (error.message || error), true);
+      return;
+    }
+    st.kel = (data || []).filter((r) => kelKelompok(r)).sort(kelSort);
+    if ((data || []).length >= 1000) showToast('Hasil dibatasi 1.000 set, sebagian mungkin tidak tampil', true);
+    if (st.mode === 'kelompok') render();
+  }
+
+  function renderKelompok() {
+    $('katPagination').style.display = 'none';
+    if (!st.kel) {
+      $('katCount').textContent = 'Memuat...';
+      $('katChips').innerHTML = '';
+      $('katKelompokNote').textContent = '';
+      $('katSetBody').innerHTML = '<tr class="state-row"><td colspan="3">Memuat set...</td></tr>';
+      kit.setPage([]);
+      loadKelompok();
+      return;
+    }
+    const g = KEL.find((k) => k.id === st.grp) || KEL[0];
+    $('katChips').innerHTML = `<div class="orph-fgroup"><span class="orph-flabel">Kelompok</span><div class="orph-seg">${KEL.map((k) =>
+      `<button class="${st.grp === k.id ? 'active' : ''}" data-kgrp="${k.id}" title="${esc(k.ket)}">${esc(k.label)}<span class="fc-count">${fmt(kelRows(k.id).length)}</span></button>`).join('')}</div></div>`;
+    const semua = kelRows(g.id), rows = kelTampil();
+    $('katCount').textContent = st.q.trim()
+      ? `${fmt(rows.length)} dari ${fmt(semua.length)} set ${g.label.toLowerCase()} cocok dengan pencarian`
+      : `${fmt(semua.length)} set aktif · ${g.ket}`;
+    $('katKelompokNote').textContent = 'Dikelompokkan dari nama set aktif, jadi set baru yang namanya memuat minor, mayor, atau vaginal langsung ikut. '
+      + 'Set vaginal (termasuk minor vaginal dan mayor vaginal) hanya muncul di kelompok Vaginal, tidak di Minor maupun Mayor.';
+    kit.setPage(rows);
+    $('katSetBody').innerHTML = rows.map((r) => `<tr class="clickable" tabindex="0" data-id="${r.id}" data-kid="${r.id}" data-ktipe="SET">
+      <td class="kode-cell">${kit.selBox(r)}${esc(r.kode_produk)}${kit.btn('kode', 'Salin kode produk')}</td>
+      <td>${esc(r.nama_produk || '—')}${kit.btn('nama', 'Salin nama produk')}${g.id === 'vaginal' ? ` <span class="status-pill neutral">${esc(kelVaginalLabel(r))}</span>` : ''}</td>
+      ${kit.moreCell(r)}</tr>`).join('')
+      || `<tr class="state-row"><td colspan="3">${st.q.trim() ? 'Tidak ada set yang cocok dengan pencarian.' : 'Belum ada set di kelompok ini.'}</td></tr>`;
+    kit.afterRender();
   }
 
   // ---- Mode daftar ----
@@ -360,15 +460,21 @@ export function installKategori(S) {
   let debounce = null;
   $('katSearchInput').addEventListener('input', (e) => {
     clearTimeout(debounce);
-    debounce = setTimeout(() => { st.q = e.target.value; st.page = 1; loadList(); }, 300);
+    debounce = setTimeout(() => { st.q = e.target.value; st.page = 1; if (st.mode === 'kelompok') renderKelompok(); else loadList(); }, 300);
   });
-  $('katRefreshBtn').addEventListener('click', loadRingkasan);
+  $('katRefreshBtn').addEventListener('click', () => { st.kel = null; loadRingkasan(); });
+  $('katCopyAllBtn').addEventListener('click', () => kit.copyRows(kelTampil()));
+  // Enter / Spasi pada baris yang difokus = buka set (sama dengan list Produk)
+  $('katSetBody').addEventListener('keydown', (e) => {
+    if (e.target.matches && e.target.matches('tr[data-kid]') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.target.click(); }
+  });
   $('katExportAllBtn').addEventListener('click', () => exportExcel('semua'));
   $('katExportViewBtn').addEventListener('click', () => exportExcel('tampilan'));
   $('viewKategori').addEventListener('click', (e) => {
     const t = e.target.closest('button, tr[data-kid]');
     if (!t) return;
     if (t.dataset.kmode) return go(t.dataset.kmode);
+    if (t.dataset.kgrp) { st.grp = t.dataset.kgrp; return renderKelompok(); }
     if (t.dataset.kgo) return go(t.dataset.kgo, { spes: t.dataset.kspes || '', kat: ALAT.includes(t.dataset.kkat) ? t.dataset.kkat : '' });
     if ('kspesF' in t.dataset) { st.spes = t.dataset.kspesF; st.page = 1; return render(); }
     if ('kkatF' in t.dataset) { st.kat = t.dataset.kkatF; st.page = 1; return render(); }
@@ -380,4 +486,5 @@ export function installKategori(S) {
   });
 
   S.loadKategori = loadRingkasan;
+  S.destroyKategori = () => kit.destroy();
 }

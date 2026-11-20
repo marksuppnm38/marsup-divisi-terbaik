@@ -97,12 +97,15 @@ async function writeClip(text) {
 export function createCopyKit(ctx) {
   const { sb, tableBody, cardWrap, showToast } = ctx;
   const $ = (id) => document.getElementById(id);
-  const bar = $('copyBar');
-  const barCount = $('copyBarCount');
-  const barCopy = $('copyBarCopy');
-  const barCols = $('copyBarCols');
-  const barClear = $('copyBarClear');
-  const barPage = $('copyBarPage');
+  // ctx.ids: id elemen bar salin. Default = bar di list Produk; tampilan lain (mis. Kelompok set di kategori.js)
+  // memakai bar sendiri, jadi dua instance tidak berebut elemen yang sama.
+  const barIds = ctx.ids || {};
+  const bar = $(barIds.bar || 'copyBar');
+  const barCount = $(barIds.count || 'copyBarCount');
+  const barCopy = $(barIds.copy || 'copyBarCopy');
+  const barCols = $(barIds.cols || 'copyBarCols');
+  const barClear = $(barIds.clear || 'copyBarClear');
+  const barPage = $(barIds.page || 'copyBarPage');
 
   const extra = new Map();     // produk_id -> { t, ekatalog, swasta, tahun, akd[] }
   const inflight = new Map();  // produk_id -> Promise<boolean>
@@ -493,6 +496,10 @@ export function createCopyKit(ctx) {
       syncUi();
       ensureExtra(pageRows.map((r) => r.id));
     },
+    /** Kosongkan semua centang (dipakai tampilan yang disembunyikan, supaya bar salin tidak tertinggal). */
+    clearSelection() { selected.clear(); lastId = null; extAnchor = null; extPre = null; syncUi(); },
+    /** Salin baris-baris ini langsung (tanpa dicentang dulu), pakai kolom & judul yang sedang diatur. */
+    copyRows(rows) { return copyRows(rows || []); },
     /** Data harga/AKD dibuang tiap loadProduk() supaya tidak menyalin harga lama setelah edit. */
     invalidate() { extra.clear(); },
     /** Buang produk yang sudah dihapus dari seleksi (centang lintas halaman) dan dari cache harga/AKD. */
