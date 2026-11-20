@@ -2953,16 +2953,20 @@
    ══════════════════════════════════════════════════════════════════════ */
 
 /* ── 1. Pita ringkasan ── */
-#app-root .kb-head{padding:10px 16px 6px;align-items:center}
-#app-root .kb-summary{flex:1 1 auto;min-width:0}
-#app-root .kb-summary .kb-global-rollup{display:flex;align-items:center;gap:10px;margin:0;font-size:12px;color:var(--text-muted);flex-wrap:nowrap;min-width:0}
+/* Panel kanan sering sempit (split-screen, jendela kecil). Dulu .kb-head tidak boleh wrap dan isi
+   ringkasan (nowrap semua) meluber keluar kotaknya, lalu tertimpa tombol "+ Section" dan status
+   "Diperbarui". Sekarang: ringkasan dapat lebar dasar sendiri, tombol turun ke baris kedua
+   (rata kanan) kalau tidak muat, dan ringkasan sendiri boleh patah baris sebagai jalan terakhir. */
+#app-root .kb-head{padding:10px 16px 6px;align-items:center;flex-wrap:wrap;gap:4px 8px}
+#app-root .kb-summary{flex:1 1 250px;min-width:0}
+#app-root .kb-summary .kb-global-rollup{display:flex;align-items:center;gap:2px 10px;margin:0;font-size:12px;color:var(--text-muted);flex-wrap:wrap;min-width:0;width:100%}
 #app-root .kb-summary .kb-global-rollup > span:first-child{display:inline}
 #app-root .kb-rollup-done{white-space:nowrap;color:var(--text-secondary);font-variant-numeric:tabular-nums}
 #app-root .kb-rollup-done b{color:var(--text);font-weight:600}
 #app-root .kb-prog{flex:0 1 96px;min-width:48px;height:4px;border-radius:999px;background:var(--surface-3);overflow:hidden}
 #app-root .kb-prog i{display:block;height:100%;border-radius:inherit;background:var(--success);transition:width .3s ease}
 #app-root .kb-rollup-harga{white-space:nowrap;font-variant-numeric:tabular-nums;margin-left:auto}
-#app-root .kb-head-btns{gap:6px;align-items:center}
+#app-root .kb-head-btns{gap:6px;align-items:center;margin-left:auto;max-width:100%}
 #app-root .kb-refresh-status{font-size:11px;color:var(--text-muted);white-space:nowrap}
 #app-root .kb-add-section-btn{
   height:26px;padding:0 8px;display:inline-flex;align-items:center;gap:4px;border:1px dashed var(--border-strong);
