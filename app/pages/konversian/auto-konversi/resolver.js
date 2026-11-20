@@ -58,6 +58,7 @@ export function candConf(c) {
   if (!c) return 'none';
   if (c.ukuran === 'beda' || c.ukuran === 'varian') return 'lemah';
   if (attrBeda(c) && !riwayatBerulang(c)) return 'lemah';
+  if (c.namaPersis) return 'kuat'; // nama produk = teks permintaan (lihat namaKey); tidak perlu riwayat berulang
   if (c.tier === 'exact' || c.tier === 'urutan') return 'kuat';
   if (c.tier === 'keluarga' || c.tier === 'katalog' || c.tier === 'varian') return 'sedang';
   return 'lemah';
@@ -126,13 +127,22 @@ async function viaCatalog(rpc, text, wantedCm, qi = 0, maxRows = 60) {
   }));
 }
 
+// Kunci perbandingan nama: huruf besar, tanpa awalan merek "ROBUST" (merek kita, sering ikut tertulis di permintaan RS),
+// tanda baca/spasi diratakan. Dua teks dengan kunci sama = nama produk yang sama persis.
+export const namaKey = (s) => String(s == null ? '' : s).toUpperCase().replace(/^\s*ROBUST\b/, ' ').replace(/[^A-Z0-9]+/g, ' ').trim();
+
 // Nilai tiap kandidat terhadap atribut yang diminta. Kedua sisi lewat understand() yang sama.
-function annotate(cands, itemAttrs) {
+// Juga menandai `namaPersis`: nama produk = teks permintaan. Itu bukti terkuat bahwa ini produk yang dimaksud, jadi tidak perlu
+// menunggu riwayat berulang (produk yang baru sekali dipakai pun cocok kuat). Kalau LEBIH DARI SATU kandidat bernama sama
+// persis, tanda dicabut: mesin tidak bisa memilih di antara kembar.
+function annotate(cands, itemAttrs, itemKey) {
   cands.forEach((c) => {
     c.attrs = understand(c.nama).attrs;
     c.fit = compareAttrs(itemAttrs, c.attrs);
     c.diff = describeDiff(itemAttrs, c.attrs, c.fit);
+    c.namaPersis = !!itemKey && namaKey(c.nama) === itemKey;
   });
+  if (cands.filter((c) => c.namaPersis).length > 1) cands.forEach((c) => { c.namaPersis = false; });
 }
 
 // Pilih terbaik: kandidat dengan beda atribut paling sedikit dulu, baru aturan lama (skor istilah teratas, ukuran, freq).
@@ -187,6 +197,7 @@ export async function resolveItem(item, rpc, opts = {}) {
   const u = item.understood || understand(item.nama || item.deskripsi || '');
   const wantedCm = item.specs ? item.specs.ukuran_cm : u.attrs.ukuran_cm;
   const itemAttrs = { ...u.attrs, ukuran_cm: wantedCm };
+  const itemKey = namaKey(item.nama || item.deskripsi || '');
   const dictQueries = opts.queries || item.variants || [item.nama];
   const catQueries = opts.queries || buildQueryLadder(item, u, opts.lexicon);
   const tried = [];
@@ -229,7 +240,7 @@ export async function resolveItem(item, rpc, opts = {}) {
         const c = await usable(await viaDictionary(rpc, q, opts.excludeItemId != null ? opts.excludeItemId : item.excludeId));
         tried.push({ q, via: 'dictionary', n: c.length });
         if (c.length) {
-          annotate(c, itemAttrs);
+          annotate(c, itemAttrs, itemKey);
           const rank = CONF_RANK[candConf(pickBestFit(c))] || 0;
           if (rank > bestRank) { dictCands = c; bestRank = rank; }
           if (rank === CONF_RANK.kuat) break;
@@ -248,7 +259,7 @@ export async function resolveItem(item, rpc, opts = {}) {
       try {
         const c = (await usable(await viaCatalog(rpc, q, wantedCm, qi, opts.catalogRows || 60))).filter(x => !seen.has(x.kode));
         tried.push({ q, via: 'katalog', n: c.length });
-        annotate(c, itemAttrs);
+        annotate(c, itemAttrs, itemKey);
         c.forEach(x => { seen.add(x.kode); catCands.push(x); });
         // Pencarian katalog mengembalikan sampai 150 baris berperingkat teks (bukan atribut): ambil banyak, nilai sendiri per atribut.
         if (c.some(x => x.full !== false && !x.fit.beda.length && (x.ukuran === 'cocok' || x.ukuran === 'tidak_diminta'))) break;
@@ -262,6 +273,8 @@ export async function resolveItem(item, rpc, opts = {}) {
   if (catCands.some(x => x.full === true)) catCands = catCands.filter(x => x.full !== false);
   else if (catCands.length && catCands.every(x => x.full === false)) { hanyaSebagian = catCands.length; catCands = []; }
 
+  // Kembar nama persis bisa tersebar di dua sumber (Dictionary + katalog): cabut tanda kalau totalnya > 1.
+  { const kembar = [...dictCands, ...catCands].filter(x => x.namaPersis); if (kembar.length > 1) kembar.forEach(x => { x.namaPersis = false; }); }
   const bestDict = pickBestFit(dictCands);
   const bestCat = pickBestFit(catCands);
   const best = bestCat && (!bestDict || compScore(bestCat) < compScore(bestDict)) ? bestCat : bestDict;
@@ -315,8 +328,10 @@ export async function resolveItem(item, rpc, opts = {}) {
   } else {
     status = 'AUTO';
     ukuranDefault = best.ukuran === 'tidak_diminta' && cands.some(c => c.kode !== best.kode && familyOf(c.kode, c.isSet) === familyOf(best.kode, best.isSet));
-    reasonKey = attrBeda(best) ? 'riwayat_berulang_beda_spek' : 'riwayat_kuat';
-    reason = `Pernah dipakai persis${best.freq ? ` (${best.freq}×)` : ''}, ${ukuranDefault ? 'ukuran default (yang paling sering dipakai)' : 'ukuran cocok'}.`;
+    const persisSaja = best.namaPersis && !(best.tier === 'exact' || best.tier === 'urutan');
+    reasonKey = attrBeda(best) ? 'riwayat_berulang_beda_spek' : persisSaja ? 'nama_persis' : 'riwayat_kuat';
+    reason = persisSaja ? 'Nama produk sama persis dengan permintaan.'
+      : `Pernah dipakai persis${best.freq ? ` (${best.freq}×)` : ''}, ${ukuranDefault ? 'ukuran default (yang paling sering dipakai)' : 'ukuran cocok'}.`;
     if (attrBeda(best)) reason += ` Spesifikasi tampak beda (${best.diff.join('; ')}), tapi staff sudah berulang kali memutuskan begini.`;
     if (auditPick(item.nama || item.deskripsi || '', opts.auditRate)) {
       audit = true; reasonKeyAsli = reasonKey; status = 'REVIEW'; reasonKey = 'audit_acak';

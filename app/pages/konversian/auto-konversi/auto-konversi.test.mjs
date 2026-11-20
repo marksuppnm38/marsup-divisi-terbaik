@@ -269,6 +269,21 @@ test('bundle skenario: permintaan umum -> semua produk riwayat yang SIAP; yang b
   assert.equal((await resolveItem(it2, rpc2)).bundle, null);
 });
 
+test('nama produk SAMA PERSIS dengan permintaan (awalan ROBUST diabaikan) -> AUTO walau baru 1× dipakai / tier lemah', async () => {
+  const nama = 'TENAC. FCPS., SCHROEDER, 1X1 T., 25.5 CM';
+  const q = 'ROBUST ' + nama;
+  const rpc = mockRpc({ [q]: [row({ istilah: q, tier: 'keluarga', kode_produk: 'RB32-KE622-B025-U07', nama_produk: nama, freq: 1 })] });
+  const h = await resolveItem({ nama: q, qty: 1, specs: extractSpecs(q), variants: [q] }, rpc);
+  assert.equal(h.status, 'AUTO'); assert.equal(h.reason_key, 'nama_persis');
+  // dua produk bernama sama persis -> mesin tidak bisa memilih: bukan 'nama_persis'
+  const rpc2 = mockRpc({ [q]: [row({ istilah: q, tier: 'keluarga', kode_produk: 'A-1', nama_produk: nama, freq: 1 }), row({ istilah: q, tier: 'keluarga', kode_produk: 'A-2', nama_produk: nama, freq: 1 })] });
+  const h2 = await resolveItem({ nama: q, qty: 1, specs: extractSpecs(q), variants: [q] }, rpc2);
+  assert.notEqual(h2.reason_key, 'nama_persis');
+  // nama persis tapi belum siap -> tetap REVIEW belum_siap
+  const h3 = await resolveItem({ nama: q, qty: 1, specs: extractSpecs(q), variants: [q] }, rpc, { firmCheck: fcFrom({ 'RB32-KE622-B025-U07': ['AKD belum ada'] }) });
+  assert.equal(h3.status, 'REVIEW'); assert.equal(h3.reason_key, 'belum_siap');
+});
+
 test('sumber kompetitor memakai keputusan yang sama: riwayat kuat + ukuran cocok -> AUTO; hanya katalog -> REVIEW', async () => {
   const set = parseCompetitorSet(fx('falcon-appendectomy-hernia.txt'));
   const kelly = set.items.find(i => i.kode_kompetitor === '08-125-14');
