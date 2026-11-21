@@ -104,7 +104,7 @@ export function createAtributUi({ sb, showToast, ensureKlas, keluargaNames, getS
 
     if (!installed) setMsg('Fitur ini belum aktif di database: jalankan supabase/2026-11-21_atribut_produk_manual.sql.', 'warn');
     else if (!klas.ok) setMsg('Daftar kategori & spesialisasi otomatis gagal dimuat; koreksi tetap bisa disimpan.', 'warn');
-    else if (!a) setMsg('Produk nonaktif: tidak ada nilai otomatis. Koreksi tetap tersimpan dan berlaku saat produk aktif.', 'info');
+    else if (!a) setMsg('Produk nonaktif: tidak ada nilai otomatis. Nilai koreksi tetap tersimpan dan tampil di list.', 'info');
     else setMsg('');
     lockForm(!installed);
     $('klasResetBtn').disabled = !installed || !(m.keluarga || m.kategori || m.spes);

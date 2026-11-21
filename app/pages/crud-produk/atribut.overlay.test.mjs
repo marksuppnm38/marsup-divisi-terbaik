@@ -91,10 +91,12 @@ test('membatalkan koreksi (cache koreksi kosong) langsung mengembalikan nilai ot
   assert.equal(klasOf(1).kategori, 'SET');
 });
 
-test('koreksi untuk produk yang tidak ada di cache klasifikasi (nonaktif) tidak memunculkan entri baru', async () => {
+test('koreksi untuk produk yang tidak ada di cache klasifikasi (nonaktif) tetap tampil dan ikut filter', async () => {
   await siapKlas([baris(1)], [m(777, { kategori: 'BMHP' })]);
-  assert.equal(klasOf(777), undefined);
-  assert.deepEqual(ids(F('kategori', 'BMHP')), []);
+  assert.equal(klasOf(777).kategori, 'BMHP');
+  assert.equal(klasOf(777).kategoriSumber, 'koreksi');
+  assert.deepEqual(ids(F('kategori', 'BMHP')), [777]);
+  assert.equal(klasOf(778), undefined); // tanpa koreksi & tanpa cache -> tetap kosong
 });
 
 // ---------- keluarga ----------

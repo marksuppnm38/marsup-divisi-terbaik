@@ -18,7 +18,7 @@
 // diuji dengan Supabase tiruan (klasifikasi.test.mjs) dan halaman Produk tetap jalan kalau RPC-nya belum terpasang
 // (hanya kolom / filter klasifikasi yang kosong, dengan pesan yang menjelaskan).
 
-import { manualOf, SPES_TANPA } from './atribut.js';
+import { manualOf, manualMap, SPES_TANPA } from './atribut.js';
 
 export const KAT = {
   'SET': 'Set instrumen', 'INSTRUMEN SATUAN': 'Instrumen satuan', 'ELEKTROMEDIS': 'Elektromedis',
@@ -133,7 +133,18 @@ export function efektif(e) {
   return out;
 }
 /** Klasifikasi satu produk (nilai EFEKTIF), undefined = belum dimuat / produk nonaktif (tidak ada di cakupan). */
-export const klasOf = (id) => (cache ? efektif(cache.map.get(id)) : undefined);
+export function klasOf(id) {
+  if (!cache) return undefined;
+  const e = cache.map.get(id);
+  if (e) return efektif(e);
+  // Produk di luar cache otomatis (nonaktif / belum terhitung) tapi punya koreksi manual: manual tetap tampil.
+  const m = manualOf(id);
+  if (!m || (!m.kategori && !m.spes)) return undefined;
+  return efektif({
+    id, tipe: null, kode: null, nama: null, kategori: null, kategoriSumber: 'koreksi',
+    spes: null, spesSumber: 'manual', jenis: null, mikro: false, golongan: null,
+  });
+}
 /** Nilai OTOMATIS saja (tanpa koreksi manual): untuk memberi tahu "Otomatis: ..." di form dan untuk membandingkan. */
 export const klasAuto = (id) => (cache ? cache.map.get(id) : undefined);
 
@@ -176,6 +187,10 @@ export function idsKlasFilter(filters) {
   cache.map.forEach((e, id) => {
     const row = { id, tipe: e.tipe, kode_produk: e.kode, nama_produk: e.nama };
     if (filters.every((f) => cocokKlas(f, row))) out.push(id);
+  });
+  manualMap().forEach((_m, id) => { // koreksi manual untuk produk di luar cache otomatis
+    if (cache.map.has(id)) return;
+    if (filters.every((f) => cocokKlas(f, { id }))) out.push(id);
   });
   return out;
 }
