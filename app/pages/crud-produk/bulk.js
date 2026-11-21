@@ -1,26 +1,14 @@
 // AUTO-EXTRACTED dari crud-produk/index.js (breakup, lanjutan akd-master.js +
-// kfa.js). Isi 3 alur Bulk Edit: Harga, Link V6, Inaproc Tracker. sb/
+// kfa.js). Isi alur Bulk Edit: Edit massal (bulk-edit.js; menggantikan Harga & Link V6 massal), Inaproc Tracker, Verified product. sb/
 // escapeHtml lewat S.sb/S.escapeHtml seperti biasa; invalidateProdukStackCache/
 // loadProduk/refreshProdukFilterCounts (masih di index.js, bagian Produk List
 // yang belum dipecah) dioper lewat S juga. parsePasteLines diekspor ke S karena
 // dipakai balik dari luar (fitur Paste Rincian Set di tab Set Detail, index.js
 // baris compPastePreviewBtn). Logic TIDAK diubah.
-import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6 } from './ui-utils.js';
+import { showToast, crudConfirm, crudAlert, renderPgBar } from './ui-utils.js';
+import { installBulkEdit } from './bulk-edit.js';
 
 export function installBulk(S) {
-// Ambil produk by kode_produk, di-chunk 200 + paralel: .in() dengan ribuan kode di
-// satu request bikin URL kepanjangan (gagal), dan ditambah batas 1000 baris PostgREST.
-async function selectProdukByKodes(cols, kodes){
-  const jobs = [];
-  for (let i = 0; i < kodes.length; i += 200) {
-    jobs.push(S.sb.from('produk').select(cols).in('kode_produk', kodes.slice(i, i + 200)));
-  }
-  const res = await Promise.all(jobs);
-  const bad = res.find(r => r.error);
-  if (bad) return { data: null, error: bad.error };
-  return { data: res.flatMap(r => r.data || []), error: null };
-}
-
 // ================================================================
 // BULK EDIT
 // ================================================================
@@ -97,195 +85,9 @@ function chunkArray(arr, size){
   return out;
 }
 
-// ---- BULK HARGA ----
-let bulkHargaRows = [];
-document.getElementById('bulkHargaPreviewBtn').addEventListener('click', async () => {
-  const lines = parsePasteLines(document.getElementById('bulkHargaPaste').value);
-  if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
-  const btn = document.getElementById('bulkHargaPreviewBtn');
-  const btnHtmlAsal = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = `<span class="spinner"></span> Memeriksa ${lines.length} baris...`;
-  try {
-    const kodeSet = [...new Set(lines.map(l => l[0]).filter(Boolean))];
-    const { data: produkRows, error } = await selectProdukByKodes('id, kode_produk, nama_produk', kodeSet);
-    if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
-    const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
-
-    bulkHargaRows = lines.map(l => {
-      const [kode, tahunStr, hargaStr] = l;
-      const tahun = parseInt(tahunStr, 10);
-      const hargaEkat = parseFloat((hargaStr || '').replace(/[.,](?=\d{3}\b)/g, '').replace(',', '.'));
-      const produk = byKode[kode];
-      let status = 'ok', msg = 'Siap diproses';
-      if (!kode) { status = 'err'; msg = 'Kode produk kosong'; }
-      else if (!produk) { status = 'err'; msg = 'Kode produk tidak ditemukan'; }
-      else if (!tahun) { status = 'err'; msg = 'Tahun tidak valid'; }
-      else if (isNaN(hargaEkat)) { status = 'err'; msg = 'Harga tidak valid'; }
-      return { kode, tahun, hargaEkat, produk, status, msg };
-    });
-
-    renderBulkHargaPreview();
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = btnHtmlAsal;
-  }
-});
-function renderBulkHargaPreview(){
-  const wrap = document.getElementById('bulkHargaPreviewWrap');
-  const body = document.getElementById('bulkHargaPreviewBody');
-  const summary = document.getElementById('bulkHargaSummary');
-  const okCount = bulkHargaRows.filter(r => r.status === 'ok').length;
-  const errCount = bulkHargaRows.length - okCount;
-  summary.innerHTML = `<span class="ok">${okCount} baris siap diproses</span>${errCount ? `<span class="warn">${errCount} baris bermasalah (tidak ikut diproses)</span>` : ''}`;
-  wrap.style.display = 'block';
-  body.innerHTML = '';
-  bulkHargaRows.forEach(r => {
-    const tr = document.createElement('tr');
-    const swasta = !isNaN(r.hargaEkat) ? Math.round(r.hargaEkat * 1.3) : '—';
-    const upload = !isNaN(r.hargaEkat) ? Math.round(r.hargaEkat / 1.11) : '—';
-    tr.innerHTML = `
-      <td class="kode-cell">${S.escapeHtml(r.kode)}</td>
-      <td>${S.escapeHtml(r.produk?.nama_produk || '—')}</td>
-      <td>${r.tahun || '—'}</td>
-      <td>${!isNaN(r.hargaEkat) ? 'Rp ' + r.hargaEkat.toLocaleString('id-ID') : '—'}</td>
-      <td>${typeof swasta === 'number' ? 'Rp ' + swasta.toLocaleString('id-ID') : swasta}</td>
-      <td>${typeof upload === 'number' ? 'Rp ' + upload.toLocaleString('id-ID') : upload}</td>
-      <td><span class="row-status ${r.status}">${r.status === 'ok' ? 'Siap' : r.msg}</span></td>
-    `;
-    body.appendChild(tr);
-  });
-  document.getElementById('bulkHargaProsesBtn').style.display = okCount > 0 ? 'inline-flex' : 'none';
-}
-document.getElementById('bulkHargaProsesBtn').addEventListener('click', async () => {
-  const rows = bulkHargaRows.filter(r => r.status === 'ok');
-  if (rows.length === 0) return;
-  const btn = document.getElementById('bulkHargaProsesBtn');
-  const labelAsal = btn.textContent;
-  btn.disabled = true;
-
-  // RPC bulk_upsert_harga: 1 panggilan hitung + upsert EKATALOG/SWASTA/UPLOAD
-  // sekaligus utk semua baris di batch itu (dulu: 3-6 query per baris di client).
-  const items = rows.map(r => ({ produk_id: r.produk.id, tahun: r.tahun, harga_ekat: r.hargaEkat }));
-  const chunks = chunkArray(items, 300);
-  let sukses = 0, gagal = 0;
-  for (let i = 0; i < chunks.length; i++) {
-    btn.textContent = chunks.length > 1 ? `Memproses batch ${i + 1}/${chunks.length}...` : labelAsal;
-    const { data, error } = await S.sb.rpc('bulk_upsert_harga', { p_items: chunks[i] });
-    if (error) {
-      console.error('BULK HARGA RPC ERROR (batch ' + (i + 1) + '):', JSON.stringify(error, null, 2));
-      gagal += chunks[i].length;
-    } else {
-      sukses += data?.processed ?? chunks[i].length;
-    }
-  }
-  btn.disabled = false;
-  btn.textContent = labelAsal;
-  showToast(`Selesai — ${sukses} produk ter-update${gagal ? `, ${gagal} baris gagal (lihat console)` : ''}`, gagal > 0);
-  document.getElementById('bulkHargaPaste').value = '';
-  document.getElementById('bulkHargaPreviewWrap').style.display = 'none';
-  document.getElementById('bulkHargaSummary').innerHTML = '';
-  btn.style.display = 'none';
-  bulkHargaRows = [];
-  S.invalidateProdukStackCache();
-  S.loadProduk();
-  S.refreshProdukFilterCounts();
-});
-
-// ---- KOMPOSISI SET dipindah ke tab-composition (lihat compPaste* di dekat loadComposition) ----
-
-// ---- BULK LINK V6 ----
-let bulkLinkRows = [];
-document.getElementById('bulkLinkPreviewBtn').addEventListener('click', async () => {
-  const lines = parsePasteLines(document.getElementById('bulkLinkPaste').value);
-  if (lines.length === 0) { showToast('Belum ada data yang di-paste', true); return; }
-  const btn = document.getElementById('bulkLinkPreviewBtn');
-  const btnHtmlAsal = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = `<span class="spinner"></span> Memeriksa ${lines.length} baris...`;
-  try {
-    const kodeSet = [...new Set(lines.map(l => l[0]).filter(Boolean))];
-    const { data: produkRows, error } = await selectProdukByKodes('id, kode_produk, nama_produk, link_v6', kodeSet);
-    if (error) { showToast('Gagal cek produk: ' + error.message, true); return; }
-    const byKode = Object.fromEntries((produkRows || []).map(p => [p.kode_produk, p]));
-
-    bulkLinkRows = lines.map(l => {
-      const [kode, link] = l;
-      const produk = byKode[kode];
-      let status = 'ok', msg = 'Siap diproses';
-      if (!kode) { status = 'err'; msg = 'Kode produk kosong'; }
-      else if (!produk) { status = 'err'; msg = 'Kode produk tidak ditemukan'; }
-      else if (!link) { status = 'err'; msg = 'Link kosong'; }
-      else {
-        // Link harus URL bersih. Yang ada catatan tambahan (mis. "UPDATE HARGA
-        // TAPI MASIH NYANTOL ORDERAN") ditolak biar gak ke-label "Ada di
-        // e-Katalog" di Konversian — pisahin dulu catatannya dari URL-nya.
-        const L = parseLinkV6(link);
-        if (L.state === 'catatan') { status = 'err'; msg = 'Link ada catatan: "' + L.catatan.slice(0, 40) + '" — pisahkan dari URL'; }
-        else if (L.state === 'invalid') { status = 'err'; msg = 'Bukan URL'; }
-      }
-      return { kode, link, produk, status, msg };
-    });
-    renderBulkLinkPreview();
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = btnHtmlAsal;
-  }
-});
-function renderBulkLinkPreview(){
-  const wrap = document.getElementById('bulkLinkPreviewWrap');
-  const body = document.getElementById('bulkLinkPreviewBody');
-  const summary = document.getElementById('bulkLinkSummary');
-  const okCount = bulkLinkRows.filter(r => r.status === 'ok').length;
-  const errCount = bulkLinkRows.length - okCount;
-  summary.innerHTML = `<span class="ok">${okCount} baris siap diproses</span>${errCount ? `<span class="warn">${errCount} baris bermasalah (tidak ikut diproses)</span>` : ''}`;
-  wrap.style.display = 'block';
-  body.innerHTML = '';
-  bulkLinkRows.forEach(r => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="kode-cell">${S.escapeHtml(r.kode)}</td>
-      <td>${S.escapeHtml(r.produk?.nama_produk || '—')}</td>
-      <td class="media-link" style="max-width:180px;">${S.escapeHtml(r.produk?.link_v6 || '—')}</td>
-      <td class="media-link" style="max-width:180px;">${S.escapeHtml(r.link || '—')}</td>
-      <td><span class="row-status ${r.status}">${r.status === 'ok' ? 'Siap' : r.msg}</span></td>
-    `;
-    body.appendChild(tr);
-  });
-  document.getElementById('bulkLinkProsesBtn').style.display = okCount > 0 ? 'inline-flex' : 'none';
-}
-document.getElementById('bulkLinkProsesBtn').addEventListener('click', async () => {
-  const rows = bulkLinkRows.filter(r => r.status === 'ok');
-  if (rows.length === 0) return;
-  const btn = document.getElementById('bulkLinkProsesBtn');
-  const labelAsal = btn.textContent;
-  btn.disabled = true;
-
-  const items = rows.map(r => ({ produk_id: r.produk.id, link: r.link }));
-  const chunks = chunkArray(items, 500);
-  let sukses = 0, gagal = 0;
-  for (let i = 0; i < chunks.length; i++) {
-    btn.textContent = chunks.length > 1 ? `Memproses batch ${i + 1}/${chunks.length}...` : labelAsal;
-    const { data, error } = await S.sb.rpc('bulk_update_link_v6', { p_items: chunks[i] });
-    if (error) {
-      console.error('BULK LINK V6 RPC ERROR (batch ' + (i + 1) + '):', JSON.stringify(error, null, 2));
-      gagal += chunks[i].length;
-    } else {
-      sukses += data?.processed ?? chunks[i].length;
-    }
-  }
-  btn.disabled = false;
-  btn.textContent = labelAsal;
-  showToast(`Selesai — ${sukses} link ter-update${gagal ? `, ${gagal} baris gagal (lihat console)` : ''}`, gagal > 0);
-  document.getElementById('bulkLinkPaste').value = '';
-  document.getElementById('bulkLinkPreviewWrap').style.display = 'none';
-  document.getElementById('bulkLinkSummary').innerHTML = '';
-  btn.style.display = 'none';
-  bulkLinkRows = [];
-  S.invalidateProdukStackCache();
-  S.loadProduk();
-  S.refreshProdukFilterCounts();
-});
+// ---- EDIT MASSAL (pengganti "Harga massal" + "Link V6 massal") ----
+// Seluruh logikanya di bulk-edit.js (+ bulk-registry.js, bulk-parse.js). parsePasteLines & chunkArray dipakai bersama.
+installBulkEdit(S, { parsePasteLines, chunkArray });
 
 // ---- BULK INAPROC TRACKER ----
 const BULAN_INDO = { januari:1, februari:2, maret:3, april:4, mei:5, juni:6, juli:7, agustus:8, september:9, oktober:10, november:11, desember:12 };

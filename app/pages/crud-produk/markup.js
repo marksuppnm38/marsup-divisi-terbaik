@@ -416,51 +416,62 @@ export const CRUD_PRODUK_MARKUP = `
         </div>
         <div class="vbody pad">
           <div class="bulk-tabs" role="tablist">
-                  <button class="bulk-tab active" data-bulk="harga">Harga massal</button>
-                  <button class="bulk-tab" data-bulk="link">Link V6 massal</button>
+                  <button class="bulk-tab active" data-bulk="edit">Edit massal</button>
                   <button class="bulk-tab" data-bulk="inaproc">INAPROC tracker</button>
                   <button class="bulk-tab" data-bulk="verified">Verified product</button>
                 </div>
 
-                <div class="bulk-panel active" id="bulk-harga">
-                  <div class="bk-compose">
-                    <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>kode_produk</span><span class="bk-col"><b>B</b>tahun</span><span class="bk-col"><b>C</b>harga_ekat</span></div>
-                    <textarea class="paste-area" id="bulkHargaPaste" placeholder="RB999-KE921-B99-U667&#9;2026&#9;1500000&#10;RB10-KE130-B003-U07&#9;2026&#9;250000"></textarea>
-                    <div class="bulk-actions">
-                      <span class="bk-note">Tanpa header, dipisah tab. SWASTA (×1,3) dan UPLOAD (÷1,11) dihitung otomatis.</span>
-                      <button class="btn btn-ghost" id="bulkHargaPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
-                      <button class="btn btn-accent" id="bulkHargaProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
+                <div class="bulk-panel active" id="bulk-edit">
+                  <div class="be-step">
+                    <div class="be-step-h"><span class="be-n">1</span> Apa yang diedit</div>
+                    <div class="be-row">
+                      <div class="be-seg" id="beEntity" role="group" aria-label="Jenis data"><button type="button" data-v="produk">Produk</button><button type="button" data-v="akd">AKD</button></div>
+                      <div class="be-seg" id="beCreate" role="group" aria-label="Mode"><button type="button" data-v="ada">Ubah yang ada saja</button><button type="button" data-v="baru">Ubah + buat baru</button></div>
+                      <span class="be-hint" id="beCreateHint"></span>
+                    </div>
+                    <div class="be-presets" id="bePresets"></div>
+                    <div id="beChips"></div>
+                  </div>
+
+                  <div class="be-step">
+                    <div class="be-step-h"><span class="be-n">2</span> Tempel dari sheet</div>
+                    <div class="bk-compose">
+                      <div class="bk-cols" id="beCols" aria-label="Urutan kolom yang ditempel"></div>
+                      <div class="be-rules">
+                        <span><b>Kosong</b> = tidak diubah</span>
+                        <span>Banyak nilai dalam satu sel dipisah <code>;</code></span>
+                        <span>Isi kurang / salah format = baris <b>gagal</b> (tampil di preview)</span>
+                        <span>Menghapus nilai: lewat form produk, bukan bulk</span>
+                      </div>
+                      <div id="beNotes" class="be-notes"></div>
+                      <textarea class="paste-area" id="bePaste" placeholder="Tempel di sini. Boleh tanpa header (kolom mengikuti urutan di atas) atau dengan baris header yang sama dengan tabel / Export Excel."></textarea>
+                      <div class="be-headerprob" id="beHeaderProblem" style="display:none;"></div>
+                      <div class="bulk-actions">
+                        <button class="btn btn-ghost" id="beCopyHeader" type="button"><i class="ti ti-copy"></i> Salin header</button>
+                        <button class="btn btn-ghost" id="beClearBtn" type="button">Bersihkan</button>
+                        <button class="btn btn-accent" id="bePreviewBtn" type="button"><i class="ti ti-eye"></i> Cek data</button>
+                      </div>
                     </div>
                   </div>
-                  <div class="bulk-summary" id="bulkHargaSummary"></div>
-                  <div class="preview-table-wrap" id="bulkHargaPreviewWrap" style="display:none;">
-                    <table>
-                      <thead><tr><th>Kode produk</th><th>Nama</th><th>Tahun</th><th>EKATALOG</th><th>SWASTA (auto)</th><th>UPLOAD (auto)</th><th>Status</th></tr></thead>
-                      <tbody id="bulkHargaPreviewBody"></tbody>
-                    </table>
+
+                  <div class="be-step" id="beResult" style="display:none;">
+                    <div class="be-step-h"><span class="be-n">3</span> Preview &amp; proses</div>
+                    <div class="bulk-summary be-summary" id="beSummary"></div>
+                    <div class="preview-table-wrap be-table">
+                      <table>
+                        <thead id="beHead"></thead>
+                        <tbody id="beBody"></tbody>
+                      </table>
+                    </div>
+                    <div class="bulk-actions be-final">
+                      <button class="btn btn-ghost" id="beErrBtn" type="button" style="display:none;"></button>
+                      <button class="btn btn-accent" id="beProsesBtn" type="button" style="display:none;"></button>
+                    </div>
+                    <div class="be-report" id="beReport" style="display:none;"></div>
                   </div>
                 </div>
 
-                <!-- BULK KOMPOSISI SET dipindah ke Set Management > tab Composition (per-set, gak lintas-set lagi) -->
-
-                <div class="bulk-panel" id="bulk-link">
-                  <div class="bk-compose">
-                    <div class="bk-cols" aria-label="Urutan kolom yang ditempel"><span class="bk-col"><b>A</b>kode_produk</span><span class="bk-col"><b>B</b>link_v6</span></div>
-                    <textarea class="paste-area" id="bulkLinkPaste" placeholder="RB999-KE921-B99-U667&#9;https://e-katalog.lkpp.go.id/produk/xxxxx"></textarea>
-                    <div class="bulk-actions">
-                      <span class="bk-note">Tanpa header, dipisah tab. link_v6 berisi URL e-katalog.</span>
-                      <button class="btn btn-ghost" id="bulkLinkPreviewBtn"><i class="ti ti-eye"></i> Cek data</button>
-                      <button class="btn btn-accent" id="bulkLinkProsesBtn" style="display:none;"><i class="ti ti-check"></i> Proses semua</button>
-                    </div>
-                  </div>
-                  <div class="bulk-summary" id="bulkLinkSummary"></div>
-                  <div class="preview-table-wrap" id="bulkLinkPreviewWrap" style="display:none;">
-                    <table>
-                      <thead><tr><th>Kode produk</th><th>Nama</th><th>Link lama</th><th>Link baru</th><th>Status</th></tr></thead>
-                      <tbody id="bulkLinkPreviewBody"></tbody>
-                    </table>
-                  </div>
-                </div>
+                <!-- BULK KOMPOSISI SET dipindah ke Set Management > tab Composition; "Isi set" juga tersedia sebagai chip di Edit massal -->
 
                 <div class="bulk-panel" id="bulk-inaproc">
                   <div class="bk-compose">
