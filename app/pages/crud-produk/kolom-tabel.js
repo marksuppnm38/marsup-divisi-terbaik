@@ -241,14 +241,21 @@ export function createTableColumns(opts) {
     try { localStorage.setItem(LS_KEY, JSON.stringify({ order: state.order, visible: [...state.visible], hidden: [...state.hidden], follow: state.follow })); } catch { /* abaikan */ }
   };
   let autoKeys = [];   // kolom yang diminta filter aktif (diisi index.js lewat setAuto)
-  // Kolom dinamis: filter menambah kolom yang relevan tepat setelah Nama. Hanya menambah -- pilihan user
-  // jadi dasar, dan kolom yang sengaja dimatikan user tidak dipaksa muncul.
+  // Kolom dinamis: filter menambah kolom yang relevan. Hanya menambah -- pilihan user jadi dasar, kolom yang sengaja
+  // dimatikan user tidak dipaksa muncul, dan kolom yang sudah tampil TIDAK berpindah tempat.
   const autoExtra = () => (state.follow ? autoKeys.filter((k) => !state.visible.has(k) && !state.hidden.has(k)) : []);
   const isOn = (k) => state.visible.has(k) || autoExtra().includes(k);
+  // Kolom tambahan masuk ke posisi bakunya (urutan TABLE_COLS): tepat setelah kolom tampil terdekat yang urutan bakunya
+  // lebih awal. Contoh: Harga E-Katalog sudah tampil, filter Harga meminta Swasta + Tahun -> Ekat, Swasta, Tahun, lalu Link
+  // tetap di ujung -- bukan menyelip di depan Harga E-Katalog.
+  const CANON = Object.fromEntries(TABLE_COLS.map((c, i) => [c.key, i]));
   const visibleCols = () => {
     const keys = state.order.filter((k) => state.visible.has(k));
-    const at = keys.includes('nama') ? keys.indexOf('nama') + 1 : 0;
-    keys.splice(at, 0, ...autoExtra());
+    autoExtra().sort((a, b) => CANON[a] - CANON[b]).forEach((k) => {
+      let at = 0;
+      keys.forEach((v, i) => { if (CANON[v] < CANON[k]) at = i + 1; });
+      keys.splice(at, 0, k);
+    });
     return [COL_BY_KEY.kode, ...keys.map((k) => COL_BY_KEY[k])];
   };
 
@@ -314,7 +321,7 @@ export function createTableColumns(opts) {
     const arah = headMenu.arah(c.key), filt = headMenu.filterAktif(c.key);
     const ikon = arah === 'asc' ? 'ti-arrow-up' : arah === 'desc' ? 'ti-arrow-down' : 'ti-chevron-down';
     const aria = arah === 'asc' ? 'ascending' : arah === 'desc' ? 'descending' : 'none';
-    return `<th class="th-has-menu${num}" aria-sort="${aria}"><button type="button" class="th-btn${arah || filt ? ' on' : ''}" data-col="${c.key}" aria-haspopup="menu" title="Urutkan &amp; saring: ${esc(c.label)}"><span>${esc(c.label)}</span>${filt ? '<i class="ti ti-filter th-ind" aria-label="Disaring"></i>' : ''}<i class="ti ${ikon} th-ind${arah ? '' : ' th-ind-idle'}"></i></button></th>`;
+    return `<th class="th-has-menu${num}" aria-sort="${aria}"><button type="button" class="th-btn${arah || filt ? ' on' : ''}" data-col="${c.key}" aria-haspopup="menu" title="Urutkan &amp; saring: ${esc(c.label)}"><span>${esc(c.label)}</span>${filt ? '<span class="th-dot" role="img" aria-label="Disaring"></span>' : ''}<i class="ti ${ikon} th-ind${arah ? '' : ' th-ind-idle'}"></i></button></th>`;
   }
   function renderHead() {
     headRow.innerHTML = visibleCols().map(thHtml).join('')
