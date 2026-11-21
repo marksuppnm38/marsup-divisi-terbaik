@@ -1,103 +1,19 @@
 // Jalankan: node --test app/pages/crud-produk/atribut.overlay.test.mjs
-// Koreksi manual MENIMPA nilai otomatis di tiga tempat yang dibaca UI: klasifikasi (klasOf / filter / opsi) dan keluarga
-// (opsi filter, peta per produk, baris per keluarga). Tanpa koreksi, perilaku tidak boleh berubah (dijaga test lama).
+// Koreksi manual MENIMPA nilai otomatis untuk KELUARGA SET (opsi filter, peta per produk, baris per keluarga). Tanpa koreksi,
+// perilaku tidak boleh berubah. Kategori & spesialisasi tidak lagi ditimpa di client: triggernya di database menyalin koreksi
+// ke kolom produk (lihat supabase/2026-11-22_klasifikasi_kolom_produk.sql dan klasifikasi.test.mjs).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { muatManual, resetManual, SPES_TANPA } from './atribut.js';
-import {
-  muatKlasifikasi, resetKlasifikasi, klasOf, klasAuto, cocokKlas, idsKlasFilter, opsiKlasifikasi, perluCek, sumberLabel, spesTeks, SPES_NONE,
-} from './klasifikasi.js';
+import { muatManual, resetManual } from './atribut.js';
 import { fetchKeluargaOptions, fetchKeluargaMap, fetchRowsByKeluarga, fetchKeluargaAuto } from './keluarga.js';
 
-// ---------- fake: klasifikasi + koreksi ----------
-const baris = (id, o = {}) => ({ produk_id: id, tipe: 'SET', kode_produk: 'K' + id, nama_produk: 'P' + id, kategori: 'SET', kategori_sumber: 'golongan',
-  spes: 'BEDAH UMUM', spes_sumber: 'peta', jenis: null, mikro: false, golongan: null, ...o });
-
-function sbKlas(rows) {
-  return { async rpc(name, args) {
-    if (name === 'get_katalog_kategori_ringkasan') return { data: { dihitung_at: '2026-11-20T00:00:00Z', total: rows.length }, error: null };
-    return { data: { rows: rows.slice(args.p_offset, args.p_offset + args.p_batas), total: rows.length }, error: null };
-  } };
-}
+// ---------- fake: koreksi manual ----------
 const sbManual = (manual) => ({ from() {
   const chain = { select: () => chain, order: () => chain, range: (a, b) => { chain.r = [a, b]; return chain; },
     then: (res, rej) => Promise.resolve({ data: manual.slice(chain.r[0], chain.r[1] + 1), error: null }).then(res, rej) };
   return chain;
 } });
 const m = (produk_id, o = {}) => ({ produk_id, keluarga: null, kategori: null, spes: null, ...o });
-
-async function siapKlas(rows, manual) {
-  resetKlasifikasi(); resetManual();
-  await muatKlasifikasi(sbKlas(rows));
-  await muatManual(sbManual(manual));
-}
-const F = (dim, ...values) => ({ dim, values });
-const ids = (...f) => idsKlasFilter(f).sort((a, b) => a - b);
-
-// ---------- klasifikasi ----------
-test('klasOf: kategori & spes manual menimpa otomatis, sumber jadi Dikoreksi, tidak lagi "perlu dicek"', async () => {
-  await siapKlas([baris(1, { spes: 'OBGYN', spes_sumber: 'isi' }), baris(2)], [m(1, { kategori: 'UNIT', spes: 'THT' })]);
-  const e = klasOf(1);
-  assert.equal(e.kategori, 'UNIT');
-  assert.equal(e.kategoriSumber, 'koreksi');
-  assert.equal(e.spes, 'THT');
-  assert.equal(e.spesSumber, 'manual');
-  assert.equal(perluCek(e), false);                       // dugaan 'isi' sudah dikoreksi
-  assert.equal(sumberLabel(klasOf(1)), 'Dikoreksi');      // kategori UNIT = alat -> label golongan/koreksi
-  assert.equal(klasOf(2).kategori, 'SET');                // produk tanpa koreksi tak berubah
-  assert.equal(klasOf(2), klasAuto(2));                   // objek yang sama: tidak ada salinan percuma
-});
-
-test('klasAuto tetap nilai otomatis walau ada koreksi (untuk hint "Otomatis: ...")', async () => {
-  await siapKlas([baris(1, { kategori: 'SET', spes: 'OBGYN' })], [m(1, { kategori: 'BMHP', spes: 'THT' })]);
-  assert.equal(klasAuto(1).kategori, 'SET');
-  assert.equal(klasAuto(1).spes, 'OBGYN');
-  assert.equal(klasOf(1).kategori, 'BMHP');
-});
-
-test('koreksi parsial: hanya kategori -> spes tetap otomatis, dan sebaliknya', async () => {
-  await siapKlas([baris(1, { spes: 'OBGYN' }), baris(2, { spes: 'OBGYN' })], [m(1, { kategori: 'UNIT' }), m(2, { spes: 'THT' })]);
-  assert.equal(klasOf(1).kategori, 'UNIT'); assert.equal(klasOf(1).spes, 'OBGYN'); assert.equal(klasOf(1).spesSumber, 'peta');
-  assert.equal(klasOf(2).kategori, 'SET');  assert.equal(klasOf(2).kategoriSumber, 'golongan'); assert.equal(klasOf(2).spes, 'THT');
-});
-
-test('spes TANPA = sengaja tanpa spesialisasi (null), dan cocok dengan filter "Tanpa spesialisasi"', async () => {
-  await siapKlas([baris(1, { spes: 'OBGYN' }), baris(2, { spes: 'OBGYN' })], [m(1, { spes: SPES_TANPA })]);
-  assert.equal(klasOf(1).spes, null);
-  assert.equal(spesTeks(klasOf(1)), 'Tanpa spesialisasi');
-  assert.deepEqual(ids(F('spes', SPES_NONE)), [1]);
-  assert.deepEqual(ids(F('spes', 'OBGYN')), [2]);
-});
-
-test('filter kategori / spes memakai nilai efektif (produk yang dikoreksi pindah kelompok)', async () => {
-  await siapKlas([baris(1), baris(2), baris(3, { tipe: 'UNIT', kategori: 'ELEKTROMEDIS', spes: null })], [m(2, { kategori: 'ELEKTROMEDIS' }), m(1, { spes: 'OBGYN' })]);
-  assert.deepEqual(ids(F('kategori', 'SET')), [1]);
-  assert.deepEqual(ids(F('kategori', 'ELEKTROMEDIS')), [2, 3]);
-  assert.deepEqual(ids(F('spes', 'OBGYN')), [1]);
-  assert.equal(cocokKlas(F('kategori', 'ELEKTROMEDIS'), { id: 2 }), true);
-});
-
-test('opsiKlasifikasi: jumlah per nilai ikut koreksi', async () => {
-  await siapKlas([baris(1), baris(2), baris(3)], [m(1, { kategori: 'BMHP' }), m(2, { spes: 'THT' })]);
-  const o = opsiKlasifikasi();
-  assert.deepEqual(o.kategori.map((x) => [x.value, x.n]).sort(), [['BMHP', 1], ['SET', 2]]);
-  assert.deepEqual(Object.fromEntries(o.spes.map((x) => [x.value, x.n])), { 'BEDAH UMUM': 2, THT: 1 });
-});
-
-test('membatalkan koreksi (cache koreksi kosong) langsung mengembalikan nilai otomatis', async () => {
-  await siapKlas([baris(1, { kategori: 'SET' })], [m(1, { kategori: 'BMHP' })]);
-  assert.equal(klasOf(1).kategori, 'BMHP');
-  await muatManual(sbManual([]), { force: true });
-  assert.equal(klasOf(1).kategori, 'SET');
-});
-
-test('koreksi untuk produk yang tidak ada di cache klasifikasi (nonaktif) tetap tampil dan ikut filter', async () => {
-  await siapKlas([baris(1)], [m(777, { kategori: 'BMHP' })]);
-  assert.equal(klasOf(777).kategori, 'BMHP');
-  assert.equal(klasOf(777).kategoriSumber, 'koreksi');
-  assert.deepEqual(ids(F('kategori', 'BMHP')), [777]);
-  assert.equal(klasOf(778), undefined); // tanpa koreksi & tanpa cache -> tetap kosong
-});
 
 // ---------- keluarga ----------
 function sbKel({ ref = [], view = [] }) {

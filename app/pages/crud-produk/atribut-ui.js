@@ -6,7 +6,7 @@
 //      tidak diubah / kembalikan ke otomatis / isi dengan nilai.
 // Pilihan pertama di tiap dropdown selalu "Otomatis": memilihnya menghapus koreksi, produk kembali ke nilai dari sistem.
 // Elemen DOM-nya ada di markup.js (klasSection, klasBulkOverlay, copyBarKlas); modul ini hanya menghubungkannya.
-import { KAT_ORDER, katNama, spesNama, klasAuto, opsiKlasifikasi, SPES_NONE } from './klasifikasi.js';
+import { KAT_ORDER, katNama, spesNama, klasAuto, muatOtomatis, opsiKlasifikasi, SPES_NONE } from './klasifikasi.js';
 import { muatManual, manualOf, simpanManual, pesanAtribut, normKeluarga, SPES_TANPA } from './atribut.js';
 import { fetchKeluargaAuto } from './keluarga.js';
 
@@ -71,9 +71,10 @@ export function createAtributUi({ sb, showToast, ensureKlas, keluargaNames, getS
     setMsg('Memuat…');
     lockForm(true);
 
-    const [man, klas, auto, nama] = await Promise.all([
+    const [man, klas, otoRes, auto, nama] = await Promise.all([
       muatManual(sb),
       ensureKlas ? ensureKlas() : { ok: true },
+      muatOtomatis(sb, [id]),
       tipe === 'SET' ? fetchKeluargaAuto(sb, [id]) : { map: new Map() },
       tipe === 'SET' && keluargaNames ? keluargaNames().catch(() => []) : [],
     ]);
@@ -103,8 +104,8 @@ export function createAtributUi({ sb, showToast, ensureKlas, keluargaNames, getS
     hint($('klasSpesHint'), m.spes, autoSpes, namaSpes);
 
     if (!installed) setMsg('Fitur ini belum aktif di database: jalankan supabase/2026-11-21_atribut_produk_manual.sql.', 'warn');
-    else if (!klas.ok) setMsg('Daftar kategori & spesialisasi otomatis gagal dimuat; koreksi tetap bisa disimpan.', 'warn');
-    else if (!a) setMsg('Produk nonaktif: tidak ada nilai otomatis. Nilai koreksi tetap tersimpan dan tampil di list.', 'info');
+    else if (!klas.ok || !otoRes.ok) setMsg('Nilai otomatis kategori & spesialisasi gagal dimuat; koreksi tetap bisa disimpan.', 'warn');
+    else if (!a) setMsg('Produk ini tidak ada di klasifikasi otomatis (mis. nonaktif). Nilai yang diisi tetap tersimpan dan tampil di list.', 'info');
     else setMsg('');
     lockForm(!installed);
     $('klasResetBtn').disabled = !installed || !(m.keluarga || m.kategori || m.spes);

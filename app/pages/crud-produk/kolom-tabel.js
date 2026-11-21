@@ -20,11 +20,11 @@
 //   - Nama AKD (deskripsi AKD) dan Keluarga set: data baru, diambil modul ini sendiri HANYA kalau kolomnya tampil.
 //     Keluarga set dibaca dari baris kalau sudah ada (jalur filter Keluarga memuat baris dari view v_produk_keluarga),
 //     kalau belum dari view yang sama per id halaman (lihat keluarga.js).
-//   - Kategori, Spesialisasi, Jenis, Sumber klasifikasi (`needs: 'klas'`): dari cache klasifikasi seluruh katalog
+//   - Kategori, Spesialisasi, Jenis, Sumber klasifikasi (`needs: 'klas'`): dari kolom produk (klasifikasi.js)
 //     (klasifikasi.js, dimuat sekali lalu dibaca per id -- sama dengan yang dipakai filternya).
 import { parseLinkV6, sembunyikanAkdPlaceholder } from './ui-utils.js';
 import { fetchKeluargaMap, pesanKeluarga } from './keluarga.js';
-import { muatKlasifikasi, klasOf, pesanKlasifikasi, katNama, spesTeks, spesNama, sumberLabel, perluCek } from './klasifikasi.js';
+import { muatKlasIds, klasOf, pesanKlasifikasi, katNama, spesTeks, spesNama, sumberLabel, perluCek } from './klasifikasi.js';
 
 const LS_KEY = 'pnm_crud_produk_tbl_cols_v1';
 
@@ -73,8 +73,9 @@ export const TABLE_COLS = [
   { key: 'keluarga', label: 'Keluarga set', td: 'tipe-cell', needs: 'keluarga',
     render: (p, c) => c.keluarga ? esc(c.keluarga) : '—',
     xl: [{ id: 'keluarga', label: 'Keluarga Set', w: 34, get: (p, c) => c.keluarga || null }] },
-  // Kategori / Spesialisasi / Jenis / Sumber klasifikasi: atribut hasil klasifikasi katalog (klasifikasi.js). Cakupan produk
-  // AKTIF; produk nonaktif tidak punya klasifikasi. Unit & alat tidak punya spesialisasi (sel "—", bukan "Tanpa spesialisasi").
+  // Kategori / Spesialisasi / Jenis / Sumber klasifikasi: kolom di tabel produk (klasifikasi.js), diisi backfill dari klasifikasi
+  // otomatis lalu dikoreksi manual. Produk yang belum punya kategori maupun spesialisasi: "—". Unit & alat tidak punya
+  // spesialisasi (sel "—", bukan "Tanpa spesialisasi").
   { key: 'kategori', label: 'Kategori', td: 'tipe-cell', needs: 'klas',
     render: (p, c) => (c.klas ? esc(katNama(c.klas.kategori)) : '—'),
     xl: [{ label: 'Kategori', w: 20, get: (p, c) => (c.klas ? katNama(c.klas.kategori) : null) }] },
@@ -285,10 +286,10 @@ export function createTableColumns(opts) {
   }
 
   // ---------- data tambahan: Kategori & Spesialisasi ----------
-  // Cache seluruh katalog dimuat sekali oleh klasifikasi.js (dibagi dengan filter); setelahnya cuma baca Map, jadi
-  // ganti halaman tidak memicu request. Gagal muat (RPC belum terpasang / belum dihitung) -> kolom kosong + pesan.
-  async function loadKlas() {
-    const r = await muatKlasifikasi(sb);
+  // Kolom kategori / spes ada di baris produk. Baris dari .from('produk') sudah dicatat klasifikasi.js; hanya baris yang
+  // belum punya (hasil RPC) ditanya per id, jadi ganti halaman paling banyak 1 request. Gagal (kolom belum ada) -> kolom kosong + pesan.
+  async function loadKlas(ids) {
+    const r = await muatKlasIds(sb, ids);
     if (!r.ok) { console.warn('kolom-tabel: gagal ambil klasifikasi', r.error && (r.error.message || r.error)); needsError = pesanKlasifikasi(r.error); return false; }
     return true;
   }
@@ -468,7 +469,7 @@ export function createTableColumns(opts) {
       needsError = '';
       if (cols.some((c) => c.needs === 'akdNama')) jobs.push(loadAkdNama(ids));
       if (cols.some((c) => c.needs === 'keluarga')) jobs.push(loadKeluarga(ids));
-      if (cols.some((c) => c.needs === 'klas')) jobs.push(loadKlas());
+      if (cols.some((c) => c.needs === 'klas')) jobs.push(loadKlas(ids));
       return (await Promise.all(jobs)).every(Boolean);
     },
     /** Pesan kegagalan muat kolom tambahan terakhir (Keluarga set / Kategori & Spesialisasi; '' kalau tidak ada / Nama AKD yang gagal). */

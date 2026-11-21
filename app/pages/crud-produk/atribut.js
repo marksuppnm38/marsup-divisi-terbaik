@@ -10,7 +10,7 @@
 // Sengaja tanpa ketergantungan DOM dan TIDAK pernah throw: semua fungsi async mengembalikan { ok, error }, supaya bisa diuji
 // dengan Supabase tiruan (atribut.test.mjs) dan halaman Produk tetap jalan kalau migrasinya belum dijalankan (koreksi
 // dianggap kosong; hanya kontrol edit yang memberi tahu migrasinya belum ada).
-// Modul lain (klasifikasi.js, keluarga.js) hanya MEMBACA cache lewat manualOf()/manualMap(); pemuatannya urusan index.js.
+// Modul lain (keluarga.js) hanya MEMBACA cache lewat manualOf()/manualMap(); pemuatannya urusan index.js. Kategori & spes: trigger DB menyalin koreksi ke kolom produk (supabase/2026-11-22_klasifikasi_kolom_produk.sql).
 
 export const TABEL = 'produk_atribut_manual';
 export const RPC_SET = 'set_produk_atribut_manual';

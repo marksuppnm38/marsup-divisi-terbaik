@@ -1,26 +1,27 @@
 // Jalankan: node --test app/pages/crud-produk/tabel.klasifikasi.test.mjs
 // Kolom Kategori / Spesialisasi / Jenis / Sumber klasifikasi di kolom-tabel.js: ikut export, dimuat lazy
-// (satu kali), dan gagal-muat terdeteksi (bukan kolom kosong diam-diam di file yang jadi dasar pengajuan izin edar).
+// (sekali per id), dan gagal-muat terdeteksi (bukan kolom kosong diam-diam di file yang jadi dasar pengajuan izin edar).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTableColumns, TABLE_COLS, COL_PRESETS } from './kolom-tabel.js';
 import { resetKlasifikasi } from './klasifikasi.js';
 
 const noop = () => {};
-const DIHITUNG = '2026-11-20T10:15:00Z';
-const baris = (id, o = {}) => ({ produk_id: id, tipe: 'INSTRUMENT', kode_produk: 'K' + id, nama_produk: 'P' + id, kategori: 'INSTRUMEN SATUAN',
-  kategori_sumber: 'golongan', spes: 'OBGYN', spes_sumber: 'peta', jenis: null, mikro: false, golongan: 'ALAT BEDAH', ...o });
+const baris = (id, o = {}) => ({ id, tipe: 'INSTRUMENT', kode_produk: 'K' + id, nama_produk: 'P' + id, kategori: 'INSTRUMEN SATUAN',
+  kategori_sumber: 'golongan', spes: 'OBGYN', spes_sumber: 'peta', klas_jenis: null, klas_mikro: false, golongan: 'ALAT BEDAH', ...o });
 
-function fakeSb(rows, { dihitung = DIHITUNG, ringErr = null } = {}) {
+// Supabase tiruan: kolom klasifikasi dibaca dari tabel produk per id (.from('produk').select().in('id', ...)).
+function fakeSb(rows, { selErr = null } = {}) {
   const calls = [];
   return {
     calls,
-    async rpc(name, args) {
-      calls.push(name);
-      if (name === 'get_katalog_kategori_ringkasan') return ringErr ? { data: null, error: ringErr } : { data: { dihitung_at: dihitung }, error: null };
-      return { data: { rows: rows.slice(args.p_offset, args.p_offset + args.p_batas), total: rows.length }, error: null };
+    from(t) {
+      if (t !== 'produk') throw new Error('kolom klasifikasi hanya boleh query tabel produk, bukan ' + t);
+      const q = { ids: [] };
+      const chain = { select() { return chain; }, in(c, v) { q.ids = v; return chain; },
+        then(res, rej) { calls.push(q.ids); return Promise.resolve(selErr ? { data: null, error: selErr } : { data: rows.filter((r) => q.ids.includes(r.id)), error: null }).then(res, rej); } };
+      return chain;
     },
-    from() { throw new Error('kolom klasifikasi tidak boleh query tabel lain'); },
   };
 }
 const helpers = { selBox: () => '', btn: () => '', recent: () => '', verified: () => '', seal: () => '', akdNoOf: () => [], stokCell: () => '', moreCell: () => '', extraOf: () => null, stokOf: () => null, stokLabel: {}, sealLabel: () => '', isVerified: () => false };
@@ -40,10 +41,10 @@ test('preset "Kategori & spesialisasi": urutan kolom export + kebutuhan data kla
   assert.equal(COL_PRESETS.find((p) => p.id === 'klasifikasi').siapJual, false); // bukan preset pricelist: opsi "siap jual" mati
 });
 
-test('loadNeeds memuat klasifikasi sekali; exportRow mengisi kolomnya; produk tanpa klasifikasi (nonaktif) kosong', async () => {
+test('loadNeeds memuat klasifikasi sekali per id; exportRow mengisi kolomnya; produk belum diklasifikasi kosong', async () => {
   const sb = fakeSb([
     baris(1, { spes: 'OBGYN', spes_sumber: 'peta' }),
-    baris(2, { spes: 'BEDAH UMUM', spes_sumber: 'isi', jenis: 'GUNTING' }),                        // dugaan -> perlu dicek
+    baris(2, { spes: 'BEDAH UMUM', spes_sumber: 'isi', klas_jenis: 'GUNTING' }),                        // dugaan -> perlu dicek
     baris(3, { kategori: 'ELEKTROMEDIS', spes: null, spes_sumber: null, kategori_sumber: 'bawaan', tipe: 'UNIT' }),
   ]);
   const kit = make(sb);
@@ -58,11 +59,11 @@ test('loadNeeds memuat klasifikasi sekali; exportRow mengisi kolomnya; produk ta
   assert.deepEqual(g('Klasifikasi Perlu Dicek'), [null, 'Ya', 'Ya', null]);
   const n = sb.calls.length;
   await kit.loadNeeds([1, 2, 3]);
-  assert.equal(sb.calls.length, n); // cache: tidak memanggil RPC ulang
+  assert.equal(sb.calls.length, n); // sudah dibaca: tidak query ulang
 });
 
 test('sel tabel: penanda "dicek" untuk dugaan, chip mikro, dan "—" untuk yang tidak ada', async () => {
-  const kit = make(fakeSb([baris(1, { spes_sumber: 'peta?', mikro: true }), baris(2, { spes_sumber: 'peta' })]));
+  const kit = make(fakeSb([baris(1, { spes_sumber: 'peta?', klas_mikro: true }), baris(2, { spes_sumber: 'peta' })]));
   kit.applyPreset('klasifikasi');
   await kit.loadNeeds([1, 2]);
   const html1 = kit.rowHtml(produk(1)), html2 = kit.rowHtml(produk(2)), html9 = kit.rowHtml(produk(9));
@@ -81,21 +82,21 @@ test('kolom Kelompok set (Minor/Mayor/Vaginal) sudah dihapus: tidak ada di dafta
   assert.equal(colIdx(kit, 'Kelompok Set'), -1);
 });
 
-test('klasifikasi belum dihitung: loadNeeds false + pesan yang menyebut refresh_katalog_klasifikasi (export dibatalkan)', async () => {
-  const kit = make(fakeSb([baris(1)], { dihitung: null }));
+test('kolom belum ada di database: loadNeeds false + pesan menyebut file migrasi (export dibatalkan, bukan kolom kosong diam-diam)', async () => {
+  const kit = make(fakeSb([], { selErr: { code: '42703', message: 'column produk.kategori does not exist' } }));
   kit.applyPreset('klasifikasi');
   assert.equal(await kit.loadNeeds([1]), false);
-  assert.match(kit.needsError(), /refresh_katalog_klasifikasi/);
+  assert.match(kit.needsError(), /2026-11-22_klasifikasi_kolom_produk\.sql/);
 });
 
-test('RPC belum terpasang: loadNeeds false + pesan menyebut file migrasi', async () => {
-  const kit = make(fakeSb([], { ringErr: { code: 'PGRST202', message: 'Could not find the function' } }));
+test('error lain saat memuat: loadNeeds false + pesan gagal memuat', async () => {
+  const kit = make(fakeSb([], { selErr: { message: 'timeout' } }));
   kit.applyPreset('klasifikasi');
   assert.equal(await kit.loadNeeds([1]), false);
-  assert.match(kit.needsError(), /20261110_kategori_spes_katalog\.sql/);
+  assert.match(kit.needsError(), /Gagal memuat kategori & spesialisasi: timeout/);
 });
 
-test('kolom klasifikasi tidak dipilih: tidak ada RPC sama sekali (preset standar)', async () => {
+test('kolom klasifikasi tidak dipilih: tidak ada request sama sekali (preset standar)', async () => {
   const sb = fakeSb([baris(1)]);
   const kit = make(sb);
   assert.equal(await kit.loadNeeds([1, 2]), true);

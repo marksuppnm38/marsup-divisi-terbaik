@@ -50,7 +50,7 @@ import { createAtributUi } from './atribut-ui.js';
 import { muatManual, resetManual } from './atribut.js';
 import { createTableColumns } from './kolom-tabel.js';
 import { fetchKeluargaOptions, fetchKeluargaMap, fetchRowsByKeluarga, pesanKeluarga, urutKeluarga } from './keluarga.js';
-import { muatKlasifikasi, resetKlasifikasi, infoKlasifikasi, opsiKlasifikasi, cocokKlas, idsKlasFilter, fetchRowsByIds, pesanKlasifikasi, isKlasDim } from './klasifikasi.js';
+import { muatKlasifikasi, resetKlasifikasi, opsiKlasifikasi, cocokKlas, fetchRowsByKlas, attachKlas, simpanKlasDariBaris, KLAS_COLS, pesanKlasifikasi, isKlasDim } from './klasifikasi.js';
 import { installKalkulatorHarga } from './kalkulator-harga.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
@@ -165,7 +165,9 @@ function ensureStyle() {
 // ---- Konstanta daftar Produk di level modul: dipakai prefetch yang jalan SEBELUM badan mount() dieksekusi.
 // (Kalau dideklarasikan di dalam mount() lagi, prefetch di awal kena TDZ -- kasus yang sama dengan komentar di handleNavParamsIfAny.)
 const PRODUK_PAGE_SIZE = 30;
-const PRODUK_LIST_COLUMNS = 'id, kode_produk, nama_produk, tipe, golongan, brand, is_active, status_akd, status_inaproc, link_v6, updated_at';
+// BASE = kolom yang pasti ada di view / RPC lain (v_produk_keluarga, dll.); PRODUK_LIST_COLUMNS = BASE + kategori & spesialisasi, hanya untuk .from('produk').
+const PRODUK_LIST_COLUMNS_BASE = 'id, kode_produk, nama_produk, tipe, golongan, brand, is_active, status_akd, status_inaproc, link_v6, updated_at';
+const PRODUK_LIST_COLUMNS = PRODUK_LIST_COLUMNS_BASE + ', ' + KLAS_COLS;
 
 // ---- Pengukuran waktu load tab Produk. Selalu tersimpan di window.__produkPerf (ms sejak mount() mulai);
 // tabelnya dicetak ke console kalau URL punya ?perf atau localStorage pnm_perf = '1'.
@@ -813,7 +815,6 @@ const keluargaAktif = () => produkActiveFilters.some(f => f.dim === 'keluarga');
 // seluruh katalog (klasifikasi.js, dimuat sekali). Dimensi filternya (kategori, spes, klas_cek) hanya dikenal client --
 // RPC get_produk_list tidak mengenalnya -- jadi punya jalur client sendiri di loadProduk (pola sama dengan Keluarga set).
 const klasAktif = () => produkActiveFilters.some(f => isKlasDim(f.dim));
-const produkKlasRowCache = new Map(); // produk_id -> { t, row }: baris produk jalur filter klasifikasi (fetchRowsByIds, TTL 2 menit)
 let produkVerifiedIdSet = null; // Set<produk_id> berbadge Verified (RPC get_verified_produk_ids, 1 baris jsonb)
 let produkVerifiedRows = null;  // cache baris produk berbadge (dipakai chip "Verified" — ~700 baris, cukup ditarik sekali)
 let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
@@ -1092,19 +1093,18 @@ function toastKeluargaNeeds(ok){
 }
 // Catatan: toastKeluargaNeeds membaca colKit.needsError() apa adanya, jadi kolom Kategori & Spesialisasi yang gagal dimuat ikut ditoast di sini.
 
-// ---- Kategori & Spesialisasi: muat cache klasifikasi (dibagi dengan kolom tabel) ----
-// Gagal (RPC belum terpasang / klasifikasi belum dihitung) TIDAK mengganggu halaman: hanya kolom & filter klasifikasi yang kosong,
-// dengan pesan yang menjelaskan. -> { ok, message }
-let _klasLengkapToastAt = 0;
+// ---- Kategori & Spesialisasi: kolom di tabel produk; yang dimuat di sini hanya OPSI filter (jumlah per kategori / spesialisasi) ----
+// Gagal (migrasi supabase/2026-11-22_klasifikasi_kolom_produk.sql belum dijalankan) TIDAK mengganggu halaman: hanya kolom & filter
+// klasifikasi yang kosong, dengan pesan yang menjelaskan. -> { ok, message }
 async function ensureKlas(){
   const r = await muatKlasifikasi(sb);
   if (!r.ok) return { ok: false, message: pesanKlasifikasi(r.error) };
-  const info = r.info;
-  if (info && !info.lengkap && Date.now() - _klasLengkapToastAt > 60000) {
-    _klasLengkapToastAt = Date.now();
-    showToast('Klasifikasi katalog tidak lengkap', 'warning', { detail: `Hanya ${info.terbaca.toLocaleString('id-ID')} dari ${info.total.toLocaleString('id-ID')} baris terbaca, jadi filter dan kolom Kategori / Spesialisasi bisa melewatkan produk.` });
-  }
   return { ok: true, message: '' };
+}
+// Jalur filter di client (search / Verified / Keluarga) butuh klasifikasi tiap baris kandidat: lengkapi yang belum membawanya.
+async function lengkapiKlas(rows){
+  const r = await attachKlas(sb, rows);
+  if (!r.ok) showToast(pesanKlasifikasi(r.error), true);
 }
 
 function invalidateProdukStackCache(){
@@ -1115,7 +1115,7 @@ function invalidateProdukStackCache(){
   produkPrefetch = null; // hasil prefetch lahir sebelum edit ini
   produkTotalCache = null; // total lama bisa salah setelah tulis
   _verifiedGen++; _verifiedInflight = null;
-  produkKlasRowCache.clear(); // baris produk jalur filter klasifikasi (bisa baru diedit); klasifikasinya sendiri bukan hasil edit produk
+  resetKlasifikasi(); // klasifikasi yang dibaca per baris + opsi filter (jumlah per kategori / spesialisasi) ikut berubah setelah edit
 }
 
 // ---- Tandai Verified MANUAL (jalur cadangan buat produk yang gak kebaca dari bulk TSV) ----
@@ -1309,6 +1309,7 @@ async function loadProduk(q, page, opts){
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
     }
     if (keluargaAktif()) await attachKeluarga(produkSearchRawRows); // search_produk_list tidak membawa keluarga
+    if (klasAktif()) await lengkapiKlas(produkSearchRawRows);          // ... dan tidak membawa kategori / spesialisasi
     const matcher = PRODUK_FILTERS[produkActiveFilter];
     let filtered = matcher ? produkSearchRawRows.filter(matcher) : produkSearchRawRows;
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
@@ -1327,6 +1328,7 @@ async function loadProduk(q, page, opts){
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
     }
     if (keluargaAktif()) await attachKeluarga(all);
+    if (klasAktif()) await lengkapiKlas(all);
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
     if (keluargaAktif()) filtered = [...filtered].sort(urutKeluarga); // dikelompokkan per keluarga, bukan per waktu ubah
     produkCurrentFilteredFull = filtered;
@@ -1338,11 +1340,12 @@ async function loadProduk(q, page, opts){
     // sekaligus), lalu chip status + filter lain dipasang di client dengan matcher yang sama dengan jalur search / Verified.
     // Hasil sudah urut per keluarga lalu nomor varian, jadi MAYOR S., MAYOR S. 2, MAYOR S. 3 berkumpul.
     const kf = produkActiveFilters.find(f => f.dim === 'keluarga');
-    const { rows: kRows, error: kErr } = await fetchRowsByKeluarga(sb, kf.values || [kf.value], PRODUK_LIST_COLUMNS + ', keluarga');
+    const { rows: kRows, error: kErr } = await fetchRowsByKeluarga(sb, kf.values || [kf.value], PRODUK_LIST_COLUMNS_BASE + ', keluarga');
     if (kErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">${escapeHtml(pesanKeluarga(kErr))}</td></tr>`; return; }
     if (needsStok && !(await ensureStokForIds(kRows.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
     }
+    if (klasAktif()) await lengkapiKlas(kRows);
     const matcher = PRODUK_FILTERS[produkActiveFilter];
     let filtered = matcher ? kRows.filter(matcher) : kRows;
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
@@ -1351,12 +1354,11 @@ async function loadProduk(q, page, opts){
     rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
   } else if (klasAktif()) {
     // Filter Kategori / Spesialisasi / Klasifikasi tanpa search, tanpa chip Verified, tanpa filter Keluarga.
-    // RPC get_produk_list tidak mengenal dimensi ini (kalau dilempar ke sana, filternya diam-diam hilang), jadi: id produk dari
-    // cache klasifikasi -> baris produknya diambil per id (di-cache 2 menit supaya pindah halaman tidak menarik ulang) -> chip status
-    // + SEMUA filter lain dipasang di client dengan matcher yang sama dengan jalur search / Verified / Keluarga. Urut sama dengan
-    // list biasa (terakhir diubah dulu). Cakupan klasifikasi = produk aktif, jadi produk nonaktif tidak ikut.
-    const ids = idsKlasFilter(produkActiveFilters.filter(f => isKlasDim(f.dim)));
-    const { rows: kRows, error: kErr } = await fetchRowsByIds(sb, ids, PRODUK_LIST_COLUMNS, produkKlasRowCache);
+    // RPC get_produk_list tidak mengenal dimensi ini (kalau dilempar ke sana, filternya diam-diam hilang), jadi: baris produk
+    // diambil langsung dari tabel produk (kolom kategori / spes ada di baris itu; server mempersempit, 1.000 baris per request),
+    // lalu chip status + SEMUA filter lain dipasang di client dengan matcher yang sama dengan jalur search / Verified / Keluarga.
+    // Urut sama dengan list biasa (terakhir diubah dulu).
+    const { rows: kRows, error: kErr } = await fetchRowsByKlas(sb, produkActiveFilters, PRODUK_LIST_COLUMNS);
     if (mySeq !== produkLoadSeq) return;
     if (kErr) { produkCount.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(kErr.message || String(kErr))}</td></tr>`; return; }
     if (needsStok && !(await ensureStokForIds(kRows.map(r => r.id)))) {
@@ -1424,6 +1426,7 @@ async function loadProduk(q, page, opts){
   // renderPgBar.
   if (!mountedContainer) return;
   if (mySeq !== produkLoadSeq) return; // panggilan lebih baru sudah jalan: jangan timpa tampilannya
+  simpanKlasDariBaris(rows); // baris dari .from('produk') sudah membawa kategori / spesialisasi: kolom tabel tidak perlu request lagi
   produkLastTotal = Number(total) || 0;
   if (exportPanelRepaint) exportPanelRepaint();
   produkCount.textContent = Number(total).toLocaleString('id-ID') + ' produk' + (qq ? ` untuk "${qq}"` : '') +
@@ -2003,9 +2006,6 @@ async function exportTampilanIni(){
   const dateStr = new Date().toISOString().slice(0, 10);
   const parts = describeActiveFilters();
   if (siapJual) parts.push('siap jual (Link V6 bersih + harga E-Katalog)');
-  // Klasifikasi (kategori / spesialisasi) adalah cache yang dihitung berkala di database: tulis umurnya di file, karena file ini bisa jadi dasar pengajuan izin edar.
-  const klasInfo = (uses.has('klas') || klasAktif()) ? infoKlasifikasi() : null;
-  if (klasInfo && klasInfo.dihitungAt) parts.push('klasifikasi dihitung ' + new Date(klasInfo.dihitungAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
   const subtitle = (parts.length ? parts.join(' · ') : 'Semua produk') + ` — per ${dateStr} — ${rows.length.toLocaleString('id-ID')} produk`;
   writeTableXlsx(XLSX, {
     sheetName: siapJual ? 'Pricelist' : 'Produk',

@@ -1,278 +1,225 @@
 // Jalankan: node --test app/pages/crud-produk/klasifikasi.test.mjs
-// Kategori & Spesialisasi sebagai atribut produk: pemuatan cache, filter, opsi, dan pengambilan baris per id.
+// Kategori & Spesialisasi sebagai KOLOM produk: baris membawa kolomnya, baris RPC dilengkapi per id, filter server + client,
+// opsi filter dari database, nilai otomatis untuk form koreksi.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  muatKlasifikasi, resetKlasifikasi, klasOf, klasTerisi, infoKlasifikasi, cocokKlas, idsKlasFilter, opsiKlasifikasi,
-  fetchRowsByIds, perluCek, sumberLabel, spesTeks, spesNama, katNama, pesanKlasifikasi,
-  isKlasDim, SPES_NONE, KAT_ORDER,
+  muatKlasifikasi, resetKlasifikasi, klasOf, klasAuto, klasTerisi, infoKlasifikasi, cocokKlas, opsiKlasifikasi,
+  simpanKlasDariBaris, muatKlasIds, attachKlas, muatOtomatis, fetchRowsByKlas, KLAS_COLS,
+  perluCek, sumberLabel, spesTeks, spesNama, katNama, pesanKlasifikasi, rpcBelumTerpasang, isKlasDim, SPES_NONE,
 } from './klasifikasi.js';
 
-const DIHITUNG = '2026-11-20T10:15:00Z';
-const baris = (id, o = {}) => ({
-  produk_id: id, tipe: 'INSTRUMENT', kode_produk: 'K' + id, nama_produk: 'P' + id, kategori: 'INSTRUMEN SATUAN',
-  kategori_sumber: 'golongan', spes: 'BEDAH UMUM', spes_sumber: 'peta', jenis: null, mikro: false, golongan: 'ALAT BEDAH', ...o,
+const prod = (id, o = {}) => ({
+  id, kode_produk: 'K' + id, nama_produk: 'P' + id, tipe: 'SET', golongan: 'G',
+  kategori: 'SET', kategori_sumber: 'golongan', spes: 'BEDAH UMUM', spes_sumber: 'peta', klas_jenis: null, klas_mikro: false, ...o,
 });
+const kosong = (id) => prod(id, { kategori: null, kategori_sumber: null, spes: null, spes_sumber: null });
 
-// Supabase tiruan: rpc(ringkasan) + rpc(daftar, paginasi p_batas / p_offset). `daftar` bisa dibatasi / dirusak lewat opsi.
-function fakeSb(semua, { dihitung = DIHITUNG, ringErr = null, daftarErr = null, totalOverride = null, cap = Infinity } = {}) {
+// Supabase tiruan: from('produk').select().in()/.not()/.order()/.range() + rpc(opsi / otomatis). Mencatat panggilan.
+function fakeSb(rows, { opsi = null, otomatis = [], opsiErr = null, selectErr = null, pageCap = Infinity } = {}) {
   const calls = [];
   return {
     calls,
     async rpc(name, args) {
-      calls.push({ name, args });
-      if (name === 'get_katalog_kategori_ringkasan') return ringErr ? { data: null, error: ringErr } : { data: { dihitung_at: dihitung, total: semua.length }, error: null };
-      if (name === 'get_katalog_kategori_daftar') {
-        if (daftarErr) return { data: null, error: daftarErr };
-        const n = Math.min(args.p_batas, cap);
-        return { data: { rows: semua.slice(args.p_offset, args.p_offset + n), total: totalOverride ?? semua.length }, error: null };
-      }
+      calls.push({ rpc: name, args });
+      if (name === 'get_klasifikasi_opsi') return opsiErr ? { data: null, error: opsiErr } : { data: opsi, error: null };
+      if (name === 'get_klasifikasi_otomatis') return { data: otomatis.filter((r) => args.p_ids.includes(r.produk_id)), error: null };
       throw new Error('rpc tak dikenal: ' + name);
     },
-  };
-}
-const muat = async (rows, opt) => { resetKlasifikasi(); const sb = fakeSb(rows, opt); const r = await muatKlasifikasi(sb); return { r, sb }; };
-
-// ---------- muatKlasifikasi ----------
-test('memuat seluruh klasifikasi per 1.000 baris, lalu klasOf membaca dari Map', async () => {
-  const rows = Array.from({ length: 2500 }, (_, i) => baris(i + 1));
-  const { r, sb } = await muat(rows);
-  assert.equal(r.ok, true);
-  assert.deepEqual(r.info, { dihitungAt: DIHITUNG, total: 2500, terbaca: 2500, lengkap: true });
-  const daftar = sb.calls.filter((c) => c.name === 'get_katalog_kategori_daftar');
-  assert.deepEqual(daftar.map((c) => c.args.p_offset), [0, 1000, 2000]);
-  assert.ok(daftar.every((c) => c.args.p_batas === 1000 && c.args.p_spes === null && c.args.p_cari === null && c.args.p_perlu_cek === false));
-  assert.deepEqual(daftar[0].args.p_kategori, KAT_ORDER); // semua kategori, bukan satu tab
-  assert.equal(klasOf(2500).kode, 'K2500');
-  assert.equal(klasOf(99999), undefined);
-});
-
-test('server membatasi baris per request: offset maju sesuai baris yang benar-benar kembali', async () => {
-  const rows = Array.from({ length: 25 }, (_, i) => baris(i + 1));
-  const { r, sb } = await muat(rows, { cap: 10 });
-  assert.equal(r.info.terbaca, 25);
-  assert.deepEqual(sb.calls.filter((c) => c.name.endsWith('daftar')).map((c) => c.args.p_offset), [0, 10, 20]);
-});
-
-test('klasifikasi belum pernah dihitung: ok=false, kode KLAS_KOSONG, pesan menyebut refresh_katalog_klasifikasi, daftar tidak diminta', async () => {
-  const { r, sb } = await muat([baris(1)], { dihitung: null });
-  assert.equal(r.ok, false);
-  assert.equal(r.error.code, 'KLAS_KOSONG');
-  assert.match(pesanKlasifikasi(r.error), /refresh_katalog_klasifikasi/);
-  assert.equal(sb.calls.length, 1);
-  assert.equal(klasTerisi(), false);
-});
-
-test('RPC belum terpasang: pesan menyebut file migrasi, bukan error mentah', async () => {
-  const { r } = await muat([], { ringErr: { code: 'PGRST202', message: 'Could not find the function public.get_katalog_kategori_ringkasan' } });
-  assert.equal(r.ok, false);
-  assert.match(pesanKlasifikasi(r.error), /20261110_kategori_spes_katalog\.sql/);
-  assert.match(pesanKlasifikasi({ message: 'boom' }), /Gagal memuat kategori & spesialisasi: boom/);
-});
-
-test('error di tengah paginasi: ok=false dan cache tidak setengah terisi', async () => {
-  const { r } = await muat([baris(1)], { daftarErr: { message: 'statement timeout' } });
-  assert.equal(r.ok, false);
-  assert.equal(klasTerisi(), false);
-  assert.equal(klasOf(1), undefined);
-});
-
-test('exception dari rpc tidak pernah dilempar ke pemanggil', async () => {
-  resetKlasifikasi();
-  const r = await muatKlasifikasi({ rpc: async () => { throw new Error('jaringan putus'); } });
-  assert.equal(r.ok, false);
-  assert.match(r.error.message, /jaringan putus/);
-});
-
-test('cache: panggilan kedua tidak memanggil RPC; force memuat ulang; panggilan bersamaan digabung', async () => {
-  resetKlasifikasi();
-  const sb = fakeSb([baris(1), baris(2)]);
-  const [a, b] = await Promise.all([muatKlasifikasi(sb), muatKlasifikasi(sb)]);
-  assert.equal(a.ok && b.ok, true);
-  assert.equal(sb.calls.filter((c) => c.name.endsWith('ringkasan')).length, 1);
-  const n = sb.calls.length;
-  await muatKlasifikasi(sb);
-  assert.equal(sb.calls.length, n);
-  await muatKlasifikasi(sb, { force: true });
-  assert.ok(sb.calls.length > n);
-});
-
-test('jumlah baris terbaca < total server: lengkap=false (supaya pemanggil bisa memperingatkan, bukan diam)', async () => {
-  const { r } = await muat([baris(1), baris(2), baris(3)], { totalOverride: 10 });
-  assert.equal(r.ok, true);
-  assert.equal(r.info.lengkap, false);
-  assert.equal(r.info.terbaca, 3);
-  assert.equal(infoKlasifikasi().total, 10);
-});
-
-test('resetKlasifikasi membuang cache', async () => {
-  await muat([baris(1)]);
-  assert.equal(klasTerisi(), true);
-  resetKlasifikasi();
-  assert.equal(klasTerisi(), false);
-  assert.equal(klasOf(1), undefined);
-});
-
-// ---------- turunan per produk ----------
-test('perluCek / sumberLabel / spesTeks mengikuti aturan tab lama', async () => {
-  const dugaan = { kategori: 'INSTRUMEN SATUAN', spes: 'OBGYN', spesSumber: 'peta?', kategoriSumber: 'golongan' };
-  const pasti = { ...dugaan, spesSumber: 'peta' };
-  const kosong = { ...dugaan, spesSumber: 'kosong' };
-  const alatBawaan = { kategori: 'ELEKTROMEDIS', spes: null, spesSumber: null, kategoriSumber: 'bawaan' };
-  const alatKoreksi = { ...alatBawaan, kategoriSumber: 'koreksi' };
-  assert.equal(perluCek(dugaan), true);
-  assert.equal(perluCek(kosong), true);
-  assert.equal(perluCek(pasti), false);
-  assert.equal(perluCek(alatBawaan), true);
-  assert.equal(perluCek(alatKoreksi), false);
-  assert.equal(perluCek(undefined), false);
-  assert.equal(sumberLabel(dugaan), 'Dugaan (peta)');
-  assert.equal(sumberLabel(pasti), 'Peta kode');
-  assert.equal(sumberLabel(alatBawaan), 'Golongan belum dipetakan');
-  assert.equal(sumberLabel({ ...alatBawaan, kategoriSumber: 'golongan' }), 'Golongan');
-  assert.equal(sumberLabel(undefined), '');
-  assert.equal(spesTeks(pasti), spesNama('OBGYN'));
-  assert.equal(spesTeks(alatBawaan), null); // unit & alat: bukan "Tanpa spesialisasi"
-  assert.equal(spesTeks(undefined), null);
-  assert.equal(spesNama('OBGYN'), 'OBGYN');
-  assert.equal(spesNama('THT'), 'THT');
-  assert.equal(spesNama('BEDAH UMUM'), 'Bedah Umum');
-  assert.equal(spesNama('LAINNYA'), 'Belum dikelompokkan');
-  assert.equal(katNama('SET'), 'Set instrumen');
-});
-
-// ---------- filter ----------
-async function muatContoh() {
-  const rows = [
-    baris(1, { tipe: 'SET', kategori: 'SET', nama_produk: 'MINOR S. 2', spes: 'BEDAH UMUM', spes_sumber: 'label' }),
-    baris(2, { tipe: 'SET', kategori: 'SET', nama_produk: 'MAYOR VAGINAL S.', spes: 'OBGYN', spes_sumber: 'isi' }),     // dugaan
-    baris(3, { tipe: 'INSTRUMENT', kategori: 'INSTRUMEN SATUAN', spes: 'OBGYN', spes_sumber: 'peta' }),
-    baris(4, { tipe: 'INSTRUMENT', kategori: 'INSTRUMEN SATUAN', spes: null, spes_sumber: 'kosong' }),                  // tanpa spesialisasi
-    baris(5, { tipe: 'UNIT', kategori: 'ELEKTROMEDIS', spes: null, spes_sumber: null, kategori_sumber: 'bawaan' }),    // alat, golongan belum dipetakan
-    baris(6, { tipe: 'INSTRUMENT', kategori: 'INSTRUMEN SATUAN', spes: 'LAINNYA', spes_sumber: 'kata' }),
-    baris(7, { tipe: 'SET', kategori: 'SET', nama_produk: 'HECTING S.', spes: 'BEDAH UMUM', spes_sumber: 'peta' }),
-  ];
-  const { r } = await muat(rows);
-  assert.equal(r.ok, true);
-}
-const F = (dim, ...values) => ({ dim, values });
-const ids = (...filters) => idsKlasFilter(filters).sort((a, b) => a - b);
-
-test('isKlasDim hanya mengenali dimensi klasifikasi', () => {
-  ['kategori', 'spes', 'klas_cek'].forEach((d) => assert.equal(isKlasDim(d), true));
-  ['tipe', 'keluarga', 'brand', 'stok'].forEach((d) => assert.equal(isKlasDim(d), false));
-  assert.equal(isKlasDim('kelompok'), false); // Kelompok set (Minor/Mayor/Vaginal) sudah dihapus; keluarga set yang dipakai
-});
-
-test('filter kategori (multi): OR di dalam dimensi', async () => {
-  await muatContoh();
-  assert.deepEqual(ids(F('kategori', 'SET')), [1, 2, 7]);
-  assert.deepEqual(ids(F('kategori', 'SET', 'ELEKTROMEDIS')), [1, 2, 5, 7]);
-});
-
-test('filter spesialisasi: nilai biasa, LAINNYA, dan "Tanpa spesialisasi" yang TIDAK menyertakan unit & alat', async () => {
-  await muatContoh();
-  assert.deepEqual(ids(F('spes', 'OBGYN')), [2, 3]);
-  assert.deepEqual(ids(F('spes', 'OBGYN', 'BEDAH UMUM')), [1, 2, 3, 7]);
-  assert.deepEqual(ids(F('spes', 'LAINNYA')), [6]);
-  assert.deepEqual(ids(F('spes', SPES_NONE)), [4]);      // id 5 (alat, spes null) bukan "tanpa spesialisasi"
-});
-
-test('filter klasifikasi perlu dicek: ya / tidak (single-select, pakai value)', async () => {
-  await muatContoh();
-  assert.deepEqual(ids({ dim: 'klas_cek', value: 'ya' }), [2, 4, 5]);          // dugaan isi, kosong, golongan bawaan
-  assert.deepEqual(ids({ dim: 'klas_cek', value: 'tidak' }), [1, 3, 6, 7]);
-});
-
-test('filter ditumpuk = AND; produk di luar cache (nonaktif / belum dimuat) tidak pernah lolos filter klasifikasi', async () => {
-  await muatContoh();
-  assert.deepEqual(ids(F('kategori', 'SET'), F('spes', 'OBGYN')), [2]);
-  assert.deepEqual(ids(F('kategori', 'SET'), { dim: 'klas_cek', value: 'ya' }), [2]);
-  assert.equal(cocokKlas(F('kategori', 'SET'), { id: 12345 }), false);
-  assert.equal(cocokKlas({ dim: 'klas_cek', value: 'tidak' }, { id: 12345 }), false);
-  assert.equal(cocokKlas({ dim: 'klas_cek', value: 'ya' }, { id: 12345 }), false);
-  resetKlasifikasi();
-  assert.deepEqual(idsKlasFilter([F('kategori', 'SET')]), []); // cache kosong: tidak throw
-});
-
-test('cocokKlas pada baris list Produk memakai id untuk klasifikasi; produk di luar cache tidak punya kategori', async () => {
-  await muatContoh();
-  const row = { id: 1, tipe: 'SET', kode_produk: 'K1', nama_produk: 'MINOR S. 2' };
-  assert.equal(cocokKlas(F('kategori', 'SET'), row), true);
-  const nonaktif = { id: 777, tipe: 'SET', kode_produk: 'KX', nama_produk: 'MAYOR S.' };
-  assert.equal(cocokKlas(F('kategori', 'SET'), nonaktif), false);
-  assert.equal(cocokKlas(F('kelompok', 'minor'), row), true); // dimensi tak dikenal = lolos (default), bukan lagi menyaring
-});
-
-// ---------- opsi filter ----------
-test('opsiKlasifikasi: jumlah per nilai, urut terbanyak, LAINNYA terakhir, "Tanpa spesialisasi" hanya non-alat', async () => {
-  await muatContoh();
-  const o = opsiKlasifikasi();
-  assert.deepEqual(o.kategori.map((k) => [k.value, k.n]), [['SET', 3], ['INSTRUMEN SATUAN', 3], ['ELEKTROMEDIS', 1]]);
-  assert.equal(o.kategori[0].label, 'Set instrumen');
-  assert.deepEqual(o.spes.map((s) => [s.value, s.n]), [['BEDAH UMUM', 2], ['OBGYN', 2], ['LAINNYA', 1], [SPES_NONE, 1]]);
-  assert.equal(o.spes.at(-1).label, 'Tanpa spesialisasi');
-  resetKlasifikasi();
-  assert.deepEqual(opsiKlasifikasi(), { kategori: [], spes: [] });
-});
-
-// ---------- baris produk per id ----------
-function fakeProduk(rows, { error = null } = {}) {
-  const calls = [];
-  return {
-    calls,
-    from(name) {
-      const q = { name, ids: null };
-      calls.push(q);
-      const chain = { select() { return chain; }, in(_c, v) { q.ids = v; return chain; },
-        then(res, rej) { return Promise.resolve(error ? { data: null, error } : { data: rows.filter((r) => q.ids.includes(r.id)), error: null }).then(res, rej); } };
+    from(tabel) {
+      assert.equal(tabel, 'produk');
+      const q = { f: [], r: null, cols: null, call: { tabel } };
+      const chain = {
+        select(c) { q.cols = c; return chain; },
+        in(c, v) { q.f.push((r) => v.includes(r[c])); q.call['in_' + c] = v; return chain; },
+        not(c, op, v) { q.f.push((r) => (op === 'is' && v === null ? r[c] != null : true)); q.call['not_' + c] = op; return chain; },
+        order() { return chain; },
+        range(a, b) { q.r = [a, b]; return chain; },
+        then(res, rej) {
+          calls.push(q.call);
+          if (selectErr) return Promise.resolve({ data: null, error: selectErr }).then(res, rej);
+          let out = rows.filter((r) => q.f.every((fn) => fn(r)));
+          if (q.r) out = out.slice(q.r[0], Math.min(q.r[1] + 1, q.r[0] + pageCap));
+          return Promise.resolve({ data: out.map((r) => ({ ...r })), error: null }).then(res, rej);
+        },
+      };
       return chain;
     },
   };
 }
 
-test('fetchRowsByIds: chunk 150 id, urutan sesuai ids, id yang tak ada di tabel dibuang', async () => {
-  const rows = Array.from({ length: 400 }, (_, i) => ({ id: i + 1, kode_produk: 'K' + (i + 1) }));
-  const sb = fakeProduk(rows);
-  const want = [400, 3, 99999, 1, ...Array.from({ length: 300 }, (_, i) => i + 5)];
-  const { rows: out, error } = await fetchRowsByIds(sb, want, 'id, kode_produk');
-  assert.equal(error, null);
-  assert.deepEqual(out.slice(0, 3).map((r) => r.id), [400, 3, 1]);
-  assert.equal(out.length, want.length - 1);
-  assert.ok(sb.calls.every((c) => c.name === 'produk' && c.ids.length <= 150));
-  assert.equal(sb.calls.length, Math.ceil(want.length / 150));
+test.beforeEach(() => resetKlasifikasi());
+
+// ---------- baris -> klasifikasi ----------
+test('simpanKlasDariBaris: baris yang membawa kolom dicatat; klasOf membaca tanpa request', () => {
+  simpanKlasDariBaris([prod(1, { klas_jenis: 'GUNTING', klas_mikro: true }), prod(2, { kategori: 'ELEKTROMEDIS', spes: null, kategori_sumber: 'bawaan' })]);
+  const e = klasOf(1);
+  assert.deepEqual([e.kategori, e.spes, e.jenis, e.mikro, e.spesSumber], ['SET', 'BEDAH UMUM', 'GUNTING', true, 'peta']);
+  assert.equal(klasOf(2).kategori, 'ELEKTROMEDIS');
+  assert.equal(klasOf(99), undefined);
 });
 
-test('fetchRowsByIds: cache dipakai untuk id yang sama; hanya id baru yang ditanya', async () => {
-  const rows = Array.from({ length: 10 }, (_, i) => ({ id: i + 1 }));
-  const sb = fakeProduk(rows), cache = new Map();
-  await fetchRowsByIds(sb, [1, 2, 3], 'id', cache);
-  assert.equal(sb.calls.length, 1);
-  await fetchRowsByIds(sb, [1, 2, 3], 'id', cache);
-  assert.equal(sb.calls.length, 1);
-  await fetchRowsByIds(sb, [2, 3, 4], 'id', cache);
-  assert.equal(sb.calls.length, 2);
-  assert.deepEqual(sb.calls[1].ids, [4]);
+test('produk tanpa kategori & spesialisasi (belum diklasifikasi) -> klasOf undefined, tapi tercatat "sudah dibaca"', async () => {
+  const sb = fakeSb([]);
+  simpanKlasDariBaris([kosong(7)]);
+  assert.equal(klasOf(7), undefined);
+  assert.deepEqual(await muatKlasIds(sb, [7]), { ok: true, error: null });
+  assert.equal(sb.calls.length, 0); // tidak ditanya lagi
 });
 
-test('fetchRowsByIds: batas paralel 6 request sekaligus', async () => {
-  let aktif = 0, puncak = 0;
-  const sb = { from() {
-    const chain = { select() { return chain; }, in() { return chain; },
-      then(res, rej) { aktif++; puncak = Math.max(puncak, aktif); return new Promise((ok) => setTimeout(ok, 5)).then(() => { aktif--; return { data: [], error: null }; }).then(res, rej); } };
-    return chain;
-  } };
-  await fetchRowsByIds(sb, Array.from({ length: 150 * 20 }, (_, i) => i + 1), 'id');
-  assert.ok(puncak <= 6, 'puncak paralel ' + puncak);
-  assert.ok(puncak > 1);
+test('baris tanpa kolom klasifikasi (hasil RPC) diabaikan simpanKlasDariBaris', () => {
+  simpanKlasDariBaris([{ id: 5, kode_produk: 'K5' }]);
+  assert.equal(klasOf(5), undefined);
 });
 
-test('fetchRowsByIds: error dikembalikan (tidak dilempar), ids kosong = tanpa request', async () => {
-  const sb = fakeProduk([], { error: { message: 'JWT expired' } });
-  const r = await fetchRowsByIds(sb, [1, 2], 'id');
-  assert.equal(r.error.message, 'JWT expired');
-  assert.deepEqual(r.rows, []);
-  const sb2 = fakeProduk([]);
-  assert.deepEqual(await fetchRowsByIds(sb2, [], 'id'), { rows: [], error: null });
-  assert.equal(sb2.calls.length, 0);
+// ---------- muatKlasIds / attachKlas ----------
+test('muatKlasIds: hanya id yang belum dibaca ditanya, per 150 id, kolom = id + KLAS_COLS', async () => {
+  const rows = Array.from({ length: 400 }, (_, i) => prod(i + 1));
+  const sb = fakeSb(rows);
+  simpanKlasDariBaris([rows[0]]);                                        // id 1 sudah ada
+  const r = await muatKlasIds(sb, rows.map((x) => x.id));
+  assert.equal(r.ok, true);
+  const q = sb.calls.filter((c) => c.tabel === 'produk');
+  assert.equal(q.length, 3);                                              // 399 id -> 150 + 150 + 99
+  assert.ok(q.every((c) => c.in_id.length <= 150));
+  assert.ok(!q.some((c) => c.in_id.includes(1)));
+  assert.equal(klasOf(400).kategori, 'SET');
+  assert.equal(klasTerisi(), true);
+});
+
+test('muatKlasIds: id yang tak ada di tabel dicatat kosong (tidak ditanya berulang)', async () => {
+  const sb = fakeSb([prod(1)]);
+  await muatKlasIds(sb, [1, 2]);
+  const n = sb.calls.length;
+  await muatKlasIds(sb, [1, 2]);
+  assert.equal(sb.calls.length, n);
+  assert.equal(klasOf(2), undefined);
+});
+
+test('muatKlasIds: error select -> ok=false (tidak melempar); kolom belum ada -> rpcBelumTerpasang + pesan menyebut file migrasi', async () => {
+  const err = { code: '42703', message: 'column produk.kategori does not exist' };
+  const r = await muatKlasIds(fakeSb([], { selectErr: err }), [1]);
+  assert.equal(r.ok, false);
+  assert.equal(rpcBelumTerpasang(r.error), true);
+  assert.match(pesanKlasifikasi(r.error), /2026-11-22_klasifikasi_kolom_produk\.sql/);
+  assert.match(pesanKlasifikasi({ message: 'boom' }), /Gagal memuat kategori & spesialisasi: boom/);
+});
+
+test('attachKlas: baris yang sudah membawa kolom tidak ditanya; baris RPC (tanpa kolom) ditanya sekali', async () => {
+  const sb = fakeSb([prod(2, { kategori: 'BMHP', spes: null })]);
+  const r = await attachKlas(sb, [prod(1), { id: 2, kode_produk: 'K2' }]);
+  assert.equal(r.ok, true);
+  assert.deepEqual(sb.calls.map((c) => c.in_id), [[2]]);
+  assert.equal(klasOf(1).kategori, 'SET');
+  assert.equal(klasOf(2).kategori, 'BMHP');
+});
+
+// ---------- opsi filter ----------
+test('muatKlasifikasi: opsi dari RPC get_klasifikasi_opsi, di-cache; opsiKlasifikasi urut KAT_ORDER / terbanyak, LAINNYA terakhir, + "Tanpa spesialisasi"', async () => {
+  const sb = fakeSb([], { opsi: {
+    kategori: [{ value: 'BMHP', n: 5 }, { value: 'SET', n: 100 }, { value: 'LAIN', n: 1 }],
+    spes: [{ value: 'LAINNYA', n: 90 }, { value: 'THT', n: 10 }, { value: 'BEDAH UMUM', n: 30 }],
+    tanpa: 12,
+  } });
+  const r = await muatKlasifikasi(sb);
+  assert.deepEqual(r, { ok: true, error: null, info: null });
+  await muatKlasifikasi(sb);
+  assert.equal(sb.calls.length, 1);                                       // cache
+  const o = opsiKlasifikasi();
+  assert.deepEqual(o.kategori.map((k) => [k.value, k.n]), [['SET', 100], ['BMHP', 5], ['LAIN', 1]]);
+  assert.deepEqual(o.spes.map((s) => [s.value, s.label, s.n]), [
+    ['BEDAH UMUM', 'Bedah Umum', 30], ['THT', 'THT', 10], ['LAINNYA', 'Belum dikelompokkan', 90], [SPES_NONE, 'Tanpa spesialisasi', 12]]);
+});
+
+test('muatKlasifikasi: RPC belum terpasang -> ok=false + pesan; opsiKlasifikasi kosong (tidak melempar)', async () => {
+  const r = await muatKlasifikasi(fakeSb([], { opsiErr: { code: 'PGRST202', message: 'Could not find the function public.get_klasifikasi_opsi' } }));
+  assert.equal(r.ok, false);
+  assert.match(pesanKlasifikasi(r.error), /belum aktif di database/);
+  assert.deepEqual(opsiKlasifikasi(), { kategori: [], spes: [] });
+});
+
+test('infoKlasifikasi tidak lagi ada (null): tidak ada "dihitung pada" untuk atribut yang tersimpan', () => {
+  assert.equal(infoKlasifikasi(), null);
+});
+
+// ---------- nilai otomatis (form koreksi) ----------
+test('muatOtomatis -> klasAuto: nilai cache otomatis; produk tanpa entri (nonaktif) -> undefined', async () => {
+  const sb = fakeSb([], { otomatis: [{ produk_id: 1, kategori: 'SET', kategori_sumber: 'golongan', spes: 'OBGYN', spes_sumber: 'peta' }] });
+  assert.deepEqual(await muatOtomatis(sb, [1, 2]), { ok: true, error: null });
+  assert.equal(klasAuto(1).spes, 'OBGYN');
+  assert.equal(klasAuto(2), undefined);
+  assert.equal(sb.calls[0].args.p_ids.length, 2);
+});
+
+// ---------- filter ----------
+const F = (dim, ...values) => ({ dim, values });
+test('cocokKlas: kategori / spes / "Tanpa spesialisasi" (alat tidak dihitung) / belum diklasifikasi', () => {
+  simpanKlasDariBaris([
+    prod(1), prod(2, { spes: 'OBGYN' }), prod(3, { spes: null, spes_sumber: 'kosong' }),
+    prod(4, { kategori: 'ELEKTROMEDIS', spes: null }), kosong(5),
+  ]);
+  const ok = (f, id) => cocokKlas(f, { id });
+  assert.equal(ok(F('kategori', 'SET'), 1), true);
+  assert.equal(ok(F('kategori', 'SET'), 4), false);
+  assert.equal(ok(F('kategori', 'SET'), 5), false);                      // belum diklasifikasi: tidak masuk kategori manapun
+  assert.equal(ok(F('spes', 'OBGYN'), 2), true);
+  assert.equal(ok(F('spes', SPES_NONE), 3), true);
+  assert.equal(ok(F('spes', SPES_NONE), 4), false);                      // alat tidak punya spesialisasi
+  assert.equal(ok(F('spes', 'OBGYN', SPES_NONE), 3), true);
+  assert.equal(ok({ dim: 'klas_cek', value: 'ya' }, 3), true);           // sumber 'kosong' = perlu dicek
+  assert.equal(ok({ dim: 'klas_cek', value: 'tidak' }, 1), true);
+  assert.equal(ok({ dim: 'klas_cek', value: 'ya' }, 5), false);
+});
+
+test('fetchRowsByKlas: server dipersempit (kategori IN, tanpa baris belum-diklasifikasi), paging 1.000 stabil, hasil tepat via cocokKlas', async () => {
+  const rows = [
+    ...Array.from({ length: 2300 }, (_, i) => prod(i + 1, { kategori: i % 2 ? 'SET' : 'BMHP', spes: i % 3 ? 'THT' : null })),
+    kosong(9001),
+  ];
+  const sb = fakeSb(rows);
+  const semuaSet = await fetchRowsByKlas(sb, [F('kategori', 'SET')], 'id, ' + KLAS_COLS);
+  assert.equal(semuaSet.error, null);
+  const q = sb.calls.filter((c) => c.tabel === 'produk');
+  assert.equal(q.length, 2);                                              // 1.150 baris SET: halaman penuh 1.000 + halaman pendek 150
+  assert.ok(q.every((c) => c.not_kategori === 'is' && c.in_kategori[0] === 'SET'));
+  assert.equal(semuaSet.rows.length, 1150);
+  assert.equal(klasOf(semuaSet.rows[0].id).kategori, 'SET');              // dicatat untuk cocokKlas / kolom tabel
+
+  const sempit = await fetchRowsByKlas(fakeSb(rows), [F('kategori', 'SET'), F('spes', 'THT'), { dim: 'brand', value: 'X' }], 'id, ' + KLAS_COLS);
+  assert.ok(sempit.rows.length > 0 && sempit.rows.every((r) => r.kategori === 'SET' && r.spes === 'THT'));
+  assert.equal(sempit.rows.some((r) => r.id === 9001), false);            // belum diklasifikasi tidak ikut
+});
+
+test('fetchRowsByKlas: "Tanpa spesialisasi" tidak dipersempit di server tapi tetap tepat di client; error select -> { rows: [], error }', async () => {
+  const sb = fakeSb([prod(1, { spes: null }), prod(2), prod(3, { kategori: 'UNIT', spes: null })]);
+  const r = await fetchRowsByKlas(sb, [F('spes', SPES_NONE)], KLAS_COLS + ', id');
+  assert.deepEqual(r.rows.map((x) => x.id), [1]);                         // 3 = unit (alat), tidak dihitung
+  assert.equal(sb.calls[0].in_spes, undefined);
+  const bad = await fetchRowsByKlas(fakeSb([], { selectErr: { message: 'x' } }), [F('kategori', 'SET')], 'id');
+  assert.deepEqual([bad.rows, bad.error.message], [[], 'x']);
+});
+
+// ---------- turunan per produk ----------
+test('perluCek / sumberLabel / spesTeks / nama', () => {
+  simpanKlasDariBaris([prod(1, { spes_sumber: 'peta?' }), prod(2, { spes_sumber: 'manual' }), prod(3, { kategori: 'BMHP', kategori_sumber: 'bawaan', spes: null })]);
+  assert.equal(perluCek(klasOf(1)), true);
+  assert.equal(perluCek(klasOf(2)), false);
+  assert.equal(perluCek(klasOf(3)), true);                                // golongan belum dipetakan
+  assert.equal(sumberLabel(klasOf(2)), 'Dikoreksi');
+  assert.equal(sumberLabel(klasOf(3)), 'Golongan belum dipetakan');
+  assert.equal(spesTeks(klasOf(3)), null);                                // alat: kosong
+  assert.equal(spesTeks(klasOf(1)), 'Bedah Umum');
+  assert.equal(spesNama('OBGYN'), 'OBGYN');
+  assert.equal(katNama('SET'), 'Set instrumen');
+  assert.equal(isKlasDim('spes'), true);
+  assert.equal(isKlasDim('brand'), false);
+});
+
+test('resetKlasifikasi membuang semua yang dibaca (dipakai setelah edit / bulk / keluar halaman)', async () => {
+  simpanKlasDariBaris([prod(1)]);
+  await muatOtomatis(fakeSb([], { otomatis: [{ produk_id: 1, kategori: 'SET' }] }), [1]);
+  resetKlasifikasi();
+  assert.equal(klasOf(1), undefined);
+  assert.equal(klasAuto(1), undefined);
+  assert.equal(klasTerisi(), false);
 });

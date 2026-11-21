@@ -3,22 +3,16 @@
 // Atribut ini muncul di list Produk lewat mekanisme yang sama dengan Keluarga set: kolom yang bisa dipilih
 // (kolom-tabel.js, ikut Export), filter di "+ Tambah Filter", dan kolom dinamis yang ditambah otomatis oleh filter.
 //
-// Sumber kebenaran tetap di database. Dua RPC dari migrasi 20261110_kategori_spes_katalog.sql (tidak ada di repo ini):
-//   get_katalog_kategori_ringkasan -> dipakai HANYA untuk `dihitung_at` (cache klasifikasi sudah pernah dihitung atau belum)
-//   get_katalog_kategori_daftar    -> daftar produk berpaginasi + kategori / spesialisasi / jenis / sumber klasifikasi
-// RPC daftar tidak bisa difilter per produk_id, jadi seluruh klasifikasi dimuat SEKALI (per 1.000 baris) lalu disimpan
-// di memori (TTL 30 menit). Setelah itu kolom, filter, dan opsi filter hanya membaca Map ini -- tanpa request tambahan.
-// Cakupannya produk AKTIF saja (sama dengan tab lama): produk nonaktif tidak punya klasifikasi, kolomnya "—".
-//
-// Koreksi MANUAL (atribut.js, tabel produk_atribut_manual) menimpa nilai otomatis saat dibaca: klasOf(), filter, dan opsi memakai
-// nilai EFEKTIF (manual kalau ada, otomatis kalau tidak). Dihitung saat dibaca, bukan ditulis ke cache, jadi tidak ada urutan pemuatan
-// yang harus dijaga dan membatalkan koreksi langsung mengembalikan nilai otomatis. klasAuto() = nilai otomatisnya saja.
+// Sumber kebenaran: KOLOM di tabel `produk` (kategori, kategori_sumber, spes, spes_sumber, klas_jenis, klas_mikro),
+// dari supabase/2026-11-22_klasifikasi_kolom_produk.sql. Hasil auto-mapping (katalog_klasifikasi_cache) hanya jadi
+// PENGISI AWAL lewat backfill_klasifikasi_produk(); koreksi manual (form / bulk -> produk_atribut_manual) disalin ke kolom
+// oleh trigger di database. Jadi browser TIDAK lagi memuat seluruh katalog: baris list membawa kolomnya sendiri
+// (PRODUK_LIST_COLUMNS), baris dari RPC yang belum membawanya dilengkapi per halaman (muatKlasIds, 1 request per 150 id),
+// dan opsi filter + jumlahnya dihitung database (get_klasifikasi_opsi).
 //
 // Sengaja tanpa ketergantungan DOM dan TIDAK pernah throw: semua fungsi async mengembalikan { ..., error } supaya bisa
-// diuji dengan Supabase tiruan (klasifikasi.test.mjs) dan halaman Produk tetap jalan kalau RPC-nya belum terpasang
+// diuji dengan Supabase tiruan (klasifikasi.test.mjs) dan halaman Produk tetap jalan kalau migrasinya belum dijalankan
 // (hanya kolom / filter klasifikasi yang kosong, dengan pesan yang menjelaskan).
-
-import { manualOf, manualMap, SPES_TANPA } from './atribut.js';
 
 export const KAT = {
   'SET': 'Set instrumen', 'INSTRUMEN SATUAN': 'Instrumen satuan', 'ELEKTROMEDIS': 'Elektromedis',
@@ -47,106 +41,125 @@ export const spesNama = (s) => (s == null ? 'Tanpa spesialisasi'
   : s === 'LAINNYA' ? 'Belum dikelompokkan'
   : String(s).replace(/\w\S*/g, (w) => w.charAt(0) + w.slice(1).toLowerCase()).replace(/\bTht\b/, 'THT').replace(/\bObgyn\b/, 'OBGYN'));
 
-// ---------- RPC ----------
-const RPC_RINGKASAN = 'get_katalog_kategori_ringkasan';
-const RPC_DAFTAR = 'get_katalog_kategori_daftar';
-const BATCH = 1000;                 // batas baris PostgREST per request
+// Kolom produk yang membawa klasifikasi (ditambahkan ke PRODUK_LIST_COLUMNS di index.js).
+export const KLAS_COLS = 'kategori, kategori_sumber, spes, spes_sumber, klas_jenis, klas_mikro';
+
+// ---------- RPC / pesan ----------
+const RPC_OPSI = 'get_klasifikasi_opsi';
+const RPC_OTOMATIS = 'get_klasifikasi_otomatis';
 const TTL_MS = 30 * 60 * 1000;
+const PAGE = 1000;               // batas baris PostgREST per request
+const ID_CHUNK = 150;            // sama dengan chunk .in('id', ...) lain di halaman Produk (aman untuk panjang URL)
+const PARALEL = 6;
 
 export function rpcBelumTerpasang(err) {
-  return !!err && (err.code === 'PGRST202' || err.code === '42883' || /could not find the function/i.test(err.message || ''));
+  return !!err && (err.code === 'PGRST202' || err.code === '42883' || err.code === '42703' || err.code === 'PGRST204'
+    || /could not find the function|column .*(kategori|spes|klas_).* does not exist|could not find the .*(kategori|spes|klas_)/i.test(err.message || ''));
 }
 export function pesanKlasifikasi(err) {
-  if (err && err.code === 'KLAS_KOSONG') {
-    return 'Klasifikasi katalog belum dihitung. Jalankan di SQL Editor Supabase: set statement_timeout = \'5min\'; select public.refresh_katalog_klasifikasi(); lalu muat ulang.';
-  }
-  if (rpcBelumTerpasang(err)) return 'Kategori & spesialisasi belum aktif di database. Jalankan 20261110_kategori_spes_katalog.sql di Supabase SQL Editor, lalu muat ulang.';
+  if (rpcBelumTerpasang(err)) return 'Kategori & spesialisasi belum aktif di database. Jalankan supabase/2026-11-22_klasifikasi_kolom_produk.sql di Supabase SQL Editor (lalu backfill_klasifikasi_produk), kemudian muat ulang.';
   return 'Gagal memuat kategori & spesialisasi: ' + ((err && err.message) || err);
 }
 
-// ---------- cache ----------
-let cache = null;     // { map: Map<produk_id, entry>, info, t }
-let inflight = null;
+// ---------- penyimpanan di memori ----------
+let store = new Map();     // produk_id -> entri | null (null = sudah dibaca, produk belum punya kategori / spesialisasi)
+let opsi = null;           // { kategori: [{ value, n }], spes: [{ value, n }], tanpa, t }
+let inflightOpsi = null;
+let otomatis = new Map();  // produk_id -> entri OTOMATIS (cache katalog) | null: hanya untuk teks "Otomatis: ..." di form koreksi
 
-const entryDari = (r) => ({
-  id: r.produk_id, tipe: r.tipe, kode: r.kode_produk, nama: r.nama_produk,
-  kategori: r.kategori, kategoriSumber: r.kategori_sumber,
-  spes: r.spes == null ? null : r.spes, spesSumber: r.spes_sumber,
-  jenis: r.jenis || null, mikro: !!r.mikro, golongan: r.golongan || null,
-});
+const entryDari = (r) => {
+  if (!r || (r.kategori == null && r.spes == null)) return null;
+  return {
+    id: r.id !== undefined ? r.id : r.produk_id, tipe: r.tipe, kode: r.kode_produk, nama: r.nama_produk,
+    kategori: r.kategori == null ? null : r.kategori, kategoriSumber: r.kategori_sumber,
+    spes: r.spes == null ? null : r.spes, spesSumber: r.spes_sumber,
+    jenis: r.klas_jenis || null, mikro: !!r.klas_mikro, golongan: r.golongan || null,
+  };
+};
+const punyaKolomKlas = (r) => !!r && Object.prototype.hasOwnProperty.call(r, 'kategori');
+
+const chunks = (arr, n) => {
+  const out = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+};
+
+/** Simpan klasifikasi dari baris produk yang SUDAH membawa kolomnya (hasil .from('produk').select(PRODUK_LIST_COLUMNS)). */
+export function simpanKlasDariBaris(rows) {
+  (rows || []).forEach((r) => { if (r && r.id != null && punyaKolomKlas(r)) store.set(r.id, entryDari(r)); });
+}
+
+/** Lengkapi klasifikasi untuk sekumpulan id yang belum dibaca. -> { ok, error } (tidak pernah throw) */
+export async function muatKlasIds(sb, ids) {
+  const need = [...new Set((ids || []).filter((x) => x != null && !store.has(x)))];
+  if (!need.length) return { ok: true, error: null };
+  try {
+    const parts = chunks(need, ID_CHUNK);
+    for (let i = 0; i < parts.length; i += PARALEL) {
+      const res = await Promise.all(parts.slice(i, i + PARALEL).map((c) => sb.from('produk').select('id, ' + KLAS_COLS).in('id', c)));
+      const bad = res.find((r) => r.error);
+      if (bad) return { ok: false, error: bad.error };
+      res.forEach((r) => (r.data || []).forEach((row) => store.set(row.id, entryDari(row))));
+    }
+    need.forEach((id) => { if (!store.has(id)) store.set(id, null); }); // id yang sudah tidak ada di tabel
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e };
+  }
+}
+/** Seperti muatKlasIds, tapi menerima baris: yang sudah membawa kolomnya dipakai langsung, sisanya ditanya per id. */
+export async function attachKlas(sb, rows) {
+  simpanKlasDariBaris(rows);
+  return muatKlasIds(sb, (rows || []).map((r) => r && r.id));
+}
 
 /**
- * Muat seluruh klasifikasi (sekali; panggilan berikutnya memakai cache). -> { ok, error, info }
- * info = { dihitungAt, total, terbaca, lengkap }. lengkap=false: jumlah baris yang terbaca < total yang dilaporkan server
- * (mis. urutan RPC tidak stabil antar halaman) -> pemanggil sebaiknya memberi peringatan, bukan diam saja.
+ * Muat opsi filter (jumlah produk per kategori / spesialisasi; dihitung database). Panggilan berikutnya memakai cache
+ * 30 menit. -> { ok, error, info: null } (info tersisa supaya pemanggil lama tetap kompatibel).
  */
 export async function muatKlasifikasi(sb, { force = false } = {}) {
-  if (!force && cache && Date.now() - cache.t < TTL_MS) return { ok: true, error: null, info: cache.info };
-  if (inflight) return inflight;
-  inflight = (async () => {
+  if (!force && opsi && Date.now() - opsi.t < TTL_MS) return { ok: true, error: null, info: null };
+  if (inflightOpsi) return inflightOpsi;
+  inflightOpsi = (async () => {
     try {
-      const ring = await sb.rpc(RPC_RINGKASAN);
-      if (ring.error) return { ok: false, error: ring.error, info: null };
-      const dihitungAt = ring.data && ring.data.dihitung_at;
-      if (!dihitungAt) return { ok: false, error: { code: 'KLAS_KOSONG', message: 'Klasifikasi belum dihitung' }, info: null };
-
-      const map = new Map();
-      let off = 0, total = Infinity;
-      while (off < total) {
-        const { data, error } = await sb.rpc(RPC_DAFTAR, {
-          p_kategori: KAT_ORDER, p_spes: null, p_cari: null, p_perlu_cek: false, p_batas: BATCH, p_offset: off,
-        });
-        if (error) return { ok: false, error, info: null };
-        const rows = (data && data.rows) || [];
-        total = Number((data && data.total) || 0);
-        if (!rows.length) break;
-        rows.forEach((r) => map.set(r.produk_id, entryDari(r)));
-        off += rows.length; // jumlah baris yang benar-benar kembali (jaga-jaga kalau server membatasi p_batas)
-      }
-      const info = { dihitungAt, total: Number.isFinite(total) ? total : map.size, terbaca: map.size, lengkap: map.size >= (Number.isFinite(total) ? total : 0) };
-      cache = { map, info, t: Date.now() };
-      return { ok: true, error: null, info };
+      const { data, error } = await sb.rpc(RPC_OPSI);
+      if (error) return { ok: false, error, info: null };
+      const d = data || {};
+      opsi = { kategori: d.kategori || [], spes: d.spes || [], tanpa: Number(d.tanpa || 0), t: Date.now() };
+      return { ok: true, error: null, info: null };
     } catch (e) {
       return { ok: false, error: e, info: null };
     } finally {
-      inflight = null;
+      inflightOpsi = null;
     }
   })();
-  return inflight;
+  return inflightOpsi;
 }
 
-/** Buang cache (mis. unmount halaman, atau user minta muat ulang). */
-export function resetKlasifikasi() { cache = null; inflight = null; }
-export const klasTerisi = () => !!cache;
-export const infoKlasifikasi = () => (cache ? cache.info : null);
-/**
- * Nilai efektif sebuah entri cache: koreksi manual (kategori / spes) menimpa nilai otomatis. Sumbernya ikut berubah
- * ('koreksi' / 'manual') supaya tampil "Dikoreksi" dan tidak dihitung "perlu dicek". spes 'TANPA' = sengaja tanpa spesialisasi (null).
- */
-export function efektif(e) {
-  if (!e) return e;
-  const m = manualOf(e.id);
-  if (!m || (!m.kategori && !m.spes)) return e;
-  const out = { ...e };
-  if (m.kategori) { out.kategori = m.kategori; out.kategoriSumber = 'koreksi'; }
-  if (m.spes) { out.spes = m.spes === SPES_TANPA ? null : m.spes; out.spesSumber = 'manual'; }
-  return out;
+/** Nilai OTOMATIS (cache katalog) untuk beberapa produk -> { ok, error }. Dipakai form koreksi; hasil dibaca lewat klasAuto(). */
+export async function muatOtomatis(sb, ids) {
+  const uniq = [...new Set((ids || []).filter((x) => x != null))];
+  if (!uniq.length) return { ok: true, error: null };
+  try {
+    const { data, error } = await sb.rpc(RPC_OTOMATIS, { p_ids: uniq });
+    if (error) return { ok: false, error };
+    uniq.forEach((id) => otomatis.set(id, null));
+    (data || []).forEach((r) => otomatis.set(r.produk_id, entryDari({ ...r, id: r.produk_id })));
+    return { ok: true, error: null };
+  } catch (e) {
+    return { ok: false, error: e };
+  }
 }
-/** Klasifikasi satu produk (nilai EFEKTIF), undefined = belum dimuat / produk nonaktif (tidak ada di cakupan). */
-export function klasOf(id) {
-  if (!cache) return undefined;
-  const e = cache.map.get(id);
-  if (e) return efektif(e);
-  // Produk di luar cache otomatis (nonaktif / belum terhitung) tapi punya koreksi manual: manual tetap tampil.
-  const m = manualOf(id);
-  if (!m || (!m.kategori && !m.spes)) return undefined;
-  return efektif({
-    id, tipe: null, kode: null, nama: null, kategori: null, kategoriSumber: 'koreksi',
-    spes: null, spesSumber: 'manual', jenis: null, mikro: false, golongan: null,
-  });
-}
-/** Nilai OTOMATIS saja (tanpa koreksi manual): untuk memberi tahu "Otomatis: ..." di form dan untuk membandingkan. */
-export const klasAuto = (id) => (cache ? cache.map.get(id) : undefined);
+
+/** Buang semua yang dibaca (mis. unmount halaman, setelah koreksi / bulk). */
+export function resetKlasifikasi() { store = new Map(); opsi = null; inflightOpsi = null; otomatis = new Map(); }
+export const klasTerisi = () => store.size > 0 || !!opsi;
+export const infoKlasifikasi = () => null;
+
+/** Klasifikasi satu produk, undefined = belum dibaca / produk belum punya kategori maupun spesialisasi. */
+export const klasOf = (id) => store.get(id) || undefined;
+/** Nilai OTOMATIS saja (untuk "Otomatis: ..." di form). */
+export const klasAuto = (id) => otomatis.get(id) || undefined;
 
 // ---------- turunan per produk ----------
 /** Dugaan sistem, belum ada petunjuk, atau golongan belum dipetakan (penanda ⚠ di tab lama). */
@@ -165,7 +178,7 @@ export const spesTeks = (e) => (!e || ALAT.includes(e.kategori) ? null : spesNam
 // ---------- filter ----------
 const nilaiFilter = (f) => f.values || (f.value != null && f.value !== '' ? [f.value] : []);
 
-/** Apakah `row` (baris list Produk atau entry yang dibentuk seperti baris) lolos satu filter dimensi klasifikasi. */
+/** Apakah `row` (baris list Produk) lolos satu filter dimensi klasifikasi. Klasifikasi baris harus sudah dibaca (attachKlas). */
 export function cocokKlas(filt, row) {
   const vals = nilaiFilter(filt);
   const e = klasOf(row.id);
@@ -180,72 +193,48 @@ export function cocokKlas(filt, row) {
   }
 }
 
-/** produk_id di cache yang lolos SEMUA filter klasifikasi (jalur client list Produk: id dulu, baris produknya menyusul). */
-export function idsKlasFilter(filters) {
-  const out = [];
-  if (!cache) return out;
-  cache.map.forEach((e, id) => {
-    const row = { id, tipe: e.tipe, kode_produk: e.kode, nama_produk: e.nama };
-    if (filters.every((f) => cocokKlas(f, row))) out.push(id);
-  });
-  manualMap().forEach((_m, id) => { // koreksi manual untuk produk di luar cache otomatis
-    if (cache.map.has(id)) return;
-    if (filters.every((f) => cocokKlas(f, { id }))) out.push(id);
+/** Pra-saring di server (kasar, hanya untuk mempersempit unduhan); ketepatan akhirnya tetap cocokKlas() di client. */
+function sempitkanDiServer(q, filters) {
+  let out = q.not('kategori', 'is', null);
+  filters.forEach((f) => {
+    const vals = nilaiFilter(f);
+    if (f.dim === 'kategori' && vals.length) out = out.in('kategori', vals);
+    if (f.dim === 'spes' && vals.length && !vals.includes(SPES_NONE)) out = out.in('spes', vals);
   });
   return out;
 }
-
-/** Opsi filter dari cache: { kategori: [{ value, label, n }], spes: [{ value, label, n }] } -- urutan: terbanyak dulu, "Belum dikelompokkan" terakhir. */
-export function opsiKlasifikasi() {
-  const kat = new Map(), spes = new Map();
-  let tanpa = 0;
-  if (cache) {
-    cache.map.forEach((e0) => {
-      const e = efektif(e0);
-      kat.set(e.kategori, (kat.get(e.kategori) || 0) + 1);
-      if (e.spes != null) spes.set(e.spes, (spes.get(e.spes) || 0) + 1);
-      else if (!ALAT.includes(e.kategori)) tanpa++;
-    });
-  }
-  const urutKat = [...KAT_ORDER.filter((k) => kat.has(k)), ...[...kat.keys()].filter((k) => !KAT_ORDER.includes(k))];
-  const kategori = urutKat.map((k) => ({ value: k, label: katNama(k), n: kat.get(k) }));
-  const daftarSpes = [...spes.entries()]
-    .sort((a, b) => (a[0] === 'LAINNYA') - (b[0] === 'LAINNYA') || b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'id'))
-    .map(([v, n]) => ({ value: v, label: spesNama(v), n }));
-  if (tanpa) daftarSpes.push({ value: SPES_NONE, label: spesNama(null), n: tanpa });
-  return { kategori, spes: daftarSpes };
-}
-
-// ---------- baris produk by id (jalur client filter klasifikasi) ----------
-const ID_CHUNK = 150;   // sama dengan chunk .in('id', ...) lain di halaman Produk (aman untuk panjang URL)
-const PARALEL = 6;      // filter lebar (mis. semua Instrumen satuan) = puluhan chunk: jangan hajar PostgREST sekaligus
-const ROW_TTL_MS = 2 * 60 * 1000;
-
-const chunks = (arr, n) => {
-  const out = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  return out;
-};
 
 /**
- * Baris produk (kolom list Produk) untuk sekumpulan id. `cache` (Map id -> { t, row }) dipegang pemanggil supaya
- * pindah halaman / ganti chip tidak mengambil ulang ratusan baris; entri lebih tua dari 2 menit diambil lagi.
- * Id yang sudah tidak ada di tabel produk dibuang. -> { rows (urutan sama dengan ids), error }
+ * Baris produk (kolom `columns`, harus memuat KLAS_COLS) yang lolos filter klasifikasi. Server hanya mempersempit; baris
+ * yang dikembalikan sudah dicatat klasifikasinya sehingga cocokKlas() langsung bisa dipakai pemanggil.
+ * Dibaca per 1.000 baris dengan urutan id yang stabil. -> { rows, error }
  */
-export async function fetchRowsByIds(sb, ids, columns, rowCache = new Map()) {
-  const uniq = [...new Set((ids || []).filter((x) => x != null))];
-  const now = Date.now();
-  const need = uniq.filter((id) => { const c = rowCache.get(id); return !c || now - c.t > ROW_TTL_MS; });
+export async function fetchRowsByKlas(sb, filters, columns) {
+  const klasF = (filters || []).filter((f) => isKlasDim(f.dim));
+  const rows = [];
   try {
-    const parts = chunks(need, ID_CHUNK);
-    for (let i = 0; i < parts.length; i += PARALEL) {
-      const res = await Promise.all(parts.slice(i, i + PARALEL).map((c) => sb.from('produk').select(columns).in('id', c)));
-      const bad = res.find((r) => r.error);
-      if (bad) return { rows: [], error: bad.error };
-      res.forEach((r) => (r.data || []).forEach((row) => rowCache.set(row.id, { t: now, row })));
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await sempitkanDiServer(sb.from('produk').select(columns), klasF).order('id').range(from, from + PAGE - 1);
+      if (error) return { rows: [], error };
+      rows.push(...(data || []));
+      if (!data || data.length < PAGE) break;
     }
-    return { rows: uniq.map((id) => (rowCache.get(id) || {}).row).filter(Boolean), error: null };
   } catch (e) {
     return { rows: [], error: e };
   }
+  simpanKlasDariBaris(rows);
+  return { rows: rows.filter((r) => klasF.every((f) => cocokKlas(f, r))), error: null };
+}
+
+/** Opsi filter: { kategori: [{ value, label, n }], spes: [{ value, label, n }] } -- urutan: terbanyak dulu, "Belum dikelompokkan" terakhir. */
+export function opsiKlasifikasi() {
+  const o = opsi || { kategori: [], spes: [], tanpa: 0 };
+  const nKat = new Map(o.kategori.map((k) => [k.value, Number(k.n)]));
+  const urutKat = [...KAT_ORDER.filter((k) => nKat.has(k)), ...[...nKat.keys()].filter((k) => !KAT_ORDER.includes(k))];
+  const kategori = urutKat.map((k) => ({ value: k, label: katNama(k), n: nKat.get(k) }));
+  const spes = o.spes.map((s) => ({ value: s.value, n: Number(s.n) }))
+    .sort((a, b) => (a.value === 'LAINNYA') - (b.value === 'LAINNYA') || b.n - a.n || String(a.value).localeCompare(String(b.value), 'id'))
+    .map((s) => ({ value: s.value, label: spesNama(s.value), n: s.n }));
+  if (o.tanpa) spes.push({ value: SPES_NONE, label: spesNama(null), n: o.tanpa });
+  return { kategori, spes };
 }
