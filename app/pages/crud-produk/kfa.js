@@ -429,7 +429,7 @@ function syncPayloadHtml(row){
   const p = row.payload || {};
   const chip = (t, mono) => `<span class="tipe-chip${mono ? ' is-mono' : ''}">${S.escapeHtml(t)}</span>`;
   const bits = [];
-  if (row.tipe_hint) bits.push(chip(row.tipe_hint));
+  if (row.tipe_hint && syncTipeFilter === 'all') bits.push(chip(row.tipe_hint));
   const brandSync = syncBrandOf(row);
   if (brandSync) bits.push(chip(brandSync));
   if (p.kode_asli) bits.push(chip('asli ' + p.kode_asli, true));
@@ -692,13 +692,14 @@ function syncRemoveFilter(key){
 function renderSyncActiveBar(total){
   const bar = document.getElementById('syncActiveBar');
   if (!bar) return;
-  const act = syncActiveFilters();
+  // Tipe & status sudah kelihatan di tab (aktif bergaris/tersorot), jadi tidak diulang sebagai chip.
+  const act = syncActiveFilters().filter(a => a.key !== 'tipe' && a.key !== 'status');
   if (!act.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
   bar.style.display = 'flex';
   bar.innerHTML =
-    `<span class="saf-label"><i class="ti ti-filter"></i> Filter aktif (${act.length})</span>`
+    `<span class="saf-label"><i class="ti ti-filter"></i> Filter kolom</span>`
     + act.map(a => `<button type="button" class="saf-chip" data-saf="${a.key}" title="Klik untuk hapus filter ini"><span class="saf-k">${S.escapeHtml(a.label)}:</span><b>${S.escapeHtml(a.val)}</b><i class="ti ti-x"></i></button>`).join('')
-    + `<span class="saf-result">Menampilkan <b>${total}</b> dari ${syncRows.length}</span>`
+    + `<span class="saf-result"><b>${total}</b> hasil</span>`
     + `<button type="button" class="saf-reset" data-saf="__all__"><i class="ti ti-filter-off"></i> Reset semua</button>`;
 }
 
@@ -727,12 +728,7 @@ function ensureSyncColFilterRow(){
       <option value="kosong">Kosong</option>
     </select></th>
     <th class="c-sumber"><select class="sync-col-select" data-scol="sumber" aria-label="Filter kolom sumber"><option value="all">Semua</option></select></th>
-    <th class="c-status"><select class="sync-col-select" data-scol="status" aria-label="Filter kolom status">
-      <option value="all">Semua</option>
-      <option value="ok">Siap</option>
-      <option value="warn">Perlu dicek</option>
-      <option value="bad">Tidak siap</option>
-    </select></th>
+    <th class="c-status"></th>
     <th class="c-aksi"><button type="button" class="btn btn-sm sync-col-reset" id="syncColResetBtn" title="Reset filter kolom" aria-label="Reset filter kolom" style="display:none;"><i class="ti ti-filter-off"></i></button></th>
   `;
   thead.appendChild(tr);
@@ -764,13 +760,11 @@ function ensureSyncColFilterRow(){
   tr.addEventListener('change', (e) => {
     const el = e.target.closest('.sync-col-select');
     if (!el) return;
-    const k = el.dataset.scol;
-    if (k === 'status') syncStatusFilter = el.value; else syncColFilter[k] = el.value;
+    syncColFilter[el.dataset.scol] = el.value;
     syncPage = 1; renderSyncPage();
   });
   tr.querySelector('#syncColResetBtn').addEventListener('click', () => {
     Object.assign(syncColFilter, { kode: '', desk: '', link: 'all', harga: 'all', sumber: 'all' });
-    syncStatusFilter = 'all';
     syncPage = 1; renderSyncPage();
   });
 }
@@ -797,7 +791,6 @@ function syncSyncColFilterUi(){
   sel.value = syncColFilter.sumber;
   row.querySelector('[data-scol="link"]').value = syncColFilter.link;
   row.querySelector('[data-scol="harga"]').value = syncColFilter.harga;
-  row.querySelector('[data-scol="status"]').value = syncStatusFilter;
   // input teks cuma disentuh kalau beda (jangan ganggu kursor saat user lagi ngetik)
   const ik = row.querySelector('[data-scol="kode"]'), id = row.querySelector('[data-scol="desk"]');
   if (ik.value !== syncColFilter.kode) ik.value = syncColFilter.kode;
@@ -806,10 +799,10 @@ function syncSyncColFilterUi(){
   row.querySelectorAll('[data-scol]').forEach(el => el.classList.toggle('is-active', el.value.trim() !== '' && el.value !== 'all'));
   const ths = row.closest('table').tHead.rows[0].cells;
   const colActive = [false, !!syncColFilter.kode.trim(), !!syncColFilter.desk.trim(), syncColFilter.link !== 'all',
-    syncColFilter.harga !== 'all', syncColFilter.sumber !== 'all', syncStatusFilter !== 'all'];
+    syncColFilter.harga !== 'all', syncColFilter.sumber !== 'all', false];
   colActive.forEach((on, i) => { if (ths[i]) ths[i].classList.toggle('sync-th-active', on); });
   const rb = row.querySelector('#syncColResetBtn');
-  if (rb) rb.style.display = (syncHasColFilter() || syncStatusFilter !== 'all') ? '' : 'none';
+  if (rb) rb.style.display = syncHasColFilter() ? '' : 'none';
 }
 
 async function renderSyncPage(){
@@ -825,6 +818,9 @@ async function renderSyncPage(){
     : `${syncRows.length} kode produk belum terdaftar`;
   const pagEl = document.getElementById('syncPagination');
   renderSyncActiveBar(total);
+  // Tab "Siap": semua baris berstatus sama dan tanpa alasan, jadi kolom Status disembunyikan (lihat style.css).
+  const tblEl = tbody.closest('table');
+  if (tblEl) tblEl.classList.toggle('is-status-ok', syncStatusFilter === 'ok');
 
   if (!total) {
     tbody.innerHTML = filtered
