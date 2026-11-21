@@ -48,7 +48,9 @@ import { installOrphan } from './orphan.js';
 import { createCopyKit } from './copy.js';
 import { createAtributUi } from './atribut-ui.js';
 import { muatManual, resetManual } from './atribut.js';
-import { createTableColumns } from './kolom-tabel.js';
+import { createTableColumns, TABLE_COLS } from './kolom-tabel.js';
+import { createHeaderMenu, punyaMenuHeader, KOLOM_MENU, urutkan, urutButuhKlas, deskripsiUrut, cocokIsi, butuhJalurLangsung, opsiIsi, DIM_TEKS_ISI } from './urut-header.js';
+import { bagiFilter, ambilHalamanLangsung, ambilSemuaLangsung, ambilIdStok, saringKlienLaluUrut } from './daftar-langsung.js';
 import { fetchKeluargaOptions, fetchKeluargaMap, fetchRowsByKeluarga, pesanKeluarga, urutKeluarga } from './keluarga.js';
 import { muatKlasifikasi, resetKlasifikasi, opsiKlasifikasi, cocokKlas, fetchRowsByKlas, attachKlas, simpanKlasDariBaris, KLAS_COLS, pesanKlasifikasi, isKlasDim } from './klasifikasi.js';
 import { installKalkulatorHarga } from './kalkulator-harga.js';
@@ -702,8 +704,19 @@ const copyKit = createCopyKit({
 function verifiedBadgeFor(id){
   return produkVerifiedIdSet ? verifiedBadgeHtml(produkVerifiedIdSet.has(id)) : SK_BADGE;
 }
+// Urutan satu kolom dari menu header (urut-header.js); null = urutan bawaan (terakhir diubah dulu). Sengaja dideklarasikan
+// SEBELUM colKit: header pertama digambar saat colKit dibuat dan membaca nilai ini (dideklarasikan di bawah = TDZ).
+let produkSort = null; // { key, dir: 'asc' | 'desc' }
+let headMenuSiap = false; // true setelah produkActiveFilters dideklarasikan (di bawah); sebelum itu header digambar tanpa penanda filter
+const labelKolomProduk = (key) => (TABLE_COLS.find((c) => c.key === key) || {}).label || key;
 // Kolom tabel Produk yang bisa diatur (kolom-tabel.js): tampil/sembunyi, urutan, preset. Disimpan di localStorage.
 const colKit = createTableColumns({
+  headMenu: {
+    punya: (k) => punyaMenuHeader(k),
+    arah: (k) => (produkSort && produkSort.key === k ? produkSort.dir : ''),
+    filterAktif: (k) => headMenuSiap && !!(KOLOM_MENU[k] && KOLOM_MENU[k].dim) && produkActiveFilters.some((f) => f.dim === KOLOM_MENU[k].dim),
+    buka: (k, el) => headMenuCtl.buka(k, el), // headMenuCtl dibuat tepat setelah colKit; hanya dipanggil saat klik
+  },
   sb,
   headRow: document.getElementById('produkHeadRow'),
   tableBody,
@@ -732,6 +745,17 @@ const colKit = createTableColumns({
   },
 });
 colKit.renderHead();
+// Menu header kolom (klik judul -> urutkan + saring). Hanya pintu masuk: filter dari menu memakai state & chip yang sama
+// dengan "+ Tambah Filter" (addProdukFilter / removeProdukFilter), jadi export dan chip otomatis konsisten.
+const headMenuCtl = createHeaderMenu({
+  getSort: () => produkSort,
+  setSort: (s) => setProdukSort(s),
+  getFilters: () => produkActiveFilters,
+  labelKolom: labelKolomProduk,
+  setFilter: (dim, value, label) => { const d = PRODUK_FILTER_DIMS.find((x) => x.key === dim); addProdukFilter(dim, value, (d ? d.label : dim) + ': ' + label); },
+  removeFilter: (dim) => removeProdukFilter(dim),
+  openValuePicker: (dim) => bukaPilihNilaiFilter(dim),
+});
 document.getElementById('produkColsBtn').addEventListener('click', (e) => colKit.openPicker(e.currentTarget));
 // Kontrol klasifikasi (atribut-ui.js): bagian "Klasifikasi" di modal edit + dialog "Atur klasifikasi" dari bar produk terpilih.
 // Koreksi manual menimpa nilai otomatis; setelah berubah, opsi filter Keluarga dan daftar dimuat ulang (setelahAtributBerubah).
@@ -742,7 +766,7 @@ const atributUi = createAtributUi({
   getSelectedRows: () => copyKit.selectedRows(),
   onChanged: () => setelahAtributBerubah(),
 });
-copyKitDestroy = () => { copyKit.destroy(); colKit.destroy(); atributUi.destroy(); akdLookup = () => []; };
+copyKitDestroy = () => { copyKit.destroy(); colKit.destroy(); headMenuCtl.destroy(); atributUi.destroy(); akdLookup = () => []; };
 akdLookup = (id) => copyKit.akdOf(id);
 
 let lastQuery = '';
@@ -805,6 +829,10 @@ const BRAND_NONE = '__NONE__';
 // halaman AKD, karena semua dimensinya adalah properti produk (golongan, tipe,
 // is_active, status_inaproc, ketersediaan harga) — bukan properti AKD.
 let produkActiveFilters = []; // [{ dim, value, label }]
+headMenuSiap = true;
+// Urutan kolom dan filter "Sudah / Belum diisi" (golongan, status INAPROC, brand terisi) tidak dikenal RPC get_produk_list:
+// daftar yang memakainya dibaca langsung dari tabel produk (daftar-langsung.js).
+const perluJalurLangsung = () => !!produkSort || produkActiveFilters.some(butuhJalurLangsung);
 let produkDistinct = { tipe: [], golongan: [], status_inaproc: [], brand: [], keluarga: [] };
 // Keluarga set (2026-11-20): nama dasar set tanpa nomor varian (MAYOR S. 2 -> MAYOR S). Sumber: view v_keluarga_set /
 // v_produk_keluarga (supabase/03_keluarga_set.sql). Opsi filter dimuat sekali saat dimensi dibuka (cache sessionStorage 30 menit),
@@ -849,8 +877,8 @@ const PRODUK_FILTER_DIMS = [
       { value: 'kosong', label: 'Belum ada harga' },
   ]},
   { key: 'link_v6', label: 'Link V6', icon: 'ti-link', options: [
-      { value: 'ada', label: 'Sudah ada link' },
-      { value: 'kosong', label: 'Belum ada link' },
+      { value: 'ada', label: 'Sudah diisi' },
+      { value: 'kosong', label: 'Belum diisi' },
   ]},
   // Stok = atribut produk, sama kayak Harga & Link V6: bisa ditumpuk dengan filter lain
   // (mis. Stok Siap + Link V6 Sudah ada = "siap tayang"; Stok Siap + Harga Belum ada = "ada stok, belum ada harga").
@@ -1159,6 +1187,8 @@ document.getElementById('f_verified').addEventListener('change', async (e) => {
 });
 
 function produkRowMatchesFilter(row, filt){
+  const isi = cocokIsi(row, filt); // golongan / brand / status INAPROC: pasangan Sudah / Belum diisi
+  if (isi !== null) return isi;
   switch (filt.dim) {
     case 'tipe': return filt.values ? filt.values.includes(row.tipe) : row.tipe === filt.value;
     case 'golongan': return row.golongan === filt.value;
@@ -1222,6 +1252,27 @@ function produkAutoCols(){
   const keys = [...(FILTER_COLS_CHIP[produkActiveFilter] || [])];
   produkActiveFilters.forEach(f => (FILTER_COLS_DIM[f.dim] || []).forEach(k => keys.push(k)));
   return [...new Set(keys)];
+}
+
+// Semua baris yang lolos chip status + filter (+ urutan) lewat jalur langsung. Dipakai daftar (ada filter Harga / Stok) dan export.
+async function muatSemuaLangsung(){
+  const { server, klien } = bagiFilter(produkActiveFilters);
+  const res = await ambilSemuaLangsung(sb, { columns: PRODUK_LIST_COLUMNS, chipFn: (q) => applyProdukFilterToQuery(q, produkActiveFilter), server, sort: produkSort });
+  if (res.error) return { rows: [], error: res.error };
+  const ctx = { hargaIds: new Set(), stokIds: new Map() };
+  if (klien.some(f => f.dim === 'harga')) { await ensureProdukHargaSet(); ctx.hargaIds = produkHargaIdSet || new Set(); }
+  for (const f of klien.filter(x => x.dim === 'stok')) {
+    const st = await ambilIdStok(sb, f.value);
+    if (st.error) return { rows: [], error: st.error };
+    ctx.stokIds.set(f.value, st.ids);
+  }
+  simpanKlasDariBaris(res.rows);
+  return { rows: saringKlienLaluUrut(res.rows, klien, produkSort, ctx), error: null };
+}
+function setProdukSort(s){
+  produkSort = s;
+  renderProdukFilterChips();
+  loadProduk(lastQuery, 1);
 }
 
 async function loadProduk(q, page, opts){
@@ -1313,6 +1364,7 @@ async function loadProduk(q, page, opts){
     const matcher = PRODUK_FILTERS[produkActiveFilter];
     let filtered = matcher ? produkSearchRawRows.filter(matcher) : produkSearchRawRows;
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
+    if (produkSort) { if (urutButuhKlas(produkSort)) await lengkapiKlas(filtered); filtered = urutkan(filtered, produkSort); } // urutan pilihan user menggantikan urutan relevansi search
     produkSearchAllRows = filtered;
     produkCurrentFilteredFull = filtered;
     total = filtered.length;
@@ -1330,7 +1382,8 @@ async function loadProduk(q, page, opts){
     if (keluargaAktif()) await attachKeluarga(all);
     if (klasAktif()) await lengkapiKlas(all);
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
-    if (keluargaAktif()) filtered = [...filtered].sort(urutKeluarga); // dikelompokkan per keluarga, bukan per waktu ubah
+    if (produkSort) { if (urutButuhKlas(produkSort)) await lengkapiKlas(filtered); filtered = urutkan(filtered, produkSort); }
+    else if (keluargaAktif()) filtered = [...filtered].sort(urutKeluarga); // dikelompokkan per keluarga, bukan per waktu ubah
     produkCurrentFilteredFull = filtered;
     total = filtered.length;
     rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
@@ -1349,6 +1402,7 @@ async function loadProduk(q, page, opts){
     const matcher = PRODUK_FILTERS[produkActiveFilter];
     let filtered = matcher ? kRows.filter(matcher) : kRows;
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
+    if (produkSort) { if (urutButuhKlas(produkSort)) await lengkapiKlas(filtered); filtered = urutkan(filtered, produkSort); } // tanpa urutan pilihan: tetap berkelompok per keluarga
     produkCurrentFilteredFull = filtered;
     total = filtered.length;
     rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
@@ -1367,10 +1421,33 @@ async function loadProduk(q, page, opts){
     const matcher = PRODUK_FILTERS[produkActiveFilter];
     let filtered = matcher ? kRows.filter(matcher) : kRows;
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
-    filtered = [...filtered].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+    filtered = produkSort ? urutkan(filtered, produkSort) : [...filtered].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
     produkCurrentFilteredFull = filtered;
     total = filtered.length;
     rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
+  } else if (perluJalurLangsung()) {
+    // Urutan kolom (menu header) dan / atau filter Sudah / Belum diisi: get_produk_list tidak punya parameter urutan dan tidak
+    // mengenal nilai filter itu, jadi baca langsung dari tabel produk (pola sama dengan jalur klasifikasi).
+    // Semua filter bisa di server -> satu halaman per request; ada Harga / Stok -> baca yang dipersempit server lalu saring di client.
+    const { server, klien } = bagiFilter(produkActiveFilters);
+    if (!klien.length) {
+      const res = await ambilHalamanLangsung(sb, {
+        columns: PRODUK_LIST_COLUMNS, chipFn: (q) => applyProdukFilterToQuery(q, produkActiveFilter),
+        server, sort: produkSort, page: produkPage, pageSize: PRODUK_PAGE_SIZE,
+      });
+      if (mySeq !== produkLoadSeq) return;
+      if (res.error) { produkCount.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(res.error.message || String(res.error))}</td></tr>`; return; }
+      rows = res.rows;
+      total = res.total;
+      produkCurrentFilteredFull = null; // export menarik ulang lewat muatSemuaLangsung (lihat getRowsToExport)
+    } else {
+      const all = await muatSemuaLangsung();
+      if (mySeq !== produkLoadSeq) return;
+      if (all.error) { produkCount.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(all.error.message || String(all.error))}</td></tr>`; return; }
+      produkCurrentFilteredFull = all.rows;
+      total = all.rows.length;
+      rows = all.rows.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
+    }
   } else if (produkActiveFilters.length > 0) {
     // Ada filter tambahan aktif ("+ Tambah Filter") tapi gak lagi search.
     // Dulu: full-fetch .limit(20000) sekali lalu filter+slice manual di JS --
@@ -1696,11 +1773,20 @@ function renderProdukFilterPopStep1(){
   produkAddFilterPop.querySelectorAll('.afp-dim-btn').forEach(b => {
     b.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (b.dataset.dim === 'keluarga') await ensureKeluargaOptions(); // ratusan opsi, dimuat sekali saat dimensi pertama kali dibuka
-      if ((PRODUK_FILTER_DIMS.find(d => d.key === b.dataset.dim) || {}).klas) { const k = await ensureKlas(); if (!k.ok) showToast(k.message, true); } // opsi Kategori / Spesialisasi dari cache klasifikasi
-      renderProdukFilterPopStep2(b.dataset.dim);
+      await bukaDimensiFilter(b.dataset.dim);
     });
   });
+}
+async function bukaDimensiFilter(dimKey){
+  if (dimKey === 'keluarga') await ensureKeluargaOptions(); // ratusan opsi, dimuat sekali saat dimensi pertama kali dibuka
+  if ((PRODUK_FILTER_DIMS.find(d => d.key === dimKey) || {}).klas) { const k = await ensureKlas(); if (!k.ok) showToast(k.message, true); } // opsi Kategori / Spesialisasi dari cache klasifikasi
+  renderProdukFilterPopStep2(dimKey);
+}
+// "Pilih nilai…" di menu header kolom: buka popover "+ Tambah Filter" langsung di dimensi kolom itu (state filter yang sama).
+async function bukaPilihNilaiFilter(dimKey){
+  produkAddFilterPop.classList.add('open');
+  await bukaDimensiFilter(dimKey);
+  positionAddFilterPop();
 }
 function renderProdukFilterPopStep2(dimKey){
   const dim = PRODUK_FILTER_DIMS.find(d => d.key === dimKey);
@@ -1712,7 +1798,7 @@ function renderProdukFilterPopStep2(dimKey){
   }
   if (dim.dynamic) {
     options = (produkDistinct[dim.dynamic] || []).map(v => ({ value: v, label: v }));
-    if (dim.key === 'brand') options = [...options, { value: BRAND_NONE, label: 'Tanpa brand' }]; // produk yang kolom brand-nya masih kosong
+    if (dim.key in DIM_TEKS_ISI) options = [...opsiIsi(), ...options]; // golongan / brand / status INAPROC: "Sudah diisi" & "Belum diisi" di atas nilai-nilainya (Belum diisi = BRAND_NONE lama)
     // Keluarga: label opsi memuat jumlah varian (MAYOR S (7)); `chip` = nama polos untuk label filter aktif
     if (dim.key === 'keluarga') options = options.map(o => ({ value: o.value, label: `${o.value} (${produkKeluargaN.get(o.value) || 0})`, chip: o.value }));
     if (!options.length) options = [{ value: '', label: '(belum ada data terisi)' }];
@@ -1806,10 +1892,14 @@ function removeProdukFilter(dim){
 }
 function renderProdukFilterChips(){
   const el = document.getElementById('produkFilterChips');
-  el.innerHTML = produkActiveFilters.map(f => `<span class="adv-filter-chip" data-dim="${f.dim}" title="${escapeHtml(f.values ? f.values.join(', ') : f.label)}">${escapeHtml(f.label)}<button title="Hapus filter ini"><i class="ti ti-x"></i></button></span>`).join('');
-  el.querySelectorAll('.adv-filter-chip button').forEach(btn => {
+  // Urutan ikut tampil sebagai chip (bisa dilepas dari sini), supaya tetap kelihatan walau kolomnya disembunyikan.
+  const sortChip = produkSort ? `<span class="adv-filter-chip adv-sort-chip" title="Urutan tabel">Urut: ${escapeHtml(deskripsiUrut(produkSort, labelKolomProduk(produkSort.key)))}<button title="Hapus urutan"><i class="ti ti-x"></i></button></span>` : '';
+  el.innerHTML = produkActiveFilters.map(f => `<span class="adv-filter-chip" data-dim="${f.dim}" title="${escapeHtml(f.values ? f.values.join(', ') : f.label)}">${escapeHtml(f.label)}<button title="Hapus filter ini"><i class="ti ti-x"></i></button></span>`).join('') + sortChip;
+  el.querySelectorAll('.adv-filter-chip[data-dim] button').forEach(btn => {
     btn.addEventListener('click', () => removeProdukFilter(btn.parentElement.dataset.dim));
   });
+  const sc = el.querySelector('.adv-sort-chip button');
+  if (sc) sc.addEventListener('click', () => setProdukSort(null));
 }
 
 // ---- Ambil baris yang mau di-export, respect filter+search yang lagi aktif.
@@ -1823,6 +1913,14 @@ async function getRowsToExport(){
     // sudah lengkap di client (RPC search gak paging; Verified & Keluarga dimuat penuh dari view; klasifikasi dari cache + baris per id),
     // filter tambahan sudah diterapkan di client -> produkCurrentFilteredFull.
     rowsToExport = produkCurrentFilteredFull || [];
+  } else if (perluJalurLangsung()) {
+    // Urutan kolom / filter Sudah-Belum diisi: export mengikuti urutan & filter yang sama dengan daftar di layar.
+    if (produkCurrentFilteredFull) rowsToExport = produkCurrentFilteredFull;
+    else {
+      const all = await muatSemuaLangsung();
+      if (all.error) { showToast('Gagal export: ' + (all.error.message || all.error), true); return null; }
+      rowsToExport = all.rows;
+    }
   } else {
     // Gak ada search -> tarik SEMUA baris yang cocok chip status + filter tambahan
     // langsung dari get_produk_list dengan p_page_size null (dihitung & difilter
@@ -1860,6 +1958,7 @@ function describeActiveFilters(){
     }
   }
   produkActiveFilters.forEach(f => { if (f.label) parts.push(f.label); });
+  if (produkSort) parts.push('urut: ' + deskripsiUrut(produkSort, labelKolomProduk(produkSort.key)));
   if (lastQuery.trim()) parts.push(`cari "${lastQuery.trim()}"`);
   return parts;
 }
@@ -1869,6 +1968,7 @@ function describeActiveFilters(){
 function buildFilterFilenameTag(){
   return (produkActiveFilter !== 'all' ? '_' + produkActiveFilter : '') +
     (produkActiveFilters.length ? '_' + produkActiveFilters.map(f => f.dim).join('-') : '') +
+    (produkSort ? '_urut-' + produkSort.key : '') +
     (lastQuery.trim() ? '_search' : '');
 }
 

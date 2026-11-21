@@ -230,7 +230,7 @@ function readState() {
  * }
  */
 export function createTableColumns(opts) {
-  const { sb, headRow, tableBody, helpers: h, onChange, onPreset } = opts;
+  const { sb, headRow, tableBody, helpers: h, onChange, onPreset, headMenu } = opts;
   let state = readState();
   const akdNamaCache = new Map(); // produk_id -> [{ no, nama }]
   const keluargaCache = new Map(); // produk_id -> keluarga (hanya set yang punya)
@@ -306,10 +306,28 @@ export function createTableColumns(opts) {
   const tdClass = (c) => [c.num ? 'num' : '', c.td || ''].filter(Boolean).join(' ');
 
   // ---------- gambar tabel ----------
+  // Judul kolom yang punya menu (urutkan / saring, urut-header.js) jadi tombol; sisanya teks biasa seperti dulu.
+  // headMenu = { punya(key), arah(key) -> 'asc' | 'desc' | '', filterAktif(key) -> bool, buka(key, tombol) } dari index.js.
+  function thHtml(c) {
+    const num = c.num ? ' num' : '';
+    if (!headMenu || !headMenu.punya(c.key)) return `<th${c.num ? ' class="num"' : ''}>${esc(c.label)}</th>`;
+    const arah = headMenu.arah(c.key), filt = headMenu.filterAktif(c.key);
+    const ikon = arah === 'asc' ? 'ti-arrow-up' : arah === 'desc' ? 'ti-arrow-down' : 'ti-chevron-down';
+    const aria = arah === 'asc' ? 'ascending' : arah === 'desc' ? 'descending' : 'none';
+    return `<th class="th-has-menu${num}" aria-sort="${aria}"><button type="button" class="th-btn${arah || filt ? ' on' : ''}" data-col="${c.key}" aria-haspopup="menu" title="Urutkan &amp; saring: ${esc(c.label)}"><span>${esc(c.label)}</span>${filt ? '<i class="ti ti-filter th-ind" aria-label="Disaring"></i>' : ''}<i class="ti ${ikon} th-ind${arah ? '' : ' th-ind-idle'}"></i></button></th>`;
+  }
   function renderHead() {
-    headRow.innerHTML = visibleCols().map((c) => `<th${c.num ? ' class="num"' : ''}>${esc(c.label)}</th>`).join('')
+    headRow.innerHTML = visibleCols().map(thHtml).join('')
       + '<th class="c-act"><span class="sr-only">Salin</span></th>';
   }
+  // Satu pendengar di baris header (bukan satu per tombol): tetap jalan walau header digambar ulang tiap loadProduk().
+  const onHeadClick = (e) => {
+    const b = e.target.closest && e.target.closest('.th-btn');
+    if (!b || !headMenu) return;
+    e.stopPropagation();
+    headMenu.buka(b.dataset.col, b);
+  };
+  if (headMenu && headRow.addEventListener) headRow.addEventListener('click', onHeadClick);
   const ctxOf = (p, extraCtx) => ({ h, x: h.extraOf(p.id), akdNama: akdNamaCache.get(p.id) || [], keluarga: p.keluarga || keluargaCache.get(p.id) || '', klas: klasOf(p.id), flags: '', flagsText: '', ...extraCtx });
   const xcols = () => visibleCols().flatMap((c) => (c.xl || []).map((x) => ({ ...x, key: c.key })));
   function rowHtml(p, extraCtx) {
@@ -514,6 +532,6 @@ export function createTableColumns(opts) {
     /** Kolom yang diminta filter aktif (urutan = urutan tampil). Panggil sebelum renderHead(). */
     setAuto(keys) { autoKeys = (keys || []).filter((x) => MOVABLE.includes(x)); },
     openPicker,
-    destroy() { closePicker(); tableBody.removeEventListener('click', onLinkClick, true); akdNamaCache.clear(); keluargaCache.clear(); },
+    destroy() { closePicker(); tableBody.removeEventListener('click', onLinkClick, true); if (headMenu && headRow.removeEventListener) headRow.removeEventListener('click', onHeadClick); akdNamaCache.clear(); keluargaCache.clear(); },
   };
 }
