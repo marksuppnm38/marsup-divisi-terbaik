@@ -712,22 +712,22 @@ function ensureSyncColFilterRow(){
   tr.className = 'sync-filter-row';
   tr.innerHTML = `
     <th class="c-chk"></th>
-    <th class="c-kode"><input type="text" class="sync-col-input" data-scol="kode" placeholder="Filter kode" aria-label="Filter kolom kode produk" autocomplete="off"/></th>
-    <th class="c-desk"><input type="text" class="sync-col-input" data-scol="desk" placeholder="Filter deskripsi" aria-label="Filter kolom deskripsi" autocomplete="off"/></th>
-    <th class="c-link"><select class="sync-col-select" data-scol="link" aria-label="Filter kolom link V6">
-      <option value="all">Semua</option>
+    <th class="c-kode"><input type="text" class="search-mini sync-col-input" data-scol="kode" placeholder="Filter kode" aria-label="Filter kolom kode produk" autocomplete="off"/></th>
+    <th class="c-desk"><input type="text" class="search-mini sync-col-input" data-scol="desk" placeholder="Filter deskripsi" aria-label="Filter kolom deskripsi" autocomplete="off"/></th>
+    <th class="c-link"><select class="filter-select sync-col-select" data-scol="link" aria-label="Filter kolom link V6">
+      <option value="">Semua</option>
       <option value="ada">Ada link</option>
       <option value="bersih">Link bersih (URL doang)</option>
       <option value="catatan">Link + catatan</option>
       <option value="invalid">Cuma teks (bukan URL)</option>
       <option value="kosong">Kosong</option>
     </select></th>
-    <th class="c-harga"><select class="sync-col-select" data-scol="harga" aria-label="Filter kolom harga E-KAT">
-      <option value="all">Semua</option>
+    <th class="c-harga"><select class="filter-select sync-col-select" data-scol="harga" aria-label="Filter kolom harga E-KAT">
+      <option value="">Semua</option>
       <option value="ada">Ada harga</option>
       <option value="kosong">Kosong</option>
     </select></th>
-    <th class="c-sumber"><select class="sync-col-select" data-scol="sumber" aria-label="Filter kolom sumber"><option value="all">Semua</option></select></th>
+    <th class="c-sumber"><select class="filter-select sync-col-select" data-scol="sumber" aria-label="Filter kolom sumber"><option value="">Semua</option></select></th>
     <th class="c-status"></th>
     <th class="c-aksi"><button type="button" class="btn btn-sm sync-col-reset" id="syncColResetBtn" title="Reset filter kolom" aria-label="Reset filter kolom" style="display:none;"><i class="ti ti-filter-off"></i></button></th>
   `;
@@ -760,7 +760,7 @@ function ensureSyncColFilterRow(){
   tr.addEventListener('change', (e) => {
     const el = e.target.closest('.sync-col-select');
     if (!el) return;
-    syncColFilter[el.dataset.scol] = el.value;
+    syncColFilter[el.dataset.scol] = el.value || 'all'; // '' = Semua
     syncPage = 1; renderSyncPage();
   });
   tr.querySelector('#syncColResetBtn').addEventListener('click', () => {
@@ -782,15 +782,16 @@ function syncSyncColFilterUi(){
   const sel = row.querySelector('[data-scol="sumber"]');
   if (sig !== syncSumberSig) {
     syncSumberSig = sig;
-    sel.innerHTML = '<option value="all">Semua</option>'
+    sel.innerHTML = '<option value="">Semua</option>'
       + sumbers.map(s => `<option value="${S.escapeHtml(s)}">${S.escapeHtml(s)}</option>`).join('')
       + (hasNone ? '<option value="__none__">(kosong)</option>' : '');
     // sumber yang dipilih sudah gak ada di data -> kembali ke Semua
     if (syncColFilter.sumber !== 'all' && ![...sel.options].some(o => o.value === syncColFilter.sumber)) syncColFilter.sumber = 'all';
   }
-  sel.value = syncColFilter.sumber;
-  row.querySelector('[data-scol="link"]').value = syncColFilter.link;
-  row.querySelector('[data-scol="harga"]').value = syncColFilter.harga;
+  const selVal = v => (v === 'all' ? '' : v); // state internal 'all' <-> option '' (Semua)
+  sel.value = selVal(syncColFilter.sumber);
+  row.querySelector('[data-scol="link"]').value = selVal(syncColFilter.link);
+  row.querySelector('[data-scol="harga"]').value = selVal(syncColFilter.harga);
   // input teks cuma disentuh kalau beda (jangan ganggu kursor saat user lagi ngetik)
   const ik = row.querySelector('[data-scol="kode"]'), id = row.querySelector('[data-scol="desk"]');
   if (ik.value !== syncColFilter.kode) ik.value = syncColFilter.kode;

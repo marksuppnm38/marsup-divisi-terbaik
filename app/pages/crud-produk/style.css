@@ -204,13 +204,13 @@ td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle
 #appWrap #viewSync .sync-filter-row th:first-child{padding-left:var(--gutter)}
 #appWrap #viewSync .sync-filter-row th:last-child{padding-right:var(--gutter)}
 
-#viewSync .sync-col-input,#viewSync .sync-col-select{width:100%;min-width:0;height:28px;padding:0 8px;font-family:inherit;font-size:12px;font-weight:400;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-sm);transition:border-color .15s var(--ease),box-shadow .15s var(--ease)}
-#viewSync .sync-col-select{cursor:pointer;text-overflow:ellipsis}
-#viewSync .sync-col-input::placeholder{color:var(--text-muted)}
-#viewSync .sync-col-input:hover,#viewSync .sync-col-select:hover{border-color:var(--accent)}
-#viewSync .sync-col-input:focus,#viewSync .sync-col-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
-#viewSync .sync-col-input.is-active,#viewSync .sync-col-select.is-active{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+#viewSync .sync-filter-row .search-mini{width:100%;min-width:0}
+#viewSync .sync-col-input.is-active{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-text);font-weight:600}
 #viewSync .sync-col-reset{height:28px;padding:0 8px}
+#viewSync .sync-filter-row .ui-select{display:flex;width:100%;min-width:0}
+#viewSync .sync-filter-row .ui-select-btn{width:100%;min-width:0}
+#viewSync .sync-filter-row .ui-select-label{flex:1 1 auto;min-width:0;max-width:none;text-align:left}
+#viewSync .sync-filter-row .ui-select-menu{max-width:min(320px,calc(100vw - 48px))}
 
 #viewSync tbody td{padding-top:12px;padding-bottom:12px;vertical-align:top}
 #viewSync tbody tr:last-child td{border-bottom:0}
@@ -234,37 +234,16 @@ td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle
 #viewSync .sync-add-btn{border:1px solid var(--border-strong);background:var(--surface);color:var(--text)}
 #viewSync .sync-add-btn:hover:not(:disabled){border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text)}
 
-/* --- Rapikan v2 --------------------------------------------------------
-   Kepala: teks petunjuk dibatasi lebarnya supaya nyaman dibaca (< 80 karakter).
-   Filter kolom: dropdown seragam (tinggi sama dengan input, panah sendiri).
-   Baris: lebih ringkas, hover jelas, angka rata kanan sejajar dengan judul kolomnya.
-   Tab "Siap": kolom Status disembunyikan karena isinya sama semua. */
+/* Rapikan: hanya yang belum ada di CSS global (pnm-universal.css). Hover baris, .btn, .status-pill,
+   .tipe-chip, .filter-select (jadi dropdown custom lewat shared/ui-select.js) dan .search-mini dipakai apa adanya. */
 #viewSync .content-hint{max-width:62ch;line-height:1.5}
-#viewSync .sync-col-select{appearance:none;-webkit-appearance:none;padding-right:26px;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238a8f98' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 9px center;background-size:10px 6px}
-#viewSync .sync-col-select.is-active{background-color:var(--accent-soft)}
-#viewSync .sync-col-input,#viewSync .sync-col-select{height:30px;font-size:12.5px}
-#viewSync .sync-filter-row th{vertical-align:middle}
-#viewSync th.c-harga,#viewSync td.c-harga{text-align:right}
-#viewSync td.c-harga{font-variant-numeric:tabular-nums;white-space:nowrap}
+#viewSync th.c-harga,#viewSync td.c-harga{text-align:right;white-space:nowrap}
 #viewSync th.c-link{width:13%;min-width:130px}
-#viewSync tbody td{padding-top:10px;padding-bottom:10px}
-#viewSync tbody tr:hover td{background:var(--surface-2)}
-#appWrap #viewSync tbody tr.is-selected:hover td{background:var(--accent-soft)}
-#viewSync .sync-meta{margin-top:5px}
-#viewSync .sync-meta .tipe-chip{padding:0 6px;font-size:10.5px;line-height:18px}
-#viewSync .sync-seen{margin-top:1px}
 #viewSync .sync-add-btn{min-width:86px;justify-content:center}
-#viewSync .sync-add-btn:focus-visible,#viewSync td.c-chk input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Tab "Siap": semua baris berstatus sama & tanpa alasan -> kolom Status disembunyikan */
 #viewSync .sync-table.is-status-ok th.c-status,#viewSync .sync-table.is-status-ok td.c-status{display:none}
-#syncActiveBar .saf-result b{color:var(--text);font-weight:600}
 @media (max-width:760px){
-  #viewSync .sync-tabs{gap:8px 12px}
   #viewSync .sync-bulkbar{margin-left:0;width:100%;justify-content:space-between}
-}
-@media (prefers-reduced-motion:reduce){
-  #viewSync *{transition:none !important}
 }
 
 /* state kosong / gagal muat */
