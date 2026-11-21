@@ -9,7 +9,10 @@
 //                          Isinya: Salin baris (TSV) + kode, nama, tipe, golongan, No. AKD, harga, link.
 //   3. Salin banyak      : centang baris (Shift+klik = rentang), bar di bawah list -> "Salin sebagai tabel".
 //                          Ctrl/Cmd+C di dalam tabel juga menyalin baris terpilih (atau baris yang difokus).
-//   4. Kolom salinan     : bisa diatur (disimpan di localStorage), urutan kolom tetap.
+//   4. Kolom salinan     : WYSIWYG. Salin baris / salin banyak mengikuti kolom yang TAMPIL di tabel (urutan, judul, dan
+//                          kolom dinamis hasil filter ikut), bukan daftar kolom sendiri. Definisi kolom ada di kolom-tabel.js
+//                          (copyTsv); modul ini hanya mengurus pemilihan baris, memuat datanya, dan menulis ke clipboard.
+//                          Satu-satunya pilihan milik salin: "Sertakan judul kolom" (disimpan di localStorage).
 //
 // Format baris = TSV (kolom dipisah TAB, baris dipisah newline) -> menempel ke kolom terpisah
 // di Excel dan Google Sheets. Isi sel dibersihkan dari TAB/newline supaya kolom tidak bergeser.
@@ -18,10 +21,10 @@
 // Sumber data TIDAK diduplikasi: kolom list (id, kode, nama, tipe, golongan, link_v6, ...) dibaca dari
 // baris yang sudah dimuat loadProduk(); harga dari shared/exports/pricelist.js (fetchHargaLatestMap,
 // sama dengan Export Excel); No. AKD dari fetchAkdNoMap milik index.js; stok dari cache stok index.js.
+// COPY_FIELDS di bawah dipakai untuk salin SATU nilai (ikon salin di sel, item menu per field), bukan untuk salin baris.
 
 import { fetchHargaLatestMap } from '../../../shared/exports/pricelist.js';
 
-const LS_COLS = 'pnm_crud_copy_cols';
 const LS_HDR = 'pnm_crud_copy_hdr';
 const EXTRA_TTL_MS = 90 * 1000;
 
@@ -29,39 +32,28 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '
 const clean = (v) => (v == null ? '' : String(v).replace(/[\t\r\n]+/g, ' ').trim());
 const num = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? '' : String(Number(v)));
 
-// Urutan array ini = urutan kolom di hasil salinan (sama dengan urutan Export Excel).
-// menu: tampil di menu "Salin" per baris. def: kolom default.
+// Nilai tunggal yang bisa disalin dari satu baris (ikon salin di sel + item menu "Salin" per baris).
+// menu: tampil di menu "Salin" per baris.
 // needs: data tambahan yang harus dimuat dulu ('extra' = harga + No. AKD, 'stok' = cache stok).
 export const COPY_FIELDS = [
-  { key: 'kode', label: 'Kode produk', menu: true, def: true, get: (p) => p.kode_produk },
-  { key: 'nama', label: 'Nama produk', menu: true, def: true, get: (p) => p.nama_produk },
-  { key: 'tipe', label: 'Tipe', menu: true, def: true, get: (p) => p.tipe },
-  { key: 'golongan', label: 'Golongan', menu: true, def: true, get: (p) => p.golongan },
+  { key: 'kode', label: 'Kode produk', menu: true, get: (p) => p.kode_produk },
+  { key: 'nama', label: 'Nama produk', menu: true, get: (p) => p.nama_produk },
+  { key: 'tipe', label: 'Tipe', menu: true, get: (p) => p.tipe },
+  { key: 'golongan', label: 'Golongan', menu: true, get: (p) => p.golongan },
   { key: 'brand', label: 'Brand', menu: true, get: (p) => p.brand || '' },
-  { key: 'akd', label: 'No. AKD', menu: true, def: true, needs: 'extra', get: (p, c) => (c.x ? c.x.akd.join(', ') : (p.no_akd || '')) },
+  { key: 'akd', label: 'No. AKD', menu: true, needs: 'extra', get: (p, c) => (c.x ? c.x.akd.join(', ') : (p.no_akd || '')) },
   { key: 'status_akd', label: 'Status AKD', get: (p, c) => c.seal(p.status_akd) },
   { key: 'status_inaproc', label: 'Status INAPROC', get: (p) => p.status_inaproc },
-  { key: 'ekat', label: 'Harga E-Katalog', menu: true, def: true, needs: 'extra', get: (p, c) => num(c.x && c.x.ekatalog) },
-  { key: 'swasta', label: 'Harga Swasta', menu: true, def: true, needs: 'extra', get: (p, c) => num(c.x && c.x.swasta) },
+  { key: 'ekat', label: 'Harga E-Katalog', menu: true, needs: 'extra', get: (p, c) => num(c.x && c.x.ekatalog) },
+  { key: 'swasta', label: 'Harga Swasta', menu: true, needs: 'extra', get: (p, c) => num(c.x && c.x.swasta) },
   { key: 'tahun', label: 'Tahun harga', needs: 'extra', get: (p, c) => (c.x && c.x.tahun != null ? c.x.tahun : '') },
   { key: 'stok', label: 'Status stok', needs: 'stok', get: (p, c) => (c.sk && c.stokLabel[c.sk.status]) || '' },
   { key: 'qty', label: 'Qty stok', needs: 'stok', get: (p, c) => num(c.sk && c.sk.qty) },
   { key: 'aktif', label: 'Aktif', get: (p) => (p.is_active ? 'Ya' : 'Tidak') },
-  { key: 'link', label: 'Link E-Katalog (V6)', menu: true, def: true, get: (p) => p.link_v6 },
+  { key: 'link', label: 'Link E-Katalog (V6)', menu: true, get: (p) => p.link_v6 },
 ];
 const FIELD_BY_KEY = Object.fromEntries(COPY_FIELDS.map((f) => [f.key, f]));
-const DEFAULT_COLS = () => new Set(COPY_FIELDS.filter((f) => f.def).map((f) => f.key));
 
-function readCols() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(LS_COLS) || 'null');
-    if (Array.isArray(raw)) {
-      const ok = raw.filter((k) => FIELD_BY_KEY[k]);
-      if (ok.length) return new Set(ok);
-    }
-  } catch { /* storage diblok / isi rusak -> pakai default */ }
-  return DEFAULT_COLS();
-}
 function readHdr() {
   try { return localStorage.getItem(LS_HDR) === '1'; } catch { return false; }
 }
@@ -91,6 +83,12 @@ async function writeClip(text) {
  *   fetchAkdNoMap(ids, {silent}) -> Map|null,
  *   stokOf(id) -> {status, qty}|undefined, ensureStok(ids) -> Promise<boolean>,
  *   stokLabel: {READY:'Siap',...}, sealLabel(status) -> string,
+ *   table: {   kolom salinan baris = kolom yang tampil di tabel (kolom-tabel.js), dibaca saat dipanggil (bukan saat dibuat)
+ *     labels() -> [judul kolom yang tampil],
+ *     prepare(rows) -> Promise<null | string>   muat data yang dibutuhkan kolom itu; string = pesan gagal (tidak ada yang disalin),
+ *     tsv(rows, header) -> { text, cols }       teks TSV persis kolom & urutan di layar
+ *   },
+ *   openTableColumns(anchorEl)  buka pilihan kolom tabel (tombol "Atur kolom tabel…" di popover Kolom salinan)
  *   rowActions(p) -> [{ key, label, icon, danger?, run() }]  aksi cepat di menu klik kanan (opsional; index.js)
  * }
  */
@@ -115,7 +113,6 @@ export function createCopyKit(ctx) {
   let lastId = null;           // anchor Shift+klik
   let extAnchor = null;        // anchor Shift+panah (rentang dari baris yang difokus waktu mulai)
   let extPre = null;           // seleksi SEBELUM Shift+panah mulai: rentang ditambahkan di atasnya, mengecil = ikut dilepas
-  let cols = readCols();
   let withHeader = readHdr();
   let busy = false;
   let pop = null, popCleanup = null, popReturn = null;
@@ -163,7 +160,6 @@ export function createCopyKit(ctx) {
     return res.every(Boolean);
   }
 
-  const fieldsNow = () => COPY_FIELDS.filter((f) => cols.has(f.key));
   const cOf = (p) => ({ x: freshExtra(p.id), sk: ctx.stokOf(p.id), seal: (s) => ctx.sealLabel(s), stokLabel: ctx.stokLabel });
   const valueOf = (f, p) => clean(f.get(p, cOf(p)));
   const isReady = (f, p) => !f.needs || (f.needs === 'extra' ? !!freshExtra(p.id) : !!ctx.stokOf(p.id));
@@ -199,21 +195,19 @@ export function createCopyKit(ctx) {
     else showToast('Gagal menyalin — izinkan akses clipboard di browser', true);
   }
 
+  // Salin baris = kolom yang tampil di tabel, apa adanya (urutan, kolom dinamis dari filter, judul). Lihat kolom-tabel.js copyTsv.
   async function copyRows(rows) {
-    const fields = fieldsNow();
-    if (!fields.length) { showToast('Pilih minimal satu kolom salinan', true); return false; }
     if (!rows.length) { showToast('Tidak ada baris untuk disalin', true); return false; }
     if (busy) return false;
     busy = true;
     try {
-      if (!(await prepare(rows, fields))) {
-        showToast('Gagal mengambil harga / No. AKD / stok — tidak ada yang disalin', true);
-        return false;
-      }
-      const lines = rows.map((p) => { const c = cOf(p); return fields.map((f) => clean(f.get(p, c))).join('\t'); });
-      if (withHeader) lines.unshift(fields.map((f) => f.label).join('\t'));
-      if (!(await writeClip(lines.join('\n')))) { showToast('Gagal menyalin — izinkan akses clipboard di browser', true); return false; }
-      showToast(rows.length === 1 ? `1 baris disalin (${fields.length} kolom)` : `${rows.length.toLocaleString('id-ID')} baris × ${fields.length} kolom disalin`);
+      // Kolom dibaca SESUDAH data termuat: user bisa mengganti kolom selama menunggu, yang tersalin tetap yang tampil saat teks dibuat.
+      const err = await ctx.table.prepare(rows);
+      if (err) { showToast(err, true); return false; }
+      const { text, cols } = ctx.table.tsv(rows, withHeader);
+      if (!cols) { showToast('Tidak ada kolom tabel untuk disalin', true); return false; }
+      if (!(await writeClip(text))) { showToast('Gagal menyalin — izinkan akses clipboard di browser', true); return false; }
+      showToast(rows.length === 1 ? `1 baris disalin (${cols} kolom)` : `${rows.length.toLocaleString('id-ID')} baris × ${cols} kolom disalin`);
       return true;
     } finally { busy = false; }
   }
@@ -287,13 +281,13 @@ export function createCopyKit(ctx) {
       `<div class="cp-sep" role="separator"></div>` +
       menuFields.map((f) => `<button type="button" class="cp-item" role="menuitem" data-act="field" data-key="${f.key}"><span class="cp-lbl">${esc(f.label)}</span><span class="cp-val"></span></button>`).join('') +
       `<div class="cp-sep" role="separator"></div>` +
-      `<button type="button" class="cp-item" role="menuitem" data-act="cols"><span class="cp-lbl">Atur kolom salinan…</span></button>` +
+      `<button type="button" class="cp-item" role="menuitem" data-act="cols"><span class="cp-lbl">Kolom yang disalin…</span></button>` +
       (actions.length
         ? `<div class="cp-sep" role="separator"></div>` + actions.map((a) => `<button type="button" class="cp-item cp-action${a.danger ? ' cp-danger' : ''}" role="menuitem" data-act="action" data-akey="${esc(a.key)}"><span class="cp-lbl"><i class="ti ti-${esc(a.icon || 'bolt')}"></i>${esc(a.label)}</span></button>`).join('')
         : '');
 
     const paint = () => {
-      el.querySelector('[data-rowinfo]').textContent = `${cols.size} kolom, tab`;
+      el.querySelector('[data-rowinfo]').textContent = `${ctx.table.labels().length} kolom tabel, tab`;
       el.querySelectorAll('[data-act="field"]').forEach((b) => {
         const f = FIELD_BY_KEY[b.dataset.key];
         const val = b.querySelector('.cp-val');
@@ -326,32 +320,23 @@ export function createCopyKit(ctx) {
     el.className = 'cp-pop cp-cols';
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', 'Kolom yang disalin');
+    // Kolom salinan = kolom tabel yang tampil (satu sumber). Di sini hanya info + opsi judul + jalan pintas ke pilihan kolom tabel.
     el.innerHTML =
-      `<div class="cp-title cp-title-txt">Kolom yang disalin</div>` +
-      COPY_FIELDS.map((f) => `<label class="cp-check"><input type="checkbox" data-key="${f.key}"${cols.has(f.key) ? ' checked' : ''}/><span>${esc(f.label)}</span></label>`).join('') +
+      `<div class="cp-title cp-title-txt">Yang disalin = kolom di tabel</div>` +
+      `<div class="col-note">${ctx.table.labels().map(esc).join(' · ')}</div>` +
       `<div class="cp-sep" role="separator"></div>` +
       `<label class="cp-check"><input type="checkbox" data-hdr${withHeader ? ' checked' : ''}/><span>Sertakan judul kolom</span></label>` +
-      `<button type="button" class="cp-item" data-act="reset"><span class="cp-lbl">Kembalikan standar</span></button>`;
+      `<button type="button" class="cp-item" data-act="table-cols"><span class="cp-lbl">Atur kolom tabel…</span></button>`;
 
     el.addEventListener('change', (e) => {
-      const i = e.target;
-      if (i.hasAttribute('data-hdr')) {
-        withHeader = i.checked;
-        try { localStorage.setItem(LS_HDR, withHeader ? '1' : '0'); } catch { /* abaikan */ }
-      } else if (i.dataset.key) {
-        if (i.checked) cols.add(i.dataset.key); else cols.delete(i.dataset.key);
-        try { localStorage.setItem(LS_COLS, JSON.stringify([...cols])); } catch { /* abaikan */ }
-      }
-      syncUi();
+      if (!e.target.hasAttribute('data-hdr')) return;
+      withHeader = e.target.checked;
+      try { localStorage.setItem(LS_HDR, withHeader ? '1' : '0'); } catch { /* abaikan */ }
     });
     el.addEventListener('click', (e) => {
-      if (!e.target.closest('[data-act="reset"]')) return;
-      cols = DEFAULT_COLS();
-      withHeader = false;
-      try { localStorage.setItem(LS_COLS, JSON.stringify([...cols])); localStorage.setItem(LS_HDR, '0'); } catch { /* abaikan */ }
-      el.querySelectorAll('input[data-key]').forEach((i) => { i.checked = cols.has(i.dataset.key); });
-      el.querySelector('input[data-hdr]').checked = false;
-      syncUi();
+      if (!e.target.closest('[data-act="table-cols"]')) return;
+      closePop();
+      ctx.openTableColumns(returnEl);
     });
     showPop(el, place, returnEl);
   }
@@ -371,7 +356,8 @@ export function createCopyKit(ctx) {
     if (barPage) barPage.hidden = !pageRows.length || n === pageRows.length;
     if (bar) bar.hidden = selected.size === 0;
     if (barCount) barCount.textContent = `${selected.size.toLocaleString('id-ID')} produk dipilih`;
-    if (barCols) barCols.textContent = `Kolom (${cols.size})`;
+    // Bar hanya tampil saat ada yang dipilih; tidak menyentuh ctx.table waktu kit dibuat (colKit baru ada sesudahnya).
+    if (barCols && selected.size) barCols.textContent = `Kolom (${ctx.table.labels().length})`;
   }
 
   function setSelected(p, on, shift) {
@@ -498,6 +484,8 @@ export function createCopyKit(ctx) {
     },
     /** Baris yang sedang dicentang (lintas halaman / search), dipakai aksi massal seperti Atur klasifikasi. */
     selectedRows() { return [...selected.values()]; },
+    /** Gambar ulang bar salin (mis. jumlah "Kolom (n)" berubah karena kolom tabel diganti). */
+    refresh() { syncUi(); },
     /** Kosongkan semua centang (dipakai tampilan yang disembunyikan, supaya bar salin tidak tertinggal). */
     clearSelection() { selected.clear(); lastId = null; extAnchor = null; extPre = null; syncUi(); },
     /** Salin baris-baris ini langsung (tanpa dicentang dulu), pakai kolom & judul yang sedang diatur. */

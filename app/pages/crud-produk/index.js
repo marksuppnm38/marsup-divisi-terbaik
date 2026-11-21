@@ -681,6 +681,15 @@ const copyKit = createCopyKit({
   ensureStok: (ids) => ensureStokForIds(ids),
   get stokLabel() { return STOK_LABEL; }, // getter: STOK_LABEL (const) baru dideklarasi di bawah
   sealLabel: (s) => SEAL_LABELS[s] || 'Belum ada AKD',
+  // Salin baris / salin banyak = kolom yang TAMPIL di tabel (WYSIWYG, kolom dinamis dari filter ikut). colKit dibuat sesudah copyKit,
+  // jadi semua akses lewat closure dan baru dibaca saat dipanggil.
+  table: {
+    labels: () => colKit.visibleLabels(),
+    prepare: (rows) => siapkanSalinan(rows),
+    tsv: (rows, header) => colKit.copyTsv(rows, { header, extraCtx: (p) => ({ flagsText: produkFlagsText(p) }) }),
+  },
+  // Dari popover "Kolom yang disalin": buka pilihan kolom tabel. Tombol "Kolom" di toolbar tersembunyi di tampilan kartu -> pakai pemicu salin.
+  openTableColumns: (anchor) => { const b = document.getElementById('produkColsBtn'); colKit.openPicker(b && b.offsetParent ? b : anchor); },
   // Aksi cepat di menu klik kanan / tombol Salin (sama dengan yang ada di modal edit; hapus tetap lewat cek relasi + konfirmasi).
   rowActions: (p) => [
     { key: 'edit', label: p.tipe === 'SET' ? 'Buka set' : 'Edit produk', icon: 'pencil', run: () => { if (p.tipe === 'SET') goToSetDetail(p.id); else openEdit(p.id); } },
@@ -712,7 +721,7 @@ const colKit = createTableColumns({
     sealLabel: (s) => SEAL_LABELS[s] || 'Belum ada AKD',
     isVerified: (id) => !!produkVerifiedIdSet && produkVerifiedIdSet.has(id),
   },
-  onChange: () => { applyProdukColumns(); if (exportPanelRepaint) exportPanelRepaint(); },
+  onChange: () => { applyProdukColumns(); copyKit.refresh(); if (exportPanelRepaint) exportPanelRepaint(); },
   // Preset Pricelist menyalakan "Hanya produk siap jual" (link kotor/bercatatan + tanpa harga dibuang), Audit mematikannya.
   onPreset: (pr) => {
     if (typeof pr.siapJual !== 'boolean') return;
@@ -1919,6 +1928,28 @@ const produkFlagsText = (p) => {
   if (!p.is_active) f.push('Nonaktif');
   return f.join(', ');
 };
+// Muat data tambahan yang dibutuhkan kolom yang tampil. Dipakai Export DAN Salin: dua jalur, satu definisi "kolom perlu data apa"
+// (colKit.exportUses / copyUses), supaya yang tersalin tidak bisa melenceng dari yang tampil. uses = Set('extra'|'stok'|'akdNama'|'keluarga'|'klas').
+async function muatDataKolom(ids, uses){
+  const [okExtra, okStok, okNeeds] = await Promise.all([
+    uses.has('extra') ? copyKit.loadExtra(ids) : true,
+    uses.has('stok') ? ensureStokForIds(ids) : true,
+    (uses.has('akdNama') || uses.has('keluarga') || uses.has('klas')) ? muatManual(sb).then(() => colKit.loadNeeds(ids)) : true,
+  ]);
+  return { okExtra, okStok, okNeeds };
+}
+
+// Siapkan baris yang akan disalin: muat data semua kolom yang tampil. Mengembalikan null kalau siap, atau pesan gagal.
+// Salinan yang sebagian kolomnya kosong diam-diam menempel seolah-olah lengkap, jadi gagal sebagian = tidak ada yang disalin.
+async function siapkanSalinan(rows){
+  const ids = rows.map(r => r.id);
+  await ensureVerifiedSet(); // kolom "Verified INAPROC" membaca produkVerifiedIdSet
+  const { okExtra, okStok, okNeeds } = await muatDataKolom(ids, colKit.copyUses());
+  if (!okNeeds && colKit.needsError()) return colKit.needsError() + ' Tidak ada yang disalin.';
+  if (!okExtra || !okStok || !okNeeds) return 'Gagal mengambil data kolom (harga / No. AKD / stok / klasifikasi) — tidak ada yang disalin';
+  return null;
+}
+
 async function exportTampilanIni(){
   try { await ensureXlsx(); } catch (e) { showToast('Gagal memuat library Excel: ' + e.message, true); return; }
   await ensureVerifiedSet(); // kolom "Verified" baca produkVerifiedIdSet
@@ -1934,11 +1965,7 @@ async function exportTampilanIni(){
   const uses = colKit.exportUses();
   if (siapJual) uses.add('extra');
   showToast(`Menyiapkan ${rows.length.toLocaleString('id-ID')} baris…`);
-  const [okExtra, okStok, okNeeds] = await Promise.all([
-    uses.has('extra') ? copyKit.loadExtra(ids) : true,
-    uses.has('stok') ? ensureStokForIds(ids) : true,
-    (uses.has('akdNama') || uses.has('keluarga') || uses.has('klas')) ? muatManual(sb).then(() => colKit.loadNeeds(ids)) : true,
-  ]);
+  const { okExtra, okStok, okNeeds } = await muatDataKolom(ids, uses);
   if (!okExtra || !okNeeds) {
     // kolom Keluarga set / Kategori & Spesialisasi kosong diam-diam di file yang akan di-paste ke sheet atau jadi dasar izin edar berbahaya -> batalkan, jelaskan alasannya
     showToast(!okNeeds && colKit.needsError() ? colKit.needsError() + ' Export dibatalkan.' : 'Gagal mengambil harga / AKD — export dibatalkan', true);

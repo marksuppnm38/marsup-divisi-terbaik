@@ -840,6 +840,10 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .cp-more:hover{border-color:var(--accent);color:var(--accent-text)}
 @media (hover:none){.cp-btn,.cp-more{opacity:1}}
 
+/* Teks pada kontrol (tombol "Salin" di ujung baris, ikon salin, kotak pilih, skeleton, "coba lagi") BUKAN data produk. Tanpa ini, men-drag teks
+   di tabel lalu Ctrl+C native ikut membawa kata "Salin" dari tombol yang tersembunyi (opacity:0 tetap terblok) di tiap baris. */
+.cp-btn,.cp-more,.sel-input,.sk,.sk-fail,#appWrap #tableWrap th.c-act,#appWrap #tableWrap td.c-act{-webkit-user-select:none;user-select:none}
+
 /* kartu: satu tombol ikon di pojok kanan atas */
 #appWrap .prod-card{position:relative}
 #appWrap .prod-card .cp-more-card{position:absolute;top:8px;right:8px;width:26px;height:26px;padding:0;justify-content:center}

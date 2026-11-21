@@ -45,8 +45,17 @@ const nilaiOf = (p, c) => {
   return qty != null && Number.isFinite(qty) && qty > 0 && ekat != null ? qty * ekat : null;
 };
 
+// Teks satu sel salinan: angka polos (tanpa "Rp" / pemisah ribuan) supaya terbaca sebagai angka di Excel / Sheets;
+// TAB & newline dibuang supaya kolom di sheet tidak bergeser; kosong -> ''.
+export const tsvCell = (v) => (v == null ? '' : typeof v === 'number' ? (Number.isFinite(v) ? String(v) : '') : String(v).replace(/[\t\r\n]+/g, ' ').trim());
+
 // ctx tiap sel: { h: helpers, x: harga/AKD (atau null), akdNama: [{no, nama}], keluarga, klas: klasifikasi (atau undefined), flags: html "Perlu dicek" }
 // td: kelas tambahan sel; num: rata kanan angka; locked: tidak bisa disembunyikan/dipindah.
+//
+// Salin ("yang terlihat = yang tersalin"): SATU kolom tampil = SATU kolom hasil salin, urut sama, judul = judul kolom di layar.
+// Nilainya `cp(p, c)` kalau ada, kalau tidak `xl[0].get` (nilai Excel kolom itu). `cp` hanya dipakai bila isi sel di layar
+// BEDA dengan nilai Excel-nya (AKD: layar = nomor AKD, Excel = label status; Stok: layar = angka / label, Excel = 2 kolom).
+// cpUses = data tambahan yang dibutuhkan `cp` (kalau beda dengan `uses` untuk export).
 export const TABLE_COLS = [
   { key: 'kode', label: 'Kode Produk', locked: true, td: 'kode-cell',
     render: (p, c) => `${c.h.selBox(p)}${esc(p.kode_produk)}${c.h.btn('kode', 'Salin kode produk')}${c.h.recent(p.updated_at)}`,
@@ -95,7 +104,10 @@ export const TABLE_COLS = [
     xl: [{ label: 'Brand', fmt: 'center', w: 12, get: (p) => p.brand || null }] },
   { key: 'akd', label: 'AKD', td: 'akd-cell',
     render: (p, c) => `${c.h.seal(p)}${c.h.akdNoOf(p.id).length ? c.h.btn('akd', 'Salin No. AKD') : ''}`,
-    xl: [{ label: 'Status AKD', fmt: 'status', w: 15, get: (p, c) => c.h.sealLabel(p.status_akd) }] },
+    xl: [{ label: 'Status AKD', fmt: 'status', w: 15, get: (p, c) => c.h.sealLabel(p.status_akd) }],
+    // Di layar sel ini berisi nomor AKD (label status hanya kalau nomornya belum ada) -> itu juga yang disalin, bukan label-nya.
+    cpUses: ['extra'],
+    cp: (p, c) => { const l = c.h.akdNoOf(p.id); return l.length ? l.join(', ') : c.h.sealLabel(p.status_akd); } },
   { key: 'no_akd', label: 'No. AKD', td: 'mono-cell', uses: ['extra'],
     render: (p, c) => { const l = c.h.akdNoOf(p.id); return l.length ? `<span title="${esc(l.join(', '))}">${esc(l.join(', '))}</span>${c.h.btn('akd', 'Salin No. AKD')}` : '—'; },
     xl: [{ label: 'No. AKD', w: 24, get: (p, c) => c.h.akdNoOf(p.id).join(', ') }] },
@@ -128,7 +140,14 @@ export const TABLE_COLS = [
     xl: [
       { label: 'Status Stok', fmt: 'status', w: 18, get: (p, c) => { const sk = c.h.stokOf(p.id); return (sk && c.h.stokLabel[sk.status]) || null; } },
       { id: 'qty', label: 'Qty Stok', fmt: 'int', w: 10, get: (p, c) => { const sk = c.h.stokOf(p.id); return sk ? rawNum(sk.qty) : null; } },
-    ] },
+    ],
+    // Di layar: READY = angka qty ("12 siap"), selain itu teks status. Disalin dalam SATU kolom: angka bila READY, selain itu label status.
+    cp: (p, c) => {
+      const sk = c.h.stokOf(p.id);
+      if (!sk || !c.h.stokLabel[sk.status]) return null;
+      const q = rawNum(sk.qty);
+      return sk.status === 'READY' && q != null ? q : c.h.stokLabel[sk.status];
+    } },
   { key: 'nilai', label: 'Nilai Stok', num: true, uses: ['extra', 'stok'],
     render: (p, c) => { const v = nilaiOf(p, c); return v == null ? dash : rupiah(v); },
     // Di Excel jadi rumus Qty x Harga E-Katalog (bisa diaudit) kalau dua kolom itu ikut diexport.
@@ -298,6 +317,20 @@ export function createTableColumns(opts) {
       + h.moreCell(p);
   }
 
+  // ---------- salin: "yang terlihat di tabel = yang tersalin" ----------
+  const cpGet = (c) => c.cp || c.xl[0].get;
+  /** Teks TSV (kolom dipisah TAB, baris newline) persis kolom & urutan yang tampil sekarang, termasuk kolom dinamis dari filter. */
+  function copyTsv(rows, copyOpts) {
+    const o = copyOpts || {};
+    const cols = visibleCols();
+    const lines = rows.map((p) => {
+      const ctx = ctxOf(p, o.extraCtx ? o.extraCtx(p) : undefined);
+      return cols.map((c) => tsvCell(cpGet(c)(p, ctx))).join('\t');
+    });
+    if (o.header) lines.unshift(cols.map((c) => tsvCell(c.label)).join('\t'));
+    return { text: lines.join('\n'), cols: cols.length };
+  }
+
   // ---------- popover pilihan kolom ----------
   function closePicker(restoreFocus) {
     if (popCleanup) popCleanup();
@@ -451,8 +484,19 @@ export function createTableColumns(opts) {
       visibleCols().forEach((c) => { (c.uses || []).forEach((k) => u.add(k)); if (c.needs) u.add(c.needs); });
       return u;
     },
-    /** Label kolom yang tampil (untuk ringkasan di menu Export). */
+    /** Label kolom yang tampil (untuk ringkasan di menu Export / Salin). Sama persis dengan judul kolom di layar, kolom Kode di depan. */
     visibleLabels() { return visibleCols().map((c) => c.label); },
+    /**
+     * Salin: teks TSV dari baris-baris ini. Satu kolom tampil = satu kolom hasil, urutan & judul sama dengan layar.
+     * opts: { header: true = baris judul di atas, extraCtx(p): konteks tambahan per baris (mis. { flagsText }) } -> { text, cols }.
+     */
+    copyTsv,
+    /** Data apa yang harus dimuat dulu supaya semua kolom yang tampil bisa disalin utuh: Set('extra' | 'stok' | 'akdNama' | 'keluarga' | 'klas'). */
+    copyUses() {
+      const u = new Set();
+      visibleCols().forEach((c) => { (c.cpUses || c.uses || []).forEach((k) => u.add(k)); if (c.needs) u.add(c.needs); });
+      return u;
+    },
     /** Preset kolom + mana yang sedang aktif: [{ id, label, active }]. Tidak ada yang aktif = susunan kustom. */
     presets() { return COL_PRESETS.map((p) => ({ id: p.id, label: p.label, active: presetActive(p) })); },
     /** Terapkan preset (sama persis dengan klik di popover Kolom): tabel ikut berubah, onPreset dipanggil. */
