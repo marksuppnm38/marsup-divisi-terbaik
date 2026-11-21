@@ -140,7 +140,10 @@ function annotate(cands, itemAttrs, itemKey) {
     c.attrs = understand(c.nama).attrs;
     c.fit = compareAttrs(itemAttrs, c.attrs);
     c.diff = describeDiff(itemAttrs, c.attrs, c.fit);
-    c.namaPersis = !!itemKey && namaKey(c.nama) === itemKey;
+    // Nama SET di katalog berakhiran "S." ("DENTAL COMPLETE S.", "SECTIO CAESAREAN S."): akhiran itu bukan bagian dari
+    // istilah customer, jadi untuk SET dibandingkan tanpa " S" di ujung.
+    const nk = namaKey(c.nama);
+    c.namaPersis = !!itemKey && (nk === itemKey || (c.isSet && nk.replace(/ S$/, '') === itemKey));
   });
   if (cands.filter((c) => c.namaPersis).length > 1) cands.forEach((c) => { c.namaPersis = false; });
 }
@@ -150,7 +153,10 @@ function pickBestFit(cands) {
   if (!cands.length) return null;
   const nb = (c) => (c.fit ? c.fit.beda.length : 0);
   const min = Math.min(...cands.map(nb));
-  return pickBestCand(cands.filter((c) => nb(c) === min));
+  const sepadan = cands.filter((c) => nb(c) === min);
+  // Nama persis = bukti terkuat; jangan kalah dari non-SET hanya karena pickBestCand membuang SET pada skor sama.
+  const persis = sepadan.filter((c) => c.namaPersis);
+  return pickBestCand(persis.length ? persis : sepadan);
 }
 
 // Skor perbandingan lintas sumber (kecil = lebih baik): beda atribut, lalu keyakinan, lalu ukuran.
