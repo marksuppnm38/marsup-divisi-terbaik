@@ -295,6 +295,7 @@ document.getElementById('bulkInaprocProsesBtn').addEventListener('click', async 
   document.getElementById('bulkInaprocSummary').innerHTML = '';
   btn.style.display = 'none';
   bulkInaprocRows = [];
+  if (S.markProdukStale) S.markProdukStale({ distinct: true }); // nilai Status INAPROC baru -> opsi filter
   S.invalidateProdukStackCache();
   S.loadProduk();
   S.refreshProdukFilterCounts();

@@ -530,7 +530,7 @@ export function installOrphan(S) {
     dSetActions(`${done.length ? '<button class="btn" type="button" data-od="csvdone"><i class="ti ti-download"></i> Unduh hasil</button>' : ''}
       <button class="btn btn-accent" type="button" data-od="finish">Tutup</button>`);
     if (deleted.length) {
-      try { S.invalidateProdukStackCache && S.invalidateProdukStackCache(); S.loadProduk && S.loadProduk(); S.refreshProdukFilterCounts && S.refreshProdukFilterCounts(true); } catch { /* daftar Produk akan menyegarkan sendiri saat dibuka */ }
+      try { S.markProdukStale && S.markProdukStale({ akd: true, distinct: true }); S.invalidateProdukStackCache && S.invalidateProdukStackCache(); S.loadProduk && S.loadProduk(); S.refreshProdukFilterCounts && S.refreshProdukFilterCounts(true); } catch { /* daftar Produk akan menyegarkan sendiri saat dibuka */ }
     }
   }
 

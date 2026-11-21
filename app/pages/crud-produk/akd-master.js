@@ -217,6 +217,7 @@ async function saveAkd() {
     showToast('Gagal menyimpan AKD: ' + error.message, true); return;
   }
   showToast('AKD tersimpan');
+  if (S.markProdukStale) S.markProdukStale({ distinct: true }); // status / masa berlaku / golongan produk terkait bisa ikut berubah
   closeAkdModal();
   loadAkdDistinctValues();
   loadAkd(akdPage);

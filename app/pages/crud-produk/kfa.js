@@ -555,6 +555,7 @@ async function tulisHargaDariSync(rowsSync){
     if (error) { console.error('Sync harga dari sheet gagal:', error.message); part.forEach(c => out.failed.add(c.kode)); continue; }
     out.written += data?.processed ?? part.length;
   }
+  if (out.written && S.markProdukStale) S.markProdukStale(); // harga baru: kolom Harga di tab Produk
   return out;
 }
 
@@ -618,6 +619,7 @@ async function runSyncBulkCreate(){
     }
   }
   created.forEach(k => syncSelected.delete(k));
+  if (created.length && S.markProdukStale) S.markProdukStale({ akd: true, distinct: true }); // produk baru: muncul di tab Produk (& AKD / opsi filter)
   if (created.length) showToast(`${created.length} produk ditambahkan` + hargaMsg + (skipped.length ? `, ${skipped.length} dilewati` : ''), /GAGAL/.test(hargaMsg));
   if (skipped.length) {
     await crudAlert(`${skipped.length} produk dilewati:\n` + skipped.slice(0, 15).map(s => `• ${s.kode} — ${s.alasan}`).join('\n') + (skipped.length > 15 ? `\n…dan ${skipped.length - 15} lainnya` : ''));

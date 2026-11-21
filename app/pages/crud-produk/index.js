@@ -54,6 +54,7 @@ import { bagiFilter, ambilHalamanLangsung, ambilSemuaLangsung, ambilIdStok, sari
 import { fetchKeluargaOptions, fetchKeluargaMap, fetchRowsByKeluarga, pesanKeluarga, urutKeluarga } from './keluarga.js';
 import { muatKlasifikasi, resetKlasifikasi, opsiKlasifikasi, cocokKlas, fetchRowsByKlas, attachKlas, simpanKlasDariBaris, KLAS_COLS, pesanKlasifikasi, isKlasDim } from './klasifikasi.js';
 import { installKalkulatorHarga } from './kalkulator-harga.js';
+import { createStaleTracker } from './kesegaran.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
 import { writeTableXlsx } from '../../../shared/exports/tabel-xlsx.js';
@@ -458,7 +459,7 @@ function switchView(view){
   document.getElementById('addBtn').style.display = (view === 'produk') ? '' : 'none';
   document.querySelector('.view-toggle').style.display = (view === 'produk') ? '' : 'none';
   if (view === 'produk' && !produkLoadedOnce) { produkLoadedOnce = true; loadProduk(''); refreshProdukFilterCounts(); }
-  if (view === 'akd' && !akdLoadedOnce) { akdLoadedOnce = true; S.loadAkdDistinctValues(); S.loadAkd(); }
+  if (view === 'akd' && !akdLoadedOnce) { akdLoadedOnce = true; stale.settle('akd'); S.loadAkdDistinctValues(); S.loadAkd(); }
   if (view === 'kfa' && !kfaLoadedOnce) { kfaLoadedOnce = true; S.loadKfa(); S.refreshKfaFilterCounts(); }
   // 'sync' RELOAD tiap kali masuk (bukan sekali doang kayak akd/kfa) --
   // daftar ini berubah tiap pollAndSync jalan di background (tiap 5
@@ -475,10 +476,24 @@ function switchView(view){
   if (view === 'set' && (!document.getElementById('setDetailWrap') || document.getElementById('setDetailWrap').style.display === 'none')) {
     loadSetList();
   }
+  // Tampilan Produk / AKD yang sudah termuat sebelumnya tidak dimuat ulang tiap dibuka, KECUALI ada aksi yang mengubah datanya
+  // sejak terakhir terlihat (markProdukStale). Modal edit yang masih terbuka menunda reload sampai ditutup (closeModal).
+  stale.flush(view, modalState !== 'closed');
 }
 let produkLoadedOnce = false;
 let akdLoadedOnce = false;
 let kfaLoadedOnce = false;
+// Penanda data basi (kesegaran.js). Aksi yang menulis ke DB dari luar list Produk (modal edit: harga & AKD, Set Management,
+// Sync dari Sheet, edit AKD, Bulk Edit) cukup memanggil markProdukStale(); list dimuat ulang saat tampilannya kembali
+// terlihat (modal ditutup / pindah tab) -- sekali saja, dengan halaman + kata kunci pencarian yang sama (loadProduk tanpa argumen).
+const stale = createStaleTracker({
+  invalidate: () => invalidateProdukStackCache(),
+  reloadProduk: () => { loadProduk(); refreshProdukFilterCounts(true); },
+  reloadDistinct: () => { try { sessionStorage.removeItem(PW_CACHE_PREFIX + 'distinct_filters_v2'); } catch (e) { /* abaikan */ } loadProdukDistinctValues(); },
+  reloadAkd: () => { if (S.loadAkdDistinctValues) S.loadAkdDistinctValues(); if (S.loadAkd) S.loadAkd(); },
+});
+const markProdukStale = (opts) => stale.mark(opts); // opts: { akd, distinct }
+const viewAktif = () => ((document.getElementById('appWrap') || {}).dataset || {}).view || '';
 _switchView = switchView; // expose to the real top-level setSubroute() far below
 
 // ---- Auth ----
@@ -1283,6 +1298,7 @@ async function loadProduk(q, page, opts){
   // (= "muat ulang" dari simpan/hapus/bulk/orphan). Ganti halaman & filter chip cukup dari hasil di memori.
   const refetchSearch = produkSearchRawQuery !== newQ || produkSearchDirty || q === undefined;
   const mySeq = ++produkLoadSeq;
+  stale.settle('produk'); // muat ulang penuh dimulai sekarang: tanda basi terlayani (opsi dropdown tetap menunggu)
   if (!newQ) produkSearchRawQuery = null; // search dikosongkan: ketik kata yang sama lagi nanti = query ulang, bukan pakai hasil lama
   lastQuery = newQ;
   produkPage = searchChanged ? 1 : (page || produkPage || 1);
@@ -2563,7 +2579,8 @@ function modalRejectIfBusy(){
 function closeModal(){
   if (modalState === 'closed') return;
   modalDirty = false;
-  modalGo('closed');
+  // Harga / AKD / media di modal langsung tertulis ke DB (bukan menunggu Simpan), jadi list di belakang modal bisa sudah basi.
+  if (modalGo('closed')) stale.flush(viewAktif(), false);
 }
 
 // ---- Unsaved changes guard — dipakai di modal edit produk (form yang sama
@@ -3006,6 +3023,7 @@ async function unlinkAkd(akdId){
   const { error } = await sb.from('produk_akd').delete().eq('produk_id', currentProdukId).eq('akd_id', akdId);
   if (error) { showToast('Gagal melepas relasi: ' + error.message, true); return; }
   showToast('Relasi AKD dilepas');
+  markProdukStale({ akd: true, distinct: true }); // golongan / status AKD produk bisa berubah
   const tipe = document.getElementById('f_tipe').value;
   await loadAkdLinks(currentProdukId, tipe);
   await refreshAkdFieldsFromDb();
@@ -3045,6 +3063,7 @@ async function linkAkd(akdId, noAkd){
   }
   if (!isAkdPlaceholder(noAkd)) await lepasAkdPlaceholder(currentProdukId);
   showToast('AKD terhubung');
+  markProdukStale({ akd: true, distinct: true });
   document.getElementById('akdSearchInput').value = '';
   document.getElementById('akdResults').innerHTML = '';
   const tipe = document.getElementById('f_tipe').value;
@@ -3111,7 +3130,7 @@ function renderHargaGroupInto(tbody, rows, onAfterDelete){
       if (!barisTerhapus(delRes)) { showToast('Tidak ada yang terhapus', true, { detail: 'Akun ini tidak punya izin, atau harganya sudah hilang.' }); onAfterDelete(); return; }
       // FIX (urgent — harga mismatch): same missing invalidation as
       // addHargaBtn above, but for delete.
-      invalidateProdukStackCache();
+      markProdukStale(); // reload list saat modal ditutup / tab Produk dibuka
       showToast('Harga tahun ' + tahun + ' dihapus');
       onAfterDelete();
     });
@@ -3153,7 +3172,7 @@ document.getElementById('addHargaBtn').addEventListener('click', async () => {
   // invalidated after adding a price, so a product could keep showing the
   // stale badge/filter result until some UNRELATED mutation happened to
   // invalidate the cache first.
-  invalidateProdukStackCache();
+  markProdukStale(); // reload list saat modal ditutup
   document.getElementById('h_tahun').value = '';
   document.getElementById('h_harga').value = '';
   showToast('Harga EKATALOG, SWASTA & UPLOAD tersimpan');
@@ -3703,6 +3722,7 @@ function renderComposition(){
       if (error) { showToast('Gagal update qty: ' + error.message, true); qtyInput.value = lastValue; return; }
       lastValue = val;
       r.qty = val;
+      markProdukStale(); // stok / ringkasan set di list Produk
       qtyInput.classList.add('saved');
       savedTag.style.display = 'inline';
       setTimeout(() => { qtyInput.classList.remove('saved'); savedTag.style.display = 'none'; }, 1200);
@@ -3741,6 +3761,7 @@ async function deleteCompItem(rowId){
   const { error } = await sb.from('produk_set_item').delete().eq('id', rowId);
   if (error) { showToast('Gagal hapus item: ' + error.message, true); return; }
   showToast('Item dihapus dari set');
+  markProdukStale();
   await loadComposition();
   await refreshSetHeader();
 }
@@ -3784,6 +3805,7 @@ async function addCompItem(kodeProduk){
     showToast('Gagal tambah item: ' + error.message, true); return;
   }
   showToast('Item ditambahkan (qty default 1) — atur angkanya di daftar kalau perlu');
+  markProdukStale();
   compSearchSeq++; if (compSearchCtl) { compSearchCtl.abort(); compSearchCtl = null; }
   document.getElementById('compSearchInput').value = '';
   document.getElementById('compSearchResults').innerHTML = '';
@@ -3867,6 +3889,7 @@ document.getElementById('compPasteProsesBtn').addEventListener('click', async ()
   document.getElementById('compPasteSummary').innerHTML = '';
   btn.style.display = 'none';
   compPasteRows = [];
+  markProdukStale();
   await loadComposition();
   await refreshSetHeader();
 });
@@ -3954,7 +3977,7 @@ document.getElementById('addSetHargaBtn').addEventListener('click', async () => 
   const ok = await upsertHargaDariEkat(currentSetId, tahun, hargaEkat);
   if (!ok) return;
   document.getElementById('sh_tahun').value = ''; document.getElementById('sh_harga').value = '';
-  showToast('Harga EKATALOG, SWASTA & UPLOAD tersimpan'); loadSetHarga(); refreshSetHeader();
+  showToast('Harga EKATALOG, SWASTA & UPLOAD tersimpan'); markProdukStale(); loadSetHarga(); refreshSetHeader();
 });
 
 // ---- AKD (tab, terpisah dari modal generic) ----
@@ -3977,7 +4000,7 @@ function renderSetAkd(){
       if (!await crudConfirm('Lepas relasi AKD ini dari set?', { danger: true, okLabel: 'Ya, Lepas' })) return;
       const { error } = await sb.from('produk_akd').delete().eq('produk_id', currentSetId).eq('akd_id', a.id);
       if (error) { showToast('Gagal melepas: ' + error.message, true); return; }
-      showToast('Relasi AKD dilepas'); loadSetAkd(); refreshSetHeader();
+      showToast('Relasi AKD dilepas'); markProdukStale({ akd: true, distinct: true }); loadSetAkd(); refreshSetHeader();
     });
     el.appendChild(chip);
   });
@@ -4002,6 +4025,7 @@ document.getElementById('setAkdSearchInput').addEventListener('input', () => {
         if (linkErr) { if (linkErr.code === '23505') { showToast('Sudah terhubung'); return; } showToast('Gagal: ' + linkErr.message, true); return; }
         if (!isAkdPlaceholder(a.no_akd)) await lepasAkdPlaceholder(currentSetId);
         showToast('AKD terhubung');
+        markProdukStale({ akd: true, distinct: true });
         document.getElementById('setAkdSearchInput').value = ''; resEl.innerHTML = '';
         loadSetAkd(); refreshSetHeader();
       });
@@ -4181,6 +4205,7 @@ const _origLoadProdukRowClick = null; // handled inline below via monkey-patch a
   // ---- BULK EDIT (Harga / Link V6 / Inaproc Tracker) ----
   // Dipindah ke ./bulk.js (breakup sesi ini, lanjutan akd-master.js + kfa.js).
   S.invalidateProdukStackCache = invalidateProdukStackCache;
+  S.markProdukStale = markProdukStale; // dipakai kfa.js / akd-master.js / bulk*.js / orphan.js
   S.loadProduk = loadProduk;
   S.refreshProdukFilterCounts = refreshProdukFilterCounts;
   installBulk(S);
@@ -4272,7 +4297,8 @@ async function deleteProdukInner(id, label){
     : `Produk ${label ? label + ' ' : ''}dihapus beserta data terkaitnya`);
   closeModal();
   copyKit.forget(id); // buang dari centang "N produk dipilih" biar gak ikut tersalin
-  invalidateProdukStackCache();
+  markProdukStale({ akd: true, distinct: true }); // relasi AKD ikut terhapus (CASCADE); brand / golongan terakhir bisa hilang dari opsi
+
   syncSetViewAfterDelete(id);
   await animateProdukRowOut(id); // baris memudar dulu (kelihatan "yang ini hilang"), baru daftar dimuat ulang
   loadProduk();

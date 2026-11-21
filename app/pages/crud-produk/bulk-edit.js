@@ -341,6 +341,7 @@ export function installBulkEdit(S, { parsePasteLines, chunkArray }) {
       }
       // cache yang bergantung data produk dibuang supaya tabel & filter menampilkan hasil terbaru
       resetManual(); resetKlasifikasi();
+      if (S.markProdukStale) S.markProdukStale({ distinct: true }); // brand / golongan / status baru -> opsi dropdown filter
       S.invalidateProdukStackCache(); S.loadProduk(); S.refreshProdukFilterCounts();
       if (st.entity === 'akd' && S.loadAkd) S.loadAkd();
       renderResult();
