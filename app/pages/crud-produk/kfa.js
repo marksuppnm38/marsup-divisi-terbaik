@@ -884,6 +884,22 @@ async function renderSyncPage(){
     });
     const btn = tr.querySelector('.sync-add-btn');
     btn.addEventListener('click', async () => {
+      // Guard baris basi: produk bisa saja sudah dibuat (jalur lain / tab lain) sejak daftar dimuat.
+      // Kalau sudah ada, jangan buka form Tambah (bakal bentrok kode ganda): buang barisnya dan muat ulang
+      // (loadSyncUnmatched sekalian membackfill harga dan membersihkan catatan sync-nya).
+      btn.disabled = true;
+      let sudahAda = false;
+      try {
+        const { data: ex, error: exErr } = await S.sb.from('produk').select('id').eq('kode_produk', row.kode_produk).limit(1);
+        sudahAda = !exErr && !!(ex && ex.length);
+      } catch (e) { /* gagal cek: lanjut seperti biasa, DB tetap menolak kode ganda */ }
+      finally { btn.disabled = false; }
+      if (sudahAda) {
+        showToast(`${row.kode_produk} sudah ada di database`, 'warning', { detail: 'Daftar sync disegarkan.' });
+        dropSyncRow(row.kode_produk);
+        loadSyncUnmatched();
+        return;
+      }
       // SET dikenali dari tipe_hint / sheet SET FIX (V6, ADLER, ...), atau dari kode_set di RINCIAN SET.
       const isSet = isSyncSet(row);
       if (isSet) {
@@ -905,6 +921,17 @@ async function renderSyncPage(){
   });
 
   updateSyncBulkBar();
+}
+
+// Buang satu kode dari daftar Sync di memori lalu render ulang. Dipanggil index.js begitu produk baru
+// berhasil disimpan (tab Sync tidak di-refetch saat modal ditutup, jadi tanpa ini baris yang barusan
+// ditambahkan tetap tampil dengan tombol Tambah sampai tab dibuka ulang).
+function dropSyncRow(kode){
+  if (!kode) return;
+  syncSelected.delete(kode);
+  const before = syncRows.length;
+  syncRows = syncRows.filter(r => r.kode_produk !== kode);
+  if (syncRows.length !== before) renderSyncPage();
 }
 
 // Sumber data tab Sync. Dipanggil tiap tab dibuka (refetch penuh, halaman aktif dipertahankan
@@ -941,6 +968,12 @@ async function loadSyncUnmatched(){
     const cekRes = await Promise.all(cekJobs);
     const cekOk = !cekRes.some(r => r.error);
     if (cekOk) cekRes.forEach(r => (r.data || []).forEach(p => sudahAdaSet.add(p.kode_produk)));
+    else {
+      // Dulu gagal diam-diam: daftar tampil lengkap termasuk produk yang sudah ada. Sekarang diberi tahu.
+      const msg = (cekRes.find(r => r.error) || {}).error?.message || 'unknown';
+      console.warn('Cek produk di tab Sync gagal:', msg);
+      showToast('Daftar sync belum dicek ke tabel produk', 'warning', { detail: 'Baris yang produknya sudah ada bisa masih tampil. Klik Muat ulang.' });
+    }
     if (cekOk && sudahAdaSet.size) {
       const sudahAdaRows = data.filter(r => sudahAdaSet.has(r.kode_produk));
       data = data.filter(r => !sudahAdaSet.has(r.kode_produk));
@@ -966,6 +999,7 @@ async function loadSyncUnmatched(){
   S.loadKfa = loadKfa;
   S.refreshKfaFilterCounts = refreshKfaFilterCounts;
   S.loadSyncUnmatched = loadSyncUnmatched;
+  S.dropSyncRow = dropSyncRow;
   S.jumpToKfaSearch = function jumpToKfaSearch(query) {
     kfaSearchQuery = query;
     loadKfa(1);

@@ -2990,6 +2990,11 @@ async function saveProdukInner(session){
       .then(({ error: delErr }) => { if (delErr) console.warn('Gagal bersihin sync_unmatched_produk:', delErr.message); });
   }
 
+  // Daftar tab Sync di memori ikut dibersihkan SEKARANG (tidak menunggu tab dibuka ulang). Dijalankan walau
+  // harga gagal ditulis: produknya sudah ada, jadi tombol Tambah tidak boleh tampil lagi; baris di database
+  // sengaja dibiarkan dan loadSyncUnmatched() akan membackfill harganya saat tab dibuka.
+  if (wasNew && S.dropSyncRow) S.dropSyncRow(kodeProduk);
+
   // SET baru: Info Dasar-nya cukup disimpan di sini, sisanya (komposisi/harga/AKD)
   // dikelola penuh di Set Management -- langsung lempar ke sana, gak usah nampilin
   // tab Harga/AKD generic di modal ini (bakal langsung dikunci ulang lain kali dibuka
