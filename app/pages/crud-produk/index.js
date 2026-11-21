@@ -160,6 +160,68 @@ function ensureStyle() {
   ]);
 }
 
+// ---- Konstanta daftar Produk di level modul: dipakai prefetch yang jalan SEBELUM badan mount() dieksekusi.
+// (Kalau dideklarasikan di dalam mount() lagi, prefetch di awal kena TDZ -- kasus yang sama dengan komentar di handleNavParamsIfAny.)
+const PRODUK_PAGE_SIZE = 30;
+const PRODUK_LIST_COLUMNS = 'id, kode_produk, nama_produk, tipe, golongan, brand, is_active, status_akd, status_inaproc, link_v6, updated_at';
+
+// ---- Pengukuran waktu load tab Produk. Selalu tersimpan di window.__produkPerf (ms sejak mount() mulai);
+// tabelnya dicetak ke console kalau URL punya ?perf atau localStorage pnm_perf = '1'.
+// Tanda pertama menang (idempotent) supaya loadProduk berikutnya (ganti halaman / filter) tidak menimpa angka load awal.
+let produkPerfT0 = 0;
+let produkPerfMarks = {};
+let produkPerfDone = false;
+function perfReset(){
+  produkPerfT0 = performance.now();
+  produkPerfMarks = { 'nav-sampai-mount': Math.round(produkPerfT0) };
+  produkPerfDone = false;
+  window.__produkPerf = produkPerfMarks;
+}
+function perfMark(name){
+  if (name in produkPerfMarks) return;
+  produkPerfMarks[name] = Math.round(performance.now() - produkPerfT0);
+  try { performance.mark('produk:' + name); } catch (e) { /* abaikan */ }
+}
+function perfReport(){
+  if (produkPerfDone) return;
+  produkPerfDone = true;
+  let on = false;
+  try { on = new URLSearchParams(location.search).has('perf') || localStorage.getItem('pnm_perf') === '1'; } catch (e) { /* abaikan */ }
+  if (on) console.table(produkPerfMarks);
+}
+
+// ---- Prefetch load awal tab Produk -----------------------------------------------------------------
+// Dulu request data baru berangkat di UJUNG mount() (setelah CSS CDN, markup 63KB, dan pemasangan seluruh listener).
+// Data tidak bergantung pada semua itu, jadi daftar halaman 1 + set Verified diminta begitu klien Supabase siap,
+// berjalan paralel dengan sisa mount(). loadProduk() memakai hasilnya SEKALI, hanya untuk keadaan awal yang persis sama
+// (halaman 1, chip Semua, tanpa pencarian / filter). Kalau gagal atau kedaluwarsa (>20 dtk) ia query ulang seperti biasa,
+// jadi kebenaran data tidak bergantung pada prefetch ini.
+let produkPrefetch = null; // { t, list, verified }
+function startProdukPrefetch(sb){
+  if (!sb) return;
+  perfMark('prefetch-mulai');
+  const safe = (builder, mark) => Promise.resolve(builder).then(
+    (r) => { perfMark(mark); return r; },
+    (e) => ({ data: null, error: e, count: null })
+  );
+  produkPrefetch = {
+    t: Date.now(),
+    list: safe(sb.from('produk').select(PRODUK_LIST_COLUMNS, { count: 'exact' }).order('updated_at', { ascending: false }).range(0, PRODUK_PAGE_SIZE - 1), 'prefetch-daftar-selesai'),
+    verified: safe(sb.rpc('get_verified_produk_ids'), 'prefetch-verified-selesai'),
+  };
+}
+function takeProdukPrefetch(kind){
+  const p = produkPrefetch;
+  if (!p || !p[kind]) return null;
+  const v = p[kind];
+  p[kind] = null; // sekali pakai
+  return (Date.now() - p.t > 20000) ? null : v;
+}
+
+// Set Verified: satu request yang sama dipakai bersama (dedup), dan hasil request yang lahir sebelum invalidasi dibuang.
+let _verifiedInflight = null;
+let _verifiedGen = 0;
+
 let mountedContainer = null;
 let filterPopOutsideClickHandler = null;
 let resizeHandler = null;
@@ -302,7 +364,15 @@ function renderInaprocIndikator(statusInaproc, linkV6, isVerified){
 
 export async function mount(container, initialSub) {
   mountedContainer = container;
-  await Promise.all([ensureStyle(), ensureVendorScripts()]);
+  perfReset();
+  perfMark('mount-mulai');
+  const stylesReady = ensureStyle();
+  const vendorsReady = ensureVendorScripts();
+  // Prefetch data berangkat begitu klien Supabase siap, TANPA menunggu CSS CDN (tidak saling bergantung).
+  // Hanya kalau tab Produk yang dibuka; deep link ke tab lain tidak perlu menarik daftar Produk.
+  vendorsReady.then(() => { perfMark('vendor-siap'); if (!initialSub || initialSub === 'produk') startProdukPrefetch(window.pnmSupabase); }, () => { /* error dilempar oleh await di bawah */ });
+  await Promise.all([stylesReady, vendorsReady]);
+  perfMark('css-siap');
   // sb baru bisa di-assign DI SINI, bukan module scope -- lihat catatan
   // panjang di komentar THUMB_BASE di atas. window.pnmSupabase dijamin ada
   // di titik ini karena baris di atas sudah nunggu ensureVendorScripts().
@@ -312,6 +382,7 @@ export async function mount(container, initialSub) {
   // baca/tulis ke S buat apa pun yang lintas-file (bukan window global).
   const S = { sb, escapeHtml };
   container.innerHTML = CRUD_PRODUK_MARKUP;
+  perfMark('markup-siap');
 
   // ── theme-init: DIHAPUS dari halaman ini. Tema dipasang sekali, sinkron di
   // <head>, oleh shared/theme-init.js (window.PNMTheme). ──
@@ -667,7 +738,6 @@ topSearchClear.addEventListener('click', () => {
 });
 
 let produkPage = 1;
-const PRODUK_PAGE_SIZE = 30;
 let produkSearchCtl = null; // AbortController RPC search terakhir: search baru / search dikosongkan membatalkan yang lama
 let produkSearchSeq = 0;    // hanya naik saat search BERUBAH (bukan saat ganti halaman) -> hasil search basi dibuang
 let produkSearchRawRows = []; // hasil lengkap dari RPC search_produk_dengan_harga, BELUM difilter status
@@ -696,8 +766,6 @@ function applyProdukFilterToQuery(query, filterKey){
   if (filterKey && filterKey !== 'all') return query.eq('status_akd', filterKey);
   return query;
 }
-
-const PRODUK_LIST_COLUMNS = 'id, kode_produk, nama_produk, tipe, golongan, brand, is_active, status_akd, status_inaproc, link_v6, updated_at';
 
 // Brand (2026-11-20): produk.brand text nullable, nilai disimpan UPPERCASE (ROBUST, ADLER, ...). Filter "Tanpa brand"
 // memakai nilai khusus ini (harus sama dengan yang dikenali RPC get_produk_list -> sql/02_brand_produk.sql).
@@ -896,15 +964,32 @@ async function fetchHargaExistForIds(ids){
   return produkHargaIdSet;
 }
 async function ensureVerifiedSet(){
-  if (produkVerifiedIdSet) return;
-  const { data, error } = await sb.rpc('get_verified_produk_ids');
-  if (error) {
-    // tabel/RPC belum dimigrasi -> badge cukup gak muncul, halaman lain tetap jalan
-    console.warn('get_verified_produk_ids gagal:', error.message);
-    produkVerifiedIdSet = new Set();
-    return;
+  // Maksimal 3 putaran: kalau invalidasi terjadi saat request jalan, hasil lamanya dibuang dan diminta ulang.
+  for (let i = 0; i < 3 && !produkVerifiedIdSet; i++) {
+    if (!_verifiedInflight) {
+      const gen = _verifiedGen;
+      const job = (async () => {
+        let res = null;
+        const pre = takeProdukPrefetch('verified');
+        if (pre) res = await pre;
+        if (!res || res.error) {
+          try { res = await sb.rpc('get_verified_produk_ids'); } catch (e) { res = { data: null, error: e }; }
+        }
+        if (gen !== _verifiedGen) return; // ada invalidasi (simpan/hapus/bulk) selagi request jalan: hasil ini basi
+        if (res.error) {
+          // tabel/RPC belum dimigrasi -> badge cukup gak muncul, halaman lain tetap jalan
+          console.warn('get_verified_produk_ids gagal:', res.error.message || res.error);
+          produkVerifiedIdSet = new Set();
+          return;
+        }
+        produkVerifiedIdSet = new Set(res.data || []);
+      })();
+      _verifiedInflight = job;
+      job.finally(() => { if (_verifiedInflight === job) _verifiedInflight = null; });
+    }
+    await _verifiedInflight;
   }
-  produkVerifiedIdSet = new Set(data || []);
+  if (!produkVerifiedIdSet) produkVerifiedIdSet = new Set(); // jaring terakhir: jangan pernah null saat baris dilukis
 }
 // Chip "Verified": tarik baris produknya sekali (chunk .in() 150 id, paralel), lalu filter
 // tambahan + paging dikerjakan di client — sama pola jalur search. Aman dari limit baris
@@ -986,6 +1071,8 @@ function invalidateProdukStackCache(){
   produkHargaIdSet = null;
   produkVerifiedIdSet = null;
   produkVerifiedRows = null;
+  produkPrefetch = null; // hasil prefetch lahir sebelum edit ini
+  _verifiedGen++; _verifiedInflight = null;
   produkKlasRowCache.clear(); // baris produk jalur filter klasifikasi (bisa baru diedit); klasifikasinya sendiri bukan hasil edit produk
 }
 
@@ -1119,7 +1206,10 @@ async function loadProduk(q, page){
 
   const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
   if (needsHarga) await ensureProdukHargaSet();
-  await ensureVerifiedSet();
+  // Verified dimulai SEKARANG tapi tidak ditunggu di sini: dulu ia berurutan di depan query daftar (1 putaran jaringan sia-sia).
+  // Hanya dipakai buat badge + matcher chip Verified, jadi ditunggu tepat sebelum dibutuhkan (lihat clientSideMatch & Promise.all di bawah).
+  perfMark('load-mulai');
+  const verifiedP = ensureVerifiedSet();
   if (mySeq !== produkLoadSeq) return; // sudah ada loadProduk yang lebih baru
   if (klasAktif()) {
     // Filter klasifikasi butuh cache seluruh katalog SEBELUM jalur manapun memasang filter (search / Verified / Keluarga / client).
@@ -1128,6 +1218,12 @@ async function loadProduk(q, page){
     if (!k.ok) { produkCount.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">${escapeHtml(k.message)}</td></tr>`; return; }
   }
   const needsStok = produkActiveFilters.some(f => f.dim === 'stok');
+  // Jalur yang menyaring di client (search / chip Verified / Keluarga / klasifikasi) membaca produkVerifiedIdSet lewat matcher,
+  // jadi set-nya harus sudah ada. Jalur server (daftar biasa & RPC get_produk_list) tidak, dan menunggu di Promise.all akhir.
+  if (qq || produkActiveFilter === 'verified' || keluargaAktif() || klasAktif()) {
+    await verifiedP;
+    if (mySeq !== produkLoadSeq) return;
+  }
 
   let rows = [];
   let total = 0;
@@ -1255,12 +1351,17 @@ async function loadProduk(q, page){
     produkCurrentFilteredFull = null;
     const from = (produkPage - 1) * PRODUK_PAGE_SIZE;
     const to = from + PRODUK_PAGE_SIZE - 1;
-    let query = sb.from('produk')
-      .select(PRODUK_LIST_COLUMNS, { count: 'exact' });
-    query = applyProdukFilterToQuery(query, produkActiveFilter);
-    const { data, error, count } = await query
-      .order('updated_at', { ascending: false })
-      .range(from, to);
+    // Keadaan awal (halaman 1, chip Semua) bisa memakai hasil prefetch yang berangkat di awal mount(); selain itu / kalau gagal: query biasa.
+    let res = (produkPage === 1 && produkActiveFilter === 'all') ? await (takeProdukPrefetch('list') || Promise.resolve(null)) : null;
+    if (!res || res.error) {
+      let query = sb.from('produk')
+        .select(PRODUK_LIST_COLUMNS, { count: 'exact' });
+      query = applyProdukFilterToQuery(query, produkActiveFilter);
+      res = await query
+        .order('updated_at', { ascending: false })
+        .range(from, to);
+    }
+    const { data, error, count } = res;
     if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
     rows = data || [];
     total = count || 0;
@@ -1313,7 +1414,9 @@ async function loadProduk(q, page){
   // case (see ensureProdukHargaSet()'s comment above, get_produk_harga_ids
   // RPC) -- just never applied here. Reusing that same cached, RPC-backed
   // Set instead of a fresh row-limited query fixes it the same way.
-  const [hargaExistIds, , , needsOk] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id)), copyKit.loadExtra(rows.map(r => r.id)), colKit.loadNeeds(rows.map(r => r.id))]);
+  perfMark('daftar-diterima');
+  const [hargaExistIds, , , needsOk] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id)), copyKit.loadExtra(rows.map(r => r.id)), colKit.loadNeeds(rows.map(r => r.id)), verifiedP]);
+  perfMark('tambahan-selesai');
   if (mySeq !== produkLoadSeq || !mountedContainer) return; // ada await lagi di atas: cek ulang
   produkHargaExistIds = hargaExistIds;
   toastKeluargaNeeds(needsOk); // kolom Keluarga set gagal dimuat (mis. migrasi belum dijalankan) -> kolomnya kosong, user diberi tahu
@@ -1341,6 +1444,7 @@ async function loadProduk(q, page){
     });
     cardWrap.appendChild(card);
   });
+  requestAnimationFrame(() => { perfMark('baris-terlihat'); perfReport(); });
 }
 
 // ---- Baris tabel Produk. Dipisah dari loadProduk() supaya ganti kolom (tombol "Kolom") cukup
@@ -4025,5 +4129,6 @@ export function unmount() {
   document.getElementById('page-crud-produk-style')?.remove();
 
   _switchView = null; // avoid a stale closure over this mount's DOM being callable after teardown
+  produkPrefetch = null;
   mountedContainer = null;
 }
