@@ -2271,6 +2271,7 @@ function openAdd(prefill){
   if (prefill?.kode_produk) document.getElementById('f_kode_produk').value = prefill.kode_produk;
   if (prefill?.link_v6) document.getElementById('f_link_v6').value = prefill.link_v6;
   if (prefill?.nama_produk) document.getElementById('f_nama_produk').value = prefill.nama_produk;
+  if (prefill?.brand) document.getElementById('f_brand').value = String(prefill.brand).toUpperCase();
   if (prefill?.spesifikasi) document.getElementById('f_spesifikasi').value = prefill.spesifikasi;
   if (prefill?.kode_asli) {
     document.getElementById('f_kode_asli').value = prefill.kode_asli;

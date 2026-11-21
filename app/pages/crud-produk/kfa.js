@@ -248,7 +248,16 @@ function syncHargaOf(r){
   return u != null && u > 0 ? u : null;
 }
 S.syncHargaOf = syncHargaOf;
-function syncTipeOf(r){ return (r.is_set || r.source_sheet === 'SET FIX V6') ? 'SET' : (r.tipe_hint || 'LAINNYA'); }
+// SET dikenali dari kode_set di RINCIAN SET (is_set), tipe_hint dari sheet (SET FIX V6 / SET FIX ADLER / ...),
+// atau nama sheet berawalan "SET FIX". Dulu hanya dicek lewat nama sheet 'SET FIX V6', jadi sheet brand baru terbaca "tipe belum diketahui".
+function isSyncSet(r){ return !!(r && (r.is_set || r.tipe_hint === 'SET' || /^SET FIX\b/i.test(String(r.source_sheet || '')))); }
+// Brand baris sync: dikirim sync-sheet di payload.brand; cadangan untuk baris lama / dari RINCIAN SET (tanpa payload) = tebak dari nama sheet.
+function syncBrandOf(r){
+  const b = r && r.payload && r.payload.brand ? String(r.payload.brand).trim().toUpperCase() : '';
+  if (b) return b;
+  return /ADLER/i.test(String((r && r.source_sheet) || '')) ? 'ADLER' : '';
+}
+function syncTipeOf(r){ return isSyncSet(r) ? 'SET' : (r.tipe_hint || 'LAINNYA'); }
 function syncMatchSearch(r){
   const q = syncSearchQuery.trim().toLowerCase();
   if (!q) return true;
@@ -421,6 +430,8 @@ function syncPayloadHtml(row){
   const chip = (t, mono) => `<span class="tipe-chip${mono ? ' is-mono' : ''}">${S.escapeHtml(t)}</span>`;
   const bits = [];
   if (row.tipe_hint) bits.push(chip(row.tipe_hint));
+  const brandSync = syncBrandOf(row);
+  if (brandSync) bits.push(chip(brandSync));
   if (p.kode_asli) bits.push(chip('asli ' + p.kode_asli, true));
   if (p.unit && p.unit.merk) bits.push(chip(String(p.unit.merk).slice(0, 28)));
   if (Array.isArray(p.akd) && p.akd.length) bits.push(chip('AKD ' + p.akd.slice(0, 2).map(a => String(a.no_akd).replace(/^AKD\s*/i, '')).join(', ') + (p.akd.length > 2 ? ' …' : ''), true));
@@ -487,7 +498,7 @@ const syncSelected = new Set();
 function evalSyncRow(row){
   const bad = [], warn = [];
   const p = row.payload || {};
-  const isSet = !!(row.is_set || row.source_sheet === 'SET FIX V6');
+  const isSet = isSyncSet(row);
   if (isSet) bad.push('SET: buat lewat form (komposisi perlu dicek)');
   else if (row.tipe_hint !== 'INSTRUMENT' && row.tipe_hint !== 'UNIT') bad.push('tipe belum diketahui');
   if (!String(row.deskripsi || '').trim()) bad.push('tanpa deskripsi');
@@ -511,7 +522,7 @@ async function tulisHargaDariSync(rowsSync){
   const out = { written: 0, failed: new Set(), skippedNoHarga: 0 };
   const tahunDefault = new Date().getFullYear();
   const cand = (rowsSync || [])
-    .filter(r => r && !(r.is_set || r.source_sheet === 'SET FIX V6'))
+    .filter(r => r && !isSyncSet(r))
     .map(r => { const h = syncHargaOf(r); return { kode: r.kode_produk, harga: h == null ? NaN : h, tahun: Number(r.tahun) || tahunDefault }; });
   const valid = cand.filter(c => Number.isFinite(c.harga) && c.harga > 0);
   out.skippedNoHarga = cand.length - valid.length;
@@ -873,8 +884,8 @@ async function renderSyncPage(){
     });
     const btn = tr.querySelector('.sync-add-btn');
     btn.addEventListener('click', async () => {
-      // SET dikenali dari sheet SET FIX V6, atau dari kode_set di RINCIAN SET.
-      const isSet = !!(row.is_set || row.source_sheet === 'SET FIX V6');
+      // SET dikenali dari tipe_hint / sheet SET FIX (V6, ADLER, ...), atau dari kode_set di RINCIAN SET.
+      const isSet = isSyncSet(row);
       if (isSet) {
         btn.disabled = true;
         try { if (!await confirmSetKomposisi(row)) return; }
@@ -886,6 +897,7 @@ async function renderSyncPage(){
         nama_produk: row.deskripsi,
         tipe: isSet ? 'SET' : (row.tipe_hint || undefined),
         kode_asli: (row.payload && row.payload.kode_asli) || undefined,
+        brand: syncBrandOf(row) || undefined,
         spesifikasi: (row.payload && row.payload.spesifikasi) || undefined,
       });
     });
