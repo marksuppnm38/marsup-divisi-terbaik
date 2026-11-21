@@ -496,6 +496,8 @@ export function createCopyKit(ctx) {
       syncUi();
       ensureExtra(pageRows.map((r) => r.id));
     },
+    /** Baris yang sedang dicentang (lintas halaman / search), dipakai aksi massal seperti Atur klasifikasi. */
+    selectedRows() { return [...selected.values()]; },
     /** Kosongkan semua centang (dipakai tampilan yang disembunyikan, supaya bar salin tidak tertinggal). */
     clearSelection() { selected.clear(); lastId = null; extAnchor = null; extPre = null; syncUi(); },
     /** Salin baris-baris ini langsung (tanpa dicentang dulu), pakai kolom & judul yang sedang diatur. */

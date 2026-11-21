@@ -134,6 +134,7 @@ export const CRUD_PRODUK_MARKUP = `
           <span class="cb-count" id="copyBarCount" aria-live="polite"></span>
           <button type="button" class="cb-btn cb-primary" id="copyBarCopy"><i class="ti ti-copy"></i> Salin sebagai tabel</button>
           <button type="button" class="cb-btn" id="copyBarCols" aria-haspopup="dialog">Kolom</button>
+          <button type="button" class="cb-btn" id="copyBarKlas" aria-haspopup="dialog"><i class="ti ti-tags"></i> Atur klasifikasi</button>
           <button type="button" class="cb-link cb-page" id="copyBarPage">Pilih semua di halaman ini</button>
           <button type="button" class="cb-link" id="copyBarClear">Batal pilih</button>
         </div>
@@ -702,6 +703,40 @@ export const CRUD_PRODUK_MARKUP = `
           </div>
         </section>
 
+        <!-- Klasifikasi: atribut produk yang bisa ditentukan manual. Disimpan terpisah dari tombol Simpan (atribut-ui.js). -->
+        <section class="fs" id="klasSection" hidden>
+          <div class="fs-head">
+            <h4>Klasifikasi</h4>
+            <span class="fs-note">Pilih "Otomatis" untuk mengikuti sistem</span>
+          </div>
+          <div class="akd-hint" id="klasLocked" hidden>Simpan produk dulu, lalu klasifikasinya bisa diatur di sini.</div>
+          <div id="klasBody" hidden>
+            <div class="grid2">
+              <div class="f" id="klasKeluargaWrap">
+                <label for="f_klas_keluarga">Keluarga set</label>
+                <input type="text" id="f_klas_keluarga" list="f_klas_keluarga_list" autocomplete="off" spellcheck="false" placeholder="Otomatis"/>
+                <datalist id="f_klas_keluarga_list"></datalist>
+                <div class="klas-hint" id="klasKeluargaHint"></div>
+              </div>
+              <div class="f">
+                <label for="f_klas_kategori">Kategori</label>
+                <select id="f_klas_kategori"></select>
+                <div class="klas-hint" id="klasKategoriHint"></div>
+              </div>
+              <div class="f">
+                <label for="f_klas_spes">Spesialisasi</label>
+                <select id="f_klas_spes"></select>
+                <div class="klas-hint" id="klasSpesHint"></div>
+              </div>
+            </div>
+            <div class="klas-actions">
+              <button class="btn btn-accent btn-sm" id="klasSimpanBtn" type="button"><i class="ti ti-check"></i> Simpan klasifikasi</button>
+              <button class="btn btn-ghost btn-sm" id="klasResetBtn" type="button"><i class="ti ti-restore"></i> Semua ke otomatis</button>
+              <span class="klas-msg" id="klasMsg" aria-live="polite"></span>
+            </div>
+          </div>
+        </section>
+
         <section class="fs fs-panel">
           <div class="fs-head">
             <h4>Master produk</h4>
@@ -900,6 +935,40 @@ export const CRUD_PRODUK_MARKUP = `
     <div class="confirm-actions">
       <button class="btn btn-ghost" id="genericConfirmCancelBtn" type="button">Batal</button>
       <button class="btn btn-accent" id="genericConfirmOkBtn" type="button">Ya, Lanjutkan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ATUR KLASIFIKASI (banyak produk sekaligus, dari bar produk terpilih) -->
+<div class="modal-overlay" id="klasBulkOverlay">
+  <div class="modal-card klas-bulk" role="dialog" aria-labelledby="klasBulkTitle">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="klasBulkTitle">Atur klasifikasi</div>
+        <div class="modal-sub" id="klasBulkSub"></div>
+      </div>
+      <button class="modal-close" id="klasBulkCloseBtn" type="button" title="Tutup" aria-label="Tutup"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="klas-bulk-body">
+      <div class="f">
+        <label for="klasBulkKelMode">Keluarga set</label>
+        <div class="klas-bulk-row">
+          <select id="klasBulkKelMode"></select>
+          <input type="text" id="klasBulkKel" list="klasBulkKelList" autocomplete="off" spellcheck="false" placeholder="Nama keluarga" disabled/>
+          <datalist id="klasBulkKelList"></datalist>
+        </div>
+        <div class="klas-hint" id="klasBulkKelNote"></div>
+      </div>
+      <div class="f"><label for="klasBulkKat">Kategori</label><select id="klasBulkKat"></select></div>
+      <div class="f"><label for="klasBulkSpes">Spesialisasi</label><select id="klasBulkSpes"></select></div>
+      <div class="klas-msg" id="klasBulkMsg" aria-live="polite"></div>
+    </div>
+    <div class="modal-actions">
+      <span></span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" id="klasBulkCancel" type="button">Batal</button>
+        <button class="btn btn-accent" id="klasBulkApply" type="button"><i class="ti ti-check"></i> Terapkan</button>
+      </div>
     </div>
   </div>
 </div>

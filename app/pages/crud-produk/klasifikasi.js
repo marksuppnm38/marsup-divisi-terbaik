@@ -10,9 +10,15 @@
 // di memori (TTL 30 menit). Setelah itu kolom, filter, dan opsi filter hanya membaca Map ini -- tanpa request tambahan.
 // Cakupannya produk AKTIF saja (sama dengan tab lama): produk nonaktif tidak punya klasifikasi, kolomnya "—".
 //
+// Koreksi MANUAL (atribut.js, tabel produk_atribut_manual) menimpa nilai otomatis saat dibaca: klasOf(), filter, dan opsi memakai
+// nilai EFEKTIF (manual kalau ada, otomatis kalau tidak). Dihitung saat dibaca, bukan ditulis ke cache, jadi tidak ada urutan pemuatan
+// yang harus dijaga dan membatalkan koreksi langsung mengembalikan nilai otomatis. klasAuto() = nilai otomatisnya saja.
+//
 // Sengaja tanpa ketergantungan DOM dan TIDAK pernah throw: semua fungsi async mengembalikan { ..., error } supaya bisa
 // diuji dengan Supabase tiruan (klasifikasi.test.mjs) dan halaman Produk tetap jalan kalau RPC-nya belum terpasang
 // (hanya kolom / filter klasifikasi yang kosong, dengan pesan yang menjelaskan).
+
+import { manualOf, SPES_TANPA } from './atribut.js';
 
 export const KAT = {
   'SET': 'Set instrumen', 'INSTRUMEN SATUAN': 'Instrumen satuan', 'ELEKTROMEDIS': 'Elektromedis',
@@ -113,8 +119,23 @@ export async function muatKlasifikasi(sb, { force = false } = {}) {
 export function resetKlasifikasi() { cache = null; inflight = null; }
 export const klasTerisi = () => !!cache;
 export const infoKlasifikasi = () => (cache ? cache.info : null);
-/** Klasifikasi satu produk dari cache, undefined = belum dimuat / produk nonaktif (tidak ada di cakupan). */
-export const klasOf = (id) => (cache ? cache.map.get(id) : undefined);
+/**
+ * Nilai efektif sebuah entri cache: koreksi manual (kategori / spes) menimpa nilai otomatis. Sumbernya ikut berubah
+ * ('koreksi' / 'manual') supaya tampil "Dikoreksi" dan tidak dihitung "perlu dicek". spes 'TANPA' = sengaja tanpa spesialisasi (null).
+ */
+export function efektif(e) {
+  if (!e) return e;
+  const m = manualOf(e.id);
+  if (!m || (!m.kategori && !m.spes)) return e;
+  const out = { ...e };
+  if (m.kategori) { out.kategori = m.kategori; out.kategoriSumber = 'koreksi'; }
+  if (m.spes) { out.spes = m.spes === SPES_TANPA ? null : m.spes; out.spesSumber = 'manual'; }
+  return out;
+}
+/** Klasifikasi satu produk (nilai EFEKTIF), undefined = belum dimuat / produk nonaktif (tidak ada di cakupan). */
+export const klasOf = (id) => (cache ? efektif(cache.map.get(id)) : undefined);
+/** Nilai OTOMATIS saja (tanpa koreksi manual): untuk memberi tahu "Otomatis: ..." di form dan untuk membandingkan. */
+export const klasAuto = (id) => (cache ? cache.map.get(id) : undefined);
 
 // ---------- turunan per produk ----------
 /** Dugaan sistem, belum ada petunjuk, atau golongan belum dipetakan (penanda ⚠ di tab lama). */
@@ -164,7 +185,8 @@ export function opsiKlasifikasi() {
   const kat = new Map(), spes = new Map();
   let tanpa = 0;
   if (cache) {
-    cache.map.forEach((e) => {
+    cache.map.forEach((e0) => {
+      const e = efektif(e0);
       kat.set(e.kategori, (kat.get(e.kategori) || 0) + 1);
       if (e.spes != null) spes.set(e.spes, (spes.get(e.spes) || 0) + 1);
       else if (!ALAT.includes(e.kategori)) tanpa++;

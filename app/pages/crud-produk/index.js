@@ -46,6 +46,8 @@ import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
 import { installOrphan } from './orphan.js';
 import { createCopyKit } from './copy.js';
+import { createAtributUi } from './atribut-ui.js';
+import { muatManual, resetManual } from './atribut.js';
 import { createTableColumns } from './kolom-tabel.js';
 import { fetchKeluargaOptions, fetchKeluargaMap, fetchRowsByKeluarga, pesanKeluarga, urutKeluarga } from './keluarga.js';
 import { muatKlasifikasi, resetKlasifikasi, infoKlasifikasi, opsiKlasifikasi, cocokKlas, idsKlasFilter, fetchRowsByIds, pesanKlasifikasi, isKlasDim } from './klasifikasi.js';
@@ -720,7 +722,16 @@ const colKit = createTableColumns({
 });
 colKit.renderHead();
 document.getElementById('produkColsBtn').addEventListener('click', (e) => colKit.openPicker(e.currentTarget));
-copyKitDestroy = () => { copyKit.destroy(); colKit.destroy(); akdLookup = () => []; };
+// Kontrol klasifikasi (atribut-ui.js): bagian "Klasifikasi" di modal edit + dialog "Atur klasifikasi" dari bar produk terpilih.
+// Koreksi manual menimpa nilai otomatis; setelah berubah, opsi filter Keluarga dan daftar dimuat ulang (setelahAtributBerubah).
+const atributUi = createAtributUi({
+  sb, showToast,
+  ensureKlas: () => ensureKlas(),
+  keluargaNames: async () => { await ensureKeluargaOptions(); return produkDistinct.keluarga; },
+  getSelectedRows: () => copyKit.selectedRows(),
+  onChanged: () => setelahAtributBerubah(),
+});
+copyKitDestroy = () => { copyKit.destroy(); colKit.destroy(); atributUi.destroy(); akdLookup = () => []; };
 akdLookup = (id) => copyKit.akdOf(id);
 
 let lastQuery = '';
@@ -1027,8 +1038,16 @@ async function ensureVerifiedRows(){
 // Gagal (mis. migrasi supabase/03_keluarga_set.sql belum dijalankan) TIDAK mengganggu halaman: dimensi Keluarga saja
 // yang kosong, dengan toast yang menjelaskan.
 let _keluargaOptInflight = null;
+// Setelah koreksi atribut berubah: opsi filter Keluarga (cache 30 menit) dan hasil list harus dihitung ulang.
+function setelahAtributBerubah(){
+  produkDistinct.keluarga = [];
+  try { sessionStorage.removeItem(PW_CACHE_PREFIX + 'keluarga_opsi_v1'); } catch (e) { /* abaikan */ }
+  invalidateProdukStackCache();
+  loadProduk();
+}
 async function ensureKeluargaOptions(){
   if (produkDistinct.keluarga.length) return;
+  await muatManual(sb); // jumlah varian per keluarga dikoreksi dengan koreksi manual (keluarga.js)
   const apply = rows => {
     produkDistinct.keluarga = rows.map(r => r.keluarga);
     produkKeluargaN = new Map(rows.map(r => [r.keluarga, r.n]));
@@ -1225,6 +1244,7 @@ async function loadProduk(q, page, opts){
   // Hanya dipakai buat badge + matcher chip Verified, jadi ditunggu tepat sebelum dibutuhkan (lihat clientSideMatch & Promise.all di bawah).
   perfMark('load-mulai');
   const verifiedP = ensureVerifiedSet();
+  const manualP = muatManual(sb); // koreksi manual atribut (atribut.js): ikut paralel, ditunggu hanya oleh jalur yang membacanya (di bawah) dan pemuat kolom. Tidak pernah melempar.
   if (mySeq !== produkLoadSeq) return; // sudah ada loadProduk yang lebih baru
   if (klasAktif()) {
     // Filter klasifikasi butuh cache seluruh katalog SEBELUM jalur manapun memasang filter (search / Verified / Keluarga / client).
@@ -1236,7 +1256,7 @@ async function loadProduk(q, page, opts){
   // Jalur yang menyaring di client (search / chip Verified / Keluarga / klasifikasi) membaca produkVerifiedIdSet lewat matcher,
   // jadi set-nya harus sudah ada. Jalur server (daftar biasa & RPC get_produk_list) tidak, dan menunggu di Promise.all akhir.
   if (qq || produkActiveFilter === 'verified' || keluargaAktif() || klasAktif()) {
-    await verifiedP;
+    await Promise.all([verifiedP, manualP]); // jalur client membaca koreksi manual (klasOf / fetchRowsByKeluarga / fetchKeluargaMap)
     if (mySeq !== produkLoadSeq) return;
   }
 
@@ -1478,7 +1498,7 @@ function runProdukExtras(ids, seq, kinds){
     harga: () => fetchHargaExistForIds(ids).then((set) => { if (!set) return false; if (alive()) produkHargaExistIds = set; return true; }),
     stok: () => ensureStokForIds(ids),
     extra: () => copyKit.loadExtra(ids),
-    needs: () => colKit.loadNeeds(ids).then((ok) => { if (alive()) toastKeluargaNeeds(ok); return ok; }),
+    needs: () => muatManual(sb).then(() => colKit.loadNeeds(ids)).then((ok) => { if (alive()) toastKeluargaNeeds(ok); return ok; }),
     verified: () => ensureVerifiedSet(),
   };
   return Promise.all(kinds.map((k) => settle(k, jobs[k]())));
@@ -1917,7 +1937,7 @@ async function exportTampilanIni(){
   const [okExtra, okStok, okNeeds] = await Promise.all([
     uses.has('extra') ? copyKit.loadExtra(ids) : true,
     uses.has('stok') ? ensureStokForIds(ids) : true,
-    (uses.has('akdNama') || uses.has('keluarga') || uses.has('klas')) ? colKit.loadNeeds(ids) : true,
+    (uses.has('akdNama') || uses.has('keluarga') || uses.has('klas')) ? muatManual(sb).then(() => colKit.loadNeeds(ids)) : true,
   ]);
   if (!okExtra || !okNeeds) {
     // kolom Keluarga set / Kategori & Spesialisasi kosong diam-diam di file yang akan di-paste ke sheet atau jadi dasar izin edar berbahaya -> batalkan, jelaskan alasannya
@@ -2190,7 +2210,7 @@ const SAVE_BTN_BY_OVERLAY = { modalOverlay: 'saveBtn', akdModalOverlay: 'akdSave
 // Esc = KLIK tombol X dialog paling atas (bukan menutup paksa), jadi guard "perubahan belum disimpan" dan penolakan
 // saat sedang menyimpan tetap jalan persis seperti klik biasa. Dialog yang sudah mengurus Esc-nya sendiri (konfirmasi
 // generik, hapus orphan, Ctrl+K) dan widget yang sedang terbuka di dalam dialog (dropdown, kolom qty) tidak diganggu.
-const CLOSE_BTN_BY_OVERLAY = { modalOverlay: 'modalCloseBtn', akdModalOverlay: 'akdModalCloseBtn', kfaModalOverlay: 'kfaModalCloseBtn', logModalOverlay: 'logModalCloseBtn' };
+const CLOSE_BTN_BY_OVERLAY = { modalOverlay: 'modalCloseBtn', akdModalOverlay: 'akdModalCloseBtn', kfaModalOverlay: 'kfaModalCloseBtn', logModalOverlay: 'logModalCloseBtn', klasBulkOverlay: 'klasBulkCloseBtn' };
 const activeCrudView = () => document.getElementById('appWrap')?.dataset.view || '';
 const isShown = (el) => !!el && el.offsetParent !== null;
 
@@ -2561,6 +2581,7 @@ function openAdd(prefill){
   if (prefill?.tipe) { const ft = document.getElementById('f_tipe'); ft.value = prefill.tipe; ft.dispatchEvent(new Event('change')); }
   renderLinkV6Hint();
   document.getElementById('verifiedRow').style.display = 'none';
+  atributUi.lockNew(); // produk baru belum punya id: klasifikasi baru bisa diatur setelah disimpan
 }
 
 async function openEdit(produkId){
@@ -2608,6 +2629,7 @@ async function openEdit(produkId){
   modalSub.textContent = 'Kode: ' + (p.kode_produk || '—');
   applySetModalAdjustments(); // tipe sudah terisi di f_tipe; dulu dikerjakan monkey-patch SETELAH semua fetch selesai
   modalGo('edit');            // form sudah berisi data asli -> Simpan/Hapus boleh dipakai
+  atributUi.openFor(produkId, p.tipe).catch(() => {}); // klasifikasi (keluarga / kategori / spesialisasi): dimuat di latar, tidak menunda form
 
   await Promise.all([
     p.kode_asli ? cekMaster(p.kode_asli, true, session) : null,
@@ -3234,6 +3256,7 @@ async function saveProdukInner(session){
   document.getElementById('akdHint').textContent = '';
   modalTitle.textContent = 'Edit Produk';
   modalSub.textContent = 'Kode: ' + result.data.kode_produk;
+  if (wasNew) atributUi.openFor(currentProdukId, tipe).catch(() => {}); // produk baru sudah punya id: bagian Klasifikasi terbuka
   await loadHarga(currentProdukId);
   await loadMedia(currentProdukId);
   await loadAkdLinks(currentProdukId, tipe);
@@ -4213,6 +4236,7 @@ export function unmount() {
   exportPanelRepaint = null;
   if (beforeUnloadHandler) window.removeEventListener('beforeunload', beforeUnloadHandler);
   if (copyKitDestroy) { copyKitDestroy(); copyKitDestroy = null; }
+  resetManual(); // cache koreksi manual atribut (atribut.js), sama siklusnya dengan cache klasifikasi
   resetKlasifikasi(); // cache klasifikasi katalog (klasifikasi.js, level modul): dibuang saat keluar halaman Produk, dimuat ulang kalau dipakai lagi
   if (shortcutsDispose) { shortcutsDispose(); shortcutsDispose = null; }
   filterPopOutsideClickHandler = null;
