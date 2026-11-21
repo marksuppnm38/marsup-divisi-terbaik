@@ -779,7 +779,8 @@ async function runWorkspaceAutoMatch(onlyIds) {
       qty: it.qty_diminta != null ? Number(it.qty_diminta) : null,
       specs: extractSpecs(it.raw_text),
       variants: buildVariants(it.raw_text),
-      understood: understand(it.raw_text)
+      understood: understand(it.raw_text),
+      konteks: it.konteks_minta || null // SET / INSTRUMENT / UNIT bila sudah diisi (lihat auto-konversi/resolver.js)
     }));
     firmCheck.clear(); // link_v6 bisa berubah sejak pencocokan terakhir — ambil ulang
     const lexicon = await getAmLexicon(false);

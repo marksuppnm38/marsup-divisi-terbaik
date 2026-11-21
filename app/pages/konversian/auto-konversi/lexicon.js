@@ -88,6 +88,15 @@ export function queryTanpaJenis(u) {
   return { q: rest.join(' '), tipe: jenis };
 }
 
+// Query katalog bila staff sudah mengisi KONTEKS permintaan (SET / INSTRUMENT / UNIT): kata jenis dibuang dari query dan
+// p_tipe = konteks, BUKAN kata di teks. "Set bein surgery" dengan konteks INSTRUMENT = bundle instrumen bein, bukan produk SET.
+export function queryDenganKonteks(u, konteks) {
+  if (!u || !u.tokens || !konteks) return null;
+  const rest = u.tokens.filter((t) => !JENIS_WORDS.has(t));
+  if (!rest.length) return null;
+  return { q: rest.join(' '), tipe: konteks };
+}
+
 // Token mana di item ini yang dikenali lexicon (buat ditampilkan: "KORENTANG → SPONGE HOLDING FORCEPS (dari riwayat)").
 export function lexiconHits(u, lexicon) {
   if (!lexicon || !lexicon.size) return [];

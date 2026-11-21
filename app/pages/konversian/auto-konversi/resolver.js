@@ -19,7 +19,7 @@
 
 import { understand, compareAttrs, describeDiff, DECISIVE } from './understand.js';
 import { JENIS_WORDS } from './aliases.js';
-import { buildQueryLadder, lexiconHits, punyaPenentu, queryTanpaJenis } from './lexicon.js';
+import { buildQueryLadder, lexiconHits, punyaPenentu, queryTanpaJenis, queryDenganKonteks } from './lexicon.js';
 
 const UKURAN_RANK = { cocok: 0, tidak_diminta: 0, tidak_diketahui: 1, dekat: 1, varian: 3, beda: 4 };
 const CONF_RANK = { none: 0, lemah: 1, sedang: 2, kuat: 3 };
@@ -32,7 +32,7 @@ function candidatesFromRows(rows) {
     seen.add(r.kode_produk);
     out.push({
       kode: r.kode_produk, nama: r.nama_produk || '', tier: r.tier || '', ukuran: r.ukuran || '',
-      istilah: r.istilah || '', skor: Number(r.skor) || 0, freq: Number(r.freq) || 0, isSet: !!r.is_set,
+      istilah: r.istilah || '', skor: Number(r.skor) || 0, freq: Number(r.freq) || 0, isSet: !!r.is_set, tipe: r.is_set ? 'SET' : '',
       src: r.tier === 'katalog' ? 'katalog' : (r.tier === 'varian' ? 'varian' : 'riwayat')
     });
   });
@@ -41,10 +41,29 @@ function candidatesFromRows(rows) {
 
 // Default hanya dari istilah dengan skor teratas (jangan loncat ke istilah umum "GUNTING"
 // cuma karena ukurannya kebetulan cocok), lalu ukuran terbaik, bukan SET.
-export function pickBestCand(cands) {
+export const KONTEKS = ['SET', 'INSTRUMENT', 'UNIT'];
+// Konteks permintaan (diisi staff / diturunkan dari produk yang dipilih) vs tipe kandidat. null = konteks tidak diketahui.
+// Riwayat Dictionary hanya tahu SET atau bukan; tipe katalog lengkap (SET / INSTRUMENT / UNIT).
+export function cocokKonteks(c, konteks) {
+  if (!konteks || !c) return null;
+  if (konteks === 'SET') return !!c.isSet;
+  if (c.isSet) return false;
+  return c.tipe ? c.tipe === konteks : true;
+}
+
+// Default hanya dari istilah dengan skor teratas (jangan loncat ke istilah umum "GUNTING" cuma karena ukurannya kebetulan
+// cocok), lalu ukuran terbaik. Tanpa konteks: bukan SET didahulukan (heuristik lama). Dengan konteks: yang SESUAI konteks.
+export function pickBestCand(cands, konteks) {
   if (!cands.length) return null;
   const top = cands[0].skor;
-  const pool = cands.filter(c => c.skor === top && !c.isSet);
+  const teratas = cands.filter(c => c.skor === top);
+  let pool;
+  if (konteks) {
+    pool = teratas.filter(c => cocokKonteks(c, konteks));
+    if (!pool.length) pool = cands.filter(c => cocokKonteks(c, konteks));
+  } else {
+    pool = teratas.filter(c => !c.isSet);
+  }
   const use = pool.length ? pool : cands;
   return use.slice().sort((a, b) =>
     (UKURAN_RANK[a.ukuran] ?? 2) - (UKURAN_RANK[b.ukuran] ?? 2) || b.freq - a.freq)[0];
@@ -121,7 +140,7 @@ async function viaCatalog(rpc, text, wantedCm, qi = 0, maxRows = 60, tipe = null
   if (error) throw new Error(error.message || error.hint || 'search_produk_dengan_harga gagal');
   return (data || []).slice(0, maxRows).map((p) => ({
     kode: p.kode_produk, nama: p.nama_produk || '', tier: 'katalog', ukuran: ukuranLabel(wantedCm, p.nama_produk),
-    istilah: text, skor: 1 - qi * 0.05, freq: 0, isSet: p.tipe === 'SET', src: 'katalog',
+    istilah: text, skor: 1 - qi * 0.05, freq: 0, isSet: String(p.tipe || '').toUpperCase() === 'SET', tipe: String(p.tipe || '').toUpperCase(), src: 'katalog',
     // search_produk_dengan_harga: skor = jumlah skor token + 80 bila SEMUA token cocok, -200 bila tidak.
     // Jadi skor > 0 ~ semua kata query ada di indeks; skor < 0 = kecocokan sebagian yang berisik. null = tidak diketahui (mock/test).
     full: p.score == null ? null : Number(p.score) > 0
@@ -165,7 +184,7 @@ function annotate(cands, itemAttrs, itemKey, reqTokens) {
 }
 
 // Pilih terbaik: kandidat dengan beda atribut paling sedikit dulu, baru aturan lama (skor istilah teratas, ukuran, freq).
-function pickBestFit(cands) {
+function pickBestFit(cands, konteks) {
   if (!cands.length) return null;
   const nb = (c) => (c.fit ? c.fit.beda.length : 0);
   const min = Math.min(...cands.map(nb));
@@ -179,7 +198,7 @@ function pickBestFit(cands) {
     const maxCover = Math.max(...kat.map((c) => c.cover == null ? 1 : c.cover));
     pool = pool.filter((c) => c.tier !== 'katalog' || (c.cover == null ? 1 : c.cover) === maxCover);
   }
-  return pickBestCand(pool);
+  return pickBestCand(pool, konteks);
 }
 
 // Skor perbandingan lintas sumber (kecil = lebih baik): beda atribut, lalu keyakinan, lalu ukuran.
@@ -230,7 +249,8 @@ export async function resolveItem(item, rpc, opts = {}) {
   const dictQueries = opts.queries || item.variants || [item.nama];
   // Rencana query katalog. Query TANPA kata jenis (+ p_tipe) paling dulu; tangga lama tetap sebagai fallback (p_tipe null).
   // opts.queries meng-override semuanya.
-  const jq = opts.queries ? null : queryTanpaJenis(u);
+  const konteks = KONTEKS.includes(item.konteks) ? item.konteks : null;
+  const jq = opts.queries ? null : (konteks ? queryDenganKonteks(u, konteks) : queryTanpaJenis(u));
   const catPlan = opts.queries
     ? opts.queries.map((q) => ({ q, tipe: null }))
     : [...(jq ? [jq] : []), ...buildQueryLadder(item, u, opts.lexicon).map((q) => ({ q, tipe: null }))];
@@ -280,7 +300,7 @@ export async function resolveItem(item, rpc, opts = {}) {
         if (penentu) { umumCands.push(...c.filter(isUmum)); c = c.filter((x) => !isUmum(x)); }
         if (c.length) {
           annotate(c, itemAttrs, itemKey, u.tokens);
-          const rank = CONF_RANK[candConf(pickBestFit(c))] || 0;
+          const rank = CONF_RANK[candConf(pickBestFit(c, konteks))] || 0;
           if (rank > bestRank) { dictCands = c; bestRank = rank; }
           if (rank === CONF_RANK.kuat) break;
         }
@@ -314,8 +334,8 @@ export async function resolveItem(item, rpc, opts = {}) {
 
   // Kembar nama persis bisa tersebar di dua sumber (Dictionary + katalog): cabut tanda kalau totalnya > 1.
   { const kembar = [...dictCands, ...catCands].filter(x => x.namaPersis); if (kembar.length > 1) kembar.forEach(x => { x.namaPersis = false; }); }
-  const bestDict = pickBestFit(dictCands);
-  const bestCat = pickBestFit(catCands);
+  const bestDict = pickBestFit(dictCands, konteks);
+  const bestCat = pickBestFit(catCands, konteks);
   const best = bestCat && (!bestDict || compScore(bestCat) < compScore(bestDict)) ? bestCat : bestDict;
   // Kandidat 'umum' yang dibuang dari pemilihan best tetap tampil di AKHIR sebagai alternatif.
   annotate(umumCands, itemAttrs, itemKey, u.tokens); umumCands.forEach((x) => { x.namaPersis = false; });
@@ -341,6 +361,10 @@ export async function resolveItem(item, rpc, opts = {}) {
     // Atribut penentu berselisih (mis. ujung BL/BL diminta, produk SH/BL): jangan ditebak, sebut yang mana.
     status = 'REVIEW'; reasonKey = 'atribut_beda';
     reason = `Spesifikasi beda — ${best.diff.join('; ')}.`;
+  } else if (konteks && cocokKonteks(best, konteks) === false) {
+    // Staff bilang permintaan ini ber-konteks X, tapi usulan terbaik bertipe lain: jangan dipasang otomatis.
+    status = 'REVIEW'; reasonKey = 'konteks_beda';
+    reason = `Diminta sebagai ${konteks}, tapi produk usulan bertipe ${best.isSet ? 'SET' : (best.tipe || 'bukan SET')} — pastikan.`;
   } else if (conf !== 'kuat') {
     status = 'REVIEW';
     if (best.ukuran === 'beda' || best.ukuran === 'varian') { reasonKey = 'ukuran_beda'; reason = 'Produk ketemu tapi ukurannya beda.'; }
@@ -381,7 +405,7 @@ export async function resolveItem(item, rpc, opts = {}) {
   }
 
   return {
-    status, reason, reason_key: reasonKey, reason_key_asli: reasonKeyAsli, audit, confidence: conf, ukuran_default: ukuranDefault,
+    status, reason, konteks, reason_key: reasonKey, reason_key_asli: reasonKeyAsli, audit, confidence: conf, ukuran_default: ukuranDefault,
     family: best ? familyOf(best.kode, best.isSet) : null,
     kode_produk: best ? best.kode : null,
     nama_produk: best ? best.nama : null,

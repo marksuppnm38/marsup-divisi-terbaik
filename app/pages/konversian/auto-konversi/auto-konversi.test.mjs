@@ -545,3 +545,44 @@ test('katalog: nama SET tidak persis tetap menang lewat cakupan kata (bukan kare
   assert.equal(h.kode_produk, 'RB999-KE921-B99-U603');
   assert.equal(h.status, 'REVIEW'); // tidak persis & hanya katalog: tetap diperiksa staff, tapi usulan utamanya benar
 });
+
+// ───────────── Konteks permintaan (SET / INSTRUMENT / UNIT) ─────────────
+const kat = (kode, nama, tipe) => ({ kode_produk: kode, nama_produk: nama, tipe, score: 150 });
+
+test('konteks INSTRUMENT: "Set bein surgery" dicari sebagai instrumen (p_tipe = konteks), bukan produk SET', async () => {
+  const bein = kat('RB-BEIN-1', 'BEIN ROOT ELEVATOR SURGERY', 'INSTRUMENT');
+  const rpc = mockRpc({}, { 'BEIN SURGERY|INSTRUMENT': [bein] });
+  const [it] = parseRequestText('Set bein surgery\t1').items;
+  const h = await resolveItem({ ...it, konteks: 'INSTRUMENT' }, rpc, {});
+  assert.deepEqual(rpc.catalogCalls[0], { q: 'BEIN SURGERY', p_tipe: 'INSTRUMENT' });
+  assert.equal(h.kode_produk, 'RB-BEIN-1');
+  assert.equal(h.konteks, 'INSTRUMENT');
+});
+
+test('konteks: pada skor sama, yang sesuai konteks dipilih; tanpa konteks tetap bukan-SET dulu', async () => {
+  const set = kat('RB999-KE1-B99-U1', 'MINOR SURGERY BASIC S.', 'SET');
+  const ins = kat('RB1-KE1-B000-U07', 'MINOR SURGERY FORCEPS', 'INSTRUMENT');
+  const catalog = { 'MINOR SURGERY|SET': [set, ins], 'MINOR SURGERY': [set, ins] };
+  const [it] = parseRequestText('Minor surgery\t1').items;
+  const hSet = await resolveItem({ ...it, konteks: 'SET' }, mockRpc({}, catalog), {});
+  assert.equal(hSet.kode_produk, 'RB999-KE1-B99-U1');
+  const hTanpa = await resolveItem({ ...it }, mockRpc({}, { 'MINOR SURGERY': [set, ins] }), {});
+  assert.equal(hTanpa.kode_produk, 'RB1-KE1-B000-U07'); // perilaku lama tidak berubah
+});
+
+test('konteks tidak cocok dengan satu-satunya usulan -> REVIEW konteks_beda (tidak AUTO)', async () => {
+  const set = kat('RB999-KE1-B99-U1', 'BEIN SURGERY S.', 'SET');
+  const rpc = mockRpc({}, { 'BEIN SURGERY': [set] }); // varian berfilter INSTRUMENT kosong, fallback tanpa filter ketemu SET
+  const [it] = parseRequestText('Bein surgery\t1').items;
+  const h = await resolveItem({ ...it, konteks: 'INSTRUMENT' }, rpc, {});
+  assert.equal(h.status, 'REVIEW');
+  assert.equal(h.reason_key, 'konteks_beda');
+});
+
+test('konteks null / tak dikenal = perilaku lama', async () => {
+  const set = kat('RB999-KE921-B99-U602', 'DENTAL COMPLETE S.', 'SET');
+  const [it] = parseRequestText('Dental Complete\t1').items;
+  const h = await resolveItem({ ...it, konteks: 'ASAL' }, mockRpc({}, { 'DENTAL COMPLETE': [set] }), {});
+  assert.equal(h.konteks, null);
+  assert.equal(h.kode_produk, 'RB999-KE921-B99-U602');
+});
