@@ -97,7 +97,7 @@ async function writeClip(text) {
 export function createCopyKit(ctx) {
   const { sb, tableBody, cardWrap, showToast } = ctx;
   const $ = (id) => document.getElementById(id);
-  // ctx.ids: id elemen bar salin. Default = bar di list Produk; tampilan lain (mis. Kelompok set di kategori.js)
+  // ctx.ids: id elemen bar salin. Default = bar di list Produk; tampilan lain boleh memakai bar sendiri (dulu: Kelompok set di tab Kategori, sudah dilebur ke list Produk)
   // memakai bar sendiri, jadi dua instance tidak berebut elemen yang sama.
   const barIds = ctx.ids || {};
   const bar = $(barIds.bar || 'copyBar');

@@ -45,10 +45,10 @@ import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
 import { installOrphan } from './orphan.js';
-import { installKategori } from './kategori.js';
 import { createCopyKit } from './copy.js';
 import { createTableColumns } from './kolom-tabel.js';
 import { fetchKeluargaOptions, fetchKeluargaMap, fetchRowsByKeluarga, pesanKeluarga, urutKeluarga } from './keluarga.js';
+import { muatKlasifikasi, resetKlasifikasi, infoKlasifikasi, opsiKlasifikasi, cocokKlas, idsKlasFilter, fetchRowsByIds, pesanKlasifikasi, isKlasDim } from './klasifikasi.js';
 import { installKalkulatorHarga } from './kalkulator-harga.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
@@ -367,10 +367,9 @@ const CRUD_VIEW_LABELS = {
   bulk: 'Bulk Edit',
   sync: 'Sync dari Sheet',
   orphan: 'Orphan / Drift',
-  kategori: 'Kategori & Spesialisasi',
 };
 function switchView(view){
-  ['produk','set','akd','kfa','bulk','sync','orphan','kategori'].forEach(v => {
+  ['produk','set','akd','kfa','bulk','sync','orphan'].forEach(v => {
     document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1)).style.display = (v === view) ? 'block' : 'none';
   });
   const crumbEl = document.getElementById('pw-topbar-crumb-text');
@@ -387,8 +386,6 @@ function switchView(view){
   if (view === 'sync') S.loadSyncUnmatched();
   // 'orphan' juga RELOAD tiap masuk: snapshot manifest diperbarui tiap jam di background.
   if (view === 'orphan') S.loadOrphan();
-  // 'kategori' dimuat SEKALI per mount (hitungan seluruh katalog agak berat); tombol "Muat ulang" di halamannya untuk refresh.
-  if (view === 'kategori' && !kategoriLoadedOnce) { kategoriLoadedOnce = true; S.loadKategori(); }
   // 'set' punya semantik beda dari akd/kfa's "sekali doang" -- dipindah
   // dari listener terpisah yang tadinya nempel di tombol sidebar sendiri
   // (`.sb-item[data-view="set"]`, gak ada lagi): reload SETIAP kali masuk
@@ -402,7 +399,6 @@ function switchView(view){
 let produkLoadedOnce = false;
 let akdLoadedOnce = false;
 let kfaLoadedOnce = false;
-let kategoriLoadedOnce = false;
 _switchView = switchView; // expose to the real top-level setSubroute() far below
 
 // ---- Auth ----
@@ -718,6 +714,11 @@ let produkDistinct = { tipe: [], golongan: [], status_inaproc: [], brand: [], ke
 // filternya sendiri dikerjakan di jalur client (lihat loadProduk) karena RPC get_produk_list tidak mengenal keluarga.
 let produkKeluargaN = new Map(); // nama keluarga -> jumlah varian (label opsi filter)
 const keluargaAktif = () => produkActiveFilters.some(f => f.dim === 'keluarga');
+// Kategori & Spesialisasi (2026-11-21; menggantikan sub-modul Kategori & Spesialisasi): atribut produk dari cache klasifikasi
+// seluruh katalog (klasifikasi.js, dimuat sekali). Dimensi filternya (kategori, spes, kelompok, klas_cek) hanya dikenal client --
+// RPC get_produk_list tidak mengenalnya -- jadi punya jalur client sendiri di loadProduk (pola sama dengan Keluarga set).
+const klasAktif = () => produkActiveFilters.some(f => isKlasDim(f.dim));
+const produkKlasRowCache = new Map(); // produk_id -> { t, row }: baris produk jalur filter klasifikasi (fetchRowsByIds, TTL 2 menit)
 let produkVerifiedIdSet = null; // Set<produk_id> berbadge Verified (RPC get_verified_produk_ids, 1 baris jsonb)
 let produkVerifiedRows = null;  // cache baris produk berbadge (dipakai chip "Verified" — ~700 baris, cukup ditarik sekali)
 let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
@@ -730,6 +731,19 @@ const PRODUK_FILTER_DIMS = [
   { key: 'brand', label: 'Brand', icon: 'ti-building-factory-2', dynamic: 'brand' },
   // Keluarga set: pilih banyak keluarga sekaligus (ada ratusan, jadi ada kotak cari). Hanya menyaring SET.
   { key: 'keluarga', label: 'Keluarga set', icon: 'ti-folders', dynamic: 'keluarga', multi: true, searchable: true },
+  // Kategori & Spesialisasi: opsi dari cache klasifikasi (klasifikasi.js), cakupan produk AKTIF. Kelompok set = Minor / Mayor / Vaginal
+  // dari nama set. Klasifikasi "perlu dicek" = dugaan sistem / belum ada petunjuk / golongan belum dipetakan (penanda ⚠ di tab lama).
+  { key: 'kategori', label: 'Kategori', icon: 'ti-layout-grid', klas: true, multi: true },
+  { key: 'spes', label: 'Spesialisasi', icon: 'ti-stethoscope', klas: true, multi: true, searchable: true },
+  { key: 'kelompok', label: 'Kelompok set', icon: 'ti-stack-2', multi: true, options: [
+      { value: 'minor', label: 'Minor (tanpa vaginal)', chip: 'Minor' },
+      { value: 'mayor', label: 'Mayor (tanpa vaginal)', chip: 'Mayor' },
+      { value: 'vaginal', label: 'Vaginal (termasuk minor & mayor vaginal)', chip: 'Vaginal' },
+  ]},
+  { key: 'klas_cek', label: 'Klasifikasi', icon: 'ti-alert-triangle', options: [
+      { value: 'ya', label: 'Perlu dicek' },
+      { value: 'tidak', label: 'Sudah terpetakan' },
+  ]},
   { key: 'is_active', label: 'Status Aktif', icon: 'ti-toggle-right', options: [
       { value: 'aktif', label: 'Aktif' },
       { value: 'nonaktif', label: 'Nonaktif' },
@@ -955,12 +969,29 @@ function toastKeluargaNeeds(ok){
   _keluargaNeedsToastAt = Date.now();
   showToast(msg, true);
 }
+// Catatan: toastKeluargaNeeds membaca colKit.needsError() apa adanya, jadi kolom Kategori & Spesialisasi yang gagal dimuat ikut ditoast di sini.
+
+// ---- Kategori & Spesialisasi: muat cache klasifikasi (dibagi dengan kolom tabel) ----
+// Gagal (RPC belum terpasang / klasifikasi belum dihitung) TIDAK mengganggu halaman: hanya kolom & filter klasifikasi yang kosong,
+// dengan pesan yang menjelaskan. -> { ok, message }
+let _klasLengkapToastAt = 0;
+async function ensureKlas(){
+  const r = await muatKlasifikasi(sb);
+  if (!r.ok) return { ok: false, message: pesanKlasifikasi(r.error) };
+  const info = r.info;
+  if (info && !info.lengkap && Date.now() - _klasLengkapToastAt > 60000) {
+    _klasLengkapToastAt = Date.now();
+    showToast('Klasifikasi katalog tidak lengkap', 'warning', { detail: `Hanya ${info.terbaca.toLocaleString('id-ID')} dari ${info.total.toLocaleString('id-ID')} baris terbaca, jadi filter dan kolom Kategori / Spesialisasi bisa melewatkan produk.` });
+  }
+  return { ok: true, message: '' };
+}
 
 function invalidateProdukStackCache(){
   produkSearchDirty = true; // search lagi aktif? loadProduk berikutnya harus ambil ulang dari DB, bukan pakai hasil lama
   produkHargaIdSet = null;
   produkVerifiedIdSet = null;
   produkVerifiedRows = null;
+  produkKlasRowCache.clear(); // baris produk jalur filter klasifikasi (bisa baru diedit); klasifikasinya sendiri bukan hasil edit produk
 }
 
 // ---- Tandai Verified MANUAL (jalur cadangan buat produk yang gak kebaca dari bulk TSV) ----
@@ -1017,6 +1048,7 @@ function produkRowMatchesFilter(row, filt){
     case 'link_v6': return filt.value === 'ada' ? !!row.link_v6 : !row.link_v6;
     case 'stok': { const sk = produkStokCache.get(row.id); return !!sk && sk.status === filt.value; }
     case 'keluarga': return (filt.values || [filt.value]).includes(row.keluarga); // row.keluarga diisi attachKeluarga() / view v_produk_keluarga
+    case 'kategori': case 'spes': case 'kelompok': case 'klas_cek': return cocokKlas(filt, row); // cache klasifikasi dimuat ensureKlas() di loadProduk
     default: return true;
   }
 }
@@ -1053,6 +1085,10 @@ const FILTER_COLS_DIM = {
   golongan: ['golongan'],
   brand: ['brand'],
   keluarga: ['keluarga'],
+  kategori: ['kategori'],
+  spes: ['spes'],
+  kelompok: ['kelompok'],
+  klas_cek: ['spes', 'klas_sumber'],
   is_active: ['aktif'],
   status_inaproc: ['status_inaproc', 'link'],
   harga: ['ekat', 'swasta', 'tahun'],
@@ -1091,6 +1127,12 @@ async function loadProduk(q, page){
   if (needsHarga) await ensureProdukHargaSet();
   await ensureVerifiedSet();
   if (mySeq !== produkLoadSeq) return; // sudah ada loadProduk yang lebih baru
+  if (klasAktif()) {
+    // Filter klasifikasi butuh cache seluruh katalog SEBELUM jalur manapun memasang filter (search / Verified / Keluarga / client).
+    const k = await ensureKlas();
+    if (mySeq !== produkLoadSeq) return;
+    if (!k.ok) { produkCount.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">${escapeHtml(k.message)}</td></tr>`; return; }
+  }
   const needsStok = produkActiveFilters.some(f => f.dim === 'stok');
 
   let rows = [];
@@ -1170,6 +1212,26 @@ async function loadProduk(q, page){
     const matcher = PRODUK_FILTERS[produkActiveFilter];
     let filtered = matcher ? kRows.filter(matcher) : kRows;
     produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
+    produkCurrentFilteredFull = filtered;
+    total = filtered.length;
+    rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
+  } else if (klasAktif()) {
+    // Filter Kategori / Spesialisasi / Kelompok set / Klasifikasi tanpa search, tanpa chip Verified, tanpa filter Keluarga.
+    // RPC get_produk_list tidak mengenal dimensi ini (kalau dilempar ke sana, filternya diam-diam hilang), jadi: id produk dari
+    // cache klasifikasi -> baris produknya diambil per id (di-cache 2 menit supaya pindah halaman tidak menarik ulang) -> chip status
+    // + SEMUA filter lain dipasang di client dengan matcher yang sama dengan jalur search / Verified / Keluarga. Urut sama dengan
+    // list biasa (terakhir diubah dulu). Cakupan klasifikasi = produk aktif, jadi produk nonaktif tidak ikut.
+    const ids = idsKlasFilter(produkActiveFilters.filter(f => isKlasDim(f.dim)));
+    const { rows: kRows, error: kErr } = await fetchRowsByIds(sb, ids, PRODUK_LIST_COLUMNS, produkKlasRowCache);
+    if (mySeq !== produkLoadSeq) return;
+    if (kErr) { produkCount.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(kErr.message || String(kErr))}</td></tr>`; return; }
+    if (needsStok && !(await ensureStokForIds(kRows.map(r => r.id)))) {
+      showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
+    }
+    const matcher = PRODUK_FILTERS[produkActiveFilter];
+    let filtered = matcher ? kRows.filter(matcher) : kRows;
+    produkActiveFilters.forEach(f => { filtered = filtered.filter(r => produkRowMatchesFilter(r, f)); });
+    filtered = [...filtered].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
     produkCurrentFilteredFull = filtered;
     total = filtered.length;
     rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
@@ -1398,6 +1460,7 @@ function renderProdukFilterPopStep1(){
     b.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (b.dataset.dim === 'keluarga') await ensureKeluargaOptions(); // ratusan opsi, dimuat sekali saat dimensi pertama kali dibuka
+      if ((PRODUK_FILTER_DIMS.find(d => d.key === b.dataset.dim) || {}).klas) { const k = await ensureKlas(); if (!k.ok) showToast(k.message, true); } // opsi Kategori / Spesialisasi dari cache klasifikasi
       renderProdukFilterPopStep2(b.dataset.dim);
     });
   });
@@ -1405,6 +1468,11 @@ function renderProdukFilterPopStep1(){
 function renderProdukFilterPopStep2(dimKey){
   const dim = PRODUK_FILTER_DIMS.find(d => d.key === dimKey);
   let options = dim.options;
+  if (dim.klas) {
+    // Kategori / Spesialisasi: label opsi memuat jumlah produk aktif (Obgyn (120)); `chip` = nama polos untuk label filter aktif
+    options = (opsiKlasifikasi()[dim.key] || []).map(o => ({ value: o.value, label: `${o.label} (${o.n.toLocaleString('id-ID')})`, chip: o.label }));
+    if (!options.length) options = [{ value: '', label: '(belum ada data terisi)' }];
+  }
   if (dim.dynamic) {
     options = (produkDistinct[dim.dynamic] || []).map(v => ({ value: v, label: v }));
     if (dim.key === 'brand') options = [...options, { value: BRAND_NONE, label: 'Tanpa brand' }]; // produk yang kolom brand-nya masih kosong
@@ -1513,10 +1581,10 @@ function renderProdukFilterChips(){
 // gak keduplikasi/berisiko divergen di 2 tempat.
 async function getRowsToExport(){
   let rowsToExport;
-  if (lastQuery.trim() || produkActiveFilter === 'verified' || keluargaAktif()) {
-    // Search aktif, chip Verified, ATAU filter Keluarga set -> hasil match sudah lengkap di client
-    // (RPC search gak paging; Verified & Keluarga dimuat penuh dari view), filter tambahan sudah
-    // diterapkan di client -> produkCurrentFilteredFull.
+  if (lastQuery.trim() || produkActiveFilter === 'verified' || keluargaAktif() || klasAktif()) {
+    // Search aktif, chip Verified, filter Keluarga set, ATAU filter Kategori / Spesialisasi / Kelompok / Klasifikasi -> hasil match
+    // sudah lengkap di client (RPC search gak paging; Verified & Keluarga dimuat penuh dari view; klasifikasi dari cache + baris per id),
+    // filter tambahan sudah diterapkan di client -> produkCurrentFilteredFull.
     rowsToExport = produkCurrentFilteredFull || [];
   } else {
     // Gak ada search -> tarik SEMUA baris yang cocok chip status + filter tambahan
@@ -1644,10 +1712,10 @@ async function exportTampilanIni(){
   const [okExtra, okStok, okNeeds] = await Promise.all([
     uses.has('extra') ? copyKit.loadExtra(ids) : true,
     uses.has('stok') ? ensureStokForIds(ids) : true,
-    (uses.has('akdNama') || uses.has('keluarga')) ? colKit.loadNeeds(ids) : true,
+    (uses.has('akdNama') || uses.has('keluarga') || uses.has('klas')) ? colKit.loadNeeds(ids) : true,
   ]);
   if (!okExtra || !okNeeds) {
-    // kolom Keluarga set kosong diam-diam di file yang akan di-paste ke sheet itu berbahaya -> batalkan, jelaskan alasannya
+    // kolom Keluarga set / Kategori & Spesialisasi kosong diam-diam di file yang akan di-paste ke sheet atau jadi dasar izin edar berbahaya -> batalkan, jelaskan alasannya
     showToast(!okNeeds && colKit.needsError() ? colKit.needsError() + ' Export dibatalkan.' : 'Gagal mengambil harga / AKD — export dibatalkan', true);
     return;
   }
@@ -1683,6 +1751,9 @@ async function exportTampilanIni(){
   const dateStr = new Date().toISOString().slice(0, 10);
   const parts = describeActiveFilters();
   if (siapJual) parts.push('siap jual (Link V6 bersih + harga E-Katalog)');
+  // Klasifikasi (kategori / spesialisasi) adalah cache yang dihitung berkala di database: tulis umurnya di file, karena file ini bisa jadi dasar pengajuan izin edar.
+  const klasInfo = (uses.has('klas') || klasAktif()) ? infoKlasifikasi() : null;
+  if (klasInfo && klasInfo.dihitungAt) parts.push('klasifikasi dihitung ' + new Date(klasInfo.dihitungAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
   const subtitle = (parts.length ? parts.join(' · ') : 'Semua produk') + ` — per ${dateStr} — ${rows.length.toLocaleString('id-ID')} produk`;
   writeTableXlsx(XLSX, {
     sheetName: siapJual ? 'Pricelist' : 'Produk',
@@ -1908,7 +1979,7 @@ document.addEventListener('keydown', cmdkKeydownHandler);
 // Ctrl+K (di atas), Enter / x / Ctrl+C di baris (copy.js) masih dipasang di tempatnya; di registry ditandai `external`.
 const SEARCH_INPUT_BY_VIEW = {
   produk: 'topSearchInput', set: 'setSearchInput', akd: 'akdSearchBoxInput', kfa: 'kfaSearchBoxInput',
-  sync: 'syncSearchInput', orphan: 'orphanSearchInput', kategori: 'katSearchInput',
+  sync: 'syncSearchInput', orphan: 'orphanSearchInput',
 };
 const SAVE_BTN_BY_OVERLAY = { modalOverlay: 'saveBtn', akdModalOverlay: 'akdSaveBtn', kfaModalOverlay: 'kfaSaveBtn' };
 // Esc = KLIK tombol X dialog paling atas (bukan menutup paksa), jadi guard "perubahan belum disimpan" dan penolakan
@@ -3885,17 +3956,6 @@ function animateProdukRowOut(id){
   S.openAdd = openAdd;
   installKfa(S);
   installOrphan(S);
-  // Tab Kategori & Spesialisasi (kategori.js): klik baris membuka modal produk / detail set yang sudah ada di sini.
-  S.openEdit = openEdit;
-  S.goToSetDetail = goToSetDetail;
-  S.ensureXlsx = ensureXlsx; // export Excel di kategori.js (xlsx-js-style lazy, sama dengan Export Pricelist)
-  // Kelompok set (kategori.js) memakai alur salin yang sama dengan list Produk (copy.js), jadi butuh helper yang sama.
-  S.fetchAkdNoMap = (ids, opts) => fetchAkdNoMap(ids, opts);
-  S.stokOf = (id) => produkStokCache.get(id);
-  S.ensureStok = (ids) => ensureStokForIds(ids);
-  S.stokLabel = STOK_LABEL;
-  S.sealLabel = (st) => SEAL_LABELS[st] || 'Belum ada AKD';
-  installKategori(S);
 
   // Kick off the initial data load now -- moved here from near the top of
   // mount() (see the long comment by the old spot, near the auth section)
@@ -3943,7 +4003,7 @@ export function unmount() {
   exportPanelRepaint = null;
   if (beforeUnloadHandler) window.removeEventListener('beforeunload', beforeUnloadHandler);
   if (copyKitDestroy) { copyKitDestroy(); copyKitDestroy = null; }
-  if (S.destroyKategori) { S.destroyKategori(); S.destroyKategori = null; }
+  resetKlasifikasi(); // cache klasifikasi katalog (klasifikasi.js, level modul): dibuang saat keluar halaman Produk, dimuat ulang kalau dipakai lagi
   if (shortcutsDispose) { shortcutsDispose(); shortcutsDispose = null; }
   filterPopOutsideClickHandler = null;
   resizeHandler = null;

@@ -90,6 +90,11 @@ function isValidSub(module, sub) {
 // is for routes that were NEVER migrated, not one that was retired).
 const RETIRED_REDIRECTS = { 'home': 'dashboard' };
 
+// Sub-route yang dipensiunkan (modulnya sendiri tetap ada). /crud-produk/kategori (tab Kategori & Spesialisasi) dilebur ke list
+// Produk sebagai kolom + filter (app/pages/crud-produk/klasifikasi.js). Bookmark / link lama dialihkan ke Produk, bukan jatuh ke
+// 404 -- yang juga menaikkan penghitung NOT_FOUND_HITS_KEY (lihat escalateMessage) untuk sesuatu yang bukan salah ketik user.
+const RETIRED_SUB_REDIRECTS = { 'crud-produk/kategori': 'crud-produk/produk' };
+
 const DEFAULT_ROUTE = 'dashboard';
 
 // "REMEMBER LAST MODULE" (polishing job -- user report: buka app dari tab
@@ -270,6 +275,11 @@ async function render() {
     module = RETIRED_REDIRECTS[module];
     navigate('/' + module + (sub ? '/' + sub : ''), { replace: true });
     return; // navigate() above already re-runs render() with the new route
+  }
+  const retiredSub = sub && !extra && RETIRED_SUB_REDIRECTS[module + '/' + sub];
+  if (retiredSub) {
+    navigate('/' + retiredSub, { replace: true });
+    return;
   }
   const load = ROUTES[module];
 

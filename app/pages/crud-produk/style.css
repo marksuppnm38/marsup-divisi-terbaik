@@ -346,7 +346,6 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 #viewOrphan .orph-filters:empty{display:none}
 #viewOrphan .orph-alert{margin:16px var(--gutter) 0}
 
-/* ringkasan: satu strip terpadu; warna hanya di ikon */
 #viewOrphan .orph-stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;margin:16px var(--gutter) 18px;border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;background:var(--border)}
 #viewOrphan .orph-stat{min-width:0;padding:12px 16px;border:0;border-radius:0;background:var(--surface);box-shadow:none}
 #viewOrphan .orph-stat::before{display:none}
@@ -463,16 +462,6 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
   #viewBulk .bulk-tab,#viewBulk .bk-compose{transition:none}
 }
 
-/* ---- Tab Kategori & Spesialisasi (kategori.js). Pakai ulang .orph-tab/.orph-seg/.orph-stat dari tab Orphan. ---- */
-#viewKategori .orph-seg{flex-wrap:wrap}
-#viewKategori .kat-filters{display:flex;flex-wrap:wrap;gap:10px 18px;margin:0 0 12px}
-#viewKategori th.num,#viewKategori td.num{text-align:right}
-#viewKategori .kat-cell{appearance:none;background:none;border:0;font:inherit;color:inherit;cursor:pointer;padding:4px 8px;border-radius:var(--radius);font-family:var(--font-mono);font-size:12.5px}
-#viewKategori .kat-cell:hover{background:var(--accent-soft);color:var(--accent-text)}
-#viewKategori .kat-warn{color:var(--amber);font-size:10.5px;margin-left:4px}
-#viewKategori .kat-zero{color:var(--text-muted)}
-#viewKategori .kat-note{font-size:12px;color:var(--text-muted);margin-top:10px}
-#viewKategori .produk-head-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;align-items:center}
 
 /* ============================================================
    REDESIGN 2026-11-11 -- modul CRUD Produk
@@ -762,29 +751,12 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 #appWrap .set-list-row .sl-dash{color:var(--text-muted)}
 #appWrap #setListBody > .stub-box,#appWrap #setListBody > .sl-state{margin:20px var(--gutter);color:var(--text-muted);font-size:13px}
 
-/* ---- Kategori & Spesialisasi ---- */
-#viewKategori .orph-tabs{flex:none;margin:0;padding:0 calc(var(--gutter) - 12px)}
-#viewKategori #katToolbar{padding-top:12px}
-#viewKategori .kat-filters{flex:none;margin:0;padding:10px var(--gutter) 12px;gap:8px 22px}
-#viewKategori .kat-filters:empty{display:none}
-#viewKategori .orph-flabel,#viewOrphan .orph-flabel{font-size:12px;font-weight:500;color:var(--text-muted)}
-#viewKategori .orph-seg,#viewOrphan .orph-seg{padding:0;background:none;gap:6px;flex-wrap:wrap}
-#viewKategori .orph-seg button,#viewOrphan .orph-seg button{padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-secondary);font-weight:500}
-#viewKategori .orph-seg button:hover,#viewOrphan .orph-seg button:hover{border-color:var(--border-strong);color:var(--text)}
-#viewKategori .orph-seg button.active,#viewOrphan .orph-seg button.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-text);box-shadow:none;font-weight:600}
-#viewKategori .orph-seg .fc-count,#viewOrphan .orph-seg .fc-count{font-family:var(--font-body);font-size:11.5px;opacity:.8;font-variant-numeric:tabular-nums}
-#viewKategori .orph-alert{margin:16px var(--gutter)}
-#viewKategori .kat-note{margin:12px 0 28px;padding:0 var(--gutter);line-height:1.55;max-width:none}
-/* ringkasan: satu strip terpadu, bukan deretan kartu */
-#katBody > .orph-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;margin:18px var(--gutter) 20px;border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;background:var(--border)}
-#katBody > .orph-stats .orph-stat{padding:13px 16px;border:0;border-radius:0;background:var(--surface);box-shadow:none}
-#katBody > .orph-stats .orph-stat::before{display:none}
-#katBody > .orph-stats button.orph-stat:hover{background:var(--surface-2);box-shadow:none}
-#katBody > .orph-stats button.orph-stat:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-#katBody > .orph-stats .orph-stat-val{font-size:22px}
-#katBody > .orph-stats .is-pending .orph-stat-sub{color:var(--amber-text)}
-#viewKategori .kat-cell{min-width:44px;text-align:right}
-#viewKategori td.num,#viewKategori th.num{text-align:right}
+#viewOrphan .orph-flabel{font-size:12px;font-weight:500;color:var(--text-muted)}
+#viewOrphan .orph-seg{padding:0;background:none;gap:6px;flex-wrap:wrap}
+#viewOrphan .orph-seg button{padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-secondary);font-weight:500}
+#viewOrphan .orph-seg button:hover{border-color:var(--border-strong);color:var(--text)}
+#viewOrphan .orph-seg button.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-text);box-shadow:none;font-weight:600}
+#viewOrphan .orph-seg .fc-count{font-family:var(--font-body);font-size:11.5px;opacity:.8;font-variant-numeric:tabular-nums}
 
 @media (max-width:900px){
   #appWrap .set-cols{display:none}
@@ -796,8 +768,6 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
   #appWrap{--gutter:14px}
   #appWrap .vtools .view-toggle{margin-left:0}
 }
-/* matriks Kategori: kolom angka selebar tetap supaya tidak terpisah jauh dari labelnya */
-#katBody > .table-card th.num,#katBody > .table-card td.num{width:150px}
 
 /* ============================================================
    POLISH TOOLBAR PRODUK -- 2026-11-11
@@ -1038,17 +1008,6 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .kalk-pagu-tax{margin-left:auto;height:26px;padding:0 6px;font-size:12px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface);color:var(--text)}
 .kalk-pagu-tax[hidden],#kalkPaguBox[hidden]{display:none}
 .kalk-in input:disabled{opacity:.55;cursor:not-allowed}
-/* ---- Kelompok set (kategori.js): alur salin sama dengan list Produk (copy.js), jadi aturan #tableBody diulang untuk #katSetBody ---- */
-#katSetBody tr.is-selected td,#katSetBody tr.is-selected:hover td{background:var(--accent-soft)}
-#katSetBody .kode-cell{position:relative;white-space:nowrap;color:var(--text);font-size:12px;padding-left:32px}
-#viewKategori #katKelompok thead th:first-child{padding-left:32px}
-#katSetBody .sel-input{left:9px}
-#katSetBody tr:hover .sel-input,#katSetBody.has-sel .sel-input{opacity:1}
-#katSetBody td:hover .cp-btn{opacity:1}
-#katSetBody tr:hover .cp-more,#katSetBody tr:focus-within .cp-more{opacity:1}
-#katSetBody tr:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-#viewKategori #katKelompok th.c-act,#viewKategori #katKelompok td.c-act{width:1%;padding-left:6px;white-space:nowrap;text-align:right}
-@media (hover:none),(max-width:760px){#katSetBody .sel-input{left:9px;opacity:1}}
 /* ---- Filter "Keluarga set": kotak cari di popover Tambah Filter (ratusan opsi) ---- */
 .afp-search{width:100%;box-sizing:border-box;margin:0 0 8px;padding:8px 11px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font:inherit;font-size:13px}
 .afp-search:focus{outline:2px solid var(--accent);outline-offset:-1px;background:var(--surface)}

@@ -20,8 +20,12 @@
 //   - Nama AKD (deskripsi AKD) dan Keluarga set: data baru, diambil modul ini sendiri HANYA kalau kolomnya tampil.
 //     Keluarga set dibaca dari baris kalau sudah ada (jalur filter Keluarga memuat baris dari view v_produk_keluarga),
 //     kalau belum dari view yang sama per id halaman (lihat keluarga.js).
+//   - Kategori, Spesialisasi, Jenis, Sumber klasifikasi (`needs: 'klas'`): dari cache klasifikasi seluruh katalog
+//     (klasifikasi.js, dimuat sekali lalu dibaca per id -- sama dengan yang dipakai filternya). Kelompok set tidak butuh
+//     data apa pun: murni turunan nama set.
 import { parseLinkV6, sembunyikanAkdPlaceholder } from './ui-utils.js';
 import { fetchKeluargaMap, pesanKeluarga } from './keluarga.js';
+import { muatKlasifikasi, klasOf, pesanKlasifikasi, katNama, spesTeks, spesNama, sumberLabel, perluCek, kelompokLabel } from './klasifikasi.js';
 
 const LS_KEY = 'pnm_crud_produk_tbl_cols_v1';
 
@@ -42,7 +46,7 @@ const nilaiOf = (p, c) => {
   return qty != null && Number.isFinite(qty) && qty > 0 && ekat != null ? qty * ekat : null;
 };
 
-// ctx tiap sel: { h: helpers, x: harga/AKD (atau null), akdNama: [{no, nama}], flags: html "Perlu dicek" }
+// ctx tiap sel: { h: helpers, x: harga/AKD (atau null), akdNama: [{no, nama}], keluarga, klas: klasifikasi (atau undefined), flags: html "Perlu dicek" }
 // td: kelas tambahan sel; num: rata kanan angka; locked: tidak bisa disembunyikan/dipindah.
 export const TABLE_COLS = [
   { key: 'kode', label: 'Kode Produk', locked: true, td: 'kode-cell',
@@ -61,6 +65,36 @@ export const TABLE_COLS = [
   { key: 'keluarga', label: 'Keluarga set', td: 'tipe-cell', needs: 'keluarga',
     render: (p, c) => c.keluarga ? esc(c.keluarga) : '—',
     xl: [{ id: 'keluarga', label: 'Keluarga Set', w: 34, get: (p, c) => c.keluarga || null }] },
+  // Kelompok set = Minor / Mayor / Vaginal, dari NAMA set (bukan database), jadi set baru langsung ikut. Hanya SET.
+  { key: 'kelompok', label: 'Kelompok set (Minor/Mayor/Vaginal)', td: 'tipe-cell',
+    render: (p) => { const k = kelompokLabel(p); return k ? esc(k) : '—'; },
+    xl: [{ label: 'Kelompok Set', w: 18, get: (p) => kelompokLabel(p) }] },
+  // Kategori / Spesialisasi / Jenis / Sumber klasifikasi: atribut hasil klasifikasi katalog (klasifikasi.js). Cakupan produk
+  // AKTIF; produk nonaktif tidak punya klasifikasi. Unit & alat tidak punya spesialisasi (sel "—", bukan "Tanpa spesialisasi").
+  { key: 'kategori', label: 'Kategori', td: 'tipe-cell', needs: 'klas',
+    render: (p, c) => (c.klas ? esc(katNama(c.klas.kategori)) : '—'),
+    xl: [{ label: 'Kategori', w: 20, get: (p, c) => (c.klas ? katNama(c.klas.kategori) : null) }] },
+  { key: 'spes', label: 'Spesialisasi', td: 'tipe-cell', needs: 'klas',
+    render: (p, c) => {
+      const t = spesTeks(c.klas);
+      if (t == null) return '—';
+      return `${esc(t)}${c.klas.mikro ? ' <span class="tipe-chip">mikro</span>' : ''}${perluCek(c.klas) ? ' <span class="flag flag-warn" title="Klasifikasi ini dugaan sistem / belum ada petunjuk — perlu dicek">dicek</span>' : ''}`;
+    },
+    xl: [{ label: 'Spesialisasi', w: 24, get: (p, c) => spesTeks(c.klas) }] },
+  { key: 'jenis', label: 'Jenis (instrumen)', td: 'tipe-cell', needs: 'klas',
+    render: (p, c) => (c.klas && c.klas.jenis ? esc(spesNama(c.klas.jenis)) : '—'),
+    xl: [{ label: 'Jenis', w: 18, get: (p, c) => (c.klas && c.klas.jenis ? spesNama(c.klas.jenis) : null) }] },
+  // Dua kolom Excel: sumbernya + penanda "perlu dicek" (dasar menyaring dugaan sebelum dipakai untuk pengajuan izin edar).
+  { key: 'klas_sumber', label: 'Sumber klasifikasi', td: 'tipe-cell', needs: 'klas',
+    render: (p, c) => {
+      if (!c.klas) return '—';
+      const l = sumberLabel(c.klas);
+      return l ? (perluCek(c.klas) ? `<span class="flag flag-warn">${esc(l)}</span>` : esc(l)) : '—';
+    },
+    xl: [
+      { label: 'Sumber Klasifikasi', w: 24, get: (p, c) => sumberLabel(c.klas) || null },
+      { label: 'Klasifikasi Perlu Dicek', fmt: 'center', w: 14, get: (p, c) => (perluCek(c.klas) ? 'Ya' : null) },
+    ] },
   { key: 'brand', label: 'Brand', td: 'tipe-cell',
     render: (p) => p.brand ? esc(p.brand) : '—',
     xl: [{ label: 'Brand', fmt: 'center', w: 12, get: (p) => p.brand || null }] },
@@ -127,6 +161,8 @@ export const COL_PRESETS = [
   { id: 'akd', label: 'AKD lengkap', cols: ['nama', 'no_akd', 'nama_akd', 'status_inaproc'] },
   // Per keluarga: set dikelompokkan ke keluarganya (MAYOR S. 2 -> MAYOR S), cocok dikombinasi filter Brand / Link V6 lalu paste ke sheet DB
   { id: 'keluarga', label: 'Per keluarga', cols: ['nama', 'keluarga', 'brand', 'link', 'aktif'], siapJual: false },
+  // Kategori & spesialisasi: dasar pengajuan nomor izin edar (pengganti tab lama). Kombinasikan dengan filter Kategori / Spesialisasi.
+  { id: 'klasifikasi', label: 'Kategori & spesialisasi', cols: ['nama', 'tipe', 'kategori', 'spes', 'jenis', 'golongan', 'klas_sumber'], siapJual: false },
   { id: 'audit', label: 'Audit lengkap', cols: ['nama', 'tipe', 'golongan', 'brand', 'no_akd', 'akd', 'status_inaproc', 'ekat', 'swasta', 'tahun', 'stok', 'nilai', 'aktif', 'link', 'verified'], siapJual: false },
 ];
 const DEFAULT_VISIBLE = COL_PRESETS[0].cols;
@@ -227,12 +263,21 @@ export function createTableColumns(opts) {
     return true;
   }
 
+  // ---------- data tambahan: Kategori & Spesialisasi ----------
+  // Cache seluruh katalog dimuat sekali oleh klasifikasi.js (dibagi dengan filter); setelahnya cuma baca Map, jadi
+  // ganti halaman tidak memicu request. Gagal muat (RPC belum terpasang / belum dihitung) -> kolom kosong + pesan.
+  async function loadKlas() {
+    const r = await muatKlasifikasi(sb);
+    if (!r.ok) { console.warn('kolom-tabel: gagal ambil klasifikasi', r.error && (r.error.message || r.error)); needsError = pesanKlasifikasi(r.error); return false; }
+    return true;
+  }
+
   // ---------- gambar tabel ----------
   function renderHead() {
     headRow.innerHTML = visibleCols().map((c) => `<th${c.num ? ' class="num"' : ''}>${esc(c.label)}</th>`).join('')
       + '<th class="c-act"><span class="sr-only">Salin</span></th>';
   }
-  const ctxOf = (p, extraCtx) => ({ h, x: h.extraOf(p.id), akdNama: akdNamaCache.get(p.id) || [], keluarga: p.keluarga || keluargaCache.get(p.id) || '', flags: '', flagsText: '', ...extraCtx });
+  const ctxOf = (p, extraCtx) => ({ h, x: h.extraOf(p.id), akdNama: akdNamaCache.get(p.id) || [], keluarga: p.keluarga || keluargaCache.get(p.id) || '', klas: klasOf(p.id), flags: '', flagsText: '', ...extraCtx });
   const xcols = () => visibleCols().flatMap((c) => (c.xl || []).map((x) => ({ ...x, key: c.key })));
   function rowHtml(p, extraCtx) {
     const ctx = ctxOf(p, extraCtx);
@@ -349,22 +394,23 @@ export function createTableColumns(opts) {
     rowHtml,
     /** jumlah kolom di tabel (kolom data + kolom aksi) -> untuk colspan baris status */
     span() { return visibleCols().length + 1; },
-    /** Muat data tambahan yang dibutuhkan kolom yang sedang tampil (Nama AKD, Keluarga set). false = ada yang gagal (lihat needsError()). */
+    /** Muat data tambahan yang dibutuhkan kolom yang sedang tampil (Nama AKD, Keluarga set, Kategori & Spesialisasi). false = ada yang gagal (lihat needsError()). */
     async loadNeeds(ids) {
       const cols = visibleCols(), jobs = [];
       needsError = '';
       if (cols.some((c) => c.needs === 'akdNama')) jobs.push(loadAkdNama(ids));
       if (cols.some((c) => c.needs === 'keluarga')) jobs.push(loadKeluarga(ids));
+      if (cols.some((c) => c.needs === 'klas')) jobs.push(loadKlas());
       return (await Promise.all(jobs)).every(Boolean);
     },
-    /** Pesan kegagalan muat kolom tambahan terakhir (khusus Keluarga set; '' kalau tidak ada / bukan dari Keluarga). */
+    /** Pesan kegagalan muat kolom tambahan terakhir (Keluarga set / Kategori & Spesialisasi; '' kalau tidak ada / Nama AKD yang gagal). */
     needsError() { return needsError; },
     // ---------- export: "yang terlihat di tabel = yang diexport" ----------
     /** Kolom Excel sesuai kolom yang tampil sekarang (urutan sama): [{ id?, key, label, fmt, w, f? }]. */
     exportColumns() { return xcols().map(({ get, ...rest }) => rest); },
     /** Nilai satu baris, sejajar dengan exportColumns(). extraCtx: { flagsText }. */
     exportRow(p, extraCtx) { const ctx = ctxOf(p, extraCtx); return xcols().map((x) => x.get(p, ctx)); },
-    /** Data apa yang harus dimuat dulu supaya semua kolom yang tampil terisi: Set('extra' | 'stok' | 'akdNama'). */
+    /** Data apa yang harus dimuat dulu supaya semua kolom yang tampil terisi: Set('extra' | 'stok' | 'akdNama' | 'keluarga' | 'klas'). */
     exportUses() {
       const u = new Set();
       visibleCols().forEach((c) => { (c.uses || []).forEach((k) => u.add(k)); if (c.needs) u.add(c.needs); });

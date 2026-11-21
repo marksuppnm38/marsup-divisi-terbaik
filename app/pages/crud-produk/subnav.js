@@ -13,8 +13,9 @@
 //
 // id here is the URL sub-segment (`#crud-produk/<id>`) AND is passed
 // straight into crud-produk's existing switchView(id) — the two need to
-// stay in sync (same 8 values: produk/set/akd/kfa/bulk/sync/orphan/kategori -- 'sync'
-// added for the "produk kepantau di sheet tapi belum ada di DB" catcher).
+// stay in sync (same 7 values: produk/set/akd/kfa/bulk/sync/orphan -- 'sync'
+// added for the "produk kepantau di sheet tapi belum ada di DB" catcher; 'kategori' (Kategori &
+// Spesialisasi) was folded into the Produk list as columns + filters, see klasifikasi.js).
 // If index.js's switchView() ever gets another view, add it here too,
 // and vice versa.
 export const CRUD_PRODUK_SUBNAV = [
@@ -25,5 +26,4 @@ export const CRUD_PRODUK_SUBNAV = [
   { id: 'bulk', title: 'Bulk Edit', icon: 'ti-table' },
   { id: 'sync', title: 'Sync dari Sheet', icon: 'ti-refresh' },
   { id: 'orphan', title: 'Orphan / Drift', icon: 'ti-git-compare' },
-  { id: 'kategori', title: 'Kategori & Spesialisasi', icon: 'ti-category-2' },
 ];
