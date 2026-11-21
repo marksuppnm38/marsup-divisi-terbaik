@@ -295,6 +295,9 @@ const TIPE_TO_AKD = { INSTRUMENT: 'satuan', SET: 'set', UNIT: 'unit' };
 function verifiedBadgeHtml(isVerified){
   return isVerified ? ' <i class="ti ti-rosette-discount-check-filled vbadge" title="Verified Product — tayang di INAPROC"></i>' : '';
 }
+// Tiga keadaan: set Verified belum tiba (null) = skeleton, BUKAN "tidak verified". Baru setelah set ada, badge muncul atau tidak.
+const SK_BADGE = ' <span class="sk sk-badge" aria-hidden="true"></span>';
+
 
 // Penanda "baru diubah" (<24 jam): teks kecil dengan waktu relatif, bukan titik biru.
 // Titik tanpa label gak ngasih tau apa-apa sampai di-hover; teks langsung kebaca.
@@ -682,6 +685,10 @@ const copyKit = createCopyKit({
     ...(window.PNMAuth?.can?.('hapus') === false ? [] : [{ key: 'hapus', label: 'Hapus produk…', icon: 'trash', danger: true, run: () => deleteProdukInner(p.id, p.kode_produk) }]),
   ],
 });
+// Verified tiga keadaan: set belum tiba (null) = skeleton, bukan "tidak verified". Satu scope dengan produkVerifiedIdSet (mount).
+function verifiedBadgeFor(id){
+  return produkVerifiedIdSet ? verifiedBadgeHtml(produkVerifiedIdSet.has(id)) : SK_BADGE;
+}
 // Kolom tabel Produk yang bisa diatur (kolom-tabel.js): tampil/sembunyi, urutan, preset. Disimpan di localStorage.
 const colKit = createTableColumns({
   sb,
@@ -692,7 +699,7 @@ const colKit = createTableColumns({
     btn: (key, label) => copyKit.btn(key, label),
     moreCell: (p) => copyKit.moreCell(p),
     recent: (updatedAt) => recentBadgeHtml(updatedAt),
-    verified: (id) => verifiedBadgeHtml(produkVerifiedIdSet.has(id)),
+    verified: (id) => verifiedBadgeFor(id),
     seal: (p) => sealHtml(p.status_akd, p.id),
     akdNoOf: (id) => copyKit.akdOf(id),
     extraOf: (id) => copyKit.extraOf(id),
@@ -791,6 +798,10 @@ let produkVerifiedIdSet = null; // Set<produk_id> berbadge Verified (RPC get_ver
 let produkVerifiedRows = null;  // cache baris produk berbadge (dipakai chip "Verified" — ~700 baris, cukup ditarik sekali)
 let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
 let produkLastTotal = 0; // jumlah hasil filter terakhir -> ringkasan di menu Export
+// Total daftar biasa (chip status, tanpa search / filter tambahan). Dipakai ulang HANYA saat user cuma pindah halaman
+// (tombol paging), dan dibuang oleh invalidateProdukStackCache() (simpan / hapus / bulk / verified) serta berumur maks. 5 menit.
+let produkTotalCache = null; // { key, total, t }
+const PRODUK_TOTAL_TTL_MS = 5 * 60 * 1000;
 let produkCurrentFilteredFull = null; // hasil filter lengkap dari jalur search (client-side match) -> sumber Download Excel pas search aktif
 
 const PRODUK_FILTER_DIMS = [
@@ -877,6 +888,8 @@ function stokCellHtml(id){
 }
 // Versi satu baris buat kartu (tampilan grid).
 function stokPillHtml(id){
+  if (produkPhase.stok === 'loading') return '<span class="sk sk-pill" aria-hidden="true"></span>';
+  if (produkPhase.stok === 'error') return '<button type="button" class="sk-fail" data-retry title="Stok gagal dimuat. Klik untuk mencoba lagi">Stok gagal dimuat</button>';
   const sk = produkStokCache.get(id);
   if (!sk || !STOK_LABEL[sk.status]) return '';
   const qty = Number(sk.qty);
@@ -1072,6 +1085,7 @@ function invalidateProdukStackCache(){
   produkVerifiedIdSet = null;
   produkVerifiedRows = null;
   produkPrefetch = null; // hasil prefetch lahir sebelum edit ini
+  produkTotalCache = null; // total lama bisa salah setelah tulis
   _verifiedGen++; _verifiedInflight = null;
   produkKlasRowCache.clear(); // baris produk jalur filter klasifikasi (bisa baru diedit); klasifikasinya sendiri bukan hasil edit produk
 }
@@ -1182,7 +1196,8 @@ function produkAutoCols(){
   return [...new Set(keys)];
 }
 
-async function loadProduk(q, page){
+async function loadProduk(q, page, opts){
+  const pageOnly = !!(opts && opts.pageOnly); // true hanya dari tombol paging: filter / search tidak berubah, total boleh dipakai ulang
   const newQ = (q ?? lastQuery ?? '').trim();
   const searchChanged = newQ !== (lastQuery ?? '').trim();
   // Query ulang ke DB kalau: kata kunci berganti, data baru berubah (dirty), atau dipanggil tanpa argumen
@@ -1200,7 +1215,7 @@ async function loadProduk(q, page){
   colKit.setAuto(produkAutoCols()); // kolom ikut filter yang aktif
   colKit.renderHead();
 
-  tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Memuat data...</td></tr>`;
+  tableBody.innerHTML = produkSkeletonRows();
   cardWrap.innerHTML = '';
   produkCount.textContent = 'Memuat...';
 
@@ -1353,9 +1368,10 @@ async function loadProduk(q, page){
     const to = from + PRODUK_PAGE_SIZE - 1;
     // Keadaan awal (halaman 1, chip Semua) bisa memakai hasil prefetch yang berangkat di awal mount(); selain itu / kalau gagal: query biasa.
     let res = (produkPage === 1 && produkActiveFilter === 'all') ? await (takeProdukPrefetch('list') || Promise.resolve(null)) : null;
+    const reuseTotal = pageOnly && !!produkTotalCache && produkTotalCache.key === produkActiveFilter && (Date.now() - produkTotalCache.t) < PRODUK_TOTAL_TTL_MS;
     if (!res || res.error) {
       let query = sb.from('produk')
-        .select(PRODUK_LIST_COLUMNS, { count: 'exact' });
+        .select(PRODUK_LIST_COLUMNS, reuseTotal ? undefined : { count: 'exact' }); // pindah halaman: lewati hitung total
       query = applyProdukFilterToQuery(query, produkActiveFilter);
       res = await query
         .order('updated_at', { ascending: false })
@@ -1364,7 +1380,8 @@ async function loadProduk(q, page){
     const { data, error, count } = res;
     if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
     rows = data || [];
-    total = count || 0;
+    if (count == null && reuseTotal) total = produkTotalCache.total;
+    else { total = count || 0; produkTotalCache = { key: produkActiveFilter, total, t: Date.now() }; }
   }
 
  // FIX: loadProduk() ini async dengan beberapa await ke Supabase di atas --
@@ -1384,7 +1401,7 @@ async function loadProduk(q, page){
     (produkActiveFilters.length ? `, ${produkActiveFilters.length} filter tambahan aktif` : '');
   renderPgBar(document.getElementById('produkPagination'), {
     page: produkPage, pageSize: PRODUK_PAGE_SIZE, total,
-    onPageChange: (p) => loadProduk(qq, p)
+    onPageChange: (p) => loadProduk(qq, p, { pageOnly: true })
   });
 
   // Hapus item terakhir di halaman 2+ -> halaman ini kosong padahal masih ada data di halaman sebelumnya: mundur otomatis.
@@ -1415,36 +1432,121 @@ async function loadProduk(q, page){
   // RPC) -- just never applied here. Reusing that same cached, RPC-backed
   // Set instead of a fresh row-limited query fixes it the same way.
   perfMark('daftar-diterima');
-  const [hargaExistIds, , , needsOk] = await Promise.all([fetchHargaExistForIds(rows.map(r => r.id)), ensureStokForIds(rows.map(r => r.id)), copyKit.loadExtra(rows.map(r => r.id)), colKit.loadNeeds(rows.map(r => r.id)), verifiedP]);
-  perfMark('tambahan-selesai');
-  if (mySeq !== produkLoadSeq || !mountedContainer) return; // ada await lagi di atas: cek ulang
-  produkHargaExistIds = hargaExistIds;
-  toastKeluargaNeeds(needsOk); // kolom Keluarga set gagal dimuat (mis. migrasi belum dijalankan) -> kolomnya kosong, user diberi tahu
-
+  // Baris langsung dilukis begitu daftar tiba. Harga, stok, No. AKD, Verified, dan kolom tambahan menyusul LEWAT PATCH SEL
+  // (per data-id): sebelum datanya ada sel berisi skeleton, bukan "—" / "Tanpa harga" yang berarti "kosong". Kalau satu bagian gagal,
+  // hanya selnya yang menampilkan "gagal, coba lagi"; tabel tetap tampil.
+  if (!mountedContainer) return;
+  if (mySeq !== produkLoadSeq) return;
+  const ids = rows.map(r => r.id);
   produkPageRows = rows;
+  produkRowById = new Map(rows.map(r => [String(r.id), r]));
+  produkHargaExistIds = new Set();
+  setProdukPhase('harga', 'loading');
+  setProdukPhase('stok', ids.every(id => stokFresh(id)) ? 'ok' : 'loading');
+  setProdukPhase('extra', ids.every(id => copyKit.extraOf(id)) ? 'ok' : 'loading');
+  setProdukPhase('needs', colKit.hasNeeds() ? 'loading' : 'ok');
   copyKit.setPage(rows);
-  cardWrap.innerHTML = '';
   paintProdukRows();
-  rows.forEach(p => {
-    const flagsHtml = produkFlagsHtml(p);
+  paintProdukCards();
+  requestAnimationFrame(() => perfMark('baris-terlihat'));
+  await runProdukExtras(ids, mySeq, ['harga', 'stok', 'extra', 'needs', 'verified']);
+  if (mySeq !== produkLoadSeq || !mountedContainer) return;
+  perfMark('tambahan-selesai');
+  perfReport();
+}
+
+// ---- Data tambahan baris Produk: tiap jenis jalan sendiri, selesai sendiri, mengisi selnya sendiri. ----
+// Fase per jenis: 'ok' | 'loading' | 'error'. produkPhase dipakai kartu + penanda; colKit.setPhase dipakai sel tabel.
+const produkPhase = { extra: 'ok', stok: 'ok', harga: 'ok', needs: 'ok' };
+let produkRowById = new Map(); // String(id) -> baris halaman yang tampil (untuk patch sel)
+function setProdukPhase(kind, state){ produkPhase[kind] = state; colKit.setPhase(kind, state); }
+const stokFresh = (id) => { const c = produkStokCache.get(id); return !!c && (Date.now() - c.t) <= STOK_TTL_MS; };
+
+function runProdukExtras(ids, seq, kinds){
+  const alive = () => seq === produkLoadSeq && !!mountedContainer;
+  // Satu jenis data: jalankan, catat hasil, isi sel yang bergantung padanya. Gagal / melempar = fase 'error', bukan tabel kosong.
+  const settle = (kind, job) => Promise.resolve(job).then(
+    (ok) => ok !== false,
+    (e) => { console.warn('crud-produk: gagal memuat data ' + kind, e); return false; }
+  ).then((ok) => {
+    if (!alive()) return ok;
+    if (kind !== 'verified') setProdukPhase(kind, ok ? 'ok' : 'error');
+    patchProdukCells([kind]);
+    return ok;
+  });
+  const jobs = {
+    harga: () => fetchHargaExistForIds(ids).then((set) => { if (!set) return false; if (alive()) produkHargaExistIds = set; return true; }),
+    stok: () => ensureStokForIds(ids),
+    extra: () => copyKit.loadExtra(ids),
+    needs: () => colKit.loadNeeds(ids).then((ok) => { if (alive()) toastKeluargaNeeds(ok); return ok; }),
+    verified: () => ensureVerifiedSet(),
+  };
+  return Promise.all(kinds.map((k) => settle(k, jobs[k]())));
+}
+
+// Klik "gagal, coba lagi": ulangi hanya jenis data yang gagal, untuk halaman yang sedang tampil.
+function retryProdukPhases(){
+  const kinds = ['harga', 'stok', 'extra', 'needs'].filter((k) => produkPhase[k] === 'error');
+  if (!kinds.length || !produkPageRows.length) return;
+  kinds.forEach((k) => setProdukPhase(k, 'loading'));
+  patchProdukCells(kinds);
+  runProdukExtras(produkPageRows.map(r => r.id), produkLoadSeq, kinds);
+}
+tableBody.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-retry]');
+  if (!b) return;
+  e.stopPropagation(); e.preventDefault(); // jangan ikut membuka modal edit baris
+  retryProdukPhases();
+}, true);
+cardWrap.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-retry]');
+  if (!b) return;
+  e.stopPropagation(); e.preventDefault();
+  retryProdukPhases();
+}, true);
+
+// Isi ulang hanya sel / bagian kartu yang bergantung pada `kinds`. Elemen baris & kartu tetap (fokus, hover, centang aman).
+function patchProdukCells(kinds){
+  colKit.patch(kinds, (id) => produkRowById.get(String(id)), (p) => ({ flags: produkFlagsHtml(p) }));
+  if (kinds.some((k) => k !== 'needs')) {
+    cardWrap.querySelectorAll('.prod-card').forEach((card) => {
+      const p = produkRowById.get(String(card.dataset.id));
+      if (p) card.innerHTML = cardInnerHtml(p);
+    });
+  }
+}
+
+function produkSkeletonRows(n = 8){
+  const w = [70, 92, 46, 58, 52, 40, 64];
+  const span = colKit.span();
+  const row = '<tr class="sk-row" aria-hidden="true">' + Array.from({ length: span }, (_, i) => `<td><span class="sk" style="width:${w[i % w.length]}%"></span></td>`).join('') + '</tr>';
+  return row.repeat(n);
+}
+
+function cardInnerHtml(p){
+  const seal = produkPhase.extra === 'loading' ? '<span class="sk sk-pill" aria-hidden="true"></span>' : sealHtml(p.status_akd, p.id);
+  return `
+    ${copyKit.moreBtnCard(p)}
+    <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</div>
+    <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeFor(p.id)}</div>
+    <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}${p.brand ? ' · ' + escapeHtml(p.brand) : ''}</span>${seal}</div>
+    <div class="pc-foot">${stokPillHtml(p.id)}${produkFlagsHtml(p)}</div>
+  `;
+}
+function paintProdukCards(){
+  cardWrap.innerHTML = '';
+  produkPageRows.forEach(p => {
     const card = document.createElement('div');
     card.className = 'prod-card';
     card.dataset.id = p.id;
     card.tabIndex = 0; // bisa dijangkau keyboard, sama seperti baris tabel: j/k, Enter/Spasi buka, x pilih
-    card.innerHTML = `
-      ${copyKit.moreBtnCard(p)}
-      <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</div>
-      <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeHtml(produkVerifiedIdSet.has(p.id))}</div>
-      <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}${p.brand ? ' · ' + escapeHtml(p.brand) : ''}</span>${sealHtml(p.status_akd, p.id)}</div>
-      <div class="pc-foot">${stokPillHtml(p.id)}${flagsHtml}</div>
-    `;
+    card.innerHTML = cardInnerHtml(p);
     card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     card.addEventListener('keydown', (e) => {
       if (e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); card.click(); }
     });
     cardWrap.appendChild(card);
   });
-  requestAnimationFrame(() => { perfMark('baris-terlihat'); perfReport(); });
 }
 
 // ---- Baris tabel Produk. Dipisah dari loadProduk() supaya ganti kolom (tombol "Kolom") cukup
@@ -1454,11 +1556,13 @@ let produkHargaExistIds = new Set(); // produk_id di halaman ini yang sudah puny
 
 // "Perlu dicek": teks berwarna, bukan ikon tanpa label. Satu kata kerja per masalah.
 function produkFlagsHtml(p){
-  const noHarga = !produkHargaExistIds.has(p.id);
   const noLink = p.status_inaproc === 'Disetujui' && !p.link_v6;
   const flags = [];
   if (noLink) flags.push('<span class="flag flag-bad" title="Sudah disetujui INAPROC tapi belum ada Link V6">Belum ada link V6</span>');
-  if (noHarga) flags.push('<span class="flag flag-warn" title="Belum ada harga EKATALOG">Tanpa harga</span>');
+  // Tiga keadaan untuk harga: memuat = skeleton, gagal = "belum dicek" (bukan klaim "tanpa harga"), baru setelah data ada boleh "Tanpa harga".
+  if (produkPhase.harga === 'loading') flags.push('<span class="sk sk-flag" aria-hidden="true"></span>');
+  else if (produkPhase.harga === 'error') flags.push('<button type="button" class="sk-fail" data-retry title="Cek harga gagal. Klik untuk mencoba lagi">Harga belum dicek</button>');
+  else if (!produkHargaExistIds.has(p.id)) flags.push('<span class="flag flag-warn" title="Belum ada harga EKATALOG">Tanpa harga</span>');
   if (!p.is_active) flags.push('<span class="flag flag-mute" title="Produk nonaktif">Nonaktif</span>');
   return flags.join('');
 }
@@ -1473,6 +1577,7 @@ function paintProdukRows(){
     tr.innerHTML = colKit.rowHtml(p, { flags: produkFlagsHtml(p) });
     tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
     tr.addEventListener('keydown', (e) => {
+      if (e.target !== tr) return; // Enter / Spasi pada tombol atau tautan di dalam baris (mis. "coba lagi") jangan membuka modal
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tr.click(); }
     });
     tableBody.appendChild(tr);
@@ -1485,10 +1590,12 @@ async function applyProdukColumns(){
   colKit.renderHead();
   if (!produkPageRows.length) return; // lagi memuat / kosong / error: tidak ada baris untuk digambar ulang
   const ids = produkPageRows.map(r => r.id);
-  const [needsOk] = await Promise.all([colKit.loadNeeds(ids), copyKit.loadExtra(ids)]);
-  if (!mountedContainer) return;
-  toastKeluargaNeeds(needsOk);
+  const seq = produkLoadSeq;
+  // Baris digambar SEKARANG; kolom yang datanya belum ada berisi skeleton lalu diisi lewat patch (dulu: tabel menunggu dulu baru digambar).
+  setProdukPhase('needs', colKit.hasNeeds() ? 'loading' : 'ok');
+  if (!ids.every(id => copyKit.extraOf(id))) setProdukPhase('extra', 'loading');
   paintProdukRows();
+  await runProdukExtras(ids, seq, ['needs', 'extra']);
 }
 
 // ---- Klik chip filter status di atas list Produk ----

@@ -70,7 +70,7 @@ test('sel tabel: penanda "dicek" untuk dugaan, chip mikro, dan "—" untuk yang 
   assert.match(html1, /tipe-chip">mikro</);
   assert.doesNotMatch(html2, /flag-warn[^>]*>dicek</);
   assert.match(html2, /Peta kode/);
-  assert.match(html9, /<td class="tipe-cell">—<\/td>/); // belum ada klasifikasi
+  assert.match(html9, /<td data-col="kategori" class="tipe-cell">—<\/td>/); // belum ada klasifikasi
 });
 
 test('kolom Kelompok set (Minor/Mayor/Vaginal) sudah dihapus: tidak ada di daftar kolom maupun header export', () => {

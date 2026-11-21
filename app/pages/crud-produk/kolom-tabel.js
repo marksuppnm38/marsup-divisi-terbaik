@@ -146,6 +146,13 @@ export const TABLE_COLS = [
     render: (p) => tglPendek(p.updated_at),
     xl: [{ label: 'Terakhir Diubah', fmt: 'center', w: 16, get: (p) => { const d = p.updated_at ? new Date(p.updated_at) : null; return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : null; } }] },
 ];
+// Ketergantungan tampilan (beda dengan `uses` yang untuk export):
+//   dep  = seluruh isi sel bergantung pada data itu -> selama dimuat sel berisi skeleton, kalau gagal "gagal, coba lagi" (bukan "—" yang artinya kosong).
+//   part = hanya sebagian isi sel (badge Verified, penanda "Tanpa harga"); sel tetap tampil dan bagian itu diisi sendiri oleh pemanggil.
+// Kunci fase: extra (harga + No. AKD), stok, harga (ada/tidaknya harga, untuk penanda), needs (Nama AKD / Keluarga / klasifikasi), verified.
+const DEP = { akd: ['extra'], no_akd: ['extra'], ekat: ['extra'], swasta: ['extra'], tahun: ['extra'], stok: ['stok'], nilai: ['extra', 'stok'] };
+const PART = { nama: ['verified'], verified: ['verified'], flags: ['harga'] };
+TABLE_COLS.forEach((c) => { c.dep = DEP[c.key] || (c.needs ? ['needs'] : []); c.part = PART[c.key] || []; });
 const COL_BY_KEY = Object.fromEntries(TABLE_COLS.map((c) => [c.key, c]));
 const MOVABLE = TABLE_COLS.filter((c) => !c.locked).map((c) => c.key);
 
@@ -267,6 +274,17 @@ export function createTableColumns(opts) {
     return true;
   }
 
+  // ---------- fase data tambahan: 'ok' | 'loading' | 'error' ----------
+  const phase = { extra: 'ok', stok: 'ok', harga: 'ok', needs: 'ok', verified: 'ok' };
+  const SK = '<span class="sk" aria-hidden="true"></span>';
+  const FAIL = '<button type="button" class="sk-fail" data-retry title="Data ini gagal dimuat. Klik untuk mencoba lagi">gagal, coba lagi</button>';
+  function cellInner(c, p, ctx) {
+    if (c.dep.some((k) => phase[k] === 'error')) return FAIL;
+    if (c.dep.some((k) => phase[k] === 'loading')) return SK;
+    return c.render(p, ctx);
+  }
+  const tdClass = (c) => [c.num ? 'num' : '', c.td || ''].filter(Boolean).join(' ');
+
   // ---------- gambar tabel ----------
   function renderHead() {
     headRow.innerHTML = visibleCols().map((c) => `<th${c.num ? ' class="num"' : ''}>${esc(c.label)}</th>`).join('')
@@ -276,7 +294,7 @@ export function createTableColumns(opts) {
   const xcols = () => visibleCols().flatMap((c) => (c.xl || []).map((x) => ({ ...x, key: c.key })));
   function rowHtml(p, extraCtx) {
     const ctx = ctxOf(p, extraCtx);
-    return visibleCols().map((c) => `<td class="${[c.num ? 'num' : '', c.td || ''].filter(Boolean).join(' ')}">${c.render(p, ctx)}</td>`).join('')
+    return visibleCols().map((c) => `<td data-col="${c.key}" class="${tdClass(c)}">${cellInner(c, p, ctx)}</td>`).join('')
       + h.moreCell(p);
   }
 
@@ -387,6 +405,28 @@ export function createTableColumns(opts) {
   return {
     renderHead,
     rowHtml,
+    /** Ubah fase satu jenis data tambahan. Tidak menggambar apa pun; panggil patch() sesudahnya. */
+    setPhase(kind, state) { if (kind in phase) phase[kind] = state; },
+    phaseOf(kind) { return phase[kind]; },
+    /** Ada kolom tampil yang butuh data `needs` (Nama AKD / Keluarga / klasifikasi)? */
+    hasNeeds() { return visibleCols().some((c) => c.needs); },
+    /**
+     * Isi ulang HANYA sel yang bergantung pada `kinds`, per baris (data-id). Baris, fokus, hover, dan centang tidak disentuh.
+     * rowOf(id) -> baris list; ctxOf(p) -> konteks tambahan (mis. { flags }).
+     */
+    patch(kinds, rowOf, ctxOfRow) {
+      const hit = visibleCols().filter((c) => [...c.dep, ...c.part].some((k) => kinds.includes(k)));
+      if (!hit.length) return;
+      tableBody.querySelectorAll('tr[data-id]').forEach((tr) => {
+        const p = rowOf(tr.dataset.id);
+        if (!p) return;
+        const ctx = ctxOf(p, ctxOfRow ? ctxOfRow(p) : undefined);
+        hit.forEach((c) => {
+          const td = tr.querySelector(`td[data-col="${c.key}"]`);
+          if (td) td.innerHTML = cellInner(c, p, ctx);
+        });
+      });
+    },
     /** jumlah kolom di tabel (kolom data + kolom aksi) -> untuk colspan baris status */
     span() { return visibleCols().length + 1; },
     /** Muat data tambahan yang dibutuhkan kolom yang sedang tampil (Nama AKD, Keluarga set, Kategori & Spesialisasi). false = ada yang gagal (lihat needsError()). */
