@@ -2,7 +2,7 @@
 // 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
 // lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
 // di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
-import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck } from './auto-konversi/index.js';
+import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck, KONTEKS } from './auto-konversi/index.js';
 import { bandingkan, tokensToHtml } from './auto-konversi/bandingkan.js';
 
 export function installPermintaanRs(S) {
@@ -399,18 +399,18 @@ S.prSubmitBtn.addEventListener('click', async () => {
   // Belum manggil API sama sekali di sini — hasil parse dibawa dulu ke layar
   // Review biar staff bisa cek/edit nama, qty, dan isi pagu satuan per item
   // (opsional) sebelum benar-benar disimpan ke server.
-  reviewItems = items.map(it => ({ raw_text: it.raw_text, qty: it.qty, pagu_satuan: it.pagu_satuan ?? null }));
+  reviewItems = items.map(it => ({ raw_text: it.raw_text, qty: it.qty, pagu_satuan: it.pagu_satuan ?? null, konteks: null }));
   reviewSumber = sumber;
   renderReviewRows();
   S.prFormWrap.style.display = 'none';
   S.prReviewWrap.style.display = '';
   // Layar review punya judul sendiri; judul/sub mode (create/add) dipulihkan lagi pas "Kembali edit".
   prTitleEl.textContent = 'Periksa item';
-  prSubEl.textContent = 'Cek hasil bacaan sebelum disimpan. Ubah nama, qty, atau pagu satuan bila perlu, dan hapus baris yang salah.';
+  prSubEl.textContent = 'Cek hasil bacaan sebelum disimpan. Ubah nama, qty, atau pagu satuan bila perlu, pilih jenis (SET / INSTRUMENT / UNIT) kalau sudah tahu, dan hapus baris yang salah.';
 });
 
 // ---- Step 2: Layar Review — edit manual sebelum submit_permintaan_rs ----
-let reviewItems = [];      // {raw_text, qty, pagu_satuan}
+let reviewItems = [];      // {raw_text, qty, pagu_satuan, konteks}  (konteks: null | 'SET' | 'INSTRUMENT' | 'UNIT')
 let reviewSumber = 'TEKS';
 let reviewSkipped = [];    // baris mentah yang otomatis disaring pas parsing (info doang, ditampilkan)
 
@@ -503,6 +503,16 @@ function escapeHtmlAttr(s) {
 }
 S.escapeHtmlAttr = escapeHtmlAttr;
 
+// "Jenis" = konteks permintaan (SET / INSTRUMENT / UNIT), diisi staff saat memasukkan permintaan supaya resolver
+// Auto-Match terbantu SEBELUM ada keputusan produk. Kosong = tidak diketahui (perilaku lama). Satu sumber nilai:
+// KONTEKS di auto-konversi/resolver.js. Dipakai di layar Periksa item dan di editor item.
+const KONTEKS_HINT = 'Jenis permintaan: SET = paket/set produk, INSTRUMENT = instrumen satuan, UNIT = alat/unit. Membantu pencocokan produk; kosongkan bila belum tahu.';
+function normKonteks(v) { return KONTEKS.includes(v) ? v : null; }
+function konteksOptionsHtml(selected) {
+  const sel = normKonteks(selected);
+  return '<option value="">—</option>' + KONTEKS.map(k => `<option value="${k}"${k === sel ? ' selected' : ''}>${k}</option>`).join('');
+}
+
 function renderReviewRows() {
   const labelSumber = reviewSumber === 'EXCEL' ? 'Excel' : reviewSumber === 'SCREENSHOT' ? 'screenshot' : 'teks';
   let info = `${reviewItems.length} item terbaca dari ${labelSumber} — cek dan lengkapi sebelum disimpan`;
@@ -515,6 +525,7 @@ function renderReviewRows() {
       <input class="pr-rv-nama" value="${escapeHtmlAttr(it.raw_text)}" placeholder="Nama item"/>
       <input class="pr-rv-qty" inputmode="numeric" value="${it.qty != null ? it.qty : ''}" placeholder="Qty"/>
       <input class="pr-rv-pagu" inputmode="numeric" value="${it.pagu_satuan != null ? Number(it.pagu_satuan).toLocaleString('id-ID') : ''}" placeholder="opsional"/>
+      <select class="pr-rv-konteks" aria-label="Jenis item" title="${KONTEKS_HINT}">${konteksOptionsHtml(it.konteks)}</select>
       <button type="button" class="pr-review-del" data-idx="${idx}" aria-label="Hapus baris"><i class="ti ti-trash"></i></button>
     </div>
   `).join('') : '<div class="pr-review-empty">Belum ada item. Tambah baris manual di bawah, atau klik "Kembali edit".</div>';
@@ -534,7 +545,8 @@ function syncReviewItemsFromDom() {
     reviewItems[idx] = {
       raw_text: nama,
       qty: qtyRaw ? parseInt(qtyRaw, 10) : null,
-      pagu_satuan: S.parsePaguValue(paguRaw)
+      pagu_satuan: S.parsePaguValue(paguRaw),
+      konteks: normKonteks(row.querySelector('.pr-rv-konteks').value)
     };
   });
 }
@@ -559,7 +571,7 @@ S.prReviewRows.addEventListener('click', (e) => {
 
 S.prReviewAddBtn.addEventListener('click', () => {
   syncReviewItemsFromDom();
-  reviewItems.push({ raw_text: '', qty: null, pagu_satuan: null });
+  reviewItems.push({ raw_text: '', qty: null, pagu_satuan: null, konteks: null });
   renderReviewRows();
   const lastNama = S.prReviewRows.querySelector('.pr-review-row:last-child .pr-rv-nama');
   if (lastNama) lastNama.focus();
@@ -898,7 +910,8 @@ async function apiInsertPermintaanItems(items) {
   const payloadItems = items.map(it => ({
     raw_text: it.raw_text,
     qty: it.qty != null ? it.qty : null,
-    pagu_satuan: it.pagu_satuan != null ? it.pagu_satuan : null
+    pagu_satuan: it.pagu_satuan != null ? it.pagu_satuan : null,
+    konteks: normKonteks(it.konteks) // diabaikan add_permintaan_items; ditulis lewat apiSetKonteksItems di bawah
   }));
   const { data, error } = await S.rpc('add_permintaan_items', {
     p_permintaan_id: S.checklistPermintaanId,
@@ -922,7 +935,41 @@ async function apiInsertPermintaanItems(items) {
       }));
     }
   }
+
+  // Jenis (konteks) item baru. add_permintaan_items belum menerimanya, jadi ditulis lewat RPC khusus. Item hasil
+  // dicocokkan ke baris input lewat urutan DAN teksnya; kalau tidak yakin, dilewati (lebih baik kosong daripada salah
+  // jenis, karena konteks mengubah usulan resolver). Gagal di sini TIDAK menggagalkan simpan: item sudah tersimpan.
+  const norm = s => String(s == null ? '' : s).trim().toLowerCase();
+  const dipakai = new Set();
+  const rows = [];
+  let dilewati = 0;
+  payloadItems.forEach((p, i) => {
+    if (!p.konteks) return;
+    let tgt = inserted[i] && norm(inserted[i].raw_text) === norm(p.raw_text) ? inserted[i] : null;
+    if (!tgt || dipakai.has(tgt.id)) tgt = inserted.find(x => !dipakai.has(x.id) && norm(x.raw_text) === norm(p.raw_text)) || null;
+    if (!tgt) { dilewati++; return; }
+    dipakai.add(tgt.id);
+    rows.push({ id: tgt.id, konteks: p.konteks });
+  });
+  if (rows.length) {
+    try {
+      await apiSetKonteksItems(rows);
+      rows.forEach(r => { const it = inserted.find(x => x.id === r.id); if (it) it.konteks_minta = r.konteks; });
+    } catch (err) {
+      dilewati += rows.length;
+      console.error('[permintaan-rs] simpan jenis item gagal', err);
+    }
+  }
+  if (dilewati) PNMToast.show(`Jenis ${dilewati} item belum tersimpan`, 'warning', { detail: 'Item sudah masuk. Atur Jenis-nya lewat Edit item.' });
   return inserted;
+}
+
+// Jenis (konteks) banyak item sekaligus: rows = [{ id, konteks }], konteks null = kosongkan. Satu RPC (lihat
+// supabase/2026-11-21_konteks_saat_intake.sql), cek allowed_users di server.
+async function apiSetKonteksItems(rows) {
+  if (!rows.length) return;
+  const { error } = await S.rpc('update_permintaan_item_konteks_multi', { p_rows: rows });
+  if (error) throw new Error(error.message || error.hint || 'Gagal menyimpan jenis item (cek izin akun / RPC update_permintaan_item_konteks_multi)');
 }
 
 async function apiUpdatePermintaanItem(itemId, fields) {
@@ -1103,7 +1150,7 @@ S.prReviewSaveBtn.addEventListener('click', async () => {
 });
 
 // ---- Mode EDIT: koreksi nama/qty item yang sudah tersimpan ----
-let prEditOriginal = new Map(); // id -> {raw_text, qty_diminta, pagu_satuan} saat editor dibuka
+let prEditOriginal = new Map(); // id -> {raw_text, qty_diminta, pagu_satuan, konteks_minta} saat editor dibuka
 let prEditOriginalPagu = { total: null, sections: new Map() }; // pagu total + pagu per section saat editor dibuka
 const prEdPaguTotal = document.getElementById('pr-ed-pagu-total');
 const prEdPaguSections = document.getElementById('pr-ed-pagu-sections');
@@ -1111,12 +1158,13 @@ const normPagu = v => (v == null || v === '' || isNaN(Number(v))) ? null : Numbe
 const fmtPagu = v => v != null ? Number(v).toLocaleString('id-ID') : '';
 
 function renderPrEditRows() {
-  prEditOriginal = new Map(S.checklistItems.map(it => [it.id, { raw_text: it.raw_text, qty_diminta: it.qty_diminta ?? null, pagu_satuan: normPagu(it.pagu_satuan) }]));
+  prEditOriginal = new Map(S.checklistItems.map(it => [it.id, { raw_text: it.raw_text, qty_diminta: it.qty_diminta ?? null, pagu_satuan: normPagu(it.pagu_satuan), konteks_minta: normKonteks(it.konteks_minta) }]));
   prEditRows.innerHTML = S.checklistItems.length ? S.checklistItems.map(it => `
     <div class="pr-edit-row" data-id="${it.id}">
       <input class="pr-ed-nama" value="${escapeHtmlAttr(it.raw_text)}" placeholder="Nama item"/>
       <input class="pr-ed-qty" inputmode="numeric" value="${it.qty_diminta != null ? it.qty_diminta : ''}" placeholder="Qty"/>
       <input class="pr-ed-pagusat" inputmode="numeric" value="${fmtPagu(normPagu(it.pagu_satuan))}" placeholder="opsional"/>
+      <select class="pr-ed-konteks" aria-label="Jenis item" title="${KONTEKS_HINT}">${konteksOptionsHtml(it.konteks_minta)}</select>
     </div>`).join('') : '<div class="pr-review-empty">Belum ada item.</div>';
 
   // Pagu total + (kalau ada) pagu per section
@@ -1151,11 +1199,13 @@ document.getElementById('pr-edit-save-btn').addEventListener('click', async () =
     const qtyRaw = row.querySelector('.pr-ed-qty').value.trim();
     const qty = qtyRaw === '' ? null : parseInt(qtyRaw, 10);
     const paguSat = S.parsePaguValue(row.querySelector('.pr-ed-pagusat').value);
+    const konteks = normKonteks(row.querySelector('.pr-ed-konteks').value);
     if (!nama) { invalid = 'Nama item tidak boleh kosong.'; return; }
     if (qty !== null && (isNaN(qty) || qty < 1)) { invalid = `Qty "${orig.raw_text}" harus angka 1 atau lebih (atau kosongkan).`; return; }
     const fieldsChanged = nama !== orig.raw_text || qty !== (orig.qty_diminta ?? null);
     const paguSatChanged = paguSat !== orig.pagu_satuan;
-    if (fieldsChanged || paguSatChanged) changes.push({ id, nama, qty, paguSat, fieldsChanged, paguSatChanged, orig });
+    const konteksChanged = konteks !== orig.konteks_minta;
+    if (fieldsChanged || paguSatChanged || konteksChanged) changes.push({ id, nama, qty, paguSat, konteks, fieldsChanged, paguSatChanged, konteksChanged, orig });
   });
   if (invalid) { S.prStatusMsg.style.color = 'var(--danger)'; S.prStatusMsg.textContent = invalid; return; }
 
@@ -1196,7 +1246,15 @@ document.getElementById('pr-edit-save-btn').addEventListener('click', async () =
       paguOk++;
     } catch (err) { failed.push(`Pagu section ${sec ? sec.nama_section : ch.id}: ${err.message}`); }
   }
-  // 3) Item: nama/qty (RPC lama) dan pagu satuan (RPC baru) — terpisah, jadi gagal salah satu gak nge-blok yang lain
+  // 3a) Jenis (konteks) semua baris yang berubah: satu RPC batch, terpisah dari nama/qty/pagu satuan
+  const konteksRows = changes.filter(c => c.konteksChanged).map(c => ({ id: c.id, konteks: c.konteks }));
+  let konteksOk = true;
+  if (konteksRows.length) {
+    try {
+      await apiSetKonteksItems(konteksRows);
+    } catch (err) { konteksOk = false; failed.push(`Jenis item: ${err.message}`); }
+  }
+  // 3b) Item: nama/qty (RPC lama) dan pagu satuan (RPC baru) — terpisah, jadi gagal salah satu gak nge-blok yang lain
   for (const ch of changes) {
     try {
       const item = S.checklistItems.find(i => i.id === ch.id);
@@ -1214,7 +1272,8 @@ document.getElementById('pr-edit-save-btn').addEventListener('click', async () =
         await apiUpdatePermintaanItemPaguSatuan(ch.id, ch.paguSat);
         if (item) item.pagu_satuan = ch.paguSat;
       }
-      ok++;
+      // Baris yang HANYA berubah jenisnya dihitung berhasil kalau batch jenis tadi berhasil.
+      if (ch.fieldsChanged || ch.paguSatChanged || (ch.konteksChanged && konteksOk)) ok++;
     } catch (err) {
       failed.push(`${ch.orig.raw_text}: ${err.message}`);
     }
@@ -1230,6 +1289,15 @@ document.getElementById('pr-edit-save-btn').addEventListener('click', async () =
     if (typeof S.renderChecklist === 'function') S.renderChecklist();
   }
   if (ok || paguOk) broadcastChecklistReload();
+  // Usulan Auto-Match lama dihitung dengan jenis yang lama: buang, lalu cocokkan ulang item yang masih PENDING
+  // (mengikuti switch "Cocokkan setelah disimpan"). Item yang sudah diputuskan tidak disentuh.
+  if (konteksOk && konteksRows.length) {
+    const ids = new Set(konteksRows.map(r => r.id));
+    ids.forEach(id => amMap.delete(id));
+    const pending = new Set((S.checklistItems || []).filter(it => ids.has(it.id) && it.status === 'PENDING').map(it => it.id));
+    if (amAutoOn && pending.size) runWorkspaceAutoMatch(pending);
+    else if (ids.size) renderChecklist();
+  }
   if (failed.length) {
     S.prStatusMsg.style.color = 'var(--danger)';
     S.prStatusMsg.textContent = `${ok + paguOk} tersimpan, ${failed.length} gagal — ${failed.slice(0, 2).join('; ')}`;

@@ -971,8 +971,8 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
         <div id="pr-ed-pagu-sections"></div>
       </div>
       <div class="pr-review-box">
-        <div class="pr-review-info">Koreksi nama, qty, atau pagu satuan. Hanya yang kamu ubah yang disimpan; status pencocokan item tidak berubah.</div>
-        <div class="pr-edit-head"><span>Item diminta</span><span>Qty</span><span>Pagu satuan</span></div>
+        <div class="pr-review-info">Koreksi nama, qty, pagu satuan, atau jenis (SET / INSTRUMENT / UNIT). Hanya yang kamu ubah yang disimpan; status pencocokan item tidak berubah.</div>
+        <div class="pr-edit-head"><span>Item diminta</span><span>Qty</span><span>Pagu satuan</span><span>Jenis</span></div>
         <div class="pr-edit-list" id="pr-edit-rows"></div>
       </div>
       <div class="pr-actions">
@@ -1053,7 +1053,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
       <div class="pr-review-box">
         <div class="pr-review-info" id="pr-review-info">item terbaca — cek dan lengkapi sebelum disimpan</div>
         <div class="pr-review-head">
-          <span>Item diminta</span><span>Qty</span><span>Pagu satuan</span><span></span>
+          <span>Item diminta</span><span>Qty</span><span>Pagu satuan</span><span>Jenis</span><span></span>
         </div>
         <div class="pr-review-list" id="pr-review-rows"></div>
         <button class="pr-review-add-btn" id="pr-review-add-btn" type="button"><i class="ti ti-plus"></i>Tambah baris manual</button>
