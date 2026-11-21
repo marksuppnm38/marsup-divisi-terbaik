@@ -522,3 +522,26 @@ test('typo: cesarean/caesar/cesar -> CAESAREAN, curret -> CURET (understand + va
   assert.deepEqual(parseRequestText('SET CESAREAN\t1').items[0].variants, ['SET CESAREAN', 'SET CAESAREAN']);
   assert.deepEqual(understand('SET CAESAREAN').tokens, ['SET', 'CAESAREAN']);
 });
+// ───────────── Regresi: SET bernama sama dengan permintaan kalah dari produk yang memuat sebagian kata ─────────────
+test('katalog: "Dental Complete" -> DENTAL COMPLETE S. (SET, nama persis tanpa "S.") menang atas MOUTH GAG COMPLETE', async () => {
+  const gag = { kode_produk: 'RB38-KE198-B000-U07', nama_produk: 'KILNER-DOUGHTY, MOUTH GAG, COMPLETE', tipe: 'INSTRUMENT', score: 150 };
+  const set = { kode_produk: 'RB999-KE921-B99-U602', nama_produk: 'DENTAL COMPLETE S.', tipe: 'SET', score: 150 };
+  for (const rows of [[gag, set], [set, gag]]) {
+    const rpc = mockRpc({}, { 'DENTAL COMPLETE': rows });
+    const [it] = parseRequestText('Dental Complete\t1').items;
+    const h = await resolveItem(it, rpc, {});
+    assert.equal(h.kode_produk, 'RB999-KE921-B99-U602');
+    assert.equal(h.status, 'AUTO');
+    assert.equal(h.reason_key, 'nama_persis');
+  }
+});
+
+test('katalog: nama SET tidak persis tetap menang lewat cakupan kata (bukan karena nama persis)', async () => {
+  const gag = { kode_produk: 'RB38-KE198-B000-U07', nama_produk: 'KILNER-DOUGHTY, MOUTH GAG, COMPLETE', tipe: 'INSTRUMENT', score: 150 };
+  const set = { kode_produk: 'RB999-KE921-B99-U603', nama_produk: 'DENTAL COMPLETE KIT PLUS S.', tipe: 'SET', score: 150 };
+  const rpc = mockRpc({}, { 'DENTAL COMPLETE': [gag, set] });
+  const [it] = parseRequestText('Dental Complete\t1').items;
+  const h = await resolveItem(it, rpc, {});
+  assert.equal(h.kode_produk, 'RB999-KE921-B99-U603');
+  assert.equal(h.status, 'REVIEW'); // tidak persis & hanya katalog: tetap diperiksa staff, tapi usulan utamanya benar
+});

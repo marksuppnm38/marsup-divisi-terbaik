@@ -18,6 +18,7 @@
 // ══════════════════════════════════════════
 
 import { understand, compareAttrs, describeDiff, DECISIVE } from './understand.js';
+import { JENIS_WORDS } from './aliases.js';
 import { buildQueryLadder, lexiconHits, punyaPenentu, queryTanpaJenis } from './lexicon.js';
 
 const UKURAN_RANK = { cocok: 0, tidak_diminta: 0, tidak_diketahui: 1, dekat: 1, varian: 3, beda: 4 };
@@ -135,7 +136,21 @@ export const namaKey = (s) => String(s == null ? '' : s).toUpperCase().replace(/
 // Juga menandai `namaPersis`: nama produk = teks permintaan. Itu bukti terkuat bahwa ini produk yang dimaksud, jadi tidak perlu
 // menunggu riwayat berulang (produk yang baru sekali dipakai pun cocok kuat). Kalau LEBIH DARI SATU kandidat bernama sama
 // persis, tanda dicabut: mesin tidak bisa memilih di antara kembar.
-function annotate(cands, itemAttrs, itemKey) {
+// Cakupan kata: berapa banyak kata permintaan (tanpa atribut & kata jenis) yang ada di nama produk.
+// Pencarian katalog (SQL) memberi skor per-token tanpa menilai seberapa "ketat" nama produk terhadap permintaan, dan resolver
+// ini membuang skor SQL-nya (skor diratakan per query). Tanpa sinyal ini, produk yang kebetulan memuat SEBAGIAN kata
+// ("KILNER-DOUGHTY, MOUTH GAG, COMPLETE" untuk "DENTAL COMPLETE") bisa mengalahkan produk yang memuat SEMUA kata.
+// Dipakai hanya untuk membandingkan antar kandidat katalog (relatif), bukan untuk keyakinan.
+export function tokenCover(reqTokens, c) {
+  const req = (reqTokens || []).filter((t) => !JENIS_WORDS.has(t) && t !== 'S');
+  if (!req.length) return 1;
+  let name = understand(c.nama).tokens;
+  if (c.isSet) name = name.filter((t, i) => !(t === 'S' && i === name.length - 1));
+  const hit = req.filter((t) => name.some((n) => n === t || (t.length >= 3 && n.startsWith(t)))).length;
+  return hit / req.length;
+}
+
+function annotate(cands, itemAttrs, itemKey, reqTokens) {
   cands.forEach((c) => {
     c.attrs = understand(c.nama).attrs;
     c.fit = compareAttrs(itemAttrs, c.attrs);
@@ -144,6 +159,7 @@ function annotate(cands, itemAttrs, itemKey) {
     // istilah customer, jadi untuk SET dibandingkan tanpa " S" di ujung.
     const nk = namaKey(c.nama);
     c.namaPersis = !!itemKey && (nk === itemKey || (c.isSet && nk.replace(/ S$/, '') === itemKey));
+    c.cover = reqTokens ? tokenCover(reqTokens, c) : 1;
   });
   if (cands.filter((c) => c.namaPersis).length > 1) cands.forEach((c) => { c.namaPersis = false; });
 }
@@ -156,7 +172,14 @@ function pickBestFit(cands) {
   const sepadan = cands.filter((c) => nb(c) === min);
   // Nama persis = bukti terkuat; jangan kalah dari non-SET hanya karena pickBestCand membuang SET pada skor sama.
   const persis = sepadan.filter((c) => c.namaPersis);
-  return pickBestCand(persis.length ? persis : sepadan);
+  let pool = persis.length ? persis : sepadan;
+  // Hasil katalog: yang memuat kata permintaan paling lengkap didahulukan (lihat tokenCover).
+  const kat = pool.filter((c) => c.tier === 'katalog');
+  if (kat.length) {
+    const maxCover = Math.max(...kat.map((c) => c.cover == null ? 1 : c.cover));
+    pool = pool.filter((c) => c.tier !== 'katalog' || (c.cover == null ? 1 : c.cover) === maxCover);
+  }
+  return pickBestCand(pool);
 }
 
 // Skor perbandingan lintas sumber (kecil = lebih baik): beda atribut, lalu keyakinan, lalu ukuran.
@@ -256,7 +279,7 @@ export async function resolveItem(item, rpc, opts = {}) {
         tried.push({ q, via: 'dictionary', n: c.length });
         if (penentu) { umumCands.push(...c.filter(isUmum)); c = c.filter((x) => !isUmum(x)); }
         if (c.length) {
-          annotate(c, itemAttrs, itemKey);
+          annotate(c, itemAttrs, itemKey, u.tokens);
           const rank = CONF_RANK[candConf(pickBestFit(c))] || 0;
           if (rank > bestRank) { dictCands = c; bestRank = rank; }
           if (rank === CONF_RANK.kuat) break;
@@ -275,7 +298,7 @@ export async function resolveItem(item, rpc, opts = {}) {
       try {
         const c = (await usable(await viaCatalog(rpc, q, wantedCm, qi, opts.catalogRows || 60, tipe))).filter(x => !seen.has(x.kode));
         tried.push({ q, via: 'katalog', ...(tipe ? { tipe } : {}), n: c.length });
-        annotate(c, itemAttrs, itemKey);
+        annotate(c, itemAttrs, itemKey, u.tokens);
         c.forEach(x => { seen.add(x.kode); catCands.push(x); });
         // Pencarian katalog mengembalikan sampai 150 baris berperingkat teks (bukan atribut): ambil banyak, nilai sendiri per atribut.
         if (c.some(x => x.full !== false && !x.fit.beda.length && (x.ukuran === 'cocok' || x.ukuran === 'tidak_diminta'))) break;
@@ -295,7 +318,7 @@ export async function resolveItem(item, rpc, opts = {}) {
   const bestCat = pickBestFit(catCands);
   const best = bestCat && (!bestDict || compScore(bestCat) < compScore(bestDict)) ? bestCat : bestDict;
   // Kandidat 'umum' yang dibuang dari pemilihan best tetap tampil di AKHIR sebagai alternatif.
-  annotate(umumCands, itemAttrs, itemKey); umumCands.forEach((x) => { x.namaPersis = false; });
+  annotate(umumCands, itemAttrs, itemKey, u.tokens); umumCands.forEach((x) => { x.namaPersis = false; });
   const cands = [best, ...dictCands, ...catCands.slice().sort((a, b) => compScore(a) - compScore(b)), ...umumCands]
     .filter((c, i, a) => c && a.findIndex(x => x.kode === c.kode) === i);
   const conf = candConf(best);
