@@ -715,7 +715,7 @@ let produkDistinct = { tipe: [], golongan: [], status_inaproc: [], brand: [], ke
 let produkKeluargaN = new Map(); // nama keluarga -> jumlah varian (label opsi filter)
 const keluargaAktif = () => produkActiveFilters.some(f => f.dim === 'keluarga');
 // Kategori & Spesialisasi (2026-11-21; menggantikan sub-modul Kategori & Spesialisasi): atribut produk dari cache klasifikasi
-// seluruh katalog (klasifikasi.js, dimuat sekali). Dimensi filternya (kategori, spes, kelompok, klas_cek) hanya dikenal client --
+// seluruh katalog (klasifikasi.js, dimuat sekali). Dimensi filternya (kategori, spes, klas_cek) hanya dikenal client --
 // RPC get_produk_list tidak mengenalnya -- jadi punya jalur client sendiri di loadProduk (pola sama dengan Keluarga set).
 const klasAktif = () => produkActiveFilters.some(f => isKlasDim(f.dim));
 const produkKlasRowCache = new Map(); // produk_id -> { t, row }: baris produk jalur filter klasifikasi (fetchRowsByIds, TTL 2 menit)
@@ -731,15 +731,10 @@ const PRODUK_FILTER_DIMS = [
   { key: 'brand', label: 'Brand', icon: 'ti-building-factory-2', dynamic: 'brand' },
   // Keluarga set: pilih banyak keluarga sekaligus (ada ratusan, jadi ada kotak cari). Hanya menyaring SET.
   { key: 'keluarga', label: 'Keluarga set', icon: 'ti-folders', dynamic: 'keluarga', multi: true, searchable: true },
-  // Kategori & Spesialisasi: opsi dari cache klasifikasi (klasifikasi.js), cakupan produk AKTIF. Kelompok set = Minor / Mayor / Vaginal
-  // dari nama set. Klasifikasi "perlu dicek" = dugaan sistem / belum ada petunjuk / golongan belum dipetakan (penanda ⚠ di tab lama).
+  // Kategori & Spesialisasi: opsi dari cache klasifikasi (klasifikasi.js), cakupan produk AKTIF.
+  // Klasifikasi "perlu dicek" = dugaan sistem / belum ada petunjuk / golongan belum dipetakan (penanda ⚠ di tab lama).
   { key: 'kategori', label: 'Kategori', icon: 'ti-layout-grid', klas: true, multi: true },
   { key: 'spes', label: 'Spesialisasi', icon: 'ti-stethoscope', klas: true, multi: true, searchable: true },
-  { key: 'kelompok', label: 'Kelompok set', icon: 'ti-stack-2', multi: true, options: [
-      { value: 'minor', label: 'Minor (tanpa vaginal)', chip: 'Minor' },
-      { value: 'mayor', label: 'Mayor (tanpa vaginal)', chip: 'Mayor' },
-      { value: 'vaginal', label: 'Vaginal (termasuk minor & mayor vaginal)', chip: 'Vaginal' },
-  ]},
   { key: 'klas_cek', label: 'Klasifikasi', icon: 'ti-alert-triangle', options: [
       { value: 'ya', label: 'Perlu dicek' },
       { value: 'tidak', label: 'Sudah terpetakan' },
@@ -1048,7 +1043,7 @@ function produkRowMatchesFilter(row, filt){
     case 'link_v6': return filt.value === 'ada' ? !!row.link_v6 : !row.link_v6;
     case 'stok': { const sk = produkStokCache.get(row.id); return !!sk && sk.status === filt.value; }
     case 'keluarga': return (filt.values || [filt.value]).includes(row.keluarga); // row.keluarga diisi attachKeluarga() / view v_produk_keluarga
-    case 'kategori': case 'spes': case 'kelompok': case 'klas_cek': return cocokKlas(filt, row); // cache klasifikasi dimuat ensureKlas() di loadProduk
+    case 'kategori': case 'spes': case 'klas_cek': return cocokKlas(filt, row); // cache klasifikasi dimuat ensureKlas() di loadProduk
     default: return true;
   }
 }
@@ -1087,7 +1082,6 @@ const FILTER_COLS_DIM = {
   keluarga: ['keluarga'],
   kategori: ['kategori'],
   spes: ['spes'],
-  kelompok: ['kelompok'],
   klas_cek: ['spes', 'klas_sumber'],
   is_active: ['aktif'],
   status_inaproc: ['status_inaproc', 'link'],
@@ -1216,7 +1210,7 @@ async function loadProduk(q, page){
     total = filtered.length;
     rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
   } else if (klasAktif()) {
-    // Filter Kategori / Spesialisasi / Kelompok set / Klasifikasi tanpa search, tanpa chip Verified, tanpa filter Keluarga.
+    // Filter Kategori / Spesialisasi / Klasifikasi tanpa search, tanpa chip Verified, tanpa filter Keluarga.
     // RPC get_produk_list tidak mengenal dimensi ini (kalau dilempar ke sana, filternya diam-diam hilang), jadi: id produk dari
     // cache klasifikasi -> baris produknya diambil per id (di-cache 2 menit supaya pindah halaman tidak menarik ulang) -> chip status
     // + SEMUA filter lain dipasang di client dengan matcher yang sama dengan jalur search / Verified / Keluarga. Urut sama dengan
@@ -1582,7 +1576,7 @@ function renderProdukFilterChips(){
 async function getRowsToExport(){
   let rowsToExport;
   if (lastQuery.trim() || produkActiveFilter === 'verified' || keluargaAktif() || klasAktif()) {
-    // Search aktif, chip Verified, filter Keluarga set, ATAU filter Kategori / Spesialisasi / Kelompok / Klasifikasi -> hasil match
+    // Search aktif, chip Verified, filter Keluarga set, ATAU filter Kategori / Spesialisasi / Klasifikasi -> hasil match
     // sudah lengkap di client (RPC search gak paging; Verified & Keluarga dimuat penuh dari view; klasifikasi dari cache + baris per id),
     // filter tambahan sudah diterapkan di client -> produkCurrentFilteredFull.
     rowsToExport = produkCurrentFilteredFull || [];

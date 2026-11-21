@@ -1,5 +1,5 @@
 // Jalankan: node --test app/pages/crud-produk/tabel.klasifikasi.test.mjs
-// Kolom Kategori / Spesialisasi / Jenis / Sumber klasifikasi / Kelompok set di kolom-tabel.js: ikut export, dimuat lazy
+// Kolom Kategori / Spesialisasi / Jenis / Sumber klasifikasi di kolom-tabel.js: ikut export, dimuat lazy
 // (satu kali), dan gagal-muat terdeteksi (bukan kolom kosong diam-diam di file yang jadi dasar pengajuan izin edar).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -73,19 +73,12 @@ test('sel tabel: penanda "dicek" untuk dugaan, chip mikro, dan "—" untuk yang 
   assert.match(html9, /<td class="tipe-cell">—<\/td>/); // belum ada klasifikasi
 });
 
-test('kolom Kelompok set tidak butuh data: terisi dari nama set tanpa memuat klasifikasi', async () => {
-  const sb = fakeSb([]);
-  const kit = make(sb);
-  // pilih kolom lewat preset buatan sendiri: tampilkan hanya kelompok via autoKeys (filter Kelompok set aktif)
-  kit.setAuto(['kelompok']);
-  assert.equal(await kit.loadNeeds([1]), true);
-  assert.equal(sb.calls.length, 0);
-  const col = colIdx(kit, 'Kelompok Set');
-  assert.ok(col >= 0);
-  assert.equal(kit.exportRow(produk(1, { tipe: 'SET', nama_produk: 'MINOR VAGINAL S.' }), {})[col], 'Minor vaginal');
-  assert.equal(kit.exportRow(produk(2, { tipe: 'SET', nama_produk: 'HECTING S.' }), {})[col], null);
-  assert.equal(kit.exportRow(produk(3, { nama_produk: 'MINOR SCISSOR' }), {})[col], null); // bukan SET
-  assert.ok(!kit.exportUses().has('klas'));
+test('kolom Kelompok set (Minor/Mayor/Vaginal) sudah dihapus: tidak ada di daftar kolom maupun header export', () => {
+  assert.ok(!TABLE_COLS.some((c) => c.key === 'kelompok'));
+  assert.ok(!TABLE_COLS.some((c) => /kelompok/i.test(c.label)));
+  const kit = make(fakeSb([]));
+  kit.setAuto(['kelompok']); // key lama (mis. sisa localStorage / filter lama) harus diabaikan, bukan error
+  assert.equal(colIdx(kit, 'Kelompok Set'), -1);
 });
 
 test('klasifikasi belum dihitung: loadNeeds false + pesan yang menyebut refresh_katalog_klasifikasi (export dibatalkan)', async () => {
@@ -120,7 +113,7 @@ test('kolom dinamis dari filter (autoKeys) ikut memuat data klasifikasi', async 
 });
 
 test('definisi kolom: semua kolom klas punya xl (ikut export) dan kolom lama tidak berubah urutannya', () => {
-  const baru = ['kelompok', 'kategori', 'spes', 'jenis', 'klas_sumber'];
+  const baru = ['kategori', 'spes', 'jenis', 'klas_sumber'];
   baru.forEach((k) => assert.ok(TABLE_COLS.find((c) => c.key === k).xl.length >= 1, k));
   assert.deepEqual(TABLE_COLS.map((c) => c.key).filter((k) => !baru.includes(k)),
     ['kode', 'nama', 'tipe', 'golongan', 'keluarga', 'brand', 'akd', 'no_akd', 'nama_akd', 'ekat', 'swasta', 'tahun', 'link', 'status_inaproc', 'stok', 'nilai', 'flags', 'aktif', 'verified', 'updated']);

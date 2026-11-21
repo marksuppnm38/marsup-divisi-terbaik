@@ -1,10 +1,10 @@
 // Jalankan: node --test app/pages/crud-produk/klasifikasi.test.mjs
-// Kategori & Spesialisasi sebagai atribut produk: pemuatan cache, filter, opsi, kelompok set, dan pengambilan baris per id.
+// Kategori & Spesialisasi sebagai atribut produk: pemuatan cache, filter, opsi, dan pengambilan baris per id.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   muatKlasifikasi, resetKlasifikasi, klasOf, klasTerisi, infoKlasifikasi, cocokKlas, idsKlasFilter, opsiKlasifikasi,
-  fetchRowsByIds, kelompokSet, kelompokLabel, perluCek, sumberLabel, spesTeks, spesNama, katNama, pesanKlasifikasi,
+  fetchRowsByIds, perluCek, sumberLabel, spesTeks, spesNama, katNama, pesanKlasifikasi,
   isKlasDim, SPES_NONE, KAT_ORDER,
 } from './klasifikasi.js';
 
@@ -113,33 +113,6 @@ test('resetKlasifikasi membuang cache', async () => {
   assert.equal(klasOf(1), undefined);
 });
 
-// ---------- kelompok set (turunan nama) ----------
-test('kelompokSet: vaginal diperiksa dulu; ambigu / tidak menyebut -> null; hanya SET', () => {
-  const set = (nama, kode = 'X') => ({ tipe: 'SET', nama_produk: nama, kode_produk: kode });
-  assert.equal(kelompokSet(set('MINOR S. 2')), 'minor');
-  assert.equal(kelompokSet(set('MAYOR S.')), 'mayor');
-  assert.equal(kelompokSet(set('MAJOR SET')), 'mayor');
-  assert.equal(kelompokSet(set('MINOR VAGINAL S.')), 'vaginal');
-  assert.equal(kelompokSet(set('MAYOR VAGINAL S. 3')), 'vaginal');
-  assert.equal(kelompokSet(set('SMALL VAGINAL S.')), 'vaginal');
-  assert.equal(kelompokSet(set('HECTING S.', 'SET-VAGINAL-01')), 'vaginal'); // kode ikut diperiksa untuk vaginal
-  assert.equal(kelompokSet(set('MINOR MAYOR S.')), null);                     // menyebut dua-duanya
-  assert.equal(kelompokSet(set('HECTING S.')), null);
-  assert.equal(kelompokSet(set('MINORITY S.')), null);                        // batas kata
-  assert.equal(kelompokSet({ tipe: 'INSTRUMENT', nama_produk: 'MINOR SCISSOR' }), null);
-  assert.equal(kelompokSet(null), null);
-});
-
-test('kelompokLabel: pembeda minor/mayor vaginal', () => {
-  const set = (nama) => ({ tipe: 'SET', nama_produk: nama, kode_produk: '' });
-  assert.equal(kelompokLabel(set('MINOR S')), 'Minor');
-  assert.equal(kelompokLabel(set('MAYOR S')), 'Mayor');
-  assert.equal(kelompokLabel(set('MINOR VAGINAL S.')), 'Minor vaginal');
-  assert.equal(kelompokLabel(set('MAYOR VAGINAL S.')), 'Mayor vaginal');
-  assert.equal(kelompokLabel(set('VAGINAL S.')), 'Vaginal');
-  assert.equal(kelompokLabel(set('HECTING S')), null);
-});
-
 // ---------- turunan per produk ----------
 test('perluCek / sumberLabel / spesTeks mengikuti aturan tab lama', async () => {
   const dugaan = { kategori: 'INSTRUMEN SATUAN', spes: 'OBGYN', spesSumber: 'peta?', kategoriSumber: 'golongan' };
@@ -186,8 +159,9 @@ const F = (dim, ...values) => ({ dim, values });
 const ids = (...filters) => idsKlasFilter(filters).sort((a, b) => a - b);
 
 test('isKlasDim hanya mengenali dimensi klasifikasi', () => {
-  ['kategori', 'spes', 'kelompok', 'klas_cek'].forEach((d) => assert.equal(isKlasDim(d), true));
+  ['kategori', 'spes', 'klas_cek'].forEach((d) => assert.equal(isKlasDim(d), true));
   ['tipe', 'keluarga', 'brand', 'stok'].forEach((d) => assert.equal(isKlasDim(d), false));
+  assert.equal(isKlasDim('kelompok'), false); // Kelompok set (Minor/Mayor/Vaginal) sudah dihapus; keluarga set yang dipakai
 });
 
 test('filter kategori (multi): OR di dalam dimensi', async () => {
@@ -202,13 +176,6 @@ test('filter spesialisasi: nilai biasa, LAINNYA, dan "Tanpa spesialisasi" yang T
   assert.deepEqual(ids(F('spes', 'OBGYN', 'BEDAH UMUM')), [1, 2, 3, 7]);
   assert.deepEqual(ids(F('spes', 'LAINNYA')), [6]);
   assert.deepEqual(ids(F('spes', SPES_NONE)), [4]);      // id 5 (alat, spes null) bukan "tanpa spesialisasi"
-});
-
-test('filter kelompok set dari nama: minor, vaginal; produk non-SET tidak pernah cocok', async () => {
-  await muatContoh();
-  assert.deepEqual(ids(F('kelompok', 'minor')), [1]);
-  assert.deepEqual(ids(F('kelompok', 'vaginal')), [2]);
-  assert.deepEqual(ids(F('kelompok', 'minor', 'mayor', 'vaginal')), [1, 2]);
 });
 
 test('filter klasifikasi perlu dicek: ya / tidak (single-select, pakai value)', async () => {
@@ -228,15 +195,13 @@ test('filter ditumpuk = AND; produk di luar cache (nonaktif / belum dimuat) tida
   assert.deepEqual(idsKlasFilter([F('kategori', 'SET')]), []); // cache kosong: tidak throw
 });
 
-test('cocokKlas pada baris list Produk memakai id untuk klasifikasi dan nama untuk kelompok', async () => {
+test('cocokKlas pada baris list Produk memakai id untuk klasifikasi; produk di luar cache tidak punya kategori', async () => {
   await muatContoh();
   const row = { id: 1, tipe: 'SET', kode_produk: 'K1', nama_produk: 'MINOR S. 2' };
-  assert.equal(cocokKlas(F('kelompok', 'minor'), row), true);
   assert.equal(cocokKlas(F('kategori', 'SET'), row), true);
-  // set nonaktif (tidak ada di cache) tetap bisa dinilai kelompoknya dari nama, tapi tidak punya kategori
   const nonaktif = { id: 777, tipe: 'SET', kode_produk: 'KX', nama_produk: 'MAYOR S.' };
-  assert.equal(cocokKlas(F('kelompok', 'mayor'), nonaktif), true);
   assert.equal(cocokKlas(F('kategori', 'SET'), nonaktif), false);
+  assert.equal(cocokKlas(F('kelompok', 'minor'), row), true); // dimensi tak dikenal = lolos (default), bukan lagi menyaring
 });
 
 // ---------- opsi filter ----------

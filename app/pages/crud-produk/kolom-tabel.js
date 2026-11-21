@@ -21,11 +21,10 @@
 //     Keluarga set dibaca dari baris kalau sudah ada (jalur filter Keluarga memuat baris dari view v_produk_keluarga),
 //     kalau belum dari view yang sama per id halaman (lihat keluarga.js).
 //   - Kategori, Spesialisasi, Jenis, Sumber klasifikasi (`needs: 'klas'`): dari cache klasifikasi seluruh katalog
-//     (klasifikasi.js, dimuat sekali lalu dibaca per id -- sama dengan yang dipakai filternya). Kelompok set tidak butuh
-//     data apa pun: murni turunan nama set.
+//     (klasifikasi.js, dimuat sekali lalu dibaca per id -- sama dengan yang dipakai filternya).
 import { parseLinkV6, sembunyikanAkdPlaceholder } from './ui-utils.js';
 import { fetchKeluargaMap, pesanKeluarga } from './keluarga.js';
-import { muatKlasifikasi, klasOf, pesanKlasifikasi, katNama, spesTeks, spesNama, sumberLabel, perluCek, kelompokLabel } from './klasifikasi.js';
+import { muatKlasifikasi, klasOf, pesanKlasifikasi, katNama, spesTeks, spesNama, sumberLabel, perluCek } from './klasifikasi.js';
 
 const LS_KEY = 'pnm_crud_produk_tbl_cols_v1';
 
@@ -65,10 +64,6 @@ export const TABLE_COLS = [
   { key: 'keluarga', label: 'Keluarga set', td: 'tipe-cell', needs: 'keluarga',
     render: (p, c) => c.keluarga ? esc(c.keluarga) : '—',
     xl: [{ id: 'keluarga', label: 'Keluarga Set', w: 34, get: (p, c) => c.keluarga || null }] },
-  // Kelompok set = Minor / Mayor / Vaginal, dari NAMA set (bukan database), jadi set baru langsung ikut. Hanya SET.
-  { key: 'kelompok', label: 'Kelompok set (Minor/Mayor/Vaginal)', td: 'tipe-cell',
-    render: (p) => { const k = kelompokLabel(p); return k ? esc(k) : '—'; },
-    xl: [{ label: 'Kelompok Set', w: 18, get: (p) => kelompokLabel(p) }] },
   // Kategori / Spesialisasi / Jenis / Sumber klasifikasi: atribut hasil klasifikasi katalog (klasifikasi.js). Cakupan produk
   // AKTIF; produk nonaktif tidak punya klasifikasi. Unit & alat tidak punya spesialisasi (sel "—", bukan "Tanpa spesialisasi").
   { key: 'kategori', label: 'Kategori', td: 'tipe-cell', needs: 'klas',

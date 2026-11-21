@@ -10,8 +10,6 @@
 // di memori (TTL 30 menit). Setelah itu kolom, filter, dan opsi filter hanya membaca Map ini -- tanpa request tambahan.
 // Cakupannya produk AKTIF saja (sama dengan tab lama): produk nonaktif tidak punya klasifikasi, kolomnya "—".
 //
-// "Kelompok set" (Minor / Mayor / Vaginal) TIDAK dari database: murni turunan nama set, jadi set baru langsung ikut.
-//
 // Sengaja tanpa ketergantungan DOM dan TIDAK pernah throw: semua fungsi async mengembalikan { ..., error } supaya bisa
 // diuji dengan Supabase tiruan (klasifikasi.test.mjs) dan halaman Produk tetap jalan kalau RPC-nya belum terpasang
 // (hanya kolom / filter klasifikasi yang kosong, dengan pesan yang menjelaskan).
@@ -35,37 +33,13 @@ const WARN_SUMBER = new Set(Object.keys(SPES_SUMBER).filter((k) => SPES_SUMBER[k
 // Nilai khusus "Tanpa spesialisasi" di filter (checkbox butuh string; sama polanya dengan BRAND_NONE di index.js).
 export const SPES_NONE = '__NONE__';
 // Dimensi filter yang hanya dikenal client (RPC get_produk_list tidak mengenalnya) -> index.js memberinya jalur client.
-export const KLAS_DIMS = ['kategori', 'spes', 'kelompok', 'klas_cek'];
+export const KLAS_DIMS = ['kategori', 'spes', 'klas_cek'];
 export const isKlasDim = (dim) => KLAS_DIMS.includes(dim);
 
 export const katNama = (k) => KAT[k] || k || '—';
 export const spesNama = (s) => (s == null ? 'Tanpa spesialisasi'
   : s === 'LAINNYA' ? 'Belum dikelompokkan'
   : String(s).replace(/\w\S*/g, (w) => w.charAt(0) + w.slice(1).toLowerCase()).replace(/\bTht\b/, 'THT').replace(/\bObgyn\b/, 'OBGYN'));
-
-// ---------- Kelompok set: aturan dari nama set ----------
-// Vaginal diperiksa PERTAMA supaya "MINOR VAGINAL S." / "MAYOR VAGINAL S." / "SMALL VAGINAL S." tidak masuk Minor atau Mayor.
-const RE_VAGINAL = /vagin/i, RE_MINOR = /\bminor\b/i, RE_MAYOR = /\b(mayor|major)\b/i;
-export const KELOMPOK = { minor: 'Minor', mayor: 'Mayor', vaginal: 'Vaginal' };
-
-/** 'minor' | 'mayor' | 'vaginal' | null. Hanya SET. Menyebut minor DAN mayor sekaligus (ambigu) atau tidak menyebut keduanya -> null. */
-export function kelompokSet(r) {
-  if (!r || r.tipe !== 'SET') return null;
-  const nama = r.nama_produk || '';
-  if (RE_VAGINAL.test(`${nama} ${r.kode_produk || ''}`)) return 'vaginal';
-  const minor = RE_MINOR.test(nama), mayor = RE_MAYOR.test(nama);
-  if (minor && !mayor) return 'minor';
-  if (mayor && !minor) return 'mayor';
-  return null;
-}
-/** Label tampil: 'Minor' / 'Mayor' / 'Minor vaginal' / 'Mayor vaginal' / 'Vaginal' / null. */
-export function kelompokLabel(r) {
-  const k = kelompokSet(r);
-  if (!k) return null;
-  if (k !== 'vaginal') return KELOMPOK[k];
-  const nama = r.nama_produk || '';
-  return RE_MINOR.test(nama) ? 'Minor vaginal' : RE_MAYOR.test(nama) ? 'Mayor vaginal' : 'Vaginal';
-}
 
 // ---------- RPC ----------
 const RPC_RINGKASAN = 'get_katalog_kategori_ringkasan';
@@ -169,7 +143,6 @@ export function cocokKlas(filt, row) {
       if (!e) return false;
       if (e.spes == null) return !ALAT.includes(e.kategori) && vals.includes(SPES_NONE);
       return vals.includes(e.spes);
-    case 'kelompok': return vals.includes(kelompokSet(row));
     case 'klas_cek': return filt.value === 'ya' ? perluCek(e) : (!!e && !perluCek(e));
     default: return true;
   }
