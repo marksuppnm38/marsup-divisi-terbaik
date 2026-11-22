@@ -1,8 +1,9 @@
 // Segmen ketiga URL ("param") yang SAH, dan cuma untuk kombinasi modul/sub yang terdaftar di bawah.
 // Contoh: /crud-produk/set/3f9c1a7e-5b2d-4c8a-9e61-0a7d2b4c8f10 (detail satu set).
 //
-// Kenapa UUID, bukan kode produk (AD999-KE921-B099-U01, U02, U03...): kode itu urut, jadi gampang
-// ditebak / di-enumerasi dari address bar. UUID v4 acak 122 bit.
+// Kenapa token UUID (kolom produk.url_token), bukan produk.id atau kode produk: produk.id itu angka
+// urut (/set/75192 -> /set/75193) dan kode produk juga urut (AD999-KE921-B099-U01, U02, U03...), jadi
+// keduanya gampang ditebak / di-enumerasi dari address bar. UUID v4 acak 122 bit.
 // CATATAN: URL yang tak bisa ditebak itu cuma lapis tambahan. Yang benar-benar menolak akses adalah
 // RLS Supabase; lookup keberadaan (resolveRoute di halaman) jalan pakai sesi user, jadi baris yang
 // tidak boleh dibaca user itu otomatis dianggap "tidak ada" -- sama persis dengan baris yang memang tidak ada.

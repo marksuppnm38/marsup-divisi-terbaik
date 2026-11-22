@@ -3497,23 +3497,30 @@ function closeSetDetail(){
   loadSetList();
 }
 
-// Dari URL (refresh, link dibagikan, Back/Forward): resolveRoute() sudah memverifikasi id ini SET yang
-// ada dan menyimpan kodenya di `resolvedSet`; query ulang hanya kalau cache itu tidak cocok.
-async function openSetFromRoute(id){
-  let kode = (resolvedSet && resolvedSet.id === id) ? resolvedSet.kode : null;
-  if (!kode) {
-    const { data: p, error } = await sb.from('produk').select('id, kode_produk').eq('id', id).maybeSingle();
+// Dari URL (refresh, link dibagikan, Back/Forward): `token` = produk.url_token. resolveRoute() sudah
+// memverifikasi token ini milik SET yang ada dan menyimpan { id, kode, token } di `resolvedSet`; query
+// ulang hanya kalau cache itu tidak cocok.
+async function openSetFromRoute(token){
+  let hit = (resolvedSet && resolvedSet.token === token) ? resolvedSet : null;
+  if (!hit) {
+    const { data: p, error } = await sb.from('produk').select('id, kode_produk').eq('url_token', token).eq('tipe', 'SET').maybeSingle();
     if (error || !p) { showToast('Gagal membuka set', true); return; }
-    kode = p.kode_produk;
+    hit = { id: p.id, kode: p.kode_produk, token };
   }
-  showSetDetail(id, kode);
+  showSetDetail(hit.id, hit.kode);
 }
 
+// URL detail memakai produk.url_token (UUID acak), BUKAN produk.id (angka urut -> /set/1, /set/2, ... gampang
+// ditebak) dan bukan kode_produk (U01, U02, ... juga urut). Lihat route-params.js + migrasi url_token.
 async function goToSetDetail(produkId){
-  const { data: p, error } = await sb.from('produk').select('id, kode_produk').eq('id', produkId).single();
+  let { data: p, error } = await sb.from('produk').select('id, kode_produk, url_token').eq('id', produkId).single();
+  if (error && /url_token/i.test(error.message || '')) {
+    // Kolom url_token belum ada di DB (migrasi belum dijalankan): detail tetap terbuka seperti dulu, hanya URL-nya tidak ikut.
+    ({ data: p, error } = await sb.from('produk').select('id, kode_produk').eq('id', produkId).single());
+  }
   if (error || !p) { showToast('Gagal membuka set', true); return; }
   showSetDetail(p.id, p.kode_produk);
-  routeTo('/crud-produk/set/' + encodeURIComponent(p.id));
+  if (p.url_token) routeTo('/crud-produk/set/' + encodeURIComponent(p.url_token));
 }
 
 _setRoute = { show: showSetDetail, open: openSetFromRoute, close: closeSetDetail, isOpen: setDetailOpen };
@@ -4480,23 +4487,24 @@ export function setSubroute(sub, param) {
  *  - false : tidak ada, ATAU ada tapi tidak boleh dibaca user ini (RLS menyaringnya jadi 0 baris) --
  *            dari luar keduanya tidak terbedakan, router menampilkan 404 yang sama.
  *  - throw : pemeriksaan gagal (jaringan dll.) -> router menampilkan error biasa, BUKAN 404/logout.
- * Cuma 'set' yang punya param. Bentuk UUID sudah dicek router (route-params.js); dicek lagi di sini
- * (pertahanan berlapis) supaya nilai ngawur tidak pernah menyentuh query.
+ * Cuma 'set' yang punya param, yaitu produk.url_token (UUID acak, BUKAN produk.id yang angka urut).
+ * Bentuk UUID sudah dicek router (route-params.js); dicek lagi di sini (pertahanan berlapis) supaya
+ * nilai ngawur tidak pernah menyentuh query.
  */
 export async function resolveRoute(sub, param) {
   resolvedSet = null;
   if (sub !== 'set' || typeof param !== 'string' || !UUID_RE.test(param)) return false;
   await ensureVendorScripts();
-  const id = param.toLowerCase();
+  const token = param.toLowerCase();
   const { data, error } = await window.pnmSupabase
     .from('produk')
     .select('id, kode_produk')
-    .eq('id', id)
+    .eq('url_token', token)
     .eq('tipe', 'SET')
     .maybeSingle();
   if (error) throw error;
   if (!data) return false;
-  resolvedSet = { id: data.id, kode: data.kode_produk };
+  resolvedSet = { id: data.id, kode: data.kode_produk, token };
   return true;
 }
 

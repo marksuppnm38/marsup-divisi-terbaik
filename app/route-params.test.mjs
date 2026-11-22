@@ -31,6 +31,7 @@ test('isValidParam: sub/modul lain tetap menolak param apa pun (perilaku lama)',
 test('isValidParam: kode produk yang urut / bentuk ngawur ditolak', () => {
   assert.equal(isValidParam('crud-produk', 'set', 'AD999-KE921-B099-U01'), false);
   assert.equal(isValidParam('crud-produk', 'set', '123'), false);
+  assert.equal(isValidParam('crud-produk', 'set', '75192'), false); // produk.id angka urut tidak boleh jadi URL
   assert.equal(isValidParam('crud-produk', 'set', ''), false);
   assert.equal(isValidParam('crud-produk', 'set', UUID + 'x'), false);
   assert.equal(isValidParam('crud-produk', 'set', "' or 1=1 --"), false);
