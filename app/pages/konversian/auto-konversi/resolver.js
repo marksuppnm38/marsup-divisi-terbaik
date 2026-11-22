@@ -401,8 +401,8 @@ export async function resolveItem(item, rpc, opts = {}) {
 
   // Padanan prosedur: TIDAK ada kandidat yang bisa dipakai, tapi permintaan atau produk brand lain yang ketemu menunjuk prosedur yang kita
   // punya — ejaan beda (permintaan "EMBRIOTOMI", katalog kita "EMBRIOTOMY": pencarian awalan tidak mempertemukannya) atau riwayat
-  // hanya brand lain (ADLER) padahal brand ini ada. Produk brand lain jadi JANGKAR: set prosedurnya yang brand+firm-nya sah
-  // ditawarkan sebagai usulan REVIEW. Tidak pernah AUTO; bundel baru muncul setelah staf memilih (jangkar.js).
+  // hanya brand lain (ADLER) padahal brand ini ada. Produk brand lain jadi anchor padanan: set prosedurnya yang brand+firm-nya sah
+  // ditawarkan sebagai usulan REVIEW. Tidak pernah AUTO; tawaran varian baru muncul setelah staf memilih (RPC auto_konversi_tawarkan, lihat anchor.js).
   let padanan = [];
   if (!best && pr) {
     const kunci = new Set();

@@ -638,7 +638,7 @@ test('satu brand: cek brand gagal -> tidak pernah AUTO (gagal tertutup)', async 
   assert.notEqual(h.status, 'AUTO');
 });
 
-// ── Padanan prosedur: jangkar lintas-brand + ejaan ──
+// ── Padanan prosedur: anchor lintas-brand + ejaan ──
 test('embriotomi: riwayat hanya ADLER, katalog ROBUST ejaan lain -> REVIEW padanan_prosedur (bukan UNKNOWN), tidak AUTO', async () => {
   const rows = [
     { kode: 'RB999-KE921-B99-U33', nama: 'EMBRIOTOMY S.' },
@@ -658,7 +658,7 @@ test('embriotomi: riwayat hanya ADLER, katalog ROBUST ejaan lain -> REVIEW padan
   assert.match(h.reason, /ADLER/);
 });
 
-test('padanan belum firm: tetap jadi usulan REVIEW tapi ditandai belum siap (bundel/jangkar tidak pernah menawarkannya)', async () => {
+test('padanan belum firm: tetap jadi usulan REVIEW tapi ditandai belum siap (bundel/anchor tidak pernah menawarkannya)', async () => {
   const rows = [{ kode: 'RB1', nama: 'EMBRIOTOMY S.' }, { kode: 'AD1', nama: 'ADLER EMBRIOTOMI S.' }];
   const peta = { RB1: 'ROBUST', AD1: 'ADLER' };
   const rpc = mockRpc({ 'EMBRIOTOMI SET': [row({ istilah: 'EMBRIOTOMI SET', kode_produk: 'AD1', nama_produk: 'ADLER EMBRIOTOMI S.', freq: 4, is_set: true })] });

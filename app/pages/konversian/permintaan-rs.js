@@ -2,7 +2,8 @@
 // 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
 // lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
 // di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
-import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck, buatIndeks, KONTEKS, saudaraJangkar, susunTawaran, labelOpsi } from './auto-konversi/index.js';
+import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck, buatIndeks, KONTEKS } from './auto-konversi/index.js';
+import { tawarkan as anchorTawarkan, hitung as anchorHitung, labelOpsi as anchorLabelOpsi, labelSinyal as anchorLabelSinyal, ANCHOR_LEVEL } from './auto-konversi/anchor.js';
 import { bandingkan, tokensToHtml } from './auto-konversi/bandingkan.js';
 import { suggestKonteks } from './auto-konversi/konteks-suggest.js';
 import { isTyping } from '../../../shared/shortcuts.js';
@@ -501,8 +502,8 @@ async function getProsedurIndeks() {
   if (prosedurMuat) return prosedurMuat;
   prosedurMuat = (async () => {
     try {
-      // v_produk_varian (supabase/2026-11-22_varian_produk.sql) membawa brand + status firm per set, jadi jangkar/padanan bisa menyaring
-      // firm tanpa RPC per klik. Belum dipasang / gagal / kosong -> v_produk_keluarga seperti dulu (tanpa info firm: dicek lewat jangkarCek).
+      // v_produk_varian membawa brand + status firm per set. Indeks ini sekarang hanya dipakai resolver Auto-Match (bundel/padanan prosedur)
+      // dan penampil prosedur; tawaran anchor tidak lagi memakainya (RPC auto_konversi_tawarkan). Belum dipasang / gagal / kosong -> v_produk_keluarga.
       const baca = async (path) => {
         const out = [];
         for (let off = 0; off < 5000; off += 1000) {
@@ -563,136 +564,144 @@ function escapeHtmlAttr(s) {
 S.escapeHtmlAttr = escapeHtmlAttr;
 
 // ══════════════════════════════════════════
-// JANGKAR: produk yang sudah dipilih staf untuk satu item jadi jangkar → tawarkan saudara se-prosedur sebagai bundle
-// (logika murni: auto-konversi/jangkar.js). Beda dengan "Tawarkan semua opsi" bundle Auto-Match: pemicunya pilihan staf,
-// jadi permintaan yang typo / "perkiraan" pun dapat tawaran. TIDAK pernah dipasang otomatis — staf mencentang lalu klik.
-// State lokal saja (tidak ke-sync ke rekan): jangkarOpen = panel terbuka, jangkarCache = hasil tawaran + centang,
-// jangkarUndo = jangkar asli supaya bisa "Kembalikan ke 1 produk".
+// ANCHOR: produk yang sudah dipilih staf untuk satu item jadi anchor → tawarkan seluruh varian sebagai bundle.
+// Semua klasifikasi + saringan firm/brand/aktif ada di DB (RPC auto_konversi_tawarkan*, dibungkus auto-konversi/anchor.js);
+// di sini hanya state + tampilan. Baris dirender apa adanya (sudah terurut & firm-only). TIDAK pernah dipasang otomatis —
+// staf mencentang lalu klik. Beda dengan bundle Auto-Match (resolver): pemicunya pilihan staf, jadi permintaan yang typo
+// / "perkiraan" pun dapat tawaran.
+// State lokal saja (tidak ke-sync ke rekan): anchorOpen = panel terbuka, anchorCache = hasil tawaran + centang,
+// anchorUndo = anchor asli supaya bisa "Kembalikan ke 1 produk", anchorHitungCache = angka chip "+N set lain".
 // ══════════════════════════════════════════
-const jangkarOpen = new Set();
-const jangkarCache = new Map(); // itemId -> { jangkar, loading, tawaran, pilih:Set, error }
-const jangkarUndo = new Map();  // itemId -> kode jangkar asli
-let jangkarIndeksDipicu = false;
+const anchorOpen = new Set();
+const anchorCache = new Map(); // itemId -> { anchor, loading, level, hasil:{anchor,opsi}, pilih:Set, error }
+const anchorUndo = new Map();  // itemId -> kode anchor asli
+const anchorHitungCache = new Map(); // `${brand}|${kode}` -> { n, ts }
+const ANCHOR_HITUNG_TTL = 5 * 60 * 1000;   // status firm bisa berubah; angka chip disegarkan tiap 5 menit
+const ANCHOR_HITUNG_COBA_ULANG = 30 * 1000; // gagal -> jangan menembak RPC lagi tiap render
+let anchorHitungJalan = false;
+let anchorHitungGagal = 0;
 
-// Jangkar = item TERPENUHI dengan TEPAT satu produk. Sudah multi-produk (bundle/campuran) = keputusan staf, tidak disentuh.
-function jangkarKode(item) {
+// Anchor = item TERPENUHI dengan TEPAT satu produk. Sudah multi-produk (bundle/campuran) = keputusan staf, tidak disentuh.
+function anchorKode(item) {
   if (!item || item.status !== 'TERPENUHI') return null;
   const l = item.matched_items || [];
   return l.length === 1 && l[0].kode_produk ? l[0].kode_produk : null;
 }
-function jangkarTerpakai(item) {
+function anchorTerpakai(item) {
   const s = new Set();
   S.checklistItems.forEach(it => {
     if (it.id !== item.id && it.status === 'TERPENUHI') (it.matched_items || []).forEach(l => { if (l.kode_produk) s.add(l.kode_produk); });
   });
   return s;
 }
-// Indeks prosedur dimuat sekali (sama dengan Auto-Match). Selama belum siap, chip/panel belum muncul; begitu siap dirender ulang.
-function jangkarIndeksSiap() {
-  if (prosedurIndeks) return prosedurIndeks;
-  if (!jangkarIndeksDipicu && !prosedurMuat) {
-    jangkarIndeksDipicu = true;
-    getProsedurIndeks().then(ix => { if (ix) renderChecklist(); }).catch(() => { /* tanpa indeks: fitur ini saja yang absen */ });
-  }
-  return null;
-}
-const jangkarBrand = () => String(S.selectedBrand || 'ROBUST').trim().toUpperCase();
-function jangkarSaudara(item) {
-  const kode = jangkarKode(item);
-  if (!kode) return null;
-  const ix = jangkarIndeksSiap();
-  return ix ? saudaraJangkar(kode, ix, { terpakai: jangkarTerpakai(item), brand: jangkarBrand(), hanyaFirm: !S.modeSwastaOutput }) : null;
-}
-// Brand & kesiapan jual: aturan yang sama dengan Auto-Match (satu brand per konversi; SINGLE USE/dihapus = terkunci).
-async function jangkarCek(kodes) {
-  const out = new Map();
-  const target = String(S.selectedBrand || 'ROBUST').trim().toUpperCase();
-  const rows = kodes.map(k => ({ kode_produk: k }));
-  await S.enrichBrand(rows);
-  rows.forEach(r => {
-    const b = String(r.brand || '').trim().toUpperCase();
-    if (b !== target) out.set(r.kode_produk, { ok: false, terkunci: true, alasan: `Brand ${b || '(kosong)'}, konversi ini ${target}.` });
+const anchorBrand = () => String(S.selectedBrand || 'ROBUST').trim().toUpperCase();
+const anchorHitungKey = (kode) => anchorBrand() + '|' + kode;
+
+// Angka chip: satu RPC batch untuk SEMUA anchor di daftar (bukan satu per item). Selama belum ada, chip belum muncul;
+// begitu datang daftar dirender ulang. Gagal -> chip absen saja (fitur ini saja yang hilang), dicoba lagi setelah jeda.
+function anchorHitungPicu() {
+  if (anchorHitungJalan || Date.now() - anchorHitungGagal < ANCHOR_HITUNG_COBA_ULANG) return;
+  const now = Date.now();
+  const perlu = [...new Set(S.checklistItems.map(anchorKode).filter(Boolean))].filter((k) => {
+    const c = anchorHitungCache.get(anchorHitungKey(k));
+    return !c || now - c.ts > ANCHOR_HITUNG_TTL;
   });
-  if (!S.modeSwastaOutput) {
-    const sisa = kodes.filter(k => !out.has(k));
-    if (sisa.length) {
-      const bl = await firmCheck(sisa);
-      sisa.forEach(k => {
-        const r = bl.get(k);
-        if (!r) return;
-        if (r.keras) out.set(k, { ok: false, terkunci: true, alasan: r.keras });
-        else if (r.kurang && r.kurang.length) out.set(k, { ok: false, alasan: 'Belum siap dijual: ' + r.kurang.join(', ') + '.' });
-      });
-    }
-  }
-  return out;
+  if (!perlu.length) return;
+  anchorHitungJalan = true;
+  const brand = anchorBrand();
+  anchorHitung(S.rpc, perlu, { brand })
+    .then((peta) => { peta.forEach((n, k) => anchorHitungCache.set(brand + '|' + k, { n, ts: Date.now() })); })
+    .catch(() => { anchorHitungGagal = Date.now(); })
+    .finally(() => { anchorHitungJalan = false; renderChecklist(); });
 }
-async function jangkarMuat(item, kode) {
-  const c = { jangkar: kode, loading: true, tawaran: null, pilih: new Set(), error: null };
-  jangkarCache.set(item.id, c);
+function anchorN(kode) {
+  const c = anchorHitungCache.get(anchorHitungKey(kode));
+  return c ? c.n : null;
+}
+
+async function anchorMuat(item, kode, level) {
+  const lama = anchorCache.get(item.id);
+  const c = { anchor: kode, loading: true, level, hasil: null, pilih: new Set(), error: null };
+  anchorCache.set(item.id, c);
   try {
-    const ix = await getProsedurIndeks();
-    if (!ix) throw new Error('Indeks prosedur belum termuat');
-    const u = understand(item.raw_text || '');
-    const sp = extractSpecs(item.raw_text || '');
-    const itemAttrs = { ...u.attrs, ukuran_cm: sp && sp.ukuran_cm != null ? sp.ukuran_cm : u.attrs.ukuran_cm };
-    firmCheck.clear(); // status firm/link bisa berubah sejak terakhir dicek
-    const t = await susunTawaran(kode, ix, { itemAttrs, terpakai: jangkarTerpakai(item), brand: jangkarBrand(), hanyaFirm: !S.modeSwastaOutput, cek: jangkarCek });
-    if (jangkarCache.get(item.id) !== c) return; // ditutup/diganti selagi menunggu
-    if (!t) { jangkarOpen.delete(item.id); jangkarCache.delete(item.id); S.showToast('Tidak ada set lain di prosedur ini.'); return; }
-    c.tawaran = t;
-    c.pilih = new Set(t.opsi.filter(o => o.pilih).map(o => o.kode));
+    const hasil = await anchorTawarkan(S.rpc, kode, { brand: anchorBrand(), level });
+    if (anchorCache.get(item.id) !== c) return; // ditutup/diganti selagi menunggu
+    if (!hasil.opsi.length) { anchorOpen.delete(item.id); anchorCache.delete(item.id); S.showToast('Tidak ada set lain di prosedur ini.'); return; }
+    c.hasil = hasil;
+    const terpakai = anchorTerpakai(item);
+    // Centang awal: semua yang ditawarkan, kecuali yang sudah dipakai item lain. Saat naik ke level 3, centang staf dipertahankan
+    // dan baris tambahan (barang sejenis) TIDAK dicentang — itu bukan varian sungguhan.
+    const sebelumnya = lama && lama.anchor === kode && lama.hasil ? lama : null;
+    const kodeLama = sebelumnya ? new Set(sebelumnya.hasil.opsi.map(o => o.kode_produk)) : null;
+    hasil.opsi.forEach(o => {
+      if (terpakai.has(o.kode_produk)) return;
+      if (kodeLama) { if (kodeLama.has(o.kode_produk) && sebelumnya.pilih.has(o.kode_produk)) c.pilih.add(o.kode_produk); }
+      else c.pilih.add(o.kode_produk);
+    });
+    c.pilih.add(kode);
   } catch (err) {
-    if (jangkarCache.get(item.id) === c) c.error = err.message || 'gagal';
+    if (anchorCache.get(item.id) === c) c.error = err.message || 'gagal';
   } finally {
     c.loading = false;
-    if (jangkarCache.get(item.id) === c || !jangkarCache.has(item.id)) renderChecklist();
+    if (anchorCache.get(item.id) === c || !anchorCache.has(item.id)) renderChecklist();
   }
 }
-// Chip di baris ketutup: "+N set lain". Murah (tanpa RPC); klik = buka panel di baris itu.
-function jangkarChipHtml(item) {
-  const sd = jangkarSaudara(item);
-  if (!sd) return '';
-  const n = sd.saudara.filter(m => !m.terpakai).length;
+// Chip di baris ketutup: "+N set lain". Klik = buka panel di baris itu.
+function anchorChipHtml(item) {
+  const kode = anchorKode(item);
+  if (!kode) return '';
+  const n = anchorN(kode);
   if (!n) return '';
-  return `<button type="button" class="kb-am-btn kb-jangkar-chip" data-action="jangkar-open" data-id="${item.id}" title="Tawarkan semua set ${escapeHtmlAttr(sd.prosedur)} sebagai opsi">+${n} set lain</button>`;
+  return `<button type="button" class="kb-am-btn kb-anchor-chip" data-action="anchor-open" data-id="${item.id}" title="Tawarkan semua varian produk ini sebagai opsi">+${n} set lain</button>`;
 }
-function jangkarPanelHtml(item) {
-  const sd = jangkarSaudara(item);
-  if (!sd) return '';
-  const kode = jangkarKode(item);
-  const n = sd.saudara.filter(m => !m.terpakai).length;
-  const c = jangkarCache.get(item.id);
-  const open = jangkarOpen.has(item.id) && !!c && c.jangkar === kode;
-  const nama = escapeHtmlAttr(sd.prosedur + (sd.kualifier ? ' ' + sd.kualifier : ''));
+function anchorBadgesHtml(o) {
+  const sinyal = Array.isArray(o.sinyal) ? o.sinyal : [];
+  if (!sinyal.length) return '';
+  return `<span class="kb-anchor-badges">${sinyal.map(s => `<span class="pd-tag kb-anchor-badge" data-sinyal="${escapeHtmlAttr(s)}">${escapeHtmlAttr(anchorLabelSinyal(s))}</span>`).join('')}</span>`;
+}
+function anchorPanelHtml(item) {
+  const kode = anchorKode(item);
+  if (!kode) return '';
+  const c = anchorCache.get(item.id);
+  const open = anchorOpen.has(item.id) && !!c && c.anchor === kode;
+  const n = anchorN(kode);
   const dq = Number(item.qty_diminta);
   const qtyTxt = dq >= 1 ? escapeHtmlAttr(String(dq)) : 'qty diminta';
   if (!open) {
     if (!n) return '';
-    return `<div class="kb-cmp-hint kb-jangkar"><button type="button" class="kb-am-btn" data-action="jangkar-open" data-id="${item.id}">Tawarkan semua opsi ${nama}</button> ${n} set lain di prosedur ini — tiap opsi @ ${qtyTxt}, buat bandingan anggaran.</div>`;
+    return `<div class="kb-cmp-hint kb-anchor"><button type="button" class="kb-am-btn" data-action="anchor-open" data-id="${item.id}">Tawarkan semua varian</button> ${n} set lain yang siap dijual — tiap opsi @ ${qtyTxt}, buat bandingan anggaran.</div>`;
   }
-  if (c.loading) return `<div class="kb-cmp-hint kb-jangkar" role="status">Menyiapkan opsi ${nama}…</div>`;
-  if (c.error) return `<div class="kb-cmp-hint kb-jangkar">Gagal menyiapkan opsi: ${escapeHtmlAttr(c.error)} <button type="button" class="kb-am-link" data-action="jangkar-open" data-id="${item.id}">Coba lagi</button></div>`;
-  const t = c.tawaran;
-  if (!t) return '';
-  const rows = t.opsi.map(o => {
-    const kodeEsc = escapeHtmlAttr(o.kode);
-    return `<label class="kb-jangkar-row${o.terkunci && !o.jangkar ? ' locked' : ''}">
-      <input type="checkbox" data-jangkar-check="${item.id}" data-kode="${kodeEsc}"${c.pilih.has(o.kode) ? ' checked' : ''}${o.terkunci ? ' disabled' : ''}>
-      <span class="kb-jangkar-main"><span class="kb-jangkar-nama">${escapeHtmlAttr(o.nama)}</span>
-        <span class="kb-jangkar-sub"><span class="kb-cmp-kode">${kodeEsc}</span> ${escapeHtmlAttr(labelOpsi(o))}${o.jangkar ? ' · pilihanmu' : ''}</span>
-        ${o.alasan ? `<span class="kb-jangkar-alasan">${escapeHtmlAttr(o.alasan)}</span>` : ''}
+  if (c.loading) return `<div class="kb-cmp-hint kb-anchor" role="status">Menyiapkan opsi…</div>`;
+  if (c.error) return `<div class="kb-cmp-hint kb-anchor">Gagal menyiapkan opsi: ${escapeHtmlAttr(c.error)} <button type="button" class="kb-am-link" data-action="anchor-open" data-id="${item.id}">Coba lagi</button></div>`;
+  const h = c.hasil;
+  if (!h) return '';
+  const terpakai = anchorTerpakai(item);
+  const barisAnchor = h.anchor || { kode_produk: kode, nama_produk: (item.matched_items[0] && item.matched_items[0].nama_produk) || kode };
+  const baris = [barisAnchor, ...h.opsi];
+  const rows = baris.map((o, i) => {
+    const isAnchor = i === 0;
+    const kodeO = o.kode_produk;
+    const kodeEsc = escapeHtmlAttr(kodeO);
+    const dipakai = !isAnchor && terpakai.has(kodeO);
+    // Anchor selalu ikut sebagai tanda (terkunci). Kalau DB menandainya belum firm, alasannya ditampilkan — bukan dijadikan pilihan baru.
+    const alasan = isAnchor ? (o.ditawarkan === false && o.alasan_tolak ? o.alasan_tolak : '') : (dipakai ? 'Sudah dipakai di kebutuhan lain pada permintaan ini.' : '');
+    return `<label class="kb-anchor-row${isAnchor ? ' locked' : ''}">
+      <input type="checkbox" data-anchor-check="${item.id}" data-kode="${kodeEsc}"${c.pilih.has(kodeO) ? ' checked' : ''}${isAnchor ? ' disabled' : ''}>
+      <span class="kb-anchor-main"><span class="kb-anchor-nama">${escapeHtmlAttr(o.nama_produk)}</span>
+        <span class="kb-anchor-sub"><span class="kb-cmp-kode">${kodeEsc}</span> ${escapeHtmlAttr(anchorLabelOpsi({ tier: o.tier, nomor: o.nomor }))}${isAnchor ? ' · pilihanmu' : ''}</span>
+        ${isAnchor ? '' : anchorBadgesHtml(o)}
+        ${alasan ? `<span class="kb-anchor-alasan">${escapeHtmlAttr(alasan)}</span>` : ''}
       </span></label>`;
   }).join('');
   const nPilih = c.pilih.size;
-  const tersaring = t.disembunyikan && t.disembunyikan.length
-    ? ` ${t.disembunyikan.length} set lain disembunyikan (${[...new Set(t.disembunyikan.map(x => /^Brand /.test(x.alasan) ? 'brand lain' : 'belum firm'))].join(' / ')}).` : '';
-  return `<div class="kb-jangkar-panel">
-    <div class="kb-cmp-hint">Set ${nama} — centang yang mau ditawarkan, tiap opsi @ ${qtyTxt}.${t.belumDicek ? ' Status brand/firm belum bisa dicek, jadi tidak ada yang dicentang otomatis.' : ''}${tersaring}${t.terpotong ? ` ${t.terpotong} set lagi tidak ditampilkan (batas ${t.opsi.length}).` : ''}</div>
-    <div class="kb-jangkar-list">${rows}</div>
+  const sejenis = c.level >= ANCHOR_LEVEL.SEJENIS;
+  const tombolSejenis = sejenis ? '' : `<button type="button" class="kb-am-link" data-action="anchor-sejenis" data-id="${item.id}">Tampilkan sejenis</button>`;
+  return `<div class="kb-anchor-panel">
+    <div class="kb-cmp-hint">${sejenis ? 'Varian dan barang sejenis' : 'Varian'} — centang yang mau ditawarkan, tiap opsi @ ${qtyTxt}. ${tombolSejenis}</div>
+    <div class="kb-anchor-list">${rows}</div>
     <div class="kb-picker-actions">
-      <button type="button" class="kb-cancel-btn" data-action="jangkar-close" data-id="${item.id}">Tutup</button>
-      <button type="button" class="kb-am-btn primary" data-action="jangkar-apply" data-id="${item.id}"${nPilih < 2 ? ' disabled' : ''}>Pasang ${nPilih} opsi</button>
+      <button type="button" class="kb-cancel-btn" data-action="anchor-close" data-id="${item.id}">Tutup</button>
+      <button type="button" class="kb-am-btn primary" data-action="anchor-apply" data-id="${item.id}"${nPilih < 2 ? ' disabled' : ''}>Pasang ${nPilih} opsi</button>
     </div>
   </div>`;
 }
@@ -771,7 +780,7 @@ function bindSeg(root, onPick) {
 let reviewUid = 0;
 let reviewDefault = null;          // default level sesi: null | 'SET' | 'INSTRUMENT' | 'UNIT' (sengaja tidak diingat antar sesi)
 let reviewSel = new Set();         // uid baris terpilih
-let reviewAnchor = null;           // uid jangkar Shift+klik
+let reviewAnchor = null;           // uid anchor Shift+klik
 let reviewCursor = null;           // uid baris aktif untuk keyboard (j/k)
 let reviewFilter = 'semua';        // 'semua' | 'belum' | 'usulan' | 'diatur'
 let reviewQuery = '';
@@ -2196,7 +2205,7 @@ function renderChecklistItemHtml(item) {
     <div class="kb-item-header-text">
       <div class="kb-item-text">${reqMarked || S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
       ${!isExpanded ? compactMatchedTxt : ''}
-      ${!isExpanded && isDone ? jangkarChipHtml(item) : ''}
+      ${!isExpanded && isDone ? anchorChipHtml(item) : ''}
       ${!isExpanded ? amLineHtml(item) : ''}
     </div>
     ${!isExpanded ? amQuickBtnHtml(item) : ''}
@@ -2256,7 +2265,7 @@ function renderChecklistItemHtml(item) {
       bodyHtml = `
         <div class="kb-item-links">
           ${isDone ? `<a data-action="change" data-id="${item.id}">Ubah produk</a>` : ''}
-          ${isDone && jangkarUndo.has(item.id) && (item.matched_items || []).length > 1 ? `<a data-action="jangkar-undo" data-id="${item.id}">Kembalikan ke 1 produk</a>` : ''}
+          ${isDone && anchorUndo.has(item.id) && (item.matched_items || []).length > 1 ? `<a data-action="anchor-undo" data-id="${item.id}">Kembalikan ke 1 produk</a>` : ''}
           <a class="kb-batal-link" data-action="undo" data-id="${item.id}">Batal</a>
         </div>`;
     }
@@ -2264,7 +2273,7 @@ function renderChecklistItemHtml(item) {
     detailHtml = `<div class="kb-item-detail">
       ${sub ? `<div class="kb-item-sub">${sub}</div>` : ''}
       ${matchedHtml}
-      ${isDone && !isPicking ? jangkarPanelHtml(item) : ''}
+      ${isDone && !isPicking ? anchorPanelHtml(item) : ''}
       ${bodyHtml}
     </div>`;
   }
@@ -2496,6 +2505,7 @@ S.kbList.addEventListener('dragstart', e => {
 });
 
 function renderChecklist() {
+  anchorHitungPicu(); // angka chip "+N set lain": satu RPC batch untuk semua anchor yang belum punya angka
   updateKbCounts();
   renderAmBar(); // sebelum daftar dirender: bar yang melepas filter kosong (amFilter) harus jalan dulu
   renderSectionTabs();
@@ -2802,15 +2812,15 @@ function reconcileClipboardQty(itemId, oldLinks, newLinks) {
 }
 S.reconcileClipboardQty = reconcileClipboardQty;
 
-// Centang opsi jangkar: simpan ke state dan segarkan tombol Pasang tanpa render ulang (fokus & scroll tidak loncat).
+// Centang opsi anchor: simpan ke state dan segarkan tombol Pasang tanpa render ulang (fokus & scroll tidak loncat).
 S.kbList.addEventListener('change', (e) => {
-  const cb = e.target && e.target.closest ? e.target.closest('input[data-jangkar-check]') : null;
+  const cb = e.target && e.target.closest ? e.target.closest('input[data-anchor-check]') : null;
   if (!cb) return;
-  const itemId = parseInt(cb.dataset.jangkarCheck, 10);
-  const c = jangkarCache.get(itemId);
+  const itemId = parseInt(cb.dataset.anchorCheck, 10);
+  const c = anchorCache.get(itemId);
   if (!c) return;
   if (cb.checked) c.pilih.add(cb.dataset.kode); else c.pilih.delete(cb.dataset.kode);
-  const apply = S.kbList.querySelector(`button[data-action="jangkar-apply"][data-id="${itemId}"]`);
+  const apply = S.kbList.querySelector(`button[data-action="anchor-apply"][data-id="${itemId}"]`);
   if (apply) { apply.textContent = `Pasang ${c.pilih.size} opsi`; apply.disabled = c.pilih.size < 2; }
 });
 
@@ -2874,27 +2884,29 @@ S.kbList.addEventListener('click', async (e) => {
     return;
   }
 
-  if (action === 'jangkar-open') {
-    const kode = jangkarKode(item);
+  if (action === 'anchor-open' || action === 'anchor-sejenis') {
+    const kode = anchorKode(item);
     if (!kode) return;
+    const level = action === 'anchor-sejenis' ? ANCHOR_LEVEL.SEJENIS : ANCHOR_LEVEL.VARIAN;
     S.checklistExpandedId = itemId;
-    jangkarOpen.add(itemId);
-    jangkarCache.set(itemId, { jangkar: kode, loading: true, tawaran: null, pilih: new Set(), error: null });
-    renderChecklist(); // tampilkan "Menyiapkan…" dulu; muat indeks + cek brand/firm di belakang
-    await jangkarMuat(item, kode);
+    anchorOpen.add(itemId);
+    if (action === 'anchor-open') anchorCache.set(itemId, { anchor: kode, loading: true, level, hasil: null, pilih: new Set(), error: null });
+    renderChecklist(); // tampilkan "Menyiapkan…" dulu; RPC jalan di belakang
+    await anchorMuat(item, kode, level);
     return;
   }
 
-  if (action === 'jangkar-close') {
-    jangkarOpen.delete(itemId);
+  if (action === 'anchor-close') {
+    anchorOpen.delete(itemId);
     renderChecklist();
     return;
   }
 
-  if (action === 'jangkar-apply') {
-    const c = jangkarCache.get(itemId);
-    if (!c || !c.tawaran || c.jangkar !== jangkarKode(item)) return;
-    const kodes = c.tawaran.opsi.map(o => o.kode).filter(k => c.pilih.has(k)); // urutan: jangkar dulu, lalu tier/nomor
+  if (action === 'anchor-apply') {
+    const c = anchorCache.get(itemId);
+    if (!c || !c.hasil || c.anchor !== anchorKode(item)) return;
+    // urutan: anchor dulu, lalu urutan dari DB
+    const kodes = [c.anchor, ...c.hasil.opsi.map(o => o.kode_produk)].filter(k => c.pilih.has(k));
     if (kodes.length < 2) return;
     btn.disabled = true;
     const okKodes = await pastikanDiClipboard(kodes);
@@ -2904,17 +2916,17 @@ S.kbList.addEventListener('click', async (e) => {
       return;
     }
     if (okKodes.length < kodes.length) S.showToast(`${kodes.length - okKodes.length} produk gagal ditambahkan`, 'warning', { detail: 'Sisanya tetap dipasang.' });
-    jangkarUndo.set(itemId, c.jangkar);
-    jangkarOpen.delete(itemId);
-    jangkarCache.delete(itemId);
+    anchorUndo.set(itemId, c.anchor);
+    anchorOpen.delete(itemId);
+    anchorCache.delete(itemId);
     await markItemTerpenuhiWithProduk(item, okKodes);
     return;
   }
 
-  if (action === 'jangkar-undo') {
-    const kode = jangkarUndo.get(itemId);
+  if (action === 'anchor-undo') {
+    const kode = anchorUndo.get(itemId);
     if (!kode) return;
-    jangkarUndo.delete(itemId);
+    anchorUndo.delete(itemId);
     await markItemTerpenuhiWithProduk(item, [kode]); // produk bundle yang sudah masuk Clipboard sengaja tidak dihapus
     return;
   }
