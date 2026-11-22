@@ -1148,3 +1148,43 @@ th.num .th-btn{justify-content:flex-end}
 .thm-danger,.thm-danger i{color:var(--danger-text)}
 .thm-sep{height:1px;margin:4px 6px;background:var(--border)}
 @media (prefers-reduced-motion:reduce){.th-btn,.th-ind-idle,.th-menu-pop{transition:none;animation:none}}
+
+/* =====================================================================
+   Rapikan tabel & filter produk (v3)
+   1. Panel "Tambah Filter" ikut tinggi layar; Terapkan selalu terlihat
+   2. Kolom Kode & kolom aksi menempel saat tabel digeser horizontal
+   3. Tipe jadi label manusia; hierarki teks sel; footer pagination
+   ===================================================================== */
+
+/* 1. Panel filter: kolom flex, daftar yang scroll, tombol Terapkan menempel di dasar */
+#appWrap .add-filter-pop.open{display:flex;flex-direction:column;max-height:var(--afp-maxh,520px);width:340px;box-shadow:var(--shadow-lg)}
+#appWrap .add-filter-pop .afp-step{flex:1;min-height:0}
+#appWrap .add-filter-pop .afp-list{flex:1 1 auto;min-height:0;max-height:none}
+#appWrap .add-filter-pop .afp-apply-btn{flex:none;margin-top:10px}
+#appWrap .add-filter-pop .afp-apply-btn:disabled{background:var(--surface-3);color:var(--text-muted);cursor:default}
+.afp-check-row .afp-name,.afp-dim-btn .afp-dim-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.afp-check-row .afp-name{flex:1}
+.afp-n{flex:none;margin-left:auto;font-size:12px;font-variant-numeric:tabular-nums;color:var(--text-muted)}
+.afp-empty{padding:14px 11px;font-size:12.5px;color:var(--text-muted)}
+.afp-empty[hidden]{display:none}
+
+/* 2. Kolom Kode & aksi sticky (hanya tabel produk) */
+#appWrap #tableWrap thead th:first-child{position:sticky;left:0;z-index:5}
+#appWrap #tableWrap tbody tr:not(.state-row) td:first-child{position:sticky;left:0;z-index:2;background:var(--surface)}
+#appWrap #tableWrap tbody tr.clickable:hover td:first-child,
+#appWrap #tableWrap tbody tr.clickable:focus-visible td:first-child{background:var(--surface-2)}
+#appWrap #tableWrap th.c-act,#appWrap #tableWrap tbody tr:not(.state-row) td.c-act{position:sticky;right:0;z-index:2;background:var(--surface)}
+#appWrap #tableWrap th.c-act{background:var(--surface-2);z-index:5}
+#appWrap #tableWrap tbody tr.clickable:hover td.c-act{background:var(--surface-2)}
+#appWrap .vbody.is-scrolled-x #tableWrap tbody tr:not(.state-row) td:first-child,
+#appWrap .vbody.is-scrolled-x #tableWrap thead th:first-child{box-shadow:1px 0 0 var(--border),6px 0 8px -6px rgba(0,0,0,.18)}
+
+/* 3. Isi sel */
+.tipe-pill{display:inline-block;padding:1px 8px;border:1px solid var(--border);border-radius:999px;background:var(--surface-2);font-size:11.5px;font-weight:500;line-height:1.5;color:var(--text-secondary);white-space:nowrap}
+#tableBody .tipe-cell,.prod-card .tipe-cell{font-size:12.5px;color:var(--text-secondary)}
+#tableBody .harga-cell{font-weight:500;color:var(--text);font-variant-numeric:tabular-nums}
+.th-fil{flex:none;font-size:12px;line-height:1;color:var(--accent)}
+
+/* Footer pagination: font teks biasa (bukan mono), angka rata */
+#appWrap .pg-info{font-family:var(--font-body);font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--text-secondary)}
+#appWrap .pg-info .pg-info-base{color:var(--text-muted)}

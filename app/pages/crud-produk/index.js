@@ -672,6 +672,11 @@ let currentView = localStorage.getItem('produkView') || 'table';
 // Logic-nya TIDAK diubah, cuma dipindah lokasi + jadi named export.
 
 const tableBody = document.getElementById('tableBody');
+// Kolom kode (sticky) dapat bayangan tipis hanya saat isi tabel memang sedang tergeser ke kanan.
+{
+  const vb = tableBody.closest('.vbody');
+  if (vb) vb.addEventListener('scroll', () => vb.classList.toggle('is-scrolled-x', vb.scrollLeft > 4), { passive: true });
+}
 const cardWrap = document.getElementById('cardWrap');
 const tableWrap = document.getElementById('tableWrap');
 const produkCount = document.getElementById('produkCount');
@@ -1524,8 +1529,9 @@ async function loadProduk(q, page, opts){
   if (exportPanelRepaint) exportPanelRepaint();
   produkCount.textContent = Number(total).toLocaleString('id-ID') + ' produk' + (qq ? ` untuk "${qq}"` : '') +
     (produkActiveFilters.length ? `, ${produkActiveFilters.length} filter tambahan aktif` : '');
+  const tabTotal = Number(String((document.getElementById('fc-' + produkActiveFilter) || {}).textContent || '').replace(/\D/g, '')) || 0; // angka tab aktif (tanpa search / filter tambahan)
   renderPgBar(document.getElementById('produkPagination'), {
-    page: produkPage, pageSize: PRODUK_PAGE_SIZE, total,
+    page: produkPage, pageSize: PRODUK_PAGE_SIZE, total, ofTotal: tabTotal,
     onPageChange: (p) => loadProduk(qq, p, { pageOnly: true })
   });
 
@@ -1767,6 +1773,8 @@ function positionAddFilterPop(){
   if (rect.right > window.innerWidth - 12) {
     produkAddFilterPop.classList.add('align-right');
   }
+  // Tinggi panel = sisa layar di bawah posisinya (min 240px): daftar yang scroll, tombol Terapkan selalu kelihatan.
+  produkAddFilterPop.style.setProperty('--afp-maxh', Math.max(240, Math.floor(window.innerHeight - rect.top - 16)) + 'px');
 }
 function renderProdukFilterPopStep1(){
   produkAddFilterPop.innerHTML = `<div class="afp-step">
@@ -1809,14 +1817,14 @@ function renderProdukFilterPopStep2(dimKey){
   let options = dim.options;
   if (dim.klas) {
     // Kategori / Spesialisasi: label opsi memuat jumlah produk aktif (Obgyn (120)); `chip` = nama polos untuk label filter aktif
-    options = (opsiKlasifikasi()[dim.key] || []).map(o => ({ value: o.value, label: `${o.label} (${o.n.toLocaleString('id-ID')})`, chip: o.label }));
+    options = (opsiKlasifikasi()[dim.key] || []).map(o => ({ value: o.value, label: o.label, n: o.n, chip: o.label }));
     if (!options.length) options = [{ value: '', label: '(belum ada data terisi)' }];
   }
   if (dim.dynamic) {
     options = (produkDistinct[dim.dynamic] || []).map(v => ({ value: v, label: v }));
     if (dim.key in DIM_TEKS_ISI) options = [...opsiIsi(), ...options]; // golongan / brand / status INAPROC: "Sudah diisi" & "Belum diisi" di atas nilai-nilainya (Belum diisi = BRAND_NONE lama)
     // Keluarga: label opsi memuat jumlah varian (MAYOR S (7)); `chip` = nama polos untuk label filter aktif
-    if (dim.key === 'keluarga') options = options.map(o => ({ value: o.value, label: `${o.value} (${produkKeluargaN.get(o.value) || 0})`, chip: o.value }));
+    if (dim.key === 'keluarga') options = options.map(o => ({ value: o.value, label: o.value, n: produkKeluargaN.get(o.value) || 0, chip: o.value }));
     if (!options.length) options = [{ value: '', label: '(belum ada data terisi)' }];
   }
 
@@ -1839,8 +1847,9 @@ function renderProdukFilterPopStep2(dimKey){
       <div class="afp-list">
         ${options.map(o => `<label class="afp-check-row${o.value === '' ? ' disabled' : ''}">
             <input type="checkbox" data-value="${escapeHtml(o.value)}" ${selected.has(o.value) ? 'checked' : ''} ${o.value === '' ? 'disabled' : ''}/>
-            <span>${escapeHtml(o.label)}</span>
+            <span class="afp-name">${escapeHtml(o.label)}</span>${o.n != null ? `<span class="afp-n">${Number(o.n).toLocaleString('id-ID')}</span>` : ''}
           </label>`).join('')}
+        <div class="afp-empty" id="produkAfpEmpty" hidden>Tidak ada yang cocok</div>
       </div>
       <button class="afp-apply-btn" id="produkAfpApply">Terapkan</button>
     </div>`;
@@ -1851,11 +1860,21 @@ function renderProdukFilterPopStep2(dimKey){
       afpSearch.addEventListener('click', (e) => e.stopPropagation());
       afpSearch.addEventListener('input', () => {
         const q = afpSearch.value.trim().toLowerCase();
-        produkAddFilterPop.querySelectorAll('.afp-check-row').forEach(r => { r.hidden = !!q && !r.textContent.toLowerCase().includes(q); });
+        let tampil = 0;
+        produkAddFilterPop.querySelectorAll('.afp-check-row').forEach(r => { r.hidden = !!q && !r.querySelector('.afp-name').textContent.toLowerCase().includes(q); if (!r.hidden) tampil++; });
+        const kosong = document.getElementById('produkAfpEmpty'); if (kosong) kosong.hidden = tampil > 0;
       });
       afpSearch.focus();
     }
-    document.getElementById('produkAfpApply').addEventListener('click', (e) => {
+    const applyBtn = document.getElementById('produkAfpApply');
+    const paintApply = () => {
+      const n = produkAddFilterPop.querySelectorAll('input[type="checkbox"]:checked').length;
+      applyBtn.textContent = n ? `Terapkan ${n} pilihan` : (existing ? 'Hapus filter ini' : 'Pilih minimal satu');
+      applyBtn.disabled = !n && !existing;
+    };
+    produkAddFilterPop.querySelectorAll('input[type="checkbox"]').forEach(c => c.addEventListener('change', paintApply));
+    paintApply();
+    applyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const values = Array.from(produkAddFilterPop.querySelectorAll('input[type="checkbox"]:checked')).map(c => c.dataset.value);
       if (values.length === 0) {
@@ -1877,14 +1896,15 @@ function renderProdukFilterPopStep2(dimKey){
       <div class="afp-header-text"><div class="afp-title">${escapeHtml(dim.label)}</div></div>
     </div>
     <div class="afp-list">
-      ${options.map(o => `<button class="afp-dim-btn" data-value="${escapeHtml(o.value)}" ${o.value === '' ? 'disabled' : ''}><span class="afp-dim-label">${escapeHtml(o.label)}</span></button>`).join('')}
+      ${options.map(o => `<button class="afp-dim-btn" data-value="${escapeHtml(o.value)}" ${o.value === '' ? 'disabled' : ''}><span class="afp-dim-label">${escapeHtml(o.label)}</span>${o.n != null ? `<span class="afp-n">${Number(o.n).toLocaleString('id-ID')}</span>` : ''}</button>`).join('')}
     </div>
   </div>`;
   document.getElementById('produkAfpBack').addEventListener('click', (e) => { e.stopPropagation(); renderProdukFilterPopStep1(); });
   produkAddFilterPop.querySelectorAll('.afp-dim-btn[data-value]:not([disabled])').forEach(b => {
     b.addEventListener('click', (e) => {
       e.stopPropagation();
-      addProdukFilter(dimKey, b.dataset.value, dim.label + ': ' + b.textContent.trim());
+      const o = options.find(x => x.value === b.dataset.value) || {};
+      addProdukFilter(dimKey, b.dataset.value, dim.label + ': ' + (o.chip || o.label || b.textContent.trim()));
       produkAddFilterPop.classList.remove('open');
     });
   });

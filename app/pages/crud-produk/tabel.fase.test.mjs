@@ -55,7 +55,7 @@ test('kolom yang tidak bergantung (nama, tipe, kode) tetap tampil penuh selagi d
   const html = kit.rowHtml(produk(1));
   assert.match(html, /data-col="kode"[^>]*>K1</);
   assert.match(html, /data-col="nama"[^>]*>P1</);
-  assert.match(html, /data-col="tipe"[^>]*>INSTRUMENT</);
+  assert.match(html, /data-col="tipe"[^>]*>(?:<span[^>]*>)?Instrumen</);
 });
 
 test('kolom "Perlu dicek": sel tidak diganti skeleton utuh (penanda dari baris tetap tampil), bagian harga diisi pemanggil', () => {

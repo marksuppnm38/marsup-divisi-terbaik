@@ -80,7 +80,8 @@ export function crudAlert(message, opts = {}) {
 // el: elemen container. page: halaman aktif (mulai dari 1). pageSize: item per
 // halaman. total: total item keseluruhan (dari count exact / panjang array).
 // onPageChange(newPage): dipanggil pas user klik halaman lain.
-export function renderPgBar(el, { page, pageSize, total, onPageChange }){
+const fmtId = (n) => Number(n).toLocaleString('id-ID');
+export function renderPgBar(el, { page, pageSize, total, onPageChange, ofTotal }){
   // FIX: el bisa null kalau pemanggil (loadProduk() dkk, semua async & await
   // network) resolve SETELAH user udah pindah halaman -- router.js ngosongin
   // container.innerHTML SEBELUM mount() halaman baru jalan.
@@ -105,7 +106,7 @@ export function renderPgBar(el, { page, pageSize, total, onPageChange }){
   });
 
   el.innerHTML = `
-    <span class="pg-info">${startItem}–${endItem} dari ${total}</span>
+    <span class="pg-info">${fmtId(startItem)}–${fmtId(endItem)} dari ${fmtId(total)}${ofTotal && ofTotal > total ? ` <span class="pg-info-base">(disaring dari ${fmtId(ofTotal)})</span>` : ''}</span>
     <div class="pg-btns">
       <button class="pg-btn" data-page="${page - 1}" aria-label="Halaman sebelumnya" title="Halaman sebelumnya" ${page === 1 ? 'disabled' : ''}><i class="ti ti-chevron-left"></i></button>
       ${numberBtns}

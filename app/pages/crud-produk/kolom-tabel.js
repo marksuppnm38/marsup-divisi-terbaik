@@ -56,6 +56,7 @@ export const tsvCell = (v) => (v == null ? '' : typeof v === 'number' ? (Number.
 // Nilainya `cp(p, c)` kalau ada, kalau tidak `xl[0].get` (nilai Excel kolom itu). `cp` hanya dipakai bila isi sel di layar
 // BEDA dengan nilai Excel-nya (AKD: layar = nomor AKD, Excel = label status; Stok: layar = angka / label, Excel = 2 kolom).
 // cpUses = data tambahan yang dibutuhkan `cp` (kalau beda dengan `uses` untuk export).
+const TIPE_LABEL = { INSTRUMENT: 'Instrumen', SET: 'Set', UNIT: 'Unit' };
 export const TABLE_COLS = [
   { key: 'kode', label: 'Kode Produk', locked: true, td: 'kode-cell',
     render: (p, c) => `${c.h.selBox(p)}${esc(p.kode_produk)}${c.h.btn('kode', 'Salin kode produk')}${c.h.recent(p.updated_at)}`,
@@ -64,7 +65,9 @@ export const TABLE_COLS = [
     render: (p, c) => `${esc(p.nama_produk || '—')}${c.h.btn('nama', 'Salin nama produk')}${c.h.verified(p.id)}`,
     xl: [{ id: 'nama', label: 'Nama Produk', w: 45, get: (p) => p.nama_produk }] },
   { key: 'tipe', label: 'Tipe', td: 'tipe-cell',
-    render: (p) => esc(p.tipe || '—'),
+    render: (p) => (p.tipe ? `<span class="tipe-pill tipe-${esc(String(p.tipe).toLowerCase())}">${esc(TIPE_LABEL[p.tipe] || p.tipe)}</span>` : '—'),
+    // Di layar: label manusia (Instrumen). Disalin: nilai data aslinya (INSTRUMENT) supaya bisa ditempel balik ke Bulk / sheet.
+    cp: (p) => p.tipe || '',
     xl: [{ label: 'Tipe', fmt: 'center', w: 12, get: (p) => p.tipe }] },
   { key: 'golongan', label: 'Golongan', td: 'tipe-cell',
     render: (p, c) => p.golongan ? `${esc(p.golongan)}${c.h.btn('golongan', 'Salin golongan')}` : '—',
@@ -321,7 +324,7 @@ export function createTableColumns(opts) {
     const arah = headMenu.arah(c.key), filt = headMenu.filterAktif(c.key);
     const ikon = arah === 'asc' ? 'ti-arrow-up' : arah === 'desc' ? 'ti-arrow-down' : 'ti-chevron-down';
     const aria = arah === 'asc' ? 'ascending' : arah === 'desc' ? 'descending' : 'none';
-    return `<th class="th-has-menu${num}" aria-sort="${aria}"><button type="button" class="th-btn${arah || filt ? ' on' : ''}" data-col="${c.key}" aria-haspopup="menu" title="Urutkan &amp; saring: ${esc(c.label)}"><span>${esc(c.label)}</span>${filt ? '<span class="th-dot" role="img" aria-label="Disaring"></span>' : ''}<i class="ti ${ikon} th-ind${arah ? '' : ' th-ind-idle'}"></i></button></th>`;
+    return `<th class="th-has-menu${num}" aria-sort="${aria}"><button type="button" class="th-btn${arah || filt ? ' on' : ''}" data-col="${c.key}" aria-haspopup="menu" title="Urutkan &amp; saring: ${esc(c.label)}"><span>${esc(c.label)}</span>${filt ? '<i class="ti ti-filter-filled th-fil" role="img" aria-label="Disaring" title="Kolom ini sedang disaring"></i>' : ''}<i class="ti ${ikon} th-ind${arah ? '' : ' th-ind-idle'}"></i></button></th>`;
   }
   function renderHead() {
     headRow.innerHTML = visibleCols().map(thHtml).join('')
