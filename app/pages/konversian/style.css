@@ -2807,6 +2807,117 @@
   .pr-modal-box .pr-edit-pagu-sec{grid-template-columns:minmax(0,1fr)}
 }
 
+/* ============================================================
+   PERIKSA ITEM: atur Jenis (konteks) cepat untuk 100+ baris.
+   Satu hal yang diingat: REL STATUS di tepi kiri baris.
+   amber penuh = belum ada jenis (dan tak ada usulan)  ·  aksen putus-putus = ada usulan, tinggal konfirmasi
+   tanpa rel = sudah punya jenis. Chip: solid = pasti, putus-putus = usulan, tint = default sesi.
+   Hanya token yang sudah ada; kelas dasar .pr-seg dipakai juga di editor item.
+   ============================================================ */
+.pr-seg{display:inline-flex;align-items:center;gap:2px;padding:2px;min-width:0;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface-2)}
+.pr-seg-opt{
+  flex:1 1 auto;min-width:0;height:28px;padding:0 9px;
+  font-family:inherit;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap;
+  color:var(--text-secondary);background:transparent;
+  border:1px solid transparent;border-radius:calc(var(--radius) - 2px);cursor:pointer;
+  transition:background-color .12s,color .12s,border-color .12s;
+}
+.pr-seg-opt:hover{background:var(--surface);color:var(--text)}
+.pr-seg-opt.is-def{background:var(--accent-bg);color:var(--accent-text)}
+.pr-seg-opt.is-sug{border:1px dashed var(--accent);color:var(--text)}
+.pr-seg-opt.is-last{text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px}
+.pr-seg-opt[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+/* "Tanpa" (tidak ada default) = keadaan netral, jangan bersaing dengan jenis sungguhan */
+.pr-seg-opt[data-k=""][aria-pressed="true"]{background:var(--surface);border-color:var(--border-strong);color:var(--text)}
+.pr-seg-opt:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.pr-ed-konteks.pr-seg,.pr-rv-konteks.pr-seg{width:100%}
+
+.pr-modal-box.pr-modal-box--review{max-width:900px;max-height:min(94vh,940px)}
+.pr-modal-box .pr-rv-panel{display:flex;flex-direction:column;gap:var(--sp-2);margin:0 0 var(--sp-3)}
+.pr-modal-box .pr-rv-defrow{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3)}
+.pr-modal-box .pr-rv-lbl{font-size:12.5px;font-weight:600;color:var(--text)}
+.pr-modal-box .pr-rv-hint{font-size:12px;color:var(--text-muted)}
+.pr-modal-box .pr-rv-note{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);font-size:12.5px;line-height:1.4;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-secondary);background:var(--surface-2)}
+.pr-modal-box .pr-rv-note[hidden],.pr-modal-box .pr-rv-bar[hidden],.pr-modal-box .pr-review-row[hidden],.pr-modal-box .pr-rv-linkbtn[hidden]{display:none}
+.pr-modal-box .pr-rv-note > span{flex:1 1 auto;min-width:0}
+.pr-modal-box .pr-rv-note--sug{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-text)}
+.pr-modal-box .pr-rv-note--warn{background:var(--warning-bg);border-color:var(--warning-border);color:var(--warning)}
+.pr-modal-box .pr-rv-linkbtn{flex:0 0 auto;padding:4px 8px;font-family:inherit;font-size:12px;font-weight:600;color:inherit;background:transparent;border:1px solid currentColor;border-radius:var(--radius-sm);cursor:pointer}
+.pr-modal-box .pr-rv-bar .pr-rv-linkbtn,.pr-modal-box .pr-rv-note--undo .pr-rv-linkbtn{color:var(--accent-text)}
+.pr-modal-box .pr-rv-linkbtn:hover{background:var(--surface)}
+.pr-modal-box .pr-rv-linkbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.pr-modal-box .pr-rv-sticky{position:sticky;top:0;z-index:2;margin:0 calc(var(--sp-6) * -1);padding:var(--sp-2) var(--sp-6) 0;background:var(--surface);border-bottom:1px solid var(--border)}
+.pr-modal-box .pr-rv-sticky .pr-review-head{position:static}
+.pr-modal-box .pr-rv-filterrow{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);margin-bottom:var(--sp-2)}
+.pr-modal-box .pr-rv-n{font-variant-numeric:tabular-nums;font-weight:500;opacity:.75}
+.pr-modal-box .pr-rv-search{flex:1 1 140px;min-width:0;max-width:260px;height:32px;padding:0 10px;font-size:13px;font-family:inherit;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface-2);color:var(--text)}
+.pr-modal-box .pr-rv-search:focus{outline:none;background:var(--surface);border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+.pr-modal-box .pr-rv-filterrow .pr-rv-note--undo{flex:1 1 auto;justify-content:flex-end;margin:0;padding:0;background:none;border:0;min-width:0}
+.pr-modal-box .pr-rv-filterrow .pr-rv-note--undo > span{flex:0 1 auto;text-align:right}
+
+/* kolom: [pilih] nama qty pagu jenis [hapus] */
+.pr-modal-box.pr-modal-box--review .pr-review-head,
+.pr-modal-box.pr-modal-box--review .pr-review-row{grid-template-columns:28px minmax(0,1fr) 64px 118px 156px 32px;align-items:center}
+.pr-modal-box.pr-modal-box--review .pr-review-head > :nth-child(2){text-align:left}
+.pr-modal-box.pr-modal-box--review .pr-review-head > :nth-child(3),
+.pr-modal-box.pr-modal-box--review .pr-review-head > :nth-child(4){text-align:right}
+.pr-modal-box .pr-review-row{position:relative;border-radius:var(--radius);scroll-margin-top:96px;scroll-margin-bottom:120px}
+.pr-modal-box .pr-review-row::before{content:"";position:absolute;left:calc(var(--sp-3) * -1);top:4px;bottom:4px;width:0;border-left:3px solid transparent;border-radius:2px}
+.pr-modal-box .pr-review-row.is-belum::before{border-left-color:var(--warning)}
+.pr-modal-box .pr-review-row.is-usulan::before{border-left:3px dashed color-mix(in srgb,var(--accent) 55%,transparent)}
+.pr-modal-box .pr-review-row.is-cursor{background:var(--surface-2)}
+.pr-modal-box .pr-review-row.is-sel{background:var(--accent-bg)}
+.pr-modal-box .pr-review-row:focus{outline:none}
+.pr-modal-box .pr-review-row:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.pr-modal-box .pr-rv-check{
+  width:20px;height:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;
+  color:#fff;background:var(--surface);border:1.5px solid var(--border-strong);border-radius:5px;cursor:pointer;
+}
+/* centang digambar dengan CSS (status pilihan tidak boleh bergantung pada font ikon) */
+.pr-modal-box .pr-rv-check::after{content:"";display:block;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg);opacity:0}
+.pr-modal-box .pr-rv-check[aria-checked="true"],.pr-modal-box .pr-rv-check[aria-checked="mixed"]{background:var(--accent);border-color:var(--accent)}
+.pr-modal-box .pr-rv-check[aria-checked="true"]::after{opacity:1}
+.pr-modal-box .pr-rv-check[aria-checked="mixed"]::after{opacity:1;width:10px;height:0;border-width:0 0 2px 0;transform:none}
+.pr-modal-box .pr-rv-check:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.pr-modal-box .pr-rv-bar{
+  position:sticky;bottom:var(--pr-actions-h,61px);z-index:2;
+  display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);
+  margin:var(--sp-2) 0 0;padding:var(--sp-2) var(--sp-3);
+  background:var(--surface);border:1px solid var(--accent);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);
+}
+.pr-modal-box .pr-rv-bar-n{font-size:12.5px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.pr-modal-box .pr-rv-bar-n + div{display:flex}
+.pr-modal-box .pr-rv-live{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:768px){
+  .pr-modal-box .pr-rv-sticky{margin:0 calc(var(--sp-4) * -1);padding:var(--sp-2) var(--sp-4) 0}
+  .pr-modal-box.pr-modal-box--review .pr-review-head{grid-template-columns:28px minmax(0,1fr)}
+  .pr-modal-box.pr-modal-box--review .pr-review-head > :nth-child(n+3){display:none}
+  .pr-modal-box.pr-modal-box--review .pr-review-row{grid-template-columns:28px 64px minmax(0,1fr) 32px;gap:var(--sp-1) var(--sp-2);padding:var(--sp-2) 0;border-top:1px solid var(--border)}
+  .pr-modal-box.pr-modal-box--review .pr-review-row .pr-rv-check{grid-column:1;grid-row:1}
+  .pr-modal-box.pr-modal-box--review .pr-review-row .pr-rv-nama{grid-column:2 / 4;grid-row:1}
+  .pr-modal-box.pr-modal-box--review .pr-review-row .pr-review-del{grid-column:4;grid-row:1}
+  .pr-modal-box.pr-modal-box--review .pr-review-row .pr-rv-qty{grid-column:2;grid-row:2}
+  .pr-modal-box.pr-modal-box--review .pr-review-row .pr-rv-pagu{grid-column:3 / 5;grid-row:2}
+  .pr-modal-box.pr-modal-box--review .pr-review-row .pr-rv-konteks{grid-column:2 / 5;grid-row:3}
+  .pr-modal-box .pr-seg-opt{height:36px}
+  /* bar aksi: hitungan + aksi di baris atas, chip Jenis selebar bar di baris bawah */
+  .pr-modal-box .pr-rv-bar-n{order:1}
+  .pr-modal-box .pr-rv-bar .pr-rv-linkbtn{order:2}
+  .pr-modal-box .pr-rv-bar-n + div{order:3;flex:1 0 100%}
+  .pr-modal-box .pr-rv-bar .pr-seg{width:100%}
+  .pr-modal-box .pr-rv-filterrow .pr-rv-note--undo{flex:1 0 100%;justify-content:space-between}
+  .pr-modal-box .pr-rv-search{max-width:none}
+  .pr-modal-box .pr-review-row::before{left:calc(var(--sp-3) * -1)}
+}
+/* editor item: kolom Jenis selebar chip (di HP Jenis turun ke baris kedua, aturan lama tetap berlaku) */
+@media (min-width:641px){
+  .pr-modal-box .pr-edit-head,.pr-modal-box .pr-edit-row{grid-template-columns:minmax(0,1fr) 72px 124px 156px}
+}
+@media (prefers-reduced-motion:reduce){.pr-seg-opt{transition:none}}
+
 /* DOCX = aksi sekunder: netral, bukan biru pucat bergaris aksen seperti PDF-nya tombol utama */
 #app-root .sph-doc-actions .sph-doc-btn:not(.sph-doc-btn-primary):not(.btn-record){
   background:var(--surface);color:var(--text);border:1px solid var(--border-strong);

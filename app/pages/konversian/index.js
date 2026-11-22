@@ -4603,6 +4603,10 @@ const konvHandlers = {
 for (const tab of SUBTAB_IDS) {
   konvHandlers['konv.tab.' + tab] = () => { if (tab !== activeSubTab) S.switchSubTab(tab); return true; };
 }
+// Pintasan layar Periksa item (konv.rv.*): handler-nya hidup di permintaan-rs.js dan baru terpasang SETELAH baris ini
+// (S.prReviewKeys), jadi dicari saat tombol ditekan. Return false = bukan urusan kita, biarkan jatuh ke pintasan lain.
+['next', 'prev', 'set1', 'set2', 'set3', 'clear', 'accept', 'fillDown', 'select', 'extendDown', 'extendUp', 'selectAll', 'undo', 'edit']
+  .forEach((k) => { const id = 'konv.rv.' + k; konvHandlers[id] = (e) => { const h = S.prReviewKeys && S.prReviewKeys[id]; return h ? h(e) : false; }; });
 _globalOffs.push(installShortcuts('konversian', konvHandlers));
 // Tooltip + aria-keyshortcuts diambil dari registry, bukan diketik manual di markup.
 applyShortcutHints({

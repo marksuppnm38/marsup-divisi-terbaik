@@ -1052,11 +1052,46 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
     <div id="pr-review-wrap" style="display:none;">
       <div class="pr-review-box">
         <div class="pr-review-info" id="pr-review-info">item terbaca — cek dan lengkapi sebelum disimpan</div>
-        <div class="pr-review-head">
-          <span>Item diminta</span><span>Qty</span><span>Pagu satuan</span><span>Jenis</span><span></span>
+        <div class="pr-rv-panel">
+          <div class="pr-rv-defrow">
+            <span class="pr-rv-lbl" id="pr-rv-def-lbl">Jenis default</span>
+            <div id="pr-rv-default"></div>
+            <span class="pr-rv-hint">Mengisi baris yang belum diatur. Pilihan per baris selalu menang.</span>
+          </div>
+          <div class="pr-rv-note pr-rv-note--sug" id="pr-rv-sugrow" hidden>
+            <i class="ti ti-wand" aria-hidden="true"></i>
+            <span id="pr-rv-sug-text"></span>
+            <button type="button" class="pr-rv-linkbtn" id="pr-rv-accept-all">Terima semua usulan</button>
+          </div>
+          <div class="pr-rv-note pr-rv-note--warn" id="pr-rv-warn" hidden>
+            <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+            <span id="pr-rv-warn-text"></span>
+            <button type="button" class="pr-rv-linkbtn" id="pr-rv-jump">Lompat ke yang belum</button>
+          </div>
+        </div>
+        <div class="pr-rv-sticky">
+          <div class="pr-rv-filterrow">
+            <div class="pr-seg pr-seg--filter" id="pr-rv-filter" role="group" aria-label="Tampilkan item"></div>
+            <input type="text" class="pr-rv-search" id="pr-rv-search" placeholder="Cari item…" aria-label="Cari item" autocomplete="off"/>
+            <div class="pr-rv-note pr-rv-note--undo" id="pr-rv-undo" hidden>
+              <span id="pr-rv-undo-text"></span>
+              <button type="button" class="pr-rv-linkbtn" id="pr-rv-undo-btn">Urungkan</button>
+            </div>
+          </div>
+          <div class="pr-review-head">
+            <button type="button" class="pr-rv-check" id="pr-rv-checkall" role="checkbox" aria-checked="false" aria-label="Pilih semua yang tampil"></button>
+            <span>Item diminta</span><span>Qty</span><span>Pagu satuan</span><span>Jenis</span><span></span>
+          </div>
         </div>
         <div class="pr-review-list" id="pr-review-rows"></div>
         <button class="pr-review-add-btn" id="pr-review-add-btn" type="button"><i class="ti ti-plus"></i>Tambah baris manual</button>
+        <div class="pr-rv-bar" id="pr-rv-bar" role="region" aria-label="Aksi untuk item terpilih" hidden>
+          <span class="pr-rv-bar-n" id="pr-rv-bar-n">0 dipilih</span>
+          <div id="pr-rv-bar-seg"></div>
+          <button type="button" class="pr-rv-linkbtn" id="pr-rv-filldown" title="Salin jenis baris aktif ke baris kosong di bawahnya (f)">Isi ke bawah</button>
+          <button type="button" class="pr-rv-linkbtn" id="pr-rv-clearsel">Batal pilih</button>
+        </div>
+        <div class="pr-rv-live" id="pr-rv-live" aria-live="polite" role="status"></div>
       </div>
       <div class="pr-actions pr-actions-review">
         <!-- Pencocokan produk TIDAK lagi dikerjakan di modal ini: setelah disimpan, usulannya muncul di Kebutuhan RS. -->

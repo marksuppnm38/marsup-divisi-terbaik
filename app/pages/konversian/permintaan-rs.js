@@ -4,6 +4,8 @@
 // di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
 import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck, KONTEKS } from './auto-konversi/index.js';
 import { bandingkan, tokensToHtml } from './auto-konversi/bandingkan.js';
+import { suggestKonteks } from './auto-konversi/konteks-suggest.js';
+import { isTyping } from '../../../shared/shortcuts.js';
 
 export function installPermintaanRs(S) {
 // ══════════════════════════════════════════
@@ -28,6 +30,7 @@ const prActiveMeta = document.getElementById('pr-active-meta');
 const prActiveList = document.getElementById('pr-active-list');
 const prEditWrap = document.getElementById('pr-edit-wrap');
 const prEditRows = document.getElementById('pr-edit-rows');
+bindSeg(prEditRows, (seg, k) => paintSeg(seg, { value: k }));   // editor item: pilihan Jenis tersimpan di seg.dataset.value, dibaca saat simpan
 const prHeaderFields = document.getElementById('pr-header-fields');
 
 function hasActivePermintaan() { return !!S.checklistPermintaanId; }
@@ -47,6 +50,7 @@ function prSetMode(mode, keepReview) {
   if (!keepReview) {
     S.prFormWrap.style.display = showInput ? '' : 'none';
     S.prReviewWrap.style.display = 'none';
+    rvSetWide(false);
   }
   prHeaderFields.style.display = mode === 'create' ? '' : 'none';
   if (mode === 'create') {
@@ -98,7 +102,7 @@ async function openPrModal(requestedMode) {
   S.prStatusMsg.textContent = '';
   prTeksFromOcr = false;
   prShowTab('teks');
-  reviewItems = [];
+  reviewItems = []; rvReset();
   if (!S.prTanggal.value) S.prTanggal.value = new Date().toISOString().slice(0,10);
 
   // Satu login di gerbang awal sudah cukup — kalau token expired, balik ke gerbang.
@@ -125,7 +129,7 @@ async function openPrModal(requestedMode) {
   S.prModal.classList.add('show');
 }
 S.openPrModal = (m) => openPrModal(m);
-function closePrModal() { S.prModal.classList.remove('show'); }
+function closePrModal() { S.prModal.classList.remove('show'); rvSetWide(false); }
 
 S.btnPermintaan.addEventListener('click', () => openPrModal());
 S.prCancelBtn2.addEventListener('click', () => { closePrModal(); resumeRecordAfterCancel(); });
@@ -296,6 +300,7 @@ function parseTeksPermintaan(teks) {
 
     let qty = null;
     let pagu_satuan = null;
+    let satuan = null; // kata satuan yang dibuang dari nama ("2 UNIT" -> UNIT); dipakai sebagai petunjuk jenis
 
     // 3. Harga nempel pakai "@", contoh "BED ICU 2 UNIT@ 134 JT"
     const hargaMatch = line.match(/@\s*([\d.,]+\s*(?:jt|juta|rb|ribu|k)?)/i);
@@ -308,6 +313,7 @@ function parseTeksPermintaan(teks) {
     let m = line.match(/(\d+)\s*(UNIT|SET|PCS|BUAH|BOX|PAK|LUSIN)\b\.?/i);
     if (m) {
       qty = parseInt(m[1], 10);
+      satuan = m[2].toUpperCase();
       line = (line.slice(0, m.index) + ' ' + line.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim();
     } else {
       // 5. Qty di depan ("10 Trocar" / "10x Trocar") atau di belakang ("Trocar 10")
@@ -320,7 +326,7 @@ function parseTeksPermintaan(teks) {
     }
 
     if (prIsNoiseLine(line)) { skipped.push(rawLine); return null; }
-    return { raw_text: line, qty, pagu_satuan };
+    return { raw_text: line, qty, pagu_satuan, satuan };
   }).filter(Boolean);
 
   items._skipped = skipped; // info baris yang disaring, dibaca sama pemanggil
@@ -399,14 +405,16 @@ S.prSubmitBtn.addEventListener('click', async () => {
   // Belum manggil API sama sekali di sini — hasil parse dibawa dulu ke layar
   // Review biar staff bisa cek/edit nama, qty, dan isi pagu satuan per item
   // (opsional) sebelum benar-benar disimpan ke server.
-  reviewItems = items.map(it => ({ raw_text: it.raw_text, qty: it.qty, pagu_satuan: it.pagu_satuan ?? null, konteks: null }));
+  rvReset();
+  reviewItems = items.map(it => rvNewItem({ raw_text: it.raw_text, qty: it.qty, pagu_satuan: it.pagu_satuan ?? null, satuan: it.satuan || null }));
   reviewSumber = sumber;
   renderReviewRows();
   S.prFormWrap.style.display = 'none';
   S.prReviewWrap.style.display = '';
+  rvSetWide(true);
   // Layar review punya judul sendiri; judul/sub mode (create/add) dipulihkan lagi pas "Kembali edit".
   prTitleEl.textContent = 'Periksa item';
-  prSubEl.textContent = 'Cek hasil bacaan sebelum disimpan. Ubah nama, qty, atau pagu satuan bila perlu, pilih jenis (SET / INSTRUMENT / UNIT) kalau sudah tahu, dan hapus baris yang salah.';
+  prSubEl.textContent = 'Cek hasil bacaan sebelum disimpan. Jenis (SET / INSTRUMENT / UNIT) bisa diatur sekaligus lewat default, usulan, atau pilih banyak baris. Yang belum diatur tidak menghalangi simpan.';
 });
 
 // ---- Step 2: Layar Review — edit manual sebelum submit_permintaan_rs ----
@@ -507,75 +515,437 @@ S.escapeHtmlAttr = escapeHtmlAttr;
 // Auto-Match terbantu SEBELUM ada keputusan produk. Kosong = tidak diketahui (perilaku lama). Satu sumber nilai:
 // KONTEKS di auto-konversi/resolver.js. Dipakai di layar Periksa item dan di editor item.
 const KONTEKS_HINT = 'Jenis permintaan: SET = paket/set produk, INSTRUMENT = instrumen satuan, UNIT = alat/unit. Membantu pencocokan produk; kosongkan bila belum tahu.';
+const KONTEKS_LABEL = { SET: 'SET', INSTRUMENT: 'INSTR.', UNIT: 'UNIT' };
+const KONTEKS_FULL = { SET: 'SET: paket / set produk', INSTRUMENT: 'INSTRUMENT: instrumen satuan', UNIT: 'UNIT: alat / unit' };
+const KONTEKS_LAST_KEY = 'pnm.konversian.konteksTerakhir';
 function normKonteks(v) { return KONTEKS.includes(v) ? v : null; }
-function konteksOptionsHtml(selected) {
-  const sel = normKonteks(selected);
-  return '<option value="">—</option>' + KONTEKS.map(k => `<option value="${k}"${k === sel ? ' selected' : ''}>${k}</option>`).join('');
-}
 
-function renderReviewRows() {
-  const labelSumber = reviewSumber === 'EXCEL' ? 'Excel' : reviewSumber === 'SCREENSHOT' ? 'screenshot' : 'teks';
-  let info = `${reviewItems.length} item terbaca dari ${labelSumber} — cek dan lengkapi sebelum disimpan`;
-  if (reviewSkipped.length) {
-    info += `. ${reviewSkipped.length} baris disaring otomatis (bukan nama produk — header/basa-basi/simbol lepas): "${reviewSkipped.slice(0, 3).map(s => escapeHtmlAttr(s)).join('", "')}"${reviewSkipped.length > 3 ? ', dst.' : ''}`;
-  }
-  S.prReviewInfo.innerHTML = info;
-  S.prReviewRows.innerHTML = reviewItems.length ? reviewItems.map((it, idx) => `
-    <div class="pr-review-row" data-idx="${idx}">
-      <input class="pr-rv-nama" value="${escapeHtmlAttr(it.raw_text)}" placeholder="Nama item"/>
-      <input class="pr-rv-qty" inputmode="numeric" value="${it.qty != null ? it.qty : ''}" placeholder="Qty"/>
-      <input class="pr-rv-pagu" inputmode="numeric" value="${it.pagu_satuan != null ? Number(it.pagu_satuan).toLocaleString('id-ID') : ''}" placeholder="opsional"/>
-      <select class="pr-rv-konteks" aria-label="Jenis item" title="${KONTEKS_HINT}">${konteksOptionsHtml(it.konteks)}</select>
-      <button type="button" class="pr-review-del" data-idx="${idx}" aria-label="Hapus baris"><i class="ti ti-trash"></i></button>
-    </div>
-  `).join('') : '<div class="pr-review-empty">Belum ada item. Tambah baris manual di bawah, atau klik "Kembali edit".</div>';
+// ── Segmented control "Jenis" (pengganti <select>) ──
+// Pola toolbar: <div role="group"> berisi tombol aria-pressed. Tab = satu tab-stop per grup (roving), panah = pindah
+// fokus, Enter/Spasi/klik = pilih, klik tombol yang sedang aktif = lepas pilihan. Dipakai di baris Periksa item,
+// editor item, default sesi, filter, dan bar aksi (kelas dasar .pr-seg / .pr-seg-opt).
+function segHtml(cls, value, label, opts) {
+  const o = opts || {};
+  const v = normKonteks(value);
+  const btns = KONTEKS.map(k => ({ k, text: KONTEKS_LABEL[k], title: KONTEKS_FULL[k] }));
+  if (o.none) btns.push({ k: '', text: o.none, title: o.none });
+  return `<div${o.id ? ` id="${o.id}"` : ''} class="pr-seg ${cls}" role="group" aria-label="${escapeHtmlAttr(label)}" data-value="${v || ''}">` + btns.map((b, i) =>
+    `<button type="button" class="pr-seg-opt" data-k="${b.k}" aria-pressed="${b.k ? b.k === v : false}" tabindex="${i === 0 ? 0 : -1}" title="${escapeHtmlAttr(b.title)}">${escapeHtmlAttr(b.text)}</button>`).join('') + '</div>';
 }
-
-// Baca ulang isi input di DOM balik ke array reviewItems — dipanggil sebelum
-// nambah/hapus baris (biar re-render gak nge-hapus ketikan yang belum sempat
-// nyantol) dan sebelum submit final.
-function syncReviewItemsFromDom() {
-  const rows = S.prReviewRows.querySelectorAll('.pr-review-row');
-  rows.forEach((row) => {
-    const idx = parseInt(row.dataset.idx, 10);
-    if (!reviewItems[idx]) return;
-    const nama = row.querySelector('.pr-rv-nama').value.trim();
-    const qtyRaw = row.querySelector('.pr-rv-qty').value.trim();
-    const paguRaw = row.querySelector('.pr-rv-pagu').value;
-    reviewItems[idx] = {
-      raw_text: nama,
-      qty: qtyRaw ? parseInt(qtyRaw, 10) : null,
-      pagu_satuan: S.parsePaguValue(paguRaw),
-      konteks: normKonteks(row.querySelector('.pr-rv-konteks').value)
-    };
+// st: { value, sug, def, last, noneActive }. sug/def/last hanya menandai tombol, tidak mengubah nilai.
+function paintSeg(seg, st) {
+  const v = normKonteks(st.value);
+  const btns = [...seg.querySelectorAll('.pr-seg-opt')];
+  btns.forEach(b => {
+    const k = b.dataset.k;
+    const on = k ? k === v : !!(st.noneActive && !v);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.classList.toggle('is-def', !!k && !v && k === st.def);
+    b.classList.toggle('is-sug', !!k && !v && k === st.sug);
+    b.classList.toggle('is-last', !!k && k === st.last);
+    b.tabIndex = -1;
+  });
+  (btns.find(b => b.getAttribute('aria-pressed') === 'true') || btns[0]).tabIndex = 0;
+  seg.dataset.value = v || '';
+}
+// onPick(seg, kBaru|null, tombol). Delegasi: satu listener untuk banyak grup.
+function bindSeg(root, onPick) {
+  root.addEventListener('click', (e) => {
+    const b = e.target.closest('.pr-seg-opt');
+    if (!b || !root.contains(b)) return;
+    const k = b.dataset.k;
+    onPick(b.closest('.pr-seg'), (k && b.getAttribute('aria-pressed') === 'true') ? null : (k || null), b);
+  });
+  root.addEventListener('keydown', (e) => {
+    const b = e.target.closest && e.target.closest('.pr-seg-opt');
+    if (!b || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const d = ({ ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 })[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const all = [...b.closest('.pr-seg').querySelectorAll('.pr-seg-opt')];
+    const next = all[(all.indexOf(b) + d + all.length) % all.length];
+    all.forEach(x => { x.tabIndex = -1; });
+    next.tabIndex = 0; next.focus();
   });
 }
 
-// Format input Pagu satuan per baris jadi "150.000.000" sambil ngetik, sama
-// kayak field Pagu utama di atas.
+// ── State layar Periksa item ──
+// Tiap baris punya uid stabil (bukan indeks), jadi hapus/tambah baris tidak menggeser seleksi, kursor, atau undo.
+// Prioritas jenis saat simpan: pilihan manual/usulan yang diterima (it.konteks) > default sesi. Usulan yang BELUM
+// dikonfirmasi tidak pernah ikut tersimpan.
+let reviewUid = 0;
+let reviewDefault = null;          // default level sesi: null | 'SET' | 'INSTRUMENT' | 'UNIT' (sengaja tidak diingat antar sesi)
+let reviewSel = new Set();         // uid baris terpilih
+let reviewAnchor = null;           // uid jangkar Shift+klik
+let reviewCursor = null;           // uid baris aktif untuk keyboard (j/k)
+let reviewFilter = 'semua';        // 'semua' | 'belum' | 'usulan' | 'diatur'
+let reviewQuery = '';
+let reviewUndo = [];               // tumpukan { prev:[{uid,konteks}] }
+let reviewMsg = '';                // teks status aksi terakhir ("12 item → SET")
+let reviewLast = null;             // jenis yang terakhir dipakai (disimpan di localStorage)
+try { reviewLast = normKonteks(localStorage.getItem(KONTEKS_LAST_KEY)); } catch (_) { /* storage diblok: tidak diingat */ }
+
+const rvEl = (id) => document.getElementById(id);
+function rvNewItem(src) {
+  const it = { uid: ++reviewUid, raw_text: '', qty: null, pagu_satuan: null, satuan: null, konteks: null, sug: null, ...src };
+  it.konteks = normKonteks(it.konteks);
+  it.sug = suggestKonteks(it.raw_text, it.satuan);
+  return it;
+}
+const rvFind = (uid) => reviewItems.find(x => x.uid === uid) || null;
+const rvEff = (it) => it.konteks || reviewDefault || null;
+const rvRow = (uid) => S.prReviewRows.querySelector(`.pr-review-row[data-uid="${uid}"]`);
+function rvMatches(it) {
+  if (reviewFilter === 'belum' && rvEff(it)) return false;
+  if (reviewFilter === 'usulan' && (it.konteks || !it.sug)) return false;
+  if (reviewFilter === 'diatur' && !it.konteks) return false;
+  return !reviewQuery || it.raw_text.toLowerCase().includes(reviewQuery);
+}
+const rvVisible = () => reviewItems.filter(rvMatches).map(x => x.uid);
+const rvSay = (msg) => { const l = rvEl('pr-rv-live'); if (l) l.textContent = msg; };
+
+function rvReset() {
+  reviewDefault = null; reviewSel = new Set(); reviewAnchor = null; reviewCursor = null;
+  reviewFilter = 'semua'; reviewQuery = ''; reviewUndo = []; reviewMsg = '';
+  const s = rvEl('pr-rv-search'); if (s) s.value = '';
+}
+// Modal dilebarkan hanya di layar Periksa item (100+ baris butuh kolom yang lega).
+function rvSetWide(on) {
+  const box = S.prModal && S.prModal.querySelector('.pr-modal-box');
+  if (box) box.classList.toggle('pr-modal-box--review', !!on);
+}
+const rvActive = () => S.prModal.classList.contains('show') && S.prReviewWrap.style.display !== 'none';
+
+// Toolbar statis (default, filter, bar aksi) dibangun sekali; setelahnya hanya di-paint.
+let rvToolsReady = false;
+function rvInitTools() {
+  if (rvToolsReady) return;
+  rvToolsReady = true;
+  rvEl('pr-rv-default').outerHTML = segHtml('pr-seg--tool', null, 'Jenis default sesi', { none: 'Tanpa', id: 'pr-rv-default' });
+  rvEl('pr-rv-bar-seg').outerHTML = segHtml('pr-seg--bar', null, 'Set jenis ke item terpilih', { none: 'Kosongkan', id: 'pr-rv-bar-seg' });
+  const f = rvEl('pr-rv-filter');
+  f.innerHTML = [['semua', 'Semua'], ['belum', 'Belum'], ['usulan', 'Usulan'], ['diatur', 'Diatur']].map(([k, t], i) =>
+    `<button type="button" class="pr-seg-opt" data-f="${k}" aria-pressed="${k === 'semua'}" tabindex="${i ? -1 : 0}">${t} <span class="pr-rv-n" data-n="${k}">0</span></button>`).join('');
+  bindSeg(rvEl('pr-rv-default'), (seg, k) => { reviewDefault = k; rvPaintAll(); rvApplyFilter(); });
+  bindSeg(rvEl('pr-rv-bar-seg'), (seg, k) => rvBulk(k));
+  f.addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (b) { reviewFilter = b.dataset.f; rvApplyFilter(); rvPaintSummary(); } });
+  f.addEventListener('keydown', (e) => {
+    const b = e.target.closest('[data-f]'); const d = ({ ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 })[e.key];
+    if (!b || !d || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    const all = [...f.querySelectorAll('[data-f]')]; const nx = all[(all.indexOf(b) + d + all.length) % all.length];
+    all.forEach(x => { x.tabIndex = -1; }); nx.tabIndex = 0; nx.focus();
+  });
+  rvEl('pr-rv-search').addEventListener('input', (e) => { reviewQuery = e.target.value.trim().toLowerCase(); rvApplyFilter(); rvPaintSummary(); });
+  rvEl('pr-rv-accept-all').addEventListener('click', () => rvAcceptAll());
+  rvEl('pr-rv-jump').addEventListener('click', () => { reviewFilter = 'belum'; rvApplyFilter(); rvPaintSummary(); const v = rvVisible(); if (v.length) rvSetCursor(v[0], true); });
+  rvEl('pr-rv-undo-btn').addEventListener('click', () => rvUndo());
+  rvEl('pr-rv-filldown').addEventListener('click', () => rvFillDown());
+  rvEl('pr-rv-clearsel').addEventListener('click', () => { rvClearSel(); rvPaintSummary(); });
+  rvEl('pr-rv-checkall').addEventListener('click', () => rvSelectAllVisible());
+  window.addEventListener('resize', () => { if (rvActive()) rvPaintBarOffset(); });
+}
+
+function rvInfoText() {
+  const labelSumber = reviewSumber === 'EXCEL' ? 'Excel' : reviewSumber === 'SCREENSHOT' ? 'screenshot' : 'teks';
+  let info = `${reviewItems.length} item terbaca dari ${labelSumber}. Cek hasilnya, atur jenis, lalu simpan`;
+  if (reviewSkipped.length) {
+    info += `. ${reviewSkipped.length} baris disaring otomatis (bukan nama produk: header/basa-basi/simbol lepas): "${reviewSkipped.slice(0, 3).map(s => escapeHtmlAttr(s)).join('", "')}"${reviewSkipped.length > 3 ? ', dst.' : ''}`;
+  }
+  return info;
+}
+
+function rowHtml(it, i) {
+  return `
+    <div class="pr-review-row" role="group" aria-label="Item ${i + 1}" data-uid="${it.uid}" tabindex="-1">
+      <button type="button" class="pr-rv-check" role="checkbox" aria-checked="false" aria-label="Pilih item ${i + 1}"></button>
+      <input class="pr-rv-nama" value="${escapeHtmlAttr(it.raw_text)}" placeholder="Nama item" aria-label="Nama item ${i + 1}"/>
+      <input class="pr-rv-qty" inputmode="numeric" value="${it.qty != null ? it.qty : ''}" placeholder="Qty" aria-label="Qty item ${i + 1}"/>
+      <input class="pr-rv-pagu" inputmode="numeric" value="${it.pagu_satuan != null ? Number(it.pagu_satuan).toLocaleString('id-ID') : ''}" placeholder="opsional" aria-label="Pagu satuan item ${i + 1}"/>
+      ${segHtml('pr-rv-konteks', it.konteks, 'Jenis item ' + (i + 1))}
+      <button type="button" class="pr-review-del" aria-label="Hapus baris"><i class="ti ti-trash"></i></button>
+    </div>`;
+}
+
+function renderReviewRows() {
+  rvInitTools();
+  S.prReviewInfo.innerHTML = rvInfoText();
+  S.prReviewRows.innerHTML = reviewItems.length ? reviewItems.map(rowHtml).join('')
+    : '<div class="pr-review-empty">Belum ada item. Tambah baris manual di bawah, atau klik "Kembali edit".</div>';
+  reviewItems.forEach(it => rvPaintRow(it.uid));
+  rvApplyFilter();
+  const v = rvVisible();
+  if (reviewCursor == null || !v.includes(reviewCursor)) reviewCursor = v[0] ?? null;
+  if (reviewCursor != null) rvSetCursor(reviewCursor, false);
+  rvPaintAll();
+}
+
+// ── Paint (update DOM seperlunya, tanpa render ulang) ──
+function rvPaintRow(uid) {
+  const it = rvFind(uid), row = rvRow(uid);
+  if (!it || !row) return;
+  const eff = rvEff(it);
+  row.classList.toggle('is-belum', !eff && !it.sug);
+  row.classList.toggle('is-usulan', !it.konteks && !!it.sug && !reviewDefault);
+  row.classList.toggle('is-sel', reviewSel.has(uid));
+  const ck = row.querySelector('.pr-rv-check'); ck.setAttribute('aria-checked', reviewSel.has(uid) ? 'true' : 'false');
+  paintSeg(row.querySelector('.pr-rv-konteks'), { value: it.konteks, sug: it.sug && it.sug.konteks, def: reviewDefault, last: null });
+  const sugTxt = it.sug && !it.konteks ? `Usulan ${it.sug.konteks} (${it.sug.why}). Tekan a untuk menerima.` : '';
+  row.querySelector('.pr-rv-konteks').title = sugTxt || KONTEKS_HINT;
+}
+function rvPaintSummary() {
+  const n = { semua: reviewItems.length, belum: 0, usulan: 0, diatur: 0 };
+  let belumBerUsulan = 0;
+  reviewItems.forEach(it => { if (!rvEff(it)) { n.belum++; if (it.sug) belumBerUsulan++; } if (!it.konteks && it.sug) n.usulan++; if (it.konteks) n.diatur++; });
+  document.querySelectorAll('#pr-rv-filter [data-f]').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.f === reviewFilter ? 'true' : 'false');
+    b.querySelector('.pr-rv-n').textContent = n[b.dataset.f];
+  });
+  const sugRow = rvEl('pr-rv-sugrow');
+  sugRow.hidden = !n.usulan;
+  rvEl('pr-rv-sug-text').textContent = `${n.usulan} usulan dari teks, belum dikonfirmasi`;
+  const warn = rvEl('pr-rv-warn');
+  warn.hidden = !n.belum;
+  rvEl('pr-rv-warn-text').textContent = `${n.belum} item belum dikontekskan${belumBerUsulan ? ` (${belumBerUsulan} punya usulan)` : ''}. Tidak menghalangi simpan.`;
+  rvEl('pr-rv-undo').hidden = !reviewMsg;
+  rvEl('pr-rv-undo-btn').hidden = !reviewUndo.length;
+  rvEl('pr-rv-undo-text').textContent = reviewMsg;
+  // checkbox "pilih semua yang tampil"
+  const vis = rvVisible(); const nSel = vis.filter(u => reviewSel.has(u)).length;
+  const ca = rvEl('pr-rv-checkall');
+  ca.setAttribute('aria-checked', !nSel ? 'false' : nSel === vis.length ? 'true' : 'mixed');
+  // bar aksi
+  const bar = rvEl('pr-rv-bar');
+  bar.hidden = !reviewSel.size;
+  rvEl('pr-rv-bar-n').textContent = `${reviewSel.size} dipilih`;
+  paintSeg(rvEl('pr-rv-bar-seg'), { value: null, last: reviewLast });
+  if (reviewSel.size) rvPaintBarOffset();
+}
+function rvPaintAll() {
+  rvPaintDefault();
+  rvPaintSummary();
+}
+function rvPaintDefault() {
+  paintSeg(rvEl('pr-rv-default'), { value: reviewDefault, noneActive: true });
+  reviewItems.forEach(it => rvPaintRow(it.uid));
+}
+// Bar aksi menempel DI ATAS tombol Simpan (yang juga sticky), jadi offset-nya = tinggi baris tombol itu.
+function rvPaintBarOffset() {
+  const act = S.prReviewWrap.querySelector('.pr-actions');
+  if (act) rvEl('pr-rv-bar').style.setProperty('--pr-actions-h', act.offsetHeight + 'px');
+}
+
+function rvApplyFilter() {
+  const vis = new Set(rvVisible());
+  S.prReviewRows.querySelectorAll('.pr-review-row').forEach(r => { r.hidden = !vis.has(+r.dataset.uid); });
+  [...reviewSel].forEach(u => { if (!vis.has(u)) reviewSel.delete(u); });   // seleksi tidak boleh menyimpan baris yang tak tampak
+  S.prReviewRows.querySelectorAll('.pr-review-row').forEach(r => { r.classList.toggle('is-sel', reviewSel.has(+r.dataset.uid)); r.querySelector('.pr-rv-check').setAttribute('aria-checked', reviewSel.has(+r.dataset.uid) ? 'true' : 'false'); });
+  if (reviewCursor != null && !vis.has(reviewCursor)) { const f = rvVisible()[0]; reviewCursor = null; if (f != null) rvSetCursor(f, false); }
+  const empty = S.prReviewRows.querySelector('.pr-rv-filter-empty');
+  if (!vis.size && reviewItems.length && !empty) S.prReviewRows.insertAdjacentHTML('beforeend', '<div class="pr-review-empty pr-rv-filter-empty">Tidak ada item di tampilan ini.</div>');
+  else if ((vis.size || !reviewItems.length) && empty) empty.remove();
+}
+
+// ── Kursor & seleksi ──
+function rvSetCursor(uid, focus) {
+  S.prReviewRows.querySelectorAll('.pr-review-row.is-cursor').forEach(r => { r.classList.remove('is-cursor'); r.tabIndex = -1; });
+  reviewCursor = uid;
+  const row = uid != null ? rvRow(uid) : null;
+  if (!row) return;
+  row.classList.add('is-cursor'); row.tabIndex = 0;
+  if (focus) { row.focus({ preventScroll: true }); row.scrollIntoView({ block: 'nearest' }); }
+}
+function rvStep(dir, extend) {
+  const vis = rvVisible(); if (!vis.length) return;
+  const i = reviewCursor == null ? -1 : vis.indexOf(reviewCursor);
+  const ni = i < 0 ? (dir > 0 ? 0 : vis.length - 1) : Math.max(0, Math.min(vis.length - 1, i + dir));
+  if (extend && i >= 0) {
+    if (!reviewSel.has(vis[i])) { reviewSel.add(vis[i]); reviewAnchor = vis[i]; }
+    if (ni !== i) { if (reviewSel.has(vis[ni])) reviewSel.delete(vis[i]); else reviewSel.add(vis[ni]); }
+    [vis[i], vis[ni]].forEach(rvPaintRow);
+  }
+  rvSetCursor(vis[ni], true);
+  if (extend) rvPaintSummary();
+}
+function rvToggleSel(uid, range) {
+  if (range && reviewAnchor != null && reviewAnchor !== uid) {
+    const vis = rvVisible(); const a = vis.indexOf(reviewAnchor), b = vis.indexOf(uid);
+    if (a >= 0 && b >= 0) vis.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(u => reviewSel.add(u));
+  } else {
+    if (reviewSel.has(uid)) reviewSel.delete(uid); else reviewSel.add(uid);
+    reviewAnchor = uid;
+  }
+  reviewItems.forEach(it => rvPaintRow(it.uid));
+  rvPaintSummary();
+}
+function rvSelectAllVisible() {
+  const vis = rvVisible(); const all = vis.length && vis.every(u => reviewSel.has(u));
+  if (all) reviewSel.clear(); else vis.forEach(u => reviewSel.add(u));
+  reviewItems.forEach(it => rvPaintRow(it.uid));
+  rvPaintSummary();
+  rvSay(all ? 'Pilihan dibersihkan' : `${vis.length} item dipilih`);
+}
+function rvClearSel() { reviewSel.clear(); reviewAnchor = null; reviewItems.forEach(it => rvPaintRow(it.uid)); }
+
+// ── Mutasi jenis + undo ──
+// Satu aksi = SATU entri undo, berapa pun jumlah barisnya. pairs = [{ uid, k }].
+function rvApplyPairs(pairs, msg) {
+  const prev = [];
+  pairs.forEach(({ uid, k }) => { const it = rvFind(uid); if (it && it.konteks !== k) { prev.push({ uid, konteks: it.konteks }); it.konteks = k; } });
+  if (!prev.length) return 0;
+  reviewUndo.push({ prev }); if (reviewUndo.length > 50) reviewUndo.shift();
+  prev.forEach(p => rvPaintRow(p.uid));
+  const kk = pairs.map(p => p.k).filter(Boolean).pop();
+  if (kk) { reviewLast = kk; try { localStorage.setItem(KONTEKS_LAST_KEY, kk); } catch (_) { /* tidak diingat */ } }
+  reviewMsg = msg ? msg(prev.length) : `${prev.length} item → ${pairs[0].k || 'tanpa jenis'}`;
+  rvSay(reviewMsg);
+  rvPaintSummary();
+  return prev.length;
+}
+const rvApply = (uids, k) => rvApplyPairs(uids.map(uid => ({ uid, k })));
+function rvUndo() {
+  const last = reviewUndo.pop(); if (!last) return false;
+  last.prev.forEach(p => { const it = rvFind(p.uid); if (it) it.konteks = p.konteks; });
+  reviewMsg = `Dibatalkan: ${last.prev.length} item dikembalikan`;
+  rvSay(reviewMsg);
+  reviewItems.forEach(it => rvPaintRow(it.uid));
+  rvApplyFilter(); rvPaintSummary();
+  return true;
+}
+function rvBulk(k) {            // bar aksi / digit saat ada seleksi
+  const n = rvApply([...reviewSel], k);
+  rvClearSel(); rvApplyFilter(); rvPaintSummary();
+  if (!n) rvSay('Tidak ada yang berubah');
+}
+function rvAcceptAll() {        // semua usulan yang belum dikonfirmasi (satu entri undo)
+  const pairs = reviewItems.filter(it => !it.konteks && it.sug).map(it => ({ uid: it.uid, k: it.sug.konteks }));
+  if (!pairs.length) { rvSay('Tidak ada usulan'); return; }
+  rvApplyPairs(pairs, (n) => `${n} usulan diterima`);
+  rvApplyFilter(); rvPaintSummary();
+}
+function rvAcceptCursor() {
+  const targets = reviewSel.size ? [...reviewSel] : [reviewCursor];
+  const pairs = targets.map(rvFind).filter(it => it && !it.konteks && it.sug).map(it => ({ uid: it.uid, k: it.sug.konteks }));
+  if (!pairs.length) { rvSay('Tidak ada usulan untuk diterima'); return; }
+  rvApplyPairs(pairs, (n) => `${n} usulan diterima`);
+  if (reviewSel.size) { rvClearSel(); rvApplyFilter(); rvPaintSummary(); }
+}
+// Isi ke bawah: jenis baris aktif disalin ke baris-baris tampil di bawahnya yang masih kosong, berhenti di baris
+// pertama yang sudah punya jenis (sama seperti fill-down di spreadsheet).
+function rvFillDown() {
+  const vis = rvVisible(); const cur = reviewCursor ?? vis[0]; const src = cur != null ? rvFind(cur) : null;
+  if (!src || !src.konteks) { rvSay('Baris aktif belum punya jenis untuk disalin'); return; }
+  const targets = [];
+  for (let i = vis.indexOf(cur) + 1; i < vis.length; i++) { const it = rvFind(vis[i]); if (it.konteks) break; targets.push(it.uid); }
+  if (!targets.length) { rvSay('Tidak ada baris kosong di bawahnya'); return; }
+  rvApply(targets, src.konteks);
+  rvClearSel(); rvApplyFilter(); rvPaintSummary();
+}
+function rvKeySet(k) {          // digit 1/2/3/0
+  if (reviewSel.size) { rvBulk(k); return; }
+  const vis = rvVisible(); const uid = reviewCursor ?? vis[0]; if (uid == null) return;
+  rvApply([uid], k);
+  const nx = vis[vis.indexOf(uid) + 1];
+  rvSetCursor(nx != null ? nx : uid, true);   // maju ke baris berikutnya supaya 100 item = 100 ketukan angka
+}
+
+// ── Event baris ──
+bindSeg(S.prReviewRows, (seg, k) => {
+  const uid = +seg.closest('.pr-review-row').dataset.uid;
+  rvApply([uid], k); rvSetCursor(uid, false);
+});
 S.prReviewRows.addEventListener('input', (e) => {
   if (e.target.classList.contains('pr-rv-pagu')) {
     const digits = e.target.value.replace(/\D/g, '');
     e.target.value = digits ? Number(digits).toLocaleString('id-ID') : '';
   }
 });
-
-S.prReviewRows.addEventListener('click', (e) => {
-  const btn = e.target.closest('.pr-review-del');
-  if (!btn) return;
-  syncReviewItemsFromDom();
-  const idx = parseInt(btn.dataset.idx, 10);
-  reviewItems.splice(idx, 1);
-  renderReviewRows();
+S.prReviewRows.addEventListener('change', (e) => {
+  if (!e.target.classList.contains('pr-rv-nama')) return;
+  const row = e.target.closest('.pr-review-row'); const it = rvFind(+row.dataset.uid); if (!it) return;
+  it.raw_text = e.target.value.trim();
+  it.sug = suggestKonteks(it.raw_text, it.satuan);   // nama berubah -> usulan dihitung ulang (jenis yang sudah dipilih tidak disentuh)
+  rvPaintRow(it.uid); rvPaintSummary();
 });
+S.prReviewRows.addEventListener('focusin', (e) => {
+  const row = e.target.closest('.pr-review-row');
+  if (row && +row.dataset.uid !== reviewCursor) rvSetCursor(+row.dataset.uid, false);
+});
+S.prReviewRows.addEventListener('click', (e) => {
+  const row = e.target.closest('.pr-review-row'); if (!row) return;
+  const uid = +row.dataset.uid;
+  if (e.target.closest('.pr-rv-check')) { rvToggleSel(uid, e.shiftKey); return; }
+  if (e.target.closest('.pr-review-del')) {
+    syncReviewItemsFromDom();
+    reviewItems.splice(reviewItems.findIndex(x => x.uid === uid), 1);
+    reviewSel.delete(uid);
+    const wasCursor = reviewCursor === uid;
+    const idx = [...S.prReviewRows.querySelectorAll('.pr-review-row:not([hidden])')].indexOf(row);
+    row.remove();
+    S.prReviewInfo.innerHTML = rvInfoText();
+    if (wasCursor) { reviewCursor = null; const v2 = rvVisible(); const nx = v2[Math.min(idx, v2.length - 1)]; if (nx != null) rvSetCursor(nx, false); }
+    S.prReviewRows.querySelectorAll('.pr-review-row').forEach((r, i) => { r.setAttribute('aria-label', 'Item ' + (i + 1)); });
+    rvApplyFilter(); rvPaintSummary();
+  }
+});
+
+// Baca ulang isi input di DOM balik ke reviewItems (nama/qty/pagu). Jenis, uid, dan usulan dipegang state, bukan DOM.
+function syncReviewItemsFromDom() {
+  S.prReviewRows.querySelectorAll('.pr-review-row').forEach((row) => {
+    const it = rvFind(+row.dataset.uid); if (!it) return;
+    it.raw_text = row.querySelector('.pr-rv-nama').value.trim();
+    const qtyRaw = row.querySelector('.pr-rv-qty').value.trim();
+    const q = qtyRaw ? parseInt(qtyRaw, 10) : null;
+    it.qty = (q == null || isNaN(q)) ? null : q;
+    it.pagu_satuan = S.parsePaguValue(row.querySelector('.pr-rv-pagu').value);
+  });
+}
+// Jenis yang benar-benar disimpan: pilihan eksplisit > default sesi (usulan yang belum diterima TIDAK ikut).
+function reviewItemsForSave() {
+  return reviewItems.filter(it => it.raw_text).map(it => ({ ...it, konteks: rvEff(it) }));
+}
 
 S.prReviewAddBtn.addEventListener('click', () => {
   syncReviewItemsFromDom();
-  reviewItems.push({ raw_text: '', qty: null, pagu_satuan: null, konteks: null });
+  const it = rvNewItem({});
+  reviewItems.push(it);
+  reviewFilter = 'semua'; reviewQuery = ''; rvEl('pr-rv-search').value = '';   // baris baru harus kelihatan
   renderReviewRows();
-  const lastNama = S.prReviewRows.querySelector('.pr-review-row:last-child .pr-rv-nama');
-  if (lastNama) lastNama.focus();
+  const nama = rvRow(it.uid) && rvRow(it.uid).querySelector('.pr-rv-nama');
+  if (nama) { nama.focus(); nama.scrollIntoView({ block: 'nearest' }); }
 });
+
+// Pintasan layar Periksa item. Didaftarkan di shared/shortcuts.js (scope 'modal'); index.js meneruskan lewat S.prReviewKeys
+// (installShortcuts jalan SEBELUM modul ini terpasang, jadi handler dicari saat tombol ditekan). Semua handler
+// return false kalau layar ini tidak sedang terbuka, supaya dialog lain tidak ikut terganggu.
+S.prReviewKeys = (() => {
+  const on = (fn, o) => (e) => {
+    if (!rvActive()) return false;
+    if (o && o.noTyping && isTyping(e.target)) return false;
+    fn(e); return true;
+  };
+  return {
+    'konv.rv.next': on(() => rvStep(1)),
+    'konv.rv.prev': on(() => rvStep(-1)),
+    'konv.rv.extendDown': on(() => rvStep(1, true)),
+    'konv.rv.extendUp': on(() => rvStep(-1, true)),
+    'konv.rv.set1': on(() => rvKeySet('SET')),
+    'konv.rv.set2': on(() => rvKeySet('INSTRUMENT')),
+    'konv.rv.set3': on(() => rvKeySet('UNIT')),
+    'konv.rv.clear': on(() => rvKeySet(null)),
+    'konv.rv.select': on(() => { const u = reviewCursor ?? rvVisible()[0]; if (u != null) rvToggleSel(u, false); }),
+    'konv.rv.selectAll': on(() => rvSelectAllVisible(), { noTyping: true }),
+    'konv.rv.fillDown': on(() => rvFillDown()),
+    'konv.rv.accept': on(() => rvAcceptCursor()),
+    'konv.rv.undo': (e) => { if (!rvActive() || isTyping(e.target) || !reviewUndo.length) return false; rvUndo(); return true; },
+    'konv.rv.edit': (e) => {
+      // Enter hanya bila fokus di baris itu sendiri / body; di tombol chip biarkan Enter memilih.
+      if (!rvActive() || (e.target.closest && e.target.closest('button, .pr-seg-opt'))) return false;
+      const u = reviewCursor ?? rvVisible()[0]; const r = u != null ? rvRow(u) : null;
+      if (!r) return false; r.querySelector('.pr-rv-nama').focus(); return true;
+    }
+  };
+})();
 
 // ══════════════════════════════════════════
 // AUTO-MATCH DI KEBUTUHAN RS (workspace)
@@ -895,6 +1265,7 @@ if (prAmSwitch) prAmSwitch.addEventListener('keydown', (e) => {
 // dari input aslinya (bukan dari state review yang sempat diedit).
 S.prReviewBackBtn.addEventListener('click', () => {
   S.prReviewWrap.style.display = 'none';
+  rvSetWide(false);
   S.prFormWrap.style.display = '';
   prSetMode(prMode, true); // pulihkan judul + sub sesuai mode (keepReview: wrap form/review tidak disentuh)
 });
@@ -1029,7 +1400,7 @@ S.prReviewSaveBtn.addEventListener('click', async () => {
 
   // Baris manual yang ditambah tapi nama-nya gak jadi diisi, dibuang diam-diam
   // (bukan error) — daripada ganjel submit gara-gara baris kosong.
-  const items = reviewItems.filter(it => it.raw_text);
+  const items = reviewItemsForSave();   // konteks = pilihan eksplisit, kalau kosong default sesi
   if (items.length === 0) {
     S.prStatusMsg.style.color = 'var(--danger)';
     S.prStatusMsg.textContent = 'Gak ada item tersisa buat disimpan.';
@@ -1164,7 +1535,7 @@ function renderPrEditRows() {
       <input class="pr-ed-nama" value="${escapeHtmlAttr(it.raw_text)}" placeholder="Nama item"/>
       <input class="pr-ed-qty" inputmode="numeric" value="${it.qty_diminta != null ? it.qty_diminta : ''}" placeholder="Qty"/>
       <input class="pr-ed-pagusat" inputmode="numeric" value="${fmtPagu(normPagu(it.pagu_satuan))}" placeholder="opsional"/>
-      <select class="pr-ed-konteks" aria-label="Jenis item" title="${KONTEKS_HINT}">${konteksOptionsHtml(it.konteks_minta)}</select>
+      ${segHtml('pr-ed-konteks', it.konteks_minta, 'Jenis item')}
     </div>`).join('') : '<div class="pr-review-empty">Belum ada item.</div>';
 
   // Pagu total + (kalau ada) pagu per section
@@ -1199,7 +1570,7 @@ document.getElementById('pr-edit-save-btn').addEventListener('click', async () =
     const qtyRaw = row.querySelector('.pr-ed-qty').value.trim();
     const qty = qtyRaw === '' ? null : parseInt(qtyRaw, 10);
     const paguSat = S.parsePaguValue(row.querySelector('.pr-ed-pagusat').value);
-    const konteks = normKonteks(row.querySelector('.pr-ed-konteks').value);
+    const konteks = normKonteks(row.querySelector('.pr-ed-konteks').dataset.value);
     if (!nama) { invalid = 'Nama item tidak boleh kosong.'; return; }
     if (qty !== null && (isNaN(qty) || qty < 1)) { invalid = `Qty "${orig.raw_text}" harus angka 1 atau lebih (atau kosongkan).`; return; }
     const fieldsChanged = nama !== orig.raw_text || qty !== (orig.qty_diminta ?? null);
