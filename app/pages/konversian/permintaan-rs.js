@@ -492,6 +492,10 @@ function amLogDecision(itemId, status, links) {
 // Indeks prosedur set (auto-konversi/prosedur.js): daftar set dari v_produk_keluarga + sinonim dari tabel prosedur_sinonim.
 // Dimuat sekali per sesi halaman. Gagal (view/tabel belum ada, RLS, offline) -> null: resolver jalan seperti sebelumnya, tanpa prosedur.
 let prosedurIndeks = null, prosedurMuat = null;
+// Status muat terakhir, dibaca penampil prosedur (prosedur-daftar.js) supaya kegagalan sinonim TIDAK diam-diam:
+//   sinonim: jumlah baris yang terbaca; sinonimStatus: 'ok' | 'http <kode>' | 'error' | 'belum'.
+//   RLS yang memblokir SELECT di PostgREST balas 200 + [] (bukan error) -> jumlah 0 pada tabel yang berisi = curiga RLS/grant.
+let prosedurMeta = { set: 0, sinonim: 0, sinonimStatus: 'belum' };
 async function getProsedurIndeks() {
   if (prosedurIndeks) return prosedurIndeks;
   if (prosedurMuat) return prosedurMuat;
@@ -506,16 +510,21 @@ async function getProsedurIndeks() {
         if (part.length < 1000) break;
       }
       let sinonim = {};
+      let sinonimStatus = 'error';
       try {
         const rs = await S.sesiFetch('prosedur_sinonim?select=dari,ke');
+        sinonimStatus = rs.ok ? 'ok' : 'http ' + rs.status;
         if (rs.ok) (await rs.json()).forEach(r => { if (r.dari && r.ke) sinonim[String(r.dari).toUpperCase()] = String(r.ke).toUpperCase(); });
       } catch (e) { /* tanpa sinonim: tetap jalan */ }
+      prosedurMeta = { set: rows.length, sinonim: Object.keys(sinonim).length, sinonimStatus };
       prosedurIndeks = rows.length ? buatIndeks(rows, sinonim) : null;
       return prosedurIndeks;
     } catch (e) { return null; } finally { prosedurMuat = null; }
   })();
   return prosedurMuat;
 }
+S.getProsedurIndeks = getProsedurIndeks; // dipakai penampil prosedur (prosedur-daftar.js)
+S.prosedurMeta = () => prosedurMeta;
 
 const firmCheck = makeFirmCheck({
   parseLinkV6: (v) => S.parseLinkV6(v),

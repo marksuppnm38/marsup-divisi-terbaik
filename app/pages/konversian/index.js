@@ -46,6 +46,7 @@ import { installShiftSelect } from './shift-select.js';
 import { installProject } from './project.js';
 import { installAutoRecord } from './auto-record.js';
 import { installPermintaanRs } from './permintaan-rs.js';
+import { installProsedurDaftar } from './prosedur-daftar.js';
 import { installMobileNav } from './mobile.js';
 // installSph di-lazy-load (dynamic import) -- lihat loadSphLazy() di bawah.
 
@@ -5572,6 +5573,7 @@ S.convManualSearch = convManualSearch;
   installPermintaanRs(S);
   installDictionary(S);
   installSetMendekati(S);
+  installProsedurDaftar(S); // modal review hasil urai prosedur (tombol di tab Dictionary); baca-saja
   installShiftSelect(S); // Shift+klik rentang + Centang yang tampil (conv-check, picker Kebutuhan RS, ek-cb Riwayat)
   installProject(S);
   installAutoRecord(S);

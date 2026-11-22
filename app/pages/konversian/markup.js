@@ -381,6 +381,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
           <option value="terbaru">Terakhir dipakai</option>
         </select>
         <button class="toggle-btn" id="btn-dict-refresh" type="button" title="Muat ulang" aria-label="Muat ulang"><i class="ti ti-refresh"></i></button>
+        <button class="toggle-btn" id="btn-prosedur-daftar" type="button" title="Review hasil urai prosedur di semua set"><i class="ti ti-category"></i> Prosedur</button>
         <button class="toggle-btn" id="btn-dict-tambah" type="button"><i class="ti ti-plus"></i> Tambah istilah</button>
       </div>
 

@@ -3223,3 +3223,39 @@
 #app-root .filters .brand-btn.on .brand-n{color:inherit;opacity:.8}
 #app-root .filters .brand-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 #app-root #results .rcard-meta .mi-brand span{font-weight:600}
+/* ── Penampil daftar prosedur (prosedur-daftar.js) — modal dari tab Dictionary ── */
+#app-root .pd-box{width:min(1100px,94vw);max-height:88vh;padding:20px 22px;text-align:left;display:flex;flex-direction:column;gap:10px}
+#app-root .pd-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#app-root .pd-head .modal-title{margin:0}
+#app-root .pd-stats{font-size:12.5px;color:var(--text-secondary);line-height:1.5}
+#app-root .pd-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+#app-root .pd-sep{flex:0 0 1px;align-self:stretch;background:var(--border-strong);margin:0 2px}
+#app-root .pd-search{flex:1 1 220px;min-width:180px}
+#app-root .pd-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+#app-root .pd-body{flex:1 1 auto;min-height:120px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
+#app-root .pd-info{padding:14px 16px;font-size:12.5px;line-height:1.55;color:var(--text-secondary)}
+#app-root .pd-warn{color:var(--warning);background:var(--warning-bg);border-bottom:1px solid var(--warning-border)}
+#app-root .pd-warn-txt{color:var(--warning);font-weight:600}
+#app-root .pd-muted,#app-root .pd-meta{font-size:11.5px;color:var(--text-muted)}
+#app-root .pd-meta{margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap}
+#app-root .pd-prosedur>summary,#app-root .pd-kual>summary{display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;list-style:none}
+#app-root .pd-prosedur>summary::-webkit-details-marker,#app-root .pd-kual>summary::-webkit-details-marker{display:none}
+#app-root .pd-prosedur>summary::before,#app-root .pd-kual>summary::before{content:'▸';font-size:10px;color:var(--text-muted);transition:transform .12s ease}
+#app-root .pd-prosedur[open]>summary::before,#app-root .pd-kual[open]>summary::before{transform:rotate(90deg)}
+#app-root .pd-prosedur{border-bottom:1px solid var(--border)}
+#app-root .pd-prosedur>summary:hover,#app-root .pd-kual>summary:hover{background:var(--surface-2)}
+#app-root .pd-nama{font-weight:700;font-size:13px;color:var(--text)}
+#app-root .pd-kual-nama{font-size:12.5px;color:var(--text)}
+#app-root .pd-isi{background:var(--surface-2);padding:4px 0 6px 18px;border-top:1px solid var(--border)}
+#app-root .pd-kual>summary{padding:6px 14px}
+#app-root .pd-set{margin:0;padding:2px 14px 8px 40px;list-style:none;font-size:12px;color:var(--text-secondary)}
+#app-root .pd-set li{display:flex;gap:8px;align-items:baseline;padding:2px 0}
+#app-root .pd-set code,#app-root .pd-tabel code{font-size:11.5px;color:var(--text)}
+#app-root .pd-set .pd-meta{margin-left:auto}
+#app-root .pd-tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:600;background:var(--warning-bg);color:var(--warning);border:1px solid var(--warning-border);white-space:nowrap}
+#app-root .pd-tag-saran{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
+#app-root .pd-tabel{width:100%;border-collapse:collapse;font-size:12px}
+#app-root .pd-tabel th{position:sticky;top:0;background:var(--surface-2);text-align:left;padding:7px 12px;font-size:11px;color:var(--text-muted);border-bottom:1px solid var(--border)}
+#app-root .pd-tabel td{padding:6px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+#app-root .pd-num{text-align:right;font-variant-numeric:tabular-nums}
+#app-root .pd-kodes{color:var(--text-secondary);word-break:break-word}
