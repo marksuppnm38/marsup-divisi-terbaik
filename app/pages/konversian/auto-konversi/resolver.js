@@ -382,7 +382,8 @@ export async function resolveItem(item, rpc, opts = {}) {
   // Kandidat 'umum' yang dibuang dari pemilihan best tetap tampil di AKHIR sebagai alternatif.
   annotate(umumCands, itemAttrs, itemKey, u.tokens); umumCands.forEach((x) => { x.namaPersis = false; });
   const cands = [best, ...dictCands, ...catCands.slice().sort((a, b) => compScore(a) - compScore(b)), ...umumCands]
-    .filter((c, i, a) => c && a.findIndex(x => x.kode === c.kode) === i);
+    .filter(Boolean) // best bisa null (UNKNOWN): buang dulu, kalau tidak findIndex di bawah membaca null.kode
+    .filter((c, i, a) => a.findIndex(x => x.kode === c.kode) === i);
   const conf = candConf(best);
   // Prosedur (opsional, opts.prosedur = indeks dari prosedur.js): permintaan umum -> semua set se-prosedur ikut jadi bahan bundel,
   // bukan hanya yang pernah tercatat di riwayat. Tetap lewat filter brand & kesiapan yang sama dengan kandidat lain.
