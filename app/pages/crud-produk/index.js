@@ -59,6 +59,7 @@ import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
 import { writeTableXlsx } from '../../../shared/exports/tabel-xlsx.js';
 import { installShortcuts, applyShortcutHints, toggleCheatSheet, isTyping } from '../../../shared/shortcuts.js';
+import { UUID_RE } from '../../route-params.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -241,6 +242,22 @@ let exportPanelRepaint = null;
 // far below near unmount()) to reach switchView(), which stays a NESTED
 // function inside mount() -- see switchView()'s own comment for why.
 let _switchView = null;
+// Sama seperti _switchView: pegangan ke fungsi Set Management yang nested di dalam mount(), dipakai
+// setSubroute() (top-level) waktu URL berubah dari luar halaman (Back/Forward, refresh, klik sidebar).
+// { show(id, kode), open(id), close(), isOpen() } -- diisi di bagian SET MANAGEMENT, dikosongkan di unmount().
+let _setRoute = null;
+// Hasil terakhir resolveRoute() ({ id, kode }): router sudah memverifikasi set ini ada, jadi
+// openSetFromRoute() tidak perlu query ulang.
+let resolvedSet = null;
+
+// Minta router pindah ke `path` (URL + sorotan sidebar ikut). Mengembalikan true kalau event dikirim,
+// false kalau tidak perlu (sudah di path itu, atau halaman ini tidak sedang di bawah /crud-produk).
+// Pola yang sama dengan goSubTab() di konversian/index.js.
+function routeTo(path) {
+  if (!location.pathname.startsWith('/crud-produk') || location.pathname === path) return false;
+  window.dispatchEvent(new CustomEvent('pnm:navigate', { detail: { path } }));
+  return true;
+}
 let beforeUnloadHandler = null;
 let copyKitDestroy = null; // copy.js: tutup popover salin + buang cache saat halaman di-unmount
 let shortcutsDispose = null; // shared/shortcuts.js: lepas listener keydown pintasan + tutup daftar pintasan (?)
@@ -372,7 +389,7 @@ function renderInaprocIndikator(statusInaproc, linkV6, isVerified){
   el.innerHTML = `<span class="ind-label">Status pengajuan</span><span class="seal ${cls}">${escapeHtml(label)}</span>${extra}`;
 }
 
-export async function mount(container, initialSub) {
+export async function mount(container, initialSub, initialParam) {
   mountedContainer = container;
   perfReset();
   perfMark('mount-mulai');
@@ -495,6 +512,16 @@ const stale = createStaleTracker({
 const markProdukStale = (opts) => stale.mark(opts); // opts: { akd, distinct }
 const viewAktif = () => ((document.getElementById('appWrap') || {}).dataset || {}).view || '';
 _switchView = switchView; // expose to the real top-level setSubroute() far below
+
+// Pindah view DARI DALAM KODE (bukan klik sidebar). Dulu langsung switchView() -> isi layar pindah tapi
+// URL + sorotan sidebar tetap di view lama (mis. dari modal produk "lompat ke KFA": layar KFA, sidebar
+// masih "Produk"). Sekarang layar pindah seketika, lalu URL/sidebar disinkronkan lewat router
+// (pnm:navigate -> navSetActive + setSubroute, yang cuma memanggil switchView() lagi = tidak berbahaya).
+function goView(view) {
+  switchView(view);
+  if (view === 'produk' && location.pathname.replace(/\/+$/, '') === '/crud-produk') return; // /crud-produk = Produk
+  routeTo('/crud-produk/' + view);
+}
 
 // ---- Auth ----
 // Sesi kesembilan belas: per-page gate (gateWrap/loginFormWrap/gateMsg,
@@ -798,7 +825,7 @@ topSearchInput.addEventListener('input', () => {
   topSearchClear.style.display = topSearchInput.value ? 'block' : 'none';
   syncTopSearchKbd();
   topSearchTimer = setTimeout(() => {
-    switchView('produk');
+    goView('produk');
     loadProduk(topSearchInput.value);
   }, 300);
 });
@@ -2815,7 +2842,7 @@ async function loadKfaInfoForProduk(produkId, kodeProduk){
 }
 document.getElementById('jumpToKfaLink').addEventListener('click', () => {
   closeModal();
-  switchView('kfa');
+  goView('kfa');
   const input = document.getElementById('kfaSearchBoxInput');
   input.value = currentInfoDasarKodeProduk;
   S.jumpToKfaSearch(currentInfoDasarKodeProduk);
@@ -3446,14 +3473,50 @@ let compRows = [];
 let setHargaAcuan = null; // { ekat, tahun } harga EKATALOG terbaru set yang dibuka; dasar diskon di kalkulator nego
 let lastAddedItemRowId = null;
 
-async function goToSetDetail(produkId){
+// Detail set punya URL sendiri: /crud-produk/set/<uuid> (UUID produk, bukan kode yang urut -> tidak bisa
+// ditebak; lihat route-params.js). Layar pindah seketika, lalu URL + sorotan sidebar disinkronkan lewat
+// router (pnm:navigate). Router memverifikasi set-nya ada (resolveRoute) lalu memanggil setSubroute('set', id)
+// -> showSetDetail() yang melihat detail itu SUDAH terbuka dan tidak memuat ulang.
+// Dulu: switchView('set') langsung -> URL tetap /crud-produk/produk, sidebar tidak tahu apa-apa.
+function setDetailOpen(){
+  const d = document.getElementById('setDetailWrap');
+  return !!d && d.style.display === 'block';
+}
+
+// Tampilkan detail set `id`. Urutannya sengaja: openSetDetail() dulu (bagian sinkronnya langsung
+// menampilkan panel detail), baru switchView('set') -- switchView memuat daftar set HANYA kalau panel
+// detail sedang tertutup, jadi daftar tidak ikut diunduh sia-sia.
+function showSetDetail(id, kode){
+  if (!(setDetailOpen() && currentSetId === id)) openSetDetail(id, kode);
   switchView('set');
+}
+
+function closeSetDetail(){
+  document.getElementById('setDetailWrap').style.display = 'none';
+  document.getElementById('setListWrap').style.display = 'block';
+  loadSetList();
+}
+
+// Dari URL (refresh, link dibagikan, Back/Forward): resolveRoute() sudah memverifikasi id ini SET yang
+// ada dan menyimpan kodenya di `resolvedSet`; query ulang hanya kalau cache itu tidak cocok.
+async function openSetFromRoute(id){
+  let kode = (resolvedSet && resolvedSet.id === id) ? resolvedSet.kode : null;
+  if (!kode) {
+    const { data: p, error } = await sb.from('produk').select('id, kode_produk').eq('id', id).maybeSingle();
+    if (error || !p) { showToast('Gagal membuka set', true); return; }
+    kode = p.kode_produk;
+  }
+  showSetDetail(id, kode);
+}
+
+async function goToSetDetail(produkId){
   const { data: p, error } = await sb.from('produk').select('id, kode_produk').eq('id', produkId).single();
   if (error || !p) { showToast('Gagal membuka set', true); return; }
-  document.getElementById('setListWrap').style.display = 'none';
-  document.getElementById('setDetailWrap').style.display = 'block';
-  openSetDetail(p.id, p.kode_produk);
+  showSetDetail(p.id, p.kode_produk);
+  routeTo('/crud-produk/set/' + encodeURIComponent(p.id));
 }
+
+_setRoute = { show: showSetDetail, open: openSetFromRoute, close: closeSetDetail, isOpen: setDetailOpen };
 
 document.getElementById('addSetBtn').addEventListener('click', () => {
   openAdd();
@@ -3558,10 +3621,11 @@ async function loadSetList(page){
   });
 })();
 
+// Kembali ke daftar: lewat router (URL jadi /crud-produk/set, sidebar tetap "Set Management", dan tombol
+// Back browser jujur). Router lalu memanggil setSubroute('set') -> closeSetDetail(). Kalau URL sudah
+// /crud-produk/set (routeTo false), tutup langsung.
 document.getElementById('setBackBtn').addEventListener('click', () => {
-  document.getElementById('setDetailWrap').style.display = 'none';
-  document.getElementById('setListWrap').style.display = 'block';
-  loadSetList();
+  if (!routeTo('/crud-produk/set')) closeSetDetail();
 });
 
 async function openSetDetail(setId, kodeProduk){
@@ -4378,6 +4442,9 @@ function animateProdukRowOut(id){
   // start with viewProduk visible and nothing else; now explicit since a
   // direct link to e.g. #crud-produk/kfa needs this to actually land on
   // KFA Management instead of Produk).
+  // Deep link ke detail set (/crud-produk/set/<uuid>): router sudah memverifikasi id-nya ada
+  // (resolveRoute) sebelum mount(). Dibuka SEBELUM switchView() supaya daftar set tidak ikut dimuat.
+  if ((initialSub || 'produk') === 'set' && initialParam) openSetFromRoute(String(initialParam).toLowerCase());
   switchView(initialSub || 'produk');
 }
 
@@ -4389,8 +4456,48 @@ function animateProdukRowOut(id){
  * kayak percobaan pertama yang salah) -- lewat `_switchView` (module-level,
  * lihat deklarasinya dekat `mountedContainer`) buat nyampe ke switchView()
  * yang tetep nested di dalam mount(). */
-export function setSubroute(sub) {
-  _switchView?.(sub || 'produk');
+export function setSubroute(sub, param) {
+  const view = sub || 'produk';
+  if (view === 'set' && param && _setRoute) {
+    // /crud-produk/set/<uuid>: router sudah memverifikasi (resolveRoute). open() menampilkan panel detail
+    // dulu (sinkron kalau kodenya sudah di cache), baru view 'set' dinyalakan -> daftar tidak dimuat sia-sia.
+    _setRoute.open(String(param).toLowerCase());
+    return;
+  }
+  // View-nya dinyalakan DULU: switchView('set') memuat daftar set hanya kalau panel detail tertutup,
+  // jadi untuk detail yang masih terbuka ia tidak memuat apa-apa; close() di bawah yang memuat (sekali).
+  _switchView?.(view);
+  // /crud-produk/set (tanpa id) = daftar. Back browser / klik sidebar "Set Management" / tombol Kembali
+  // dari detail: tutup detail yang masih terbuka supaya layar sama dengan URL.
+  if (view === 'set' && _setRoute?.isOpen()) _setRoute.close();
+}
+
+/**
+ * Hook untuk router.js: apakah `param` di /crud-produk/<sub>/<param> benar-benar ada?
+ * Dipanggil router SEBELUM mount() (deep link / refresh) maupun saat halaman sudah ter-mount (klik baris,
+ * Back/Forward), jadi TIDAK boleh bergantung pada state di dalam mount() -- klien Supabase diambil sendiri.
+ *  - true  : ada.
+ *  - false : tidak ada, ATAU ada tapi tidak boleh dibaca user ini (RLS menyaringnya jadi 0 baris) --
+ *            dari luar keduanya tidak terbedakan, router menampilkan 404 yang sama.
+ *  - throw : pemeriksaan gagal (jaringan dll.) -> router menampilkan error biasa, BUKAN 404/logout.
+ * Cuma 'set' yang punya param. Bentuk UUID sudah dicek router (route-params.js); dicek lagi di sini
+ * (pertahanan berlapis) supaya nilai ngawur tidak pernah menyentuh query.
+ */
+export async function resolveRoute(sub, param) {
+  resolvedSet = null;
+  if (sub !== 'set' || typeof param !== 'string' || !UUID_RE.test(param)) return false;
+  await ensureVendorScripts();
+  const id = param.toLowerCase();
+  const { data, error } = await window.pnmSupabase
+    .from('produk')
+    .select('id, kode_produk')
+    .eq('id', id)
+    .eq('tipe', 'SET')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return false;
+  resolvedSet = { id: data.id, kode: data.kode_produk };
+  return true;
 }
 
 export function unmount() {
@@ -4433,6 +4540,8 @@ export function unmount() {
   document.getElementById('page-crud-produk-style')?.remove();
 
   _switchView = null; // avoid a stale closure over this mount's DOM being callable after teardown
+  _setRoute = null;   // idem untuk fungsi Set Management
+  resolvedSet = null;
   produkPrefetch = null;
   mountedContainer = null;
 }

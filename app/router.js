@@ -48,6 +48,8 @@ import { initNoAutofillGuard } from '../shared/no-autofill.js';
 // simply has no legitimate sub-routes at all -- see isValidSub().
 import { CRUD_PRODUK_SUBNAV } from './pages/crud-produk/subnav.js';
 import { KONVERSIAN_SUBNAV } from './pages/konversian/subnav.js';
+// Aturan segmen ketiga URL (cuma crud-produk/set/<uuid> yang boleh) -- lihat route-params.js.
+import { splitRest, isValidParam } from './route-params.js';
 
 const ROUTES = {
   'kompres-pdf': () => import('./pages/kompres-pdf/index.js'),
@@ -244,11 +246,14 @@ function currentRoute() {
   const [module, sub, ...rest] = (path || DEFAULT_ROUTE).split('/');
   // `rest` is anything past the module/sub pair -- e.g. the
   // "RB999-KE878-B089-U09" in /crud-produk/produk/RB999-KE878-B089-U09.
-  // No route in this app is ever 3 segments deep on purpose (see ROUTES +
-  // SUBROUTES above), so any non-empty `rest` is someone hand-editing the
-  // URL bar looking for a page that isn't there, same as an unknown module
-  // or sub id -- render() treats all three identically as `tampered`.
-  return { module, sub: sub || null, extra: rest.length > 0 };
+  // Hampir semua route tidak pernah 3 segmen (lihat ROUTES + SUBROUTES di atas), jadi `rest` yang
+  // tidak kosong itu orang yang utak-atik address bar mencari halaman yang tidak ada -- sama seperti
+  // modul / sub id yang tidak dikenal, render() menganggap ketiganya `tampered`.
+  // PENGECUALIAN: kombinasi modul/sub yang terdaftar di route-params.js (sekarang cuma
+  // /crud-produk/set/<uuid>) boleh punya TEPAT satu segmen: `param`. Bentuknya dicek sinkron di
+  // render() (isValidParam), keberadaannya dicek async lewat hook resolveRoute() milik halaman.
+  const { param, extra } = splitRest(rest);
+  return { module, sub: sub || null, param, extra };
 }
 
 // Single choke point for every in-app path change -- both the internal
@@ -266,17 +271,50 @@ function navigate(path, { replace = false } = {}) {
   render();
 }
 
+// Route ditolak (tampered / param tidak ada): bongkar halaman aktif lalu tampilkan 404 yang sama
+// untuk SEMUA penyebab, supaya dari luar tidak bisa dibedakan "URL ngawur" vs "id-nya tidak ada".
+function rejectRoute() {
+  unmountPage(currentPage, currentModule);
+  currentPage = null;
+  currentModule = null;
+  currentMounted = false;
+  container.innerHTML = '';
+  renderNotFound(container);
+}
+
+// Cek keberadaan param lewat hook opsional `resolveRoute(sub, param)` milik halaman (router sendiri
+// tidak punya akses data). Hasil: 'ada' | 'tidak-ada' | 'gagal'.
+//  - hook tidak ada / mengembalikan false -> 'tidak-ada' (dianggap tampered).
+//  - hook melempar error (jaringan putus, dll.) -> 'gagal': itu BUKAN utak-atik URL, jadi tidak boleh
+//    memicu 404 + auto-logout (lihat renderNotFound); cukup pesan error biasa.
+async function cekParam(page, sub, param) {
+  if (param == null) return 'ada';
+  if (typeof page?.resolveRoute !== 'function') return 'tidak-ada';
+  try {
+    return (await page.resolveRoute(sub, param)) === true ? 'ada' : 'tidak-ada';
+  } catch (err) {
+    console.error('resolveRoute gagal:', err);
+    return 'gagal';
+  }
+}
+
+function renderParamError() {
+  container.innerHTML = `<div style="max-width:520px;margin:60px auto;font-family:sans-serif;">
+      <p>Halaman gagal dimuat (tidak bisa memeriksa data). Cek koneksi internet, lalu muat ulang halaman.</p>
+    </div>`;
+}
+
 async function render() {
   if (!routingEnabled) return; // popstate fired while logged out -- ignore, gate owns the screen
   clearPendingKick(); // any earlier "you're about to be logged out" from a previous bad URL no longer applies
   const mySeq = ++renderSeq;
-  let { module, sub, extra } = currentRoute();
+  let { module, sub, param, extra } = currentRoute();
   if (RETIRED_REDIRECTS[module]) {
     module = RETIRED_REDIRECTS[module];
     navigate('/' + module + (sub ? '/' + sub : ''), { replace: true });
     return; // navigate() above already re-runs render() with the new route
   }
-  const retiredSub = sub && !extra && RETIRED_SUB_REDIRECTS[module + '/' + sub];
+  const retiredSub = sub && !extra && param == null && RETIRED_SUB_REDIRECTS[module + '/' + sub];
   if (retiredSub) {
     navigate('/' + retiredSub, { replace: true });
     return;
@@ -294,13 +332,12 @@ async function render() {
   // mounts) so a tampered URL can never reach it. Same treatment for all
   // three cases -- unknown module, invalid sub, or extra depth -- an
   // unrecognized destination is an unrecognized destination.
-  const tampered = !load || extra || !isValidSub(module, sub);
+  // Segmen ketiga (`param`) cuma sah untuk kombinasi yang terdaftar di route-params.js DAN bentuknya
+  // cocok (UUID). Ini baru cek bentuk, sinkron, tanpa database -- keberadaannya dicek di bawah lewat
+  // resolveRoute() milik halaman, begitu modulnya tersedia.
+  const tampered = !load || extra || !isValidSub(module, sub) || (param != null && !isValidParam(module, sub, param));
   if (tampered) {
-    unmountPage(currentPage, currentModule);
-    currentPage = null;
-    currentModule = null;
-    container.innerHTML = '';
-    renderNotFound(container);
+    rejectRoute();
     return;
   }
 
@@ -330,7 +367,24 @@ async function render() {
   // to the normal mount/unmount below exactly as before. `sub` is
   // guaranteed valid for this module by the `tampered` check above.
   if (currentMounted && currentModule === module && currentPage && typeof currentPage.setSubroute === 'function') {
-    currentPage.setSubroute(sub);
+    if (param != null) {
+      // Halaman sudah ter-mount tapi URL membawa param (klik baris set, tombol Back/Forward browser):
+      // tetap cek keberadaannya dulu, supaya id yang sudah dihapus / ngawur tidak lolos lewat jalur cepat ini.
+      const page = currentPage;
+      const hasil = await cekParam(page, sub, param);
+      if (mySeq !== renderSeq) return; // sudah ada navigasi yang lebih baru
+      if (hasil === 'tidak-ada') { rejectRoute(); return; }
+      if (hasil === 'gagal') {
+        // Pemeriksaan gagal (bukan "tidak ada"): halaman dibongkar, pesan error biasa, TANPA hitungan 404 / logout.
+        unmountPage(currentPage, currentModule);
+        currentPage = null;
+        currentModule = null;
+        currentMounted = false;
+        renderParamError();
+        return;
+      }
+    }
+    currentPage.setSubroute(sub, param);
     return;
   }
 
@@ -356,6 +410,18 @@ async function render() {
   }
   if (mySeq !== renderSeq) { clearTimeout(skelTimer); return; } // user sudah pindah lagi selagi chunk diunduh -> jangan mount halaman ini
 
+  // Param di URL (mis. /crud-produk/set/<uuid>, buka langsung / refresh / link dibagikan): cek dulu
+  // ke halaman apakah itu benar ada, SEBELUM mount() -- id yang tidak ada tidak pernah sampai ter-mount.
+  if (param != null) {
+    const hasil = await cekParam(mod, sub, param);
+    if (mySeq !== renderSeq) { clearTimeout(skelTimer); return; }
+    if (hasil !== 'ada') {
+      clearSkeleton(skelTimer);
+      if (hasil === 'tidak-ada') renderNotFound(container); else renderParamError();
+      return;
+    }
+  }
+
   // currentPage/currentModule diisi SEBELUM mount() selesai: kalau user pindah lagi selagi mount() masih
   // berjalan, render() berikutnya bisa meng-unmount halaman ini (dulu: tertinggal terpasang tanpa pegangan).
   currentPage = mod;
@@ -363,7 +429,7 @@ async function render() {
   currentMounted = false;
   unparkStyles(module); // CSS halaman ini (kalau pernah dibuka) dipasang lagi dari memori, sebelum mount()
   try {
-    await mod.mount(container, sub);
+    await mod.mount(container, sub, param);
     if (currentPage === mod) currentMounted = true;
     clearSkeleton(skelTimer);
   } catch (err) {
