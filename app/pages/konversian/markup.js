@@ -1261,7 +1261,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
 <!-- SETTINGS / PREFERENSI: dirancang extensible — daftar setting dirender dari
      SETTINGS_SCHEMA di JS, jadi nambah setting baru nanti gak perlu ubah HTML. -->
 <div class="modal-overlay" id="settings-modal">
-  <div class="modal-box" style="width:90vw;max-width:440px;padding:22px 24px;text-align:left">
+  <div class="modal-box" style="width:90vw;max-width:520px;max-height:90vh;overflow-y:auto;padding:22px 24px;text-align:left">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div class="modal-title" style="margin:0"><i class="ti ti-settings"></i> Preferensi</div>
       <button id="settings-modal-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>

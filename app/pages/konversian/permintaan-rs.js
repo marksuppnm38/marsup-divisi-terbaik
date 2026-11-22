@@ -450,6 +450,50 @@ async function getAmLexicon(force) {
   return amLexicon;
 }
 
+// ── KEBIJAKAN AUTO-MATCH (Preferensi → Auto-Match, disimpan di S.pnmSettings) ──
+// Dua sumbu yang bebas dipilih; resolver.js TIDAK berubah (status AUTO/REVIEW/UNKNOWN tetap sama), jadi mengganti mode
+// langsung berlaku tanpa mencocokkan ulang. Yang berubah hanya apa yang DITAMPILKAN dan apakah AUTO dipasang sendiri.
+//   amYakin : 'tombol' = AUTO dipasang lewat "Pakai N yang cocok"  |  'pasang' = AUTO langsung dipasang setelah pencocokan selesai
+//   amRagu  : 'semua'  = REVIEW/UNKNOWN tampil lengkap  |  'ringkas' = produk belum siap jual dilipat jadi satu baris, bukan usulan
+//             'sembunyi' = hanya AUTO yang tampil; sisanya tanpa usulan (bisa diintip sementara)
+const AM_PRESET = {
+  lengkap:  { amYakin: 'tombol', amRagu: 'semua' },
+  seimbang: { amYakin: 'tombol', amRagu: 'ringkas' },
+  agresif:  { amYakin: 'pasang', amRagu: 'sembunyi' }
+};
+S.AM_PRESET = AM_PRESET; // dibaca index.js (modal Preferensi) supaya tabel preset cuma ada di satu tempat
+const AM_PRESET_NAMA = { lengkap: 'Lengkap', seimbang: 'Seimbang', agresif: 'Agresif', kustom: 'Kustom' };
+function amPolicy() {
+  const st = S.pnmSettings || {};
+  return {
+    yakin: st.amYakin === 'pasang' ? 'pasang' : 'tombol',
+    ragu: ['semua', 'ringkas', 'sembunyi'].includes(st.amRagu) ? st.amRagu : 'ringkas'
+  };
+}
+function amPresetKey() {
+  const p = amPolicy();
+  return Object.keys(AM_PRESET).find(k => AM_PRESET[k].amYakin === p.yakin && AM_PRESET[k].amRagu === p.ragu) || 'kustom';
+}
+let amPeek = false; // mode sembunyi: true = tampilkan sementara yang disembunyikan (hilang saat halaman dimuat ulang)
+const amSembunyi = () => amPolicy().ragu === 'sembunyi' && !amPeek;
+// Item yang usulannya dibuang dari tampilan oleh kebijakan (mode sembunyi, status bukan AUTO).
+function amDisembunyikan(m) { return !!m && amSembunyi() && m.hasil.status !== 'AUTO'; }
+// Pisahkan kandidat: siap jual vs belum siap (AKD/link V6/firm). Mode 'semua' tidak memisah.
+function amSplit(h) {
+  const cands = (h.candidates || []).filter((c, i, a) => a.findIndex(x => x.kode === c.kode) === i);
+  if (amPolicy().ragu === 'semua') return { siap: cands, belum: [] };
+  const siap = [], belum = [];
+  cands.forEach(c => (c.siap && !c.siap.ok ? belum : siap).push(c));
+  return { siap, belum };
+}
+// Usulan teratas yang BOLEH tampil/dipakai cepat: dalam mode ringkas/sembunyi, produk belum siap bukan usulan.
+function amTopKode(m) {
+  if (!m || !m.kode) return null;
+  const { siap } = amSplit(m.hasil);
+  return siap.some(c => c.kode === m.kode) ? m.kode : null;
+}
+const amBelumOpen = new Set(); // item.id yang lipatan "belum siap jual"-nya dibuka
+
 // Log usulan & keputusan (tabel automatch_log, lihat README/auto-konversi-queries.sql Q4). Best-effort: gagal log
 // TIDAK boleh mengganggu kerja staff, jadi semua error ditelan.
 function amLog(rows) {
@@ -1203,23 +1247,30 @@ function amInClip(kode) { return S.clipboard.some(c => c.kode_produk === kode); 
 // Baris usulan di bawah nama item (baris ketutup): label hasil + produk teratas, satu baris.
 function amLineHtml(item) {
   const m = amFor(item);
-  if (!m) return '';
+  if (!m || amDisembunyikan(m)) return '';
   const h = m.hasil;
+  const kode = amTopKode(m);
+  const { belum } = amSplit(h);
   const diblokir = h.status === 'UNKNOWN' && h.blocked && h.blocked.length;
-  const label = diblokir ? 'Tidak dipakai' : (AM_LABEL[h.status] || h.status);
-  const isi = m.kode
-    ? `<span class="kb-am-prod">${escapeHtmlAttr(m.nama || m.kode)}<span class="kb-am-kode">${escapeHtmlAttr(m.kode)}</span></span>`
-    : `<span class="kb-am-prod kb-am-none">${escapeHtmlAttr(h.reason)}</span>`;
-  const why = h.status === 'REVIEW' && AM_WHY[h.reason_key] ? `<span class="kb-am-why">${AM_WHY[h.reason_key]}</span>` : '';
-  return `<div class="kb-am-line ${h.status.toLowerCase()}" title="${escapeHtmlAttr(h.reason)}"><span class="kb-am-label">${label}</span>${why}${isi}</div>`;
+  // Semua yang cocok ternyata belum siap jual: bukan usulan, jadi katakan itu saja (satu baris, tanpa nama produk).
+  const hanyaBelum = !kode && belum.length && !amSplit(h).siap.length;
+  const label = hanyaBelum ? 'Belum siap' : (diblokir ? 'Tidak dipakai' : (AM_LABEL[h.status] || h.status));
+  const nama = kode ? (m.nama || kode) : '';
+  const isi = kode
+    ? `<span class="kb-am-prod">${escapeHtmlAttr(nama)}<span class="kb-am-kode">${escapeHtmlAttr(kode)}</span></span>`
+    : `<span class="kb-am-prod kb-am-none">${hanyaBelum ? `${belum.length} produk cocok, belum siap dijual` : escapeHtmlAttr(h.reason)}</span>`;
+  const why = h.status === 'REVIEW' && !hanyaBelum && AM_WHY[h.reason_key] ? `<span class="kb-am-why">${AM_WHY[h.reason_key]}</span>` : '';
+  const cls = hanyaBelum ? 'review' : h.status.toLowerCase();
+  return `<div class="kb-am-line ${cls}" title="${escapeHtmlAttr(h.reason)}"><span class="kb-am-label">${label}</span>${why}${isi}</div>`;
 }
 
 // Tombol Pakai di header baris (hanya kalau ada produk usulan). Kelas & action = saran Dictionary.
 function amQuickBtnHtml(item) {
   const m = amFor(item);
-  if (!m || !m.kode) return '';
-  const kode = escapeHtmlAttr(m.kode);
-  return amInClip(m.kode)
+  const top = m && !amDisembunyikan(m) ? amTopKode(m) : null;
+  if (!top) return '';
+  const kode = escapeHtmlAttr(top);
+  return amInClip(top)
     ? `<button type="button" class="kb-dict-sugg-use kb-am-use" data-action="use-suggestion" data-id="${item.id}" data-kode="${kode}" title="Pasang ${kode} ke item ini">Pakai</button>`
     : `<button type="button" class="kb-dict-sugg-attach kb-am-use" data-action="attach-suggestion" data-id="${item.id}" data-kode="${kode}" title="Belum ada di Clipboard — ditambahkan dulu, lalu dipasang ke item ini">+ Pakai</button>`;
 }
@@ -1236,7 +1287,7 @@ function amAltOpen(item, h) {
 // null = tidak ada usulan teratas / tidak ada selisih yang perlu ditandai → pemanggil pakai teks polos.
 function amRequestHtml(item) {
   const m = amFor(item);
-  if (!m || !m.kode) return null;
+  if (!m || amDisembunyikan(m) || !amTopKode(m)) return null;
   const top = (m.hasil.candidates || []).find(c => c.kode === m.kode);
   if (!top) return null;
   const bd = bandingkan(item.raw_text, top.nama);
@@ -1280,9 +1331,9 @@ function amCandRowHtml(item, c, top) {
 // Isi detail baris (baris terbuka): alasan, usulan teratas, lalu alternatif (dilipat kecuali pilihannya setara).
 function amCandidatesHtml(item) {
   const m = amFor(item);
-  if (!m) return '';
+  if (!m || amDisembunyikan(m)) return '';
   const h = m.hasil;
-  const cands = (h.candidates || []).filter((c, i, a) => a.findIndex(x => x.kode === c.kode) === i);
+  const { siap: cands, belum } = amSplit(h);
   const top = cands.find(c => c.kode === h.kode_produk) || null;
   const alts = cands.filter(c => c !== top);
   const open = amAltOpen(item, h);
@@ -1294,6 +1345,12 @@ function amCandidatesHtml(item) {
     ? `<button type="button" class="kb-cmp-alt-toggle" data-action="toggle-alt" data-id="${item.id}" aria-expanded="${open}"><i class="ti ti-chevron-right" aria-hidden="true"></i>${alts.length} alternatif</button>` : '';
   const altRows = alts.length && (open || !top)
     ? `<div class="kb-cmp-alts">${alts.map(c => amCandRowHtml(item, c, false)).join('')}</div>` : '';
+  // Produk cocok tapi belum siap dijual: bukan usulan. Dilipat jadi satu baris; dibuka hanya kalau staff memang mau menyiapkan/memakainya.
+  const belumOpen = amBelumOpen.has(item.id);
+  const belumToggle = belum.length
+    ? `<button type="button" class="kb-cmp-alt-toggle kb-cmp-belum" data-action="toggle-belum" data-id="${item.id}" aria-expanded="${belumOpen}"><i class="ti ti-chevron-right" aria-hidden="true"></i>${belum.length} produk belum siap dijual</button>` : '';
+  const belumRows = belum.length && belumOpen
+    ? `<div class="kb-cmp-alts kb-cmp-alts-belum">${belum.map(c => amCandRowHtml(item, c, false)).join('')}</div>` : '';
   // Permintaan umum: tawarkan SEMUA yang siap sebagai skenario (tiap produk @ qty diminta). Tidak pernah dipasang diam-diam
   // oleh "Pakai N yang cocok" — isi penawaran ke RS berubah, jadi harus diklik sadar.
   const nb = h.bundle && h.bundle.length >= 2 && item.status === 'PENDING' ? h.bundle.length : 0;
@@ -1302,7 +1359,7 @@ function amCandidatesHtml(item) {
   return `<div class="kb-cmp">
     <p class="kb-cmp-why">${escapeHtmlAttr(h.reason)}</p>${lex}
     ${top ? amCandRowHtml(item, top, true) : ''}${bundleBtn}
-    ${altToggle}${altRows}${blk}
+    ${altToggle}${altRows}${belumToggle}${belumRows}${blk}
   </div>`;
 }
 
@@ -1313,6 +1370,9 @@ function renderAmBar() {
   const pending = S.checklistItems.filter(i => i.status === 'PENDING').length;
   const n = amCounts();
   const total = n.AUTO + n.REVIEW + n.UNKNOWN;
+  // Mode sembunyi: yang bukan AUTO tidak jadi chip & tidak bisa difilter; cukup satu tautan "N disembunyikan".
+  const disembunyi = amSembunyi() ? n.REVIEW + n.UNKNOWN : 0;
+  if (disembunyi) { n.REVIEW = 0; n.UNKNOWN = 0; if (amFilter === 'REVIEW' || amFilter === 'UNKNOWN') amFilter = 'all'; }
   if (amFilter !== 'all' && !n[amFilter]) amFilter = 'all'; // filter yang sudah kosong dilepas, bukan dibiarkan menampilkan daftar kosong
   const rc = amReasonCounts();
   if (amFilter !== 'REVIEW' || (amReason !== 'all' && !rc[amReason])) amReason = 'all';
@@ -1342,6 +1402,8 @@ function renderAmBar() {
   amBarEl.innerHTML = `<div class="kb-am-row">
     <div class="kb-am-chips" role="group" aria-label="Saring hasil pencocokan">${chip('REVIEW', 'Cek dulu', n.REVIEW)}${chip('AUTO', 'Cocok', n.AUTO)}${chip('UNKNOWN', 'Tidak ketemu', n.UNKNOWN)}</div>
     <div class="kb-am-acts">
+      ${disembunyi ? `<button type="button" class="kb-am-link" data-am="peek">${disembunyi} tanpa usulan yang yakin · lihat</button>` : (amPeek && amPolicy().ragu === 'sembunyi' ? '<button type="button" class="kb-am-link" data-am="peek">sembunyikan lagi</button>' : '')}
+      <button type="button" class="kb-am-mode" data-am="settings" title="Atur seberapa agresif Auto-Match di Preferensi">${AM_PRESET_NAMA[amPresetKey()]}<i class="ti ti-adjustments-horizontal" aria-hidden="true"></i></button>
       ${n.AUTO ? `<button type="button" class="kb-am-btn primary" data-am="apply"${amApplying ? ' disabled' : ''}>${amApplying ? 'Memasang…' : `Pakai ${n.AUTO} yang cocok`}</button>` : ''}
       <button type="button" class="kb-am-ico" data-am="rerun" title="Cocokkan ulang (data produk/riwayat bisa berubah)" aria-label="Cocokkan ulang"><i class="ti ti-wand" aria-hidden="true"></i></button>
       <button type="button" class="kb-am-ico" data-am="clear" title="Sembunyikan semua usulan (keputusan yang sudah dipasang tidak berubah)" aria-label="Sembunyikan semua usulan"><i class="ti ti-eye-off" aria-hidden="true"></i></button>
@@ -1357,6 +1419,7 @@ async function runWorkspaceAutoMatch(onlyIds) {
     it.status === 'PENDING' && String(it.raw_text || '').trim() && (!onlyIds || onlyIds.has(it.id)));
   if (!targets.length) { S.showToast('Semua item sudah diputuskan — tidak ada yang perlu dicocokkan.'); return; }
   amRunning = true;
+  let berhasil = false;
   amProgress = { n: 0, t: targets.length };
   renderAmBar();
   try {
@@ -1391,13 +1454,18 @@ async function runWorkspaceAutoMatch(onlyIds) {
     })));
     amFilter = 'all'; amReason = 'all';
     const sm = summarize(res);
-    S.showToast(`Auto-Match selesai: ${sm.AUTO} cocok, ${sm.REVIEW} perlu dicek, ${sm.UNKNOWN} tidak ketemu`, 'success');
+    berhasil = true;
+    // Mode 'pasang': ringkasan dibungkus jadi satu toast oleh applyAllAuto di bawah; selain itu tampil seperti biasa.
+    if (amPolicy().yakin !== 'pasang' || !sm.AUTO) S.showToast(`Auto-Match selesai: ${sm.AUTO} cocok, ${sm.REVIEW} perlu dicek, ${sm.UNKNOWN} tidak ketemu`, 'success');
   } catch (err) {
     S.showToast('Auto-Match gagal: ' + err.message, 'error');
   } finally {
     amRunning = false;
     renderChecklist();
   }
+  // Yakin → langsung pasang (hanya AUTO; pemeriksaan acak tetap jalan karena sebagian AUTO sengaja diturunkan jadi REVIEW).
+  // Tiap item punya tautan "Batal" di barisnya.
+  if (berhasil && amPolicy().yakin === 'pasang') await applyAllAuto();
 }
 S.runWorkspaceAutoMatch = runWorkspaceAutoMatch;
 
@@ -1446,7 +1514,11 @@ if (amBarEl) amBarEl.addEventListener('click', (e) => {
   else if (act === 'filter') { amFilter = (amFilter === b.dataset.key) ? 'all' : b.dataset.key; amReason = 'all'; renderChecklist(); }
   else if (act === 'reason') { amReason = (amReason === b.dataset.key) ? 'all' : b.dataset.key; renderChecklist(); }
   else if (act === 'apply') applyAllAuto();
+  else if (act === 'peek') { amPeek = !amPeek; renderChecklist(); }
+  else if (act === 'settings') { if (typeof S.openSettingsModal === 'function') S.openSettingsModal(); }
 });
+// Dipanggil index.js setiap Preferensi Auto-Match berubah: tampilan ikut berubah seketika, tanpa mencocokkan ulang.
+S.amSettingsChanged = () => { amPeek = false; renderChecklist(); };
 
 // Switch footer layar Periksa item: jalankan Auto-Match otomatis begitu item tersimpan? (diingat per browser)
 const prAmOpt = document.getElementById('pr-am-opt');
@@ -2868,6 +2940,12 @@ S.kbList.addEventListener('click', async (e) => {
     const m = amFor(item);
     amAltPref.set(itemId, !amAltOpen(item, m ? m.hasil : {}));
     S.patchChecklistItem(itemId, {}); // render ulang baris ini saja (scroll daftar tidak loncat)
+    return;
+  }
+
+  if (action === 'toggle-belum') {
+    if (amBelumOpen.has(itemId)) amBelumOpen.delete(itemId); else amBelumOpen.add(itemId);
+    S.patchChecklistItem(itemId, {});
     return;
   }
 

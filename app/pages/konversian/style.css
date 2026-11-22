@@ -3277,3 +3277,16 @@
 #app-root .kb-anchor-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
 #app-root .kb-anchor-badge{background:var(--surface-2);color:var(--text-secondary);border-color:var(--border)}
 #app-root .kb-anchor-badge[data-sinyal="spesialisasi"],#app-root .kb-anchor-badge[data-sinyal="kategori"]{background:var(--warning-bg);color:var(--warning);border-color:var(--warning-border)}
+
+
+/* Auto-Match: tombol mode di bar (membuka Preferensi) + lipatan "belum siap dijual". Turunan .kb-am-link / .kb-cmp-alt-toggle. */
+#app-root .kb-am-mode{
+  height:26px;padding:0 8px;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);border-radius:6px;
+  background:transparent;color:var(--text-muted);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;
+  transition:background-color .12s,color .12s,border-color .12s;
+}
+#app-root .kb-am-mode i{font-size:14px}
+#app-root .kb-am-mode:hover{background:var(--surface-2);color:var(--text);border-color:var(--border-strong)}
+#app-root .kb-am-mode:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app-root .kb-cmp-belum{color:var(--text-muted)}
+#app-root .kb-cmp-alts-belum .kb-cmp-name{color:var(--text-muted)}

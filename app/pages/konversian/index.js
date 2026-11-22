@@ -2885,7 +2885,8 @@ if (panelSearchCollapseBtn && panelSearchRail) {
 // baris pertama di modal ini biar semua preferensi ada di satu tempat.
 // ══════════════════════════════════════════
 const PNM_SETTINGS_KEY = 'pnm_settings';
-const PNM_SETTINGS_DEFAULT = { autoComplete: false, outputVerified: false };
+// amYakin / amRagu: lihat "KEBIJAKAN AUTO-MATCH" di permintaan-rs.js. Default = preset Seimbang.
+const PNM_SETTINGS_DEFAULT = { autoComplete: false, outputVerified: false, amYakin: 'tombol', amRagu: 'ringkas' };
 function loadPnmSettings() {
   try {
     return Object.assign({}, PNM_SETTINGS_DEFAULT, JSON.parse(localStorage.getItem(PNM_SETTINGS_KEY) || '{}'));
@@ -2923,6 +2924,70 @@ function isDarkThemeActive() {
   return document.documentElement.getAttribute('data-theme') === 'dark';
 }
 
+// ── Preferensi Auto-Match: preset + dua sumbu. Nilai disimpan di pnmSettings (amYakin, amRagu); permintaan-rs.js membacanya
+// lewat S.pnmSettings setiap render, jadi perubahan langsung berlaku (S.amSettingsChanged). Tanpa <select>/<input>:
+// semua kontrol = <button role="radio"> memakai ulang token & pola chip yang sudah ada.
+const AM_PREF_UI = {
+  presets: [
+    { key: 'lengkap',  nama: 'Lengkap',  desc: 'Semua usulan tampil. Kamu yang memasang satu per satu.' },
+    { key: 'seimbang', nama: 'Seimbang', desc: 'Produk belum siap jual dilipat. Yang cocok dipasang dengan satu klik.' },
+    { key: 'agresif',  nama: 'Agresif',  desc: 'Yang yakin langsung dipasang. Sisanya tidak ditampilkan.' }
+  ],
+  yakin: {
+    judul: 'Kalau sistem yakin',
+    opsi: [
+      { v: 'tombol', t: 'Lewat tombol', d: 'Item “Cocok” dipasang saat kamu klik “Pakai N yang cocok”.' },
+      { v: 'pasang', t: 'Otomatis', d: 'Item “Cocok” langsung dipasang begitu pencocokan selesai. Tiap item bisa dibatalkan dari barisnya.' }
+    ]
+  },
+  ragu: {
+    judul: 'Kalau kurang yakin',
+    opsi: [
+      { v: 'semua', t: 'Tampilkan semua', d: 'Cek dulu dan Tidak ketemu tampil lengkap, termasuk produk yang belum siap dijual.' },
+      { v: 'ringkas', t: 'Ringkas', d: 'Produk belum siap dijual (AKD, link V6, belum firm) dilipat jadi satu baris dan tidak dianggap usulan.' },
+      { v: 'sembunyi', t: 'Sembunyikan', d: 'Item yang tidak yakin tampil tanpa usulan. Bisa diintip dari bar kalau perlu.' }
+    ]
+  }
+};
+
+function amPrefHtml() {
+  const preset = S.AM_PRESET || {};
+  const yakin = pnmSettings.amYakin === 'pasang' ? 'pasang' : 'tombol';
+  const ragu = ['semua', 'ringkas', 'sembunyi'].includes(pnmSettings.amRagu) ? pnmSettings.amRagu : 'ringkas';
+  const aktif = Object.keys(preset).find(k => preset[k].amYakin === yakin && preset[k].amRagu === ragu) || null;
+  const presetBtns = AM_PREF_UI.presets.map(p => `
+    <button type="button" role="radio" aria-checked="${aktif === p.key}" tabindex="${aktif === p.key || (!aktif && p.key === 'seimbang') ? 0 : -1}" class="pref-am-preset${aktif === p.key ? ' on' : ''}" data-am-preset="${p.key}">
+      <span class="pref-am-preset-name">${p.nama}</span><span class="pref-am-preset-desc">${p.desc}</span>
+    </button>`).join('');
+  const axis = (id, def, cur) => `
+    <div class="pref-am-axis">
+      <div class="pref-am-axis-label" id="pref-am-${id}">${def.judul}</div>
+      <div class="pref-seg" role="radiogroup" aria-labelledby="pref-am-${id}">${def.opsi.map(o => `
+        <button type="button" role="radio" aria-checked="${cur === o.v}" tabindex="${cur === o.v ? 0 : -1}" class="pref-seg-opt${cur === o.v ? ' on' : ''}" data-am-key="${id === 'yakin' ? 'amYakin' : 'amRagu'}" data-am-val="${o.v}">${o.t}</button>`).join('')}
+      </div>
+      <p class="pref-am-axis-desc" aria-live="polite">${def.opsi.find(o => o.v === cur).d}</p>
+    </div>`;
+  return `
+    <section class="pref-am" aria-labelledby="pref-am-h">
+      <div class="pref-row-label" id="pref-am-h">Auto-Match</div>
+      <div class="pref-row-desc">Seberapa jauh sistem boleh memutuskan sendiri, dan seberapa banyak usulan yang kamu lihat. Berlaku langsung tanpa mencocokkan ulang.</div>
+      <div class="pref-am-presets" role="radiogroup" aria-label="Preset Auto-Match">${presetBtns}</div>
+      ${axis('yakin', AM_PREF_UI.yakin, yakin)}
+      ${axis('ragu', AM_PREF_UI.ragu, ragu)}
+      ${aktif ? '' : '<div class="pref-am-note">Kombinasi kustom — bukan salah satu preset di atas.</div>'}
+    </section>`;
+}
+
+function amPrefSet(patch) {
+  Object.assign(pnmSettings, patch);
+  savePnmSettings();
+  const keepFocus = document.activeElement && document.activeElement.closest && document.activeElement.closest('#settings-list') ? document.activeElement : null;
+  const sel = keepFocus && (keepFocus.dataset.amPreset ? `[data-am-preset="${keepFocus.dataset.amPreset}"]` : (keepFocus.dataset.amKey ? `[data-am-key="${keepFocus.dataset.amKey}"][data-am-val="${keepFocus.dataset.amVal}"]` : null));
+  renderSettingsList();
+  if (sel) { const el = settingsListEl.querySelector(sel); if (el) el.focus(); }
+  if (typeof S.amSettingsChanged === 'function') S.amSettingsChanged();
+}
+
 function renderSettingsList() {
   const dark = isDarkThemeActive();
   let html = `
@@ -2945,6 +3010,7 @@ function renderSettingsList() {
       <div class="pref-switch ${pnmSettings[s.key] ? 'on' : ''}" data-pref-key="${s.key}" role="switch" aria-checked="${!!pnmSettings[s.key]}" tabindex="0"><div class="knob"></div></div>
     </div>
   `).join('');
+  html += amPrefHtml();
   settingsListEl.innerHTML = html;
 
   const themeSwitch = document.getElementById('pref-theme-switch');
@@ -2970,7 +3036,28 @@ function renderSettingsList() {
   });
 }
 
+// Satu listener (delegasi) untuk kontrol Auto-Match; innerHTML dirender ulang tiap perubahan, jadi tidak bisa menempel per elemen.
+settingsListEl.addEventListener('click', (e) => {
+  const pr = e.target.closest('[data-am-preset]');
+  if (pr) { const v = (S.AM_PRESET || {})[pr.dataset.amPreset]; if (v) amPrefSet({ amYakin: v.amYakin, amRagu: v.amRagu }); return; }
+  const op = e.target.closest('[data-am-key]');
+  if (op) amPrefSet({ [op.dataset.amKey]: op.dataset.amVal });
+});
+// Panah kiri/kanan memindahkan pilihan di dalam satu radiogroup (pola WAI-ARIA).
+settingsListEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  const cur = e.target.closest('[role="radio"]');
+  const grp = cur && cur.closest('[role="radiogroup"]');
+  if (!grp) return;
+  e.preventDefault();
+  const all = [...grp.querySelectorAll('[role="radio"]')];
+  const next = all[(all.indexOf(cur) + (e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : all.length - 1)) % all.length];
+  next.focus();
+  next.click();
+});
+
 function openSettingsModal() { renderSettingsList(); settingsModal.classList.add('show'); }
+S.openSettingsModal = openSettingsModal;
 function closeSettingsModal() { settingsModal.classList.remove('show'); }
 if (settingsToggleBtn) settingsToggleBtn.addEventListener('click', openSettingsModal);
 if (settingsModalClose) settingsModalClose.addEventListener('click', closeSettingsModal);
