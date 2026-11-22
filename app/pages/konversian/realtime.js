@@ -2,6 +2,8 @@
 // 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
 // lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
 // di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
+import { createItemWriteTracker, mergeChecklistSnapshot } from './checklist-sync.js';
+
 export function installRealtime(S) {
 // ══════════════════════════════════════════════════════════════════════════
 // REALTIME KOLABORASI — satu sesi = satu live workspace. Dua channel per sesi:
@@ -80,6 +82,12 @@ function markLocalWrite(table, id, field, value) {
   recentLocalWrites.set(`${table}:${id}:${field}`, { value, ts: Date.now() });
 }
 S.markLocalWrite = markLocalWrite;
+
+// Jejak tulisan status item Kebutuhan RS (lihat checklist-sync.js): snapshot dari server yang berangkat sebelum
+// tulisan lokal/rekan selesai dianggap basi supaya tidak menimpa status yang lebih baru (counter tidak loncat mundur).
+const itemWrites = createItemWriteTracker();
+S.trackItemWrite = (itemId, fn) => itemWrites.track(itemId, fn);
+S.noteItemChange = (itemId) => itemWrites.note(itemId);
 function isEchoOfLocalWrite(table, id, field, value) {
   const key = `${table}:${id}:${field}`;
   const rec = recentLocalWrites.get(key);
@@ -542,6 +550,7 @@ function handleChecklistReloadBroadcast({ payload }) {
 }
 function handleChecklistItemUpdatedBroadcast({ payload }) {
   if (!payload || payload.id == null) return;
+  itemWrites.note(payload.id); // perubahan rekan: lindungi dari snapshot reload yang berangkat sebelum ini
   const item = S.checklistItems.find(i => i.id === payload.id);
   if (!item) return;
   const statusChanged = payload.status !== item.status;
@@ -682,6 +691,7 @@ function renderPresenceRoster() {
 // pas buka sesi, jadi berlaku juga buat temen yang bukan pembuat pertamanya.
 async function loadChecklistForSesi(sesiId, opts) {
   const quiet = !!(opts && opts.quiet); // quiet: jangan pindahin tab / ganti item yang lagi kebuka (dipakai reload otomatis & abis edit)
+  const t0 = Date.now(); // waktu SEBELUM fetch berangkat: tulisan yang lebih baru dari ini = snapshot-nya basi untuk item tsb
   try {
     const res = await fetch(`${S.SUPABASE_URL}/rest/v1/rpc/get_permintaan_by_sesi`, {
       method: 'POST',
@@ -696,7 +706,9 @@ async function loadChecklistForSesi(sesiId, opts) {
     const data = await res.json();
     if (!data) { S.kbRefreshStatus.textContent = ''; return null; } // sesi ini emang gak punya Permintaan RS
 
-    S.checklistItems = Array.isArray(data.items) ? data.items : [];
+    // Gabung, bukan ganti total: item yang baru ditulis lokal/rekan (setelah t0) dipertahankan & objeknya tidak diganti,
+    // supaya loop yang memegang referensi item (mis. "Pakai N yang cocok") tidak menulis ke objek yatim.
+    S.checklistItems = mergeChecklistSnapshot(S.checklistItems, Array.isArray(data.items) ? data.items : [], itemWrites, t0);
     S.checklistItems.forEach(it => { it.matched_items = S.normalizeMatchedItems(it); });
     // section_id undefined di semua item (RPC belum di-update) = fallback aman,
     // grouping di bawah otomatis jadi 1 grup "Tanpa section" — gak ada yang patah.

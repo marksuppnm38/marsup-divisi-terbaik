@@ -7,4 +7,5 @@ export { understand, compareAttrs, describeDiff, DECISIVE } from './understand.j
 export { loadLexicon, makeLexicon, buildQueryLadder, lexiconHits, EMPTY_LEXICON } from './lexicon.js';
 export { assessProduk, makeFirmCheck } from './firm.js';
 export { buatIndeks, uraiNama } from './prosedur.js';
+export { saudaraJangkar, hitungSaudara, susunTawaran, labelOpsi, adaSpesifik, JANGKAR_MAX } from './jangkar.js';
 export { ringkasProsedur, temuan, brandKosong, prefixKode, keTsv } from './prosedur-review.js';
