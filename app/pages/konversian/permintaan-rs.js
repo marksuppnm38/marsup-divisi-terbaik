@@ -570,7 +570,7 @@ S.escapeHtmlAttr = escapeHtmlAttr;
 // staf mencentang lalu klik. Beda dengan bundle Auto-Match (resolver): pemicunya pilihan staf, jadi permintaan yang typo
 // / "perkiraan" pun dapat tawaran.
 // State lokal saja (tidak ke-sync ke rekan): anchorOpen = panel terbuka, anchorCache = hasil tawaran + centang,
-// anchorUndo = anchor asli supaya bisa "Kembalikan ke 1 produk", anchorHitungCache = angka chip "+N set lain".
+// anchorUndo = anchor asli supaya bisa "Kembalikan ke 1 produk", anchorHitungCache = angka chip "+N varian lain".
 // ══════════════════════════════════════════
 const anchorOpen = new Set();
 const anchorCache = new Map(); // itemId -> { anchor, loading, level, hasil:{anchor,opsi}, pilih:Set, error }
@@ -626,7 +626,7 @@ async function anchorMuat(item, kode, level) {
   try {
     const hasil = await anchorTawarkan(S.rpc, kode, { brand: anchorBrand(), level });
     if (anchorCache.get(item.id) !== c) return; // ditutup/diganti selagi menunggu
-    if (!hasil.opsi.length) { anchorOpen.delete(item.id); anchorCache.delete(item.id); S.showToast('Tidak ada set lain di prosedur ini.'); return; }
+    if (!hasil.opsi.length) { anchorOpen.delete(item.id); anchorCache.delete(item.id); S.showToast('Tidak ada varian lain.'); return; }
     c.hasil = hasil;
     const terpakai = anchorTerpakai(item);
     // Centang awal: semua yang ditawarkan, kecuali yang sudah dipakai item lain. Saat naik ke level 3, centang staf dipertahankan
@@ -646,13 +646,13 @@ async function anchorMuat(item, kode, level) {
     if (anchorCache.get(item.id) === c || !anchorCache.has(item.id)) renderChecklist();
   }
 }
-// Chip di baris ketutup: "+N set lain". Klik = buka panel di baris itu.
+// Chip di baris ketutup: "+N varian lain". Klik = buka panel di baris itu.
 function anchorChipHtml(item) {
   const kode = anchorKode(item);
   if (!kode) return '';
   const n = anchorN(kode);
   if (!n) return '';
-  return `<button type="button" class="kb-am-btn kb-anchor-chip" data-action="anchor-open" data-id="${item.id}" title="Tawarkan semua varian produk ini sebagai opsi">+${n} set lain</button>`;
+  return `<button type="button" class="kb-am-btn kb-anchor-chip" data-action="anchor-open" data-id="${item.id}" title="Tawarkan semua varian produk ini sebagai opsi">+${n} varian lain</button>`;
 }
 function anchorBadgesHtml(o) {
   const sinyal = Array.isArray(o.sinyal) ? o.sinyal : [];
@@ -669,7 +669,7 @@ function anchorPanelHtml(item) {
   const qtyTxt = dq >= 1 ? escapeHtmlAttr(String(dq)) : 'qty diminta';
   if (!open) {
     if (!n) return '';
-    return `<div class="kb-cmp-hint kb-anchor"><button type="button" class="kb-am-btn" data-action="anchor-open" data-id="${item.id}">Tawarkan semua varian</button> ${n} set lain yang siap dijual — tiap opsi @ ${qtyTxt}, buat bandingan anggaran.</div>`;
+    return `<div class="kb-cmp-hint kb-anchor"><button type="button" class="kb-am-btn" data-action="anchor-open" data-id="${item.id}">Tawarkan semua varian</button> ${n} varian lain yang siap dijual — tiap opsi @ ${qtyTxt}, buat bandingan anggaran.</div>`;
   }
   if (c.loading) return `<div class="kb-cmp-hint kb-anchor" role="status">Menyiapkan opsi…</div>`;
   if (c.error) return `<div class="kb-cmp-hint kb-anchor">Gagal menyiapkan opsi: ${escapeHtmlAttr(c.error)} <button type="button" class="kb-am-link" data-action="anchor-open" data-id="${item.id}">Coba lagi</button></div>`;
@@ -2505,7 +2505,7 @@ S.kbList.addEventListener('dragstart', e => {
 });
 
 function renderChecklist() {
-  anchorHitungPicu(); // angka chip "+N set lain": satu RPC batch untuk semua anchor yang belum punya angka
+  anchorHitungPicu(); // angka chip "+N varian lain": satu RPC batch untuk semua anchor yang belum punya angka
   updateKbCounts();
   renderAmBar(); // sebelum daftar dirender: bar yang melepas filter kosong (amFilter) harus jalan dulu
   renderSectionTabs();

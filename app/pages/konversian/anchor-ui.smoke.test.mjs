@@ -64,8 +64,8 @@ test('UI anchor: chip dari RPC batch, panel, badge sinyal, centang, pasang, undo
   S.renderChecklist();
   const hit = rpcCalls.filter(([f]) => f === 'auto_konversi_tawarkan_hitung');
   ok(hit.length === 1 && hit[0][1].p_kodes.join() === 'K1,L1' && hit[0][1].p_brand === 'ROBUST', 'satu RPC batch untuk semua anchor, brand ROBUST');
-  ok(/\+2 set lain/.test(kbList.innerHTML), 'chip item Sectio: +2 set lain (K2,K3) — sama dengan baris non-anchor');
-  ok(/\+1 set lain/.test(kbList.innerHTML), 'chip item Laparatomy: +1 set lain (L2)');
+  ok(/\+2 varian lain/.test(kbList.innerHTML), 'chip item Sectio: +2 varian lain (K2,K3) — sama dengan baris non-anchor');
+  ok(/\+1 varian lain/.test(kbList.innerHTML), 'chip item Laparatomy: +1 varian lain (L2)');
 
   store.checklistExpandedId = 1;
   await click('anchor-open', 1);
