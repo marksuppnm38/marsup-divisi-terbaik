@@ -3512,14 +3512,17 @@ async function openSetFromRoute(token){
 
 // URL detail memakai produk.url_token (UUID acak), BUKAN produk.id (angka urut -> /set/1, /set/2, ... gampang
 // ditebak) dan bukan kode_produk (U01, U02, ... juga urut). Lihat route-params.js + migrasi url_token.
-async function goToSetDetail(produkId){
+// `kodeHint` (opsional): kalau pemanggil sudah tahu kodenya (mis. baris daftar set), detail tampil seketika
+// tanpa menunggu query token; query-nya cuma buat URL. Tanpa hint, detail tampil setelah query selesai.
+async function goToSetDetail(produkId, kodeHint){
+  if (kodeHint) showSetDetail(produkId, kodeHint);
   let { data: p, error } = await sb.from('produk').select('id, kode_produk, url_token').eq('id', produkId).single();
   if (error && /url_token/i.test(error.message || '')) {
     // Kolom url_token belum ada di DB (migrasi belum dijalankan): detail tetap terbuka seperti dulu, hanya URL-nya tidak ikut.
     ({ data: p, error } = await sb.from('produk').select('id, kode_produk').eq('id', produkId).single());
   }
-  if (error || !p) { showToast('Gagal membuka set', true); return; }
-  showSetDetail(p.id, p.kode_produk);
+  if (error || !p) { if (!kodeHint) showToast('Gagal membuka set', true); return; }
+  if (!kodeHint) showSetDetail(p.id, p.kode_produk);
   if (p.url_token) routeTo('/crud-produk/set/' + encodeURIComponent(p.url_token));
 }
 
@@ -3611,7 +3614,7 @@ async function loadSetList(page){
       <span>${noHarga ? '<span class="sl-warn">Belum ada</span>' : 'Ada'}</span>
       ${sealHtml(s.status_akd, s.set_id)}
     `;
-    const openRow = () => openSetDetail(s.set_id, s.kode_produk);
+    const openRow = () => goToSetDetail(s.set_id, s.kode_produk); // lewat goToSetDetail: URL + sidebar ikut (bukan openSetDetail langsung)
     row.addEventListener('click', openRow);
     row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRow(); } });
     wrap.appendChild(row);
