@@ -586,3 +586,53 @@ test('konteks null / tak dikenal = perilaku lama', async () => {
   assert.equal(h.konteks, null);
   assert.equal(h.kode_produk, 'RB999-KE921-B99-U602');
 });
+
+test('bundle "MINOR": produk bernama MAYOR (riwayat Dictionary) tidak ikut ditawarkan; MINOR/BASIC REKONSTRUKSI MINOR tetap', async () => {
+  const mk = (kode, nama, freq) => row({ istilah: 'MINOR', kode_produk: kode, nama_produk: nama, freq, is_set: true });
+  const rpc = mockRpc({ 'MINOR': [
+    mk('RB999-KE921-B99-U93', 'MINOR S.', 9), mk('RB999-KE921-B99-U12', 'MINOR BASIC S.', 8),
+    mk('RB999-KE921-B99-U176', 'BASIC REKONSTRUKSI MINOR S.', 5), mk('RB999-KE921-B99-U02', 'MAYOR S.', 4),
+    mk('RB999-KE921-B99-U23', 'MAYOR VAGINAL S.', 3), mk('RB999-KE921-B99-U517', 'BASIC MAYOR IBS S.', 3)] });
+  const [it] = parseRequestText('MINOR\t1').items;
+  const h = await resolveItem(it, rpc);
+  assert.deepEqual(h.bundle.map(b => b.kode).sort(), ['RB999-KE921-B99-U12', 'RB999-KE921-B99-U176', 'RB999-KE921-B99-U93']);
+  // permintaan "MAYOR" kebalikannya: MINOR tidak ikut
+  const rpc2 = mockRpc({ 'MAYOR': [
+    row({ istilah: 'MAYOR', kode_produk: 'A', nama_produk: 'MAYOR S.', freq: 9, is_set: true }),
+    row({ istilah: 'MAYOR', kode_produk: 'B', nama_produk: 'BASIC MAYOR IBS S.', freq: 8, is_set: true }),
+    row({ istilah: 'MAYOR', kode_produk: 'C', nama_produk: 'MINOR S.', freq: 7, is_set: true })] });
+  const [it2] = parseRequestText('MAYOR\t1').items;
+  assert.deepEqual((await resolveItem(it2, rpc2)).bundle.map(b => b.kode).sort(), ['A', 'B']);
+});
+
+// ── 1 brand saja ──
+const brandFrom = (peta) => async (ks) => new Map(ks.map(k => [k, peta[k] || '']));
+test('satu brand: produk brand lain tidak jadi usulan maupun bundel; kosong = brandDefault', async () => {
+  const mk = (kode, nama, freq) => row({ istilah: 'SET HERNIA', kode_produk: kode, nama_produk: nama, freq, is_set: true });
+  const rpc = mockRpc({ 'SET HERNIA': [mk('RB999-KE921-B99-U06', 'HERNIA S.', 9), mk('AD999-KE921-B099-U60', 'HERNIA S.', 12), mk('RB999-KE921-B99-U510', 'HERNIA S. 2', 5)] });
+  const [it] = parseRequestText('SET HERNIA\t1').items;
+  const peta = { 'RB999-KE921-B99-U06': 'ROBUST', 'AD999-KE921-B099-U60': 'ADLER', 'RB999-KE921-B99-U510': '' };
+  const rob = await resolveItem(it, rpc, { brand: 'ROBUST', brandDefault: 'ROBUST', brandOf: brandFrom(peta) });
+  assert.ok(rob.candidates.every(c => c.kode !== 'AD999-KE921-B099-U60'));
+  assert.deepEqual((rob.bundle || []).map(b => b.kode).sort(), ['RB999-KE921-B99-U06', 'RB999-KE921-B99-U510']); // kosong -> ROBUST
+  assert.deepEqual(rob.lainBrand.map(x => x.kode), ['AD999-KE921-B099-U60']);
+  const adl = await resolveItem(it, rpc, { brand: 'ADLER', brandDefault: 'ROBUST', brandOf: brandFrom(peta) });
+  assert.deepEqual(adl.candidates.map(c => c.kode), ['AD999-KE921-B099-U60']);
+  // tanpa opts.brand: perilaku lama (semua brand)
+  assert.equal((await resolveItem(it, rpc)).candidates.length, 3);
+});
+
+test('satu brand: kalau yang cocok hanya brand lain -> UNKNOWN "lain_brand", bukan ditebak', async () => {
+  const rpc = mockRpc({ 'SET ANOSCOPY': [row({ istilah: 'SET ANOSCOPY', kode_produk: 'AD999-KE921-B099-U13', nama_produk: 'ANOSCOPY AS.', is_set: true })] });
+  const [it] = parseRequestText('SET ANOSCOPY\t1').items;
+  const h = await resolveItem(it, rpc, { brand: 'ROBUST', brandDefault: 'ROBUST', brandOf: brandFrom({ 'AD999-KE921-B099-U13': 'ADLER' }) });
+  assert.equal(h.status, 'UNKNOWN'); assert.equal(h.reason_key, 'lain_brand');
+  assert.match(h.reason, /ADLER/);
+});
+
+test('satu brand: cek brand gagal -> tidak pernah AUTO (gagal tertutup)', async () => {
+  const rpc = mockRpc({ 'SET HERNIA': [row({ istilah: 'SET HERNIA', kode_produk: 'RB999-KE921-B99-U06', nama_produk: 'HERNIA S.', freq: 9, is_set: true })] });
+  const [it] = parseRequestText('SET HERNIA\t1').items;
+  const h = await resolveItem(it, rpc, { brand: 'ROBUST', brandOf: async () => { throw new Error('timeout'); } });
+  assert.notEqual(h.status, 'AUTO');
+});

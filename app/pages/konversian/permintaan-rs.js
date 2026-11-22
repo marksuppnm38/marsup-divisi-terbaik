@@ -2,7 +2,7 @@
 // 'S' yang dioper dari index.js (bukan window global; lihat `const S = {}` di mount()
 // lalu install*(S) dipanggil berurutan). Referensi ke variabel/fungsi yang didefinisikan
 // di file LAIN ditulis S.nama (lihat COORD LOG di index.js).
-import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck, KONTEKS } from './auto-konversi/index.js';
+import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck, buatIndeks, KONTEKS } from './auto-konversi/index.js';
 import { bandingkan, tokensToHtml } from './auto-konversi/bandingkan.js';
 import { suggestKonteks } from './auto-konversi/konteks-suggest.js';
 import { isTyping } from '../../../shared/shortcuts.js';
@@ -489,6 +489,34 @@ function amLogDecision(itemId, status, links) {
 // link V6 belum ada / AKD belum ada = tetap jadi usulan tapi TIDAK di-AUTO. Dua request per 80 kode (produk, lalu produk_akd —
 // relasi produk_akd -> akd(no_akd) sama dgn crud-produk/index.js), di-cache per klik "Cocokkan otomatis".
 // Mode Swasta (S.modeSwastaOutput) tidak difilter, sama seperti di tempat lain.
+// Indeks prosedur set (auto-konversi/prosedur.js): daftar set dari v_produk_keluarga + sinonim dari tabel prosedur_sinonim.
+// Dimuat sekali per sesi halaman. Gagal (view/tabel belum ada, RLS, offline) -> null: resolver jalan seperti sebelumnya, tanpa prosedur.
+let prosedurIndeks = null, prosedurMuat = null;
+async function getProsedurIndeks() {
+  if (prosedurIndeks) return prosedurIndeks;
+  if (prosedurMuat) return prosedurMuat;
+  prosedurMuat = (async () => {
+    try {
+      const rows = [];
+      for (let off = 0; off < 5000; off += 1000) {
+        const res = await S.sesiFetch(`v_produk_keluarga?select=kode_produk,nama_produk&order=id&limit=1000&offset=${off}`);
+        if (!res.ok) return null;
+        const part = await res.json();
+        part.forEach(r => rows.push({ kode: r.kode_produk, nama: r.nama_produk }));
+        if (part.length < 1000) break;
+      }
+      let sinonim = {};
+      try {
+        const rs = await S.sesiFetch('prosedur_sinonim?select=dari,ke');
+        if (rs.ok) (await rs.json()).forEach(r => { if (r.dari && r.ke) sinonim[String(r.dari).toUpperCase()] = String(r.ke).toUpperCase(); });
+      } catch (e) { /* tanpa sinonim: tetap jalan */ }
+      prosedurIndeks = rows.length ? buatIndeks(rows, sinonim) : null;
+      return prosedurIndeks;
+    } catch (e) { return null; } finally { prosedurMuat = null; }
+  })();
+  return prosedurMuat;
+}
+
 const firmCheck = makeFirmCheck({
   parseLinkV6: (v) => S.parseLinkV6(v),
   fetchRows: async (kodes) => {
@@ -961,7 +989,7 @@ const AM_EMPTY_HTML = '<div class="kb-section-empty">Tidak ada item dengan hasil
 // Label pendek alasan REVIEW (chip sub-filter dan tag di baris). Urutan = urutan tampil.
 const AM_WHY = {
   atribut_beda: 'spek beda', ukuran_seri: 'ukuran seri', ukuran_dekat: 'ukuran dekat', ukuran_beda: 'ukuran beda',
-  ambigu: 'ambigu', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', belum_siap: 'perlu disiapkan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang',
+  ambigu: 'ambigu', lain_brand: 'brand lain', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', belum_siap: 'perlu disiapkan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang',
   audit_acak: 'pemeriksaan acak'
 };
 const AM_UKURAN_TXT = { cocok: 'ukuran cocok', dekat: 'ukuran dekat (≤ 0,5 cm)', beda: 'ukuran beda', varian: 'varian lain' };
@@ -1170,6 +1198,9 @@ async function runWorkspaceAutoMatch(onlyIds) {
       lexicon,
       auditRate: AM_AUDIT_RATE,
       firmCheck: S.modeSwastaOutput ? null : firmCheck,
+      brand: S.selectedBrand || 'ROBUST', // 1 brand per konversi (pill brand Cari Produk; default ROBUST). Brand kosong = BUKAN ROBUST (tidak dianggap cocok).
+      prosedur: await getProsedurIndeks(),
+      brandOf: async (kodes) => { const rows = kodes.map(k => ({ kode_produk: k })); await S.enrichBrand(rows); return new Map(rows.map(r => [r.kode_produk, r.brand || ''])); },
       onProgress: (n, t) => { amProgress = { n, t }; renderAmBar(); }
     });
     res.forEach((r, k) => {

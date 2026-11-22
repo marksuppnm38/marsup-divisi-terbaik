@@ -98,15 +98,15 @@ export function familyOf(kode, isSet) {
 // Kenapa ada jalur "unggul 2×": permintaan umum ("SET MINOR") memang tidak menunjuk satu produk dan ini konversi, bukan
 // pencocokan 1:1 — kalau satu pilihan jelas paling sering dipakai (mis. 11× vs 4× vs 3×), pasang itu; yang lain tetap tampil
 // sebagai alternatif. Ambigu sungguhan (10× vs 8×) tetap REVIEW.
-export function isAmbiguous(cands, best) {
+export function isAmbiguous(cands, best, famOf = familyOf) {
   if (!best) return false;
   const sameTerm = cands.filter(c => c.istilah === best.istilah && c.src === 'riwayat');
   if (sameTerm.length <= 1) return false;
   const fam = new Map();
-  sameTerm.forEach(c => { const f = familyOf(c.kode, c.isSet); fam.set(f, (fam.get(f) || 0) + c.freq); });
+  sameTerm.forEach(c => { const f = famOf(c.kode, c.isSet); fam.set(f, (fam.get(f) || 0) + c.freq); });
   if (fam.size <= 1) return false;
   const total = [...fam.values()].reduce((a, b) => a + b, 0);
-  const myFam = familyOf(best.kode, best.isSet);
+  const myFam = famOf(best.kode, best.isSet);
   const top = fam.get(myFam);
   const runnerUp = Math.max(0, ...[...fam.entries()].filter(([f]) => f !== myFam).map(([, n]) => n));
   return !(top >= 3 && total > 0 && (top / total >= 0.7 || top >= 2 * runnerUp));
@@ -230,13 +230,33 @@ export function auditPick(text, rate) {
 // untuk istilah itu, masing-masing ditawarkan dengan qty diminta (skenario anggaran: "kalau dibelikan A segini, B segini").
 // Hanya yang SIAP dijual (siap.ok) yang masuk — yang belum siap tetap tampil di kartu sebagai kandidat, tapi tidak ikut ditawarkan.
 // Sumber = riwayat yang kuat (exact/urutan), bukan seluruh katalog: katalog bisa meledak jadi puluhan dan belum teruji.
-export const BUNDLE_MAX = 12;
-export function buildBundle(best, cands, itemAttrs) {
-  if (!best || candConf(best) !== 'kuat') return null;
+export const BUNDLE_MAX = 20;
+const adaSpesifik = (itemAttrs) => {
   const hasVal = (v) => (Array.isArray(v) ? v.length > 0 : v != null);
-  if (itemAttrs.ukuran_cm != null || DECISIVE.some((k) => hasVal(itemAttrs[k]))) return null; // ada yang diminta spesifik → bukan umum
-  const ok = (c) => c.src === 'riwayat' && (c.tier === 'exact' || c.tier === 'urutan') && !attrBeda(c) && (!c.siap || c.siap.ok);
-  const list = cands.filter(ok).sort((a, b) => b.freq - a.freq).slice(0, BUNDLE_MAX);
+  return itemAttrs.ukuran_cm != null || DECISIVE.some((k) => hasVal(itemAttrs[k]));
+};
+// pros = { req, info } dari indeks prosedur (prosedur.js): req = prosedur permintaan, info(kode) = prosedur sebuah produk.
+// Dengan pros.req: bundel = SEMUA set di prosedur+kualifier yang sama (permintaan "MINOR" tanpa kualifier tidak membawa MAYOR,
+// MINOR VAGINAL, BASIC MINOR THT, dst). Tanpa pros.req: aturan lama (riwayat Dictionary + relevansi nama).
+export function buildBundle(best, cands, itemAttrs, reqTokens, pros) {
+  if (!best || candConf(best) !== 'kuat') return null;
+  if (adaSpesifik(itemAttrs)) return null; // ada yang diminta spesifik → bukan umum
+  const ok = (c) => ((c.src === 'riwayat' && (c.tier === 'exact' || c.tier === 'urutan')) || c.src === 'prosedur')
+    && !attrBeda(c) && (!c.siap || c.siap.ok);
+  let pool = cands.filter(ok).filter((c, i, a) => a.findIndex((x) => x.kode === c.kode) === i);
+  if (pros && pros.req) {
+    pool = pool.filter((c) => { const i = pros.info(c.kode); return i && i.kunci === pros.req.kunci; });
+    const nomor = (c) => { const i = pros.info(c.kode); return i && i.nomor != null ? i.nomor : 0; };
+    pool.sort((a, b) => b.freq - a.freq || nomor(a) - nomor(b) || a.nama.localeCompare(b.nama));
+  } else {
+    // Relevansi nama: kalau ada kandidat yang namanya memuat SEMUA kata permintaan, yang tidak memuat itu substitusi riwayat
+    // ("MINOR" -> MAYOR S.), bukan opsi permintaan ini. Kalau tidak ada satu pun yang memuat (sinonim: "SET CESAREAN" ->
+    // "Sectio Caesarean"), semuanya dipertahankan.
+    const penuh = (c) => (c.cover == null ? 1 : c.cover) >= 1;
+    if (pool.some(penuh)) pool = pool.filter(penuh);
+    pool.sort((a, b) => b.freq - a.freq);
+  }
+  const list = pool.slice(0, BUNDLE_MAX);
   return list.length >= 2 ? list.map((c) => ({ kode: c.kode, nama: c.nama, freq: c.freq, isSet: c.isSet })) : null;
 }
 
@@ -270,7 +290,7 @@ export async function resolveItem(item, rpc, opts = {}) {
   //                                         belum disiapkan tidak boleh hilang; ia cuma tidak boleh AUTO (lihat keputusan di bawah).
   const blocked = new Map();
   let unverified = false;
-  const usable = async (list) => {
+  const cekFirm = async (list) => {
     if (!opts.firmCheck || !list.length) return list;
     try {
       const bl = await opts.firmCheck(list.map(x => x.kode));
@@ -287,6 +307,28 @@ export async function resolveItem(item, rpc, opts = {}) {
       return list; // jangan buang diam-diam; ditandai dan tidak boleh AUTO (lihat di bawah)
     }
   };
+
+  // Satu brand saja (ROBUST / ADLER): produk brand lain DIBUANG dari semua sumber kandidat sebelum dinilai, jadi tidak pernah
+  // jadi usulan, bundel, atau ikut hitungan ambigu/riwayat. Brand dari kolom produk.brand (opts.brandOf, disuntik);
+  // brand kosong dianggap opts.brandDefault. Gagal cek brand = gagal tertutup (ditandai belum terverifikasi -> tidak AUTO).
+  const lainBrand = new Map();
+  const targetBrand = opts.brand ? String(opts.brand).trim().toUpperCase() : '';
+  const sebrand = async (list) => {
+    if (!targetBrand || !opts.brandOf || !list.length) return list;
+    try {
+      const m = await opts.brandOf(list.map(x => x.kode));
+      return list.filter(x => {
+        const b = String(m.get(x.kode) || opts.brandDefault || '').trim().toUpperCase();
+        if (b === targetBrand) return true;
+        lainBrand.set(x.kode, { kode: x.kode, nama: x.nama, brand: b || '(kosong)' });
+        return false;
+      });
+    } catch (e) {
+      unverified = true; error = error || `Brand gagal dicek: ${e.message}`;
+      return list;
+    }
+  };
+  const usable = async (list) => cekFirm(await sebrand(list));
 
   // 1) Dictionary, per varian. Berhenti begitu ada kandidat dengan keyakinan 'kuat'.
   //    Hasil query berikutnya (lebih longgar) hanya menggantikan kalau keyakinannya LEBIH TINGGI —
@@ -342,12 +384,29 @@ export async function resolveItem(item, rpc, opts = {}) {
   const cands = [best, ...dictCands, ...catCands.slice().sort((a, b) => compScore(a) - compScore(b)), ...umumCands]
     .filter((c, i, a) => c && a.findIndex(x => x.kode === c.kode) === i);
   const conf = candConf(best);
-  const bundle = buildBundle(best, [...dictCands, ...catCands], itemAttrs); // sebelum cands dipotong 6
+  // Prosedur (opsional, opts.prosedur = indeks dari prosedur.js): permintaan umum -> semua set se-prosedur ikut jadi bahan bundel,
+  // bukan hanya yang pernah tercatat di riwayat. Tetap lewat filter brand & kesiapan yang sama dengan kandidat lain.
+  const pr = opts.prosedur || null;
+  const reqPros = pr ? pr.cari(item.nama || item.deskripsi || '') : null;
+  let prosCands = [];
+  if (reqPros && best && candConf(best) === 'kuat' && !adaSpesifik(itemAttrs)) {
+    const ada = new Set([...dictCands, ...catCands].map((c) => c.kode));
+    const baru = pr.anggota(reqPros.kunci).filter((m) => !ada.has(m.kode)).map((m) => ({
+      kode: m.kode, nama: m.nama, tier: 'prosedur', ukuran: 'tidak_diminta', istilah: item.nama || '', skor: 0, freq: 0, isSet: true, tipe: 'SET', src: 'prosedur'
+    }));
+    prosCands = await usable(baru);
+    annotate(prosCands, itemAttrs, itemKey, u.tokens);
+  }
+  const bundle = buildBundle(best, [...dictCands, ...catCands, ...prosCands], itemAttrs, u.tokens, reqPros ? { req: reqPros, info: pr.info } : null); // sebelum cands dipotong 6
   let status, reason, reasonKey, ukuranDefault = false, audit = false, reasonKeyAsli = null;
 
   if (!best) {
     status = 'UNKNOWN';
-    if (blocked.size) {
+    if (lainBrand.size && !blocked.size) {
+      const b = [...new Set([...lainBrand.values()].map(x => x.brand))];
+      reasonKey = 'lain_brand';
+      reason = `Produk yang cocok hanya ada di brand ${b.join('/')}, sedangkan konversi ini ${targetBrand}.`;
+    } else if (blocked.size) {
       const b = [...blocked.values()];
       reasonKey = 'diblokir';
       reason = `Produk yang cocok ada, tapi tidak boleh dipakai konversi: ${b.slice(0, 2).map(x => `${x.kode} (${x.alasan})`).join(', ')}${b.length > 2 ? `, +${b.length - 2} lagi` : ''}.`;
@@ -370,7 +429,7 @@ export async function resolveItem(item, rpc, opts = {}) {
     if (best.ukuran === 'beda' || best.ukuran === 'varian') { reasonKey = 'ukuran_beda'; reason = 'Produk ketemu tapi ukurannya beda.'; }
     else if (best.src === 'katalog') { reasonKey = 'hanya_katalog'; reason = 'Hanya ketemu lewat pencarian katalog (belum pernah ada di riwayat).'; }
     else { reasonKey = 'perkiraan'; reason = 'Kecocokan perkiraan, belum pernah dipakai persis.'; }
-  } else if (isAmbiguous(cands, best)) {
+  } else if (isAmbiguous(cands, best, pr ? ((kode, isSet) => { const i = pr.info(kode); return i ? i.kunci : familyOf(kode, isSet); }) : familyOf)) {
     status = 'REVIEW'; reasonKey = 'ambigu';
     reason = `Istilah ini pernah dipenuhi beberapa jenis produk berbeda tanpa yang dominan — pilih yang sesuai.`;
   } else if (best.ukuran === 'dekat') {
@@ -413,7 +472,7 @@ export async function resolveItem(item, rpc, opts = {}) {
     attrs: itemAttrs,
     lexicon_hits: lexiconHits(u, opts.lexicon),
     candidates: cands.slice(0, 6),
-    siap: best ? (best.siap || null) : null, bundle, blocked: [...blocked.values()], unverified,
+    siap: best ? (best.siap || null) : null, bundle, blocked: [...blocked.values()], lainBrand: [...lainBrand.values()], prosedur: reqPros, unverified,
     tried
   };
 }

@@ -6,3 +6,4 @@ export { resolveItem, resolveItems, summarize, pickBestCand, cocokKonteks, KONTE
 export { understand, compareAttrs, describeDiff, DECISIVE } from './understand.js';
 export { loadLexicon, makeLexicon, buildQueryLadder, lexiconHits, EMPTY_LEXICON } from './lexicon.js';
 export { assessProduk, makeFirmCheck } from './firm.js';
+export { buatIndeks, uraiNama } from './prosedur.js';
