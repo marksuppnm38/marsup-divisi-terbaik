@@ -104,3 +104,53 @@ test('labelOpsi', () => {
   assert.equal(labelOpsi({ tier: 'basic', nomor: 2 }), 'Basic S.2');
   assert.equal(labelOpsi({ tier: 'complete', nomor: null }), 'Complete');
 });
+
+// ── Firm saja (info firm/brand ikut di indeks dari view v_produk_varian) ──
+const rowsFirm = [
+  { kode: 'R1', nama: 'SECTIO CAESAREAN S.', brand: 'ROBUST', firm: true },
+  { kode: 'R2', nama: 'BASIC SECTIO CAESAREAN S. 1', brand: 'ROBUST', firm: true },
+  { kode: 'R3', nama: 'BASIC SECTIO CAESAREAN S. 2', brand: 'ROBUST', firm: false, firmAlasan: 'link V6 belum dibuat' },
+  { kode: 'A1', nama: 'COMPLETE SECTIO CAESAREAN S.', brand: 'ADLER', firm: true },
+  { kode: 'R4', nama: 'COMPLETE SECTIO CAESAREAN S. 3', brand: 'ROBUST', firm: true },
+];
+const prosFirm = buatIndeks(rowsFirm, {});
+
+test('firm saja: brand lain & belum firm TIDAK ditawarkan, hanya dihitung di disembunyikan', () => {
+  const s = saudaraJangkar('R1', prosFirm, { brand: 'ROBUST' });
+  assert.deepEqual(s.saudara.map((m) => m.kode), ['R2', 'R4']);
+  assert.deepEqual(s.disembunyikan.map((m) => m.kode).sort(), ['A1', 'R3']);
+  assert.match(s.disembunyikan.find((m) => m.kode === 'R3').alasan, /link V6/);
+  assert.match(s.disembunyikan.find((m) => m.kode === 'A1').alasan, /Brand ADLER/);
+  assert.equal(hitungSaudara('R1', prosFirm, { brand: 'ROBUST' }), 2); // chip = panel
+});
+
+test('susunTawaran firm saja: tidak ada baris terkunci, cek async tidak dipanggil (info firm sudah ada)', async () => {
+  let dipanggil = 0;
+  const t = await susunTawaran('R1', prosFirm, { brand: 'ROBUST', cek: async () => { dipanggil++; return new Map(); } });
+  assert.equal(dipanggil, 0);
+  assert.deepEqual(t.opsi.map((o) => o.kode), ['R1', 'R2', 'R4']);
+  assert.ok(t.opsi.slice(1).every((o) => o.pilih && !o.terkunci));
+  assert.equal(t.disembunyikan.length, 2);
+});
+
+test('mode Swasta (hanyaFirm:false): belum firm ikut, brand tetap disaring', () => {
+  const s = saudaraJangkar('R1', prosFirm, { brand: 'ROBUST', hanyaFirm: false });
+  assert.deepEqual(s.saudara.map((m) => m.kode), ['R2', 'R3', 'R4']);
+});
+
+test('semua saudara tersaring -> null (chip tidak muncul, bukan tawaran kosong)', () => {
+  const p = buatIndeks([{ kode: 'X1', nama: 'MINOR S.', brand: 'ROBUST', firm: true }, { kode: 'X2', nama: 'BASIC MINOR S. 2', brand: 'ROBUST', firm: false }], {});
+  assert.equal(saudaraJangkar('X1', p, { brand: 'ROBUST' }), null);
+});
+
+test('ejaan beda (EMBRIOTOMI vs EMBRIOTOMY) = satu prosedur; nama brand bukan kualifier', () => {
+  const p = buatIndeks([
+    { kode: 'E1', nama: 'EMBRIOTOMY S.', brand: 'ROBUST', firm: true },
+    { kode: 'E2', nama: 'BASIC EMBRIOTOMY INSTRUMENT S.', brand: 'ROBUST', firm: true },
+    { kode: 'E3', nama: 'ADLER EMBRIOTOMI S.', brand: 'ADLER', firm: true },
+  ], {});
+  assert.equal(p.info('E3').kunci, p.info('E1').kunci);
+  const s = saudaraJangkar('E3', p, { brand: 'ROBUST' }); // jangkar boleh brand lain; yang ditawarkan hanya ROBUST
+  assert.deepEqual(s.saudara.map((m) => m.kode).sort(), ['E1', 'E2']);
+  assert.equal(p.cari('Embriotomi set').kunci, p.info('E1').kunci);
+});

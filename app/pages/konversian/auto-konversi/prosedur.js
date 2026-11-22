@@ -19,7 +19,7 @@
 import { JENIS_WORDS } from './aliases.js';
 
 const TIER = { BASIC: 'basic', COMPLETE: 'complete', KIT: 'kit', INST: 'inst', INSTRUMENT: 'inst', INSTRUMENTS: 'inst', INSTS: 'inst', INTRUMENTS: 'inst' };
-const FILLER = new Set(['SURGERY']);
+const FILLER = new Set(['SURGERY', 'ROBUST', 'ADLER']); // SURGERY = kata pengisi; ROBUST/ADLER = brand (kolom produk.brand), bukan bagian prosedur
 
 const bersih = (s) => String(s == null ? '' : s).toUpperCase().replace(/[.,/]/g, ' ').replace(/\bAND\b/g, '&').replace(/\s+/g, ' ').trim();
 const kata = (s) => bersih(s).split(' ').filter(Boolean);
@@ -46,7 +46,17 @@ export const lev = (a, b) => {
   return d[a.length][b.length];
 };
 
-// Kata yang beda ejaan dilebur ke yang paling sering muncul. Kata pendek hanya boleh beda 1 huruf.
+// Kunci fonetik: ejaan Indonesia vs Inggris/Latin jadi satu (EMBRIOTOMI = EMBRIOTOMY, CESAREAN = CAESAREAN, OOFORECTOMY = OOPHORECTOMY).
+// HARUS identik dengan fn_kunci_fonetik() di supabase/2026-11-22_varian_produk.sql (view v_produk_varian.kunci_fonetik).
+export const fonetik = (w) => String(w == null ? '' : w).toUpperCase().replace(/[^A-Z]/g, '')
+  .replace(/AE/g, 'E').replace(/PH/g, 'F').replace(/TH/g, 'T').replace(/CH/g, 'K')
+  .replace(/C/g, 'K').replace(/Y/g, 'I').replace(/Q/g, 'K').replace(/(.)\1+/g, '$1');
+const FON_MIN = 6; // kata pendek (SET, KIT, THT, MINOR) tidak dilebur fonetik: terlalu mudah bertabrakan
+
+// Kata yang beda ejaan dilebur ke yang paling sering muncul. Dua lapis:
+//   1. fonetik (kata >= 6 huruf): yang sama bunyinya = satu kata.
+//   2. edit distance: kata pendek hanya boleh beda 1 huruf.
+// Mengembalikan { peta: kata -> kanonik, fon: kunciFonetik -> kanonik } (fon dipakai untuk kata di TEKS PERMINTAAN yang tidak ada persis di katalog).
 function petaEjaan(parsed) {
   const freq = new Map();
   parsed.forEach((r) => r.toks.forEach((t) => freq.set(t, (freq.get(t) || 0) + 1)));
@@ -57,15 +67,34 @@ function petaEjaan(parsed) {
     const hit = kanon.find((c) => c[0] === w[0] && lev(c, w) <= (Math.min(c.length, w.length) >= 8 ? 2 : 1));
     if (hit) peta.set(w, hit); else { peta.set(w, w); kanon.push(w); }
   });
-  return peta;
+  // lapis fonetik di atas hasil lev: tiap kelompok bunyi -> kata terbanyak
+  const grup = new Map();
+  [...freq.keys()].filter((w) => w.length >= FON_MIN).forEach((w) => {
+    const k = fonetik(w);
+    if (!grup.has(k)) grup.set(k, []);
+    grup.get(k).push(peta.get(w) || w);
+  });
+  const fon = new Map();
+  grup.forEach((ws, k) => {
+    const unik = [...new Set(ws)].sort((a, b) => (freq.get(b) || 0) - (freq.get(a) || 0) || a.localeCompare(b));
+    fon.set(k, unik[0]);
+    unik.forEach((w) => peta.set(w, unik[0]));
+  });
+  [...peta.keys()].forEach((w) => { let c = peta.get(w), n = 0; while (peta.has(c) && peta.get(c) !== c && n++ < 5) c = peta.get(c); peta.set(w, c); });
+  return { peta, fon };
 }
 
 const kunciDari = (prosedur, kualifier) => prosedur + (kualifier ? ' + ' + kualifier : '');
 
 export function buatIndeks(rows, sinonim = {}) {
-  const parsed = (rows || []).filter((r) => r && r.kode && r.nama).map((r) => ({ kode: r.kode, nama: r.nama, ...uraiNama(r.nama) }));
-  const ejaan = petaEjaan(parsed);
-  const kanon = (toks) => toks.map((t) => ejaan.get(t) || t).flatMap((t) => (sinonim[t] ? String(sinonim[t]).toUpperCase().split(' ') : [t]));
+  const META = ['brand', 'firm', 'firmAlasan', 'keluarga', 'spes', 'kategori'];
+  const parsed = (rows || []).filter((r) => r && r.kode && r.nama).map((r) => {
+    const meta = {};
+    META.forEach((k) => { if (r[k] !== undefined) meta[k] = r[k]; });
+    return { kode: r.kode, nama: r.nama, ...uraiNama(r.nama), meta };
+  });
+  const { peta: ejaan, fon } = petaEjaan(parsed);
+  const kanon = (toks) => toks.map((t) => ejaan.get(t) || (t.length >= FON_MIN && fon.get(fonetik(t))) || t).flatMap((t) => (sinonim[t] ? String(sinonim[t]).toUpperCase().split(' ') : [t]));
   parsed.forEach((r) => { r.toks = kanon(r.toks); r.extra = kanon(r.extra); });
   const mandiri = new Set(parsed.map((r) => r.toks.join(' ')).filter(Boolean));
 
@@ -86,7 +115,7 @@ export function buatIndeks(rows, sinonim = {}) {
   const grup = new Map();
   parsed.forEach((r) => {
     const k = klasifikasi(r.toks, r.extra);
-    const v = { kode: r.kode, nama: r.nama, tier: r.tier, nomor: r.nomor, ...k };
+    const v = { kode: r.kode, nama: r.nama, tier: r.tier, nomor: r.nomor, ...k, ...r.meta };
     info.set(r.kode, v);
     if (!grup.has(k.kunci)) grup.set(k.kunci, []);
     grup.get(k.kunci).push(v);

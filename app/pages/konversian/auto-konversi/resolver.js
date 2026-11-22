@@ -378,13 +378,13 @@ export async function resolveItem(item, rpc, opts = {}) {
   { const kembar = [...dictCands, ...catCands].filter(x => x.namaPersis); if (kembar.length > 1) kembar.forEach(x => { x.namaPersis = false; }); }
   const bestDict = pickBestFit(dictCands, konteks);
   const bestCat = pickBestFit(catCands, konteks);
-  const best = bestCat && (!bestDict || compScore(bestCat) < compScore(bestDict)) ? bestCat : bestDict;
+  let best = bestCat && (!bestDict || compScore(bestCat) < compScore(bestDict)) ? bestCat : bestDict;
   // Kandidat 'umum' yang dibuang dari pemilihan best tetap tampil di AKHIR sebagai alternatif.
   annotate(umumCands, itemAttrs, itemKey, u.tokens); umumCands.forEach((x) => { x.namaPersis = false; });
   const cands = [best, ...dictCands, ...catCands.slice().sort((a, b) => compScore(a) - compScore(b)), ...umumCands]
     .filter(Boolean) // best bisa null (UNKNOWN): buang dulu, kalau tidak findIndex di bawah membaca null.kode
     .filter((c, i, a) => a.findIndex(x => x.kode === c.kode) === i);
-  const conf = candConf(best);
+  let conf = candConf(best);
   // Prosedur (opsional, opts.prosedur = indeks dari prosedur.js): permintaan umum -> semua set se-prosedur ikut jadi bahan bundel,
   // bukan hanya yang pernah tercatat di riwayat. Tetap lewat filter brand & kesiapan yang sama dengan kandidat lain.
   const pr = opts.prosedur || null;
@@ -398,10 +398,36 @@ export async function resolveItem(item, rpc, opts = {}) {
     prosCands = await usable(baru);
     annotate(prosCands, itemAttrs, itemKey, u.tokens);
   }
+
+  // Padanan prosedur: TIDAK ada kandidat yang bisa dipakai, tapi permintaan atau produk brand lain yang ketemu menunjuk prosedur yang kita
+  // punya — ejaan beda (permintaan "EMBRIOTOMI", katalog kita "EMBRIOTOMY": pencarian awalan tidak mempertemukannya) atau riwayat
+  // hanya brand lain (ADLER) padahal brand ini ada. Produk brand lain jadi JANGKAR: set prosedurnya yang brand+firm-nya sah
+  // ditawarkan sebagai usulan REVIEW. Tidak pernah AUTO; bundel baru muncul setelah staf memilih (jangkar.js).
+  let padanan = [];
+  if (!best && pr) {
+    const kunci = new Set();
+    if (reqPros) kunci.add(reqPros.kunci);
+    [...lainBrand.values()].forEach((x) => { const i = pr.info(x.kode); if (i) kunci.add(i.kunci); });
+    const ada = new Set(cands.map((c) => c.kode));
+    const TR = { standar: 0, basic: 1, complete: 2, inst: 3, kit: 4 };
+    const baru = [...kunci].flatMap((k) => pr.anggota(k))
+      .filter((m, i, a) => !ada.has(m.kode) && a.findIndex((x) => x.kode === m.kode) === i)
+      .sort((a, b) => (TR[a.tier] ?? 9) - (TR[b.tier] ?? 9) || (a.nomor == null ? 0 : a.nomor) - (b.nomor == null ? 0 : b.nomor) || String(a.nama).localeCompare(String(b.nama)))
+      .map((m) => ({ kode: m.kode, nama: m.nama, tier: 'prosedur', ukuran: 'tidak_diminta', istilah: item.nama || '', skor: 0, freq: 0, isSet: true, tipe: 'SET', src: 'prosedur' }));
+    padanan = await usable(baru); // brand + firm yang sama dengan kandidat lain: yang bukan brand ini / belum firm tidak pernah ikut
+    annotate(padanan, itemAttrs, itemKey, u.tokens);
+    if (padanan.length) { best = padanan[0]; conf = 'sedang'; cands.unshift(...padanan); }
+  }
+  const padananMode = padanan.length > 0;
   const bundle = buildBundle(best, [...dictCands, ...catCands, ...prosCands], itemAttrs, u.tokens, reqPros ? { req: reqPros, info: pr.info } : null); // sebelum cands dipotong 6
   let status, reason, reasonKey, ukuranDefault = false, audit = false, reasonKeyAsli = null;
 
-  if (!best) {
+  if (padananMode) {
+    const pn = pr.info(best.kode);
+    const b = [...new Set([...lainBrand.values()].map((x) => x.brand))];
+    status = 'REVIEW'; reasonKey = 'padanan_prosedur';
+    reason = `${lainBrand.size ? `Riwayat/katalog yang cocok hanya brand ${b.join('/')}` : 'Tidak ada yang cocok persis'}, tapi ada ${padanan.length} set prosedur ${pn ? pn.prosedur + (pn.kualifier ? ' ' + pn.kualifier : '') : ''} di brand ${targetBrand || 'ini'} (ejaan/brand beda dari permintaan) — pilih yang sesuai.`.replace(/\s+/g, ' ');
+  } else if (!best) {
     status = 'UNKNOWN';
     if (lainBrand.size && !blocked.size) {
       const b = [...new Set([...lainBrand.values()].map(x => x.brand))];

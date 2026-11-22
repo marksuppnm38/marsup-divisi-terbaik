@@ -501,13 +501,27 @@ async function getProsedurIndeks() {
   if (prosedurMuat) return prosedurMuat;
   prosedurMuat = (async () => {
     try {
-      const rows = [];
-      for (let off = 0; off < 5000; off += 1000) {
-        const res = await S.sesiFetch(`v_produk_keluarga?select=kode_produk,nama_produk&order=id&limit=1000&offset=${off}`);
-        if (!res.ok) return null;
-        const part = await res.json();
-        part.forEach(r => rows.push({ kode: r.kode_produk, nama: r.nama_produk }));
-        if (part.length < 1000) break;
+      // v_produk_varian (supabase/2026-11-22_varian_produk.sql) membawa brand + status firm per set, jadi jangkar/padanan bisa menyaring
+      // firm tanpa RPC per klik. Belum dipasang / gagal / kosong -> v_produk_keluarga seperti dulu (tanpa info firm: dicek lewat jangkarCek).
+      const baca = async (path) => {
+        const out = [];
+        for (let off = 0; off < 5000; off += 1000) {
+          const res = await S.sesiFetch(`${path}&order=id&limit=1000&offset=${off}`);
+          if (!res.ok) return null;
+          const part = await res.json();
+          out.push(...part);
+          if (part.length < 1000) break;
+        }
+        return out;
+      };
+      let rows = [];
+      const varian = await baca('v_produk_varian?select=kode_produk,nama_produk,brand,firm,firm_alasan,keluarga&tipe=eq.SET').catch(() => null);
+      if (varian && varian.length) {
+        rows = varian.map(r => ({ kode: r.kode_produk, nama: r.nama_produk, brand: r.brand == null ? '' : r.brand, firm: r.firm, firmAlasan: r.firm_alasan, keluarga: r.keluarga }));
+      } else {
+        const lama = await baca('v_produk_keluarga?select=kode_produk,nama_produk');
+        if (!lama) return null;
+        rows = lama.map(r => ({ kode: r.kode_produk, nama: r.nama_produk }));
       }
       let sinonim = {};
       let sinonimStatus = 'error';
@@ -582,11 +596,12 @@ function jangkarIndeksSiap() {
   }
   return null;
 }
+const jangkarBrand = () => String(S.selectedBrand || 'ROBUST').trim().toUpperCase();
 function jangkarSaudara(item) {
   const kode = jangkarKode(item);
   if (!kode) return null;
   const ix = jangkarIndeksSiap();
-  return ix ? saudaraJangkar(kode, ix, { terpakai: jangkarTerpakai(item) }) : null;
+  return ix ? saudaraJangkar(kode, ix, { terpakai: jangkarTerpakai(item), brand: jangkarBrand(), hanyaFirm: !S.modeSwastaOutput }) : null;
 }
 // Brand & kesiapan jual: aturan yang sama dengan Auto-Match (satu brand per konversi; SINGLE USE/dihapus = terkunci).
 async function jangkarCek(kodes) {
@@ -622,7 +637,7 @@ async function jangkarMuat(item, kode) {
     const sp = extractSpecs(item.raw_text || '');
     const itemAttrs = { ...u.attrs, ukuran_cm: sp && sp.ukuran_cm != null ? sp.ukuran_cm : u.attrs.ukuran_cm };
     firmCheck.clear(); // status firm/link bisa berubah sejak terakhir dicek
-    const t = await susunTawaran(kode, ix, { itemAttrs, terpakai: jangkarTerpakai(item), cek: jangkarCek });
+    const t = await susunTawaran(kode, ix, { itemAttrs, terpakai: jangkarTerpakai(item), brand: jangkarBrand(), hanyaFirm: !S.modeSwastaOutput, cek: jangkarCek });
     if (jangkarCache.get(item.id) !== c) return; // ditutup/diganti selagi menunggu
     if (!t) { jangkarOpen.delete(item.id); jangkarCache.delete(item.id); S.showToast('Tidak ada set lain di prosedur ini.'); return; }
     c.tawaran = t;
@@ -670,8 +685,10 @@ function jangkarPanelHtml(item) {
       </span></label>`;
   }).join('');
   const nPilih = c.pilih.size;
+  const tersaring = t.disembunyikan && t.disembunyikan.length
+    ? ` ${t.disembunyikan.length} set lain disembunyikan (${[...new Set(t.disembunyikan.map(x => /^Brand /.test(x.alasan) ? 'brand lain' : 'belum firm'))].join(' / ')}).` : '';
   return `<div class="kb-jangkar-panel">
-    <div class="kb-cmp-hint">Set ${nama} — centang yang mau ditawarkan, tiap opsi @ ${qtyTxt}.${t.belumDicek ? ' Status brand/firm belum bisa dicek, jadi tidak ada yang dicentang otomatis.' : ''}${t.terpotong ? ` ${t.terpotong} set lagi tidak ditampilkan (batas ${t.opsi.length}).` : ''}</div>
+    <div class="kb-cmp-hint">Set ${nama} — centang yang mau ditawarkan, tiap opsi @ ${qtyTxt}.${t.belumDicek ? ' Status brand/firm belum bisa dicek, jadi tidak ada yang dicentang otomatis.' : ''}${tersaring}${t.terpotong ? ` ${t.terpotong} set lagi tidak ditampilkan (batas ${t.opsi.length}).` : ''}</div>
     <div class="kb-jangkar-list">${rows}</div>
     <div class="kb-picker-actions">
       <button type="button" class="kb-cancel-btn" data-action="jangkar-close" data-id="${item.id}">Tutup</button>
@@ -1139,7 +1156,7 @@ const AM_EMPTY_HTML = '<div class="kb-section-empty">Tidak ada item dengan hasil
 // Label pendek alasan REVIEW (chip sub-filter dan tag di baris). Urutan = urutan tampil.
 const AM_WHY = {
   atribut_beda: 'spek beda', ukuran_seri: 'ukuran seri', ukuran_dekat: 'ukuran dekat', ukuran_beda: 'ukuran beda',
-  ambigu: 'ambigu', lain_brand: 'brand lain', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', belum_siap: 'perlu disiapkan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang',
+  ambigu: 'ambigu', lain_brand: 'brand lain', padanan_prosedur: 'padanan prosedur', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', belum_siap: 'perlu disiapkan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang',
   audit_acak: 'pemeriksaan acak'
 };
 const AM_UKURAN_TXT = { cocok: 'ukuran cocok', dekat: 'ukuran dekat (≤ 0,5 cm)', beda: 'ukuran beda', varian: 'varian lain' };

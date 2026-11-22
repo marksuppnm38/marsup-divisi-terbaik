@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { buatIndeks } from './prosedur.js';
 import { understand, parseRequestText, parseLine, extractSpecs, parseCompetitorSet, resolveItem, resolveItems, summarize, isAmbiguous, assessProduk, makeFirmCheck } from './index.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
@@ -635,4 +636,37 @@ test('satu brand: cek brand gagal -> tidak pernah AUTO (gagal tertutup)', async 
   const [it] = parseRequestText('SET HERNIA\t1').items;
   const h = await resolveItem(it, rpc, { brand: 'ROBUST', brandOf: async () => { throw new Error('timeout'); } });
   assert.notEqual(h.status, 'AUTO');
+});
+
+// ── Padanan prosedur: jangkar lintas-brand + ejaan ──
+test('embriotomi: riwayat hanya ADLER, katalog ROBUST ejaan lain -> REVIEW padanan_prosedur (bukan UNKNOWN), tidak AUTO', async () => {
+  const rows = [
+    { kode: 'RB999-KE921-B99-U33', nama: 'EMBRIOTOMY S.' },
+    { kode: 'RB999-KE921-B99-U423', nama: 'BASIC EMBRIOTOMY INSTRUMENT S.' },
+    { kode: 'AD999-KE921-B099-U77', nama: 'ADLER EMBRIOTOMI S.' },
+    { kode: 'RB999-KE921-B99-U06', nama: 'HERNIA S.' },
+  ];
+  const peta = { 'RB999-KE921-B99-U33': 'ROBUST', 'RB999-KE921-B99-U423': 'ROBUST', 'AD999-KE921-B099-U77': 'ADLER', 'RB999-KE921-B99-U06': 'ROBUST' };
+  const rpc = mockRpc({ 'EMBRIOTOMI SET': [row({ istilah: 'EMBRIOTOMI SET', kode_produk: 'AD999-KE921-B099-U77', nama_produk: 'ADLER EMBRIOTOMI S.', freq: 4, is_set: true })] });
+  const [it] = parseRequestText('Embriotomi set\t1').items;
+  const h = await resolveItem(it, rpc, { brand: 'ROBUST', brandDefault: 'ROBUST', brandOf: brandFrom(peta), prosedur: buatIndeks(rows, {}) });
+  assert.equal(h.status, 'REVIEW');
+  assert.equal(h.reason_key, 'padanan_prosedur');
+  assert.equal(h.kode_produk, 'RB999-KE921-B99-U33'); // standar dulu, lalu basic
+  assert.deepEqual(h.candidates.map((c) => c.kode).sort(), ['RB999-KE921-B99-U33', 'RB999-KE921-B99-U423']);
+  assert.ok(h.candidates.every((c) => peta[c.kode] === 'ROBUST')); // ADLER tidak pernah ikut
+  assert.match(h.reason, /ADLER/);
+});
+
+test('padanan belum firm: tetap jadi usulan REVIEW tapi ditandai belum siap (bundel/jangkar tidak pernah menawarkannya)', async () => {
+  const rows = [{ kode: 'RB1', nama: 'EMBRIOTOMY S.' }, { kode: 'AD1', nama: 'ADLER EMBRIOTOMI S.' }];
+  const peta = { RB1: 'ROBUST', AD1: 'ADLER' };
+  const rpc = mockRpc({ 'EMBRIOTOMI SET': [row({ istilah: 'EMBRIOTOMI SET', kode_produk: 'AD1', nama_produk: 'ADLER EMBRIOTOMI S.', freq: 4, is_set: true })] });
+  const [it] = parseRequestText('Embriotomi set\t1').items;
+  const firmCheck = async (ks) => new Map(ks.filter((k) => k === 'RB1').map((k) => [k, { keras: null, kurang: ['link V6 belum dibuat'] }]));
+  const h = await resolveItem(it, rpc, { brand: 'ROBUST', brandDefault: 'ROBUST', brandOf: brandFrom(peta), prosedur: buatIndeks(rows, {}), firmCheck });
+  // belum firm = tetap jadi usulan (aturan lama: tidak AUTO), tapi ditandai belum siap
+  assert.equal(h.status, 'REVIEW');
+  assert.equal(h.kode_produk, 'RB1');
+  assert.equal(h.siap.ok, false);
 });
