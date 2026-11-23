@@ -41,7 +41,19 @@ export function createAtributUi({ sb, showToast, ensureKlas, keluargaNames, getS
   }
   function lockForm(locked) {
     ['f_klas_keluarga', 'f_klas_kategori', 'f_klas_spes', 'klasSimpanBtn', 'klasResetBtn'].forEach((id) => { const el = $(id); if (el) el.disabled = !!locked; });
+    // Kategori SET ditentukan oleh tipe produk, bukan koreksi: dropdown tidak pernah aktif untuk SET.
+    const kat = $('f_klas_kategori');
+    if (kat && cur && cur.tipe === 'SET') kat.disabled = true;
   }
+  // Kategori efektif dibaca LANGSUNG dari produk (bukan dari produk_atribut_manual, kolom kategorinya sudah tidak dipakai).
+  // "Dikoreksi" = kategori_sumber === 'koreksi' (nilainya benar-benar beda dari dasar), bukan sekadar ada baris manual.
+  async function bacaKategori(id) {
+    try {
+      const { data } = await sb.from('produk').select('kategori, kategori_sumber').eq('id', id).maybeSingle();
+      return data ? { kategori: data.kategori || null, koreksi: data.kategori_sumber === 'koreksi' } : { kategori: null, koreksi: false };
+    } catch (e) { return { kategori: null, koreksi: false }; }
+  }
+  const KAT_EDIT = KAT_ORDER.filter((k) => k !== 'SET');
   const hint = (el, manual, auto, fmt) => {
     if (!el) return;
     el.textContent = manual ? `Dikoreksi manual. Otomatis: ${auto ? fmt(auto) : '—'}` : (auto ? `Otomatis dari sistem: ${fmt(auto)}` : 'Belum ada nilai otomatis');
@@ -71,12 +83,13 @@ export function createAtributUi({ sb, showToast, ensureKlas, keluargaNames, getS
     setMsg('Memuat…');
     lockForm(true);
 
-    const [man, klas, otoRes, auto, nama] = await Promise.all([
+    const [man, klas, otoRes, auto, nama, katNow] = await Promise.all([
       muatManual(sb),
       ensureKlas ? ensureKlas() : { ok: true },
       muatOtomatis(sb, [id]),
       tipe === 'SET' ? fetchKeluargaAuto(sb, [id]) : { map: new Map() },
       tipe === 'SET' && keluargaNames ? keluargaNames().catch(() => []) : [],
+      tipe === 'SET' ? { kategori: 'SET', koreksi: false } : bacaKategori(id),
     ]);
     if (my !== seq) return; // modal sudah pindah produk / ditutup
 
@@ -91,10 +104,18 @@ export function createAtributUi({ sb, showToast, ensureKlas, keluargaNames, getS
     $('f_klas_keluarga_list').innerHTML = (nama || []).map((n) => `<option value="${esc(n)}"></option>`).join('');
     hint($('klasKeluargaHint'), m.keluarga, autoKel, (v) => v);
 
-    // kategori
-    $('f_klas_kategori').innerHTML = opt('', a ? `Otomatis — ${katNama(a.kategori)}` : 'Otomatis', !m.kategori)
-      + KAT_ORDER.map((k) => opt(k, katNama(k), m.kategori === k)).join('');
-    hint($('klasKategoriHint'), m.kategori, a && a.kategori, katNama);
+    // kategori: SET read-only (turunan tipe); non-SET: "Otomatis" atau koreksi (disimpan per kode produk lewat set_produk_kategori)
+    const katSel = $('f_klas_kategori');
+    if (tipe === 'SET') {
+      katSel.innerHTML = opt('', katNama('SET'), true);
+      $('klasKategoriHint').textContent = 'Ditentukan oleh tipe produk';
+      $('klasKategoriHint').classList.remove('is-manual');
+    } else {
+      katSel.innerHTML = opt('', a ? `Otomatis — ${katNama(a.kategori)}` : 'Otomatis', !katNow.koreksi)
+        + KAT_EDIT.map((k) => opt(k, katNama(k), katNow.koreksi && katNow.kategori === k)).join('');
+      hint($('klasKategoriHint'), katNow.koreksi, a && a.kategori, katNama);
+    }
+    cur.katKoreksi = katNow.koreksi ? katNow.kategori : null;
 
     // spesialisasi
     const autoSpes = a ? (a.spes == null ? SPES_TANPA : a.spes) : null;
@@ -108,7 +129,7 @@ export function createAtributUi({ sb, showToast, ensureKlas, keluargaNames, getS
     else if (!a) setMsg('Produk ini tidak ada di klasifikasi otomatis (mis. nonaktif). Nilai yang diisi tetap tersimpan dan tampil di list.', 'info');
     else setMsg('');
     lockForm(!installed);
-    $('klasResetBtn').disabled = !installed || !(m.keluarga || m.kategori || m.spes);
+    $('klasResetBtn').disabled = !installed || !(m.keluarga || cur.katKoreksi || m.spes);
   }
 
   async function simpanSatu(reset) {
@@ -118,14 +139,14 @@ export function createAtributUi({ sb, showToast, ensureKlas, keluargaNames, getS
     const patch = {};
     if (reset) {
       if (m.keluarga && tipe === 'SET') patch.keluarga = null;
-      if (m.kategori) patch.kategori = null;
+      if (cur.katKoreksi) patch.kategori = null;
       if (m.spes) patch.spes = null;
     } else {
       const k = normKeluarga($('f_klas_keluarga').value);
       const c = $('f_klas_kategori').value || null;
       const sp = $('f_klas_spes').value || null;
       if (tipe === 'SET' && k !== (m.keluarga || null)) patch.keluarga = k;
-      if (c !== (m.kategori || null)) patch.kategori = c;
+      if (tipe !== 'SET' && c !== (cur.katKoreksi || null)) patch.kategori = c;
       if (sp !== (m.spes || null)) patch.spes = sp;
     }
     if (!Object.keys(patch).length) { setMsg('Tidak ada perubahan.', 'info'); return; }
@@ -173,7 +194,7 @@ export function createAtributUi({ sb, showToast, ensureKlas, keluargaNames, getS
     $('klasBulkSub').textContent = `${rows.length.toLocaleString('id-ID')} produk dipilih`
       + (rows.length > MAX_IDS ? ` — maksimal ${MAX_IDS.toLocaleString('id-ID')} per simpan, kurangi pilihan.` : '');
     $('klasBulkKat').innerHTML = opt(KEEP, 'Tidak diubah', true) + opt(AUTO, 'Kembalikan ke otomatis', false)
-      + KAT_ORDER.map((k) => opt(k, katNama(k), false)).join('');
+      + KAT_EDIT.map((k) => opt(k, katNama(k), false)).join('');
     $('klasBulkSpes').innerHTML = opt(KEEP, 'Tidak diubah', true) + opt(AUTO, 'Kembalikan ke otomatis', false) + opt(SPES_TANPA, 'Tanpa spesialisasi', false)
       + opsiSpes().map((v) => opt(v, spesNama(v), false)).join('');
     $('klasBulkKelMode').innerHTML = opt('keep', 'Tidak diubah', true) + opt('auto', 'Kembalikan ke otomatis', false) + opt('set', 'Isi dengan…', false);
