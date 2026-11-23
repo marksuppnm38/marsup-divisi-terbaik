@@ -2610,6 +2610,11 @@ lampiranSaveBtn.addEventListener('click', async () => {
 S.clipboard = [];
 S.acItems = [], S.acIndex = -1, S.onlyAkd = false, S.selectedTipe = null, S.acTimer = null;
 S.lastResults = [];
+// Cache produk untuk jalur NON-pencarian (auto-pasang Auto-Match, Cari SET, "Pakai" saran Dictionary): addToClip butuh baris
+// produk lengkap, tapi baris itu BUKAN hasil pencarian staff. Dulu jalur ini menyelipkannya ke S.lastResults, sehingga produk
+// yang dipasang otomatis ikut tampil sebagai kartu di panel Cari Produk (bahkan saat kolom cari kosong, dan tetap ada setelah
+// sesi dihapus). lastResults = HANYA apa yang ditampilkan panel pencarian; produkLookup = tempat cari data, tidak pernah dirender.
+S.produkLookup = new Map();
 S.modeSwasta = false; // toggle "Harga Swasta" di panel PENCARIAN — cuma preferensi quick lookup (harga & link_v6 yang ditampilin pas browsing hasil cari). JANGAN dipakai buat nentuin harga output (clipboard/record/export/SPH) — lihat modeSwastaOutput.
 S.modeSwastaOutput = false; // mode harga yang BENERAN dipakai buat Clipboard total & Pagu, Record Konversi, Export ke Excel, dan Generate SPH. Sengaja dipisah dari modeSwasta di atas biar user gak kepaksa ngubah tampilan pencarian cuma buat ganti mode output — lihat toggle #com-ekat/#com-swasta di clip-output-mode-row.
 S.sortMode = 'relevance';

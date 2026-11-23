@@ -114,6 +114,7 @@ export function installSesiMachine(S) {
       S.currentButuhBantuan = false;
       S.checklistPagu = null; // dulu gak pernah direset → pagu sesi lama kebawa ke sesi baru (ensureSesi nge-POST-nya)
       S.clipboard = [];
+      if (S.produkLookup) S.produkLookup.clear(); // snapshot harga/stok produk sesi lama jangan kebawa ke sesi berikutnya
       S.inpRs.value = o.rs || '';
       S.inpSales.value = o.sales || '';
       if (o.marsup) S.inpMarsup.value = o.marsup;

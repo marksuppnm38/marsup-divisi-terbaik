@@ -449,8 +449,9 @@ async function addSetKodeToClip(kode, btn) {
     if (errMsg) throw new Error(errMsg);
     if (!match) throw new Error('SET ini tidak ada di katalog.');
     if (!S.isProdukFirm(match) && !S.modeSwastaOutput) throw new Error('SET ini belum firm (link V6 masih ada catatan), jadi tidak dipakai untuk konversi.');
-    S.lastResults = S.lastResults && S.lastResults.length ? S.lastResults.concat([match]) : [match];
-    S.addToClip(kode);
+    S.produkLookup.set(kode, match); // bukan ke S.lastResults: produk ini tidak dicari staff, jangan muncul di panel Cari Produk
+    const hasil = S.addToClip(kode);
+    if (hasil === 'missing') throw new Error('Produk tidak bisa dimuat ke Clipboard.');
     S.showToast(`${kode} ditambahkan ke Clipboard`);
     btn.innerHTML = '<i class="ti ti-check"></i> Ditambahkan';
   } catch (err) {
