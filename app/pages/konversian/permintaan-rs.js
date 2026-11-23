@@ -431,7 +431,11 @@ let reviewSkipped = [];    // baris mentah yang otomatis disaring pas parsing (i
 const amMap = new Map();   // item.id -> { hasil, kode, nama } (usulan teratas; kandidat lain di hasil.candidates)
 let amRunning = false;
 let amApplying = false;
-let amProgress = { n: 0, t: 0 };
+let amProgress = { n: 0, t: 0 };   // n = jumlah item yang SUDAH selesai (naik terus), t = total target run ini
+let amTally = { AUTO: 0, REVIEW: 0, UNKNOWN: 0 }; // hitungan hasil yang sudah masuk selama run berjalan
+let amT0 = 0;              // performance.now() awal run — untuk perkiraan sisa waktu
+let amAbort = null;        // { aborted } milik run yang sedang jalan; tombol Hentikan mengisinya
+let amHidden = false;      // true = usulan disembunyikan dari tampilan (data di amMap TIDAK dibuang, bisa ditampilkan lagi)
 let amFilter = 'all';      // 'all' | 'AUTO' | 'REVIEW' | 'UNKNOWN'
 const AM_LABEL = { AUTO: 'Cocok', REVIEW: 'Cek dulu', UNKNOWN: 'Tidak ketemu' };
 const AM_PREF_KEY = 'pnm.konversian.automatch';
@@ -1215,7 +1219,20 @@ const AM_WHY = {
 const AM_UKURAN_TXT = { cocok: 'ukuran cocok', dekat: 'ukuran dekat (≤ 0,5 cm)', beda: 'ukuran beda', varian: 'varian lain' };
 
 function amFor(item) {
+  if (amHidden) return null; // disembunyikan: baris tampil polos, tapi amMap utuh untuk "Tampilkan usulan"
   return item && item.status === 'PENDING' ? (amMap.get(item.id) || null) : null;
+}
+// Jumlah item PENDING yang punya usulan tersimpan — dihitung langsung dari amMap, tidak lewat amFor (yang ikut mode sembunyi).
+function amStoredCount() {
+  let n = 0;
+  S.checklistItems.forEach(it => { if (it.status === 'PENDING' && amMap.has(it.id)) n++; });
+  return n;
+}
+// Item PENDING yang belum punya usulan (belum sempat dicocokkan: run dihentikan, atau item baru ditambah).
+function amMissingIds() {
+  const ids = new Set();
+  S.checklistItems.forEach(it => { if (it.status === 'PENDING' && String(it.raw_text || '').trim() && !amMap.has(it.id)) ids.add(it.id); });
+  return ids;
 }
 
 function amCounts() {
@@ -1363,6 +1380,52 @@ function amCandidatesHtml(item) {
   </div>`;
 }
 
+// ── Progres pencocokan ──
+// Kerangka bar dirender SEKALI (amRunHtml); selama run hanya angka/lebar/teks yang diperbarui (paintAmProgress), dan itupun
+// dibatasi satu kali per frame (queueAmPaint). 400+ item × innerHTML per item adalah salah satu penyebab UI terasa tersendat.
+function amFmtSisa(detik) {
+  if (detik < 60) return `± ${Math.max(5, Math.round(detik / 5) * 5)} dtk`;
+  const m = Math.floor(detik / 60), d = Math.round((detik % 60) / 10) * 10;
+  return d === 60 ? `± ${m + 1} mnt` : `± ${m} mnt${d ? ' ' + d + ' dtk' : ''}`;
+}
+function amRunHtml() {
+  const { n, t } = amProgress;
+  const stopping = !!(amAbort && amAbort.aborted);
+  return `<div class="kb-am-row kb-am-run">
+    <div class="kb-am-prog">
+      <div class="kb-am-prog-line"><i class="ti ti-loader-2 kb-am-spin" aria-hidden="true"></i><span class="kb-am-prog-txt">${stopping ? 'Menghentikan… ' : 'Mencocokkan '}<b data-am-n>${n}</b> dari ${t} item</span><span class="kb-am-prog-eta" data-am-eta></span></div>
+      <div class="kb-am-track" role="progressbar" aria-label="Kemajuan pencocokan" aria-valuemin="0" aria-valuemax="${t}" aria-valuenow="${n}"><span data-am-fill></span></div>
+      <div class="kb-am-prog-tally" data-am-tally></div>
+    </div>
+    <button type="button" class="kb-am-btn" data-am="cancel"${stopping ? ' disabled' : ''}>Hentikan</button>
+  </div>`;
+}
+function paintAmProgress() {
+  if (!amBarEl || !amRunning) return;
+  const nEl = amBarEl.querySelector('[data-am-n]');
+  if (!nEl) return;
+  const { n, t } = amProgress;
+  nEl.textContent = String(n);
+  const fill = amBarEl.querySelector('[data-am-fill]');
+  if (fill) fill.style.width = (t ? Math.min(100, (n / t) * 100) : 0).toFixed(1) + '%';
+  const track = amBarEl.querySelector('.kb-am-track');
+  if (track) track.setAttribute('aria-valuenow', String(n));
+  const eta = amBarEl.querySelector('[data-am-eta]');
+  if (eta) {
+    const detik = (performance.now() - amT0) / 1000;
+    // Perkiraan baru ditampilkan setelah cukup contoh (8 item / 4 dtk); sebelum itu angkanya cuma tebakan liar.
+    eta.textContent = n >= 8 && detik >= 4 && n < t ? amFmtSisa(((t - n) * detik) / n) : '';
+  }
+  const ty = amBarEl.querySelector('[data-am-tally]');
+  if (ty) ty.innerHTML = `<span class="kb-am-t kb-am-t-auto"><b>${amTally.AUTO}</b> cocok</span><span class="kb-am-t kb-am-t-review"><b>${amTally.REVIEW}</b> cek dulu</span><span class="kb-am-t kb-am-t-unknown"><b>${amTally.UNKNOWN}</b> tidak ketemu</span>`;
+}
+let amPaintQueued = false;
+function queueAmPaint() {
+  if (amPaintQueued) return;
+  amPaintQueued = true;
+  requestAnimationFrame(() => { amPaintQueued = false; paintAmProgress(); });
+}
+
 // Bar di atas daftar (#kb-am-bar, di luar #kb-list supaya tidak ikut ter-scroll):
 //   belum ada hasil → ajakan + tombol; jalan → progres angka; ada hasil → filter + aksi.
 function renderAmBar() {
@@ -1379,8 +1442,23 @@ function renderAmBar() {
 
   if (amRunning) {
     amBarEl.hidden = false;
-    amBarEl.innerHTML = `<div class="kb-am-row"><span class="kb-am-status" role="status"><i class="ti ti-loader-2 kb-am-spin"></i>Mencocokkan ${amProgress.n} dari ${amProgress.t} item…</span></div>`;
+    amBarEl.innerHTML = amRunHtml();
+    paintAmProgress();
     return;
+  }
+  // Usulan disembunyikan (tombol mata-coret): datanya masih ada di amMap, jadi cukup satu tombol untuk memunculkannya lagi —
+  // tidak perlu "Cocokkan otomatis" ulang (400+ item = menunggu lama untuk hasil yang sebenarnya sudah ada).
+  if (amHidden) {
+    const stored = amStoredCount();
+    if (stored) {
+      amBarEl.hidden = false;
+      amBarEl.innerHTML = `<div class="kb-am-row">
+        <span class="kb-am-status"><i class="ti ti-eye-off" aria-hidden="true"></i>${stored} usulan disembunyikan</span>
+        <div class="kb-am-acts"><button type="button" class="kb-am-btn" data-am="unhide"><i class="ti ti-eye" aria-hidden="true"></i> Tampilkan usulan</button></div>
+      </div>`;
+      return;
+    }
+    amHidden = false; // tidak ada lagi yang disembunyikan (semua sudah diputuskan) — kembali ke bar biasa
   }
   if (!total) {
     if (!pending) { amBarEl.hidden = true; amBarEl.innerHTML = ''; return; }
@@ -1398,15 +1476,17 @@ function renderAmBar() {
     `<button type="button" class="kb-filter-chip${amReason === key ? ' active' : ''}" data-am="reason" data-key="${key}" aria-pressed="${amReason === key}">${AM_WHY[key] || key}<span class="kb-filter-count">${count}</span></button>`;
   const reasonRow = amFilter === 'REVIEW' && Object.keys(rc).length > 1
     ? `<div class="kb-am-chips kb-am-reasons" aria-label="Alasan perlu dicek">${Object.keys(AM_WHY).filter(k => rc[k]).map(k => rchip(k, rc[k])).join('')}</div>` : '';
+  const missing = amMissingIds().size;
   amBarEl.hidden = false;
   amBarEl.innerHTML = `<div class="kb-am-row">
     <div class="kb-am-chips" role="group" aria-label="Saring hasil pencocokan">${chip('REVIEW', 'Cek dulu', n.REVIEW)}${chip('AUTO', 'Cocok', n.AUTO)}${chip('UNKNOWN', 'Tidak ketemu', n.UNKNOWN)}</div>
     <div class="kb-am-acts">
+      ${missing ? `<button type="button" class="kb-am-link" data-am="run" title="Cocokkan item yang belum punya usulan (hasil yang sudah ada tidak diulang)">${missing} belum dicocokkan · lanjutkan</button>` : ''}
       ${disembunyi ? `<button type="button" class="kb-am-link" data-am="peek">${disembunyi} tanpa usulan yang yakin · lihat</button>` : (amPeek && amPolicy().ragu === 'sembunyi' ? '<button type="button" class="kb-am-link" data-am="peek">sembunyikan lagi</button>' : '')}
       <button type="button" class="kb-am-mode" data-am="settings" title="Atur seberapa agresif Auto-Match di Preferensi">${AM_PRESET_NAMA[amPresetKey()]}<i class="ti ti-adjustments-horizontal" aria-hidden="true"></i></button>
       ${n.AUTO ? `<button type="button" class="kb-am-btn primary" data-am="apply"${amApplying ? ' disabled' : ''}>${amApplying ? 'Memasang…' : `Pakai ${n.AUTO} yang cocok`}</button>` : ''}
       <button type="button" class="kb-am-ico" data-am="rerun" title="Cocokkan ulang (data produk/riwayat bisa berubah)" aria-label="Cocokkan ulang"><i class="ti ti-wand" aria-hidden="true"></i></button>
-      <button type="button" class="kb-am-ico" data-am="clear" title="Sembunyikan semua usulan (keputusan yang sudah dipasang tidak berubah)" aria-label="Sembunyikan semua usulan"><i class="ti ti-eye-off" aria-hidden="true"></i></button>
+      <button type="button" class="kb-am-ico" data-am="clear" title="Sembunyikan usulan — bisa ditampilkan lagi tanpa mencocokkan ulang (keputusan yang sudah dipasang tidak berubah)" aria-label="Sembunyikan usulan"><i class="ti ti-eye-off" aria-hidden="true"></i></button>
     </div>
   </div>${reasonRow}`;
 }
@@ -1419,18 +1499,31 @@ async function runWorkspaceAutoMatch(onlyIds) {
     it.status === 'PENDING' && String(it.raw_text || '').trim() && (!onlyIds || onlyIds.has(it.id)));
   if (!targets.length) { S.showToast('Semua item sudah diputuskan — tidak ada yang perlu dicocokkan.'); return; }
   amRunning = true;
+  amHidden = false;                       // run baru = usulan harus kelihatan
+  amAbort = { aborted: false };
+  const abort = amAbort;
+  amTally = { AUTO: 0, REVIEW: 0, UNKNOWN: 0 };
+  amT0 = performance.now();
   let berhasil = false;
   amProgress = { n: 0, t: targets.length };
   renderAmBar();
+  const done = [];                        // { id, raw_text, hasil } — dikumpulkan lewat onItem, jadi Hentikan tidak membuang yang sudah beres
   try {
-    const items = targets.map(it => ({
-      nama: it.raw_text,
-      qty: it.qty_diminta != null ? Number(it.qty_diminta) : null,
-      specs: extractSpecs(it.raw_text),
-      variants: buildVariants(it.raw_text),
-      understood: understand(it.raw_text),
-      konteks: it.konteks_minta || null // SET / INSTRUMENT / UNIT bila sudah diisi (lihat auto-konversi/resolver.js)
-    }));
+    // Persiapan per item (parse spesifikasi + varian query) murni CPU. Untuk 400+ item dikerjakan per potongan dengan jeda
+    // ke browser, supaya tombol Hentikan dan animasi bar tetap hidup sejak detik pertama.
+    const items = [];
+    for (let k = 0; k < targets.length; k++) {
+      const it = targets[k];
+      items.push({
+        nama: it.raw_text,
+        qty: it.qty_diminta != null ? Number(it.qty_diminta) : null,
+        specs: extractSpecs(it.raw_text),
+        variants: buildVariants(it.raw_text),
+        understood: understand(it.raw_text),
+        konteks: it.konteks_minta || null // SET / INSTRUMENT / UNIT bila sudah diisi (lihat auto-konversi/resolver.js)
+      });
+      if ((k + 1) % 25 === 0) await new Promise(r => setTimeout(r, 0));
+    }
     firmCheck.clear(); // link_v6 bisa berubah sejak pencocokan terakhir — ambil ulang
     const lexicon = await getAmLexicon(false);
     const res = await resolveItems(items, S.rpc, {
@@ -1440,32 +1533,47 @@ async function runWorkspaceAutoMatch(onlyIds) {
       brand: S.selectedBrand || 'ROBUST', // 1 brand per konversi (pill brand Cari Produk; default ROBUST). Brand kosong = BUKAN ROBUST (tidak dianggap cocok).
       prosedur: await getProsedurIndeks(),
       brandOf: async (kodes) => { const rows = kodes.map(k => ({ kode_produk: k })); await S.enrichBrand(rows); return new Map(rows.map(r => [r.kode_produk, r.brand || ''])); },
-      onProgress: (n, t) => { amProgress = { n, t }; renderAmBar(); }
+      signal: abort,
+      // Hasil disimpan SEGERA saat satu item selesai (bukan menunggu semua). Daftar belum digambar ulang — itu sekali di akhir.
+      onItem: (i, r) => {
+        const h = r.hasil;
+        amMap.set(targets[i].id, { hasil: h, kode: h.kode_produk, nama: h.nama_produk });
+        if (amTally[h.status] != null) amTally[h.status]++;
+        done.push({ k: i, r });
+      },
+      // n = jumlah item SELESAI (naik terus). Digambar paling sering sekali per frame.
+      onProgress: (n, t) => { amProgress = { n, t }; queueAmPaint(); }
     });
-    res.forEach((r, k) => {
-      const h = r.hasil;
-      amMap.set(targets[k].id, { hasil: h, kode: h.kode_produk, nama: h.nama_produk });
-    });
-    amLog(res.map((r, k) => ({
-      permintaan_id: S.checklistPermintaanId != null ? String(S.checklistPermintaanId) : null, item_id: String(targets[k].id),
-      raw_text: targets[k].raw_text, usulan_kode: r.hasil.kode_produk || null, status: r.hasil.status, confidence: r.hasil.confidence,
-      reason_key: r.hasil.reason_key || null, diff: r.hasil.diff || [], keputusan_kode: null, aksi: 'diusulkan',
-      ...amLogExtra(r.hasil), via: null
-    })));
+    const hasilRes = done.map(d => d.r);
+    if (hasilRes.length) {
+      amLog(hasilRes.map((r, j) => ({
+        permintaan_id: S.checklistPermintaanId != null ? String(S.checklistPermintaanId) : null, item_id: String(targets[done[j].k].id),
+        raw_text: targets[done[j].k].raw_text, usulan_kode: r.hasil.kode_produk || null, status: r.hasil.status, confidence: r.hasil.confidence,
+        reason_key: r.hasil.reason_key || null, diff: r.hasil.diff || [], keputusan_kode: null, aksi: 'diusulkan',
+        ...amLogExtra(r.hasil), via: null
+      })));
+    }
     amFilter = 'all'; amReason = 'all';
-    const sm = summarize(res);
-    berhasil = true;
-    // Mode 'pasang': ringkasan dibungkus jadi satu toast oleh applyAllAuto di bawah; selain itu tampil seperti biasa.
-    if (amPolicy().yakin !== 'pasang' || !sm.AUTO) S.showToast(`Auto-Match selesai: ${sm.AUTO} cocok, ${sm.REVIEW} perlu dicek, ${sm.UNKNOWN} tidak ketemu`, 'success');
+    const sm = summarize(hasilRes);
+    berhasil = hasilRes.length > 0;
+    if (abort.aborted) {
+      S.showToast(`Auto-Match dihentikan: ${hasilRes.length} dari ${targets.length} item sudah dicocokkan`, hasilRes.length ? 'success' : 'info',
+        hasilRes.length < targets.length ? { detail: 'Sisanya bisa dilanjutkan dari bar di atas daftar.' } : undefined);
+    } else if (amPolicy().yakin !== 'pasang' || !sm.AUTO) {
+      // Mode 'pasang': ringkasan dibungkus jadi satu toast oleh applyAllAuto di bawah; selain itu tampil seperti biasa.
+      S.showToast(`Auto-Match selesai: ${sm.AUTO} cocok, ${sm.REVIEW} perlu dicek, ${sm.UNKNOWN} tidak ketemu`, 'success');
+    }
   } catch (err) {
-    S.showToast('Auto-Match gagal: ' + err.message, 'error');
+    S.showToast('Auto-Match gagal: ' + err.message, 'error',
+      done.length ? { detail: `${done.length} item yang sudah selesai tetap tersimpan — lanjutkan dari bar di atas daftar.` } : undefined);
   } finally {
     amRunning = false;
+    amAbort = null;
     renderChecklist();
   }
   // Yakin → langsung pasang (hanya AUTO; pemeriksaan acak tetap jalan karena sebagian AUTO sengaja diturunkan jadi REVIEW).
-  // Tiap item punya tautan "Batal" di barisnya.
-  if (berhasil && amPolicy().yakin === 'pasang') await applyAllAuto();
+  // Tiap item punya tautan "Batal" di barisnya. Run yang dihentikan TIDAK memasang apa pun otomatis: staff sengaja berhenti.
+  if (berhasil && !abort.aborted && amPolicy().yakin === 'pasang') await applyAllAuto();
 }
 S.runWorkspaceAutoMatch = runWorkspaceAutoMatch;
 
@@ -1508,9 +1616,12 @@ if (amBarEl) amBarEl.addEventListener('click', (e) => {
   const b = e.target.closest('[data-am]');
   if (!b || b.disabled) return;
   const act = b.dataset.am;
-  if (act === 'run') runWorkspaceAutoMatch();
-  else if (act === 'rerun') { amMap.clear(); amFilter = 'all'; amReason = 'all'; amLexicon = null; runWorkspaceAutoMatch(); }
-  else if (act === 'clear') { amMap.clear(); amFilter = 'all'; amReason = 'all'; renderChecklist(); }
+  if (act === 'run') runWorkspaceAutoMatch(amMap.size ? amMissingIds() : undefined); // sudah ada hasil → lanjutkan yang belum saja
+  else if (act === 'rerun') { amMap.clear(); amHidden = false; amFilter = 'all'; amReason = 'all'; amLexicon = null; runWorkspaceAutoMatch(); }
+  // Sembunyikan ≠ buang: amMap dibiarkan utuh, jadi tombol Tampilkan usulan mengembalikan semuanya seketika.
+  else if (act === 'clear') { amHidden = true; amFilter = 'all'; amReason = 'all'; renderChecklist(); }
+  else if (act === 'unhide') { amHidden = false; renderChecklist(); }
+  else if (act === 'cancel') { if (amAbort) { amAbort.aborted = true; renderAmBar(); } }
   else if (act === 'filter') { amFilter = (amFilter === b.dataset.key) ? 'all' : b.dataset.key; amReason = 'all'; renderChecklist(); }
   else if (act === 'reason') { amReason = (amReason === b.dataset.key) ? 'all' : b.dataset.key; renderChecklist(); }
   else if (act === 'apply') applyAllAuto();

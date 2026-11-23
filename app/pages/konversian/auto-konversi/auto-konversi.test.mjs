@@ -670,3 +670,56 @@ test('padanan belum firm: tetap jadi usulan REVIEW tapi ditandai belum siap (bun
   assert.equal(h.kode_produk, 'RB1');
   assert.equal(h.siap.ok, false);
 });
+
+// ───────────── resolveItems: progres, memo RPC, hentikan ─────────────
+test('resolveItems: onProgress SELALU naik (jumlah selesai), walau item selesai tidak berurutan', async () => {
+  // Item pertama sengaja paling lambat: dulu onProgress(i + 1) mengirim 1 SETELAH angka yang lebih besar.
+  const rpc = async (name, params) => {
+    if (params.p_text && params.p_text.includes('LAMBAT')) await new Promise(r => setTimeout(r, 40));
+    return { data: [] };
+  };
+  const items = parseRequestText('LAMBAT A\t1\nB\t1\nC\t1\nD\t1\nE\t1\nF\t1').items;
+  const seen = [];
+  await resolveItems(items, rpc, { concurrency: 3, onProgress: (n, t) => seen.push([n, t]) });
+  assert.equal(seen.length, items.length);
+  assert.deepEqual(seen.map(x => x[0]), seen.map((_, i) => i + 1)); // 1,2,3,... tanpa loncat mundur
+  assert.ok(seen.every(x => x[1] === items.length));
+});
+
+test('resolveItems: query yang sama persis hanya ditanyakan sekali ke server dalam satu run', async () => {
+  const rpc = mockRpc({ 'KOM': [row({ istilah: 'KOM', kode_produk: 'K-1', nama_produk: 'Kom', freq: 12 })] });
+  const items = parseRequestText('KOM\t1\nKOM\t2\nKOM\t3').items;
+  const res = await resolveItems(items, rpc, { concurrency: 3 });
+  assert.equal(res.length, 3);
+  assert.ok(res.every(r => r.hasil.kode_produk === 'K-1'));
+  const dict = rpc.calls.filter(c => c[0] === 'suggest_dictionary').length;
+  assert.ok(dict < 3 * 2, `dictionary dipanggil ${dict}× — harusnya di-memo`);
+  // hasil tiap item harus objek sendiri-sendiri (anotasi satu item tidak bocor ke item lain)
+  assert.notEqual(res[0].hasil.candidates[0], res[1].hasil.candidates[0]);
+});
+
+test('resolveItems: error RPC tidak di-memo (kegagalan sesaat tidak menular ke item lain)', async () => {
+  let n = 0;
+  const rpc = async (name) => {
+    if (name === 'suggest_dictionary' && n++ === 0) return { error: { message: 'timeout sesaat' } };
+    if (name === 'suggest_dictionary') return { data: [row({ istilah: 'KOM', kode_produk: 'K-1', nama_produk: 'Kom', freq: 12 })] };
+    return { data: [] };
+  };
+  const items = parseRequestText('KOM\t1\nKOM\t2').items;
+  const res = await resolveItems(items, rpc, { concurrency: 1 });
+  assert.equal(res[1].hasil.kode_produk, 'K-1'); // item kedua mencoba lagi, bukan mewarisi error
+});
+
+test('resolveItems: signal.aborted menghentikan item baru, hasil yang sudah ada tetap dikembalikan', async () => {
+  const rpc = async () => ({ data: [] });
+  const items = parseRequestText(Array.from({ length: 20 }, (_, i) => `ITEM${i}\t1`).join('\n')).items;
+  const signal = { aborted: false };
+  const got = [];
+  const res = await resolveItems(items, rpc, {
+    concurrency: 2, signal,
+    onItem: (i) => { got.push(i); if (got.length === 5) signal.aborted = true; }
+  });
+  let n = 0; res.forEach(() => n++);
+  assert.ok(n >= 5 && n < 20, `selesai ${n}`);
+  assert.equal(n, got.length); // yang dikembalikan = yang sempat dilaporkan lewat onItem
+});

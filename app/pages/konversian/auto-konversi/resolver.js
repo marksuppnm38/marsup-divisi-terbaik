@@ -505,19 +505,65 @@ export async function resolveItem(item, rpc, opts = {}) {
 }
 
 // ── Banyak item, paralel terbatas (pola sama dengan resolveSetcariEntries) ──
+// Opsi tambahan (semua opsional, perilaku lama tetap bila tidak diisi):
+//   onProgress(selesai, total) : SELALU naik — `selesai` = jumlah item yang sudah beres, bukan nomor urut item.
+//                                (Dulu yang dikirim index+1; dengan 4 worker paralel item lambat selesai belakangan,
+//                                 jadi angkanya loncat mundur: "312 dari 461" tiba-tiba "17 dari 461".)
+//   onItem(index, hasil)       : dipanggil begitu SATU item selesai, supaya hasilnya bisa langsung disimpan
+//                                (Hentikan di tengah jalan tidak membuang yang sudah beres).
+//   signal                     : { aborted:boolean } — worker berhenti mengambil item baru begitu aborted = true.
+//                                Hasil yang sudah ada tetap dikembalikan; slot item yang tidak sempat jalan kosong (sparse),
+//                                jadi pakai forEach/for..in, bukan map/length, untuk membaca hasilnya.
+//   concurrency                : default 4 untuk daftar kecil, 8 untuk daftar besar (> 40 item).
+//
+// Satu run = satu memo RPC. Permintaan RS yang panjang penuh istilah berulang ("MINOR SET", "KORENTANG", ...): query yang
+// sama persis (nama RPC + parameter) cukup ditanyakan sekali ke server, permintaan kedua dst menunggu hasil yang sama.
+// Yang di-memo hanya hasil SUKSES — error/transient tidak disimpan, supaya satu kegagalan sesaat tidak menular ke semua item.
+// Kandidat dibangun ulang dari `data` mentah di tiap item (candidatesFromRows/viaCatalog membuat objek baru), jadi
+// anotasi satu item tidak bocor ke item lain.
 export async function resolveItems(items, rpc, opts = {}) {
   const out = new Array(items.length);
   const queriesFor = opts.queriesFor || (() => null);
+  const memo = new Map();
+  const mrpc = (name, params) => {
+    const key = name + '|' + JSON.stringify(params);
+    const hit = memo.get(key);
+    if (hit) return hit;
+    const p = Promise.resolve(rpc(name, params)).then(
+      (r) => { if (r && r.error) memo.delete(key); return r; },
+      (e) => { memo.delete(key); throw e; }
+    );
+    memo.set(key, p);
+    return p;
+  };
+  // Brand per kode juga di-memo (satu produk sering jadi kandidat untuk banyak item).
+  let brandOf = opts.brandOf;
+  if (brandOf) {
+    const cache = new Map();
+    const raw = opts.brandOf;
+    brandOf = async (kodes) => {
+      const miss = kodes.filter((k) => !cache.has(k));
+      if (miss.length) { const m = await raw(miss); miss.forEach((k) => cache.set(k, m.get(k))); }
+      return new Map(kodes.map((k) => [k, cache.get(k)]));
+    };
+  }
+  const total = items.length;
+  const aborted = () => !!(opts.signal && opts.signal.aborted);
   let next = 0;
+  let selesai = 0;
   const worker = async () => {
-    while (next < items.length) {
+    while (next < total && !aborted()) {
       const i = next++;
       const q = queriesFor(items[i]);
-      out[i] = { item: items[i], hasil: await resolveItem(items[i], rpc, { ...opts, queries: q || undefined }) };
-      if (opts.onProgress) opts.onProgress(i + 1, items.length);
+      const hasil = await resolveItem(items[i], mrpc, { ...opts, brandOf, queries: q || undefined });
+      out[i] = { item: items[i], hasil };
+      selesai++;
+      if (opts.onItem) { try { opts.onItem(i, out[i]); } catch (_) { /* callback UI tidak boleh mematikan worker */ } }
+      if (opts.onProgress) { try { opts.onProgress(selesai, total); } catch (_) { /* idem */ } }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(opts.concurrency || 4, items.length) }, worker));
+  const n = Math.max(1, Math.min(opts.concurrency || (total > 40 ? 8 : 4), total));
+  await Promise.all(Array.from({ length: n }, worker));
   return out;
 }
 

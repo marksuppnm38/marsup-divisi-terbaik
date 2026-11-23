@@ -308,9 +308,18 @@
 #app-root .clip-tab-panel .clip-empty p{margin:0;font-size:12.5px;line-height:1.5;color:var(--text-secondary)}
 /* CTA empty state = tombol biasa 1 baris (bukan kotak tinggi dengan ikon di atas) */
 #app-root #kb-empty-cta{
-  display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:6px;
-  width:auto;height:32px;padding:0 14px;font-size:12.5px;
+  display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:8px;
+  width:auto;height:36px;margin-top:12px;padding:0 18px 0 14px;font-size:12.5px;line-height:1;
+  background:var(--accent);border-color:var(--accent);color:#fff;
 }
+#app-root #kb-empty-cta:hover:not(:disabled){filter:brightness(.92);background:var(--accent);color:#fff}
+#app-root #kb-empty-cta:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Akar bug "+ tidak center": pnm-universal.css punya `.clip-empty i{font-size:32px;display:block;margin-bottom:8px}` untuk ikon
+   ilustrasi di empty state — selector turunan itu ikut menimpa ikon DI DALAM tombol (jadi besar, abu-abu, dan turun ke bawah).
+   Ikon tombol dikembalikan ke aturan tombol: sebaris, selebar glyph-nya, ikut warna teks. */
+#app-root #kb-empty-cta > i{display:block;flex:none;margin:0;font-size:16px;line-height:1;color:currentColor}
+#app-root #kb-empty-cta > span{display:block;line-height:1}
+#app-root .clip-tab-panel .clip-empty .kb-start-hint{margin-top:2px;font-size:11.5px;color:var(--text-muted)}
 
 /* Clipboard/produk list items: keep as list rows, but border only appears
    on hover/interaction, not sitting there constantly as visual noise */
@@ -1251,6 +1260,12 @@
 #app-root .clip-header-edit-btn i{font-size:13px;line-height:1}
 #app-root .clip-header-edit-btn:hover{text-decoration:none;background:var(--surface-2)}
 /* ikon pensil/× jangan ikut muter pas header collapsed */
+/* Belum ada Permintaan RS (lihat updateKbTabState): form RS/Sales/PIC, pensilnya, dan peringatan "nama RS belum diisi" tidak
+   ditampilkan — semuanya ditanyakan di form Catat Permintaan RS. Layar langsung berpusat pada satu aksi. */
+#app-root .clip-header.pr-awaiting .clip-header-form-collapsible,
+#app-root .clip-header.pr-awaiting #clip-header-toggle,
+#app-root .clip-header.pr-awaiting .clip-id-line{display:none}
+#app-root .clip-header.pr-awaiting .clip-strip-actions{margin-left:auto}
 #app-root .clip-header.collapsed .clip-header-icon-btn i,
 #app-root .clip-header .clip-header-icon-btn i{transform:none}
 #app-root .clip-header:not(.collapsed) #clip-header-toggle{
@@ -3290,3 +3305,24 @@
 #app-root .kb-am-mode:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #app-root .kb-cmp-belum{color:var(--text-muted)}
 #app-root .kb-cmp-alts-belum .kb-cmp-name{color:var(--text-muted)}
+
+/* ── Auto-Match: progres, Hentikan, hitungan hasil yang masuk ──
+   Turunan .kb-am-row / .kb-am-btn / .kb-am-status (tidak ada elemen bawaan browser: progressbar digambar dari span). */
+#app-root .kb-am-run{align-items:center;flex-wrap:nowrap}
+#app-root .kb-am-prog{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:5px}
+#app-root .kb-am-prog-line{display:flex;align-items:center;gap:6px;min-width:0;font-size:12px;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+#app-root .kb-am-prog-line > i{flex:none;font-size:14px;line-height:1;color:var(--accent-text)}
+#app-root .kb-am-prog-txt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#app-root .kb-am-prog-txt b{color:var(--text);font-weight:600}
+#app-root .kb-am-prog-eta{margin-left:auto;flex:none;font-size:11px;color:var(--text-muted)}
+#app-root .kb-am-track{height:4px;border-radius:999px;background:var(--surface-3);overflow:hidden}
+#app-root .kb-am-track > span{display:block;height:100%;width:0;border-radius:inherit;background:var(--accent);transition:width .2s ease-out}
+#app-root .kb-am-prog-tally{display:flex;flex-wrap:wrap;gap:2px 12px;min-height:15px;font-size:11px;line-height:1.35;color:var(--text-muted);font-variant-numeric:tabular-nums}
+#app-root .kb-am-t{display:inline-flex;align-items:baseline;gap:4px}
+#app-root .kb-am-t::before{content:'';align-self:center;width:6px;height:6px;border-radius:50%;background:var(--border-strong)}
+#app-root .kb-am-t b{font-weight:600;color:var(--text-secondary)}
+#app-root .kb-am-t-auto::before{background:var(--success)}
+#app-root .kb-am-t-review::before{background:var(--warning)}
+#app-root .kb-am-status > i{flex:none;font-size:14px;line-height:1}
+#app-root .kb-am-btn > i{flex:none;font-size:14px;line-height:1}
+@media (prefers-reduced-motion:reduce){#app-root .kb-am-track > span{transition:none}}

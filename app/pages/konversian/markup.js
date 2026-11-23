@@ -518,10 +518,11 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
         <div id="clip-kebutuhan-section" class="clip-kebutuhan-section">
           <div class="clip-empty" id="kb-empty-state">
             <i class="ti ti-clipboard-text"></i>
-            <p>Belum ada Permintaan RS buat sesi ini.<br>Catat dulu biar item yang diminta bisa dicocokkan ke produk yang kamu tambahkan ke Clipboard.</p>
-            <button type="button" class="pr-add-clip-btn" id="kb-empty-cta" style="margin-top:12px">
-              <i class="ti ti-plus"></i> Catat Permintaan RS
+            <p>Belum ada Permintaan RS buat sesi ini.<br>Catat dulu — nama RS, sales, dan daftar item diisi sekaligus di satu form, lalu item otomatis dicocokkan ke produk.</p>
+            <button type="button" class="pr-add-clip-btn" id="kb-empty-cta">
+              <i class="ti ti-plus" aria-hidden="true"></i><span>Catat Permintaan RS</span>
             </button>
+            <p class="kb-start-hint">Bisa tempel teks, upload Excel, atau screenshot.</p>
           </div>
           <div id="kb-real-content" style="display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0">
             <!-- ZONA B (atas workbench): 1 baris tipis. Kiri = rollup harga/pagu/sisa (#kb-summary),

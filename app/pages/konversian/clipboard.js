@@ -791,6 +791,10 @@ function updateKbTabState() {
   const hasChecklist = !!S.checklistPermintaanId && S.checklistItems.length > 0;
   S.kbEmptyState.style.display = hasChecklist ? 'none' : 'flex';
   S.kbRealContent.style.display = hasChecklist ? 'flex' : 'none';
+  // Selama belum ada Permintaan RS, form RS / Sales / PIC di header disembunyikan: isian yang sama (nama RS, sales) sudah
+  // ditanyakan di form Catat Permintaan RS dan disalin ke header begitu disimpan (startChecklistSession). Dua tempat untuk
+  // data yang sama = pilihan yang tidak perlu. Form tetap bisa dibuka lewat pensil begitu Permintaan RS sudah ada.
+  if (S.clipHeader) S.clipHeader.classList.toggle('pr-awaiting', !hasChecklist);
   if (hasChecklist) {
     const pending = S.checklistItems.filter(i => i.status === 'PENDING').length;
     S.clipTabBadgeKb.textContent = pending;
