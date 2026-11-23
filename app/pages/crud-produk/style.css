@@ -1253,3 +1253,34 @@ th.num .th-btn{justify-content:flex-end}
 /* Footer pagination: font teks biasa (bukan mono), angka rata */
 #appWrap .pg-info{font-family:var(--font-body);font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--text-secondary)}
 #appWrap .pg-info .pg-info-base{color:var(--text-muted)}
+
+/* =====================================================================
+   AKD & KFA Management: tabel dinamis yang lebih tenang
+   1. Judul kolom sejajar dengan isi sel
+   2. Toolbar satu baris (cari + Kolom); chip filter hanya muncul saat ada
+   3. Masa berlaku AKD: titik status + tanggal + keterangan seperlunya
+   ===================================================================== */
+
+/* 1. th.th-has-menu{padding:0} kalah spesifisitas dari aturan th umum di .vbody, jadi padding <th> dan padding
+   .th-btn menumpuk dan judul menjorok 14px dari isinya. Di sini <th> dikosongkan, padding dipegang tombolnya. */
+#viewAkd .vbody:not(.pad) thead th.th-has-menu,
+#viewKfa .vbody:not(.pad) thead th.th-has-menu{padding:0}
+#viewAkd .vbody:not(.pad) thead th.th-has-menu .th-btn,
+#viewKfa .vbody:not(.pad) thead th.th-has-menu .th-btn{padding:9px 14px}
+#viewAkd .vbody:not(.pad) thead th.th-has-menu:first-child .th-btn,
+#viewKfa .vbody:not(.pad) thead th.th-has-menu:first-child .th-btn{padding-left:var(--gutter)}
+#viewAkd .vbody:not(.pad) thead th.th-has-menu:last-child .th-btn,
+#viewKfa .vbody:not(.pad) thead th.th-has-menu:last-child .th-btn{padding-right:var(--gutter)}
+
+/* 2. Toolbar */
+#appWrap #viewAkd .vtools .dt-bar{margin-left:auto}
+#appWrap #kfaFilterBar{align-items:center}
+#appWrap #kfaFilterBar .dt-bar{margin-left:auto;padding-right:12px}
+#appWrap #viewKfa .dt-chips{padding-top:10px}
+
+/* 3. Masa berlaku AKD */
+.akd-masa{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.akd-masa-tgl{font-variant-numeric:tabular-nums}
+.akd-masa-hint{font-size:12px;color:var(--text-muted)}
+.akd-masa.is-warn .akd-masa-hint{color:var(--amber-text)}
+.akd-masa.is-bad .akd-masa-hint{color:var(--rust-text)}

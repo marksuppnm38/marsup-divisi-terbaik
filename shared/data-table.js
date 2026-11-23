@@ -196,6 +196,9 @@ export function resolveColumns(columns, saved) {
   return { order, hidden };
 }
 
+/** Sel kosong yang tenang: tanda hubung redup (dipakai juga oleh render() kolom di sub-modul). */
+export const NIL_HTML = '<span class="dt-nil" role="img" aria-label="Kosong">—</span>';
+
 const fmtTgl = (iso) => {
   const d = iso ? new Date(String(iso).slice(0, 10) + 'T00:00:00') : null;
   return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : String(iso || '');
@@ -290,14 +293,36 @@ function injectStyle() {
 .dt-opts-empty{padding:6px 10px;color:var(--text-muted)}
 .dt-apply{padding:4px 6px 2px}
 .dt-apply .dt-go{width:100%}
-.dt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:0 var(--gutter,0) 10px}
-.dt-colbtn,.dt-chip,.dt-reset{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border-strong);border-radius:999px;background:var(--surface);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
-.dt-colbtn:hover,.dt-chip:hover,.dt-reset:hover{background:var(--surface-2)}
-.dt-chip{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text)}
+.dt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.dt-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:0 var(--gutter,0) 10px}
+.dt-chips[hidden]{display:none}
+.dt-colbtn,.dt-chip,.dt-reset{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12.5px;cursor:pointer}
+.dt-colbtn{height:30px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;color:var(--text-secondary,var(--text));font-weight:500}
+.dt-colbtn:hover{background:var(--surface-2);color:var(--text)}
+.dt-chip{padding:3px 6px 3px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text)}
+.dt-chip:hover{border-color:var(--border-strong)}
+.dt-chip span{color:var(--text-muted)}
 .dt-chip b{font-weight:600}
-.dt-chip i{font-size:13px}
-.dt-reset{border-style:dashed;color:var(--text-muted)}
+.dt-chip i{font-size:13px;color:var(--text-muted)}
+.dt-chip:hover i{color:var(--text)}
+.dt-reset{padding:3px 6px;border:0;border-radius:6px;background:none;color:var(--accent-text)}
+.dt-reset:hover{background:var(--accent-soft)}
+.dt-colbtn:focus-visible,.dt-chip:focus-visible,.dt-reset:focus-visible,.dt-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .dt-count{color:var(--text-muted);font-variant-numeric:tabular-nums}
+.dt-nil{color:var(--text-muted);opacity:.55}
+.dt-muted{color:var(--text-muted)}
+.dt-mono{font-family:var(--font-mono);font-size:12px}
+.dt-num{font-variant-numeric:tabular-nums}
+.dt-dot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--text-muted)}
+.dt-dot.is-ok{background:var(--teal-ok-text)}
+.dt-dot.is-warn{background:var(--amber-text)}
+.dt-dot.is-bad{background:var(--rust-text)}
+.dt-state{display:inline-flex;align-items:center;gap:8px;color:var(--text-muted)}
+.dt-link{padding:0;border:0;background:none;color:var(--accent-text);font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+:where(tr.clickable){cursor:pointer}
+tr.clickable:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+tbody.is-loading{opacity:.45;pointer-events:none;transition:opacity .15s}
+@media (prefers-reduced-motion:reduce){tbody.is-loading{transition:none}}
 .dt-cols{min-width:260px}
 .dt-prs{display:flex;flex-wrap:wrap;gap:6px;padding:4px 8px 6px}
 .dt-pr{padding:3px 9px;border:1px solid var(--border-strong);border-radius:999px;background:var(--surface);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
@@ -314,17 +339,20 @@ function injectStyle() {
 }
 
 /**
- * opts: { id, columns, headRow (<tr> di thead), bar (elemen untuk tombol Kolom + chip), onChange(),
- *         onRowClick(row, ctx), defaultSort, tieBreak, presets: [{id,label,keys:[...]}],
+ * opts: { id, columns, headRow (<tr> di thead), bar (elemen untuk tombol Kolom), chips (opsional: elemen terpisah
+ *         untuk chip filter + Reset; disembunyikan otomatis saat kosong. Tanpa `chips`, chip ikut digambar di `bar`),
+ *         onChange(), onRowClick(row, ctx), defaultSort, tieBreak, presets: [{id,label,keys:[...]}],
  *         emptyText, emptyFilteredText }
+ * Tambahan API: setLoading(tbody) = redupkan baris yang sudah ada selama memuat ulang (tanpa lompatan layout);
+ * kosong/pertama kali -> baris "Memuat data…". Baris yang bisa diklik juga bisa difokus + Enter/Spasi.
  * onChange() dipanggil saat sort / filter berubah (server: muat ulang halaman 1). Perubahan kolom tidak memicu
  * onChange: baris terakhir yang dimuat digambar ulang dengan kolom baru.
  */
 export function createDataTable(opts) {
   injectStyle();
-  const { id, columns, headRow, bar, onChange, onRowClick, defaultSort = null, tieBreak = null, presets = [] } = opts;
+  const { id, columns, headRow, bar, chips: chipsEl = null, onChange, onRowClick, defaultSort = null, tieBreak = null, presets = [] } = opts;
   const emptyText = opts.emptyText || 'Tidak ada data.';
-  const emptyFilteredText = opts.emptyFilteredText || 'Tidak ada data yang cocok dengan filter. Coba hapus salah satu filter di atas.';
+  const emptyFilteredText = opts.emptyFilteredText || 'Tidak ada data yang cocok dengan filter.';
   const byKey = new Map(columns.map((c) => [c.key, c]));
   const sameSort = (a, b) => (!a && !b) || (!!a && !!b && a.key === b.key && a.dir === b.dir);
 
@@ -373,23 +401,47 @@ export function createDataTable(opts) {
   const cellHtml = (c, r, ctx) => {
     if (c.render) return c.render(r, ctx);
     const v = valOf(c, r);
-    if (blank(v)) return '—';
+    if (blank(v)) return NIL_HTML;
     return typeOf(c) === 'date' ? esc(fmtTgl(v)) : esc(v);
   };
   function renderBody(tbody, rows, ctx = {}) {
     last = { tbody, rows, ctx };
     const cols = visible();
-    if (!rows.length) { showState(tbody, filters.length ? emptyFilteredText : emptyText); return; }
+    if (!rows.length) { showState(tbody, filters.length ? emptyFilteredText : emptyText, { reset: filters.length > 0 }); return; }
+    tbody.classList.remove('is-loading');
+    tbody.removeAttribute('aria-busy');
     tbody.innerHTML = '';
     rows.forEach((r) => {
       const tr = document.createElement('tr');
-      if (onRowClick) { tr.className = 'clickable'; tr.addEventListener('click', () => onRowClick(r, ctx)); }
+      if (onRowClick) {
+        tr.className = 'clickable';
+        tr.tabIndex = 0; // bisa dijangkau keyboard: Enter / Spasi = klik
+        tr.addEventListener('click', () => onRowClick(r, ctx));
+        tr.addEventListener('keydown', (e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && e.target === tr) { e.preventDefault(); onRowClick(r, ctx); }
+        });
+      }
       tr.innerHTML = cols.map((c) => `<td${c.td ? ` class="${esc(c.td)}"` : ''}${c.tdStyle ? ` style="${esc(c.tdStyle)}"` : ''}>${cellHtml(c, r, ctx)}</td>`).join('');
       tbody.appendChild(tr);
     });
   }
-  function showState(tbody, msg) {
-    tbody.innerHTML = `<tr class="state-row"><td colspan="${Math.max(1, visible().length)}">${esc(msg)}</td></tr>`;
+  const boundBodies = new WeakSet();
+  function bindBody(tbody) {
+    if (boundBodies.has(tbody)) return;
+    boundBodies.add(tbody);
+    tbody.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-dt="reset-empty"]')) reset(); });
+  }
+  function showState(tbody, msg, { reset: withReset = false } = {}) {
+    bindBody(tbody);
+    tbody.classList.remove('is-loading');
+    tbody.removeAttribute('aria-busy');
+    tbody.innerHTML = `<tr class="state-row"><td colspan="${Math.max(1, visible().length)}">${esc(msg)}${withReset ? ' <button type="button" class="dt-link" data-dt="reset-empty">Hapus semua filter</button>' : ''}</td></tr>`;
+  }
+  /** Memuat ulang: baris yang ada diredupkan (layout tidak melompat); belum ada baris -> pesan memuat. */
+  function setLoading(tbody) {
+    bindBody(tbody);
+    if (tbody.querySelector('tr:not(.state-row)')) { tbody.classList.add('is-loading'); tbody.setAttribute('aria-busy', 'true'); }
+    else showState(tbody, 'Memuat data…');
   }
 
   // ---------- bar (Kolom + chip) ----------
@@ -402,6 +454,7 @@ export function createDataTable(opts) {
   function renderBar() {
     if (!bar) return;
     const total = columns.length, shown = visible().length;
+    const colBtn = `<button type="button" class="dt-colbtn" data-dt="cols" aria-haspopup="menu"><i class="ti ti-columns-3"></i> Kolom <span class="dt-count">${shown}/${total}</span></button>`;
     const chips = filters.map((f) => {
       const c = byKey.get(f.key);
       return c ? `<button type="button" class="dt-chip" data-dt-chip="${esc(f.key)}" title="Klik untuk hapus filter ini"><span>${esc(c.label)}:</span><b>${esc(describeFilter(c, f))}</b><i class="ti ti-x"></i></button>` : '';
@@ -409,7 +462,9 @@ export function createDataTable(opts) {
     const sortChip = sort && !sameSort(sort, defaultSort)
       ? `<button type="button" class="dt-chip" data-dt-chip="__sort__" title="Klik untuk kembali ke urutan bawaan"><span>Urut:</span><b>${esc(sortDesc())}</b><i class="ti ti-x"></i></button>` : '';
     const dirty = filters.length || (sort && !sameSort(sort, defaultSort));
-    bar.innerHTML = `<button type="button" class="dt-colbtn" data-dt="cols" aria-haspopup="menu"><i class="ti ti-columns-3"></i> Kolom <span class="dt-count">${shown}/${total}</span></button>${chips}${sortChip}${dirty ? '<button type="button" class="dt-reset" data-dt="reset"><i class="ti ti-filter-off"></i> Reset</button>' : ''}`;
+    const extra = `${chips}${sortChip}${dirty ? '<button type="button" class="dt-reset" data-dt="reset"><i class="ti ti-filter-off"></i> Reset</button>' : ''}`;
+    if (chipsEl) { bar.innerHTML = colBtn; chipsEl.innerHTML = extra; chipsEl.hidden = !extra; }
+    else bar.innerHTML = colBtn + extra;
   }
   const onBarClick = (e) => {
     const chip = e.target.closest && e.target.closest('[data-dt-chip]');
@@ -420,6 +475,7 @@ export function createDataTable(opts) {
     else if (b.dataset.dt === 'cols') openCols(b);
   };
   if (bar) bar.addEventListener('click', onBarClick);
+  if (chipsEl) chipsEl.addEventListener('click', onBarClick);
 
   // ---------- perubahan state ----------
   function changed() {
@@ -614,8 +670,8 @@ export function createDataTable(opts) {
     getState: state,
     hasFilters: () => filters.length > 0,
     setFilter, removeFilter, setSort, reset,
-    renderHead, renderBar, renderBody, showState,
+    renderHead, renderBar, renderBody, showState, setLoading,
     visibleKeys: () => visible().map((c) => c.key),
-    destroy() { closePop(); headRow.removeEventListener('click', onHeadClick); if (bar) bar.removeEventListener('click', onBarClick); },
+    destroy() { closePop(); headRow.removeEventListener('click', onHeadClick); if (bar) bar.removeEventListener('click', onBarClick); if (chipsEl) chipsEl.removeEventListener('click', onBarClick); },
   };
 }

@@ -349,8 +349,9 @@ export const CRUD_PRODUK_MARKUP = `
             <i class="ti ti-search"></i>
             <input type="text" id="akdSearchBoxInput" placeholder="Cari no. AKD, nama AKD, kode set..."/>
           </div>
+          <div class="dt-bar" id="akdDtBar"></div>
         </div>
-        <div class="dt-bar" id="akdDtBar"></div>
+        <div class="dt-chips" id="akdDtChips" hidden></div>
         <div class="vbody">
           <div class="table-card akd-table-scroll">
                   <table>
@@ -395,8 +396,9 @@ export const CRUD_PRODUK_MARKUP = `
                 <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-kfa-all"></span></button>
                 <button class="filter-chip" data-filter="ada">Sudah Ada Kode<span class="fc-count" id="fc-kfa-ada"></span></button>
                 <button class="filter-chip" data-filter="belum">Belum Ada Kode<span class="fc-count" id="fc-kfa-belum"></span></button>
+                <div class="dt-bar" id="kfaDtBar"></div>
               </div>
-        <div class="dt-bar" id="kfaDtBar"></div>
+        <div class="dt-chips" id="kfaDtChips" hidden></div>
         <div class="vbody">
           <div class="table-card akd-table-scroll">
                   <table>

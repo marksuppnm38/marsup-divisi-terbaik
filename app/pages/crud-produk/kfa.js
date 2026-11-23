@@ -7,7 +7,7 @@
 import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6, guardHapus, barisTerhapus } from './ui-utils.js';
 import { orIlike } from '../../../shared/api.js';
 import { cariProdukBelumKfa } from './kfa-search.js';
-import { createDataTable } from '../../../shared/data-table.js';
+import { createDataTable, NIL_HTML } from '../../../shared/data-table.js';
 
 export function installKfa(S) {
 // ============================================================
@@ -27,18 +27,22 @@ const kfaModalOverlay = document.getElementById('kfaModalOverlay');
 // ---- Tabel dinamis (shared/data-table.js): urut + saring per kolom + kolom bisa dipilih ----
 // Kolom "produk.*" berasal dari relasi produk (embed di select). Memfilter kolom itu membuat select memakai !inner.
 const KFA_TIPE_OPTS = [{ value: 'INSTRUMENT', label: 'Instrumen' }, { value: 'SET', label: 'Set' }, { value: 'UNIT', label: 'Unit' }];
+// Kode (KFA, cangkang, AKD rujukan) pakai huruf mono supaya angka sejajar dan gampang dibandingkan.
+const monoCell = (v) => (v ? `<span class="dt-mono">${S.escapeHtml(v)}</span>` : NIL_HTML);
 const KFA_COLS = [
-  { key: 'kode_produk', label: 'Kode Produk', field: 'produk.kode_produk', locked: true, td: 'kode-cell', render: (r) => S.escapeHtml((r.produk || {}).kode_produk || '—') },
-  { key: 'nama_produk', label: 'Nama Produk', field: 'produk.nama_produk', render: (r) => S.escapeHtml((r.produk || {}).nama_produk || '—') },
+  { key: 'kode_produk', label: 'Kode Produk', field: 'produk.kode_produk', locked: true, td: 'kode-cell', render: (r) => { const v = (r.produk || {}).kode_produk; return v ? S.escapeHtml(v) : NIL_HTML; } },
+  { key: 'nama_produk', label: 'Nama Produk', field: 'produk.nama_produk', render: (r) => { const v = (r.produk || {}).nama_produk; return v ? S.escapeHtml(v) : NIL_HTML; } },
   { key: 'tipe', label: 'Tipe Produk', field: 'produk.tipe', type: 'enum', options: KFA_TIPE_OPTS, hidden: true,
-    render: (r) => { const o = KFA_TIPE_OPTS.find((x) => x.value === (r.produk || {}).tipe); return S.escapeHtml(o ? o.label : ((r.produk || {}).tipe || '—')); } },
-  { key: 'kode_kfa', label: 'Kode KFA' },
-  { key: 'kode_cangkang', label: 'Kode Cangkang' },
+    render: (r) => { const t = (r.produk || {}).tipe; const o = KFA_TIPE_OPTS.find((x) => x.value === t); return t ? S.escapeHtml(o ? o.label : t) : NIL_HTML; } },
+  // Belum ada kode = pekerjaan yang masih terbuka: titik amber + teks redup, bukan sekadar tanda hubung.
+  { key: 'kode_kfa', label: 'Kode KFA',
+    render: (r) => r.kode_kfa ? monoCell(r.kode_kfa) : '<span class="dt-state"><i class="dt-dot is-warn" aria-hidden="true"></i>Belum ada</span>' },
+  { key: 'kode_cangkang', label: 'Kode Cangkang', render: (r) => monoCell(r.kode_cangkang) },
   { key: 'nama_cangkang', label: 'Nama Cangkang' },
-  { key: 'no_akd_rujukan', label: 'No. AKD Rujukan' },
-  { key: 'tanggal_verifikasi', label: 'Tgl Verifikasi', type: 'date', render: (r) => r.tanggal_verifikasi || '—' },
+  { key: 'no_akd_rujukan', label: 'No. AKD Rujukan', render: (r) => monoCell(r.no_akd_rujukan) },
+  { key: 'tanggal_verifikasi', label: 'Tgl Verifikasi', type: 'date' }, // render bawaan = tanggal berformat (dulu tampil mentah YYYY-MM-DD)
   { key: 'catatan', label: 'Catatan', tdStyle: 'max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-    render: (r) => `<span title="${S.escapeHtml(r.catatan || '')}">${S.escapeHtml(r.catatan || '—')}</span>` },
+    render: (r) => r.catatan ? `<span title="${S.escapeHtml(r.catatan)}">${S.escapeHtml(r.catatan)}</span>` : NIL_HTML },
   { key: 'updated_at', label: 'Terakhir Diubah', type: 'date', hidden: true, fillFilter: false },
 ];
 const kfaDt = createDataTable({
@@ -46,6 +50,7 @@ const kfaDt = createDataTable({
   columns: KFA_COLS,
   headRow: document.getElementById('kfaHeadRow'),
   bar: document.getElementById('kfaDtBar'),
+  chips: document.getElementById('kfaDtChips'),
   defaultSort: { key: 'updated_at', dir: 'desc' }, // sama dengan urutan lama
   tieBreak: 'id',
   presets: [
@@ -73,8 +78,9 @@ async function loadKfa(page){
   kfaPage = page || kfaPage || 1;
   const myReq = ++kfaReq;
   const tbody = document.getElementById('kfaTableBody');
-  kfaDt.showState(tbody, 'Memuat data...');
-  document.getElementById('kfaCount').textContent = 'Memuat...';
+  kfaDt.setLoading(tbody);
+  const countEl = document.getElementById('kfaCount');
+  if (!/\d/.test(countEl.textContent)) countEl.textContent = 'Memuat…'; // jangan berkedip saat urut/filter diganti
 
   const from = (kfaPage - 1) * KFA_PAGE_SIZE, to = from + KFA_PAGE_SIZE - 1;
   // !inner hanya kalau ada filter pada kolom produk (supaya filter itu menyaring baris KFA, bukan cuma mengosongkan embed).
@@ -110,7 +116,7 @@ async function loadKfa(page){
   }
   const rows = data || [], total = count || 0;
 
-  document.getElementById('kfaCount').textContent = total + ' record KFA' + (q ? ` untuk "${q}"` : '') + (kfaDt.hasFilters() ? ' (terfilter)' : '');
+  countEl.textContent = total.toLocaleString('id-ID') + ' record KFA' + (q ? ` untuk "${q}"` : '') + (kfaDt.hasFilters() ? ' (terfilter)' : '');
   renderPgBar(document.getElementById('kfaPagination'), { page: kfaPage, pageSize: KFA_PAGE_SIZE, total, onPageChange: (p) => loadKfa(p) });
   kfaDt.renderBody(tbody, rows);
 }

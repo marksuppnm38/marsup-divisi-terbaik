@@ -8,7 +8,8 @@
 // nebeng S. Logic di dalam TIDAK diubah sama sekali.
 import { showToast, crudConfirm, crudAlert, renderPgBar, guardHapus, barisTerhapus } from './ui-utils.js';
 import { orIlike } from '../../../shared/api.js';
-import { createDataTable } from '../../../shared/data-table.js';
+import { createDataTable, NIL_HTML } from '../../../shared/data-table.js';
+import { masaBerlakuInfo } from './akd-masa.js';
 
 export function installAkdMaster(S) {
 // ================================================================
@@ -50,7 +51,7 @@ const AKD_COLS = [
   { key: 'tipe_akd', label: 'Tipe', type: 'enum', options: AKD_TIPE_OPTS, render: (r) => `<span class="tipe-chip">${S.escapeHtml(r.tipe_akd || '—')}</span>` },
   { key: 'golongan', label: 'Golongan', type: 'enum', options: akdOpts('golongan') },
   { key: 'kategori_set', label: 'Kategori Set' },
-  { key: 'masa_berlaku', label: 'Masa Berlaku', type: 'date', render: (r) => akdMasaBerlakuPill(r.masa_berlaku),
+  { key: 'masa_berlaku', label: 'Masa Berlaku', type: 'date', render: (r) => akdMasaBerlakuCell(r.masa_berlaku),
     sortLabels: ['Segera habis dulu', 'Paling lama berlaku dulu'],
     datePresets: [
       { label: 'Sudah kadaluarsa', filter: { op: 'expired' } },
@@ -58,10 +59,12 @@ const AKD_COLS = [
       { label: 'Kadaluarsa ≤ 90 hari lagi', chip: 'dalam 90 hari', filter: { op: 'within', value: 90 } },
     ] },
   { key: 'status_terupdate', label: 'Status Terupdate', type: 'enum', options: akdOpts('status_terupdate') },
-  { key: 'link_dokumen', label: 'Link Dok.', sortable: false, tdStyle: 'text-align:center;',
-    render: (r) => r.link_dokumen ? '<i class="ti ti-link link-yes" title="Sudah ada link dokumen"></i>' : '<i class="ti ti-link-off link-no" title="Belum ada link dokumen"></i>' },
+  { key: 'link_dokumen', label: 'Link Dok.', sortable: false,
+    render: (r) => r.link_dokumen
+      ? '<i class="ti ti-link link-yes" aria-hidden="true"></i><span class="sr-only">Sudah ada link dokumen</span>'
+      : '<i class="ti ti-link-off link-no" aria-hidden="true"></i><span class="sr-only">Belum ada link dokumen</span>' },
   { key: 'produk_terhubung', label: 'Produk Terhubung', sortable: false, filterable: false,
-    render: (r, ctx) => { const n = (ctx.counts && ctx.counts.get(r.id)) || 0; return n > 0 ? `<span class="status-pill ok">${n} produk</span>` : '<span class="status-pill neutral">Belum ada</span>'; } },
+    render: (r, ctx) => { const n = (ctx.counts && ctx.counts.get(r.id)) || 0; return n > 0 ? `<span class="dt-num">${n} produk</span>` : '<span class="dt-muted">Belum ada</span>'; } },
   // Tersembunyi bawaan -- dimunculkan lewat tombol "Kolom"
   { key: 'tgl_maju_mas_munir', label: 'Tgl Maju Mas Munir', type: 'date', hidden: true },
   { key: 'kode_set', label: 'Kode Set', hidden: true },
@@ -75,6 +78,7 @@ const akdDt = createDataTable({
   columns: AKD_COLS,
   headRow: document.getElementById('akdHeadRow'),
   bar: document.getElementById('akdDtBar'),
+  chips: document.getElementById('akdDtChips'),
   defaultSort: { key: 'updated_at', dir: 'desc' }, // sama dengan urutan lama
   tieBreak: 'id',
   presets: [
@@ -86,15 +90,13 @@ const akdDt = createDataTable({
   emptyText: 'Tidak ada AKD ditemukan.',
 });
 
-function akdMasaBerlakuPill(dateStr){
-  if (!dateStr) return `<span class="status-pill neutral">—</span>`;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const d = new Date(dateStr + 'T00:00:00');
-  const diffDays = Math.round((d - today) / 86400000);
-  const label = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-  if (diffDays < 0) return `<span class="status-pill bad" title="Sudah expired ${Math.abs(diffDays)} hari lalu">${label}</span>`;
-  if (diffDays <= 30) return `<span class="status-pill warn" title="Akan expired ${diffDays} hari lagi">${label}</span>`;
-  return `<span class="status-pill ok">${label}</span>`;
+// Titik status + tanggal; keterangan ("19 hari lagi" / "lewat 3 hari") muncul hanya kalau perlu tindakan,
+// jadi status tidak bergantung pada warna saja.
+function akdMasaBerlakuCell(dateStr){
+  const m = masaBerlakuInfo(dateStr);
+  if (m.tone === 'none') return NIL_HTML;
+  const hint = m.hint ? `<span class="akd-masa-hint">${S.escapeHtml(m.hint)}</span>` : '';
+  return `<span class="akd-masa is-${m.tone}"><i class="dt-dot is-${m.tone}" aria-hidden="true"></i><span class="akd-masa-tgl">${S.escapeHtml(m.label)}</span>${hint}</span>`;
 }
 
 async function renderAkdTable(rows){
@@ -118,8 +120,9 @@ async function loadAkd(page){
   akdPage = page || akdPage || 1;
   const myReq = ++akdReq;
   const tbody = document.getElementById('akdTableBody');
-  akdDt.showState(tbody, 'Memuat data...');
-  document.getElementById('akdCount').textContent = 'Memuat...';
+  akdDt.setLoading(tbody);
+  const countEl = document.getElementById('akdCount');
+  if (!/\d/.test(countEl.textContent)) countEl.textContent = 'Memuat…'; // jangan berkedip saat urut/filter diganti
 
   const from = (akdPage - 1) * AKD_PAGE_SIZE, to = from + AKD_PAGE_SIZE - 1;
   let query = S.sb.from('akd').select(AKD_COLUMNS, { count: 'exact' });
@@ -131,7 +134,7 @@ async function loadAkd(page){
   if (error) { akdDt.showState(tbody, 'Gagal memuat: ' + error.message); return; }
   const rows = data || [], total = count || 0;
 
-  document.getElementById('akdCount').textContent = total + ' AKD' + (q ? ` untuk "${q}"` : '') + (akdDt.hasFilters() ? ' (terfilter)' : '');
+  countEl.textContent = total.toLocaleString('id-ID') + ' AKD' + (q ? ` untuk "${q}"` : '') + (akdDt.hasFilters() ? ' (terfilter)' : '');
   renderPgBar(document.getElementById('akdPagination'), { page: akdPage, pageSize: AKD_PAGE_SIZE, total, onPageChange: (p) => loadAkd(p) });
   await renderAkdTable(rows);
 }
