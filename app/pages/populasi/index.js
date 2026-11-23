@@ -791,7 +791,6 @@ function renderPasar() {
   const rp = (data && data.ringkasan_pasar) || {};
   const keys = PASAR_URUT.filter((k) => rp[k] && (num(rp[k].jumlah_pesanan) > 0 || num(rp[k].jumlah_rs) > 0));
   if (!keys.length) { el.hidden = true; el.innerHTML = ''; return; }
-  const status = state.status === 'ALL';
   const card = (k) => {
     const x = rp[k];
     const satuan = [num(x.set_total) ? `${fmt(x.set_total)} set` : '', num(x.pcs_total) ? `${fmt(x.pcs_total)} pcs` : '', num(x.unit_total) ? `${fmt(x.unit_total)} unit` : ''].filter(Boolean).join(' · ');
@@ -803,10 +802,15 @@ function renderPasar() {
     const lengkap = tot && ber && ber < tot
       ? `<span class="ps-tag warn" title="Nilai hanya mencakup RMP yang ada di ALL V. ${fmt(tot - ber)} RMP belum punya nilai.">${fmt(ber)} dari ${fmt(tot)} RMP bernilai</span>`
       : (tot && ber ? `<span class="ps-muted">${fmt(tot)} RMP</span>` : (tot ? `<span class="ps-muted">${fmt(tot)} RMP</span>` : ''));
+    // Sumber nilai: baris berkode RO dihargai dari pricelist RO (qty x harga), RMP lain dari ALL V.
+    const ro = num(x.nilai_ro), roTanpa = num(x.ro_tanpa_harga), nonRo = num(x.non_ro_baris);
+    const srcRo = ro > 0 ? `<div class="ps-pasar-sub ps-muted" title="Baris berkode RO: jumlah pcs x harga pricelist RO (FINAL RO 2026, bila kosong PL 2026). ${num(x.ro_baris)} baris.">${esc(rpRingkas(ro))} dari pricelist RO</div>` : '';
+    const warnRo = roTanpa > 0 ? `<div class="ps-pasar-sub"><span class="ps-tag warn" title="Kode RO-nya ada di pricelist tetapi kolom harganya masih kosong, jadi belum dihitung (bukan dihitung nol).">${fmt(roTanpa)} baris kode RO belum ada harga</span></div>` : '';
+    const infoNon = k !== 'PEMERINTAH' && nonRo > 0 ? `<div class="ps-pasar-sub ps-muted" title="Baris pcs yang kodenya bukan kode RO tidak dihargai dari pricelist RO. Nilainya hanya masuk bila No. RMP-nya ada di ALL V.">${fmt(nonRo)} baris bukan kode RO</div>` : '';
     return `<div class="ps-pasar-card" data-pasar="${esc(k)}">
       <div class="ps-pasar-head">${pasarTag(k)}</div>
       <div class="ps-pasar-nilai">${nilai}</div>
-      ${lengkap ? `<div class="ps-pasar-sub">${lengkap}</div>` : ''}
+      ${lengkap ? `<div class="ps-pasar-sub">${lengkap}</div>` : ''}${srcRo}${warnRo}${infoNon}
       <dl class="ps-pasar-dl">
         <div><dt>Rumah sakit</dt><dd>${fmt(x.jumlah_rs)}</dd></div>
         <div><dt>Pesanan</dt><dd>${fmt(x.jumlah_pesanan)}</dd></div>
@@ -816,13 +820,13 @@ function renderPasar() {
   };
   const totNilai = keys.reduce((a, k) => a + num(rp[k].nilai_rp), 0);
   const adaNilai = keys.some((k) => num(rp[k].rmp_bernilai) > 0);
-  const per = data.nilai_per ? ` · nilai per ${esc(fmtDate(data.nilai_per))}` : '';
+  const per = (data.nilai_per ? ` · ALL V per ${esc(fmtDate(data.nilai_per))}` : '') + (data.harga_ro_per ? ` · pricelist RO per ${esc(fmtDate(data.harga_ro_per))}` : '');
   el.hidden = false;
   el.innerHTML = `
     <div class="ps-pasar-bar"><span class="ps-pasar-title">Pemerintah vs Swasta</span>
       <span class="ps-muted">${adaNilai ? `Total nilai ${esc(rpRingkas(totNilai))}` : 'Nilai Rp belum tersedia'}${per}</span></div>
     <div class="ps-pasar-grid">${keys.map(card).join('')}</div>
-    <div class="ps-pasar-note ps-muted">Pasar dibaca dari kode RMP: tanpa akhiran = pemerintah, akhiran R = swasta. Konsinyasi (RMP-K, RMP-RK) tidak ikut dihitung pada cakupan “Semua”. Nilai Rp = TOTAL VALUE PRODUK include tax dari ALL V, dijumlah per No. RMP (bukan per item), jadi tidak berubah saat filter produk dipersempit.${status ? '' : ''}</div>`;
+    <div class="ps-pasar-note ps-muted">Pasar dibaca dari kode RMP: tanpa akhiran = pemerintah, akhiran R = swasta. Konsinyasi (RMP-K, RMP-RK) tidak ikut dihitung pada cakupan “Semua”. Nilai Rp pemerintah = TOTAL VALUE PRODUK include tax dari ALL V, per No. RMP utuh. Baris retail berkode RO dihargai dari pricelist RO (pcs x harga satuan) dan mengikuti filter yang aktif.</div>`;
 }
 
 function rincianText(r, sep = ', ') {
@@ -1121,10 +1125,10 @@ async function renderRmp() {
   const body = $('ps-body');
   $('ps-actions').hidden = true;
   $('ps-tbl-title').textContent = 'Pesanan menurut No. RMP';
-  $('ps-thead').innerHTML = '<tr><th>Rumah sakit</th><th>No. RMP</th><th>Pasar</th><th class="ps-th-num" title="Nilai seluruh No. RMP (include tax), tampil sekali per RMP">Nilai RMP</th><th>No. PO</th><th>Set / produk</th><th class="ps-th-num">Jumlah</th><th>Status</th><th>Tanggal</th></tr>';
+  $('ps-thead').innerHTML = '<tr><th>Rumah sakit</th><th>No. RMP</th><th>Pasar</th><th class="ps-th-num" title="Nilai seluruh No. RMP (include tax), tampil sekali per RMP">Nilai RMP</th><th class="ps-th-num" title="Baris berkode RO: jumlah pcs x harga pricelist RO">Nilai RO</th><th>No. PO</th><th>Set / produk</th><th class="ps-th-num">Jumlah</th><th>Status</th><th>Tanggal</th></tr>';
   bar.hidden = false;
   bar.innerHTML = `<span class="ps-review-msg">Mencari No. RMP “${esc(q)}”…</span>${lepas}`;
-  body.innerHTML = '<tr><td colspan="9" class="ps-empty" role="status">Memuat pesanan…</td></tr>';
+  body.innerHTML = '<tr><td colspan="10" class="ps-empty" role="status">Memuat pesanan…</td></tr>';
 
   let list;
   try {
@@ -1132,7 +1136,7 @@ async function renderRmp() {
   } catch (e) {
     if (my !== reviewReq || String(e.message).startsWith('unauthorized')) return;
     bar.innerHTML = `<span class="ps-review-msg">Gagal memuat daftar pesanan.</span>${lepas}`;
-    body.innerHTML = `<tr><td colspan="9" class="ps-empty ps-empty-err">Gagal memuat daftar: ${esc(e.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10" class="ps-empty ps-empty-err">Gagal memuat daftar: ${esc(e.message)}</td></tr>`;
     return;
   }
   if (my !== reviewReq || !rmpAktif()) return;     // ketikan berubah / tampilan berganti selagi memuat
@@ -1143,7 +1147,7 @@ async function renderRmp() {
     String(a.customer).localeCompare(String(b.customer), 'id'));
   if (!hasil.length) {
     bar.innerHTML = `<span class="ps-review-msg">Tidak ada pesanan dengan No. RMP “${esc(q)}”.</span>${lepas}`;
-    body.innerHTML = `<tr><td colspan="9" class="ps-empty">${rmpEmptyHtml()}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10" class="ps-empty">${rmpEmptyHtml()}</td></tr>`;
     return;
   }
   const tampil = hasil.slice(0, RMP_MAX);
@@ -1166,6 +1170,7 @@ async function renderRmp() {
         <td><span class="kode-text">${esc(l.kode_rmp || '—')}</span></td>
         <td>${pasarTag(l.pasar)}</td>
         <td class="ps-num">${nilaiRmpCell(l, seenNilai)}</td>
+        <td class="ps-num">${nilaiRoCell(l)}</td>
         <td>${esc(l.po || '—')}</td>
         <td>${esc(nama)}${asal}</td>
         <td class="ps-num">${esc(jmlText(l))}</td>
@@ -1343,8 +1348,19 @@ function nilaiRmpCell(d, seen) {
   const key = rmpNorm(d.kode_rmp);
   if (!key || seen.has(key)) return '<span class="ps-muted">·</span>';
   seen.add(key);
-  if (d.nilai_rmp == null) return '<span class="ps-muted" title="No. RMP ini belum ada di sheet ALL V">belum ada</span>';
+  if (d.nilai_rmp == null) {
+    return d.pasar && d.pasar !== 'PEMERINTAH'
+      ? '<span class="ps-muted" title="Tidak ada di ALL V. Baris berkode RO dihargai di kolom Nilai RO.">·</span>'
+      : '<span class="ps-muted" title="No. RMP ini belum ada di sheet ALL V">belum ada</span>';
+  }
   return `<span title="${esc(rpFull(d.nilai_rmp) + ' untuk seluruh No. RMP ini (include tax)')}">${esc(rpRingkas(d.nilai_rmp))}</span>`;
+}
+
+// Nilai baris berkode RO = jumlah pcs x harga pricelist RO. Per baris, jadi boleh dijumlahkan.
+function nilaiRoCell(d) {
+  if (!d.ro_cocok) return '<span class="ps-muted">·</span>';
+  if (d.nilai_ro == null) return '<span class="ps-tag warn" title="Kode RO ada di pricelist tetapi harganya masih kosong">belum ada harga</span>';
+  return `<span title="${esc(fmt(d.nilai) + ' pcs x ' + rpFull(d.harga_ro) + ' (' + (d.sumber_harga_ro || 'pricelist RO') + ')')}">${esc(rpRingkas(d.nilai_ro))}</span><span class="ps-sub">@ ${esc(rpRingkas(d.harga_ro))}</span>`;
 }
 
 function detailHtml(list) {
@@ -1353,7 +1369,7 @@ function detailHtml(list) {
   return `
     <table class="ps-dt">
       <thead><tr>
-        <th>No. RMP</th><th>Pasar</th><th class="ps-th-num" title="Nilai seluruh No. RMP (include tax), tampil sekali per RMP">Nilai RMP</th><th>No. PO</th><th>Kategori</th><th>Jenis set / produk</th>
+        <th>No. RMP</th><th>Pasar</th><th class="ps-th-num" title="Nilai seluruh No. RMP (include tax), tampil sekali per RMP">Nilai RMP</th><th class="ps-th-num" title="Baris berkode RO: jumlah pcs x harga pricelist RO">Nilai RO</th><th>No. PO</th><th>Kategori</th><th>Jenis set / produk</th>
         <th class="ps-th-num">Jumlah</th><th>Hitungan</th><th>Status</th><th>Tanggal</th><th>Sheet</th>
         <th class="ps-col-act"><span class="ps-sr">Koreksi</span></th>
       </tr></thead>
@@ -1370,6 +1386,7 @@ function detailHtml(list) {
             <td><span class="kode-text">${esc(d.kode_rmp || '—')}</span></td>
             <td>${pasarTag(d.pasar)}</td>
             <td class="ps-num">${nilaiRmpCell(d, seen)}</td>
+            <td class="ps-num">${nilaiRoCell(d)}</td>
             <td>${esc(d.po || '—')}</td>
             <td>${kelKategoriCell(d)}</td>
             <td>${esc(nama)}${sub}${isiHtml(d)}</td>
@@ -2083,7 +2100,7 @@ function buildText() {
   PASAR_URUT.filter((k) => rp[k] && num(rp[k].jumlah_pesanan) > 0).forEach((k) => {
     const x = rp[k];
     const sat = [num(x.set_total) ? `${fmt(x.set_total)} set` : '', num(x.pcs_total) ? `${fmt(x.pcs_total)} pcs` : '', num(x.unit_total) ? `${fmt(x.unit_total)} unit` : ''].filter(Boolean).join(' + ');
-    const nil = num(x.rmp_bernilai) > 0 ? `, nilai ${rpFull(x.nilai_rp)} (${fmt(x.rmp_bernilai)} dari ${fmt(x.rmp_total)} RMP bernilai)` : ', nilai belum tersedia';
+    const nil = num(x.rmp_bernilai) > 0 ? `, nilai ${rpFull(x.nilai_rp)} (${fmt(x.rmp_bernilai)} dari ${fmt(x.rmp_total)} RMP bernilai${num(x.nilai_ro) > 0 ? `, ${rpFull(x.nilai_ro)} dari pricelist RO` : ''})` : ', nilai belum tersedia';
     lines.push(`${pasarNama(k)}: ${fmt(x.jumlah_rs)} RS, ${fmt(x.jumlah_pesanan)} pesanan${sat ? ', ' + sat : ''}${nil}`);
   });
   if (num(s.set_cek) > 0) lines.push(`Catatan: ${fmt(s.set_cek)} pesanan set perlu dicek dan belum dihitung.`);

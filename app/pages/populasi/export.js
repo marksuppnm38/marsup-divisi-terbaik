@@ -178,6 +178,8 @@ const COLS = {
     { id: 'rmp', h: 'No. RMP', k: 'rmp', w: 24, grp: 'dok', drop: 1, desc: 'Nomor RMP internal.' },
     { id: 'pasar', h: 'Pasar', k: 'pasar', w: 13, grp: 'dok', drop: 1, desc: 'Pemerintah (kode RMP tanpa akhiran), Swasta (RMP-R), atau Lainnya (pola kode tidak dikenal).' },
     { id: 'nilaiRmp', h: 'Nilai RMP (Rp)', k: 'nilaiRmp', w: 18, fmt: '#,##0', grp: 'dok', drop: 1, desc: 'Nilai seluruh No. RMP (TOTAL VALUE PRODUK include tax, dari ALL V). Dicantumkan SEKALI di baris pertama tiap No. RMP, bukan per item, jadi jangan dijumlahkan per baris.' },
+    { id: 'hargaRo', h: 'Harga RO (Rp)', k: 'hargaRo', w: 16, fmt: '#,##0', grp: 'dok', drop: 1, desc: 'Harga satuan dari pricelist RO (FINAL RO 2026, bila kosong PL 2026). Hanya untuk baris retail berkode RO.' },
+    { id: 'nilaiRo', h: 'Nilai RO (Rp)', k: 'nilaiRo', w: 18, fmt: '#,##0', grp: 'dok', drop: 1, desc: 'Jumlah pcs x Harga RO, per baris (boleh dijumlahkan). Kosong bila bukan kode RO atau harga RO belum ada.' },
     { id: 'po', h: 'No. PO', k: 'po', w: 24, grp: 'dok', drop: 1, na: 1, desc: 'Nomor PO sesuai data pesanan. “Tidak tersedia” berarti tidak tercatat.' },
     { id: 'shitung', h: 'Status hitungan', k: 'shitung', w: 22, grp: 'cat', desc: 'Dasar angka pada baris ini: Sesuai isi set, Sesuai dengan penyesuaian, Perkiraan, Belum dihitung (set), atau Jumlah sesuai pesanan (barang satuan).' },
     { id: 'ket', h: 'Keterangan', k: 'ket', w: 44, wrap: 1, warn: 1, drop: 1, grp: 'cat', desc: 'Penjelasan bila angka berupa perkiraan, ada penyesuaian, atau belum dihitung.' },
@@ -559,6 +561,8 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       rmp: l.kode_rmp || '', po: l.po || '', shitung: labelHitung(l),
       pasar: l.pasar === 'PEMERINTAH' ? 'Pemerintah' : (l.pasar === 'SWASTA' ? 'Swasta' : (l.pasar ? 'Lainnya' : '')),
       nilaiRmp: nilaiRmpSekali(l),
+      hargaRo: l.ro_cocok && l.harga_ro != null ? Number(l.harga_ro) : null,
+      nilaiRo: l.ro_cocok && l.nilai_ro != null ? Number(l.nilai_ro) : null,
       ket: [ketBaris(l), n0(l.distributor_n) > 1 ? 'RMP ini tercatat dengan lebih dari satu distributor; yang ditampilkan adalah yang terbanyak' : ''].filter(Boolean).join('; '),
       family: l.family || '', baris: n0(l.jumlah_baris), sheet: l.sumber_sheet || '', asli: l.label_asli || '',
     };
@@ -1009,7 +1013,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     tableSheet('Rincian Pesanan', {
       bersih: sph,
       title: 'Rincian pesanan', sub: subLine + subTek(cols), note: NOTE_KOSONG,
-      cols, freeze: 1, labelKey: 'customer', totals: sumTot(cols, ['set', 'pcs', 'unit']), items: itemsPesanan,
+      cols, freeze: 1, labelKey: 'customer', totals: sumTot(cols, ['set', 'pcs', 'unit', 'nilaiRo']), items: itemsPesanan,
     });
   }
   if (plan.includes('belum')) {
