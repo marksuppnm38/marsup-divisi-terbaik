@@ -638,20 +638,69 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
   .prod-modal .f input,.prod-modal .f select,.prod-modal .f textarea,#appWrap .prod-card{transition:none}
 }
 
-/* ---- Mode halaman: card yang sama (.prod-modal) dipindah ke #produkPageWrap, jadi semua aturan .prod-modal di atas tetap berlaku ----
-   Daftar di belakangnya TIDAK di-display:none: layout dan posisi scroll tabel harus selamat. visibility + inert (index.js) menutup aksesnya. */
+/* ---- Mode halaman: card yang sama (.prod-modal) dipindah ke #produkPageWrap, jadi aturan .prod-modal di atas tetap berlaku ----
+   Chrome modal (border, kartu bersarang, footer) dilepas; header + bar aksi + tab tetap di atas, hanya .prod-body yang scroll.
+   Daftar di belakangnya TIDAK di-display:none: layout dan posisi scroll tabel harus selamat. visibility + inert (index.js) menutup aksesnya.
+   Gutter dihitung dari lebar host, jadi header, tab, dan isi sejajar sementara scrollbar tetap di tepi kanan layar. */
 #viewProduk.is-detail > .vwrap{visibility:hidden;pointer-events:none}
-#appWrap .prod-page-host{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;min-height:0;padding:14px 22px 0;background:var(--surface)}
+@keyframes pp-in{from{opacity:0}}
+#appWrap .prod-page-host{--pp-w:860px;--pp-gutter:max(28px,calc((100% - var(--pp-w)) / 2));position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;min-height:0;background:var(--surface);animation:pp-in .12s ease-out}
 #appWrap .prod-page-host[hidden]{display:none}
-.prod-page-nav{flex:0 0 auto;padding-bottom:10px}
-.prod-modal.prod-page{flex:1 1 auto;width:100%;max-width:none;max-height:none;min-height:0;border-radius:var(--radius-md) var(--radius-md) 0 0;border-bottom:0}
-/* Tutup lewat tombol Kembali di atas card; X dan Batal khusus modal tidak dipakai di sini. */
-.prod-modal.prod-page .modal-close,.prod-modal.prod-page #cancelBtn{display:none}
-.prod-page-back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.prod-page-nav{flex:0 0 auto;padding:12px var(--pp-gutter) 2px}
+.prod-page-back{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0;border:0;background:none;color:var(--text-muted);font:inherit;font-size:12.5px;cursor:pointer}
+.prod-page-back:hover{color:var(--text)}
+.prod-page-back:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:var(--radius-sm)}
+
+.prod-modal.prod-page{flex:1 1 auto;width:100%;max-width:none;max-height:none;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:none}
+.prod-modal.prod-page .modal-close,.prod-modal.prod-page #cancelBtn,.prod-modal.prod-page .modal-sub{display:none}
+
+/* Header: nama produk jadi judul, kode + status di bawahnya, aksi (Simpan / Hapus) di kanan. Menggantikan footer modal. */
+.prod-modal.prod-page .modal-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 24px;align-items:start;margin:0;padding:4px var(--pp-gutter) 16px}
+.prod-modal.prod-page .modal-title{font-size:24px;font-weight:800;line-height:1.2;letter-spacing:-.01em;overflow-wrap:anywhere}
+.prod-modal.prod-page .modal-title:focus{outline:none} /* sasaran fokus programatik saat pindah halaman, bukan kontrol */
+.prod-page-meta{display:none}
+.prod-modal.prod-page .prod-page-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:8px;font-size:12.5px;color:var(--text-secondary)}
+.prod-page-meta .pm-kode{font-family:var(--font-mono);color:var(--text)}
+.prod-page-meta .vbadge{margin:0 4px 0 0}
+.prod-modal.prod-page .modal-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px 12px;margin:0;padding:0;border:0;background:none}
+.prod-modal.prod-page #deleteBtn{background:transparent} /* aksi berbahaya: outline saja, kalah tegas dari Simpan */
+.prod-dirty{display:none}
+.prod-modal.prod-page .prod-dirty{display:inline-flex;align-items:center;gap:4px;margin-right:6px;font-size:12.5px;font-weight:600;color:var(--amber-text)}
+.prod-modal.prod-page .prod-dirty[hidden]{display:none}
+.prod-modal.prod-page .prod-dirty .ti{font-size:16px}
+
+.prod-modal.prod-page .prod-tabs{margin:0;padding:0 var(--pp-gutter)}
+.prod-modal.prod-page .prod-tabs-hint{padding:10px var(--pp-gutter) 0}
+.prod-modal.prod-page .prod-body{padding:24px var(--pp-gutter) 56px}
+
+/* Bagian form: tanpa kartu bersarang; judul bagian bergaris bawah membawa penanda model simpan. */
+.prod-modal.prod-page .prod-tab-panel .fs,.prod-modal.prod-page .prod-tab-panel .fs.fs-panel{margin:0 0 32px;padding:0;border:0;border-radius:0;background:none}
+.prod-modal.prod-page .fs-head{flex-wrap:wrap;margin:0 0 16px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.save-mark{display:none}
+.prod-modal.prod-page .save-mark{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.save-mark .ti{font-size:13px}
+.save-mark-manual{background:var(--surface-3);color:var(--text-secondary)}
+.save-mark-auto{background:var(--teal-ok-bg);color:var(--teal-ok-text)}
+.klas-scope{display:none}
+.prod-modal.prod-page .klas-scope{display:block;flex:1 1 100%;font-size:12px;color:var(--text-muted)}
+
+/* Layar lebar: dua kolom. Ambang 1280px (bukan 1100px) karena sidebar memakan 224px: di bawahnya kolom < 450px terlalu sempit untuk isian berpasangan.
+   Multi-column pada DOM yang sama, jadi urutan form modal tidak perlu berubah: kiri Identitas + Klasifikasi, kanan Master + Fisik + INAPROC + Gambar. */
+@media (min-width:1280px){
+  #appWrap .prod-page-host{--pp-w:1240px}
+  .prod-modal.prod-page #ptab-dasar.active,.prod-modal.prod-page #ptab-akd.active{column-count:2;column-gap:56px}
+  .prod-modal.prod-page .prod-tab-panel .fs,.prod-modal.prod-page #gambarInstrumenSection{break-inside:avoid}
+  .prod-modal.prod-page #ptab-dasar .fs-panel{break-before:column}
+}
 @media (max-width:720px){
-  #appWrap .prod-page-host{padding:10px 0 0}
-  .prod-page-nav{padding:0 12px 8px}
-  .prod-modal.prod-page{border-radius:0;border-left:0;border-right:0}
+  #appWrap .prod-page-host{--pp-gutter:16px}
+  .prod-modal.prod-page .modal-head{grid-template-columns:minmax(0,1fr)}
+  .prod-modal.prod-page .modal-actions{justify-content:space-between}
+  .prod-modal.prod-page .prod-dirty{flex:1 1 100%;margin-right:0}
+  .prod-modal.prod-page .modal-actions .btn,.prod-modal.prod-page .prod-tab,.prod-page-back{min-height:40px}
+}
+@media (prefers-reduced-motion:reduce){
+  #appWrap .prod-page-host{animation:none}
 }
 
 /* ---- Crop fix: header/tab/hint tidak boleh ikut mengecil saat tinggi modal dibatasi ---- */

@@ -2579,11 +2579,50 @@ const viewProdukEl = document.getElementById('viewProduk');
 const produkListWrap = viewProdukEl.querySelector(':scope > .vwrap');
 const produkPageWrap = document.getElementById('produkPageWrap');
 let pageReturnId = null; // baris daftar yang tadi dibuka, supaya fokus kembali ke sana
+const modalHead = modalCard.querySelector('.modal-head');
+const modalActions = modalCard.querySelector('.modal-actions');
 function setModalMode(mode){
   if (modalMode === mode) return;
   modalMode = mode;
   (mode === 'page' ? produkPageWrap : modalOverlay).appendChild(modalCard);
   modalCard.classList.toggle('prod-page', mode === 'page');
+  // Halaman: Simpan / Hapus di header (selalu terlihat, dekat judul). Modal: kembali jadi footer. Node yang sama, listener ikut.
+  (mode === 'page' ? modalHead : modalCard).appendChild(modalActions);
+}
+
+// Header halaman: nama produk sebagai judul, kode + status di bawahnya. Dirender dari form saat data masuk dan sesudah Simpan
+// (bukan tiap ketikan: judul / status yang berubah sebelum disimpan akan terbaca seolah sudah tersimpan).
+function renderProdukPageHead(){
+  if (!isProdukPageOpen()) return;
+  const val = (id) => (document.getElementById(id).value || '').trim();
+  // Selagi memuat, form masih kosong: pinjam baris daftar supaya judul langsung terisi.
+  const baris = modalState === 'loading' ? produkRowById.get(String(currentProdukId)) : null;
+  const memuat = modalState === 'loading' && !baris;
+  const kode = baris ? (baris.kode_produk || '') : val('f_kode_produk');
+  const nama = baris ? (baris.nama_produk || '') : val('f_nama_produk');
+  const tipe = baris ? (baris.tipe || '') : val('f_tipe');
+  const brand = baris ? (baris.brand || '') : val('f_brand');
+  const aktif = baris ? baris.is_active !== false : document.getElementById('f_is_active').checked;
+  const verified = !!produkVerifiedIdSet && produkVerifiedIdSet.has(currentProdukId);
+  const seal = modalState === 'loading' ? '' : document.getElementById('akdSealHolder').innerHTML; // holder masih berisi produk sebelumnya selagi memuat
+  modalTitle.textContent = memuat ? 'Memuat produk…' : (nama || kode || 'Produk');
+  const bagian = [];
+  if (kode) bagian.push('<span class="pm-kode">' + escapeHtml(kode) + '</span>');
+  if (tipe) bagian.push('<span class="tipe-chip">' + escapeHtml(tipe) + '</span>');
+  if (!memuat) bagian.push(aktif
+    ? '<span class="status-pill ok"><i class="ti ti-circle-check" aria-hidden="true"></i>Aktif</span>'
+    : '<span class="status-pill neutral"><i class="ti ti-circle-x" aria-hidden="true"></i>Nonaktif</span>');
+  if (seal) bagian.push(seal);
+  if (verified) bagian.push('<span><i class="ti ti-rosette-discount-check-filled vbadge" aria-hidden="true"></i>Verified</span>');
+  if (brand) bagian.push('<span>Brand ' + escapeHtml(brand) + '</span>');
+  document.getElementById('prodPageMeta').innerHTML = bagian.join('');
+}
+// Segel AKD diisi ulang oleh alur AKD (hubungkan / lepas): header ikut.
+new MutationObserver(renderProdukPageHead).observe(document.getElementById('akdSealHolder'), { childList: true, subtree: true });
+
+function syncDirtyBadge(){
+  const el = document.getElementById('prodDirty');
+  if (el) el.hidden = !(modalDirty && modalState !== 'closed');
 }
 const isProdukPageOpen = () => modalMode === 'page' && modalState !== 'closed';
 // Daftar tidak di-display:none (posisi scroll & layout tabel harus selamat); inert + visibility menutup akses mouse, keyboard, dan pembaca layar.
@@ -2595,7 +2634,8 @@ function syncProdukPage(show){
   produkListWrap.inert = show;
   if (show) {
     modalTitle.tabIndex = -1; // heading jadi tujuan fokus saat pindah halaman
-    modalTitle.focus({ preventScroll: true });
+    // Ditunda satu frame: openEdit baru mengisi judul tepat setelah state berpindah, dan pembaca layar sebaiknya membaca judul yang sudah benar.
+    requestAnimationFrame(() => { if (isProdukPageOpen()) modalTitle.focus({ preventScroll: true }); });
   } else if (pageReturnId != null) {
     const row = viewProdukEl.querySelector('[data-id="' + CSS.escape(String(pageReturnId)) + '"]');
     pageReturnId = null;
@@ -2654,6 +2694,7 @@ function renderModalChrome(){
   modalOverlay.classList.toggle('open', modalState !== 'closed' && modalMode === 'overlay');
   modalOverlay.dataset.state = modalState;
   syncProdukPage(modalState !== 'closed' && modalMode === 'page');
+  syncDirtyBadge();
   const locked = modalState === 'loading' || modalState === 'busy';
   document.getElementById('saveBtn').disabled = locked;
   deleteBtn.disabled = locked;
@@ -2695,9 +2736,16 @@ function closeModal(){
 // langsung ke database (lihat hint "tersimpan otomatis" di UI-nya). ----
 let modalDirty = false;
 const unsavedConfirmOverlay = document.getElementById('unsavedConfirmOverlay');
-modalCard.addEventListener('input', () => { modalDirty = true; });
+// Mode halaman menandai Harga / AKD / Media / unggah gambar "Tersimpan otomatis": mengetik di baris tambah harga atau kolom cari AKD
+// BUKAN perubahan yang menunggu Simpan (kalau dihitung, indikator dan guard "belum disimpan" berbohong). Modal tetap seperti dulu.
+function dirtyFromEvent(e){
+  if (modalMode !== 'page') return true;
+  const t = e.target;
+  return !(t && (t.type === 'file' || (t.closest && t.closest('#ptab-harga, #ptab-media, #ptab-akd'))));
+}
+modalCard.addEventListener('input', (e) => { if (dirtyFromEvent(e)) { modalDirty = true; syncDirtyBadge(); } });
 document.getElementById('f_link_v6').addEventListener('input', renderLinkV6Hint);
-modalCard.addEventListener('change', () => { modalDirty = true; });
+modalCard.addEventListener('change', (e) => { if (dirtyFromEvent(e)) { modalDirty = true; syncDirtyBadge(); } });
 
 function attemptCloseModal(){
   if (modalRejectIfBusy()) return;
@@ -2926,6 +2974,7 @@ async function openEdit(produkId, opts = {}){
   currentProdukId = produkId;
   modalTitle.textContent = 'Edit Produk';
   modalSub.textContent = 'Memuat data...';
+  renderProdukPageHead(); // mode halaman: judul dari baris daftar selagi form memuat
   setProdTabsLocked(false);
   document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
   deleteBtn.style.display = 'inline-flex';
@@ -2956,6 +3005,7 @@ async function openEdit(produkId, opts = {}){
   modalSub.textContent = 'Kode: ' + (p.kode_produk || '—');
   applySetModalAdjustments(); // tipe sudah terisi di f_tipe; dulu dikerjakan monkey-patch SETELAH semua fetch selesai
   modalGo('edit');            // form sudah berisi data asli -> Simpan/Hapus boleh dipakai
+  renderProdukPageHead();     // mode halaman: header dari data asli (harus SESUDAH state 'edit'; selagi 'loading' ia meminjam baris daftar)
   atributUi.openFor(produkId, p.tipe).catch(() => {}); // klasifikasi (keluarga / kategori / spesialisasi): dimuat di latar, tidak menunda form
 
   await Promise.all([
@@ -3504,6 +3554,7 @@ async function saveProdukInner(session){
   }
   showToast(currentProdukId ? 'Produk diperbarui' : 'Produk ditambahkan');
   modalDirty = false; // data form sekarang sudah sama persis dengan yang di database
+  renderProdukPageHead(); // header halaman mengikuti data yang baru tersimpan
   currentProdukId = result.data.id;
 
   // Produk baru yang dibuat dari daftar "belum ada di database" di Composition set:

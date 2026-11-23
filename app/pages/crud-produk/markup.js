@@ -143,7 +143,7 @@ export const CRUD_PRODUK_MARKUP = `
       <!-- HOST HALAMAN DETAIL PRODUK: .modal-card form produk dipindah ke sini (appendChild) saat dibuka dari daftar; ia kembali ke #modalOverlay saat ditutup. -->
       <div class="prod-page-host" id="produkPageWrap" data-page-dialog="closed" hidden>
         <div class="prod-page-nav">
-          <button class="btn btn-ghost prod-page-back" id="produkPageBackBtn" type="button"><i class="ti ti-arrow-left"></i> Kembali ke daftar produk</button>
+          <button class="prod-page-back" id="produkPageBackBtn" type="button"><i class="ti ti-arrow-left" aria-hidden="true"></i>Kembali ke daftar produk</button>
         </div>
       </div>
     </div>
@@ -687,6 +687,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div>
         <div class="modal-title" id="modalTitle">Tambah Produk</div>
         <div class="modal-sub" id="modalSub">Isi data produk baru</div>
+        <div class="prod-page-meta" id="prodPageMeta"></div>
       </div>
       <button class="modal-close" id="modalCloseBtn" type="button" title="Tutup" aria-label="Tutup"><i class="ti ti-x"></i></button>
     </div>
@@ -704,7 +705,7 @@ export const CRUD_PRODUK_MARKUP = `
 
         <section class="fs">
           <div class="fs-head">
-            <h4>Identitas produk</h4>
+            <h4>Identitas produk</h4><span class="save-mark save-mark-manual" title="Tertulis ke database setelah klik Simpan"><i class="ti ti-device-floppy" aria-hidden="true"></i>Perlu Simpan</span>
             <label class="fs-toggle" for="f_is_active"><input type="checkbox" id="f_is_active" checked/> Produk aktif</label>
           </div>
           <div class="grid2">
@@ -725,7 +726,7 @@ export const CRUD_PRODUK_MARKUP = `
         <!-- Klasifikasi: atribut produk yang bisa ditentukan manual. Disimpan terpisah dari tombol Simpan (atribut-ui.js). -->
         <section class="fs" id="klasSection" hidden>
           <div class="fs-head">
-            <h4>Klasifikasi</h4>
+            <h4>Klasifikasi</h4><span class="save-mark save-mark-manual" title="Punya tombol simpan sendiri, terpisah dari Simpan di atas"><i class="ti ti-device-floppy" aria-hidden="true"></i>Simpan terpisah</span>
             <span class="fs-note">Pilih "Otomatis" untuk mengikuti sistem</span>
           </div>
           <div class="akd-hint" id="klasLocked" hidden>Simpan produk dulu, lalu klasifikasinya bisa diatur di sini.</div>
@@ -752,13 +753,14 @@ export const CRUD_PRODUK_MARKUP = `
               <button class="btn btn-accent btn-sm" id="klasSimpanBtn" type="button"><i class="ti ti-check"></i> Simpan klasifikasi</button>
               <button class="btn btn-ghost btn-sm" id="klasResetBtn" type="button"><i class="ti ti-restore"></i> Semua ke otomatis</button>
               <span class="klas-msg" id="klasMsg" aria-live="polite"></span>
+              <span class="klas-scope">Hanya menyimpan Klasifikasi. Info dasar disimpan lewat Simpan di atas.</span>
             </div>
           </div>
         </section>
 
         <section class="fs fs-panel">
           <div class="fs-head">
-            <h4>Master produk</h4>
+            <h4>Master produk</h4><span class="save-mark save-mark-manual" title="Tertulis ke database setelah klik Simpan"><i class="ti ti-device-floppy" aria-hidden="true"></i>Perlu Simpan</span>
             <span class="fs-note">Data vendor, dicari lewat kode asli</span>
           </div>
           <div class="f">
@@ -778,7 +780,7 @@ export const CRUD_PRODUK_MARKUP = `
         </section>
 
         <section class="fs">
-          <div class="fs-head"><h4>Fisik &amp; spesifikasi</h4></div>
+          <div class="fs-head"><h4>Fisik &amp; spesifikasi</h4><span class="save-mark save-mark-manual" title="Tertulis ke database setelah klik Simpan"><i class="ti ti-device-floppy" aria-hidden="true"></i>Perlu Simpan</span></div>
           <div class="grid2 grid-fisik">
             <div class="f"><label for="f_berat_gram">Berat (gram)</label><input type="number" step="any" id="f_berat_gram" inputmode="decimal"/></div>
             <div class="f full"><label for="f_spesifikasi">Spesifikasi</label><textarea id="f_spesifikasi"></textarea></div>
@@ -786,7 +788,7 @@ export const CRUD_PRODUK_MARKUP = `
         </section>
 
         <section class="fs">
-          <div class="fs-head"><h4>Tayang di INAPROC</h4></div>
+          <div class="fs-head"><h4>Tayang di INAPROC</h4><span class="save-mark save-mark-manual" title="Tertulis ke database setelah klik Simpan"><i class="ti ti-device-floppy" aria-hidden="true"></i>Perlu Simpan</span></div>
           <div class="f">
             <label for="f_link_v6">Link V6</label>
             <input type="text" id="f_link_v6" placeholder="https://katalog.inaproc.id/..." autocomplete="off" spellcheck="false"/>
@@ -802,7 +804,7 @@ export const CRUD_PRODUK_MARKUP = `
 
         <div id="gambarInstrumenSection" style="display:none;">
           <section class="fs">
-            <div class="fs-head"><h4>Gambar instrumen</h4><span class="fs-note">Bucket thumbnails</span></div>
+            <div class="fs-head"><h4>Gambar instrumen</h4><span class="save-mark save-mark-auto" title="Setiap perubahan langsung tertulis ke database"><i class="ti ti-cloud-check" aria-hidden="true"></i>Tersimpan otomatis</span><span class="fs-note">Bucket thumbnails</span></div>
             <div class="img-box">
               <div id="gambarInstrumenPreviewWrap" style="display:none;flex-shrink:0;">
                 <img id="gambarInstrumenPreview" alt="Preview gambar instrumen"/>
@@ -823,7 +825,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="prod-tab-panel" id="ptab-akd">
         <section class="fs">
           <div class="fs-head">
-            <h4>Legalitas AKD</h4><span id="akdSealHolder"></span>
+            <h4>Legalitas AKD</h4><span id="akdSealHolder"></span><span class="save-mark save-mark-auto" title="Setiap perubahan langsung tertulis ke database"><i class="ti ti-cloud-check" aria-hidden="true"></i>Tersimpan otomatis</span>
             <button class="btn btn-ghost btn-sm fs-action" id="toggleAkdBoxBtn" type="button"><i class="ti ti-link"></i> Kelola AKD</button>
           </div>
           <dl class="ro-grid">
@@ -857,7 +859,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="prod-tab-panel" id="ptab-harga">
         <div id="hargaSection">
           <section class="fs">
-            <div class="fs-head"><h4>Harga</h4></div>
+            <div class="fs-head"><h4>Harga</h4><span class="save-mark save-mark-auto" title="Setiap perubahan langsung tertulis ke database"><i class="ti ti-cloud-check" aria-hidden="true"></i>Tersimpan otomatis</span></div>
             <div class="table-card">
               <table>
                 <thead><tr><th>Tahun</th><th>Harga EKATALOG</th><th>Turunan (otomatis)</th><th></th></tr></thead>
@@ -879,7 +881,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="prod-tab-panel" id="ptab-media">
         <div id="mediaSection">
           <section class="fs">
-            <div class="fs-head"><h4>Brosur &amp; gambar</h4></div>
+            <div class="fs-head"><h4>Brosur &amp; gambar</h4><span class="save-mark save-mark-auto" title="Setiap perubahan langsung tertulis ke database"><i class="ti ti-cloud-check" aria-hidden="true"></i>Tersimpan otomatis</span></div>
             <div class="table-card">
               <table>
                 <thead><tr><th>Jenis</th><th>Judul</th><th>URL</th><th>Utama</th><th></th></tr></thead>
@@ -910,6 +912,7 @@ export const CRUD_PRODUK_MARKUP = `
     </div>
 
     <div class="modal-actions">
+      <span class="prod-dirty" id="prodDirty" role="status" hidden><i class="ti ti-point-filled" aria-hidden="true"></i>Ada perubahan belum disimpan</span>
       <button class="btn btn-danger-ghost" id="deleteBtn" style="display:none;"><i class="ti ti-trash"></i> Hapus produk</button>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-ghost" id="cancelBtn">Batal</button>
