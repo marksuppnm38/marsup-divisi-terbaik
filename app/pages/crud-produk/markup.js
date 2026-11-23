@@ -344,11 +344,12 @@ export const CRUD_PRODUK_MARKUP = `
             <input type="text" id="akdSearchBoxInput" placeholder="Cari no. AKD, nama AKD, kode set..."/>
           </div>
         </div>
+        <div class="dt-bar" id="akdDtBar"></div>
         <div class="vbody">
           <div class="table-card akd-table-scroll">
                   <table>
                     <thead>
-                      <tr><th>No. AKD</th><th>Nama AKD</th><th>Tipe</th><th>Golongan</th><th>Kategori Set</th><th>Masa Berlaku</th><th>Status Terupdate</th><th>Link Dok.</th><th>Produk Terhubung</th></tr>
+                      <tr id="akdHeadRow"></tr>
                     </thead>
                     <tbody id="akdTableBody">
                       <tr class="state-row"><td colspan="9">Memuat data...</td></tr>
@@ -389,11 +390,12 @@ export const CRUD_PRODUK_MARKUP = `
                 <button class="filter-chip" data-filter="ada">Sudah Ada Kode<span class="fc-count" id="fc-kfa-ada"></span></button>
                 <button class="filter-chip" data-filter="belum">Belum Ada Kode<span class="fc-count" id="fc-kfa-belum"></span></button>
               </div>
+        <div class="dt-bar" id="kfaDtBar"></div>
         <div class="vbody">
           <div class="table-card akd-table-scroll">
                   <table>
                     <thead>
-                      <tr><th>Kode Produk</th><th>Nama Produk</th><th>Kode KFA</th><th>Kode Cangkang</th><th>Nama Cangkang</th><th>No. AKD Rujukan</th><th>Tgl Verifikasi</th><th>Catatan</th></tr>
+                      <tr id="kfaHeadRow"></tr>
                     </thead>
                     <tbody id="kfaTableBody">
                       <tr class="state-row"><td colspan="8">Memuat data...</td></tr>

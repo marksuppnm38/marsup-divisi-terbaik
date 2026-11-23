@@ -23,6 +23,7 @@ import { installDashboardMobile } from './mobile.js';
 import { KONVERSIAN_SUBNAV } from '../konversian/subnav.js';
 import { CRUD_PRODUK_SUBNAV } from '../crud-produk/subnav.js';
 import { parseLinkV6 } from '../crud-produk/ui-utils.js';
+import { setTablePreset } from '../../../shared/table-preset.js';
 import { fetchHargaLatestMap, selectPricelistRows, writePricelistXlsx } from '../../../shared/exports/pricelist.js';
 
 const VENDOR_CHAIN = [
@@ -402,9 +403,11 @@ async function rpc(fn, params){
     const [rSum, rCnt, rExp, rSoon, rSesi] = sumber;
     const ok = (r) => r.status === 'fulfilled';
     const items = [];
-    if (ok(rExp)) items.push({ n: rExp.value, urgent: true, label: 'AKD sudah kadaluarsa', detail: 'Masa berlakunya sudah lewat', act: 'Buka AKD', nav: '/crud-produk/akd' });
+    if (ok(rExp)) items.push({ n: rExp.value, urgent: true, label: 'AKD sudah kadaluarsa', detail: 'Masa berlakunya sudah lewat', act: 'Buka AKD', nav: '/crud-produk/akd',
+      preset: { table: 'akd', filters: [{ key: 'masa_berlaku', op: 'expired' }], sort: { key: 'masa_berlaku', dir: 'desc' } } });
     if (ok(rSesi)) items.push({ n: rSesi.value, urgent: true, label: 'Sesi konversi mandek', detail: 'Tidak ada aktivitas selama 2 hari atau lebih', act: 'Buka sesi', nav: '/konversian/sesi' });
-    if (ok(rSoon)) items.push({ n: rSoon.value, label: 'AKD kadaluarsa dalam 30 hari', detail: 'Siapkan perpanjangan sebelum masa berlakunya lewat', act: 'Buka AKD', nav: '/crud-produk/akd' });
+    if (ok(rSoon)) items.push({ n: rSoon.value, label: 'AKD kadaluarsa dalam 30 hari', detail: 'Siapkan perpanjangan sebelum masa berlakunya lewat', act: 'Buka AKD', nav: '/crud-produk/akd',
+      preset: { table: 'akd', filters: [{ key: 'masa_berlaku', op: 'within', value: 30 }], sort: { key: 'masa_berlaku', dir: 'asc' } } });
     if (ok(rCnt)) {
       items.push({ n: Number(rCnt.value.disetujui_tanpa_link) || 0, label: 'Disetujui INAPROC, belum ada Link V6', detail: 'Belum masuk pricelist sampai Link V6 terisi', act: 'Isi Link V6', nav: '/crud-produk/produk' });
       items.push({ n: Number(rCnt.value.belum_diajukan) || 0, label: 'Produk belum diajukan ke INAPROC', detail: 'Belum punya AKD', act: 'Buka produk', nav: '/crud-produk/produk' });
@@ -424,7 +427,7 @@ async function rpc(fn, params){
     const todo = items.filter((i) => i.n > 0), done = items.filter((i) => !(i.n > 0));
     const count = $('wl-count');
     if (count) count.textContent = todo.length ? `${fmt(todo.length)} hal perlu tindakan` : '';
-    const wlRow = (it) => `<a class="wl-row" href="${it.nav}" data-nav="${it.nav}">
+    const wlRow = (it) => `<a class="wl-row" href="${it.nav}" data-nav="${it.nav}"${it.preset ? ` data-preset="${esc(JSON.stringify(it.preset))}"` : ''}>
       <div class="wl-n${it.urgent ? ' is-urgent' : ''}">${fmt(it.n)}</div>
       <div><div class="wl-label">${esc(it.label)}</div><div class="wl-detail">${esc(it.detail)}</div></div>
       <span class="wl-act">${esc(it.act)}</span></a>`;
@@ -1081,6 +1084,8 @@ function isSafeHttpUrl(u){
       // <a href> asli: biarkan browser kalau ctrl/cmd/shift-klik (buka tab baru)
       if (el.tagName === 'A' && (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) return;
       e.preventDefault();
+      // Kartu yang membawa preset (mis. AKD kadaluarsa) membuka tabel tujuan SUDAH terfilter + terurut (shared/table-preset.js).
+      if (el.dataset.preset) { try { setTablePreset(JSON.parse(el.dataset.preset)); } catch (err) { /* preset rusak: buka tabel tanpa filter */ } }
       goTo(el.dataset.nav);
       return;
     }

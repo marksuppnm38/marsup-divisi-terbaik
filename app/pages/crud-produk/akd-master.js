@@ -8,6 +8,7 @@
 // nebeng S. Logic di dalam TIDAK diubah sama sekali.
 import { showToast, crudConfirm, crudAlert, renderPgBar, guardHapus, barisTerhapus } from './ui-utils.js';
 import { orIlike } from '../../../shared/api.js';
+import { createDataTable } from '../../../shared/data-table.js';
 
 export function installAkdMaster(S) {
 // ================================================================
@@ -38,6 +39,53 @@ async function loadAkdDistinctValues(){
   document.getElementById('akd_status_list').innerHTML = akdDistinct.status_terupdate.map(s => `<option value="${S.escapeHtml(s)}">`).join('');
 }
 
+// ---- Tabel dinamis (shared/data-table.js): urut + saring per kolom + kolom bisa dipilih ----
+// Kolom di bawah = semua kolom tabel `akd` yang berguna + "Produk Terhubung" (dihitung, tidak bisa disort/filter).
+// Yang tidak tampil bawaan (hidden) bisa dimunculkan dari tombol "Kolom".
+const AKD_TIPE_OPTS = [{ value: 'satuan', label: 'satuan' }, { value: 'set', label: 'set' }, { value: 'unit', label: 'unit' }];
+const akdOpts = (k) => () => akdDistinct[k] || [];
+const AKD_COLS = [
+  { key: 'no_akd', label: 'No. AKD', locked: true, td: 'kode-cell', render: (r) => S.escapeHtml(r.no_akd) },
+  { key: 'nama_akd', label: 'Nama AKD' },
+  { key: 'tipe_akd', label: 'Tipe', type: 'enum', options: AKD_TIPE_OPTS, render: (r) => `<span class="tipe-chip">${S.escapeHtml(r.tipe_akd || '—')}</span>` },
+  { key: 'golongan', label: 'Golongan', type: 'enum', options: akdOpts('golongan') },
+  { key: 'kategori_set', label: 'Kategori Set' },
+  { key: 'masa_berlaku', label: 'Masa Berlaku', type: 'date', render: (r) => akdMasaBerlakuPill(r.masa_berlaku),
+    sortLabels: ['Segera habis dulu', 'Paling lama berlaku dulu'],
+    datePresets: [
+      { label: 'Sudah kadaluarsa', filter: { op: 'expired' } },
+      { label: 'Kadaluarsa ≤ 30 hari lagi', chip: 'dalam 30 hari', filter: { op: 'within', value: 30 } },
+      { label: 'Kadaluarsa ≤ 90 hari lagi', chip: 'dalam 90 hari', filter: { op: 'within', value: 90 } },
+    ] },
+  { key: 'status_terupdate', label: 'Status Terupdate', type: 'enum', options: akdOpts('status_terupdate') },
+  { key: 'link_dokumen', label: 'Link Dok.', sortable: false, tdStyle: 'text-align:center;',
+    render: (r) => r.link_dokumen ? '<i class="ti ti-link link-yes" title="Sudah ada link dokumen"></i>' : '<i class="ti ti-link-off link-no" title="Belum ada link dokumen"></i>' },
+  { key: 'produk_terhubung', label: 'Produk Terhubung', sortable: false, filterable: false,
+    render: (r, ctx) => { const n = (ctx.counts && ctx.counts.get(r.id)) || 0; return n > 0 ? `<span class="status-pill ok">${n} produk</span>` : '<span class="status-pill neutral">Belum ada</span>'; } },
+  // Tersembunyi bawaan -- dimunculkan lewat tombol "Kolom"
+  { key: 'tgl_maju_mas_munir', label: 'Tgl Maju Mas Munir', type: 'date', hidden: true },
+  { key: 'kode_set', label: 'Kode Set', hidden: true },
+  { key: 'nama_database', label: 'Nama Database', hidden: true },
+  { key: 'penanda_kode', label: 'Penanda Kode', hidden: true },
+  { key: 'update_progres', label: 'Update Progres', hidden: true },
+  { key: 'updated_at', label: 'Terakhir Diubah', type: 'date', hidden: true, fillFilter: false },
+];
+const akdDt = createDataTable({
+  id: 'akd',
+  columns: AKD_COLS,
+  headRow: document.getElementById('akdHeadRow'),
+  bar: document.getElementById('akdDtBar'),
+  defaultSort: { key: 'updated_at', dir: 'desc' }, // sama dengan urutan lama
+  tieBreak: 'id',
+  presets: [
+    { id: 'ringkas', label: 'Ringkas', keys: ['no_akd', 'nama_akd', 'masa_berlaku', 'status_terupdate'] },
+    { id: 'kadaluarsa', label: 'Pantau kadaluarsa', keys: ['no_akd', 'nama_akd', 'masa_berlaku', 'tgl_maju_mas_munir', 'status_terupdate', 'update_progres', 'link_dokumen'] },
+  ],
+  onChange: () => loadAkd(1),
+  onRowClick: (r) => openEditAkd(r.id),
+  emptyText: 'Tidak ada AKD ditemukan.',
+});
+
 function akdMasaBerlakuPill(dateStr){
   if (!dateStr) return `<span class="status-pill neutral">—</span>`;
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -51,7 +99,7 @@ function akdMasaBerlakuPill(dateStr){
 
 async function renderAkdTable(rows){
   const tbody = document.getElementById('akdTableBody');
-  if (!rows.length) { tbody.innerHTML = `<tr class="state-row"><td colspan="9">Tidak ada AKD ditemukan.</td></tr>`; return; }
+  if (!rows.length) { akdDt.renderBody(tbody, rows); return; }
   // Jumlah produk terhubung buat baris yang lagi tampil -> query kecil per halaman.
   const idsOnPage = rows.map(r => r.id);
   const counts = new Map();
@@ -59,45 +107,31 @@ async function renderAkdTable(rows){
     const { data: linkRows } = await S.sb.from('produk_akd').select('akd_id').in('akd_id', idsOnPage);
     (linkRows || []).forEach(r => counts.set(r.akd_id, (counts.get(r.akd_id) || 0) + 1));
   }
-  tbody.innerHTML = '';
-  rows.forEach(r => {
-    const cnt = counts.get(r.id) || 0;
-    const tr = document.createElement('tr');
-    tr.className = 'clickable';
-    tr.innerHTML = `
-      <td class="kode-cell">${S.escapeHtml(r.no_akd)}</td>
-      <td>${S.escapeHtml(r.nama_akd || '—')}</td>
-      <td><span class="tipe-chip">${S.escapeHtml(r.tipe_akd || '—')}</span></td>
-      <td>${S.escapeHtml(r.golongan || '—')}</td>
-      <td>${S.escapeHtml(r.kategori_set || '—')}</td>
-      <td>${akdMasaBerlakuPill(r.masa_berlaku)}</td>
-      <td>${S.escapeHtml(r.status_terupdate || '—')}</td>
-      <td style="text-align:center;">${r.link_dokumen ? '<i class="ti ti-link link-yes" title="Sudah ada link dokumen"></i>' : '<i class="ti ti-link-off link-no" title="Belum ada link dokumen"></i>'}</td>
-      <td>${cnt > 0 ? `<span class="status-pill ok">${cnt} produk</span>` : `<span class="status-pill neutral">Belum ada</span>`}</td>
-    `;
-    tr.addEventListener('click', () => openEditAkd(r.id));
-    tbody.appendChild(tr);
-  });
+  akdDt.renderBody(tbody, rows, { counts });
 }
 
 // Browse sederhana: tanpa search -> query server (paged, count exact).
 // Dengan search -> pakai ILIKE di server juga (bukan fetch-semua-lalu-filter-client),
 // biar halaman AKD tetap ringan dan gak nyimpen cache 5000 baris di memori.
+let akdReq = 0; // balapan: urut/filter diganti cepat -> hanya respons terbaru yang digambar
 async function loadAkd(page){
   akdPage = page || akdPage || 1;
+  const myReq = ++akdReq;
   const tbody = document.getElementById('akdTableBody');
-  tbody.innerHTML = `<tr class="state-row"><td colspan="9">Memuat data...</td></tr>`;
+  akdDt.showState(tbody, 'Memuat data...');
   document.getElementById('akdCount').textContent = 'Memuat...';
 
   const from = (akdPage - 1) * AKD_PAGE_SIZE, to = from + AKD_PAGE_SIZE - 1;
   let query = S.sb.from('akd').select(AKD_COLUMNS, { count: 'exact' });
   const q = akdSearchQuery.trim();
   if (q) query = query.or(orIlike(['no_akd', 'nama_akd', 'kode_set'], q));
-  const { data, error, count } = await query.order('updated_at', { ascending: false }).range(from, to);
-  if (error) { tbody.innerHTML = `<tr class="state-row"><td colspan="9">Gagal memuat: ${S.escapeHtml(error.message)}</td></tr>`; return; }
+  // Urutan + filter kolom dikerjakan server (shared/data-table.js), jadi paging tetap benar.
+  const { data, error, count } = await akdDt.applyQuery(query).range(from, to);
+  if (myReq !== akdReq) return;
+  if (error) { akdDt.showState(tbody, 'Gagal memuat: ' + error.message); return; }
   const rows = data || [], total = count || 0;
 
-  document.getElementById('akdCount').textContent = total + ' AKD' + (q ? ` untuk "${q}"` : '');
+  document.getElementById('akdCount').textContent = total + ' AKD' + (q ? ` untuk "${q}"` : '') + (akdDt.hasFilters() ? ' (terfilter)' : '');
   renderPgBar(document.getElementById('akdPagination'), { page: akdPage, pageSize: AKD_PAGE_SIZE, total, onPageChange: (p) => loadAkd(p) });
   await renderAkdTable(rows);
 }
