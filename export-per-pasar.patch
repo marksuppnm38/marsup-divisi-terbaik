@@ -1,0 +1,154 @@
+diff --git a/app/pages/populasi/export.js b/app/pages/populasi/export.js
+index e653608..12d605e 100644
+--- a/app/pages/populasi/export.js
++++ b/app/pages/populasi/export.js
+@@ -56,13 +56,13 @@ export const XL_PRESETS = [
+   {
+     id: 'presentasi', nama: 'Presentasi dan diskusi',
+     desc: 'Gambaran cepat untuk dibicarakan: per provinsi, per produk, per kategori, dan daftar RS. Tanpa data teknis.',
+-    sheets: ['provinsi', 'produk', 'matriks', 'rs', 'rincianrs'],
++    sheets: ['provinsi', 'pasar', 'produk', 'matriks', 'rs', 'rincianrs'],
+     grp: { wil: 1, jml: 1, status: 0, waktu: 1, produk: 1, dok: 0, cat: 1, tek: 0, sebaran: 1, dist: 0 },
+   },
+   {
+     id: 'internal', nama: 'Laporan dan analisis internal',
+     desc: 'Lengkap: semua sheet termasuk rincian pesanan, nomor PO/RMP, dan kolom teknis. Hanya untuk internal.',
+-    sheets: ['rs', 'produk', 'provinsi', 'distributor', 'matriks', 'pesanan', 'belum'],
++    sheets: ['rs', 'produk', 'provinsi', 'pasar', 'distributor', 'matriks', 'pesanan', 'belum'],
+     grp: { wil: 1, jml: 1, status: 1, waktu: 1, produk: 1, dok: 1, cat: 1, tek: 1, sebaran: 1, dist: 1 },
+   },
+   {
+@@ -91,6 +91,8 @@ export const XL_SHEETS = [
+     desc: 'Populasi per produk atau jenis set: jumlah, berapa RS, berapa provinsi.' },
+   { id: 'provinsi', nama: 'Per Provinsi', when: (i) => !i.provinsiDipilih,
+     desc: 'Jumlah RS, set, pcs, dan unit per provinsi.' },
++  { id: 'pasar', nama: 'Per Pasar', when: (i) => i.adaPasar,
++    desc: 'Pemerintah vs Swasta (dari kode RMP): jumlah RS, pesanan, set/pcs/unit, dan nilai Rp. Nilai kedua pasar berasal dari sumber berbeda, lihat catatan di sheet.' },
+   { id: 'distributor', nama: 'Per Distributor', when: (i) => i.adaDist,
+     desc: 'Peringkat distributor: jumlah RS, PO, set/pcs/unit, provinsi dan produk terbanyak. Hanya untuk internal.' },
+   { id: 'matriks', nama: 'RS per Kategori', when: (i) => i.multiKategori,
+@@ -122,6 +124,8 @@ const COLS = {
+     { id: 'unit_p', h: 'Unit dalam proses', k: 'unit_p', w: 12, fmt: XL_NUMZ, grp: 'status', when: (i) => i.hasUnit && i.semuaStatus, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya) pada pesanan yang masih dalam proses.' },
+     { id: 'unit', h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ, grp: 'jml', req: 1, when: (i) => i.hasUnit, desc: 'Jumlah unit (elektromedis, alat laboratorium, penunjang medis, dan unit lainnya).' },
+     { id: 'pesanan', h: 'Jumlah pesanan', k: 'pesanan', w: 11, fmt: XL_NUMZ, grp: 'jml', desc: 'Jumlah pesanan dari RS ini menurut aplikasi.' },
++    { id: 'pesPem', h: 'Pesanan pemerintah', k: 'pesPem', w: 12, fmt: XL_NUMZ, grp: 'jml', when: (i) => i.adaPasarCampur, desc: 'Jumlah pesanan (No. RMP) pemerintah dari RS ini: kode RMP tanpa akhiran huruf.' },
++    { id: 'pesSw', h: 'Pesanan swasta', k: 'pesSw', w: 12, fmt: XL_NUMZ, grp: 'jml', when: (i) => i.adaPasarCampur, desc: 'Jumlah pesanan (No. RMP) swasta dari RS ini: kode RMP-R (retail dan pembelian langsung).' },
+     { id: 'pertama', h: 'Pesanan pertama', k: 'pertama', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan paling awal pada hasil ini. Kosong bila tidak ada tanggal tercatat.' },
+     { id: 'terakhir', h: 'Pesanan terakhir', k: 'terakhir', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan paling baru. Kosong bila tidak ada tanggal tercatat.' },
+     { id: 'rincian', h: 'Jenis yang dipesan', k: 'rincian', w: 62, wrap: 1, grp: 'produk', desc: 'Produk atau jenis set yang dipesan, diikuti ×jumlahnya.' },
+@@ -176,7 +180,7 @@ const COLS = {
+     { id: 'status', h: 'Status', k: 'status', w: 14, grp: 'waktu', desc: 'Terkirim atau Dalam proses.' },
+     { id: 'tanggal', h: 'Tanggal pesanan', k: 'tanggal', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan seperti tercatat. Kosong bila tidak tercatat.' },
+     { id: 'rmp', h: 'No. RMP', k: 'rmp', w: 24, grp: 'dok', drop: 1, desc: 'Nomor RMP internal.' },
+-    { id: 'pasar', h: 'Pasar', k: 'pasar', w: 13, grp: 'dok', drop: 1, desc: 'Pemerintah (kode RMP tanpa akhiran), Swasta (RMP-R), atau Lainnya (pola kode tidak dikenal).' },
++    { id: 'pasar', h: 'Pasar', k: 'pasar', w: 13, grp: 'cat', drop: 1, desc: 'Pemerintah (kode RMP tanpa akhiran), Swasta (RMP-R), atau Lainnya (pola kode tidak dikenal).' },
+     { id: 'nilaiRmp', h: 'Nilai RMP (Rp)', k: 'nilaiRmp', w: 18, fmt: '#,##0', grp: 'dok', drop: 1, desc: 'Nilai seluruh No. RMP (TOTAL VALUE PRODUK include tax, dari ALL V). Dicantumkan SEKALI di baris pertama tiap No. RMP, bukan per item, jadi jangan dijumlahkan per baris.' },
+     { id: 'hargaRo', h: 'Harga RO (Rp)', k: 'hargaRo', w: 16, fmt: '#,##0', grp: 'dok', drop: 1, desc: 'Harga satuan dari pricelist RO (FINAL RO 2026, bila kosong PL 2026). Hanya untuk baris retail berkode RO.' },
+     { id: 'nilaiRo', h: 'Nilai RO (Rp)', k: 'nilaiRo', w: 18, fmt: '#,##0', grp: 'dok', drop: 1, desc: 'Jumlah pcs x Harga RO, per baris (boleh dijumlahkan). Kosong bila bukan kode RO atau harga RO belum ada.' },
+@@ -201,6 +205,21 @@ const COLS_PROV = [
+   { id: 'terakhir', h: 'Pesanan terakhir', k: 'terakhir', w: 14, fmt: XL_DATE, desc: 'Tanggal pesanan paling baru. Kosong bila tidak ada tanggal tercatat.' },
+ ];
+ 
++const COLS_PASAR = [
++  { id: 'pasar', h: 'Pasar', k: 'pasar', w: 16, desc: 'Pemerintah = kode RMP tanpa akhiran huruf; Swasta = RMP-R; Lainnya = pola kode tidak dikenal. Konsinyasi (RMP-K, RMP-RK) tidak ikut pada cakupan Semua.' },
++  { id: 'rs', h: 'Jumlah RS', k: 'rs', w: 11, fmt: XL_NUMZ, desc: 'Jumlah RS/instansi di pasar ini. Satu RS bisa muncul di dua pasar, jadi tidak dijumlahkan.' },
++  { id: 'pesanan', h: 'Jumlah pesanan', k: 'pesanan', w: 12, fmt: XL_NUMZ, desc: 'Jumlah pesanan (No. RMP unik per RS) di pasar ini.' },
++  { id: 'set', h: 'Jumlah set', k: 'set', w: 12, fmt: XL_NUMZ, when: (i) => i.hasSet, desc: 'Jumlah set.' },
++  { id: 'pcs', h: 'Jumlah pcs', k: 'pcs', w: 12, fmt: XL_NUMZ, when: (i) => i.hasPcs, desc: 'Jumlah pcs (instrumen satuan, termasuk isi set dan BMHP).' },
++  { id: 'unit', h: 'Jumlah unit', k: 'unit', w: 12, fmt: XL_NUMZ, when: (i) => i.hasUnit, desc: 'Jumlah unit (alat medis, elektromedis, alat laboratorium).' },
++  { id: 'rmpTotal', h: 'Jumlah RMP', k: 'rmpTotal', w: 11, fmt: XL_NUMZ, desc: 'Jumlah No. RMP berbeda di pasar ini.' },
++  { id: 'rmpNilai', h: 'RMP bernilai', k: 'rmpNilai', w: 11, fmt: XL_NUMZ, desc: 'Berapa No. RMP yang nilainya bisa dihitung. Selisih dengan Jumlah RMP = RMP belum punya nilai.' },
++  { id: 'nilai', h: 'Nilai (Rp)', k: 'nilai', w: 18, fmt: '#,##0', desc: 'Pemerintah: TOTAL VALUE PRODUK include tax dari ALL V, per No. RMP utuh. Swasta: baris berkode RO dihargai pcs x harga pricelist RO; RMP lain hanya bernilai bila ada di ALL V. Kedua pasar TIDAK sebanding persis.' },
++  { id: 'nilaiRo', h: 'Dari pricelist RO (Rp)', k: 'nilaiRo', w: 18, fmt: '#,##0', desc: 'Bagian nilai yang berasal dari pricelist RO (qty x harga satuan).' },
++  { id: 'roTanpa', h: 'Kode RO tanpa harga', k: 'roTanpa', w: 12, fmt: XL_NUMZ, desc: 'Baris berkode RO yang ada di pricelist tetapi kolom harganya kosong: tidak dihitung (bukan dihitung nol).' },
++  { id: 'nonRo', h: 'Baris bukan kode RO', k: 'nonRo', w: 12, fmt: XL_NUMZ, desc: 'Baris pcs swasta yang kodenya bukan kode RO (mis. RB..., atau tanpa kode): tidak dihargai dari pricelist RO.' },
++];
++
+ const COLS_DIST = [
+   { id: 'no', h: 'No', k: 'no', w: 5, fmt: XL_NUM, align: 'center', desc: 'Nomor urut.' },
+   { id: 'distributor', h: 'Distributor', k: 'distributor', w: 36, wrap: 1, desc: 'Nama distributor menurut data pesanan, ejaan yang berbeda disatukan lewat daftar alias. “Belum tercatat” = pesanan yang distributornya tidak ada di data.' },
+@@ -239,8 +258,12 @@ export function xlInfo({ data, unmapped, st, lines }) {
+   const hasSet = n0(s.set_total) > 0 || n0(s.set_cek) > 0;
+   const hasPcs = n0(s.pcs_total) > 0;
+   const hasUnit = n0(s.unit_total) > 0;
++  const rpas = (data && data.ringkasan_pasar) || {};
++  const adaP = (k) => !!(rpas[k] && n0(rpas[k].jumlah_pesanan) > 0);
+   return {
+     hasSet, hasPcs, hasUnit,
++    adaPasar: adaP('PEMERINTAH') || adaP('SWASTA') || adaP('LAINNYA'),
++    adaPasarCampur: adaP('PEMERINTAH') && adaP('SWASTA'),
+     adaSet: lines ? lines.some((l) => l.kind === 'SET') : hasSet,
+     adaPcs: lines ? lines.some((l) => satuanBaris(l) === 'pcs') : hasPcs,
+     adaUnit: lines ? lines.some((l) => satuanBaris(l) === 'unit') : hasUnit,
+@@ -377,7 +400,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
+       set_t: n0(x.set_terkirim), set_p: n0(x.set_proses), set: x.set,
+       pcs_t: n0(x.pcs_terkirim), pcs_p: n0(x.pcs_proses), pcs: x.pcs,
+       unit_t: n0(x.unit_terkirim), unit_p: n0(x.unit_proses), unit: x.unit,
+-      pesanan: n0(x.jumlah_pesanan), pertama: xlDate(o.pertama), terakhir: xlDate(x.terakhir),
++      pesanan: n0(x.jumlah_pesanan), pesPem: n0(x.pesanan_pemerintah), pesSw: n0(x.pesanan_swasta), pertama: xlDate(o.pertama), terakhir: xlDate(x.terakhir),
+       rincian: '', _rinc: x.rincian || [],
+       ket: sph ? '' : ket.join('; '), sumber: sumberTxt(x),
+       distUtama: '', distJml: null, distRinci: '',
+@@ -472,6 +495,23 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
+     .sort((a, b) => ((a.provinsi === belumLabel) - (b.provinsi === belumLabel)) || (b.set + b.pcs + b.unit) - (a.set + a.pcs + a.unit) || a.provinsi.localeCompare(b.provinsi, 'id'))
+     .map((o, i) => Object.assign({}, o, { no: i + 1, terakhir: xlDate(o.terakhir) }));
+ 
++  // Per pasar (Pemerintah / Swasta / Lainnya): langsung dari ringkasan_pasar server, jadi angkanya sama dengan kartu di aplikasi.
++  const PASAR_NAMA = { PEMERINTAH: 'Pemerintah', SWASTA: 'Swasta', LAINNYA: 'Lainnya' };
++  const rpasar = D.ringkasan_pasar || {};
++  const itemsPasar = ['PEMERINTAH', 'SWASTA', 'LAINNYA']
++    .filter((k) => rpasar[k] && (n0(rpasar[k].jumlah_pesanan) > 0 || n0(rpasar[k].jumlah_rs) > 0))
++    .map((k) => {
++      const x = rpasar[k];
++      return {
++        pasar: PASAR_NAMA[k], rs: n0(x.jumlah_rs), pesanan: n0(x.jumlah_pesanan),
++        set: n0(x.set_total), pcs: n0(x.pcs_total), unit: n0(x.unit_total),
++        rmpTotal: n0(x.rmp_total), rmpNilai: n0(x.rmp_bernilai),
++        nilai: n0(x.rmp_bernilai) > 0 ? n0(x.nilai_rp) : null,
++        nilaiRo: n0(x.nilai_ro) > 0 ? n0(x.nilai_ro) : null,
++        roTanpa: n0(x.ro_tanpa_harga), nonRo: k === 'PEMERINTAH' ? null : n0(x.non_ro_baris),
++      };
++    });
++
+   // Per distributor. Satu baris per distributor (ejaan berbeda sudah disatukan di server); pesanan tanpa distributor
+   // dikumpulkan di baris "Belum tercatat" supaya total kolom tetap sama dengan Daftar RS.
+   const adaDist = lines.some((l) => distNama(l));
+@@ -849,6 +889,14 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
+   const terakhir = R.reduce((m, x) => (x.terakhir && x.terakhir > m ? x.terakhir : m), '');
+   if (terakhir) d0.kv('Pesanan terakhir', xlDate(terakhir), XL_DATE);
+ 
++  if (!sph && itemsPasar.length) {
++    d0.section('Pemerintah vs Swasta');
++    d0.wide('Pasar dibaca dari kode RMP: tanpa akhiran huruf = pemerintah, akhiran R = swasta. Nilai Rp pemerintah dari ALL V (TOTAL VALUE PRODUK include tax); nilai swasta hanya dari pricelist RO (pcs x harga) dan RMP yang ada di ALL V, sehingga kedua nilai tidak sebanding persis. Jumlah pesanan dan volume lebih adil untuk dibandingkan.', { size: 10, color: XL.soft });
++    d0.table(['Pasar', 'Pesanan', 'RMP bernilai', 'Nilai (Rp)'], ['left', 'right', 'right', 'right'],
++      itemsPasar.map((x) => [x.pasar, x.pesanan, x.rmpTotal ? `${fmt(x.rmpNilai)} dari ${fmt(x.rmpTotal)}` : '–', x.nilai === null ? 'belum tersedia' : x.nilai]));
++    if (plan.includes('pasar')) d0.wide('Rincian lengkap ada di sheet “Per Pasar”.', { size: 10, color: XL.soft });
++  }
++
+   const kolUnit = () => [].concat(hasSet ? ['Set'] : [], hasPcs ? ['Pcs'] : [], hasUnit ? ['Unit'] : []);
+   const alUnit = [].concat(hasSet ? ['right'] : [], hasPcs ? ['right'] : [], hasUnit ? ['right'] : []);
+   if (R.length > 5) {
+@@ -923,7 +971,7 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
+       bersih: sph,
+       title: 'Daftar rumah sakit / instansi', sub: subLine + subTek(cols), note: NOTE_KOSONG,
+       cols, freeze: 2, labelKey: 'customer',
+-      totals: sumTot(cols, ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'unit_t', 'unit_p', 'unit', 'pesanan']), items: itemsRs,
++      totals: sumTot(cols, ['set_t', 'set_p', 'set', 'pcs_t', 'pcs_p', 'pcs', 'unit_t', 'unit_p', 'unit', 'pesanan', 'pesPem', 'pesSw']), items: itemsRs,
+     });
+   }
+   if (plan.includes('rincianrs')) {
+@@ -979,6 +1027,14 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
+       cols, freeze: 2, labelKey: 'provinsi', totals: sumTot(cols, ['rs', 'set', 'pcs', 'unit', 'pesanan']), items: itemsProv,
+     });
+   }
++  if (plan.includes('pasar')) {
++    const cols = COLS_PASAR.filter((c) => usable(c, info));
++    tableSheet('Per Pasar', {
++      title: 'Pemerintah vs Swasta', sub: subLine,
++      note: 'Pasar dibaca dari kode RMP (tanpa akhiran = pemerintah, akhiran R = swasta). Nilai pemerintah dari ALL V; nilai swasta dari pricelist RO + RMP yang ada di ALL V, jadi tidak sebanding persis. RS yang memesan di kedua pasar dihitung di masing-masing, sehingga Jumlah RS tidak dijumlahkan. ' + NOTE_KOSONG,
++      cols, freeze: 1, labelKey: 'pasar', totals: sumTot(cols, ['pesanan', 'set', 'pcs', 'unit', 'rmpTotal', 'rmpNilai', 'nilai', 'nilaiRo', 'roTanpa', 'nonRo']), items: itemsPasar,
++    });
++  }
+   if (plan.includes('distributor')) {
+     const cols = COLS_DIST.filter((c) => usable(c, info));
+     tableSheet('Per Distributor', {
