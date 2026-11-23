@@ -269,6 +269,7 @@ let copyKitDestroy = null; // copy.js: tutup popover salin + buang cache saat ha
 let shortcutsDispose = null; // shared/shortcuts.js: lepas listener keydown pintasan + tutup daftar pintasan (?)
 
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-11-23: edit produk dari DAFTAR (goToProdukEdit / openProdukFromRoute) tampil sebagai HALAMAN detail: .modal-card yang sama dipindah (appendChild) ke #produkPageWrap, modalMode 'page' vs 'overlay'; state machine & form tidak disentuh. Tambah Produk / Edit Info Dasar dari Set / ?edit= tetap modal. shared/shortcuts.js: [data-page-dialog="open"] dihitung dialog — Claude
 // 2026-11-23: modal edit produk UNIT/INSTRUMENT punya URL sendiri /crud-produk/produk/<url_token> (pola sama dengan detail set): goToProdukEdit, openProdukFromRoute, resolveRoute('produk'), modalRoute + releaseProdukUrl di closeModal, Back browser lewat guard "belum disimpan" — Claude
 // 2026-11-17: pintasan keyboard lewat registry shared/shortcuts.js: Ctrl+S / Ctrl+Enter = Simpan di modal Produk/AKD/KFA, "/" fokus kolom cari tiap tab (mengalahkan "/" sidebar di halaman ini), j/k pindah baris list Produk, Alt+Shift+P Tambah Produk, Alt+Shift+F Tambah Filter (+ Esc nutup panelnya), "?" = daftar pintasan; kartu Produk jadi bisa difokus keyboard — Claude
 // 2026-11-12: alur "salin dulu" di list Produk (copy.js): ikon salin Kode/Nama, menu Salin per baris, centang + salin TSV ke Excel/Sheets,
@@ -2293,7 +2294,7 @@ function focusProdukSearch(){
   const view = document.getElementById('appWrap')?.dataset.view;
   if (view && view !== 'produk') return false;
   if (cmdkOverlay.classList.contains('open')) return false;
-  if (document.querySelector('.modal-overlay.open, .confirm-overlay.open')) return false;
+  if (document.querySelector('.modal-overlay.open, .confirm-overlay.open') || isProdukPageOpen()) return false;
   topSearchInput.focus();
   topSearchInput.select();
   return true;
@@ -2481,7 +2482,8 @@ shortcutsDispose = installShortcuts('crud-produk', {
     if (stay) { document.getElementById('unsavedStayBtn').click(); return true; } // Esc di konfirmasi = Tetap Edit (aman, tidak membuang apa pun)
     const open = document.querySelectorAll('.modal-overlay.open');
     const top = open[open.length - 1];
-    const id = top && CLOSE_BTN_BY_OVERLAY[top.id];
+    // Halaman detail produk bukan .modal-overlay: kalau tidak ada dialog lain di atasnya, Esc = Kembali (lewat guard yang sama dengan X).
+    const id = top ? CLOSE_BTN_BY_OVERLAY[top.id] : (isProdukPageOpen() ? 'produkPageBackBtn' : null);
     const btn = id && document.getElementById(id);
     if (!btn) return false; // mis. daftar pintasan (?) yang ada di paling atas: biarkan dia menutup dirinya sendiri
     btn.click();
@@ -2493,7 +2495,7 @@ shortcutsDispose = installShortcuts('crud-produk', {
     if (document.querySelector('.confirm-overlay.open, .cmdk-overlay.open')) return false; // konfirmasi/palette di atas dialog
     const open = document.querySelectorAll('.modal-overlay.open');
     const top = open[open.length - 1];
-    const id = top && SAVE_BTN_BY_OVERLAY[top.id];
+    const id = top ? SAVE_BTN_BY_OVERLAY[top.id] : (isProdukPageOpen() ? 'saveBtn' : null);
     const btn = id && document.getElementById(id);
     if (!btn) return false; // dialog tanpa tombol Simpan (mis. Log Aktivitas)
     if (!btn.disabled) btn.click();
@@ -2569,6 +2571,39 @@ const hargaSection = document.getElementById('hargaSection');
 const mediaSection = document.getElementById('mediaSection');
 const deleteBtn = document.getElementById('deleteBtn');
 
+// Satu .modal-card dipakai dua tempat: 'overlay' (modal lama) atau 'page' (halaman detail di #viewProduk). Yang dipindah adalah
+// NODE-nya, bukan form-nya, jadi semua ID, listener, modalState/modalSession/modalDirty dan guard "belum disimpan" ikut utuh.
+let modalMode = 'overlay';
+const modalCard = modalOverlay.querySelector('.modal-card'); // ditangkap sekali saat mount; jangan query lewat #modalOverlay lagi (putus setelah dipindah)
+const viewProdukEl = document.getElementById('viewProduk');
+const produkListWrap = viewProdukEl.querySelector(':scope > .vwrap');
+const produkPageWrap = document.getElementById('produkPageWrap');
+let pageReturnId = null; // baris daftar yang tadi dibuka, supaya fokus kembali ke sana
+function setModalMode(mode){
+  if (modalMode === mode) return;
+  modalMode = mode;
+  (mode === 'page' ? produkPageWrap : modalOverlay).appendChild(modalCard);
+  modalCard.classList.toggle('prod-page', mode === 'page');
+}
+const isProdukPageOpen = () => modalMode === 'page' && modalState !== 'closed';
+// Daftar tidak di-display:none (posisi scroll & layout tabel harus selamat); inert + visibility menutup akses mouse, keyboard, dan pembaca layar.
+function syncProdukPage(show){
+  if (show === !produkPageWrap.hidden) return;
+  produkPageWrap.hidden = !show;
+  produkPageWrap.dataset.pageDialog = show ? 'open' : 'closed';
+  viewProdukEl.classList.toggle('is-detail', show);
+  produkListWrap.inert = show;
+  if (show) {
+    modalTitle.tabIndex = -1; // heading jadi tujuan fokus saat pindah halaman
+    modalTitle.focus({ preventScroll: true });
+  } else if (pageReturnId != null) {
+    const row = viewProdukEl.querySelector('[data-id="' + CSS.escape(String(pageReturnId)) + '"]');
+    pageReturnId = null;
+    if (row) row.focus({ preventScroll: true });
+  }
+}
+document.getElementById('produkPageBackBtn').addEventListener('click', attemptCloseModal);
+
 document.getElementById('addBtn').addEventListener('click', openAdd);
 document.getElementById('cancelBtn').addEventListener('click', attemptCloseModal);
 document.getElementById('modalCloseBtn').addEventListener('click', attemptCloseModal);
@@ -2616,8 +2651,9 @@ let modalState = 'closed';
 let modalSession = 0;
 
 function renderModalChrome(){
-  modalOverlay.classList.toggle('open', modalState !== 'closed');
+  modalOverlay.classList.toggle('open', modalState !== 'closed' && modalMode === 'overlay');
   modalOverlay.dataset.state = modalState;
+  syncProdukPage(modalState !== 'closed' && modalMode === 'page');
   const locked = modalState === 'loading' || modalState === 'busy';
   document.getElementById('saveBtn').disabled = locked;
   deleteBtn.disabled = locked;
@@ -2645,7 +2681,11 @@ function closeModal(){
   if (modalState === 'closed') return;
   modalDirty = false;
   // Harga / AKD / media di modal langsung tertulis ke DB (bukan menunggu Simpan), jadi list di belakang modal bisa sudah basi.
-  if (modalGo('closed')) { stale.flush(viewAktif(), false); releaseProdukUrl(); }
+  if (modalGo('closed')) {
+    setModalMode('overlay'); // halaman sudah disembunyikan oleh renderModalChrome; card pulang ke overlay untuk pemanggil berikutnya
+    stale.flush(viewAktif(), false);
+    releaseProdukUrl();
+  }
 }
 
 // ---- Unsaved changes guard — dipakai di modal edit produk (form yang sama
@@ -2655,9 +2695,9 @@ function closeModal(){
 // langsung ke database (lihat hint "tersimpan otomatis" di UI-nya). ----
 let modalDirty = false;
 const unsavedConfirmOverlay = document.getElementById('unsavedConfirmOverlay');
-document.querySelector('#modalOverlay .modal-card').addEventListener('input', () => { modalDirty = true; });
+modalCard.addEventListener('input', () => { modalDirty = true; });
 document.getElementById('f_link_v6').addEventListener('input', renderLinkV6Hint);
-document.querySelector('#modalOverlay .modal-card').addEventListener('change', () => { modalDirty = true; });
+modalCard.addEventListener('change', () => { modalDirty = true; });
 
 function attemptCloseModal(){
   if (modalRejectIfBusy()) return;
@@ -2762,6 +2802,7 @@ function resetForm(){
 function openAdd(prefill){
   if (modalRejectIfBusy()) return;
   pendingSetLink = null; // tombol "Tambah ke set" (compMissing) mengisinya SETELAH openAdd() dipanggil
+  setModalMode('overlay'); // Tambah Produk tetap modal
   modalGo('add'); // naikkan session dulu: load basi dari modal sebelumnya jadi tidak berlaku
   const session = modalSession;
   resetForm();
@@ -2798,7 +2839,9 @@ function openAdd(prefill){
 // jalan paralel dan URL baru dipasang setelah modal benar-benar terbuka untuk produk ini. Kalau kolom url_token belum ada /
 // kosong untuk baris ini, modal tetap berfungsi seperti dulu, hanya tanpa URL (degradasi aman, sama dengan goToSetDetail).
 async function goToProdukEdit(produkId){
-  const opening = openEdit(produkId);
+  const dariBaris = document.activeElement?.closest?.('#tableBody [data-id], #cardWrap [data-id]');
+  pageReturnId = dariBaris ? dariBaris.dataset.id : produkId; // baris yang diklik / difokuskan (Ctrl+K: produk yang dibuka)
+  const opening = openEdit(produkId, { mode: 'page' });
   const tokenQ = sb.from('produk').select('id, url_token').eq('id', produkId).maybeSingle();
   const [opened, tok] = await Promise.allSettled([opening, tokenQ]);
   if (opened.status === 'rejected') { console.error('openEdit gagal:', opened.reason); return; }
@@ -2808,6 +2851,9 @@ async function goToProdukEdit(produkId){
   if (!token) {
     // Tanpa token modal tetap berfungsi, tapi URL produk SEBELUMNYA (kalau modal baru saja pindah dari produk ber-URL) tidak boleh tertinggal.
     if (isProdukDetailPath(location.pathname)) routeTo('/crud-produk/produk');
+    // Halaman detail wajib punya URL; tanpa token form yang sama dipindah kembali ke modal (degradasi aman).
+    setModalMode('overlay');
+    renderModalChrome();
     return;
   }
   modalRoute = { id: produkId, token };
@@ -2827,7 +2873,8 @@ async function openProdukFromRoute(token){
   if (modalState !== 'closed' && currentProdukId === hit.id) { modalRoute = { id: hit.id, token }; return; }
   const sebelumnya = modalRoute;
   modalRoute = { id: hit.id, token }; // dipasang SEBELUM load: Back saat modal masih memuat harus ikut tertangani
-  await openEdit(hit.id);
+  pageReturnId = hit.id;
+  await openEdit(hit.id, { mode: 'page' });
   if (modalState !== 'closed' && currentProdukId === hit.id) return;
   // openEdit menolak (konfirmasi "belum disimpan" dibatalkan / sedang menyimpan) atau gagal memuat: layar tidak berpindah, jadi
   // URL harus kembali menunjuk apa yang benar-benar tampil. (Gagal memuat sudah memanggil closeModal -> releaseProdukUrl.)
@@ -2848,9 +2895,18 @@ _produkRoute = {
   open: openProdukFromRoute,
   isTracked: () => !!modalRoute && modalState !== 'closed',
   requestClose: requestCloseFromRoute,
+  // Halaman detail tidak ditutupi backdrop seperti modal, jadi sidebar tetap bisa diklik: pindah view harus lewat guard yang sama
+  // dengan tombol Kembali. false = halaman tetap terbuka (ada perubahan belum disimpan / sedang menyimpan); URL dikembalikan.
+  guardLeave: () => {
+    if (!isProdukPageOpen()) return true;
+    attemptCloseModal();
+    if (!isProdukPageOpen()) return true;
+    if (modalRoute) routeTo(produkPath(modalRoute.token));
+    return false;
+  },
 };
 
-async function openEdit(produkId){
+async function openEdit(produkId, opts = {}){
   if (modalRejectIfBusy()) return;
   // Pindah produk saat form lama masih berisi perubahan belum tersimpan (mis. lewat Ctrl+K):
   // dulu perubahan itu hilang diam-diam.
@@ -2862,6 +2918,8 @@ async function openEdit(produkId){
   // Modal pindah ke produk lain lewat jalur tanpa URL (mis. dari Set Detail): pelacakan URL produk sebelumnya tidak berlaku lagi.
   // (Jalur daftar / Ctrl+K lewat goToProdukEdit, yang memasang modalRoute produk baru begitu tokennya didapat.)
   if (modalRoute && modalRoute.id !== produkId) modalRoute = null;
+  // Hanya jalur daftar / URL (goToProdukEdit, openProdukFromRoute) yang meminta halaman; pemanggil lain (Set Detail, komposisi, ?edit=) tetap modal.
+  setModalMode(opts.mode === 'page' ? 'page' : 'overlay');
   modalGo('loading'); // Simpan/Hapus terkunci sampai data selesai masuk
   const session = modalSession;
   resetForm();
@@ -4549,6 +4607,7 @@ function animateProdukRowOut(id){
  * yang tetep nested di dalam mount(). */
 export function setSubroute(sub, param) {
   const view = sub || 'produk';
+  if (view !== 'produk' && _produkRoute && !_produkRoute.guardLeave()) return;
   if (view === 'set' && param && _setRoute) {
     // /crud-produk/set/<uuid>: router sudah memverifikasi (resolveRoute). open() menampilkan panel detail
     // dulu (sinkron kalau kodenya sudah di cache), baru view 'set' dinyalakan -> daftar tidak dimuat sia-sia.
@@ -4643,6 +4702,8 @@ export function unmount() {
   _switchView = null; // avoid a stale closure over this mount's DOM being callable after teardown
   _setRoute = null;   // idem untuk fungsi Set Management
   _produkRoute = null; // idem untuk modal edit produk
+  modalMode = 'overlay'; // DOM-nya sudah dibuang router; pemasangan berikutnya mulai dari mode modal
+  pageReturnId = null;
   resolvedSet = null;
   resolvedProduk = null;
   produkPrefetch = null;

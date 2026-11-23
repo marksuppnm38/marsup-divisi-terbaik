@@ -285,6 +285,7 @@ const DIALOG_SELECTOR = [
   '.modal-overlay.open', '.modal-overlay.show',
   '.confirm-overlay.open', '.confirm-overlay.show',
   '.cmdk-overlay.open', '.cmdk-overlay.show',
+  '[data-page-dialog="open"]', // halaman detail yang memakai card modal (CRUD Produk): Esc / Ctrl+S harus hidup, pintasan daftar harus mati
   '[class*="modal"].show', '[class*="overlay"].show', '[id*="modal"].show',
 ].join(',');
 

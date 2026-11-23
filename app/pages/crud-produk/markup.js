@@ -140,6 +140,12 @@ export const CRUD_PRODUK_MARKUP = `
         </div>
         <div class="pg-bar" id="produkPagination" style="display:none;"></div>
       </div>
+      <!-- HOST HALAMAN DETAIL PRODUK: .modal-card form produk dipindah ke sini (appendChild) saat dibuka dari daftar; ia kembali ke #modalOverlay saat ditutup. -->
+      <div class="prod-page-host" id="produkPageWrap" data-page-dialog="closed" hidden>
+        <div class="prod-page-nav">
+          <button class="btn btn-ghost prod-page-back" id="produkPageBackBtn" type="button"><i class="ti ti-arrow-left"></i> Kembali ke daftar produk</button>
+        </div>
+      </div>
     </div>
 
     <!-- SET MANAGEMENT VIEW -->
