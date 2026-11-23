@@ -11,7 +11,8 @@
 import { buildLampiranPdf, loadLampiranFonts } from './lampiran-pdf.js';
 import { parseKodeSet, gabungkanSet, mockFileName } from './mock-akd.js';
 
-const MAX_CODES = 20;
+const CODE_CHUNK = 40;   // jumlah kode per request (URL GET ada batas panjang) -- BUKAN batas jumlah kode
+const PAGE_SIZE = 1000;  // ukuran halaman data; semua halaman diambil sampai habis
 const IMG_CONCURRENCY = 6;
 
 const MARKUP = `
@@ -23,7 +24,7 @@ const MARKUP = `
         <p>Paste kode set yang mau digabung. Isinya disatukan jadi satu daftar unik (tanpa qty) untuk dilihat sebelum pengajuan AKD.</p>
       </div>
     </div>
-    <label class="field-label" for="maCodes">Kode SET <span class="sm-field-hint">satu per baris, maks ${MAX_CODES}</span></label>
+    <label class="field-label" for="maCodes">Kode SET <span class="sm-field-hint">satu per baris</span></label>
     <textarea id="maCodes" class="field-input sm-textarea" spellcheck="false" autocomplete="off" placeholder="RB-SET-MAYO-01&#10;RB-SET-MAYO-02&#10;RB-SET-MAYO-03" aria-label="Kode SET yang digabung, satu per baris"></textarea>
     <div class="sm-actions sm-mt-12">
       <span class="sm-kbd-hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> untuk gabungkan</span>
@@ -96,13 +97,27 @@ export function mountMockAkd(panel, deps) {
     return res.json();
   }
 
+  // Ambil SEMUA halaman sebuah query (tidak ada batas jumlah baris).
+  async function restAll(path) {
+    const out = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const page = await rest(`${path}&limit=${PAGE_SIZE}&offset=${offset}`);
+      out.push(...page);
+      if (page.length < PAGE_SIZE) return out;
+    }
+  }
+
+  // Berapa pun jumlah kode: dipecah per kelompok supaya URL tidak kepanjangan.
   async function fetchSets(codes) {
-    const list = codes.map((c) => '"' + c.replace(/["\\]/g, '') + '"').join(',');
-    const produk = await rest(`produk?kode_produk=in.(${encodeURIComponent(list)})&select=id,kode_produk,nama_produk,tipe&limit=${codes.length}`);
+    const produk = [];
+    for (let i = 0; i < codes.length; i += CODE_CHUNK) {
+      const list = codes.slice(i, i + CODE_CHUNK).map((c) => '"' + c.replace(/["\\]/g, '') + '"').join(',');
+      produk.push(...await restAll(`produk?kode_produk=in.(${encodeURIComponent(list)})&select=id,kode_produk,nama_produk,tipe&order=id.asc`));
+    }
     const ids = produk.map((p) => p.id);
-    let rows = [];
-    if (ids.length) {
-      rows = await rest(`produk_set_item?set_id=in.(${ids.join(',')})&select=id,set_id,qty,item:produk_id(kode_produk,kode_asli,nama_produk)&order=id.asc&limit=5000`);
+    const rows = [];
+    for (let i = 0; i < ids.length; i += CODE_CHUNK) {
+      rows.push(...await restAll(`produk_set_item?set_id=in.(${ids.slice(i, i + CODE_CHUNK).join(',')})&select=id,set_id,qty,item:produk_id(kode_produk,kode_asli,nama_produk)&order=id.asc`));
     }
     return { produk, rows };
   }
@@ -340,9 +355,8 @@ export function mountMockAkd(panel, deps) {
   // ---- actions ----
   async function resolveCodes() {
     const btn = $('maResolveBtn');
-    let codes = parseKodeSet($('maCodes').value);
+    const codes = parseKodeSet($('maCodes').value);
     if (!codes.length) { toast('Isi minimal satu kode SET.', 'error'); return; }
-    if (codes.length > MAX_CODES) { toast(`Maksimal ${MAX_CODES} kode, sisanya diabaikan.`, 'error'); codes = codes.slice(0, MAX_CODES); }
     const myRun = ++runId;
     btn.disabled = true;
     try {

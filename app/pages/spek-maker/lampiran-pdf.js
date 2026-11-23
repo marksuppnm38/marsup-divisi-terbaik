@@ -173,24 +173,24 @@ export function buildLampiranPdf(jsPDF, opts) {
       doc.addImage(logos.pnm, 'PNG', g.x, g.y + (g.h - h) / 2, g.w, h, undefined, 'FAST');
     }
 
-    // -- judul set (oranye); font dikecilkan kalau kepanjangan, lalu dibungkus (maks 3 baris)
-    //    supaya tidak menabrak logo PNM di kanan.
+    // -- judul set (oranye): tidak dipotong berapa pun panjangnya. Kalau satu baris tidak muat
+    //    (sebelum logo PNM) teks dibungkus, dan huruf dikecilkan sampai SEMUA baris muat di
+    //    ruang antara logo ROBUST dan tabel.
     const T = G.title;
     setFont(F.title, T.size);
-    let size = T.size;
     const text = String(judul || '');
     const maxW = T.maxRight - T.x;
-    while (doc.getTextWidth(text) > maxW && size > 10) {
-      size -= 0.25;
+    const ruang = G.headTop - 8 - T.baseline;      // jarak baseline baris pertama ke baris terakhir
+    let size = T.size;
+    let lines = [text];
+    for (;;) {
       doc.setFontSize(size);
+      lines = doc.splitTextToSize(text, maxW);
+      if (lines.length === 1 || (lines.length - 1) * size * 1.2 <= ruang || size <= 3) break;
+      size -= 0.25;
     }
     doc.setTextColor(...T.color);
-    if (doc.getTextWidth(text) <= maxW) {
-      doc.text(text, T.x, T.baseline);
-    } else {
-      const lines = doc.splitTextToSize(text, maxW).slice(0, 3);
-      lines.forEach((ln, i) => doc.text(ln, T.x, T.baseline + i * size * 1.2));
-    }
+    lines.forEach((ln, i) => doc.text(ln, T.x, T.baseline + i * size * 1.2));
 
     // -- nomor halaman (Arial -> Helvetica), rata kanan
     doc.setTextColor(0, 0, 0);
