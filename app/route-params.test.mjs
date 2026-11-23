@@ -16,14 +16,20 @@ test('splitRest: satu segmen = param, dua atau lebih = extra', () => {
   assert.deepEqual(splitRest(['', UUID]), { param: null, extra: true });
 });
 
-test('isValidParam: UUID sah hanya di crud-produk/set', () => {
+test('isValidParam: UUID sah di crud-produk/set dan crud-produk/produk', () => {
   assert.equal(isValidParam('crud-produk', 'set', UUID), true);
   assert.equal(isValidParam('crud-produk', 'set', UUID.toUpperCase()), true);
+  assert.equal(isValidParam('crud-produk', 'produk', UUID), true);
+  assert.equal(isValidParam('crud-produk', 'produk', UUID.toUpperCase()), true);
 });
 
 test('isValidParam: sub/modul lain tetap menolak param apa pun (perilaku lama)', () => {
-  assert.equal(isValidParam('crud-produk', 'produk', UUID), false);
   assert.equal(isValidParam('crud-produk', 'akd', UUID), false);
+  assert.equal(isValidParam('crud-produk', 'kfa', UUID), false);
+  assert.equal(isValidParam('crud-produk', 'bulk', UUID), false);
+  assert.equal(isValidParam('crud-produk', 'sync', UUID), false);
+  assert.equal(isValidParam('crud-produk', 'orphan', UUID), false);
+  assert.equal(isValidParam('crud-produk', null, UUID), false);
   assert.equal(isValidParam('konversian', 'cari', UUID), false);
   assert.equal(isValidParam('dashboard', null, UUID), false);
 });
@@ -36,4 +42,10 @@ test('isValidParam: kode produk yang urut / bentuk ngawur ditolak', () => {
   assert.equal(isValidParam('crud-produk', 'set', UUID + 'x'), false);
   assert.equal(isValidParam('crud-produk', 'set', "' or 1=1 --"), false);
   assert.equal(isValidParam('crud-produk', 'set', null), false);
+});
+
+test('isValidParam: crud-produk/produk menolak id angka, kode produk urut, dan injeksi (sama ketatnya dengan /set)', () => {
+  for (const bad of ['75192', '123', 'AD999-KE921-B099-U01', 'RB999-KE878-B089-U09', '', UUID + 'x', 'x' + UUID, "' or 1=1 --", '../set/' + UUID, null, undefined, 42]) {
+    assert.equal(isValidParam('crud-produk', 'produk', bad), false, String(bad));
+  }
 });

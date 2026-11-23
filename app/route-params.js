@@ -1,5 +1,6 @@
 // Segmen ketiga URL ("param") yang SAH, dan cuma untuk kombinasi modul/sub yang terdaftar di bawah.
-// Contoh: /crud-produk/set/3f9c1a7e-5b2d-4c8a-9e61-0a7d2b4c8f10 (detail satu set).
+// Contoh: /crud-produk/set/3f9c1a7e-5b2d-4c8a-9e61-0a7d2b4c8f10 (detail satu set),
+//         /crud-produk/produk/3f9c1a7e-5b2d-4c8a-9e61-0a7d2b4c8f10 (modal edit satu produk UNIT / INSTRUMENT).
 //
 // Kenapa token UUID (kolom produk.url_token), bukan produk.id atau kode produk: produk.id itu angka
 // urut (/set/75192 -> /set/75193) dan kode produk juga urut (AD999-KE921-B099-U01, U02, U03...), jadi
@@ -16,6 +17,7 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 // (+ hook resolveRoute di modulnya).
 const PARAM_RULES = {
   'crud-produk/set': UUID_RE,
+  'crud-produk/produk': UUID_RE,
 };
 
 /**

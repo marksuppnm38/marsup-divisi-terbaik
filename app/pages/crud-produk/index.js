@@ -60,6 +60,7 @@ import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../share
 import { writeTableXlsx } from '../../../shared/exports/tabel-xlsx.js';
 import { installShortcuts, applyShortcutHints, toggleCheatSheet, isTyping } from '../../../shared/shortcuts.js';
 import { UUID_RE } from '../../route-params.js';
+import { produkPath, isProdukDetailPath, tokenQuery } from './produk-route.js';
 
 // supabase-js CDN -> shared/supabase-client.js -> shared/auth-session.js
 // harus berurutan (tiap file bergantung ke global yang dibikin file
@@ -249,6 +250,11 @@ let _setRoute = null;
 // Hasil terakhir resolveRoute() ({ id, kode }): router sudah memverifikasi set ini ada, jadi
 // openSetFromRoute() tidak perlu query ulang.
 let resolvedSet = null;
+// Pegangan ke fungsi modal edit produk (nested di mount()) untuk setSubroute() top-level, pola sama dengan _setRoute.
+// { open(token), isTracked(), requestClose() } -- diisi di bagian STATE MACHINE MODAL, dikosongkan di unmount().
+let _produkRoute = null;
+// Hasil terakhir resolveRoute('produk', ...) ({ id, kode, token }); pola sama dengan resolvedSet.
+let resolvedProduk = null;
 
 // Minta router pindah ke `path` (URL + sorotan sidebar ikut). Mengembalikan true kalau event dikirim,
 // false kalau tidak perlu (sudah di path itu, atau halaman ini tidak sedang di bawah /crud-produk).
@@ -263,6 +269,7 @@ let copyKitDestroy = null; // copy.js: tutup popover salin + buang cache saat ha
 let shortcutsDispose = null; // shared/shortcuts.js: lepas listener keydown pintasan + tutup daftar pintasan (?)
 
 // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
+// 2026-11-23: modal edit produk UNIT/INSTRUMENT punya URL sendiri /crud-produk/produk/<url_token> (pola sama dengan detail set): goToProdukEdit, openProdukFromRoute, resolveRoute('produk'), modalRoute + releaseProdukUrl di closeModal, Back browser lewat guard "belum disimpan" — Claude
 // 2026-11-17: pintasan keyboard lewat registry shared/shortcuts.js: Ctrl+S / Ctrl+Enter = Simpan di modal Produk/AKD/KFA, "/" fokus kolom cari tiap tab (mengalahkan "/" sidebar di halaman ini), j/k pindah baris list Produk, Alt+Shift+P Tambah Produk, Alt+Shift+F Tambah Filter (+ Esc nutup panelnya), "?" = daftar pintasan; kartu Produk jadi bisa difokus keyboard — Claude
 // 2026-11-12: alur "salin dulu" di list Produk (copy.js): ikon salin Kode/Nama, menu Salin per baris, centang + salin TSV ke Excel/Sheets,
 //   kolom aksi baru (colspan 6 -> 7), kotak pilih muncul saat hover, kolom AKD menampilkan nomor AKD (list, kartu, modal, set, export: istilah status AKD jadi "sudah ada AKD / belum"), fetchAkdNoMap dapat opsi {silent}, klik baris diabaikan saat teks sedang diblok — Claude
@@ -743,7 +750,7 @@ const copyKit = createCopyKit({
   openTableColumns: (anchor) => { const b = document.getElementById('produkColsBtn'); colKit.openPicker(b && b.offsetParent ? b : anchor); },
   // Aksi cepat di menu klik kanan / tombol Salin (sama dengan yang ada di modal edit; hapus tetap lewat cek relasi + konfirmasi).
   rowActions: (p) => [
-    { key: 'edit', label: p.tipe === 'SET' ? 'Buka set' : 'Edit produk', icon: 'pencil', run: () => { if (p.tipe === 'SET') goToSetDetail(p.id); else openEdit(p.id); } },
+    { key: 'edit', label: p.tipe === 'SET' ? 'Buka set' : 'Edit produk', icon: 'pencil', run: () => { if (p.tipe === 'SET') goToSetDetail(p.id); else goToProdukEdit(p.id); } },
     ...(window.PNMAuth?.can?.('hapus') === false ? [] : [{ key: 'hapus', label: 'Hapus produk…', icon: 'trash', danger: true, run: () => deleteProdukInner(p.id, p.kode_produk) }]),
   ],
 });
@@ -1699,7 +1706,7 @@ function paintProdukCards(){
     card.dataset.id = p.id;
     card.tabIndex = 0; // bisa dijangkau keyboard, sama seperti baris tabel: j/k, Enter/Spasi buka, x pilih
     card.innerHTML = cardInnerHtml(p);
-    card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
+    card.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { goToProdukEdit(p.id); } });
     card.addEventListener('keydown', (e) => {
       if (e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); card.click(); }
     });
@@ -1733,7 +1740,7 @@ function paintProdukRows(){
     tr.dataset.id = p.id;
     tr.tabIndex = 0; // bisa dijangkau keyboard: Tab lalu Enter/Spasi buka produk
     tr.innerHTML = colKit.rowHtml(p, { flags: produkFlagsHtml(p) });
-    tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { openEdit(p.id); } });
+    tr.addEventListener('click', () => { if (p.tipe === 'SET') { goToSetDetail(p.id); } else { goToProdukEdit(p.id); } });
     tr.addEventListener('keydown', (e) => {
       if (e.target !== tr) return; // Enter / Spasi pada tombol atau tautan di dalam baris (mis. "coba lagi") jangan membuka modal
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tr.click(); }
@@ -2546,7 +2553,7 @@ async function selectCmdkResult(idx){
   const { data, error } = await sb.from('produk').select('id').eq('kode_produk', r.kode_produk).single();
   if (error || !data) { showToast('Gagal membuka produk', true); return; }
   closeCmdk();
-  if (r.tipe === 'SET') { goToSetDetail(data.id); } else { openEdit(data.id); }
+  if (r.tipe === 'SET') { goToSetDetail(data.id); } else { goToProdukEdit(data.id); }
 }
 cmdkInput.addEventListener('keydown', e => {
   if (e.key === 'ArrowDown') { e.preventDefault(); cmdkActiveIdx = Math.min(cmdkActiveIdx + 1, cmdkResults.length - 1); renderCmdkList(); }
@@ -2587,6 +2594,17 @@ modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) att
 // Semua await di alur modal menyimpan session saat mulai dan berhenti kalau
 // session-nya sudah beda (hasil fetch basi tidak boleh nulis ke form).
 // ================================================================
+// URL <-> modal. { id, token } kalau modal yang terbuka SEDANG dicerminkan di address bar sebagai
+// /crud-produk/produk/<token>; null kalau modal tidak punya URL (tambah produk, dibuka dari Set Detail / KFA / Orphan, dst).
+// Hanya modal yang punya modalRoute yang ditutup oleh Back browser / klik sidebar "Produk" (lihat setSubroute).
+let modalRoute = null;
+// Modal tertutup: lepas pelacakan dan kembalikan URL ke daftar. Hanya menyentuh URL kalau address bar memang masih di
+// /crud-produk/produk/<uuid> -- kalau user sudah pindah view lewat sidebar (/kfa, /set, ...) URL itu tidak boleh ditarik balik.
+function releaseProdukUrl(){
+  modalRoute = null;
+  if (isProdukDetailPath(location.pathname)) routeTo('/crud-produk/produk');
+}
+
 const MODAL_TRANSITIONS = {
   closed:  ['add', 'loading'],
   add:     ['add', 'loading', 'busy', 'closed'],
@@ -2627,7 +2645,7 @@ function closeModal(){
   if (modalState === 'closed') return;
   modalDirty = false;
   // Harga / AKD / media di modal langsung tertulis ke DB (bukan menunggu Simpan), jadi list di belakang modal bisa sudah basi.
-  if (modalGo('closed')) stale.flush(viewAktif(), false);
+  if (modalGo('closed')) { stale.flush(viewAktif(), false); releaseProdukUrl(); }
 }
 
 // ---- Unsaved changes guard — dipakai di modal edit produk (form yang sama
@@ -2775,6 +2793,63 @@ function openAdd(prefill){
   atributUi.lockNew(); // produk baru belum punya id: klasifikasi baru bisa diatur setelah disimpan
 }
 
+// Buka modal edit produk (UNIT / INSTRUMENT) DARI DAFTAR / Ctrl+K, dan cerminkan di URL: /crud-produk/produk/<url_token>
+// (UUID acak, bukan produk.id / kode yang urut -- alasan lengkap di route-params.js). Modal tampil seketika; query token
+// jalan paralel dan URL baru dipasang setelah modal benar-benar terbuka untuk produk ini. Kalau kolom url_token belum ada /
+// kosong untuk baris ini, modal tetap berfungsi seperti dulu, hanya tanpa URL (degradasi aman, sama dengan goToSetDetail).
+async function goToProdukEdit(produkId){
+  const opening = openEdit(produkId);
+  const tokenQ = sb.from('produk').select('id, url_token').eq('id', produkId).maybeSingle();
+  const [opened, tok] = await Promise.allSettled([opening, tokenQ]);
+  if (opened.status === 'rejected') { console.error('openEdit gagal:', opened.reason); return; }
+  // Selama menunggu, modal bisa saja ditutup / diganti / ditolak (konfirmasi "belum disimpan" dibatalkan, sedang menyimpan).
+  if (modalState === 'closed' || currentProdukId !== produkId) return;
+  const token = (tok.status === 'fulfilled' && !tok.value.error && tok.value.data) ? tok.value.data.url_token : null; // error "column url_token does not exist" = null
+  if (!token) {
+    // Tanpa token modal tetap berfungsi, tapi URL produk SEBELUMNYA (kalau modal baru saja pindah dari produk ber-URL) tidak boleh tertinggal.
+    if (isProdukDetailPath(location.pathname)) routeTo('/crud-produk/produk');
+    return;
+  }
+  modalRoute = { id: produkId, token };
+  routeTo(produkPath(token));
+}
+
+// Dari URL (refresh, link dibagikan, Back/Forward): `token` = produk.url_token. resolveRoute() sudah memverifikasi token ini
+// milik produk NON-SET yang ada dan menyimpan { id, kode, token } di `resolvedProduk`; query ulang hanya kalau cache tidak cocok.
+async function openProdukFromRoute(token){
+  let hit = (resolvedProduk && resolvedProduk.token === token) ? resolvedProduk : null;
+  if (!hit) {
+    const { data: p, error } = await sb.from('produk').select('id, kode_produk, tipe').eq('url_token', token).maybeSingle();
+    if (error || !p || p.tipe === 'SET') { showToast('Gagal membuka produk', true); return; }
+    hit = { id: p.id, kode: p.kode_produk, token };
+  }
+  // Sudah terbuka untuk produk ini (klik baris -> goToProdukEdit membukanya lebih dulu, lalu router memanggil ini): cukup tandai.
+  if (modalState !== 'closed' && currentProdukId === hit.id) { modalRoute = { id: hit.id, token }; return; }
+  const sebelumnya = modalRoute;
+  modalRoute = { id: hit.id, token }; // dipasang SEBELUM load: Back saat modal masih memuat harus ikut tertangani
+  await openEdit(hit.id);
+  if (modalState !== 'closed' && currentProdukId === hit.id) return;
+  // openEdit menolak (konfirmasi "belum disimpan" dibatalkan / sedang menyimpan) atau gagal memuat: layar tidak berpindah, jadi
+  // URL harus kembali menunjuk apa yang benar-benar tampil. (Gagal memuat sudah memanggil closeModal -> releaseProdukUrl.)
+  modalRoute = (modalState !== 'closed') ? sebelumnya : null;
+  if (modalRoute) routeTo(produkPath(modalRoute.token));
+  else if (isProdukDetailPath(location.pathname)) routeTo('/crud-produk/produk');
+}
+
+// Back/Forward atau klik sidebar "Produk" saat modal yang URL-nya /produk/<uuid> masih terbuka: tutup lewat guard yang SAMA
+// dengan tombol X (perubahan belum disimpan -> dialog konfirmasi; sedang menyimpan -> ditolak). Kalau modal tetap terbuka,
+// URL dikembalikan ke produknya supaya address bar tidak berbohong; kalau jadi tertutup, closeModal() sudah membereskan URL.
+function requestCloseFromRoute(){
+  attemptCloseModal();
+  if (modalState !== 'closed' && modalRoute) routeTo(produkPath(modalRoute.token));
+}
+
+_produkRoute = {
+  open: openProdukFromRoute,
+  isTracked: () => !!modalRoute && modalState !== 'closed',
+  requestClose: requestCloseFromRoute,
+};
+
 async function openEdit(produkId){
   if (modalRejectIfBusy()) return;
   // Pindah produk saat form lama masih berisi perubahan belum tersimpan (mis. lewat Ctrl+K):
@@ -2784,6 +2859,9 @@ async function openEdit(produkId){
     if (!lanjut) return;
     if (modalRejectIfBusy()) return; // state bisa berubah selama dialog terbuka
   }
+  // Modal pindah ke produk lain lewat jalur tanpa URL (mis. dari Set Detail): pelacakan URL produk sebelumnya tidak berlaku lagi.
+  // (Jalur daftar / Ctrl+K lewat goToProdukEdit, yang memasang modalRoute produk baru begitu tokennya didapat.)
+  if (modalRoute && modalRoute.id !== produkId) modalRoute = null;
   modalGo('loading'); // Simpan/Hapus terkunci sampai data selesai masuk
   const session = modalSession;
   resetForm();
@@ -4456,6 +4534,9 @@ function animateProdukRowOut(id){
   // (resolveRoute) sebelum mount(). Dibuka SEBELUM switchView() supaya daftar set tidak ikut dimuat.
   if ((initialSub || 'produk') === 'set' && initialParam) openSetFromRoute(String(initialParam).toLowerCase());
   switchView(initialSub || 'produk');
+  // Deep link ke modal edit produk (/crud-produk/produk/<uuid>): router sudah memverifikasi produknya ada & bukan SET (resolveRoute).
+  // Dibuka SETELAH switchView('produk') supaya modal muncul di atas daftar yang sedang dimuat.
+  if ((initialSub || 'produk') === 'produk' && initialParam) openProdukFromRoute(String(initialParam).toLowerCase());
 }
 
 /** Dipanggil router.js tiap kali URL sub-route berubah TANPA modul-nya
@@ -4474,12 +4555,21 @@ export function setSubroute(sub, param) {
     _setRoute.open(String(param).toLowerCase());
     return;
   }
+  if (view === 'produk' && param && _produkRoute) {
+    // /crud-produk/produk/<uuid>: router sudah memverifikasi (resolveRoute). Daftar produk tetap jadi latar modal.
+    _switchView?.('produk');
+    _produkRoute.open(String(param).toLowerCase());
+    return;
+  }
   // View-nya dinyalakan DULU: switchView('set') memuat daftar set hanya kalau panel detail tertutup,
   // jadi untuk detail yang masih terbuka ia tidak memuat apa-apa; close() di bawah yang memuat (sekali).
   _switchView?.(view);
   // /crud-produk/set (tanpa id) = daftar. Back browser / klik sidebar "Set Management" / tombol Kembali
   // dari detail: tutup detail yang masih terbuka supaya layar sama dengan URL.
   if (view === 'set' && _setRoute?.isOpen()) _setRoute.close();
+  // /crud-produk/produk (tanpa id) = daftar. Back browser dari /produk/<uuid> -> modal yang URL-nya itu harus ikut tertutup
+  // (lewat guard yang sama dengan tombol X). Modal yang tidak punya URL (tambah produk, dari Set Detail) tidak disentuh.
+  if (view === 'produk' && _produkRoute?.isTracked()) _produkRoute.requestClose();
 }
 
 /**
@@ -4490,24 +4580,24 @@ export function setSubroute(sub, param) {
  *  - false : tidak ada, ATAU ada tapi tidak boleh dibaca user ini (RLS menyaringnya jadi 0 baris) --
  *            dari luar keduanya tidak terbedakan, router menampilkan 404 yang sama.
  *  - throw : pemeriksaan gagal (jaringan dll.) -> router menampilkan error biasa, BUKAN 404/logout.
- * Cuma 'set' yang punya param, yaitu produk.url_token (UUID acak, BUKAN produk.id yang angka urut).
+ * Hanya 'set' dan 'produk' yang punya param, yaitu produk.url_token (UUID acak, BUKAN produk.id yang angka urut):
+ *  - 'set'    : token harus milik produk bertipe SET.
+ *  - 'produk' : token harus milik produk BUKAN SET (UNIT / INSTRUMENT, termasuk tipe kosong pada data lama). Token milik SET di
+ *               /produk/<uuid> dianggap tidak ada, simetris dengan /set/<uuid> yang menolak token non-SET.
  * Bentuk UUID sudah dicek router (route-params.js); dicek lagi di sini (pertahanan berlapis) supaya
  * nilai ngawur tidak pernah menyentuh query.
  */
 export async function resolveRoute(sub, param) {
   resolvedSet = null;
-  if (sub !== 'set' || typeof param !== 'string' || !UUID_RE.test(param)) return false;
+  resolvedProduk = null;
+  if ((sub !== 'set' && sub !== 'produk') || typeof param !== 'string' || !UUID_RE.test(param)) return false;
   await ensureVendorScripts();
   const token = param.toLowerCase();
-  const { data, error } = await window.pnmSupabase
-    .from('produk')
-    .select('id, kode_produk')
-    .eq('url_token', token)
-    .eq('tipe', 'SET')
-    .maybeSingle();
+  const { data, error } = await tokenQuery(window.pnmSupabase, sub, token).maybeSingle();
   if (error) throw error;
   if (!data) return false;
-  resolvedSet = { id: data.id, kode: data.kode_produk, token };
+  if (sub === 'set') resolvedSet = { id: data.id, kode: data.kode_produk, token };
+  else resolvedProduk = { id: data.id, kode: data.kode_produk, token };
   return true;
 }
 
@@ -4552,7 +4642,9 @@ export function unmount() {
 
   _switchView = null; // avoid a stale closure over this mount's DOM being callable after teardown
   _setRoute = null;   // idem untuk fungsi Set Management
+  _produkRoute = null; // idem untuk modal edit produk
   resolvedSet = null;
+  resolvedProduk = null;
   produkPrefetch = null;
   mountedContainer = null;
 }

@@ -48,7 +48,7 @@ import { initNoAutofillGuard } from '../shared/no-autofill.js';
 // simply has no legitimate sub-routes at all -- see isValidSub().
 import { CRUD_PRODUK_SUBNAV } from './pages/crud-produk/subnav.js';
 import { KONVERSIAN_SUBNAV } from './pages/konversian/subnav.js';
-// Aturan segmen ketiga URL (cuma crud-produk/set/<uuid> yang boleh) -- lihat route-params.js.
+// Aturan segmen ketiga URL (cuma crud-produk/set/<uuid> dan crud-produk/produk/<uuid>) -- lihat route-params.js.
 import { splitRest, isValidParam } from './route-params.js';
 
 const ROUTES = {
@@ -249,8 +249,8 @@ function currentRoute() {
   // Hampir semua route tidak pernah 3 segmen (lihat ROUTES + SUBROUTES di atas), jadi `rest` yang
   // tidak kosong itu orang yang utak-atik address bar mencari halaman yang tidak ada -- sama seperti
   // modul / sub id yang tidak dikenal, render() menganggap ketiganya `tampered`.
-  // PENGECUALIAN: kombinasi modul/sub yang terdaftar di route-params.js (sekarang cuma
-  // /crud-produk/set/<uuid>) boleh punya TEPAT satu segmen: `param`. Bentuknya dicek sinkron di
+  // PENGECUALIAN: kombinasi modul/sub yang terdaftar di route-params.js (sekarang
+  // /crud-produk/set/<uuid> dan /crud-produk/produk/<uuid>) boleh punya TEPAT satu segmen: `param`. Bentuknya dicek sinkron di
   // render() (isValidParam), keberadaannya dicek async lewat hook resolveRoute() milik halaman.
   const { param, extra } = splitRest(rest);
   return { module, sub: sub || null, param, extra };
@@ -410,7 +410,7 @@ async function render() {
   }
   if (mySeq !== renderSeq) { clearTimeout(skelTimer); return; } // user sudah pindah lagi selagi chunk diunduh -> jangan mount halaman ini
 
-  // Param di URL (mis. /crud-produk/set/<uuid>, buka langsung / refresh / link dibagikan): cek dulu
+  // Param di URL (mis. /crud-produk/set/<uuid> atau /crud-produk/produk/<uuid>, buka langsung / refresh / link dibagikan): cek dulu
   // ke halaman apakah itu benar ada, SEBELUM mount() -- id yang tidak ada tidak pernah sampai ter-mount.
   if (param != null) {
     const hasil = await cekParam(mod, sub, param);
