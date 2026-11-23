@@ -1134,7 +1134,7 @@ let _keluargaOptInflight = null;
 // Setelah koreksi atribut berubah: opsi filter Keluarga (cache 30 menit) dan hasil list harus dihitung ulang.
 function setelahAtributBerubah(){
   produkDistinct.keluarga = [];
-  try { sessionStorage.removeItem(PW_CACHE_PREFIX + 'keluarga_opsi_v1'); } catch (e) { /* abaikan */ }
+  try { sessionStorage.removeItem(PW_CACHE_PREFIX + 'keluarga_opsi_v2'); } catch (e) { /* abaikan */ }
   invalidateProdukStackCache();
   loadProduk();
 }
@@ -1145,14 +1145,14 @@ async function ensureKeluargaOptions(){
     produkDistinct.keluarga = rows.map(r => r.keluarga);
     produkKeluargaN = new Map(rows.map(r => [r.keluarga, r.n]));
   };
-  const cached = pwCacheGet('keluarga_opsi_v1', 30 * 60 * 1000);
+  const cached = pwCacheGet('keluarga_opsi_v2', 30 * 60 * 1000);
   if (cached && cached.fresh && Array.isArray(cached.data) && cached.data.length) { apply(cached.data); return; }
   if (!_keluargaOptInflight) {
     _keluargaOptInflight = (async () => {
       const { rows, error } = await fetchKeluargaOptions(sb);
       if (error) { showToast(pesanKeluarga(error), true); if (cached && Array.isArray(cached.data)) apply(cached.data); return; }
       apply(rows);
-      pwCacheSet('keluarga_opsi_v1', rows);
+      pwCacheSet('keluarga_opsi_v2', rows);
     })();
   }
   try { await _keluargaOptInflight; } finally { _keluargaOptInflight = null; }

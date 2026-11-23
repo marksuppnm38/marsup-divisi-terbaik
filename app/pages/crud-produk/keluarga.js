@@ -13,8 +13,8 @@
 
 import { manualMap } from './atribut.js';
 
-export const KELUARGA_VIEW = 'v_produk_keluarga';
-export const KELUARGA_REF = 'v_keluarga_set';
+export const KELUARGA_VIEW = 'v_produk_keluarga_pr'; // 2026-11-23: keluarga per PROSEDUR (laparatomy = laparotomy, basic minor = minor)
+export const KELUARGA_REF = 'v_keluarga_set_pr';
 
 const ID_CHUNK = 150;     // sama dengan chunk .in('id', ...) lain di halaman Produk (aman untuk panjang URL)
 const NAMA_CHUNK = 40;    // jumlah nama keluarga per request .in('keluarga', ...)
@@ -28,7 +28,7 @@ export function viewBelumTerpasang(err) {
 }
 
 export function pesanKeluarga(err) {
-  if (viewBelumTerpasang(err)) return 'Keluarga set belum aktif di database. Jalankan supabase/03_keluarga_set.sql di Supabase SQL Editor, lalu muat ulang.';
+  if (viewBelumTerpasang(err)) return 'Keluarga set belum aktif di database. Jalankan supabase/2026-11-23_keluarga_prosedur.sql lalu 2026-11-23_keluarga_prosedur_app.sql (setara 03_keluarga_set.sql) di Supabase SQL Editor, lalu muat ulang.';
   return 'Gagal memuat keluarga set: ' + ((err && err.message) || err);
 }
 

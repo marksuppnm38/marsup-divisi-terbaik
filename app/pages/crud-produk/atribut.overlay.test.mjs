@@ -22,7 +22,7 @@ function sbKel({ ref = [], view = [] }) {
     const chain = { select: () => chain, order: () => chain,
       in(c, v) { q.f.push([c, v]); return chain; }, range(a, b) { q.r = [a, b]; return chain; },
       then(res, rej) {
-        let rows = name === 'v_keluarga_set' ? ref : view;
+        let rows = name === 'v_keluarga_set_pr' ? ref : view;
         q.f.forEach(([c, v]) => { rows = rows.filter((r) => v.includes(r[c])); });
         if (q.r) rows = rows.slice(q.r[0], q.r[1] + 1);
         return Promise.resolve({ data: rows.map((r) => ({ ...r })), error: null }).then(res, rej);
@@ -66,7 +66,7 @@ test('fetchKeluargaOptions tanpa koreksi: tidak ada query tambahan ke view', asy
   resetManual(); await muatManual(sbManual([]));
   let viewDipanggil = false;
   const base = sbKel({ ref, view });
-  const sb = { from(n) { if (n === 'v_produk_keluarga') viewDipanggil = true; return base.from(n); } };
+  const sb = { from(n) { if (n === 'v_produk_keluarga_pr') viewDipanggil = true; return base.from(n); } };
   const { rows } = await fetchKeluargaOptions(sb);
   assert.equal(rows.length, 3);
   assert.equal(viewDipanggil, false);
