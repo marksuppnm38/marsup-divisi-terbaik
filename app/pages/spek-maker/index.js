@@ -32,6 +32,7 @@ import { buildSpekPdf, loadSpekFonts, fileSafeName } from './pdf.js';
 import { mountStruktur } from './struktur-ui.js';
 import { mountSpp } from './spp-ui.js';
 import { mountLampiran } from './lampiran-ui.js';
+import { mountMockAkd } from './mock-akd-ui.js';
 import { mountBulk } from './bulk-ui.js';
 
 const SUPABASE_URL = 'https://ptkkbsemihcyndisjoor.supabase.co';
@@ -645,6 +646,16 @@ const TABS = {
     hint: 'Lampiran isi set: kode, deskripsi, qty, dan gambar tiap instrumen.',
     empty: ['Preview PDF muncul di sini', 'Ambil data set, koreksi isinya, lalu klik Preview.'],
     mount: (panel) => mountLampiran(panel, {
+      toast, loadScript, getToken, el, triggerDownload,
+      loadBucketImage, blobToPngImage, ensureLogos, cfg: subCfg(),
+    }),
+  },
+  mockakd: {
+    panelId: 'smPanelMockAkd',
+    crumb: 'Mock AKD',
+    hint: 'Gabungkan beberapa set jadi satu daftar unik untuk dilihat sebelum pengajuan AKD set baru.',
+    empty: ['Preview set gabungan muncul di sini', 'Paste kode set, klik Gabungkan, koreksi isinya, lalu klik Preview.'],
+    mount: (panel) => mountMockAkd(panel, {
       toast, loadScript, getToken, el, triggerDownload,
       loadBucketImage, blobToPngImage, ensureLogos, cfg: subCfg(),
     }),

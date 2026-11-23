@@ -262,6 +262,21 @@
 .sm-page .sm-set .sm-list .sm-lp-fields { display: grid; grid-template-columns: minmax(0, 1fr) 84px; gap: 8px 12px; }
 .sm-page .sm-lp-empty { padding: 16px 12px; font-size: 12.5px; color: var(--text-muted); text-align: center; }
 
+/* ── Tab Mock AKD: ringkasan set sumber + daftar gabungan ───────────────── */
+.sm-page .ma-sources { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.sm-page .ma-src {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 3px 9px; font-size: 11.5px; color: var(--text-muted);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px;
+}
+.sm-page .ma-src strong { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+.sm-page .ma-src.missing { color: var(--danger-text, var(--danger)); border-color: var(--danger-border, var(--danger)); }
+.sm-page .ma-controls { display: grid; grid-template-columns: minmax(0, 1fr); }
+.sm-page .ma-status { margin-top: 10px; }
+.sm-page .ma-asal { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; color: var(--text-muted); overflow-wrap: anywhere; }
+.sm-page .ma-asal i { font-size: 13px; margin-top: 1px; flex-shrink: 0; }
+#smPanelMockAkd .sm-lp-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px 12px; }
+
 /* ── Tab Bulk ──────────────────────────────────────────────────────────── */
 .sm-page .sm-bulk .sm-bulk-types { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 12px; }
 .sm-page .sm-bulk .sm-bulk-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }

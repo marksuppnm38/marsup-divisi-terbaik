@@ -5,7 +5,7 @@
 // semuanya dari pnm-universal.css. Semua CSS khusus halaman ini ada di style.css,
 // di-scope di bawah `.sm-page`.
 //
-// Tab lain (Struktur Harga, SPP, Lampiran Set, Bulk) di-mount oleh index.js ke
+// Tab lain (Struktur Harga, SPP, Lampiran Set, Mock AKD, Bulk) di-mount oleh index.js ke
 // panel kosong di bawah; markup mereka ada di masing-masing *-ui.js.
 export const SPEK_MAKER_MARKUP = `
 <div class="sm-page">
@@ -19,6 +19,7 @@ export const SPEK_MAKER_MARKUP = `
       <button type="button" class="sm-tab" id="smTab-struktur" role="tab" aria-selected="false" aria-controls="smPanelStruktur" tabindex="-1" data-action="tab" data-tab="struktur"><i class="ti ti-receipt-2" aria-hidden="true"></i> Struktur Harga</button>
       <button type="button" class="sm-tab" id="smTab-spp" role="tab" aria-selected="false" aria-controls="smPanelSpp" tabindex="-1" data-action="tab" data-tab="spp"><i class="ti ti-presentation" aria-hidden="true"></i> SPP</button>
       <button type="button" class="sm-tab" id="smTab-lampiran" role="tab" aria-selected="false" aria-controls="smPanelLampiran" tabindex="-1" data-action="tab" data-tab="lampiran"><i class="ti ti-list-details" aria-hidden="true"></i> Lampiran Set</button>
+      <button type="button" class="sm-tab" id="smTab-mockakd" role="tab" aria-selected="false" aria-controls="smPanelMockAkd" tabindex="-1" data-action="tab" data-tab="mockakd"><i class="ti ti-git-merge" aria-hidden="true"></i> Mock AKD</button>
       <button type="button" class="sm-tab" id="smTab-bulk" role="tab" aria-selected="false" aria-controls="smPanelBulk" tabindex="-1" data-action="tab" data-tab="bulk"><i class="ti ti-stack-2" aria-hidden="true"></i> Bulk</button>
     </div>
     <span class="sm-toolbar-hint" id="smHint"></span>
@@ -89,6 +90,8 @@ export const SPEK_MAKER_MARKUP = `
       <div id="smPanelSpp" class="sm-panel" role="tabpanel" aria-labelledby="smTab-spp" style="display:none;"></div>
 
       <div id="smPanelLampiran" class="sm-panel" role="tabpanel" aria-labelledby="smTab-lampiran" style="display:none;"></div>
+
+      <div id="smPanelMockAkd" class="sm-panel" role="tabpanel" aria-labelledby="smTab-mockakd" style="display:none;"></div>
 
       <div id="smPanelBulk" class="sm-panel sm-panel-bulk" role="tabpanel" aria-labelledby="smTab-bulk" style="display:none;"></div>
     </div>

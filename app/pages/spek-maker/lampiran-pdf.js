@@ -139,14 +139,24 @@ export function totalQty(items) {
 // opts  : { judul,
 //           items: [{ kode, deskripsi, qty, image: {dataUrl,width,height}|null }],
 //           logos: { robust: dataUrl, pnm: dataUrl },
-//           fonts: hasil loadLampiranFonts() atau null }
+//           fonts: hasil loadLampiranFonts() atau null,
+//           tanpaQty: true -> tanpa kolom QTY & baris TOTAL (kolom deskripsi melebar) }
 export function buildLampiranPdf(jsPDF, opts) {
-  const { judul = '', items = [], logos = {}, fonts = null } = opts;
+  const { judul = '', items = [], logos = {}, fonts = null, tanpaQty = false } = opts;
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' });
   const F = registerFonts(doc, fonts);
   const per = G.rowsPerPage;
   const pageCount = Math.max(1, Math.ceil(items.length / per));
   const total = totalQty(items);
+
+  // Tanpa QTY: garis kolom QTY dibuang, kolom DESKRIPSI melebar sampai kolom GAMBAR,
+  // baris TOTAL (jumlah qty) tidak digambar.
+  const vx = tanpaQty ? G.vx.filter((_, i) => i !== 3) : G.vx;
+  const headLabels = tanpaQty ? ['NO', 'KODE', 'DESKRIPSI', 'GAMBAR'] : G.headLabels;
+  const headCx = tanpaQty ? [G.headCx[0], G.headCx[1], (G.vx[2] + G.vx[4]) / 2, G.headCx[4]] : G.headCx;
+  const deskCx = tanpaQty ? (G.vx[2] + G.vx[4]) / 2 : G.colCx.desk;
+  const deskMaxW = tanpaQty ? G.vx[4] - G.vx[2] - 2.25 : G.deskMaxW;
+  const showTotal = !tanpaQty;
 
   const setFont = (f, size) => { doc.setFont(f[0], f[1]); doc.setFontSize(size); };
 
@@ -184,12 +194,12 @@ export function buildLampiranPdf(jsPDF, opts) {
 
   function drawTable(rows, isLast) {
     const n = rows.length;
-    const bottomLine = isLast ? G.rowTops[n] + G.totalH : G.rowTops[n];
+    const bottomLine = isLast && showTotal ? G.rowTops[n] + G.totalH : G.rowTops[n];
 
     // -- pita biru header (+ TOTAL di halaman terakhir)
     doc.setFillColor(...G.blue);
     doc.rect(G.band.x0, G.headTop, G.band.x1 - G.band.x0, G.headBottom - G.headTop, 'F');
-    if (isLast) {
+    if (isLast && showTotal) {
       const top = G.rowTops[n] - 0.28;
       doc.rect(G.band.x0, top, G.band.x1 - G.band.x0, bottomLine + 0.42 - top, 'F');
     }
@@ -201,13 +211,13 @@ export function buildLampiranPdf(jsPDF, opts) {
     doc.line(hx0, G.topLineY, hx1, G.topLineY);
     doc.line(hx0, G.headBottom, hx1, G.headBottom);
     for (let i = 1; i <= n; i++) doc.line(hx0, G.rowTops[i], hx1, G.rowTops[i]);
-    if (isLast) doc.line(hx0, bottomLine, hx1, bottomLine);
-    G.vx.forEach((x) => doc.line(x, G.headTop - 0.01, x, bottomLine + 0.24));
+    if (isLast && showTotal) doc.line(hx0, bottomLine, hx1, bottomLine);
+    vx.forEach((x) => doc.line(x, G.headTop - 0.01, x, bottomLine + 0.24));
 
     // -- teks header (putih, Roboto Bold)
     doc.setTextColor(255, 255, 255);
     setFont(F.head, G.headFs);
-    G.headLabels.forEach((lb, i) => doc.text(lb, G.headCx[i], G.headBaseline, { align: 'center' }));
+    headLabels.forEach((lb, i) => doc.text(lb, headCx[i], G.headBaseline, { align: 'center' }));
 
     // -- baris data
     rows.forEach((it, i) => {
@@ -220,12 +230,12 @@ export function buildLampiranPdf(jsPDF, opts) {
       const noLabel = String(it.no);
       doc.text(noLabel, G.colCx.no, mid + G.bodyBaseOff, { align: 'center' });
       doc.text(String(it.kode || ''), G.colCx.kode, mid + G.bodyBaseOff, { align: 'center' });
-      doc.text(String(Number(it.qty) > 0 ? Number(it.qty) : 0), G.colCx.qty, mid + G.bodyBaseOff, { align: 'center' });
+      if (!tanpaQty) doc.text(String(Number(it.qty) > 0 ? Number(it.qty) : 0), G.colCx.qty, mid + G.bodyBaseOff, { align: 'center' });
 
       // deskripsi: dibungkus, rata tengah horizontal & vertikal
-      const lines = doc.splitTextToSize(String(it.deskripsi || ''), G.deskMaxW).slice(0, G.deskMaxLines);
+      const lines = doc.splitTextToSize(String(it.deskripsi || ''), deskMaxW).slice(0, G.deskMaxLines);
       const first = mid + G.bodyBaseOff - ((lines.length - 1) * G.bodyLead) / 2;
-      lines.forEach((ln, li) => doc.text(ln, G.colCx.desk, first + li * G.bodyLead, { align: 'center' }));
+      lines.forEach((ln, li) => doc.text(ln, deskCx, first + li * G.bodyLead, { align: 'center' }));
 
       // gambar: fit ke kotak sel, rasio dijaga, di tengah
       const im = it.image;
@@ -240,7 +250,7 @@ export function buildLampiranPdf(jsPDF, opts) {
     });
 
     // -- baris TOTAL
-    if (isLast) {
+    if (isLast && showTotal) {
       const base = G.rowTops[n] + G.totalBaseOff;
       doc.setTextColor(255, 255, 255);
       setFont(F.head, G.headFs);
