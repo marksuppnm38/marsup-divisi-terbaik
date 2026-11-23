@@ -176,6 +176,8 @@ const COLS = {
     { id: 'status', h: 'Status', k: 'status', w: 14, grp: 'waktu', desc: 'Terkirim atau Dalam proses.' },
     { id: 'tanggal', h: 'Tanggal pesanan', k: 'tanggal', w: 14, fmt: XL_DATE, grp: 'waktu', desc: 'Tanggal pesanan seperti tercatat. Kosong bila tidak tercatat.' },
     { id: 'rmp', h: 'No. RMP', k: 'rmp', w: 24, grp: 'dok', drop: 1, desc: 'Nomor RMP internal.' },
+    { id: 'pasar', h: 'Pasar', k: 'pasar', w: 13, grp: 'dok', drop: 1, desc: 'Pemerintah (kode RMP tanpa akhiran), Swasta (RMP-R), atau Lainnya (pola kode tidak dikenal).' },
+    { id: 'nilaiRmp', h: 'Nilai RMP (Rp)', k: 'nilaiRmp', w: 18, fmt: '#,##0', grp: 'dok', drop: 1, desc: 'Nilai seluruh No. RMP (TOTAL VALUE PRODUK include tax, dari ALL V). Dicantumkan SEKALI di baris pertama tiap No. RMP, bukan per item, jadi jangan dijumlahkan per baris.' },
     { id: 'po', h: 'No. PO', k: 'po', w: 24, grp: 'dok', drop: 1, na: 1, desc: 'Nomor PO sesuai data pesanan. “Tidak tersedia” berarti tidak tercatat.' },
     { id: 'shitung', h: 'Status hitungan', k: 'shitung', w: 22, grp: 'cat', desc: 'Dasar angka pada baris ini: Sesuai isi set, Sesuai dengan penyesuaian, Perkiraan, Belum dihitung (set), atau Jumlah sesuai pesanan (barang satuan).' },
     { id: 'ket', h: 'Keterangan', k: 'ket', w: 44, wrap: 1, warn: 1, drop: 1, grp: 'cat', desc: 'Penjelasan bila angka berupa perkiraan, ada penyesuaian, atau belum dihitung.' },
@@ -537,6 +539,13 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
     ((ord.get(a.customer) || 0) - (ord.get(b.customer) || 0)) ||
     String(b.tanggal || '').localeCompare(String(a.tanggal || '')) ||
     String(a.kode_rmp || '').localeCompare(String(b.kode_rmp || ''), 'id'));
+  const rmpSeen = new Set();
+  const nilaiRmpSekali = (l) => {
+    const k = String(l.kode_rmp || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    if (!k || rmpSeen.has(k)) return null;
+    rmpSeen.add(k);
+    return l.nilai_rmp == null ? null : Number(l.nilai_rmp);
+  };
   const itemsPesanan = sorted.map((l) => {
     const ok = dihitung(l);
     return {
@@ -548,6 +557,8 @@ export async function buildWorkbook(ExcelJS, ctx, sel) {
       set: l.kind === 'SET' && ok ? n0(l.nilai) : null, pcs: satuanBaris(l) === 'pcs' && ok ? n0(l.nilai) : null, unit: satuanBaris(l) === 'unit' && ok ? n0(l.nilai) : null,
       status: l.status === 'TERKIRIM' ? 'Terkirim' : 'Dalam proses', tanggal: xlDate(l.tanggal),
       rmp: l.kode_rmp || '', po: l.po || '', shitung: labelHitung(l),
+      pasar: l.pasar === 'PEMERINTAH' ? 'Pemerintah' : (l.pasar === 'SWASTA' ? 'Swasta' : (l.pasar ? 'Lainnya' : '')),
+      nilaiRmp: nilaiRmpSekali(l),
       ket: [ketBaris(l), n0(l.distributor_n) > 1 ? 'RMP ini tercatat dengan lebih dari satu distributor; yang ditampilkan adalah yang terbanyak' : ''].filter(Boolean).join('; '),
       family: l.family || '', baris: n0(l.jumlah_baris), sheet: l.sumber_sheet || '', asli: l.label_asli || '',
     };

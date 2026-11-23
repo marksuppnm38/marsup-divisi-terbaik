@@ -124,6 +124,29 @@ const KEL_UNIT = ['ELEKTROMEDIS', 'ALAT LABORATORIUM', 'UNIT', 'PENUNJANG MEDIS'
 const satuanKel = (id) => (id === 'SET' ? 'set' : (KEL_UNIT.includes(id) ? 'unit' : 'pcs'));
 const satuanBaris = (l) => (l.kind === 'SET' ? 'set' : satuanKel(l.kelompok));
 const satuanList = (arr) => { const a = Array.from(new Set((arr || []).map(satuanKel))); return a.length === 1 ? a[0] : 'pcs/unit'; };
+// ── pasar: pemerintah / swasta (dari akhiran kode RMP, dihitung di SQL: fn_pasar_kode) ──
+const PASAR = {
+  PEMERINTAH: { nama: 'Pemerintah', tip: 'Kode RMP tanpa akhiran huruf (RMP, RMT, RMTA): pesanan pemerintah.' },
+  SWASTA:     { nama: 'Swasta',     tip: 'Kode RMP-R (retail): pesanan swasta.' },
+  LAINNYA:    { nama: 'Lainnya',    tip: 'Kode tanpa pola yang dikenal (mis. RMP-S atau tanpa kode). Belum dihitung sebagai pemerintah atau swasta.' },
+};
+const PASAR_URUT = ['PEMERINTAH', 'SWASTA', 'LAINNYA'];
+const pasarNama = (k) => (PASAR[k] ? PASAR[k].nama : String(k || '—'));
+function pasarTag(k) {
+  if (!k) return '';
+  const p = PASAR[k] || { nama: k, tip: '' };
+  return `<span class="ps-pasar-tag ps-pasar-${esc(String(k).toLowerCase())}" title="${esc(p.tip)}">${esc(p.nama)}</span>`;
+}
+// Rupiah: lengkap untuk tooltip, ringkas (Rp 1,2 M / Rp 350 jt) untuk tampilan.
+function rpFull(n) { return 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID'); }
+function rpRingkas(n) {
+  const v = Number(n) || 0, a = Math.abs(v);
+  const f = (x, u) => 'Rp ' + x.toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' ' + u;
+  if (a >= 1e12) return f(v / 1e12, 'T');
+  if (a >= 1e9) return f(v / 1e9, 'M');
+  if (a >= 1e6) return f(v / 1e6, 'jt');
+  return rpFull(v);
+}
 const TIP_PCS = 'Pcs = instrumen satuan, dihitung per buah (termasuk isi set yang dipesan terpisah dan BMHP).';
 const TIP_UNIT = 'Unit = alat medis, elektromedis, dan alat penunjang laboratorium, dihitung per unit alat.';
 
@@ -416,7 +439,7 @@ async function load() {
   renderActive();
   try {
     const params = filterParams();
-    const key = 'u2|' + JSON.stringify(params);   // 'u2' = hasil sudah memuat pemisahan pcs/unit; cache lama tidak dipakai
+    const key = 'u3|' + JSON.stringify(params);   // 'u3' = + ringkasan_pasar & nilai Rp; cache lama (u2) tidak dipakai
     let hit = swrCache.get(key);
     if (!hit) {
       const saved = pcacheGet(key);          // cache dari kunjungan sebelumnya
@@ -754,8 +777,52 @@ function renderSummary() {
   cv.hidden = !ket.length;
   cv.innerHTML = ket.length ? `<span class="ps-muted">${ket.join(' ')}</span>` : '';
 
+  renderPasar();
+
   const xl = document.querySelector('[data-action="ps-xlsx"]');
   if (xl) xl.disabled = !rows.length;
+}
+
+// Panel Pemerintah vs Swasta (dari ringkasan_pasar). Nilai Rp dijumlah per No. RMP unik di SQL (ALL V),
+// jadi "X dari Y RMP bernilai" menunjukkan seberapa lengkap nilainya.
+function renderPasar() {
+  const el = $('ps-pasar');
+  if (!el) return;
+  const rp = (data && data.ringkasan_pasar) || {};
+  const keys = PASAR_URUT.filter((k) => rp[k] && (num(rp[k].jumlah_pesanan) > 0 || num(rp[k].jumlah_rs) > 0));
+  if (!keys.length) { el.hidden = true; el.innerHTML = ''; return; }
+  const status = state.status === 'ALL';
+  const card = (k) => {
+    const x = rp[k];
+    const satuan = [num(x.set_total) ? `${fmt(x.set_total)} set` : '', num(x.pcs_total) ? `${fmt(x.pcs_total)} pcs` : '', num(x.unit_total) ? `${fmt(x.unit_total)} unit` : ''].filter(Boolean).join(' · ');
+    const tot = num(x.rmp_total), ber = num(x.rmp_bernilai);
+    let nilai;
+    if (!tot) nilai = '<span class="ps-muted">—</span>';
+    else if (!ber) nilai = '<span class="ps-muted" title="Nomor RMP ini belum ditemukan di sheet ALL V, jadi nilainya belum bisa dihitung.">belum tersedia</span>';
+    else nilai = `<b title="${esc(rpFull(x.nilai_rp))}">${esc(rpRingkas(x.nilai_rp))}</b>`;
+    const lengkap = tot && ber && ber < tot
+      ? `<span class="ps-tag warn" title="Nilai hanya mencakup RMP yang ada di ALL V. ${fmt(tot - ber)} RMP belum punya nilai.">${fmt(ber)} dari ${fmt(tot)} RMP bernilai</span>`
+      : (tot && ber ? `<span class="ps-muted">${fmt(tot)} RMP</span>` : (tot ? `<span class="ps-muted">${fmt(tot)} RMP</span>` : ''));
+    return `<div class="ps-pasar-card" data-pasar="${esc(k)}">
+      <div class="ps-pasar-head">${pasarTag(k)}</div>
+      <div class="ps-pasar-nilai">${nilai}</div>
+      ${lengkap ? `<div class="ps-pasar-sub">${lengkap}</div>` : ''}
+      <dl class="ps-pasar-dl">
+        <div><dt>Rumah sakit</dt><dd>${fmt(x.jumlah_rs)}</dd></div>
+        <div><dt>Pesanan</dt><dd>${fmt(x.jumlah_pesanan)}</dd></div>
+        <div><dt>Jumlah</dt><dd>${esc(satuan || '—')}</dd></div>
+      </dl>
+    </div>`;
+  };
+  const totNilai = keys.reduce((a, k) => a + num(rp[k].nilai_rp), 0);
+  const adaNilai = keys.some((k) => num(rp[k].rmp_bernilai) > 0);
+  const per = data.nilai_per ? ` · nilai per ${esc(fmtDate(data.nilai_per))}` : '';
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="ps-pasar-bar"><span class="ps-pasar-title">Pemerintah vs Swasta</span>
+      <span class="ps-muted">${adaNilai ? `Total nilai ${esc(rpRingkas(totNilai))}` : 'Nilai Rp belum tersedia'}${per}</span></div>
+    <div class="ps-pasar-grid">${keys.map(card).join('')}</div>
+    <div class="ps-pasar-note ps-muted">Pasar dibaca dari kode RMP: tanpa akhiran = pemerintah, akhiran R = swasta. Konsinyasi (RMP-K, RMP-RK) tidak ikut dihitung pada cakupan “Semua”. Nilai Rp = TOTAL VALUE PRODUK include tax dari ALL V, dijumlah per No. RMP (bukan per item), jadi tidak berubah saat filter produk dipersempit.${status ? '' : ''}</div>`;
 }
 
 function rincianText(r, sep = ', ') {
@@ -776,6 +843,7 @@ function renderHead(cols) {
     (cols.set ? sortTh('set', 'Set', 'ps-th-num') : '') +
     (cols.pcs ? sortTh('pcs', 'Pcs', 'ps-th-num', TIP_PCS + ' Klik untuk mengurutkan.') : '') +
     (cols.unit ? sortTh('unit', 'Unit', 'ps-th-num', TIP_UNIT + ' Klik untuk mengurutkan.') : '') +
+    (cols.pasar ? '<th class="ps-th-num" title="Jumlah pesanan menurut pasar (dari kode RMP)">Pesanan</th>' : '') +
     '<th>Rincian</th>' +
     sortTh('terakhir', 'Terakhir', '') +
     '<th class="ps-col-act"><span class="ps-sr">Aksi</span></th>' +
@@ -787,7 +855,9 @@ function colsInfo() {
   const set = num(s.set_total) > 0 || num(s.set_cek) > 0;
   const pcs = num(s.pcs_total) > 0;
   const unit = num(s.unit_total) > 0;
-  return { set, pcs, unit, n: 5 + (set ? 1 : 0) + (pcs ? 1 : 0) + (unit ? 1 : 0) };
+  const rp = (data && data.ringkasan_pasar) || {};
+  const pasar = !!(rp.SWASTA && num(rp.SWASTA.jumlah_pesanan) > 0);   // kolom pembeda hanya bila ada pesanan swasta
+  return { set, pcs, unit, pasar, n: 5 + (set ? 1 : 0) + (pcs ? 1 : 0) + (unit ? 1 : 0) + (pasar ? 1 : 0) };
 }
 
 // Hasil kosong: jelaskan, lalu tawarkan hanya langkah yang berlaku pada filter saat ini. Tiap tombol melonggarkan satu filter.
@@ -818,6 +888,17 @@ function tagHitung(d) {
   if (d.status_hitung === 'estimasi') return `<span class="ps-tag" title="${esc(TIP.estimasi)}">Perkiraan</span>`;
   if (d.status_hitung === 'ok_beda') return `<span class="ps-tag" title="${esc(TIP.ok_beda)}">Isi beda</span>`;
   return '';
+}
+
+function pasarCell(r) {
+  const pem = num(r.pesanan_pemerintah), sw = num(r.pesanan_swasta);
+  const lain = Math.max(0, num(r.jumlah_pesanan) - pem - sw);
+  const parts = [
+    pem ? `<span class="ps-pasar-n" title="${esc(PASAR.PEMERINTAH.tip)}"><b>${fmt(pem)}</b> pemerintah</span>` : '',
+    sw ? `<span class="ps-pasar-n" title="${esc(PASAR.SWASTA.tip)}"><b>${fmt(sw)}</b> swasta</span>` : '',
+    lain ? `<span class="ps-pasar-n ps-muted" title="${esc(PASAR.LAINNYA.tip)}">${fmt(lain)} lainnya</span>` : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join('') : '<span class="ps-muted">—</span>';
 }
 
 function renderTable() {
@@ -881,6 +962,7 @@ function renderTable() {
         ${cols.set ? `<td class="ps-num">${cell(r.set, subSet)}${subCek}</td>` : ''}
         ${cols.pcs ? `<td class="ps-num">${cell(r.pcs, subPcs)}</td>` : ''}
         ${cols.unit ? `<td class="ps-num">${cell(r.unit, subUnit)}</td>` : ''}
+        ${cols.pasar ? `<td class="ps-num ps-pasar-cell">${pasarCell(r)}</td>` : ''}
         <td class="ps-jenis"><div class="ps-jenis-list">${items}</div>${more}</td>
         <td class="ps-date">${esc(fmtDate(r.terakhir))}</td>
         <td class="ps-col-act"><button type="button" class="ps-rowact" data-action="ps-edit-wil" data-idx="${i}" title="${esc(editTip)}" aria-label="Ubah wilayah ${esc(r.customer)}"><i class="ti ti-pencil" aria-hidden="true"></i> Ubah wilayah</button></td>
@@ -1039,10 +1121,10 @@ async function renderRmp() {
   const body = $('ps-body');
   $('ps-actions').hidden = true;
   $('ps-tbl-title').textContent = 'Pesanan menurut No. RMP';
-  $('ps-thead').innerHTML = '<tr><th>Rumah sakit</th><th>No. RMP</th><th>No. PO</th><th>Set / produk</th><th class="ps-th-num">Jumlah</th><th>Status</th><th>Tanggal</th></tr>';
+  $('ps-thead').innerHTML = '<tr><th>Rumah sakit</th><th>No. RMP</th><th>Pasar</th><th class="ps-th-num" title="Nilai seluruh No. RMP (include tax), tampil sekali per RMP">Nilai RMP</th><th>No. PO</th><th>Set / produk</th><th class="ps-th-num">Jumlah</th><th>Status</th><th>Tanggal</th></tr>';
   bar.hidden = false;
   bar.innerHTML = `<span class="ps-review-msg">Mencari No. RMP “${esc(q)}”…</span>${lepas}`;
-  body.innerHTML = '<tr><td colspan="7" class="ps-empty" role="status">Memuat pesanan…</td></tr>';
+  body.innerHTML = '<tr><td colspan="9" class="ps-empty" role="status">Memuat pesanan…</td></tr>';
 
   let list;
   try {
@@ -1050,7 +1132,7 @@ async function renderRmp() {
   } catch (e) {
     if (my !== reviewReq || String(e.message).startsWith('unauthorized')) return;
     bar.innerHTML = `<span class="ps-review-msg">Gagal memuat daftar pesanan.</span>${lepas}`;
-    body.innerHTML = `<tr><td colspan="7" class="ps-empty ps-empty-err">Gagal memuat daftar: ${esc(e.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="ps-empty ps-empty-err">Gagal memuat daftar: ${esc(e.message)}</td></tr>`;
     return;
   }
   if (my !== reviewReq || !rmpAktif()) return;     // ketikan berubah / tampilan berganti selagi memuat
@@ -1061,7 +1143,7 @@ async function renderRmp() {
     String(a.customer).localeCompare(String(b.customer), 'id'));
   if (!hasil.length) {
     bar.innerHTML = `<span class="ps-review-msg">Tidak ada pesanan dengan No. RMP “${esc(q)}”.</span>${lepas}`;
-    body.innerHTML = `<tr><td colspan="7" class="ps-empty">${rmpEmptyHtml()}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="ps-empty">${rmpEmptyHtml()}</td></tr>`;
     return;
   }
   const tampil = hasil.slice(0, RMP_MAX);
@@ -1072,6 +1154,7 @@ async function renderRmp() {
   bar.innerHTML = `<span class="ps-review-msg"><b>${fmt(nRmp)}</b> No. RMP · <b>${fmt(nRs)}</b> rumah sakit · ${fmt(hasil.length)} baris pesanan</span>${potong}${lepas}`;
 
   const wil = new Map(rows.map((x) => [x.customer, x]));
+  const seenNilai = new Set();
   body.innerHTML = tampil.map((l) => {
     const w = wil.get(l.customer) || {};
     const lokasi = [w.kab_kota || l.kab_kota, state.provinsi ? '' : (w.provinsi || l.provinsi)].filter(Boolean).join(' · ');
@@ -1081,6 +1164,8 @@ async function renderRmp() {
       <tr class="ps-rev-row">
         <td class="ps-col-rs"><span class="ps-rs">${esc(l.customer)}</span>${lokasi ? `<span class="ps-sub">${esc(lokasi)}</span>` : ''}</td>
         <td><span class="kode-text">${esc(l.kode_rmp || '—')}</span></td>
+        <td>${pasarTag(l.pasar)}</td>
+        <td class="ps-num">${nilaiRmpCell(l, seenNilai)}</td>
         <td>${esc(l.po || '—')}</td>
         <td>${esc(nama)}${asal}</td>
         <td class="ps-num">${esc(jmlText(l))}</td>
@@ -1149,7 +1234,7 @@ async function renderReview() {
     return `
       <tr class="ps-rev-row">
         <td class="ps-col-rs"><span class="ps-rs">${esc(l.customer)}</span>${lokasi ? `<span class="ps-sub">${esc(lokasi)}</span>` : ''}</td>
-        <td><span class="kode-text">${esc(l.kode_rmp || '—')}</span></td>
+        <td><span class="kode-text">${esc(l.kode_rmp || '—')}</span> ${pasarTag(l.pasar)}</td>
         <td>${esc(nama)}${asal}</td>
         <td class="ps-num">${esc(jmlText(l))}</td>
         <td class="ps-alasan">${tagHitung(l)}<span class="ps-alasan-t">${esc(alasanText(l))}</span>${isiHtml(l)}</td>
@@ -1252,12 +1337,23 @@ function atributSub(d) {
   return p.length ? `<span class="ps-sub">${esc(p.join(' · '))}</span>` : '';
 }
 
+// Nilai RMP berlaku untuk SELURUH nomor RMP, bukan per item: tampil sekali di baris pertama tiap RMP
+// supaya tidak terbaca (dan tidak terjumlah) sebagai nilai item.
+function nilaiRmpCell(d, seen) {
+  const key = rmpNorm(d.kode_rmp);
+  if (!key || seen.has(key)) return '<span class="ps-muted">·</span>';
+  seen.add(key);
+  if (d.nilai_rmp == null) return '<span class="ps-muted" title="No. RMP ini belum ada di sheet ALL V">belum ada</span>';
+  return `<span title="${esc(rpFull(d.nilai_rmp) + ' untuk seluruh No. RMP ini (include tax)')}">${esc(rpRingkas(d.nilai_rmp))}</span>`;
+}
+
 function detailHtml(list) {
   if (!list || !list.length) return '<div class="ps-detail-empty">Tidak ada pesanan pada filter ini.</div>';
+  const seen = new Set();
   return `
     <table class="ps-dt">
       <thead><tr>
-        <th>No. RMP</th><th>No. PO</th><th>Kategori</th><th>Jenis set / produk</th>
+        <th>No. RMP</th><th>Pasar</th><th class="ps-th-num" title="Nilai seluruh No. RMP (include tax), tampil sekali per RMP">Nilai RMP</th><th>No. PO</th><th>Kategori</th><th>Jenis set / produk</th>
         <th class="ps-th-num">Jumlah</th><th>Hitungan</th><th>Status</th><th>Tanggal</th><th>Sheet</th>
         <th class="ps-col-act"><span class="ps-sr">Koreksi</span></th>
       </tr></thead>
@@ -1272,6 +1368,8 @@ function detailHtml(list) {
           return `
           <tr class="${cek ? 'is-cek' : ''}">
             <td><span class="kode-text">${esc(d.kode_rmp || '—')}</span></td>
+            <td>${pasarTag(d.pasar)}</td>
+            <td class="ps-num">${nilaiRmpCell(d, seen)}</td>
             <td>${esc(d.po || '—')}</td>
             <td>${kelKategoriCell(d)}</td>
             <td>${esc(nama)}${sub}${isiHtml(d)}</td>
@@ -1981,6 +2079,13 @@ function buildText() {
   });
   const tot = [num(s.set_total) ? `${fmt(s.set_total)} set${num(s.set_estimasi) > 0 ? ` (${fmt(s.set_estimasi)} di antaranya estimasi)` : ''}` : '', num(s.pcs_total) ? `${fmt(s.pcs_total)} pcs` : '', num(s.unit_total) ? `${fmt(s.unit_total)} unit` : ''].filter(Boolean).join(' + ');
   lines.push('', `Total: ${fmt(s.jumlah_rs)} RS, ${tot}`);
+  const rp = data.ringkasan_pasar || {};
+  PASAR_URUT.filter((k) => rp[k] && num(rp[k].jumlah_pesanan) > 0).forEach((k) => {
+    const x = rp[k];
+    const sat = [num(x.set_total) ? `${fmt(x.set_total)} set` : '', num(x.pcs_total) ? `${fmt(x.pcs_total)} pcs` : '', num(x.unit_total) ? `${fmt(x.unit_total)} unit` : ''].filter(Boolean).join(' + ');
+    const nil = num(x.rmp_bernilai) > 0 ? `, nilai ${rpFull(x.nilai_rp)} (${fmt(x.rmp_bernilai)} dari ${fmt(x.rmp_total)} RMP bernilai)` : ', nilai belum tersedia';
+    lines.push(`${pasarNama(k)}: ${fmt(x.jumlah_rs)} RS, ${fmt(x.jumlah_pesanan)} pesanan${sat ? ', ' + sat : ''}${nil}`);
+  });
   if (num(s.set_cek) > 0) lines.push(`Catatan: ${fmt(s.set_cek)} pesanan set perlu dicek dan belum dihitung.`);
   if (state.provinsi && unmapped.length) lines.push(`Catatan: ${fmt(unmapped.length)} RS lain belum diketahui wilayahnya, belum termasuk.`);
   return lines.join('\n');

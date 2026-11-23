@@ -822,3 +822,26 @@ html[data-theme="dark"] #app-root{ --ps-muted: var(--text-muted); }
 #app-root .pg-col-ep{ white-space: nowrap; }
 #app-root .pg-col-ep .kode-text{ font-size: var(--ps-fs-cap); }
 #app-root .pg-sec-btn{ min-height: 28px; font-size: var(--ps-fs-cap); }
+/* ── Pemerintah vs Swasta ── */
+#app-root .ps-pasar{ margin: 0 0 12px; }
+#app-root .ps-pasar[hidden]{ display: none; }
+#app-root .ps-pasar-bar{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 8px; font-size: var(--ps-fs); }
+#app-root .ps-pasar-title{ font-weight: 600; color: var(--text); }
+#app-root .ps-pasar-grid{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+#app-root .ps-pasar-card{ padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card-bg, transparent); }
+#app-root .ps-pasar-head{ margin-bottom: 6px; }
+#app-root .ps-pasar-nilai{ font-size: 20px; line-height: 28px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+#app-root .ps-pasar-nilai .ps-muted{ font-size: var(--ps-fs); font-weight: 500; }
+#app-root .ps-pasar-sub{ margin: 2px 0 8px; font-size: var(--ps-fs-cap); }
+#app-root .ps-pasar-dl{ display: grid; gap: 2px; margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--ps-fs); }
+#app-root .ps-pasar-dl > div{ display: flex; justify-content: space-between; gap: 12px; }
+#app-root .ps-pasar-dl dt{ color: var(--ps-muted); }
+#app-root .ps-pasar-dl dd{ margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+#app-root .ps-pasar-note{ margin-top: 8px; font-size: var(--ps-fs-cap); line-height: 1.5; }
+#app-root .ps-pasar-tag{
+  display: inline-flex; align-items: center; gap: 6px; font-size: var(--ps-fs-cap); font-weight: 600; line-height: 16px; cursor: help; color: var(--ps-muted);
+}
+#app-root .ps-pasar-tag::before{ content: ''; width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; background: var(--ps-muted); }
+#app-root .ps-pasar-pemerintah::before{ background: #2563eb; }
+#app-root .ps-pasar-swasta::before{ background: #d97706; }
+#app-root .ps-pasar-cell .ps-pasar-n{ display: block; white-space: nowrap; font-size: var(--ps-fs); }

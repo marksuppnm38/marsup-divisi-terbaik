@@ -17,6 +17,7 @@
 // Semua id berawalan ps- kecuali err-banner/err-text/toast-container (kelas generik
 // dari pnm-universal.css, sama seperti dashboard).
 //
+// Panel Pemerintah vs Swasta (#ps-pasar) dirender JS dari ringkasan_pasar.
 // Yang dirender lewat JS (bukan di sini): facet kategori (#ps-cats), spesialisasi (#ps-spes) dan
 // jenis instrumen (#ps-jenis), ringkasan (#ps-stats),
 // catatan hitungan (#ps-caveats), header tabel (#ps-thead), isi paginasi (#ps-pager), chip filter aktif (#ps-active),
@@ -132,7 +133,7 @@ export const POPULASI_MARKUP = `
               <span class="ps-lbl">Cakupan</span>
               <select class="filter-select" id="ps-cakupan">
                 <option value="POPULASI">Populasi (INAPROC &amp; beli langsung)</option>
-                <option value="SEMUA">Semua non-sample (termasuk retail)</option>
+                <option value="SEMUA">Semua non-sample (termasuk retail, tanpa konsinyasi)</option>
               </select>
             </label>
           </div>
@@ -155,6 +156,8 @@ export const POPULASI_MARKUP = `
         <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
         <div class="stat-card" aria-hidden="true"><div class="skeleton" style="width:50%;height:25px"></div><div class="skeleton" style="width:40%;margin-top:8px"></div></div>
       </div>
+
+      <section class="ps-pasar" id="ps-pasar" hidden aria-label="Pemerintah dan swasta"></section>
 
       <div class="ps-review-bar" id="ps-review-bar" hidden role="status" aria-live="polite"></div>
 
