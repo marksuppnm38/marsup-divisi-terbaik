@@ -1,7 +1,7 @@
 // Test mock-akd.js — jalankan: node --test mock-akd.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseKodeSet, gabungkanSet, hitungQty, judulGabungan, mockFileName } from './mock-akd.js';
+import { parseKodeSet, gabungkanSet, hitungQty, mockFileName } from './mock-akd.js';
 
 const it = (kode, qty = 1, deskripsi = 'desk ' + kode) => ({ kode, deskripsi, qty });
 const mayo1 = { kode: 'SET-MAYO-1', items: [it('A', 2), it('B', 1), it('C', 1)] };
@@ -88,14 +88,6 @@ test('qty kosong / 0 / negatif dianggap 1; input kosong aman', () => {
   const r = gabungkanSet([]);
   assert.deepEqual(r.items, []);
   assert.equal(r.stat.itemUnik, 0);
-});
-
-test('judulGabungan', () => {
-  assert.equal(judulGabungan(['MAYO 1', 'MAYO 2', 'MAYO 3']), 'MAYO 1 + 2 + 3');
-  assert.equal(judulGabungan(['BASIC TUMOR MAMAE S', 'BASIC TUMOR MAMAE M']), 'BASIC TUMOR MAMAE S + M');
-  assert.equal(judulGabungan(['TUMOR', 'GINEKOLOGI']), 'TUMOR + GINEKOLOGI');
-  assert.equal(judulGabungan(['SATU']), 'SATU');
-  assert.equal(judulGabungan([]), '');
 });
 
 test('mockFileName', () => {

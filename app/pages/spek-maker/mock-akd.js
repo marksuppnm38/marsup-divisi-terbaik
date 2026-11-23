@@ -96,20 +96,6 @@ export function gabungkanSet(sets, { qty = 'max' } = {}) {
   };
 }
 
-// Judul bawaan set gabungan dari judul tiap set: awalan kata yang sama dipertahankan,
-// sisanya digabung "+". ["MAYO 1","MAYO 2","MAYO 3"] -> "MAYO 1 + 2 + 3".
-export function judulGabungan(juduls) {
-  const list = juduls.map(norm).filter(Boolean);
-  if (!list.length) return '';
-  if (list.length === 1) return list[0];
-  const words = list.map((j) => j.split(/\s+/));
-  let n = 0;
-  while (words.every((w) => w.length > n + 1 && w[n].toUpperCase() === words[0][n].toUpperCase())) n++;
-  if (!n) return list.join(' + ');
-  const prefix = words[0].slice(0, n).join(' ');
-  return prefix + ' ' + words.map((w) => w.slice(n).join(' ')).join(' + ');
-}
-
 export function mockFileName(judul) {
   const base = String(judul || '').replace(/[.\s]+$/, '') || 'set-gabungan';
   return 'MOCK_AKD_' + base.replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '') + '.pdf';

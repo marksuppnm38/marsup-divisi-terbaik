@@ -173,17 +173,24 @@ export function buildLampiranPdf(jsPDF, opts) {
       doc.addImage(logos.pnm, 'PNG', g.x, g.y + (g.h - h) / 2, g.w, h, undefined, 'FAST');
     }
 
-    // -- judul set (oranye); font dikecilkan kalau kepanjangan
+    // -- judul set (oranye); font dikecilkan kalau kepanjangan, lalu dibungkus (maks 3 baris)
+    //    supaya tidak menabrak logo PNM di kanan.
     const T = G.title;
     setFont(F.title, T.size);
     let size = T.size;
     const text = String(judul || '');
-    while (doc.getTextWidth(text) > T.maxRight - T.x && size > 8) {
+    const maxW = T.maxRight - T.x;
+    while (doc.getTextWidth(text) > maxW && size > 10) {
       size -= 0.25;
       doc.setFontSize(size);
     }
     doc.setTextColor(...T.color);
-    doc.text(text, T.x, T.baseline);
+    if (doc.getTextWidth(text) <= maxW) {
+      doc.text(text, T.x, T.baseline);
+    } else {
+      const lines = doc.splitTextToSize(text, maxW).slice(0, 3);
+      lines.forEach((ln, i) => doc.text(ln, T.x, T.baseline + i * size * 1.2));
+    }
 
     // -- nomor halaman (Arial -> Helvetica), rata kanan
     doc.setTextColor(0, 0, 0);
@@ -203,16 +210,6 @@ export function buildLampiranPdf(jsPDF, opts) {
       const top = G.rowTops[n] - 0.28;
       doc.rect(G.band.x0, top, G.band.x1 - G.band.x0, bottomLine + 0.42 - top, 'F');
     }
-
-    // -- garis tabel (hitam, hairline)
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(G.lineW);
-    const [hx0, hx1] = G.hx;
-    doc.line(hx0, G.topLineY, hx1, G.topLineY);
-    doc.line(hx0, G.headBottom, hx1, G.headBottom);
-    for (let i = 1; i <= n; i++) doc.line(hx0, G.rowTops[i], hx1, G.rowTops[i]);
-    if (isLast && showTotal) doc.line(hx0, bottomLine, hx1, bottomLine);
-    vx.forEach((x) => doc.line(x, G.headTop - 0.01, x, bottomLine + 0.24));
 
     // -- teks header (putih, Roboto Bold)
     doc.setTextColor(255, 255, 255);
@@ -248,6 +245,17 @@ export function buildLampiranPdf(jsPDF, opts) {
         doc.addImage(im.dataUrl, fmt, (bx0 + bx1) / 2 - w / 2, (by0 + by1) / 2 - h / 2, w, h, undefined, 'FAST');
       }
     });
+
+    // -- garis tabel (hitam, hairline). Digambar SETELAH baris data supaya gambar produk
+    //    berlatar putih tidak menutupi garis pemisah di kolom GAMBAR.
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(G.lineW);
+    const [hx0, hx1] = G.hx;
+    doc.line(hx0, G.topLineY, hx1, G.topLineY);
+    doc.line(hx0, G.headBottom, hx1, G.headBottom);
+    for (let i = 1; i <= n; i++) doc.line(hx0, G.rowTops[i], hx1, G.rowTops[i]);
+    if (isLast && showTotal) doc.line(hx0, bottomLine, hx1, bottomLine);
+    vx.forEach((x) => doc.line(x, G.headTop - 0.01, x, bottomLine + 0.24));
 
     // -- baris TOTAL
     if (isLast && showTotal) {

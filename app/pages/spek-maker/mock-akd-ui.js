@@ -9,7 +9,7 @@
 // Dependensi umum disuntik dari index.js lewat `deps` (sama seperti lampiran-ui.js).
 
 import { buildLampiranPdf, loadLampiranFonts } from './lampiran-pdf.js';
-import { parseKodeSet, gabungkanSet, judulGabungan, mockFileName } from './mock-akd.js';
+import { parseKodeSet, gabungkanSet, mockFileName } from './mock-akd.js';
 
 const MAX_CODES = 20;
 const IMG_CONCURRENCY = 6;
@@ -43,7 +43,7 @@ const MARKUP = `
     </div>
     <div id="maSources" class="ma-sources"></div>
     <div class="ma-controls">
-      <label class="sm-f sm-lp-judul"><span>Judul set baru</span><input id="maJudul" type="text" class="field-input" placeholder="Judul di bawah logo ROBUST"></label>
+      <label class="sm-f sm-lp-judul"><span>Judul mock <span class="sm-field-hint">tampil di bawah logo ROBUST</span></span><input id="maJudul" type="text" class="field-input" autocomplete="off" placeholder="mis. BASIC ORTHOPEDIC LENGKAP"></label>
     </div>
     <div id="maStatus" class="ma-status"></div>
     <div id="maItems" class="sm-list sm-mt-12"></div>
@@ -107,11 +107,6 @@ export function mountMockAkd(panel, deps) {
     return { produk, rows };
   }
 
-  // Sama dengan Lampiran Set: nama set tanpa awalan "SET"/"ROBUST" (logo ROBUST sudah di kop).
-  function judulBawaan(nama) {
-    return String(nama || '').trim().replace(/^(SET\s+)?ROBUST\s+/i, '').replace(/^SET\s+/i, '');
-  }
-
   async function loadImages(list, myRun) {
     let idx = 0;
     const worker = async () => {
@@ -153,7 +148,7 @@ export function mountMockAkd(panel, deps) {
     const noImg = items.filter((i) => i.imgState !== 'ok' && i.imgState !== 'loading').length;
     if (noImg) w.push(`${noImg} gambar belum ada`);
     if (items.some((i) => !i.deskripsi.trim())) w.push(`${items.filter((i) => !i.deskripsi.trim()).length} tanpa deskripsi`);
-    if (!$('maJudul').value.trim()) w.push('judul kosong');
+    if (!$('maJudul').value.trim()) w.push('judul mock belum diisi');
     if (!items.length) w.push('belum ada item');
     return w;
   }
@@ -300,8 +295,16 @@ export function mountMockAkd(panel, deps) {
     if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
   }
 
+  function judulWajib() {
+    if ($('maJudul').value.trim()) return true;
+    toast('Isi judul mock dulu.', 'error');
+    $('maJudul').focus();
+    return false;
+  }
+
   async function preview() {
     if (!items.length) { toast('Belum ada item untuk dipreview.', 'error'); return; }
+    if (!judulWajib()) return;
     try {
       const doc = await makeDoc();
       if (!alive) return;
@@ -309,7 +312,7 @@ export function mountMockAkd(panel, deps) {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       previewUrl = url;
       $('maPreviewFrame').src = url;
-      $('maPreviewTitle').textContent = 'Preview · ' + ($('maJudul').value.trim() || 'Set gabungan');
+      $('maPreviewTitle').textContent = 'Preview · ' + $('maJudul').value.trim();
       const card = $('maPreviewCard');
       card.style.display = '';
       card.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -319,7 +322,7 @@ export function mountMockAkd(panel, deps) {
   }
 
   async function download() {
-    if (!items.length) return;
+    if (!items.length || !judulWajib()) return;
     const btn = $('maDownloadBtn');
     const bermasalah = warnings().length;
     btn.disabled = true;
@@ -366,7 +369,8 @@ export function mountMockAkd(panel, deps) {
       items = hasil.items.map((g) => ({
         ...g, id: nextId++, image: null, imgState: 'loading', imgSource: null,
       }));
-      $('maJudul').value = judulGabungan(found.map((f) => judulBawaan(f.nama)));
+      // judul sengaja TIDAK diisi otomatis (gabungan nama set jadi kepanjangan) -- user yang menulis
+      if (!$('maJudul').value.trim()) $('maJudul').focus();
       hidePreview();
       renderAll();
       await loadImages(items.slice(), myRun);
