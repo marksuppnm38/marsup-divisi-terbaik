@@ -687,6 +687,7 @@ export const CRUD_PRODUK_MARKUP = `
   <div class="modal-card prod-modal">
     <div class="modal-head">
       <div>
+        <div class="pm-logo" id="prodBrandLogo" hidden><span class="pm-logo-mark" aria-hidden="true"></span></div>
         <div class="modal-title" id="modalTitle">Tambah Produk</div>
         <div class="modal-sub" id="modalSub">Isi data produk baru</div>
         <div class="prod-page-meta" id="prodPageMeta"></div>

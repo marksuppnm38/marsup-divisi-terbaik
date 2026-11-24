@@ -705,6 +705,13 @@ html[data-theme="dark"] .prod-modal.has-identitas .modal-head[data-brand="adler"
 .prod-modal.has-identitas .modal-sub{display:none}
 .prod-modal.has-identitas:not(.prod-page) .modal-title{font-size:19px;font-weight:700;line-height:1.25;overflow-wrap:anywhere}
 .prod-modal.has-identitas .prod-page-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:8px;font-size:12.5px;color:var(--text-secondary)}
+.prod-page-meta .pm-kode{display:inline-flex;align-items:center;gap:5px;padding:0;border:0;border-bottom:1px dashed transparent;background:none;cursor:pointer;font-size:inherit;line-height:inherit}
+.prod-page-meta .pm-kode .ti{font-size:13px;color:var(--text-muted)}
+.prod-page-meta .pm-kode:hover{border-bottom-color:var(--text-muted)}
+.prod-page-meta .pm-kode:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+.pm-logo{display:none;align-items:center;height:18px;margin-bottom:8px}
+.prod-modal.has-identitas .pm-logo:not([hidden]){display:flex}
+.pm-logo-mark{display:block;height:var(--h,14px);aspect-ratio:var(--ar,4);background:var(--lb);-webkit-mask:var(--logo) left center/contain no-repeat;mask:var(--logo) left center/contain no-repeat}
 .prod-page-meta .pm-brand{padding:1px 9px;border:1px solid var(--border);border-radius:20px;font-size:11.5px;font-weight:700;letter-spacing:.03em;color:var(--text-secondary)}
 .prod-page-meta .pm-brand.is-tema{color:var(--lb);background:var(--lb-soft);border-color:var(--lb)}
 .prod-page-meta .pm-masa.is-warn{color:var(--amber-text);font-weight:600}

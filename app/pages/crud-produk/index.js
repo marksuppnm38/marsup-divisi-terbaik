@@ -2647,7 +2647,8 @@ function renderProdukPageHead(){
   const identitas = modalState !== 'closed' && modalState !== 'add' && currentProdukId != null;
   modalCard.classList.toggle('has-identitas', identitas);
   const metaEl = document.getElementById('prodPageMeta');
-  if (!identitas) { metaEl.innerHTML = ''; delete modalHead.dataset.brand; return; }
+  const logoEl = document.getElementById('prodBrandLogo');
+  if (!identitas) { metaEl.innerHTML = ''; delete modalHead.dataset.brand; logoEl.hidden = true; return; }
   const val = (id) => (document.getElementById(id).value || '').trim();
   // Selagi memuat, form masih kosong: pinjam baris daftar supaya judul langsung terisi.
   const baris = modalState === 'loading' ? produkRowById.get(String(currentProdukId)) : null;
@@ -2662,8 +2663,16 @@ function renderProdukPageHead(){
   // Warna brand hanya untuk yang sudah punya tema (ROBUST, ADLER); brand lain netral, tanpa logo.
   const brandKey = brand.toUpperCase() === 'ROBUST' ? 'robust' : (brand.toUpperCase() === 'ADLER' ? 'adler' : '');
   if (brandKey) modalHead.dataset.brand = brandKey; else delete modalHead.dataset.brand;
+  // Logo hanya untuk brand yang punya berkas logo; brand lain tidak diberi logo pengganti.
+  const logo = BRAND_LOGO[brandKey];
+  logoEl.hidden = !logo;
+  if (logo) {
+    logoEl.firstElementChild.style.cssText = '--logo:url(' + logo.src + ');--ar:' + logo.ratio + ';--h:' + logo.h + 'px';
+    logoEl.setAttribute('role', 'img');
+    logoEl.setAttribute('aria-label', brand);
+  }
   const bagian = [];
-  if (kode) bagian.push('<span class="pm-kode">' + escapeHtml(kode) + '</span>');
+  if (kode) bagian.push('<button type="button" class="pm-kode" data-salin="' + escapeHtml(kode) + '" title="Klik untuk menyalin kode" aria-label="Salin kode ' + escapeHtml(kode) + '">' + escapeHtml(kode) + '<i class="ti ti-copy" aria-hidden="true"></i></button>');
   if (brand) bagian.push('<span class="pm-brand' + (brandKey ? ' is-tema' : '') + '">' + escapeHtml(brand) + '</span>');
   if (tipe) bagian.push('<span class="tipe-chip">' + escapeHtml(tipe) + '</span>');
   if (tipe === 'SET' && identitasItem && identitasItem.id === currentProdukId && identitasItem.n != null) {
@@ -2677,6 +2686,28 @@ function renderProdukPageHead(){
   if (verified) bagian.push('<span><i class="ti ti-rosette-discount-check-filled vbadge" aria-hidden="true"></i>Verified</span>');
   metaEl.innerHTML = bagian.join('');
 }
+// Logo brand di kartu identitas (berkas yang sama dengan Lampiran Konversian; rasio = lebar/tinggi PNG).
+const BRAND_LOGO = {
+  robust: { src: '/assets/robust-logo.png', ratio: 2048 / 243, h: 13 },
+  adler:  { src: '/assets/adler-logo.png',  ratio: 750 / 196,  h: 17 },
+};
+// Klik kode = salin. Elemen meta dirender ulang lewat innerHTML, jadi pakai delegasi di wadahnya.
+async function salinTeks(teks){
+  try { await navigator.clipboard.writeText(teks); return true; } catch (e) { /* jatuh ke cara lama */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = teks; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+document.getElementById('prodPageMeta').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-salin]');
+  if (!btn) return;
+  showToast((await salinTeks(btn.dataset.salin)) ? 'Kode ' + btn.dataset.salin + ' disalin' : 'Gagal menyalin kode', false);
+});
 let identitasItem = null; // { id, n }: jumlah item set untuk kartu identitas (hanya tipe SET)
 // Segel AKD diisi ulang oleh alur AKD (hubungkan / lepas): header ikut.
 new MutationObserver(renderProdukPageHead).observe(document.getElementById('akdSealHolder'), { childList: true, subtree: true });
