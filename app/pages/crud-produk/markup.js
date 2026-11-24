@@ -179,8 +179,9 @@ export const CRUD_PRODUK_MARKUP = `
 
         <div id="setDetailWrap" style="display:none;">
                 <div class="set-back" id="setBackBtn"><i class="ti ti-arrow-left"></i> Kembali ke daftar set</div>
-                <div class="set-detail-head">
+                <div class="set-detail-head" id="setDetailHead">
                   <div>
+                    <div class="pm-logo" id="setBrandLogo" hidden><span class="pm-logo-mark" aria-hidden="true"></span></div>
                     <div class="set-detail-title" id="setDetailNama">—</div>
                     <div class="set-detail-meta">
                       <span class="kode-cell" id="setDetailKode"></span>

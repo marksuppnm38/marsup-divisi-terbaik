@@ -4083,6 +4083,26 @@ async function openSetDetail(setId, kodeProduk){
   await Promise.all([refreshSetHeader(), loadComposition(), loadSetHarga(), loadSetAkd(), loadSetHistory()]);
 }
 
+// Logo + garis aksen brand di header Set Detail. Kartu identitas di tab Info dasar dimatikan (mode embed), jadi header ini yang membawanya.
+function renderSetBrandHead(brand){
+  const head = document.getElementById('setDetailHead');
+  const logoEl = document.getElementById('setBrandLogo');
+  if (!head || !logoEl) return;
+  const nama = String(brand || '').trim().toUpperCase();
+  const brandKey = BRAND_KEY[nama] || '';
+  if (brandKey) head.dataset.brand = brandKey; else delete head.dataset.brand;
+  const logo = BRAND_LOGO[brandKey];
+  logoEl.hidden = !logo;
+  logoEl.classList.toggle('is-warna', !!(logo && logo.warna));
+  if (logo) {
+    logoEl.firstElementChild.style.cssText = '--logo:url(' + logo.src + ');--ar:' + logo.ratio + ';--h:' + logo.h + 'px';
+    logoEl.setAttribute('role', 'img');
+    logoEl.setAttribute('aria-label', nama);
+  } else {
+    logoEl.removeAttribute('role'); logoEl.removeAttribute('aria-label');
+  }
+}
+
 async function refreshSetHeader(){
   // PERF: 3 query ini saling independen -> jalan paralel.
   const [{ data: p }, { data: ring }, { data: hargaRow }] = await Promise.all([
@@ -4094,6 +4114,7 @@ async function refreshSetHeader(){
   if (!p) return;
   document.getElementById('setDetailNama').textContent = p.nama_produk || p.kode_produk;
   document.getElementById('setDetailKode').textContent = p.kode_produk;
+  renderSetBrandHead(p.brand);
   copyKit.invalidate();
   await copyKit.loadExtra([currentSetId]);
   document.getElementById('setDetailSeal').innerHTML = sealHtml(p.status_akd, currentSetId);

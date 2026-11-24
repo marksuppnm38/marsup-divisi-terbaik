@@ -1455,3 +1455,14 @@ th.num .th-btn{justify-content:flex-end}
 @media (prefers-reduced-motion:reduce){
   :where(#appWrap,.modal-overlay,.confirm-overlay,.prod-page-host) input[type="checkbox"]{transition:none}
 }
+
+/* Header Set Detail: logo brand + garis aksen (sebelumnya dibawa kartu identitas, yang dimatikan di mode embed) */
+.set-detail-head{--lb:var(--text-muted);--lb-soft:transparent;padding:16px 20px 14px;border-radius:var(--radius-md,10px)}
+.set-detail-head[data-brand="robust"]{--lb:#00476d;--lb-soft:rgba(0,71,109,.09)}
+.set-detail-head[data-brand="adler"]{--lb:#cc0000;--lb-soft:rgba(204,0,0,.08)}
+.set-detail-head[data-brand="picma"]{--lb:#1f2c5c;--lb-soft:rgba(31,44,92,.09)}
+html[data-theme="dark"] .set-detail-head[data-brand="robust"]{--lb:#5db4ee;--lb-soft:rgba(93,180,238,.13)}
+html[data-theme="dark"] .set-detail-head[data-brand="adler"]{--lb:#ff6259;--lb-soft:rgba(255,98,89,.13)}
+html[data-theme="dark"] .set-detail-head[data-brand="picma"]{--lb:#8fa3ee;--lb-soft:rgba(143,163,238,.14)}
+.set-detail-head[data-brand]{box-shadow:inset 0 3px 0 var(--lb);background:var(--lb-soft)}
+.set-detail-head .pm-logo:not([hidden]){display:flex}
