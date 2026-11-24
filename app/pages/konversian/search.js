@@ -9,6 +9,7 @@
 // S.handleClipToggleClick, S.cachedSetItemCount, S.hydrateSetCounts, S.panelBodyCari).
 // clipboard.js sendiri sekarang cuma butuh S.renderResults dari sini (dipanggil belakangan, bukan saat install).
 import { kunciBrand, brandChipHtml } from '../../../shared/brand-identitas.js';
+import { bacaKetikan } from './search-operator.js';
 
 export function installSearch(S) {
 // AUTOCOMPLETE — reuses lastResults from runSearch, no separate API call needed.
@@ -355,6 +356,17 @@ async function runSearch(opts) {
   else if (opts && opts.reuse && S.corrected && S.corrected.from === qInput) q = S.corrected.to;
   else S.corrected = null;
   const mySeq = ++searchSeq; // request lama yang telat balik nanti diabaikan, bukan nimpa hasil yang lebih baru
+  // OPERATOR (| ATAU, -kata KECUALI, "frasa", spek:kata) — dibaca di sini; ketikan biasa (adaOperator=false)
+  // lewat jalur lama persis seperti sebelumnya. Hanya ketikan asli yang dibaca (bukan hasil koreksi typo).
+  const op = (q === qInput) ? bacaKetikan(qInput) : null;
+  const modeOp = !!(op && op.adaOperator);
+  if (modeOp && !op.valid) {
+    S.errEl.style.display = 'none'; S.hintEl.style.display = 'none';
+    S.loadingEl.style.display = 'none'; S.resultsEl.innerHTML = '';
+    S.emptyEl.style.display = 'block'; S.metaEl.textContent = op.pesan;
+    delete S.metaEl.dataset.nav; S.acBox.style.display = 'none';
+    return;
+  }
   S.errEl.style.display = 'none';
   S.hintEl.style.display = 'none';
   renderSkeletons(Math.min(S.lastResults.length || 6, S.RESULTS_PER_PAGE));
@@ -368,9 +380,10 @@ async function runSearch(opts) {
   } else {
     // Jalur utama = pencarian lama (cepat). Dictionary TIDAK ditunggu: ditambahkan belakangan oleh
     // mergeDictHits() (lihat bawah) — hemat resource & hasil biasa tetap instan.
-    ({data: dataRaw, error} = await S.rpc('search_produk_dengan_harga', {
-      q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false
-    }));
+    // Mode operator: SATU panggilan ke RPC search_produk_operator (kolom hasil sama dengan RPC lama).
+    ({data: dataRaw, error} = modeOp
+      ? await S.rpc('search_produk_operator', { p_query: op.json, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false })
+      : await S.rpc('search_produk_dengan_harga', { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false }));
     if (!error) S.rawCache = { q, data: dataRaw };
     if (S.showNotFirmQ !== q) S.showNotFirmQ = null; // kata kunci baru -> belum firm disembunyikan lagi
   }
@@ -380,7 +393,7 @@ async function runSearch(opts) {
   const showingNotFirm = !S.modeSwasta && S.showNotFirmQ === q;
   let data = dataRaw ? (showingNotFirm ? dataRaw : S.filterFirm(dataRaw, S.modeSwasta)) : dataRaw;
   let notFirmCount = (dataRaw && !S.modeSwasta) ? dataRaw.filter(r => !S.isProdukFirm(r)).length : 0;
-  let hiddenNote = '';
+  let hiddenNote = modeOp ? ' · ' + op.terjemah : ''; // "terjemahan" operator tampil di baris meta
   if (S.onlyVerified && data) {
     const sebelum = data.length;
     data = data.filter(S.isVerified);
@@ -412,7 +425,8 @@ async function runSearch(opts) {
   // trigram, dan koreksi diam-diam bisa membelokkan query ke kata lain. Satu RPC, di-cache, dan hanya
   // jalan kalau hasil kosong (query normal tidak membayar apa-apa).
   let dictRescued = false;
-  if ((!data || !data.length) && dictPerluDicek(q, null)) {
+  // Mode operator: Dictionary & koreksi typo tidak ikut (keduanya menulis ulang SELURUH ketikan, bisa merusak operator).
+  if ((!data || !data.length) && !modeOp && dictPerluDicek(q, null)) {
     const hits = await getDictHits(q, { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false });
     if (mySeq !== searchSeq) return;
     let fromDict = showingNotFirm ? hits : S.filterFirm(hits, S.modeSwasta);
@@ -428,7 +442,7 @@ async function runSearch(opts) {
       hiddenNote += ' — cocok dengan riwayat istilah customer';
     }
   }
-  if ((!data || !data.length) && !S.corrected && !(opts && opts.noCorrect)) {
+  if ((!data || !data.length) && !modeOp && !S.corrected && !(opts && opts.noCorrect)) {
     const fix = await cariKoreksi(q);
     if (mySeq !== searchSeq) return;
     if (fix) { S.corrected = { from: qInput, to: fix }; return runSearch({ qOverride: fix }); }
@@ -483,7 +497,7 @@ async function runSearch(opts) {
   setSearchMeta(data.length + ' produk ditemukan', notFirmCount, showingNotFirm, metaExtra);
   S.metaEl.dataset.nav = '1';
   // Hasil sedikit & belum dikoreksi: tawarkan "Maksud kamu…?" (async, gak menahan render)
-  if (!S.corrected && !dictRescued && data.length <= 2 && !(opts && opts.noCorrect)) { // hasil dari riwayat = sudah istilah customer yang valid, gak perlu tebakan typo (hemat 1 RPC)
+  if (!modeOp && !S.corrected && !dictRescued && data.length <= 2 && !(opts && opts.noCorrect)) { // hasil dari riwayat = sudah istilah customer yang valid, gak perlu tebakan typo (hemat 1 RPC)
     cariKoreksi(q).then(fix => {
       if (!fix || mySeq !== searchSeq || S.corrected) return;
       S.metaEl.append(' Maksud kamu: ');
@@ -496,7 +510,7 @@ async function runSearch(opts) {
   }
   S.kbdCardIdx = -1; S.kbdAnchor = -1;
   renderResults(S.lastResults);
-  if (!dictRescued) mergeDictHits(q, { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false }, dataRaw, mySeq); // non-blocking (kalau sudah rescue, hasilnya sudah dari Dictionary)
+  if (!dictRescued && !modeOp) mergeDictHits(q, { q, p_tipe: S.selectedTipe, only_akd: S.onlyAkd, only_kfa: false }, dataRaw, mySeq); // non-blocking (kalau sudah rescue, hasilnya sudah dari Dictionary)
   if (S.pnmSettings.autoComplete) {
     renderAutocomplete(S.lastResults);
   } else {
