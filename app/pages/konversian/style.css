@@ -3340,8 +3340,11 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
 
 #lampiran-modal .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 #lampiran-modal[data-brand] .lp-box { box-shadow: inset 0 3px 0 var(--lb); }
+/* padding atas dipindah ke .lp-head: header tabel yang menempel (sticky top:0) harus nempel di tepi atas
+   modal, kalau tidak baris yang di-scroll kelihatan lewat celah padding di atasnya. */
+#lampiran-modal .lp-box { padding-top: 0 !important; }
 
-#lampiran-modal .lp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+#lampiran-modal .lp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-top: 22px; margin-bottom: 16px; }
 #lampiran-modal .lp-head-main { min-width: 0; flex: 1; }
 #lampiran-modal .lp-head-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 #lampiran-modal .lp-brand { display: flex; align-items: center; height: 18px; margin-bottom: 8px; }
