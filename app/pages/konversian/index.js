@@ -1407,6 +1407,8 @@ function imageFileToPngBlob(file) {
 
 const lampiranModal = document.getElementById('lampiran-modal');
 const lampiranTitle = document.getElementById('lampiran-title');
+const lampiranBrand = document.getElementById('lampiran-brand');
+const lampiranSub = document.getElementById('lampiran-sub');
 const lampiranStatus = document.getElementById('lampiran-status');
 const lampiranPages = document.getElementById('lampiran-pages');
 const lampiranPicker = document.getElementById('lampiran-picker');
@@ -1730,10 +1732,15 @@ let lampiranCurrentProdukId = null;
 let lampiranCurrentKode = null;
 let lampiranCurrentFilename = null;
 
-async function getProdukId(kode_produk) {
-  const r = await S.sesiFetch(`produk?kode_produk=eq.${encodeURIComponent(kode_produk)}&select=id&limit=1`);
+// id + nama produk dalam SATU request (nama dipakai judul modal Lampiran).
+async function getProdukInfo(kode_produk) {
+  const r = await S.sesiFetch(`produk?kode_produk=eq.${encodeURIComponent(kode_produk)}&select=id,nama_produk&limit=1`);
   const data = await r.json();
-  return (data && data.length) ? data[0].id : null;
+  return (data && data.length) ? data[0] : null;
+}
+async function getProdukId(kode_produk) {
+  const info = await getProdukInfo(kode_produk);
+  return info ? info.id : null;
 }
 
 async function getSavedBrosurUrl(produk_id) {
@@ -1896,8 +1903,40 @@ S.getLampiranPagesForKode = getLampiranPagesForKode;
 
 let lampiranCurrentIsSet = false; // dipakai toggle-btn buat tau mode "kembali" yang bener
 
+// Brand dari awalan kode: AD... = ADLER, RB... = ROBUST (kode produk SET & komponennya sama-sama begitu).
+const LAMPIRAN_BRANDS = {
+  robust: { label: 'ROBUST', logo: '/assets/robust-logo.png', ratio: 2048 / 243, h: 13 },
+  adler: { label: 'ADLER', logo: '/assets/adler-logo.png', ratio: 750 / 196, h: 17 },
+};
+function lampiranBrandOf(kode) {
+  const k = String(kode || '').toUpperCase();
+  return k.startsWith('AD') ? 'adler' : k.startsWith('RB') ? 'robust' : null;
+}
+// Nama set tanpa awalan "SET"/nama brand (brand sudah tampil sebagai logo di kepala modal).
+function lampiranCleanName(nama, kode) {
+  const n = String(nama || '').trim().replace(/^(SET\s+)?(ROBUST|ADLER)\s+/i, '').replace(/^SET\s+/i, '').trim();
+  return n || kode;
+}
+function setLampiranBrand(kode_produk) {
+  const b = lampiranBrandOf(kode_produk);
+  const def = b && LAMPIRAN_BRANDS[b];
+  if (!def) { lampiranModal.removeAttribute('data-brand'); lampiranBrand.hidden = true; lampiranBrand.replaceChildren(); return; }
+  lampiranModal.dataset.brand = b;
+  const mark = document.createElement('i');
+  mark.className = 'lp-brand-mark';
+  mark.style.cssText = `--logo:url(${def.logo});--ar:${def.ratio};--h:${def.h}px`;
+  const name = document.createElement('span');
+  name.className = 'sr-only';
+  name.textContent = def.label;
+  lampiranBrand.replaceChildren(mark, name);
+  lampiranBrand.hidden = false;
+}
+
 async function openLampiranModal(kode_produk, isSet) {
   lampiranTitle.textContent = 'Lampiran — ' + kode_produk;
+  lampiranSub.hidden = true;
+  lampiranSub.replaceChildren();
+  setLampiranBrand(isSet ? kode_produk : null);
   lampiranPages.innerHTML = '';
   lampiranSetRincian.innerHTML = '';
   lampiranSetRincian.style.display = 'none';
@@ -1922,7 +1961,8 @@ async function openLampiranModal(kode_produk, isSet) {
   // getProdukId() dijalankan SEKALI dan promise-nya dibagi ke getSetItems()
   // (dulu: lookup id ini dikerjakan dua kali, berurutan, sebelum rincian set
   // mulai di-fetch -- 2 round-trip sia-sia, terasa banget di jaringan HP).
-  const produkIdPromise = getProdukId(kode_produk);
+  const produkInfoPromise = getProdukInfo(kode_produk);
+  const produkIdPromise = produkInfoPromise.then(p => (p ? p.id : null));
 
   if (lampiranCurrentIsSet) {
     produkIdPromise.then(id => {
@@ -1933,7 +1973,7 @@ async function openLampiranModal(kode_produk, isSet) {
     // Excel), bukan brosur terpisah yang perlu dicari/diupload. Pintu upload
     // PDF manual TETAP dibuka lewat toggle-btn, buat kasus SET yang beneran
     // punya brosur paket dari vendor.
-    await renderSetRincianInLampiranModal(kode_produk, produkIdPromise);
+    await renderSetRincianInLampiranModal(kode_produk, produkIdPromise, produkInfoPromise);
     lampiranToggleBtn.textContent = 'Upload Lampiran PDF';
     lampiranToggleBtn.style.display = 'inline-block';
     // pastikan lampiranCurrentProdukId sudah terisi sebelum alur PDF jalan
@@ -1968,7 +2008,7 @@ async function getRincianThumb(it) {
   return out; // null (gagal/gak ada gambar) sengaja gak di-cache, biar bisa dicoba lagi
 }
 
-async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
+async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise, produkInfoPromise) {
   lampiranPages.innerHTML = '';
   lampiranPicker.style.display = 'none';
   lampiranSaveRow.style.display = 'none';
@@ -1991,7 +2031,6 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
   // Jumlah item set ikut tampil di judul modal, dan masuk cache yang dipakai label tombol
   // "Lihat Lampiran · N item" (satu sumber angka, gak mungkin beda antara tombol & isi modal).
   S.setItemCountCache.set(kode_produk, items.length);
-  lampiranTitle.textContent = `Lampiran — ${kode_produk} · ${items.length} item`;
 
   // Gambar TIDAK lagi ditunggu semuanya sebelum tabel muncul: tabel (kode/nama/qty)
   // dirender dulu, gambar nyusul satu-satu (pool terbatas) -- lihat blok setelah
@@ -2005,54 +2044,53 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
   const uniqueCount = new Set(items.map(it => it.kode_produk)).size;
   const totalQty = items.reduce((sum, it) => sum + (Number(it.qty ?? 1) || 0), 0);
   const fmtNum = (n) => n.toLocaleString('id-ID');
-  const chipStyle = 'display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:var(--surface-2);font-size:12px;color:var(--text-secondary,var(--text))';
-  const rows = items.map((it, i) => `
-    <tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:8px;text-align:center;color:var(--text-muted);font-size:12px">${it.urutan || i + 1}</td>
-      <td style="padding:8px;font-family:monospace;font-size:12px;white-space:nowrap">${esc(it.kode_produk)}</td>
-      <td style="padding:8px;font-size:13px">${esc(it.nama_produk)}</td>
-      <td style="padding:8px;text-align:center;font-size:13px">${it.qty ?? 1}</td>
-      <td style="padding:8px;text-align:center">${imgs[i]
-        ? `<img src="data:image/png;base64,${imgs[i]}" style="width:56px;height:56px;object-fit:contain"/>`
-        : '<span style="color:var(--text-muted);font-size:11px">…</span>'}</td>
-    </tr>`).join('');
+  const imgTag = (b64) => `<img src="data:image/png;base64,${b64}" alt="">`;
+  const rows = items.map((it, i) => {
+    const q = Number(it.qty ?? 1) || 0;
+    return `
+    <tr>
+      <td class="lp-no">${it.urutan || i + 1}</td>
+      <td class="lp-name">
+        <div class="lp-name-main">${esc(it.nama_produk)}</div>
+        <button type="button" class="lp-kode" data-kode="${esc(it.kode_produk)}" title="Klik untuk copy kode">${esc(it.kode_produk)}</button>
+      </td>
+      <td class="lp-qty">${q > 1 ? `<span class="lp-qty-multi">${q}</span>` : q}</td>
+      <td class="lp-img">${imgs[i] ? imgTag(imgs[i]) : '<span class="lp-img-wait">…</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  // Kepala modal: nama set (bukan kode) + kode kecil + ringkasan angka.
+  produkInfoPromise = produkInfoPromise || Promise.resolve(null);
+  const info = await produkInfoPromise.catch(() => null);
+  if (lampiranCurrentKode !== kode_produk) return; // modal sudah ganti isi selagi menunggu
+  lampiranTitle.textContent = lampiranCleanName(info && info.nama_produk, kode_produk);
+  lampiranSub.innerHTML = `
+    <span class="lp-sub-kode">${esc(kode_produk)}</span>
+    <span class="lp-sub-stat"><b>${fmtNum(uniqueCount)}</b> jenis item</span>
+    <span class="lp-sub-stat"><b>${fmtNum(totalQty)}</b> pcs</span>`;
+  lampiranSub.hidden = false;
 
   lampiranSetRincian.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-      <div style="flex:1 1 200px">
-        <div style="font-size:12px;color:var(--text-muted)">Rincian isi set — sama seperti sheet per-set di export Excel.</div>
-        <div id="lampiran-set-summary" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-          <span style="${chipStyle}"><i class="ti ti-category"></i><b>${fmtNum(uniqueCount)}</b> jenis item</span>
-          <span style="${chipStyle}"><i class="ti ti-stack-2"></i><b>${fmtNum(totalQty)}</b> pcs total</span>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <button id="lampiran-copy-sheet-btn" title="Copy kode, deskripsi, qty — teks doang, paling aman ke mana pun" style="border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-size:12px;font-weight:500;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">
-          <i class="ti ti-copy"></i><span>Copy Teks</span>
-        </button>
-        <button id="lampiran-copy-gambar-btn" title="Copy sebagai tabel HTML — gambarnya ikut kalau di-paste ke Excel / Word. Di Google Sheet, paste pakai Ctrl+Shift+V biar dapat rumus =IMAGE()" style="border:1px solid var(--accent-text);background:var(--accent-bg);color:var(--accent-text);font-size:12px;font-weight:600;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">
-          <i class="ti ti-photo"></i><span>Copy + Gambar</span>
-        </button>
-        <button id="lampiran-xlsx-btn" title="Download .xlsx — gambar beneran nempel di cell (paling pasti, tinggal copy range-nya ke file kamu)" style="border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-size:12px;font-weight:500;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px">
-          <i class="ti ti-file-spreadsheet"></i><span>.xlsx</span>
-        </button>
-      </div>
+    <div class="lp-toolbar">
+      <button id="lampiran-copy-gambar-btn" class="lp-btn lp-btn-primary" title="Copy sebagai tabel HTML — gambarnya ikut kalau di-paste ke Excel / Word. Di Google Sheet, paste pakai Ctrl+Shift+V biar dapat rumus =IMAGE()">
+        <i class="ti ti-photo"></i><span>Copy + Gambar</span>
+      </button>
+      <button id="lampiran-copy-sheet-btn" class="lp-btn" title="Copy kode, deskripsi, qty — teks doang, paling aman ke mana pun">
+        <i class="ti ti-copy"></i><span>Copy Teks</span>
+      </button>
+      <button id="lampiran-xlsx-btn" class="lp-btn" title="Download .xlsx — gambar beneran nempel di cell (paling pasti, tinggal copy range-nya ke file kamu)">
+        <i class="ti ti-file-spreadsheet"></i><span>.xlsx</span>
+      </button>
     </div>
-    <table style="width:100%;border-collapse:collapse">
+    <table class="lp-table">
       <thead>
-        <tr style="background:var(--accent-bg);color:var(--accent-text)">
-          <th style="padding:8px;text-align:center;width:36px;font-size:12px">No</th>
-          <th style="padding:8px;text-align:left;font-size:12px">Kode</th>
-          <th style="padding:8px;text-align:left;font-size:12px">Nama Produk</th>
-          <th style="padding:8px;text-align:center;width:60px;font-size:12px">Qty</th>
-          <th style="padding:8px;text-align:center;width:80px;font-size:12px">Gambar</th>
-        </tr>
+        <tr><th class="lp-no">No</th><th>Nama produk</th><th class="lp-qty">Qty</th><th class="lp-img">Gambar</th></tr>
       </thead>
       <tbody>${rows}</tbody>
       <tfoot>
-        <tr style="background:var(--surface-2);font-weight:600">
-          <td colspan="3" style="padding:10px 8px;font-size:13px;text-align:right">Total · ${fmtNum(uniqueCount)} jenis item</td>
-          <td style="padding:10px 8px;text-align:center;font-size:13px">${fmtNum(totalQty)}</td>
+        <tr>
+          <td colspan="2" class="lp-foot-label">Total ${fmtNum(uniqueCount)} jenis item</td>
+          <td class="lp-qty">${fmtNum(totalQty)}</td>
           <td></td>
         </tr>
       </tfoot>
@@ -2087,6 +2125,13 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
   // 2) Pool 4 worker: fetch -> downscale -> removeBackground, tiap gambar langsung
   //    di-paint begitu selesai. Berhenti sendiri kalau modal sudah ganti isi.
   const tbody = lampiranSetRincian.querySelector('tbody');
+  tbody.addEventListener('click', async (e) => {
+    const k = e.target.closest('.lp-kode');
+    if (!k) return;
+    try { await navigator.clipboard.writeText(k.dataset.kode); } catch (err) { return; }
+    k.classList.add('copied');
+    setTimeout(() => k.classList.remove('copied'), 900);
+  });
   const imgsReady = (async () => {
     try { await window.PNM_getSignedUrls('thumbnails', items.map(thumbKeyForItem)); } catch (e) { /* fetchImageBase64 punya jalur sign sendiri */ }
     let next = 0;
@@ -2098,10 +2143,10 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise) {
         let out = null;
         try { out = await getRincianThumb(items[i]); } catch (e) { out = null; }
         imgs[i] = out;
-        const cell = tbody.rows[i] && tbody.rows[i].cells[4];
+        const cell = tbody.rows[i] && tbody.rows[i].cells[3];
         if (cell) cell.innerHTML = out
-          ? `<img src="data:image/png;base64,${out}" style="width:56px;height:56px;object-fit:contain"/>`
-          : '<span style="color:var(--text-muted);font-size:11px">—</span>';
+          ? imgTag(out)
+          : '<span class="lp-img-wait">—</span>';
       }
     };
     await Promise.all(Array.from({ length: Math.min(LAMPIRAN_IMG_CONCURRENCY, items.length) }, worker));

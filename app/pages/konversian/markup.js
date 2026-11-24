@@ -1111,17 +1111,21 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
 
 
 <div class="modal-overlay" id="lampiran-modal">
-  <div class="modal-box" style="width:90vw;max-width:760px;max-height:88vh;overflow-y:auto;text-align:left;padding:20px 24px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div class="modal-title" id="lampiran-title" style="margin:0">Lampiran Produk</div>
-      <div style="display:flex;align-items:center;gap:8px">
+  <div class="modal-box lp-box" style="width:90vw;max-width:760px;max-height:88vh;overflow-y:auto;text-align:left;padding:20px 24px">
+    <div class="lp-head" id="lampiran-head">
+      <div class="lp-head-main">
+        <span class="lp-brand" id="lampiran-brand" hidden></span>
+        <div class="modal-title lp-title" id="lampiran-title">Lampiran Produk</div>
+        <div class="lp-sub" id="lampiran-sub" hidden></div>
+      </div>
+      <div class="lp-head-actions">
         <!-- Cuma dipakai buat item SET — toggle antara "Rincian Set" (default)
              dan mode cari/upload PDF manual. Teks & aksi tombol ini diganti
              dinamis dari JS (lihat openLampiranModal/runPdfLookupFlow di
              konversian.js), disembunyikan total buat item non-SET. -->
         <button id="lampiran-toggle-btn" style="display:none;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);font-size:12px;font-weight:500;padding:6px 12px;border-radius:20px;cursor:pointer;white-space:nowrap"></button>
         <button id="lampiran-ganti-btn" style="display:none;border:1px solid var(--accent-text);background:var(--accent-bg);color:var(--accent-text);font-size:12px;font-weight:500;padding:6px 12px;border-radius:20px;cursor:pointer;white-space:nowrap">Ganti Lampiran</button>
-        <button id="lampiran-close" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
+        <button id="lampiran-close" aria-label="Tutup" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
       </div>
     </div>
     <div id="lampiran-status" style="font-size:13px;color:var(--text-muted);padding:24px 0;text-align:center">Memuat lampiran…</div>
