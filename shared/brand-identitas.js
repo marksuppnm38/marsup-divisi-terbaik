@@ -9,13 +9,13 @@ export const BRAND_KEY = Object.freeze({ ROBUST: 'robust', ADLER: 'adler', PICMA
 
 // Logo per kunci tema (berkas yang sama dengan Lampiran Konversian; ratio = lebar/tinggi PNG).
 //   h     = tinggi di kartu identitas / header Set Detail (px)
-//   hChip = tinggi di chip card hasil pencarian (px) — lebih kecil supaya card tetap padat
+//   hChip = tinggi di chip card hasil pencarian (px) — kecil dan tenang: logo penanda, bukan hiasan
 //   warna = logo dua warna (PICMA): tampil apa adanya, bukan dilebur jadi satu warna aksen
 // `src` hanya boleh datang dari tabel ini, tidak pernah dari data.
 export const BRAND_LOGO = Object.freeze({
-  robust: Object.freeze({ src: '/assets/robust-logo.png', ratio: 2048 / 243, h: 13, hChip: 11 }),
-  adler:  Object.freeze({ src: '/assets/adler-logo.png',  ratio: 750 / 196,  h: 17, hChip: 12 }),
-  picma:  Object.freeze({ src: '/assets/picma-logo.png',  ratio: 836 / 177,  h: 24, hChip: 16, warna: true }),
+  robust: Object.freeze({ src: '/assets/robust-logo.png', ratio: 2048 / 243, h: 13, hChip: 8 }),
+  adler:  Object.freeze({ src: '/assets/adler-logo.png',  ratio: 750 / 196,  h: 17, hChip: 10 }),
+  picma:  Object.freeze({ src: '/assets/picma-logo.png',  ratio: 836 / 177,  h: 24, hChip: 14, warna: true }),
 });
 
 // 'robust' | 'adler' | 'picma' | '' (trim + uppercase; tak dikenal / kosong / bukan teks -> '')
@@ -40,14 +40,14 @@ export function labelBrand(brand) {
 // HTML chip brand untuk baris meta card hasil. `esc` = fungsi escape yang disuntik (S.escapeHtmlAttr).
 //   brand kosong        -> ''
 //   brand bertema       -> chip logo (teks tetap ada di aria-label + title, bukan cuma warna)
-//   brand tanpa tema    -> chip teks netral (ikon pabrik + nama)
+//   brand tanpa tema    -> chip teks netral (nama saja, tanpa ikon)
 export function brandChipHtml(brand, esc) {
   const label = labelBrand(brand);
   if (!label) return '';
   const nama = esc(label);
   const logo = logoBrand(brand);
   if (!logo) {
-    return '<span class="mi mi-brand" title="Brand ' + nama + '"><i class="ti ti-building-factory-2"></i><span>' + nama + '</span></span>';
+    return '<span class="mi mi-brand" title="Brand ' + nama + '"><span>' + nama + '</span></span>';
   }
   const style = '--logo:url(' + logo.src + ');--ar:' + logo.ratio + ';--h:' + logo.hChip + 'px';
   return '<span class="mi mi-brand brand-chip' + (logo.warna ? ' is-warna' : '') + '" role="img" aria-label="Brand ' + nama + '" title="Brand ' + nama + '">'

@@ -565,10 +565,10 @@ function renderResults(data) {
       </div>
       <div class="rcard-foot">
         <div class="rcard-meta">
+          <span class="brand-slot">${brandChipHtml(r.brand, S.escapeHtmlAttr)}</span>
           <span class="mi mi-kode" title="Kode produk"><i class="ti ti-barcode"></i><span>${kode||'—'}</span></span>
           ${r.no_akd?`<span class="mi" title="No. AKD"><i class="ti ti-certificate"></i><span>${noAkdEsc}</span></span>`:''}
           ${r.kode_kfa?`<span class="mi" title="Kode KFA"><i class="ti ti-tag"></i><span>${kodeKfaEsc}</span></span>`:''}
-          ${brandChipHtml(r.brand, S.escapeHtmlAttr)}
           ${stokBadge}
         </div>
         <div class="rcard-tools">

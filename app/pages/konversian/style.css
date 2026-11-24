@@ -3239,19 +3239,18 @@
 #app-root .filters .brand-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 #app-root #results .rcard-meta .mi-brand span{font-weight:600}
 
-/* ── Identitas brand di card hasil (ROBUST / ADLER / PICMA). Token --lb / --lb-soft dari pnm-universal.css.
-      Garis aksen = ::before di tepi atas (BUKAN border-left / box-shadow: .kbd-active, .kbd-sel, .selected sudah memakainya),
-      di dalam border 1px dan tanpa mengubah layout → tinggi card tidak berubah saat brand menyusul dari cache. ── */
-#app-root #results .rcard[data-brand]::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;border-radius:7px 7px 0 0;background:var(--lb);pointer-events:none}
+/* ── Identitas brand di card hasil (ROBUST / ADLER / PICMA): satu penanda saja, logo kecil di slot tetap paling kiri baris meta.
+      Slot selalu ada (juga saat brand belum terbaca dari cache) → kolom kode sejajar antar card dan tidak ada yang bergeser
+      saat brand menyusul. Warna logo = --lb dari data-brand di .rcard (pnm-universal.css). Tanpa garis/latar tambahan. ── */
+#app-root #results .rcard-meta .brand-slot{display:inline-flex;align-items:center;flex:none;width:76px;min-width:0}
+#app-root #results .rcard-meta .brand-slot .mi-brand span{font-family:inherit;font-weight:600;font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis}
 #app-root #results .rcard-meta .brand-chip{white-space:nowrap}
-#app-root #results .rcard-meta .brand-chip .brand-logo-mark{max-width:100%}
-/* Logo berwarna (PICMA): navy tenggelam di mode gelap → diberi alas putih. */
-html[data-theme="dark"] #app-root #results .rcard-meta .brand-chip.is-warna{padding:1px 5px;border-radius:4px;background:#fff}
-/* Layar sempit (breakpoint sama dengan mobile.css): baris meta cuma ~290px di 360px. Logo ROBUST (rasio 8,4:1) lebih lebar dari teks
-   lama, jadi diperkecil supaya chip tidak mendorong baris meta turun (tinggi card tidak naik). */
+/* Mode gelap: logo PICMA dua warna (navy) tenggelam → dilebur jadi satu warna aksen seperti ROBUST dan ADLER, tanpa alas putih. */
+html[data-theme="dark"] #app-root #results .rcard-meta .brand-chip.is-warna>.brand-logo-mark{-webkit-mask:var(--logo) left center/contain no-repeat;mask:var(--logo) left center/contain no-repeat;background:var(--lb)}
+/* Layar sempit (breakpoint sama dengan mobile.css): slot ikut lebar logo; slot kosong tidak memakan ruang. */
 @media (max-width:640px){
-  #app-root #results .rcard-meta .brand-chip .brand-logo-mark{height:calc(var(--h) * .72)}
-  html[data-theme="dark"] #app-root #results .rcard-meta .brand-chip.is-warna{padding:1px 3px}
+  #app-root #results .rcard-meta .brand-slot{width:auto}
+  #app-root #results .rcard-meta .brand-slot:empty{display:none}
 }
 /* ── Penampil daftar prosedur (prosedur-daftar.js) — modal dari tab Dictionary ── */
 #app-root .pd-box{width:min(1100px,94vw);max-height:88vh;padding:20px 22px;text-align:left;display:flex;flex-direction:column;gap:10px}

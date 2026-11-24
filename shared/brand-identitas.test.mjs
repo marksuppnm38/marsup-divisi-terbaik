@@ -65,14 +65,14 @@ test('brandChipHtml: brand bertema -> chip logo dengan teks di aria-label/title'
   assert.match(h, /aria-label="Brand Robust"/);
   assert.match(h, /title="Brand Robust"/);
   assert.match(h, /--logo:url\(\/assets\/robust-logo\.png\)/);
-  assert.match(h, /--h:11px/);
+  assert.match(h, /--h:8px/);
   assert.ok(!h.includes('is-warna'));
 });
 
 test('brandChipHtml: PICMA diberi is-warna dan tinggi lebih besar', () => {
   const h = brandChipHtml('picma', esc);
   assert.match(h, /brand-chip is-warna/);
-  assert.match(h, /--h:16px/);
+  assert.match(h, /--h:14px/);
   assert.match(h, /picma-logo\.png/);
 });
 
@@ -80,7 +80,7 @@ test('brandChipHtml: brand tanpa tema -> chip teks netral, tanpa logo', () => {
   const h = brandChipHtml('SKYLAR', esc);
   assert.match(h, /class="mi mi-brand"/);
   assert.match(h, /<span>Skylar<\/span>/);
-  assert.ok(!h.includes('brand-logo-mark') && !h.includes('--logo') && !h.includes('brand-chip'));
+  assert.ok(!h.includes('brand-logo-mark') && !h.includes('--logo') && !h.includes('brand-chip') && !h.includes('<i '));
 });
 
 test('brandChipHtml: brand berisi HTML/kutip tidak lolos mentah', () => {
