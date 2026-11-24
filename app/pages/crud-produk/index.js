@@ -56,6 +56,8 @@ import { muatKlasifikasi, resetKlasifikasi, opsiKlasifikasi, cocokKlas, fetchRow
 import { installKalkulatorHarga } from './kalkulator-harga.js';
 import { createStaleTracker } from './kesegaran.js';
 import { peringatanBrand, opsiBrand } from './brand-awalan.js';
+import { FIELD_PERUBAHAN, hitungPerubahan, labelSimpan, catatanSebelumnya, perbaruiSnapshot } from './perubahan-form.js';
+import { masaBerlakuInfo } from './akd-masa.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
 import { writeTableXlsx } from '../../../shared/exports/tabel-xlsx.js';
@@ -2641,7 +2643,11 @@ function setModalMode(mode){
 // Header halaman: nama produk sebagai judul, kode + status di bawahnya. Dirender dari form saat data masuk dan sesudah Simpan
 // (bukan tiap ketikan: judul / status yang berubah sebelum disimpan akan terbaca seolah sudah tersimpan).
 function renderProdukPageHead(){
-  if (!isProdukPageOpen()) return;
+  // Kartu identitas dipakai di KEDUA mode (halaman dan modal) selama yang dibuka produk yang sudah ada; 'Tambah Produk' tetap judul biasa.
+  const identitas = modalState !== 'closed' && modalState !== 'add' && currentProdukId != null;
+  modalCard.classList.toggle('has-identitas', identitas);
+  const metaEl = document.getElementById('prodPageMeta');
+  if (!identitas) { metaEl.innerHTML = ''; delete modalHead.dataset.brand; return; }
   const val = (id) => (document.getElementById(id).value || '').trim();
   // Selagi memuat, form masih kosong: pinjam baris daftar supaya judul langsung terisi.
   const baris = modalState === 'loading' ? produkRowById.get(String(currentProdukId)) : null;
@@ -2653,20 +2659,35 @@ function renderProdukPageHead(){
   const verified = !!produkVerifiedIdSet && produkVerifiedIdSet.has(currentProdukId);
   const seal = modalState === 'loading' ? '' : document.getElementById('akdSealHolder').innerHTML; // holder masih berisi produk sebelumnya selagi memuat
   modalTitle.textContent = memuat ? 'Memuat produk…' : (nama || kode || 'Produk');
+  // Warna brand hanya untuk yang sudah punya tema (ROBUST, ADLER); brand lain netral, tanpa logo.
+  const brandKey = brand.toUpperCase() === 'ROBUST' ? 'robust' : (brand.toUpperCase() === 'ADLER' ? 'adler' : '');
+  if (brandKey) modalHead.dataset.brand = brandKey; else delete modalHead.dataset.brand;
   const bagian = [];
   if (kode) bagian.push('<span class="pm-kode">' + escapeHtml(kode) + '</span>');
+  if (brand) bagian.push('<span class="pm-brand' + (brandKey ? ' is-tema' : '') + '">' + escapeHtml(brand) + '</span>');
   if (tipe) bagian.push('<span class="tipe-chip">' + escapeHtml(tipe) + '</span>');
+  if (tipe === 'SET' && identitasItem && identitasItem.id === currentProdukId && identitasItem.n != null) {
+    bagian.push('<span>' + identitasItem.n + ' item</span>');
+  }
   if (seal) bagian.push(seal);
+  if (!baris && modalState !== 'loading') {
+    const masa = masaBerlakuInfo(val('f_masa_berlaku'));
+    if (masa.label) bagian.push('<span class="pm-masa is-' + masa.tone + '">Berlaku s/d ' + escapeHtml(masa.label) + (masa.hint ? ' · ' + escapeHtml(masa.hint) : '') + '</span>');
+  }
   if (verified) bagian.push('<span><i class="ti ti-rosette-discount-check-filled vbadge" aria-hidden="true"></i>Verified</span>');
-  if (brand) bagian.push('<span>Brand ' + escapeHtml(brand) + '</span>');
-  document.getElementById('prodPageMeta').innerHTML = bagian.join('');
+  metaEl.innerHTML = bagian.join('');
 }
+let identitasItem = null; // { id, n }: jumlah item set untuk kartu identitas (hanya tipe SET)
 // Segel AKD diisi ulang oleh alur AKD (hubungkan / lepas): header ikut.
 new MutationObserver(renderProdukPageHead).observe(document.getElementById('akdSealHolder'), { childList: true, subtree: true });
 
 function syncDirtyBadge(){
   const el = document.getElementById('prodDirty');
-  if (el) el.hidden = !(modalDirty && modalState !== 'closed');
+  if (!el) return;
+  el.hidden = !(modalDirty && modalState !== 'closed');
+  const t = document.getElementById('prodDirtyText');
+  const n = perubahanKini ? perubahanKini.jumlah : 0;
+  if (t) t.textContent = n > 0 ? n + ' perubahan belum disimpan' : 'Ada perubahan belum disimpan';
 }
 const isProdukPageOpen = () => modalMode === 'page' && modalState !== 'closed';
 // Daftar tidak di-display:none (posisi scroll & layout tabel harus selamat); inert + visibility menutup akses mouse, keyboard, dan pembaca layar.
@@ -2740,8 +2761,19 @@ function renderModalChrome(){
   syncProdukPage(modalState !== 'closed' && modalMode === 'page');
   syncDirtyBadge();
   const locked = modalState === 'loading' || modalState === 'busy';
-  document.getElementById('saveBtn').disabled = locked;
   deleteBtn.disabled = locked;
+  syncSaveBtn();
+}
+// Simpan: terkunci selagi memuat/menyimpan; di mode edit juga nonaktif kalau tidak ada yang berubah. Produk baru selalu boleh.
+function syncSaveBtn(){
+  const btn = document.getElementById('saveBtn');
+  if (!btn) return;
+  const locked = modalState === 'loading' || modalState === 'busy';
+  btn.disabled = locked || (modalState === 'edit' && !modalDirty);
+  if (modalState === 'busy') return; // label dipegang saveProduk (spinner)
+  const n = (modalState === 'edit' && perubahanKini) ? perubahanKini.jumlah : 0;
+  const label = labelSimpan(n);
+  if (btn.dataset.label !== label) { btn.dataset.label = label; btn.innerHTML = '<i class="ti ti-check"></i> ' + label; }
 }
 function modalGo(to){
   if (!MODAL_TRANSITIONS[modalState].includes(to)) {
@@ -2764,7 +2796,7 @@ function modalRejectIfBusy(){
 
 function closeModal(){
   if (modalState === 'closed') return;
-  modalDirty = false;
+  modalDirty = false; formSnap = null; perubahanKini = null; extraDirty = false;
   // Harga / AKD / media di modal langsung tertulis ke DB (bukan menunggu Simpan), jadi list di belakang modal bisa sudah basi.
   if (modalGo('closed')) {
     setModalMode('overlay'); // halaman sudah disembunyikan oleh renderModalChrome; card pulang ke overlay untuk pemanggil berikutnya
@@ -2779,6 +2811,11 @@ function closeModal(){
 // TIDAK butuh guard ini karena tiap perubahan di situ sudah auto-save
 // langsung ke database (lihat hint "tersimpan otomatis" di UI-nya). ----
 let modalDirty = false;
+// Penanda perubahan (P4): snapshot isi form sesudah produk selesai dimuat; hitungPerubahan membandingkannya dengan form sekarang.
+// formSnap null = belum ada (mode Tambah, atau masih memuat) -> perilaku lama: ketikan apa pun = "belum disimpan".
+let formSnap = null;
+let perubahanKini = null;  // hasil hitungPerubahan terakhir
+let extraDirty = false;    // perubahan di luar field yang dilacak (mis. tab lain di modal) atau field yang snapshot-nya gagal dimuat
 const unsavedConfirmOverlay = document.getElementById('unsavedConfirmOverlay');
 // Mode halaman menandai Harga / AKD / Media / unggah gambar "Tersimpan otomatis": mengetik di baris tambah harga atau kolom cari AKD
 // BUKAN perubahan yang menunggu Simpan (kalau dihitung, indikator dan guard "belum disimpan" berbohong). Modal tetap seperti dulu.
@@ -2787,9 +2824,68 @@ function dirtyFromEvent(e){
   const t = e.target;
   return !(t && (t.type === 'file' || (t.closest && t.closest('#ptab-harga, #ptab-media, #ptab-akd'))));
 }
-modalCard.addEventListener('input', (e) => { if (dirtyFromEvent(e)) { modalDirty = true; syncDirtyBadge(); } });
+const ID_DILACAK = new Map(FIELD_PERUBAHAN.map((f) => [f.elId, f.key]));
+function bacaFormDasar(){
+  const v = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+  return {
+    nama_produk: v('f_nama_produk'), brand: v('f_brand'), berat_gram: v('f_berat_gram'),
+    link_v6: v('f_link_v6'), spesifikasi: v('f_spesifikasi'), kode_asli: v('f_kode_asli'),
+    m_deskripsi: v('m_deskripsi_vendor'), m_family: v('m_family'),
+    ...atributUi.bacaForm(),
+  };
+}
+const KEY_INTI = ['nama_produk', 'brand', 'berat_gram', 'link_v6', 'spesifikasi', 'kode_asli'];
+const KEY_MASTER = ['m_deskripsi', 'm_family'];
+const KEY_KLAS = ['klas_keluarga', 'klas_kategori', 'klas_spes'];
+const ambilBagian = (keys) => { const f = bacaFormDasar(); const o = {}; keys.forEach((k) => { o[k] = f[k]; }); return o; };
+// Snapshot per bagian: bagian yang dimuat belakangan (master, klasifikasi) menyusul tanpa menimpa ketikan di bagian lain.
+function simpanSnapshot(keys){ formSnap = perbaruiSnapshot(formSnap, ambilBagian(keys)); hitungUlang(); }
+function hapusPenanda(){
+  modalCard.querySelectorAll('.is-changed').forEach((el) => el.classList.remove('is-changed'));
+  modalCard.querySelectorAll('.chg-note').forEach((el) => el.remove());
+}
+function teksNilai(key, nilai){
+  if (key === 'brand') return nilai || 'Tanpa brand';
+  if (key === 'klas_keluarga') return nilai || 'Otomatis';
+  return nilai;
+}
+function renderPerubahan(r){
+  hapusPenanda();
+  if (!r || !r.jumlah) return;
+  r.daftar.forEach((d) => {
+    const el = document.getElementById(d.elId);
+    if (!el) return;
+    const wadah = el.closest('.f') || el.parentElement;
+    el.classList.add('is-changed');
+    if (!d.sensitif) return;
+    const note = document.createElement('div');
+    note.className = 'chg-note';
+    note.setAttribute('role', 'status');
+    note.textContent = catatanSebelumnya(teksNilai(d.key, d.sebelum), d.key === 'brand' ? 'Tanpa brand' : (d.key === 'klas_keluarga' ? 'Otomatis' : '(kosong)'));
+    wadah.appendChild(note);
+  });
+}
+function hitungUlang(){
+  perubahanKini = formSnap ? hitungPerubahan(formSnap, bacaFormDasar()) : null;
+  if (formSnap && modalState !== 'closed') modalDirty = perubahanKini.jumlah > 0 || extraDirty;
+  renderPerubahan(perubahanKini);
+  syncDirtyBadge();
+  syncSaveBtn();
+}
+function tandaiUbah(e){
+  if (!dirtyFromEvent(e)) return;
+  const t = e.target;
+  // Tanpa snapshot (mode Tambah / masih memuat): perilaku lama.
+  if (!formSnap) { modalDirty = true; syncDirtyBadge(); syncSaveBtn(); return; }
+  if (t && t.closest && t.closest('#zonaBahaya')) return; // mengetik konfirmasi hapus bukan perubahan data
+  const key = t && (ID_DILACAK.get(t.id) || (t.id === 'klasSection' ? 'klas_*' : null));
+  if (key === 'klas_*' || (key && formSnap[key] !== undefined)) { hitungUlang(); return; }
+  // Field di luar yang dilacak, atau yang snapshot-nya belum / gagal dimuat: jangan sampai perubahan tidak terdeteksi.
+  extraDirty = true; modalDirty = true; syncDirtyBadge(); syncSaveBtn();
+}
+modalCard.addEventListener('input', tandaiUbah);
 document.getElementById('f_link_v6').addEventListener('input', renderLinkV6Hint);
-modalCard.addEventListener('change', (e) => { if (dirtyFromEvent(e)) { modalDirty = true; syncDirtyBadge(); } });
+modalCard.addEventListener('change', tandaiUbah);
 
 function attemptCloseModal(){
   if (modalRejectIfBusy()) return;
@@ -2850,6 +2946,7 @@ function setProdTabsLocked(locked){
 
 function resetForm(){
   modalDirty = false;
+  formSnap = null; perubahanKini = null; extraDirty = false; identitasItem = null; hapusPenanda();
   const staleSetNote = document.getElementById('setRedirectNote');
   if (staleSetNote) staleSetNote.remove(); // sisa dari openEdit produk SET sebelumnya
   document.querySelectorAll('.prod-tab.hidden-for-set').forEach(b => b.classList.remove('hidden-for-set'));
@@ -2903,6 +3000,7 @@ function openAdd(prefill){
   currentProdukId = null;
   modalTitle.textContent = 'Tambah Produk';
   modalSub.textContent = 'Isi data produk baru';
+  renderProdukPageHead(); // state 'add': kartu identitas dimatikan, judul tetap 'Tambah Produk'
   setProdTabsLocked(true);
   document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
   tampilkanHapus(false);
@@ -3051,12 +3149,21 @@ async function openEdit(produkId, opts = {}){
   kunciIdentitas(true);       // produk tersimpan: kode & tipe dibaca saja
   tampilkanHapus(true);
   applySetModalAdjustments(); // tipe sudah terisi di f_tipe; dulu dikerjakan monkey-patch SETELAH semua fetch selesai
+  formSnap = null; extraDirty = false;
   modalGo('edit');            // form sudah berisi data asli -> Simpan/Hapus boleh dipakai
-  renderProdukPageHead();     // mode halaman: header dari data asli (harus SESUDAH state 'edit'; selagi 'loading' ia meminjam baris daftar)
-  atributUi.openFor(produkId, p.tipe).catch(() => {}); // klasifikasi (keluarga / kategori / spesialisasi): dimuat di latar, tidak menunda form
+  simpanSnapshot(KEY_INTI);   // snapshot bagian inti sekarang; master dan klasifikasi menyusul begitu selesai dimuat
+  if (!p.kode_asli) simpanSnapshot(KEY_MASTER); // tanpa kode asli tidak ada master yang dimuat
+  renderProdukPageHead();     // header dari data asli (harus SESUDAH state 'edit'; selagi 'loading' ia meminjam baris daftar)
+  if (p.tipe === 'SET') {
+    sb.from('produk_set_item').select('id', { count: 'exact', head: true }).eq('set_id', produkId)
+      .then(({ count, error }) => { if (session !== modalSession) return; identitasItem = { id: produkId, n: error ? null : count }; renderProdukPageHead(); })
+      .catch(() => {});
+  }
+  // klasifikasi (keluarga / kategori / spesialisasi): dimuat di latar, tidak menunda form; snapshot-nya diambil sesudah form terisi
+  atributUi.openFor(produkId, p.tipe).then(() => { if (session === modalSession) simpanSnapshot(KEY_KLAS); }).catch(() => {});
 
   await Promise.all([
-    p.kode_asli ? cekMaster(p.kode_asli, true, session) : null,
+    p.kode_asli ? cekMaster(p.kode_asli, true, session).then(() => { if (session === modalSession) simpanSnapshot(KEY_MASTER); }) : null,
     loadHarga(produkId),
     loadMedia(produkId),
     loadAkdLinks(produkId, p.tipe),
@@ -3104,6 +3211,7 @@ async function cekMaster(kodeAsli, silent, session){
     masterExists = false;
     msgEl.innerHTML = `<div class="lookup-msg notfound"><i class="ti ti-alert-triangle"></i> Belum ada — isi field di bawah untuk buat master baru.</div>`;
   }
+  if (formSnap && (session === undefined || session === modalSession)) hitungUlang(); // tombol Cek mengisi field master tanpa event ketik
   await checkGambarInstrumen();
 }
 
@@ -3613,9 +3721,14 @@ async function saveProdukInner(session){
   if (!wasNew) klasHasil = await atributUi.simpanDariForm();
   if (klasHasil.ok) showToast(wasNew ? 'Produk ditambahkan' : (klasHasil.diubah ? 'Produk dan klasifikasi diperbarui' : 'Produk diperbarui'));
   else showToast('Info dasar tersimpan, klasifikasi gagal: ' + klasHasil.pesan + ' Perbaiki lalu Simpan lagi.', true);
-  modalDirty = !klasHasil.ok; // gagal sebagian: penanda "belum disimpan" tetap menyala untuk bagian klasifikasi
-  syncDirtyBadge();
-  renderProdukPageHead(); // header halaman mengikuti data yang baru tersimpan
+  // Snapshot ikut bagian yang BERHASIL tersimpan (info dasar + master selalu; klasifikasi hanya bila ok). Gagal sebagian: selisih klasifikasi
+  // tetap tercatat, jadi penanda "belum disimpan" dan jumlah perubahan tetap menyala untuk bagian itu saja. Produk baru: klasifikasi menyusul via openFor.
+  extraDirty = false;
+  formSnap = perbaruiSnapshot(formSnap, { ...ambilBagian(KEY_INTI), ...ambilBagian(KEY_MASTER) });
+  if (klasHasil.ok && !wasNew) formSnap = perbaruiSnapshot(formSnap, ambilBagian(KEY_KLAS));
+  hitungUlang();
+  if (!klasHasil.ok) { modalDirty = true; syncDirtyBadge(); }
+  renderProdukPageHead(); // header mengikuti data yang baru tersimpan
   currentProdukId = result.data.id;
 
   // Produk baru yang dibuat dari daftar "belum ada di database" di Composition set:
@@ -3698,7 +3811,8 @@ async function saveProdukInner(session){
   document.getElementById('akdHint').textContent = '';
   modalTitle.textContent = 'Edit Produk';
   modalSub.textContent = 'Kode: ' + result.data.kode_produk;
-  if (wasNew) atributUi.openFor(currentProdukId, tipe).catch(() => {}); // produk baru sudah punya id: bagian Klasifikasi terbuka
+  renderProdukPageHead(); // baris di atas menimpa judul dengan 'Edit Produk'; kartu identitas mengembalikannya ke nama produk
+  if (wasNew) atributUi.openFor(currentProdukId, tipe).then(() => { if (session === modalSession) simpanSnapshot(KEY_KLAS); }).catch(() => {}); // produk baru sudah punya id: bagian Klasifikasi terbuka
   await loadHarga(currentProdukId);
   await loadMedia(currentProdukId);
   await loadAkdLinks(currentProdukId, tipe);

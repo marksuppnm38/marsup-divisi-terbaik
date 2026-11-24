@@ -319,8 +319,17 @@ export function createAtributUi({ sb, showToast, ensureKlas, keluargaNames, getS
   ['klasBulkKelMode', 'klasBulkKat', 'klasBulkSpes'].forEach((id) => on($(id), 'change', syncBulk));
   on($('klasBulkKel'), 'input', syncBulk);
 
+  // Isi form klasifikasi sekarang (untuk snapshot / penanda perubahan). Bukan dari database: murni apa yang tampil di form.
+  function bacaForm() {
+    return {
+      klas_keluarga: $('f_klas_keluarga') ? $('f_klas_keluarga').value : '',
+      klas_kategori: $('f_klas_kategori') ? $('f_klas_kategori').value : '',
+      klas_spes: $('f_klas_spes') ? $('f_klas_spes').value : '',
+    };
+  }
+
   return {
-    openFor, lockNew, bukaBulk, periksaForm, simpanDariForm,
+    openFor, lockNew, bukaBulk, periksaForm, simpanDariForm, bacaForm,
     destroy() { cleanups.forEach((f) => f()); cleanups.length = 0; seq++; cur = null; },
   };
 }

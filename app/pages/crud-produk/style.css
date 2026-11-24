@@ -694,6 +694,26 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .prod-modal.prod-page .prod-dirty[hidden]{display:none}
 .prod-modal.prod-page .prod-dirty .ti{font-size:16px}
 
+/* ---- Kartu identitas (P3): dipakai di halaman DAN modal selama produk sudah ada ('Tambah Produk' tetap judul biasa). ----
+   Warna brand hanya untuk ROBUST / ADLER (pola Lampiran Konversian); brand lain netral, tanpa logo. */
+.prod-modal.has-identitas{--lb:var(--text-muted);--lb-soft:transparent}
+.prod-modal.has-identitas .modal-head[data-brand="robust"]{--lb:#00476d;--lb-soft:rgba(0,71,109,.09)}
+.prod-modal.has-identitas .modal-head[data-brand="adler"]{--lb:#cc0000;--lb-soft:rgba(204,0,0,.08)}
+html[data-theme="dark"] .prod-modal.has-identitas .modal-head[data-brand="robust"]{--lb:#5db4ee;--lb-soft:rgba(93,180,238,.13)}
+html[data-theme="dark"] .prod-modal.has-identitas .modal-head[data-brand="adler"]{--lb:#ff6259;--lb-soft:rgba(255,98,89,.13)}
+.prod-modal.has-identitas .modal-head[data-brand]{box-shadow:inset 0 3px 0 var(--lb)}
+.prod-modal.has-identitas .modal-sub{display:none}
+.prod-modal.has-identitas:not(.prod-page) .modal-title{font-size:19px;font-weight:700;line-height:1.25;overflow-wrap:anywhere}
+.prod-modal.has-identitas .prod-page-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:8px;font-size:12.5px;color:var(--text-secondary)}
+.prod-page-meta .pm-brand{padding:1px 9px;border:1px solid var(--border);border-radius:20px;font-size:11.5px;font-weight:700;letter-spacing:.03em;color:var(--text-secondary)}
+.prod-page-meta .pm-brand.is-tema{color:var(--lb);background:var(--lb-soft);border-color:var(--lb)}
+.prod-page-meta .pm-masa.is-warn{color:var(--amber-text);font-weight:600}
+.prod-page-meta .pm-masa.is-bad{color:var(--danger-text);font-weight:600}
+
+/* ---- Penanda perubahan (P4): field yang beda dari isi saat dimuat. Bukan hanya warna: ada garis tebal + (untuk field sensitif) teks "Sebelumnya". ---- */
+.prod-modal .is-changed{border-color:var(--amber-text);box-shadow:0 0 0 1px var(--amber-text)}
+.prod-modal .chg-note{margin-top:4px;font-size:12px;line-height:1.4;color:var(--amber-text);overflow-wrap:anywhere}
+
 .prod-modal.prod-page .prod-tabs{margin:0;padding:0 var(--pp-gutter)}
 .prod-modal.prod-page .prod-tabs-hint{padding:10px var(--pp-gutter) 0}
 .prod-modal.prod-page .prod-body{padding:24px var(--pp-gutter) 56px}

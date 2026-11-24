@@ -934,7 +934,7 @@ export const CRUD_PRODUK_MARKUP = `
     </div>
 
     <div class="modal-actions">
-      <span class="prod-dirty" id="prodDirty" role="status" hidden><i class="ti ti-point-filled" aria-hidden="true"></i>Ada perubahan belum disimpan</span>
+      <span class="prod-dirty" id="prodDirty" role="status" hidden><i class="ti ti-point-filled" aria-hidden="true"></i><span id="prodDirtyText">Ada perubahan belum disimpan</span></span>
       <div style="display:flex;gap:8px;margin-left:auto;">
         <button class="btn btn-ghost" id="cancelBtn">Batal</button>
         <button class="btn btn-accent" id="saveBtn"><i class="ti ti-check"></i> Simpan</button>
