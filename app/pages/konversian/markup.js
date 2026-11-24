@@ -124,12 +124,21 @@ export const KONVERSIAN_MARKUP = `
           <div id="autocomplete"></div>
         </div>
         <div class="filters">
-          <button class="toggle-btn tipe-btn" id="ti-instrument" data-tipe="INSTRUMENT"><i class="ti ti-tools"></i> Instrumen</button>
-          <button class="toggle-btn tipe-btn" id="ti-set" data-tipe="SET"><i class="ti ti-packages"></i> Set</button>
-          <button class="toggle-btn tipe-btn" id="ti-unit" data-tipe="UNIT"><i class="ti ti-device-desktop"></i> Unit</button>
-          <button class="toggle-btn" id="takd"><i class="ti ti-certificate"></i> AKD</button>
+          <div class="seg" role="group" aria-label="Jenis produk">
+            <button class="toggle-btn tipe-btn" id="ti-instrument" data-tipe="INSTRUMENT">Instrumen</button>
+            <button class="toggle-btn tipe-btn" id="ti-set" data-tipe="SET">Set</button>
+            <button class="toggle-btn tipe-btn" id="ti-unit" data-tipe="UNIT">Unit</button>
+          </div>
+          <span class="f-sep" aria-hidden="true"></span>
+          <button class="toggle-btn" id="tready" type="button" aria-pressed="false" title="Hanya produk dengan stok Ready (SET yang data komponennya belum lengkap tidak dihitung)">Ready</button>
           <button class="toggle-btn" id="tverif" title="Hanya produk Verified (centang biru INAPROC)"><i class="ti ti-rosette-discount-check-filled" style="color:#1d9bf0"></i> Verified</button>
-          <button class="toggle-btn" id="tswasta"><i class="ti ti-building-store"></i> Harga Swasta</button>
+          <button class="toggle-btn" id="takd">AKD</button>
+          <button class="toggle-btn" id="tswasta">Harga Swasta</button>
+          <label class="pagu-field" id="pagu-box" title="Pagu dari RS (opsional) — setiap harga diberi selisih terhadap pagu. Bisa diketik 150jt atau 150.000.000">
+            <span class="pagu-lab">Pagu</span>
+            <input id="pagu-input" type="text" inputmode="decimal" placeholder="Rp" autocomplete="off" spellcheck="false" aria-label="Pagu dalam Rupiah"/>
+            <button type="button" id="pagu-clear" hidden aria-label="Hapus pagu"><i class="ti ti-x"></i></button>
+          </label>
           <span id="brand-pills" class="brand-pills" role="group" aria-label="Filter brand"></span>
         </div>
       </div>
@@ -139,6 +148,7 @@ export const KONVERSIAN_MARKUP = `
       <div id="err"></div>
       <div class="meta-row">
         <div id="meta"></div>
+        <span class="kbd-hint" tabindex="0" role="note" aria-label="Pintasan keyboard" title="↑↓ pilih produk · ⇧↑↓ pilih beberapa · Ctrl+C salin info · Enter tambah ke Konversi"><i class="ti ti-keyboard"></i></span>
         <select class="filter-select" id="sort-select" style="display:none">
           <option value="relevance">Paling relevan</option>
           <option value="harga_desc">Harga: Tertinggi</option>

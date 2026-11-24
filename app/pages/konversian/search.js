@@ -138,6 +138,99 @@ function renderBrandPills() {
   });
 })();
 
+// ---- FILTER TAMBAHAN: Ready + Pagu (2026-11-24) ----
+// Dua-duanya filter TAMPILAN: dikerjakan di renderResults atas hasil yang sudah ada, tanpa query ulang ke database.
+//  - Ready : hanya produk yang stoknya READY (stok >= 1). SET dengan data komponen belum lengkap TIDAK dihitung Ready
+//            (konsisten dengan output Excel/SPH yang menampilkannya sebagai INDENT). Yang stoknya masih di-fetch
+//            (stok_pending) tidak disembunyikan dulu, supaya kartu tidak berkedip hilang lalu muncul.
+//  - Pagu  : angka opsional dari RS. Tidak menyembunyikan apa pun — tiap harga diberi selisih ("sisa …" / "lebih …").
+S.onlyReady = false;
+S.pagu = null; // Rupiah (angka) atau null = tanpa pagu
+const treadEl = document.getElementById('tready');
+const paguEl = document.getElementById('pagu-input');
+const paguBoxEl = document.getElementById('pagu-box');
+const paguClearEl = document.getElementById('pagu-clear');
+
+// "150000000" · "150.000.000" · "Rp 150.000.000" · "150jt" · "1,5 juta" · "2,3m" · "750rb" -> angka, atau null kalau bukan angka.
+function parsePagu(str) {
+  const t = String(str || '').toLowerCase().replace(/rp\.?/g, '').replace(/\s+/g, '');
+  const m = t.match(/^(\d[\d.,]*)(jt|juta|m|miliar|rb|ribu|k)?$/);
+  if (!m) return null;
+  let n;
+  if (m[2]) {
+    const mult = (m[2] === 'jt' || m[2] === 'juta') ? 1e6 : (m[2] === 'm' || m[2] === 'miliar') ? 1e9 : 1e3;
+    n = parseFloat(m[1].replace(',', '.')) * mult; // dengan satuan: koma/titik = desimal ("1,5jt")
+  } else {
+    n = parseInt(m[1].replace(/[.,]/g, ''), 10);  // tanpa satuan: titik/koma = pemisah ribuan
+  }
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+// Selisih ringkas untuk baris kecil di bawah harga: 12300000 -> "Rp 12,3 jt".
+function rupiahRingkas(n) {
+  n = Math.abs(Math.round(n));
+  const f = (v, suf) => 'Rp ' + (Math.round(v * 10) / 10).toLocaleString('id-ID') + ' ' + suf;
+  if (n >= 1e9) return f(n / 1e9, 'M');
+  if (n >= 1e6) return f(n / 1e6, 'jt');
+  if (n >= 1e3) return f(n / 1e3, 'rb');
+  return 'Rp ' + n.toLocaleString('id-ID');
+}
+function isReadyRow(r) {
+  if (r.stok_pending) return true;
+  return S.stokStatusUntukQty(r, 1) === 'READY';
+}
+// Angka "N produk ditemukan" mengikuti jumlah yang BENAR-BENAR tampil, plus catatan berapa yang disaring Ready.
+function syncMetaView(shown, hiddenReady) {
+  const el = S.metaEl;
+  if (!el) return;
+  const first = el.firstChild;
+  if (first && first.nodeType === 3) first.nodeValue = first.nodeValue.replace(/^\d+/, String(shown));
+  let note = el.querySelector('.view-note');
+  if (!hiddenReady) { if (note) note.remove(); return; }
+  if (!note) {
+    note = document.createElement('span');
+    note.className = 'view-note';
+    if (first) first.after(note); else el.append(note);
+  }
+  note.textContent = ` (${hiddenReady} belum Ready disembunyikan)`;
+}
+(function wireReadyPagu() {
+  if (treadEl) {
+    treadEl.addEventListener('click', () => {
+      S.onlyReady = !S.onlyReady;
+      treadEl.classList.toggle('on', S.onlyReady);
+      treadEl.setAttribute('aria-pressed', String(S.onlyReady));
+      S.currentPage = 1;
+      if (S.kbdCardIdx >= 0) { S.kbdCardIdx = -1; S.kbdAnchor = -1; }
+      if (S.lastResults && S.lastResults.length) renderResults(S.lastResults);
+    });
+  }
+  if (!paguEl) return;
+  let t = null;
+  const apply = () => {
+    const raw = paguEl.value.trim();
+    S.pagu = parsePagu(raw);
+    if (paguBoxEl) {
+      paguBoxEl.classList.toggle('has-value', S.pagu != null);
+      paguBoxEl.classList.toggle('is-invalid', !!raw && S.pagu == null);
+    }
+    if (paguClearEl) paguClearEl.hidden = !raw;
+    if (S.lastResults && S.lastResults.length) renderResults(S.lastResults);
+  };
+  paguEl.addEventListener('input', () => {
+    // Angka murni diberi pemisah ribuan sambil mengetik; "150jt" dst dibiarkan apa adanya.
+    if (/^[\d.]+$/.test(paguEl.value) && /\d/.test(paguEl.value)) {
+      const digits = paguEl.value.replace(/\./g, '');
+      if (digits.length <= 13) paguEl.value = Number(digits).toLocaleString('id-ID');
+    }
+    clearTimeout(t); t = setTimeout(apply, 120);
+  });
+  paguEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); S.searchInput.focus(); }          // ketik pagu -> Enter -> langsung cari berikutnya
+    else if (e.key === 'Escape') { if (paguEl.value) { paguEl.value = ''; apply(); } else S.searchInput.focus(); }
+  });
+  if (paguClearEl) paguClearEl.addEventListener('click', () => { paguEl.value = ''; apply(); paguEl.focus(); });
+})();
+
 // SEARCH
 let searchSeq = 0;
 // Baris meta di atas hasil: "N produk ditemukan (M produk belum firm disembunyikan) [Tampilkan]".
@@ -230,9 +323,7 @@ async function mergeDictHits(q, args, dataRaw, mySeq) {
   }
   applySort();
   S.currentPage = 1;
-  renderResults(S.lastResults);
-  const first = S.metaEl.firstChild; // teks "N produk ditemukan" -> perbarui angkanya saja
-  if (first && first.nodeType === 3) first.nodeValue = first.nodeValue.replace(/^\d+/, String(S.lastResults.length));
+  renderResults(S.lastResults); // renderResults juga memperbarui angka "N produk ditemukan" (lihat syncMetaView)
   if (freshOk.length) {
     await Promise.race([Promise.resolve(S.enrichResultsWithStok(freshOk)).catch(() => {}), new Promise(r => setTimeout(r, 5000))]);
     freshOk.forEach(r => { delete r.stok_pending; });
@@ -507,7 +598,7 @@ function katalogBadgeHtml(r) {
     return `<span class="badge-katalog-no" data-role="link-katalog-catatan" title="${S.escapeHtmlAttr(tip)}" style="color:var(--amber-text,#8a5314);border-color:var(--amber,#c97c2a);background:var(--amber-bg,#fbf0de)"><i class="ti ti-alert-circle" style="font-size:12px"></i> Link V6 ada catatan${ringkas ? ': ' + S.escapeHtmlAttr(ringkas) : ''}</span>`;
   }
   if (r.status_inaproc === 'Disetujui') {
-    return `<span class="badge-katalog-no" style="color:var(--rust-text,#8F3620);border-color:var(--rust,#B8492F);background:var(--rust-bg,#FBE8E2)"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Disetujui INAPROC — siap dibuatkan Link V6!</span>`;
+    return `<span class="badge-katalog-no" title="Disetujui INAPROC — siap dibuatkan Link V6" style="color:var(--rust-text,#8F3620);border-color:var(--rust,#B8492F);background:var(--rust-bg,#FBE8E2)"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Disetujui INAPROC — siap dibuatkan Link V6!</span>`;
   }
   return `<span class="badge-katalog-no" title="Belum ada di e-Katalog"><i class="ti ti-circle-x" style="font-size:12px"></i> Belum di e-Kat</span>`;
 }
@@ -517,20 +608,33 @@ function katalogBadgeHtml(r) {
 function lampiranCardLabel(n) { return n != null ? n + ' item' : 'Lampiran'; }
 
 function renderResults(data) {
+  // Filter "Ready" = filter tampilan atas hasil yang sudah ada (lihat blok FILTER TAMBAHAN di atas).
+  const totalSemua = data.length;
+  if (S.onlyReady) data = data.filter(isReadyRow);
+  const disaringReady = S.onlyReady ? totalSemua - data.length : 0;
+  syncMetaView(data.length, disaringReady);
+  if (!data.length && totalSemua) {
+    S.kbdCardIdx = -1; S.kbdAnchor = -1;
+    S.resultsEl.innerHTML = `<div class="rcard-none"><span>Tidak ada yang Ready dari ${totalSemua} hasil.</span><button type="button" class="rcard-none-btn" data-act="show-all">Tampilkan semua</button></div>`;
+    const showAll = S.resultsEl.querySelector('[data-act="show-all"]');
+    if (showAll) showAll.addEventListener('click', () => { if (treadEl) treadEl.click(); });
+    renderPagination(0);
+    return;
+  }
   // clamp currentPage kalau data berubah (misal abis filter) jadi lebih pendek dari halaman aktif
   const totalPages = Math.max(1, Math.ceil(data.length / S.RESULTS_PER_PAGE));
   if (S.currentPage > totalPages) S.currentPage = totalPages;
   if (S.currentPage < 1) S.currentPage = 1;
   const start = (S.currentPage - 1) * S.RESULTS_PER_PAGE;
   const pageData = data.slice(start, start + S.RESULTS_PER_PAGE);
+  const tahunIni = new Date().getFullYear();
+  const tipeCampur = new Set(data.map(x => (x.tipe || '').toUpperCase())).size > 1;
 
   S.resultsEl.innerHTML = pageData.map((r, i) => {
     const inClip = S.clipboard.some(c => c.kode_produk === r.kode_produk);
     const isSet = r.tipe && r.tipe.toUpperCase() === 'SET';
-    const tipeClass = isSet ? 'tipe-set' : (r.tipe && r.tipe.toUpperCase() === 'UNIT') ? 'tipe-unit' : 'tipe-other';
     const hargaTampil = S.modeSwasta ? r.harga_swasta : r.harga_ekat;
     const tahunTampil = S.modeSwasta ? r.tahun_harga_swasta : r.tahun_harga;
-    const labelHarga = S.modeSwasta ? 'Harga Swasta' : 'Harga belum ada';
     const stokBadge = S.stokBadgeHtml(r, isSet);
     // SECURITY FIX 2026-08-14 (+ diperluas hari ini): konsisten dengan
     // renderClipItemHtml — escape SEMUA field yang datang dari DB (bisa
@@ -547,37 +651,65 @@ function renderResults(data) {
     const kodeKfaEsc = S.escapeHtmlAttr(r.kode_kfa||'');
     const tipeEsc = S.escapeHtmlAttr(r.tipe||'');
     const tahunEsc = S.escapeHtmlAttr(String(tahunTampil || ''));
-    const priceHtml = hargaTampil
-      ? `<span class="rcard-price" title="${S.modeSwasta ? 'Harga swasta' : 'Harga e-Katalog'}${tahunEsc ? ' ' + tahunEsc : ''}">${S.rupiah(hargaTampil)}${tahunEsc ? `<small>${tahunEsc}</small>` : ''}</span>`
+
+    // HARGA + baris kecil di bawahnya. Ada pagu -> selisih terhadap pagu; tanpa pagu -> tahun harga
+    // (kuning kalau bukan tahun ini, supaya harga basi kelihatan tanpa perlu dibaca).
+    const hargaNum = hargaTampil ? Number(hargaTampil) : null;
+    const adaPagu = S.pagu != null && hargaNum != null && Number.isFinite(hargaNum);
+    const selisih = adaPagu ? hargaNum - S.pagu : 0;
+    const lebihPagu = adaPagu && selisih > 0;
+    const priceHtml = hargaNum
+      ? `<span class="rcard-price${lebihPagu ? ' is-over' : ''}" title="${S.modeSwasta ? 'Harga swasta' : 'Harga e-Katalog'}${tahunEsc ? ' ' + tahunEsc : ''}">${S.rupiah(hargaNum)}</span>`
       : `<span class="rcard-price is-empty">${S.modeSwasta ? 'Harga swasta belum ada' : 'Harga belum ada'}</span>`;
+    let subHtml = '';
+    if (adaPagu) {
+      subHtml = selisih === 0
+        ? `<span class="rcard-sub is-ok" title="Pagu ${S.escapeHtmlAttr(S.rupiah(S.pagu))}">pas pagu</span>`
+        : `<span class="rcard-sub ${lebihPagu ? 'is-over' : 'is-ok'}" title="Pagu ${S.escapeHtmlAttr(S.rupiah(S.pagu))}">${lebihPagu ? 'lebih ' : 'sisa '}${rupiahRingkas(selisih)}</span>`;
+    } else if (hargaNum && tahunEsc) {
+      const basi = Number(tahunTampil) < tahunIni;
+      subHtml = `<span class="rcard-sub${basi ? ' is-stale' : ''}" title="${basi ? 'Harga tahun ' + tahunEsc + ' — bukan tahun ini' : 'Tahun harga'}">Harga ${tahunEsc}</span>`;
+    }
+
     const ctaHtml = inClip
       ? `<button type="button" class="btn-clip-toggle in-clip" data-kode="${kode}" data-action="remove" title="Sudah di Konversi — klik untuk keluarkan"><i class="ti ti-circle-check"></i><span>Di Konversi</span></button>`
       : `<button type="button" class="btn-clip-toggle" data-kode="${kode}" data-action="add" title="Tambahkan ke Konversi"><i class="ti ti-plus"></i><span>Tambah</span></button>`;
+
+    // Penanda di samping nama: hanya yang memang membedakan produk ini dari yang lain.
+    // Jenis (Set/Unit/Instrumen) cuma ditampilkan kalau hasilnya CAMPUR jenis — kalau semuanya sama (mis. semua Set), label itu cuma bising.
+    const tipeUp = (r.tipe || '').toUpperCase();
+    const tipeLabel = tipeUp === 'SET' ? 'Set' : tipeUp === 'UNIT' ? 'Unit' : tipeUp === 'INSTRUMENT' ? 'Instrumen' : tipeEsc;
+    const flags = [
+      (r.tipe && tipeCampur) ? `<span class="rcard-flag" title="Jenis produk">${tipeLabel}</span>` : '',
+      (!S.modeSwasta && !S.isProdukFirm(r)) ? `<span class="rcard-flag is-warn" title="Link V6 masih ada catatan — tidak dipakai buat konversi">Belum firm</span>` : '',
+      r.dict_istilah ? `<span class="rcard-flag is-dict" title="Cocok dengan istilah di Dictionary: ${S.escapeHtmlAttr(r.dict_istilah)}"><i class="ti ti-book-2"></i>Dictionary</span>` : ''
+    ].join('');
+
     const kunciTema = kunciBrand(r.brand); // '' = tanpa tema → tanpa garis aksen; nilai hanya dari tabel konstanta
-    return `<div class="rcard${inClip?' selected':''}"${kunciTema ? ` data-brand="${kunciTema}"` : ''} data-kode="${kode}">
-      <div class="rcard-top">
-        <span class="rcard-name" title="${namaEsc}">${namaEsc||'—'}</span>
-        ${r.tipe?`<span class="tipe-badge ${tipeClass}">${tipeEsc}</span>`:''}
-        ${(!S.modeSwasta && !S.isProdukFirm(r)) ? `<span class="tipe-badge tipe-other" title="Link V6 masih ada catatan — tidak dipakai buat konversi">Belum firm</span>` : ''}
-        ${r.dict_istilah ? `<span class="tipe-badge tipe-other" title="Cocok dengan istilah di Dictionary: ${S.escapeHtmlAttr(r.dict_istilah)}"><i class="ti ti-book-2"></i> Dictionary</span>` : ''}
-        ${priceHtml}
-        ${ctaHtml}
+    // Susunan: judul | status (stok, e-Kat) | harga | aksi — kolom tetap supaya stok & harga bisa dipindai lurus ke bawah.
+    // Kode / AKD / KFA hanya bahan lookup: kecil, redup, bisa diblok dobel-klik.
+    return `<div class="rcard rc3${inClip?' selected':''}"${kunciTema ? ` data-brand="${kunciTema}"` : ''} data-kode="${kode}">
+      <div class="rcard-title">
+        <span class="rcard-name" title="${namaEsc}">${namaEsc||'—'}</span>${flags}
       </div>
-      <div class="rcard-foot">
-        <div class="rcard-meta">
-          <span class="brand-slot">${brandChipHtml(r.brand, S.escapeHtmlAttr)}</span>
-          <span class="mi mi-kode" title="Kode produk"><i class="ti ti-barcode"></i><span>${kode||'—'}</span></span>
-          ${r.no_akd?`<span class="mi" title="No. AKD"><i class="ti ti-certificate"></i><span>${noAkdEsc}</span></span>`:''}
-          ${r.kode_kfa?`<span class="mi" title="Kode KFA"><i class="ti ti-tag"></i><span>${kodeKfaEsc}</span></span>`:''}
-          ${stokBadge}
-        </div>
-        <div class="rcard-tools">
-          ${S.modeSwasta ? '' : katalogBadgeHtml(r)}
-          <button type="button" class="rc-tool btn-lihat-gambar" data-kode="${kode}" data-kode-asli="${kodeAsli}" data-nama="${namaEsc}" title="Lihat gambar" aria-label="Lihat gambar"><i class="ti ti-eye"></i></button>
-          <button type="button" class="rc-tool btn-copy-produk" data-kode="${kode}" title="Copy info produk" aria-label="Copy info produk"><i class="ti ti-copy"></i></button>
-          <button type="button" class="rc-tool rc-tool-text btn-lampiran" data-kode="${kode}" data-is-set="${isSet}" title="Lihat lampiran${isSet ? ' (isi set)' : ''}" aria-label="Lihat lampiran"><i class="ti ti-file-text"></i>${isSet ? `<span data-lampiran-label="${kode}">${lampiranCardLabel(S.cachedSetItemCount(r))}</span>` : ''}</button>
-          <button type="button" class="rc-tool btn-edit-produk" data-kode="${kode}" title="Edit produk ini" aria-label="Edit produk ini"><i class="ti ti-settings"></i></button>
-        </div>
+      <div class="rcard-status">
+        <div class="rcard-stok">${stokBadge}</div>
+        <div class="rcard-kat">${S.modeSwasta ? '' : katalogBadgeHtml(r)}</div>
+      </div>
+      <div class="rcard-harga">${priceHtml}</div>
+      <div class="rcard-cta">${ctaHtml}</div>
+      <div class="rcard-meta">
+        <span class="brand-slot">${brandChipHtml(r.brand, S.escapeHtmlAttr)}</span>
+        <span class="mi mi-kode" title="Kode produk"><span>${kode||'—'}</span></span>
+        ${r.no_akd?`<span class="mi mi-akd" title="No. AKD"><b class="mi-lab">AKD</b><span>${noAkdEsc}</span></span>`:''}
+        ${r.kode_kfa?`<span class="mi mi-kfa" title="Kode KFA"><b class="mi-lab">KFA</b><span>${kodeKfaEsc}</span></span>`:''}
+      </div>
+      <div class="rcard-sub-wrap">${subHtml}</div>
+      <div class="rcard-tools">
+        <button type="button" class="rc-tool rc-tool-aux btn-lihat-gambar" data-kode="${kode}" data-kode-asli="${kodeAsli}" data-nama="${namaEsc}" title="Lihat gambar" aria-label="Lihat gambar"><i class="ti ti-eye"></i></button>
+        <button type="button" class="rc-tool rc-tool-aux btn-copy-produk" data-kode="${kode}" title="Copy info produk" aria-label="Copy info produk"><i class="ti ti-copy"></i></button>
+        <button type="button" class="rc-tool rc-tool-aux btn-edit-produk" data-kode="${kode}" title="Edit produk ini" aria-label="Edit produk ini"><i class="ti ti-settings"></i></button>
+        <button type="button" class="rc-tool rc-tool-text btn-lampiran" data-kode="${kode}" data-is-set="${isSet}" title="Lihat lampiran${isSet ? ' (isi set)' : ''}" aria-label="Lihat lampiran"><i class="ti ti-file-text"></i>${isSet ? `<span data-lampiran-label="${kode}">${lampiranCardLabel(S.cachedSetItemCount(r))}</span>` : ''}</button>
       </div>
     </div>`;
   }).join('');
