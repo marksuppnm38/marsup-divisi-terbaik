@@ -1161,12 +1161,11 @@ html[data-theme="dark"] [data-brand="picma"]{--lb:#8fa3ee;--lb-soft:rgba(143,163
    nganggur. Sekarang begitu search diciutkan, clip panel jadi ikutan melebar
    ngambil semua ruang sisa — ini yang bikin preview SPH dkk kepake beneran. */
 .panel-search.collapsed ~ .panel-clip{flex:1 1 auto;width:auto}
-/* Tab "Buat SPH" gak butuh SEMUA ruang kosong yang kebuka pas search
-   diciutkan — form-nya fixed-width dan preview PDF proporsi A4 (portrait),
-   jadi kalau dipaksa full-bleed malah jadi "kececeran": form nempel kiri,
-   iframe preview jadi lebar banget dgn bidang kosong gede di kanan-kirinya.
-   Dibatasi max-width + di-center biar tetap proporsional & rapi. */
-.panel-clip.tab-sph-active{max-width:1100px;margin:0 auto}
+/* Tab "Buat SPH" ikut mengambil seluruh ruang sisa begitu search diciutkan. Dulu dibatasi
+   max-width:1100px + margin auto, hasilnya dua pita kosong di kiri-kanan panel. Kertas preview
+   sudah dibatasi sendiri (#sph-preview-frame max-width) dan duduk di tengah "meja" abu-abu,
+   jadi layar lebar tidak lagi membuat preview melar. */
+.panel-clip.tab-sph-active{max-width:none;margin:0}
 /* Same fix as .panel-header: drop the redundant top padding stacked under
    header{}'s own bottom padding+border, so the right panel starts at the
    same single 8px rhythm as the left panel instead of visually doubling up. */

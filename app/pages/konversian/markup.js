@@ -468,12 +468,19 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
             </div>
           </div>
           <button class="clip-header-edit-btn" id="btn-butuh-bantuan" type="button" title="Tandai sesi ini butuh bantuan tim"><i class="ti ti-lifebuoy"></i><span class="cheb-label">Minta Bantuan</span></button>
-          <!-- Selesaikan Sesi dipindah dari menu "⋯" footer ke sini: user sering lupa nutup sesi
-               (jadi nyangkut di Konversi Berjalan), jadi harus kelihatan terus, sejajar Minta Bantuan.
-               ID & handler (clipboard.js) sama persis — cuma posisi DOM yang pindah. -->
-          <button class="btn-end-sesi" id="btn-end-sesi" type="button" disabled title="Tutup sesi ini tanpa Record — data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan">
-            <i class="ti ti-square-check"></i> Selesaikan Sesi
-          </button>
+          <!-- Dua cara mengakhiri sesi hidup BERSAMA di satu grup, sama-sama kelihatan, beda konsekuensi:
+               Keluar dari Sesi  = cuma menutup tampilan, sesi tetap berjalan (murah, bisa dibuka lagi)
+               Selesaikan Sesi   = menutup sesi, pindah dari Konversi Berjalan (data tetap tersimpan)
+               Dulu Selesaikan kecil di sini sedangkan Keluar tersembunyi di menu "⋯" footer, jadi orang
+               harus menebak di mana yang satunya. ID & handler (clipboard.js) sama persis. -->
+          <div class="clip-sesi-exit" role="group" aria-label="Akhiri sesi">
+            <button class="btn-leave-sesi clip-sesi-btn" id="btn-leave-sesi" type="button" disabled title="Keluar dari Sesi — tutup tampilan ini saja. Sesi tetap berjalan dan bisa dibuka lagi dari Konversi Berjalan.">
+              <i class="ti ti-logout"></i><span class="clip-sesi-label">Keluar dari Sesi</span>
+            </button>
+            <button class="btn-end-sesi clip-sesi-btn" id="btn-end-sesi" type="button" disabled title="Selesaikan Sesi — tutup sesi ini tanpa Record. Data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan.">
+              <i class="ti ti-square-check"></i><span class="clip-sesi-label">Selesaikan Sesi</span>
+            </button>
+          </div>
           <button class="clip-header-icon-btn" id="clip-header-toggle" type="button" title="Ubah RS / Sales / PIC">
             <i class="ti ti-pencil" id="clip-header-toggle-icon"></i>
           </button>
@@ -688,7 +695,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
       <div class="clip-budget" id="clip-budget"></div>
       <!-- ZONA C — OUTPUT BAR. Baris 1: total + hapus semua + mode harga output (dulu baris sendiri di atas
            panel). Baris 2: Export → Drive (stepper tetap, hint cuma muncul kalau udah selesai) + Record Konversi
-           (aksi utama) + menu "⋯" yang nampung Keluar dari Sesi (jarang dipakai). Selesaikan Sesi sekarang ada di strip header.
+           (aksi utama). Footer cuma berisi aksi OUTPUT; Keluar dari Sesi & Selesaikan Sesi ada berdampingan di strip header.
            Semua ID tombol TETAP SAMA — logic JS gak disentuh. -->
       <div class="clip-utility-row">
         <div class="clip-summary">
@@ -736,14 +743,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
         <button class="btn-record" id="btn-record" disabled>
           <i class="ti ti-clipboard-check"></i> Record Konversi
         </button>
-        <div class="clip-more" tabindex="-1">
-          <button type="button" class="clip-more-btn" title="Aksi sesi lainnya" aria-label="Aksi sesi lainnya"><i class="ti ti-dots"></i></button>
-          <div class="clip-more-menu">
-          <button class="btn-leave-sesi" id="btn-leave-sesi" type="button" disabled title="Keluar dari tampilan sesi ini — sesi TETAP 'berjalan', tetap di daftar Konversi Berjalan, gak ada yang berubah. Buat sekadar pindah kerjaan, bukan nutup sesi.">
-            <i class="ti ti-logout"></i> Keluar dari Sesi
-          </button>
-          </div>
-        </div>
       </div>
       <div class="clip-record-hint" id="clip-record-hint" aria-live="polite"></div>
     </div>
@@ -1121,7 +1120,10 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
 
 
 <div class="modal-overlay" id="lampiran-modal">
-  <div class="modal-box lp-box" style="width:90vw;max-width:760px;max-height:88vh;overflow-y:auto;text-align:left;padding:20px 24px">
+  <!-- Kerangka: .lp-head diam di atas (judul, ringkasan, tombol tutup), .lp-body yang scroll.
+       Dulu seluruh kotak yang scroll, jadi judul + tombol tutup ikut hilang dan header tabel
+       yang sticky menimpa garis aksen brand di tepi atas modal. -->
+  <div class="modal-box lp-box" role="dialog" aria-modal="true" aria-labelledby="lampiran-title">
     <div class="lp-head" id="lampiran-head">
       <div class="lp-head-main">
         <span class="lp-brand" id="lampiran-brand" hidden></span>
@@ -1138,6 +1140,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
         <button id="lampiran-close" aria-label="Tutup" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1">&times;</button>
       </div>
     </div>
+    <div class="lp-body" id="lampiran-body">
     <div id="lampiran-status" style="font-size:13px;color:var(--text-muted);padding:24px 0;text-align:center">Memuat lampiran…</div>
     <!-- Tabel rincian isi set + gambar — default view buat item tipe SET,
          dibangun on-the-fly dari get_set_items (sama sumber data yg dipakai
@@ -1161,6 +1164,7 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
       <button id="lampiran-save-btn" style="font-size:12px;padding:6px 12px;border-radius:8px;border:none;background:var(--success);color:#fff;cursor:pointer;white-space:nowrap">Simpan</button>
     </div>
     <div id="lampiran-pages" style="display:flex;flex-direction:column;gap:14px"></div>
+    </div><!-- /lp-body -->
   </div>
 </div>
 

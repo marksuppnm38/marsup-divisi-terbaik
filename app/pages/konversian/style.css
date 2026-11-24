@@ -499,7 +499,8 @@
    auto}` di pnm-universal.css. Grid/tab-list detail-nya ada di dekat
    .kb-section-tabs di atas (tab "Semua" = grid antar-section, tab spesifik =
    1 kolom penuh, ini cuma matiin cap max-width ala SPH). */
-#app-root .panel-clip.tab-kb-active{max-width:none}
+#app-root .panel-clip.tab-kb-active,
+#app-root .panel-clip.tab-sph-active{max-width:none;margin:0}
 
 /* SPH form panel */
 #app-root .sph-panel{padding:18px 20px}
@@ -1413,29 +1414,9 @@
 #app-root .clip-foot-actions .conv-step-open{width:34px;border-radius:var(--radius)}
 #app-root .clip-foot-actions .btn-record{flex:1 1 150px;width:auto;height:38px;font-size:13.5px}
 
-/* Menu ⋯ (murni CSS lewat :focus-within — klik di luar = nutup) */
-#app-root .clip-more{position:relative;flex:0 0 auto;outline:none}
-#app-root .clip-more-btn{
-  width:38px;height:38px;display:flex;align-items:center;justify-content:center;
-  border:1px solid var(--border);border-radius:var(--radius);
-  background:var(--surface-2);color:var(--text-secondary);font-size:16px;cursor:pointer;
-}
-#app-root .clip-more-btn:hover,
-#app-root .clip-more:focus-within .clip-more-btn{border-color:var(--accent);color:var(--accent-text)}
-#app-root .clip-more-menu{
-  display:none;position:absolute;right:0;bottom:calc(100% + 6px);z-index:50;
-  min-width:200px;padding:6px;flex-direction:column;gap:4px;
-  background:var(--surface);border:1px solid var(--border);border-radius:10px;
-  box-shadow:0 -8px 28px rgba(0,0,0,.25);
-}
-#app-root .clip-more:focus-within .clip-more-menu{display:flex}
-#app-root .clip-more-menu .btn-leave-sesi,
-#app-root .clip-more-menu .btn-end-sesi{
-  width:100%;height:34px;padding:0 10px;justify-content:flex-start;white-space:nowrap;
-  background:transparent;border-color:transparent;
-}
-#app-root .clip-more-menu .btn-leave-sesi:hover:not(:disabled),
-#app-root .clip-more-menu .btn-end-sesi:hover:not(:disabled){background:var(--surface-2)}
+/* Menu "⋯" footer dihapus: isinya cuma Keluar dari Sesi, dan menu :focus-within itu tidak bisa
+   ditutup dengan mengklik "⋯" lagi. Keluar dari Sesi sekarang di strip header, berdampingan dengan
+   Selesaikan Sesi (lihat .clip-sesi-exit di akhir file). */
 /* ══════════════════════════════════════════════════════════════════════
    2026-10-19 — Rapihin panel kanan (Claude)
    - Strip Permintaan RS dibuang; aksinya satu tombol di header atas (lihat .toggle-btn-count).
@@ -1510,10 +1491,8 @@
 #app-root .kb-filter-count,
 #app-root .tipe-badge,
 #app-root .clip-header-icon-btn,
-#app-root .clip-more-btn,
 #app-root .conv-step-open{flex:0 0 auto}
-#app-root .clip-header-icon-btn,
-#app-root .clip-more-btn{min-width:28px}
+#app-root .clip-header-icon-btn{min-width:28px}
 #app-root .conv-step-num,
 #app-root .conv-step-check{aspect-ratio:1/1}
 #app-root .conv-step-body{min-width:0}
@@ -2227,7 +2206,8 @@
    ============================================================ */
 #app-root .sph-panel{
   display:grid;
-  grid-template-columns:minmax(300px,380px) minmax(0,1fr);
+  /* kolom isian ikut lebar layar (30%, 320–480px) supaya tidak terlihat kurus di layar lebar */
+  grid-template-columns:clamp(320px,30%,480px) minmax(0,1fr);
   flex:1 1 auto;
   min-height:0;
   padding:0;
@@ -3353,12 +3333,25 @@ html[data-theme="dark"] #lampiran-modal[data-brand="robust"] { --lb: #5db4ee; --
 html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --lb-soft: rgba(255, 98, 89, .13); }
 
 #lampiran-modal .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-#lampiran-modal[data-brand] .lp-box { box-shadow: inset 0 3px 0 var(--lb); }
-/* padding atas dipindah ke .lp-head: header tabel yang menempel (sticky top:0) harus nempel di tepi atas
-   modal, kalau tidak baris yang di-scroll kelihatan lewat celah padding di atasnya. */
-#lampiran-modal .lp-box { padding-top: 0 !important; }
+/* Kerangka modal: kepala diam, hanya .lp-body yang scroll.
+   - Garis aksen brand sekarang border-top (bukan inset box-shadow): box-shadow inset dilukis DI BAWAH
+     isi, jadi header tabel sticky (background solid) menimpanya dan cuma menyisakan dua "tonjolan"
+     biru di sudut kiri-kanan atas yang kelihatan seperti header keluar dari modal.
+   - overflow:hidden + radius: apa pun di dalam tidak bisa menonjol keluar sudut membulat.
+   - Header tabel sticky sekarang menempel di tepi atas .lp-body (di bawah kepala), bukan di tepi modal. */
+#lampiran-modal .lp-box {
+  width: 90vw; max-width: 760px; max-height: 88vh; padding: 0 !important; text-align: left;
+  display: flex; flex-direction: column; overflow: hidden;
+  border-top: 3px solid var(--lb);
+}
+#lampiran-modal .lp-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  /* tanpa padding atas: header tabel sticky harus menempel persis di bawah kepala, kalau tidak baris
+     yang di-scroll mengintip lewat celahnya. Jarak atas diberikan margin toolbar. */
+  padding: 0 24px 20px;
+}
 
-#lampiran-modal .lp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-top: 22px; margin-bottom: 16px; }
+#lampiran-modal .lp-head { flex: 0 0 auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 24px 14px; border-bottom: 1px solid var(--border); }
 #lampiran-modal .lp-head-main { min-width: 0; flex: 1; }
 #lampiran-modal .lp-head-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 #lampiran-modal .lp-brand { display: flex; align-items: center; height: 18px; margin-bottom: 8px; }
@@ -3374,7 +3367,7 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
 #lampiran-modal .lp-sub-kode { font-family: var(--font-mono, monospace); font-size: 11.5px; letter-spacing: .01em; }
 #lampiran-modal .lp-sub-stat b { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
 
-#lampiran-modal .lp-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+#lampiran-modal .lp-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 10px; }
 #lampiran-modal .lp-btn {
   display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 8px;
   border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text-secondary);
@@ -3413,7 +3406,8 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
 #lampiran-modal .lp-foot-label { text-align: right; color: var(--text-secondary); }
 
 @media (max-width: 560px) {
-  #lampiran-modal .lp-head { flex-wrap: wrap; }
+  #lampiran-modal .lp-head { flex-wrap: wrap; padding: 16px 16px 12px; }
+  #lampiran-modal .lp-body { padding: 0 16px 16px; }
   #lampiran-modal .lp-title { font-size: 17px; }
   #lampiran-modal .lp-img { width: 64px; }
   #lampiran-modal .lp-img img { width: 48px; height: 48px; }
@@ -3593,4 +3587,38 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
 }
 @media (prefers-reduced-motion:reduce){
   #app-root #results .rcard.rc3 .rc-tool-aux,#app-root #results .rcard.rc3 .btn-clip-toggle{transition:none}
+}
+/* ══════════════════════════════════════════════════════════════════════
+   2026-11-24 — Keluar dari Sesi + Selesaikan Sesi: satu grup di strip header
+   Hierarki (kiri → kanan, dari yang murah ke yang mengikat):
+     Keluar dari Sesi  netral   — tutup tampilan, sesi tetap berjalan
+     Selesaikan Sesi   hijau    — tutup sesi, pindah dari Konversi Berjalan
+   Keduanya 26px, label 12px, selalu kelihatan; di panel sempit/menengah jadi
+   ikon 26×26 (title tetap jadi tooltip). Blok ini sengaja PALING AKHIR.
+   ══════════════════════════════════════════════════════════════════════ */
+#app-root .clip-sesi-exit{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto}
+#app-root .clip-sesi-exit .clip-sesi-btn{
+  box-sizing:border-box;height:26px;min-height:26px;width:auto;padding:0 10px;gap:6px;flex:0 0 auto;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-family:inherit;font-size:12px;font-weight:600;line-height:1;white-space:nowrap;
+  border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-secondary);cursor:pointer;
+  transition:background-color .12s,border-color .12s,color .12s;
+}
+#app-root .clip-sesi-exit .clip-sesi-btn i{font-size:14px}
+#app-root .clip-sesi-exit .btn-leave-sesi:hover:not(:disabled){
+  background:var(--surface-2);border-color:var(--border-strong);color:var(--text);
+}
+#app-root .clip-sesi-exit .btn-end-sesi{
+  background:var(--success-bg);border-color:transparent;color:var(--success-text);
+}
+#app-root .clip-sesi-exit .btn-end-sesi:hover:not(:disabled){background:var(--success);color:#fff}
+#app-root .clip-sesi-exit .clip-sesi-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app-root .clip-sesi-exit .clip-sesi-btn:disabled{
+  background:transparent;border-color:var(--border);color:var(--text-muted);opacity:.55;cursor:not-allowed;
+}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-sesi-exit .clip-sesi-btn{
+  width:26px;min-width:26px;padding:0;gap:0;
+}
+#app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-sesi-exit .clip-sesi-label{
+  position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;
 }

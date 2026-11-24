@@ -4723,8 +4723,9 @@ const konvHandlers = {
   // Selesaikan / Keluar dari Sesi = KLIK tombolnya (bukan memanggil logikanya langsung), jadi konfirmasi "Ya, Selesaikan"
   // dan guard "export belum masuk Drive" tetap jalan. Tombol mati (belum ada sesi aktif) = pintasan ditelan, sama dengan klik.
   'konv.sesi.selesai': () => konvClickIfShown('btn-end-sesi'),
-  // Keluar dari Sesi hidup di menu "⋯" (display:none sampai difokus), jadi TIDAK boleh disyaratkan kelihatan seperti
-  // konvClickIfShown -- cukup ada dan tidak disabled. Klik tombolnya tetap jalan lewat handler aslinya (guard Drive dll).
+  // Keluar dari Sesi (strip header, sebelah Selesaikan Sesi). Sengaja TIDAK disyaratkan kelihatan seperti konvClickIfShown,
+  // supaya pintasan tetap jalan walau panel clipboard lagi ditutup -- cukup ada dan tidak disabled. Klik tombolnya tetap
+  // jalan lewat handler aslinya (guard Drive dll).
   'konv.sesi.keluar': () => {
     const btn = document.getElementById('btn-leave-sesi');
     if (!btn) return false;
