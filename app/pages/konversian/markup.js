@@ -132,6 +132,7 @@ export const KONVERSIAN_MARKUP = `
           <span class="f-sep" aria-hidden="true"></span>
           <button class="toggle-btn" id="tready" type="button" aria-pressed="false" title="Hanya produk dengan stok Ready (SET yang data komponennya belum lengkap tidak dihitung)">Ready</button>
           <button class="toggle-btn" id="tverif" title="Hanya produk Verified (centang biru INAPROC)"><i class="ti ti-rosette-discount-check-filled" style="color:#1d9bf0"></i> Verified</button>
+          <button class="toggle-btn" id="tlink" type="button" aria-pressed="false" title="Hanya produk yang sudah punya link e-Katalog v6 (link bersih, tanpa catatan)"><i class="ti ti-link"></i> Ada link</button>
           <button class="toggle-btn" id="takd">AKD</button>
           <button class="toggle-btn" id="tswasta">Harga Swasta</button>
           <label class="pagu-field" id="pagu-box" title="Pagu dari RS (opsional) — setiap harga diberi selisih terhadap pagu. Bisa diketik 150jt atau 150.000.000">

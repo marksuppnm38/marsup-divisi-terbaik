@@ -301,6 +301,7 @@ async function mergeDictHits(q, args, dataRaw, mySeq) {
   }
   let freshOk = S.filterFirm(fresh, S.modeSwasta);
   if (S.onlyVerified) freshOk = freshOk.filter(S.isVerified);
+  if (S.onlyLink) freshOk = freshOk.filter(r => S.cleanLinkV6(r.link_v6));
   await enrichBrand(freshOk); // brand hasil Dictionary (maks 10 baris, 1 query kecil)
   if (mySeq !== searchSeq) return;
   if (S.selectedBrand) freshOk = freshOk.filter(r => r.brand === S.selectedBrand);
@@ -399,6 +400,11 @@ async function runSearch(opts) {
     data = data.filter(S.isVerified);
     hiddenNote += ` (${sebelum - data.length} non-Verified disembunyikan)`;
   }
+  if (S.onlyLink && data) {
+    const sebelum = data.length;
+    data = data.filter(r => S.cleanLinkV6(r.link_v6));
+    hiddenNote += ` (${sebelum - data.length} tanpa link disembunyikan)`;
+  }
   if (mySeq !== searchSeq) return; // sudah ada pencarian lebih baru — buang hasil basi ini
 
   S.loadingEl.style.display = 'none'; // FIX: matikan loading begitu response datang (sebelum branching)
@@ -435,6 +441,11 @@ async function runSearch(opts) {
       const sebelum = fromDict.length;
       fromDict = fromDict.filter(S.isVerified);
       if (sebelum > fromDict.length) hiddenNote += ` (${sebelum - fromDict.length} non-Verified disembunyikan)`;
+    }
+    if (S.onlyLink) {
+      const sebelum = fromDict.length;
+      fromDict = fromDict.filter(r => S.cleanLinkV6(r.link_v6));
+      if (sebelum > fromDict.length) hiddenNote += ` (${sebelum - fromDict.length} tanpa link disembunyikan)`;
     }
     if (fromDict.length) {
       data = fromDict;
@@ -972,6 +983,15 @@ function reset() {
 // EVENTS
 S.takd.addEventListener('click', () => { S.onlyAkd=!S.onlyAkd; S.takd.classList.toggle('on',S.onlyAkd); runSearch(); });
 if (S.tverif) S.tverif.addEventListener('click', () => { S.onlyVerified=!S.onlyVerified; S.tverif.classList.toggle('on',S.onlyVerified); runSearch(); });
+// Pill "Ada link": cuma produk dengan link e-Katalog v6 yang bersih (sama dengan label \"Ada di e-Katalog v6\").
+S.onlyLink = false;
+S.tlink = document.getElementById('tlink');
+if (S.tlink) S.tlink.addEventListener('click', () => {
+  S.onlyLink = !S.onlyLink;
+  S.tlink.classList.toggle('on', S.onlyLink);
+  S.tlink.setAttribute('aria-pressed', String(S.onlyLink));
+  if (S.searchInput.value.trim()) runSearch({ reuse: true }); // data RPC sama, cukup disaring ulang
+});
 S.tswasta.addEventListener('click', () => {
   S.modeSwasta = !S.modeSwasta;
   S.tswasta.classList.toggle('on', S.modeSwasta);
