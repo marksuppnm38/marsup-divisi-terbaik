@@ -59,6 +59,7 @@ const LOGO_URLS = {
   robust: '/assets/robust-logo.png',
   pnm: '/assets/pnm-logo.png',
 };
+const LOGO_ADLER_URL = '/assets/adler-logo.png';
 
 // ---- helper umum ---------------------------------------------------------
 function loadLink(id, href) {
@@ -376,7 +377,12 @@ async function ensureLogos() {
           if (!res.ok) throw new Error('HTTP ' + res.status + ' untuk ' + u);
           return blobToDataUrl(await res.blob());
         }));
-        return { robust, pnm };
+        // logo ADLER opsional: kalau belum ada di /assets, brand ROBUST tetap jalan
+        const adler = await fetch(LOGO_ADLER_URL)
+          .then((res) => (res.ok ? res.blob() : null))
+          .then((b) => (b ? blobToDataUrl(b) : null))
+          .catch(() => null);
+        return { robust, pnm, adler };
       } catch (err) {
         logosPromise = null;
         throw new Error('Logo tidak ditemukan di /assets/ (robust-logo.png, pnm-logo.png) (' + err.message + ')');

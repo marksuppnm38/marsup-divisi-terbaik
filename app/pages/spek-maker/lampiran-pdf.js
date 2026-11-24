@@ -58,14 +58,44 @@ export const G = {
   pageNo: { right: 590.8, baseline: 771.16, size: 10 },
 };
 
+// Brand ADLER (diukur dari BASIC_CATARACT_AS.pdf): logo ADLER di tengah atas, judul merah
+// Montserrat Bold di tengah, tabel merah, tanpa logo PNM. Kolom sama dengan ROBUST.
+const ROBUST_G = G;
+export const GA = {
+  ...G,
+  vx: [50.63, 79.33, 177.89, 404.25, 458.94, 561.83],
+  hx: [50.4, 562.1],
+  band: { x0: 50.4, x1: 562.1 },
+  headTop: 141.3,
+  topLineY: 141.61,
+  headBottom: 161.1,
+  rowTops: [161.1, 260.74, 360.39, 460.03, 559.67, 659.31],
+  totalH: 21.7,
+  totalBaseOff: 15.2,
+  blue: [204, 0, 0],                   // merah ADLER (#CC0000); nama field dipertahankan
+  headBaseline: 153.8,
+  headCx: [65.0, 128.6, 291.1, 431.6, 511.3],
+  colCx: { no: 65.0, kode: 128.6, desk: 291.1, qty: 431.6 },
+  deskMaxW: 223.5,
+  imgBox: { x0: 459.1, x1: 561.6, inset: 0.3 },
+  logoAdler: { x: 244.8, y: 56.9, w: 123.4, h: 32.5, aspect: 750 / 196 },
+  title: { center: 306, baseline: 112.7, size: 14.4, maxW: 440, color: [204, 0, 0] },
+  pageNo: { right: 590.1, baseline: 770.4, size: 10 },
+};
+
 // ---- Font ----------------------------------------------------------------
 export const FONT_URLS = {
   robotoBold: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/roboto@0.4.3/700Bold/Roboto_700Bold.ttf',
   nunitoBold: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/nunito@0.4.2/700Bold/Nunito_700Bold.ttf',
   carlito: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/carlito@0.4.1/400Regular/Carlito_400Regular.ttf',
 };
+const FONT_URLS_ADLER = {
+  montserratBold: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/montserrat@0.4.2/700Bold/Montserrat_700Bold.ttf',
+  carlitoBold: 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/carlito@0.4.1/700Bold/Carlito_700Bold.ttf',
+  carlito: FONT_URLS.carlito,
+};
 
-let fontCache = null;
+const fontCache = {};
 
 function bufferToBase64(buf) {
   const bytes = new Uint8Array(buf);
@@ -77,14 +107,16 @@ function bufferToBase64(buf) {
   return btoa(bin);
 }
 
-// {robotoBold, nunitoBold, carlito} (base64) atau null kalau ada yang gagal
-// diunduh -- pemanggil lalu jatuh ke Helvetica (tata letak tetap, font beda).
-// Cuma sukses yang di-cache.
-export function loadLampiranFonts() {
-  if (!fontCache) {
-    fontCache = (async () => {
+// {robotoBold, nunitoBold, carlito} (ROBUST) atau {montserratBold, carlitoBold, carlito} (ADLER),
+// base64, atau null kalau ada yang gagal diunduh -- pemanggil lalu jatuh ke Helvetica
+// (tata letak tetap, font beda). Cuma sukses yang di-cache, per brand.
+export function loadLampiranFonts(brand = 'robust') {
+  const b = brand === 'adler' ? 'adler' : 'robust';
+  if (!fontCache[b]) {
+    fontCache[b] = (async () => {
       try {
-        const entries = await Promise.all(Object.entries(FONT_URLS).map(async ([k, url]) => {
+        const urls = b === 'adler' ? FONT_URLS_ADLER : FONT_URLS;
+        const entries = await Promise.all(Object.entries(urls).map(async ([k, url]) => {
           const res = await fetch(url);
           if (!res.ok) throw new Error('font ' + k + ' HTTP ' + res.status);
           return [k, bufferToBase64(await res.arrayBuffer())];
@@ -92,16 +124,26 @@ export function loadLampiranFonts() {
         return Object.fromEntries(entries);
       } catch (err) {
         console.warn('lampiran-set: font gagal dimuat, pakai Helvetica:', err);
-        fontCache = null;
+        fontCache[b] = null;
         return null;
       }
     })();
   }
-  return fontCache;
+  return fontCache[b];
 }
 
-function registerFonts(doc, fonts) {
+function registerFonts(doc, fonts, brand) {
   if (!fonts) return { head: ['helvetica', 'bold'], title: ['helvetica', 'bold'], body: ['helvetica', 'normal'] };
+  if (brand === 'adler') {
+    if (!fonts.montserratBold || !fonts.carlitoBold) return { head: ['helvetica', 'bold'], title: ['helvetica', 'bold'], body: ['helvetica', 'normal'] };
+    doc.addFileToVFS('Montserrat-Bold.ttf', fonts.montserratBold);
+    doc.addFont('Montserrat-Bold.ttf', 'Montserrat', 'bold');
+    doc.addFileToVFS('Carlito-Bold.ttf', fonts.carlitoBold);
+    doc.addFont('Carlito-Bold.ttf', 'Carlito', 'bold');
+    doc.addFileToVFS('Carlito-Regular.ttf', fonts.carlito);
+    doc.addFont('Carlito-Regular.ttf', 'Carlito', 'normal');
+    return { head: ['Carlito', 'bold'], title: ['Montserrat', 'bold'], body: ['Carlito', 'normal'] };
+  }
   doc.addFileToVFS('Roboto-Bold.ttf', fonts.robotoBold);
   doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
   doc.addFileToVFS('Nunito-Bold.ttf', fonts.nunitoBold);
@@ -142,9 +184,11 @@ export function totalQty(items) {
 //           fonts: hasil loadLampiranFonts() atau null,
 //           tanpaQty: true -> tanpa kolom QTY & baris TOTAL (kolom deskripsi melebar) }
 export function buildLampiranPdf(jsPDF, opts) {
-  const { judul = '', items = [], logos = {}, fonts = null, tanpaQty = false } = opts;
+  const { judul = '', items = [], logos = {}, fonts = null, tanpaQty = false, brand = 'robust' } = opts;
+  const adler = brand === 'adler';
+  const G = adler ? GA : ROBUST_G;
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' });
-  const F = registerFonts(doc, fonts);
+  const F = registerFonts(doc, fonts, brand);
   const per = G.rowsPerPage;
   const pageCount = Math.max(1, Math.ceil(items.length / per));
   const total = totalQty(items);
@@ -161,16 +205,24 @@ export function buildLampiranPdf(jsPDF, opts) {
   const setFont = (f, size) => { doc.setFont(f[0], f[1]); doc.setFontSize(size); };
 
   function drawChrome(pageNo) {
-    // -- logo ROBUST (kiri atas) & PNM (kanan atas)
-    if (logos.robust) {
-      const g = G.logoRobust;
-      const h = g.w / pngAspect(logos.robust, g.aspect);
-      doc.addImage(logos.robust, 'PNG', g.x, g.y + (g.h - h) / 2, g.w, h, undefined, 'FAST');
-    }
-    if (logos.pnm) {
-      const g = G.logoPnm;
-      const h = g.w / pngAspect(logos.pnm, g.aspect);
-      doc.addImage(logos.pnm, 'PNG', g.x, g.y + (g.h - h) / 2, g.w, h, undefined, 'FAST');
+    // -- logo: ROBUST (kiri) + PNM (kanan), atau ADLER (tengah, tanpa PNM)
+    if (adler) {
+      const g = G.logoAdler;
+      if (logos.adler) {
+        const h = g.w / pngAspect(logos.adler, g.aspect);
+        doc.addImage(logos.adler, 'PNG', g.x, g.y + (g.h - h) / 2, g.w, h, undefined, 'FAST');
+      }
+    } else {
+      if (logos.robust) {
+        const g = G.logoRobust;
+        const h = g.w / pngAspect(logos.robust, g.aspect);
+        doc.addImage(logos.robust, 'PNG', g.x, g.y + (g.h - h) / 2, g.w, h, undefined, 'FAST');
+      }
+      if (logos.pnm) {
+        const g = G.logoPnm;
+        const h = g.w / pngAspect(logos.pnm, g.aspect);
+        doc.addImage(logos.pnm, 'PNG', g.x, g.y + (g.h - h) / 2, g.w, h, undefined, 'FAST');
+      }
     }
 
     // -- judul set (oranye): tidak dipotong berapa pun panjangnya. Kalau satu baris tidak muat
@@ -179,7 +231,7 @@ export function buildLampiranPdf(jsPDF, opts) {
     const T = G.title;
     setFont(F.title, T.size);
     const text = String(judul || '');
-    const maxW = T.maxRight - T.x;
+    const maxW = adler ? T.maxW : T.maxRight - T.x;
     const ruang = G.headTop - 8 - T.baseline;      // jarak baseline baris pertama ke baris terakhir
     let size = T.size;
     let lines = [text];
@@ -190,7 +242,9 @@ export function buildLampiranPdf(jsPDF, opts) {
       size -= 0.25;
     }
     doc.setTextColor(...T.color);
-    lines.forEach((ln, i) => doc.text(ln, T.x, T.baseline + i * size * 1.2));
+    lines.forEach((ln, i) => (adler
+      ? doc.text(ln, T.center, T.baseline + i * size * 1.2, { align: 'center' })
+      : doc.text(ln, T.x, T.baseline + i * size * 1.2)));
 
     // -- nomor halaman (Arial -> Helvetica), rata kanan
     doc.setTextColor(0, 0, 0);

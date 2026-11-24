@@ -23,7 +23,12 @@ const MARKUP = `
         <p>Isi set (kode, deskripsi, qty) dan gambar tiap instrumen diambil otomatis dari database.</p>
       </div>
     </div>
-    <label class="field-label" for="lpCodes">Kode SET <span class="sm-field-hint">satu per baris, maks ${MAX_CODES}</span></label>
+    <label class="field-label" for="lpBrand">Brand</label>
+    <select id="lpBrand" class="field-input" aria-label="Brand lampiran">
+      <option value="robust">ROBUST (PNM)</option>
+      <option value="adler">ADLER</option>
+    </select>
+    <label class="field-label sm-mt-16" for="lpCodes">Kode SET <span class="sm-field-hint">satu per baris, maks ${MAX_CODES}</span></label>
     <textarea id="lpCodes" class="field-input sm-textarea" placeholder="RB-SET-TUMOR-MAMAE-01" aria-label="Kode SET, satu per baris"></textarea>
     <button id="lpResolveBtn" type="button" class="btn btn-accent sm-mt-16" data-lp="resolve">
       <i class="ti ti-search" aria-hidden="true"></i> Ambil Data
@@ -70,6 +75,7 @@ export function mountLampiran(panel, deps) {
   let nextId = 1;
   let runId = 0;
   let previewUrl = null;
+  let brand = 'robust';
   let pendingReplace = null; // { setId, itemId }
   const offs = [];
   const $ = (id) => panel.querySelector('#' + id);
@@ -212,7 +218,7 @@ export function mountLampiran(panel, deps) {
 
     const main = el('div', 'sm-row-main');
     const head = el('div', 'sm-row-head');
-    head.appendChild(el('span', 'sm-kode', `${index + 1}. ${it.kode}`));
+    head.appendChild(el('span', 'sm-kode', `${index + 1}. ${kodeBrand(it.kode)}`));
     if (it.imgState === 'loading') head.appendChild(tag('', 'Memuat gambar...'));
     else if (it.imgState === 'ok') head.appendChild(tag('ok', it.imgSource === 'manual' ? 'Gambar manual' : 'Gambar dari bucket'));
     else head.appendChild(tag('warn', 'Gambar belum ada'));
@@ -325,13 +331,18 @@ export function mountLampiran(panel, deps) {
     else set.items.sort((a, b) => (a.dbOrder > b.dbOrder ? 1 : a.dbOrder < b.dbOrder ? -1 : 0));
   }
 
+  // Kode di database berawalan RB (ROBUST); versi ADLER berawalan AD (RB10-... -> AD10-..., RBM- -> ADM-).
+  const kodeBrand = (kode) => (brand === 'adler' ? String(kode).replace(/^RB/i, 'AD') : kode);
+
   // ---- PDF ----
   async function makeDoc(set) {
     await loadScript(cfg.JSPDF_SRC, cfg.JSPDF_SRI);
-    const [fonts, logos] = await Promise.all([loadLampiranFonts(), ensureLogos()]);
+    const [fonts, logos] = await Promise.all([loadLampiranFonts(brand), ensureLogos()]);
+    if (brand === 'adler' && !logos.adler) throw new Error('Logo ADLER tidak ditemukan di /assets/adler-logo.png');
     return buildLampiranPdf(window.jspdf.jsPDF, {
+      brand,
       judul: set.judul.trim(),
-      items: set.items.map((i) => ({ kode: i.kode, deskripsi: i.deskripsi.trim(), qty: Number(i.qty) || 0, image: i.image })),
+      items: set.items.map((i) => ({ kode: kodeBrand(i.kode), deskripsi: i.deskripsi.trim(), qty: Number(i.qty) || 0, image: i.image })),
       logos,
       fonts,
     });
@@ -514,6 +525,12 @@ export function mountLampiran(panel, deps) {
 
   listen(panel, 'change', (e) => {
     const n = e.target;
+    if (n.id === 'lpBrand') {
+      brand = n.value === 'adler' ? 'adler' : 'robust';
+      sets.forEach(renderRows);
+      hidePreview();
+      return;
+    }
     if (n.id === 'lpFileInput') { onFilePicked(n.files && n.files[0]); n.value = ''; return; }
     if (n.dataset && n.dataset.sort) {
       const set = setById(n.dataset.sort);
