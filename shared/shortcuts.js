@@ -230,6 +230,26 @@ export const SHORTCUTS = [
 const PAGE_LABELS = { 'crud-produk': 'CRUD Produk', konversian: 'Konversian' };
 const GROUP_ORDER = ['Sesi', 'Pindah tab', 'Cari & daftar', 'Aksi', 'Dialog & panel'];
 
+// Bagian tambahan di cheat sheet yang BUKAN pintasan tombol (info cara pakai). Dirender setelah daftar pintasan.
+// rows: [penjelasan, contoh ketikan]; info: kalimat catatan di bawah barisnya.
+const INFO_SECTIONS = {
+  konversian: {
+    group: 'Operator pencarian (Cari Produk)',
+    rows: [
+      ['DAN: semua kata harus ada (spasi)', 'basic mayor'],
+      ['ATAU: salah satu kata ada', 'mayor | laparotomy'],
+      ['KECUALI: tanpa kata ini (- di awal kata)', 'mayor -pediatric'],
+      ['Frasa: kata berurutan persis', '"basic mayor"'],
+      ['Hanya di satu kolom (juga nama:, kode:)', 'spek:metzen']
+    ],
+    info: [
+      'Digabung boleh: basic mayor | laparotomy -pediatric. Tanda | hanya mengikat kata di kiri-kanannya, jadi itu berarti basic DAN (mayor ATAU laparotomy), tanpa pediatric.',
+      'Kata dicocokkan dari awal (lapar menemukan laparotomy); kata 1 huruf diabaikan. Tanda - di tengah kode (RB999-KE921) dan kutip inci (6") aman.',
+      'Saat operator dipakai, hasilnya ketat; koreksi typo dan Dictionary tidak ikut. Terjemahan pencarian tampil di baris jumlah hasil.'
+    ]
+  }
+};
+
 const toArray = (v) => (Array.isArray(v) ? v : [v]);
 const byId = (id) => SHORTCUTS.find((s) => s.id === id);
 
@@ -415,6 +435,7 @@ function ensureSheetStyle() {
 .pnm-sc-combo{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
 .pnm-sc-plus,.pnm-sc-or{font-size:11.5px;color:var(--text-muted)}
 .pnm-sc-kbd{min-width:22px;padding:1px 6px 0;text-align:center;border:1px solid var(--border-strong);border-bottom-width:2px;border-radius:var(--radius-sm);background:var(--surface-2);color:var(--text-secondary);font-family:var(--font-mono,ui-monospace,monospace);font-size:11.5px;line-height:1.6;white-space:nowrap}
+.pnm-sc-info{break-inside:avoid;margin:6px 0 0;font-size:12px;line-height:1.5;color:var(--text-muted)}
 .pnm-sc-note{margin:0;padding:12px 24px 16px;border-top:1px solid var(--border);font-size:12px;line-height:1.5;color:var(--text-muted)}
 @media (max-width:520px){.pnm-sc-card .modal-head{padding:16px 16px 12px}.pnm-sc-body{padding:0 16px 8px}.pnm-sc-note{padding:12px 16px 14px}.pnm-sc-row{flex-direction:column;align-items:flex-start;gap:4px}.pnm-sc-keys{justify-content:flex-start;max-width:none}}
 `;
@@ -490,6 +511,19 @@ export function toggleCheatSheet(page) {
       row.append(keys);
       body.append(row);
     }
+  }
+  const extra = INFO_SECTIONS[page];
+  if (extra) {
+    body.append(el('div', 'pnm-sc-group', extra.group));
+    for (const [desc, contoh] of extra.rows) {
+      const row = el('div', 'pnm-sc-row');
+      row.append(el('span', null, desc));
+      const keys = el('span', 'pnm-sc-keys');
+      keys.append(el('kbd', 'pnm-sc-kbd', contoh));
+      row.append(keys);
+      body.append(row);
+    }
+    for (const kalimat of extra.info) body.append(el('p', 'pnm-sc-info', kalimat));
   }
   card.append(body);
   card.append(el('p', 'pnm-sc-note', 'Tombol tunggal (j, k, 1–7, dst.) tidak jalan saat kamu mengetik di kolom input; kombinasi Alt+Shift jalan di mana saja. Tekan ? atau Esc untuk menutup.'));
