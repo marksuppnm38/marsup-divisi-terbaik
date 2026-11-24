@@ -7,6 +7,8 @@ test('brandDariKode: RB/AD dikenal, case-insensitive, awalan lain null', () => {
   assert.equal(brandDariKode('RB999-KE921'), 'ROBUST');
   assert.equal(brandDariKode('ad999-ke921'), 'ADLER');
   assert.equal(brandDariKode(' AD1'), 'ADLER');
+  assert.equal(brandDariKode('PX-PACS--R'), 'PICMA');
+  assert.equal(brandDariKode('px1'), 'PICMA');
   assert.equal(brandDariKode('SK123'), null);
   assert.equal(brandDariKode('3C01'), null);
   assert.equal(brandDariKode(''), null);
@@ -23,6 +25,9 @@ test('peringatanBrand: cocok -> null; beda/kosong -> saran; awalan tak dikenal -
   const kosong = peringatanBrand('RB1', '');
   assert.equal(kosong.saran, 'ROBUST');
   assert.match(kosong.pesan, /kosong/);
+  const px = peringatanBrand('PX-PACS--R', '');
+  assert.equal(px.saran, 'PICMA');
+  assert.equal(peringatanBrand('PX-PACS--R', 'picma'), null);
   assert.equal(peringatanBrand('SK1', ''), null);
   assert.equal(peringatanBrand('SK1', 'ROBUST'), null);
   assert.equal(peringatanBrand('', 'ADLER'), null);

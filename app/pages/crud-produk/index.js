@@ -2661,11 +2661,12 @@ function renderProdukPageHead(){
   const seal = modalState === 'loading' ? '' : document.getElementById('akdSealHolder').innerHTML; // holder masih berisi produk sebelumnya selagi memuat
   modalTitle.textContent = memuat ? 'Memuat produk…' : (nama || kode || 'Produk');
   // Warna brand hanya untuk yang sudah punya tema (ROBUST, ADLER); brand lain netral, tanpa logo.
-  const brandKey = brand.toUpperCase() === 'ROBUST' ? 'robust' : (brand.toUpperCase() === 'ADLER' ? 'adler' : '');
+  const brandKey = BRAND_KEY[brand.trim().toUpperCase()] || '';
   if (brandKey) modalHead.dataset.brand = brandKey; else delete modalHead.dataset.brand;
   // Logo hanya untuk brand yang punya berkas logo; brand lain tidak diberi logo pengganti.
   const logo = BRAND_LOGO[brandKey];
   logoEl.hidden = !logo;
+  logoEl.classList.toggle('is-warna', !!(logo && logo.warna)); // logo dua warna (PICMA) ditampilkan apa adanya, bukan dilebur jadi satu warna
   if (logo) {
     logoEl.firstElementChild.style.cssText = '--logo:url(' + logo.src + ');--ar:' + logo.ratio + ';--h:' + logo.h + 'px';
     logoEl.setAttribute('role', 'img');
@@ -2687,9 +2688,11 @@ function renderProdukPageHead(){
   metaEl.innerHTML = bagian.join('');
 }
 // Logo brand di kartu identitas (berkas yang sama dengan Lampiran Konversian; rasio = lebar/tinggi PNG).
+const BRAND_KEY = { ROBUST: 'robust', ADLER: 'adler', PICMA: 'picma' }; // brand -> kunci tema (warna aksen + logo)
 const BRAND_LOGO = {
   robust: { src: '/assets/robust-logo.png', ratio: 2048 / 243, h: 13 },
   adler:  { src: '/assets/adler-logo.png',  ratio: 750 / 196,  h: 17 },
+  picma:  { src: '/assets/picma-logo.png',  ratio: 836 / 177,  h: 24, warna: true }, // navy + teal; tinggi lebih besar supaya tulisan "Pionir Cipta Medika" terbaca
 };
 // Klik kode = salin. Elemen meta dirender ulang lewat innerHTML, jadi pakai delegasi di wadahnya.
 async function salinTeks(teks){

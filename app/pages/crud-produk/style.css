@@ -699,8 +699,10 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .prod-modal.has-identitas{--lb:var(--text-muted);--lb-soft:transparent}
 .prod-modal.has-identitas .modal-head[data-brand="robust"]{--lb:#00476d;--lb-soft:rgba(0,71,109,.09)}
 .prod-modal.has-identitas .modal-head[data-brand="adler"]{--lb:#cc0000;--lb-soft:rgba(204,0,0,.08)}
+.prod-modal.has-identitas .modal-head[data-brand="picma"]{--lb:#1f2c5c;--lb-soft:rgba(31,44,92,.09)}
 html[data-theme="dark"] .prod-modal.has-identitas .modal-head[data-brand="robust"]{--lb:#5db4ee;--lb-soft:rgba(93,180,238,.13)}
 html[data-theme="dark"] .prod-modal.has-identitas .modal-head[data-brand="adler"]{--lb:#ff6259;--lb-soft:rgba(255,98,89,.13)}
+html[data-theme="dark"] .prod-modal.has-identitas .modal-head[data-brand="picma"]{--lb:#8fa3ee;--lb-soft:rgba(143,163,238,.14)}
 .prod-modal.has-identitas .modal-head[data-brand]{box-shadow:inset 0 3px 0 var(--lb)}
 .prod-modal.has-identitas .modal-sub{display:none}
 .prod-modal.has-identitas:not(.prod-page) .modal-title{font-size:19px;font-weight:700;line-height:1.25;overflow-wrap:anywhere}
@@ -709,9 +711,12 @@ html[data-theme="dark"] .prod-modal.has-identitas .modal-head[data-brand="adler"
 .prod-page-meta .pm-kode .ti{font-size:13px;color:var(--text-muted)}
 .prod-page-meta .pm-kode:hover{border-bottom-color:var(--text-muted)}
 .prod-page-meta .pm-kode:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
-.pm-logo{display:none;align-items:center;height:18px;margin-bottom:8px}
+.pm-logo{display:none;align-items:center;min-height:18px;margin-bottom:8px}
 .prod-modal.has-identitas .pm-logo:not([hidden]){display:flex}
 .pm-logo-mark{display:block;height:var(--h,14px);aspect-ratio:var(--ar,4);background:var(--lb);-webkit-mask:var(--logo) left center/contain no-repeat;mask:var(--logo) left center/contain no-repeat}
+/* Logo berwarna (PICMA): tampil apa adanya. Di mode gelap navy-nya tenggelam, jadi diberi alas terang. */
+.pm-logo.is-warna .pm-logo-mark{-webkit-mask:none;mask:none;background:var(--logo) left center/contain no-repeat}
+html[data-theme="dark"] .pm-logo.is-warna{align-self:flex-start;width:fit-content;padding:5px 10px;border-radius:6px;background:#fff}
 .prod-page-meta .pm-brand{padding:1px 9px;border:1px solid var(--border);border-radius:20px;font-size:11.5px;font-weight:700;letter-spacing:.03em;color:var(--text-secondary)}
 .prod-page-meta .pm-brand.is-tema{color:var(--lb);background:var(--lb-soft);border-color:var(--lb)}
 .prod-page-meta .pm-masa.is-warn{color:var(--amber-text);font-weight:600}

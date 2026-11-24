@@ -1,7 +1,7 @@
 // Brand <-> awalan kode produk. Logika murni (tanpa DOM / database) supaya bisa dites.
-// Hanya awalan yang POLANYA SUDAH PASTI yang dipetakan (data: RB -> ROBUST, AD -> ADLER, tidak ada yang bertentangan).
+// Hanya awalan yang POLANYA SUDAH PASTI yang dipetakan (data: RB -> ROBUST, AD -> ADLER, tidak ada yang bertentangan; PX -> PICMA atas keputusan pemilik).
 // Awalan lain (SK, BA, BS, ...) sengaja belum dipetakan: itu keputusan bisnis + backfill terpisah.
-export const BRAND_AWALAN = Object.freeze({ AD: 'ADLER', RB: 'ROBUST' });
+export const BRAND_AWALAN = Object.freeze({ AD: 'ADLER', RB: 'ROBUST', PX: 'PICMA' });
 
 /** Brand yang diturunkan dari awalan kode, atau null kalau awalannya belum dipetakan. */
 export function brandDariKode(kode){
