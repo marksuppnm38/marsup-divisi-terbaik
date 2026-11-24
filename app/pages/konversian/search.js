@@ -659,7 +659,7 @@ function renderResults(data) {
     const selisih = adaPagu ? hargaNum - S.pagu : 0;
     const lebihPagu = adaPagu && selisih > 0;
     const priceHtml = hargaNum
-      ? `<span class="rcard-price${lebihPagu ? ' is-over' : ''}" title="${S.modeSwasta ? 'Harga swasta' : 'Harga e-Katalog'}${tahunEsc ? ' ' + tahunEsc : ''}">${S.rupiah(hargaNum)}</span>`
+      ? `<span class="rcard-price${lebihPagu ? ' is-over' : ''}" data-copy="${S.escapeHtmlAttr(S.rupiah(hargaNum))}" data-copy-label="Harga" title="${S.modeSwasta ? 'Harga swasta' : 'Harga e-Katalog'}${tahunEsc ? ' ' + tahunEsc : ''} — klik untuk salin">${S.rupiah(hargaNum)}</span>`
       : `<span class="rcard-price is-empty">${S.modeSwasta ? 'Harga swasta belum ada' : 'Harga belum ada'}</span>`;
     let subHtml = '';
     if (adaPagu) {
@@ -690,7 +690,7 @@ function renderResults(data) {
     // Kode / AKD / KFA hanya bahan lookup: kecil, redup, bisa diblok dobel-klik.
     return `<div class="rcard rc3${inClip?' selected':''}"${kunciTema ? ` data-brand="${kunciTema}"` : ''} data-kode="${kode}">
       <div class="rcard-title">
-        <span class="rcard-name" title="${namaEsc}">${namaEsc||'—'}</span>${flags}
+        <span class="rcard-name"${namaEsc ? ` data-copy="${namaEsc}" data-copy-label="Nama produk"` : ''} title="${namaEsc}${namaEsc ? ' — klik untuk salin' : ''}">${namaEsc||'—'}</span>${flags}
       </div>
       <div class="rcard-status">
         <div class="rcard-stok">${stokBadge}</div>
@@ -700,9 +700,9 @@ function renderResults(data) {
       <div class="rcard-cta">${ctaHtml}</div>
       <div class="rcard-meta">
         <span class="brand-slot">${brandChipHtml(r.brand, S.escapeHtmlAttr)}</span>
-        <span class="mi mi-kode" title="Kode produk"><span>${kode||'—'}</span></span>
-        ${r.no_akd?`<span class="mi mi-akd" title="No. AKD"><b class="mi-lab">AKD</b><span>${noAkdEsc}</span></span>`:''}
-        ${r.kode_kfa?`<span class="mi mi-kfa" title="Kode KFA"><b class="mi-lab">KFA</b><span>${kodeKfaEsc}</span></span>`:''}
+        <span class="mi mi-kode"${kode ? ` data-copy="${kode}" data-copy-label="Kode"` : ''} title="Kode produk — klik untuk salin"><span>${kode||'—'}</span></span>
+        ${r.no_akd?`<span class="mi mi-akd" data-copy="${noAkdEsc}" data-copy-label="No. AKD" title="No. AKD — klik untuk salin"><b class="mi-lab">AKD</b><span>${noAkdEsc}</span></span>`:''}
+        ${r.kode_kfa?`<span class="mi mi-kfa" data-copy="${kodeKfaEsc}" data-copy-label="Kode KFA" title="Kode KFA — klik untuk salin"><b class="mi-lab">KFA</b><span>${kodeKfaEsc}</span></span>`:''}
       </div>
       <div class="rcard-sub-wrap">${subHtml}</div>
       <div class="rcard-tools">
@@ -754,6 +754,7 @@ function renderResults(data) {
       copyProdukToClipboard(btn.dataset.kode);
     });
   });
+  pasangKlikSalin();
   renderPagination(data.length);
   if (S._kbdLastPage !== S.currentPage) { S.kbdCardIdx = -1; S.kbdAnchor = -1; S._kbdLastPage = S.currentPage; }
   if ((S.kbdCardIdx ?? -1) >= 0) setKbdCard(S.kbdCardIdx, 'keep');
@@ -823,13 +824,9 @@ function produkCopyLine(r) {
   return lines.join('\t');
 }
 
-function copyProdukToClipboard(kodeOrKodes) {
-  const kodes = Array.isArray(kodeOrKodes) ? kodeOrKodes : [kodeOrKodes];
-  const rows = kodes.map(k => S.lastResults.find(x => x.kode_produk === k)).filter(Boolean);
-  if (!rows.length) return;
-  const text = rows.map(produkCopyLine).join('\n');
-  const okMsg = rows.length > 1 ? `${rows.length} produk disalin ✓` : 'Disalin ke clipboard ✓';
-
+// Salin teks polos ke clipboard (Clipboard API, fallback execCommand), lalu toast.
+// Dipakai tombol Copy kartu, Ctrl+C kartu, dan klik-salin pada info kartu.
+function salinTeks(text, okMsg, toastOpts) {
   function fallbackCopy(str) {
     const ta = document.createElement('textarea');
     ta.value = str;
@@ -845,19 +842,55 @@ function copyProdukToClipboard(kodeOrKodes) {
     try { S.searchInput.focus(); } catch (e) { /* abaikan */ }
     return ok;
   }
-
+  const berhasil = () => S.showToast(okMsg, 'success', toastOpts);
+  const gagal = () => S.showToast('Gagal menyalin, coba lagi', 'error');
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(() => {
-      S.showToast(okMsg);
-    }).catch(() => {
-      if (fallbackCopy(text)) S.showToast(okMsg);
-      else S.showToast('Gagal menyalin, coba lagi', 'error');
+    return navigator.clipboard.writeText(text).then(() => { berhasil(); return true; }).catch(() => {
+      if (fallbackCopy(text)) { berhasil(); return true; }
+      gagal(); return false;
     });
-  } else {
-    if (fallbackCopy(text)) S.showToast(okMsg);
-    else S.showToast('Gagal menyalin, coba lagi', 'error');
   }
-} // <- INI PENUTUP FUNCTION-NYA, PASTIKAN ADA
+  if (fallbackCopy(text)) { berhasil(); return Promise.resolve(true); }
+  gagal();
+  return Promise.resolve(false);
+}
+
+function copyProdukToClipboard(kodeOrKodes) {
+  const kodes = Array.isArray(kodeOrKodes) ? kodeOrKodes : [kodeOrKodes];
+  const rows = kodes.map(k => S.lastResults.find(x => x.kode_produk === k)).filter(Boolean);
+  if (!rows.length) return;
+  const text = rows.map(produkCopyLine).join('\n');
+  const okMsg = rows.length > 1 ? `${rows.length} produk disalin ✓` : 'Disalin ke clipboard ✓';
+  salinTeks(text, okMsg);
+}
+
+// KLIK-SALIN: klik nama, kode, AKD, KFA, harga, atau status stok di kartu hasil = salin nilainya.
+// Nilai dibaca dari data-copy (nilai mentah), bukan dari teks yang tampil. Link, tombol, dan stok yang
+// punya popover rincian (data-set-kode) dibiarkan: itu punya aksi sendiri.
+// Satu listener di #results (kartu dirender ulang tiap pencarian). Seret-blok teks (mouse bergeser
+// >4px) dan klik kedua dari dobel-klik tidak menyalin, jadi memblok sebagian teks tetap bisa.
+let _klikSalinTerpasang = false;
+function pasangKlikSalin() {
+  if (_klikSalinTerpasang || !S.resultsEl) return;
+  _klikSalinTerpasang = true;
+  let down = null;
+  S.resultsEl.addEventListener('mousedown', (e) => { down = { x: e.clientX, y: e.clientY }; });
+  S.resultsEl.addEventListener('click', (e) => {
+    if (e.target.closest('a, button, input, select, textarea, [data-role="link-katalog"]')) return;
+    if (e.detail > 1) return;
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+    const el = e.target.closest('[data-copy], .rcard-stok .mi.stok-ready, .rcard-stok .mi.stok-indent');
+    if (!el || !S.resultsEl.contains(el)) return;
+    const label = el.dataset.copyLabel || 'Stok';
+    const nilai = (el.dataset.copy != null ? el.dataset.copy : el.textContent).trim();
+    if (!nilai) return;
+    salinTeks(nilai, label + ' disalin ✓', { detail: nilai }).then((ok) => {
+      if (!ok) return;
+      el.classList.add('is-copied');
+      setTimeout(() => el.classList.remove('is-copied'), 900);
+    });
+  });
+}
 // PAGINATION
 function renderPagination(totalItems) {
   const totalPages = Math.max(1, Math.ceil(totalItems / S.RESULTS_PER_PAGE));

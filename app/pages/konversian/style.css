@@ -3622,3 +3622,21 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
 #app-root:is([data-clip-size="sm"],[data-clip-size="md"]) .clip-sesi-exit .clip-sesi-label{
   position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   2026-11-24 — Klik-salin di kartu hasil pencarian (search.js: pasangKlikSalin)
+   Nama, kode, AKD, KFA, harga, stok = klik untuk salin. Isyarat: kursor "copy" + latar tipis saat
+   hover (box-shadow, bukan padding, supaya baris tidak bergeser); sesaat hijau setelah tersalin.
+   ══════════════════════════════════════════════════════════════════════ */
+#app-root #results [data-copy],
+#app-root #results .rcard-stok .mi.stok-ready,
+#app-root #results .rcard-stok .mi.stok-indent{cursor:copy;border-radius:4px;transition:background-color .12s,box-shadow .12s,color .12s}
+#app-root #results [data-copy]:hover,
+#app-root #results .rcard-stok .mi.stok-ready:hover,
+#app-root #results .rcard-stok .mi.stok-indent:hover{background:var(--surface-3);box-shadow:0 0 0 3px var(--surface-3)}
+#app-root #results [data-copy].is-copied,
+#app-root #results .rcard-stok .mi.is-copied{background:var(--success-bg);box-shadow:0 0 0 3px var(--success-bg)}
+#app-root #results .rcard.rc3 .rcard-meta .mi.is-copied > span,
+#app-root #results .rcard.rc3 .rcard-name.is-copied,
+#app-root #results .rcard.rc3 .rcard-price.is-copied{color:var(--success-text)}
+@media (prefers-reduced-motion:reduce){#app-root #results [data-copy]{transition:none}}
