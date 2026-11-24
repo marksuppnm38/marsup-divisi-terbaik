@@ -190,12 +190,12 @@ export const CRUD_PRODUK_MARKUP = `
                       <span id="setDetailSeal"></span>
                     </div>
                   </div>
-                  <button class="btn btn-ghost" id="editSetOverviewBtn"><i class="ti ti-pencil"></i> Edit Info Dasar</button>
                 </div>
 
                 <div class="set-tabs">
                   <button class="set-tab active" data-tab="composition">Composition</button>
                   <button class="set-tab" data-tab="pricing">Pricing</button>
+                  <button class="set-tab" data-tab="info">Info dasar</button>
                   <button class="set-tab" data-tab="akd">AKD</button>
                   <button class="set-tab" data-tab="history">History</button>
                 </div>
@@ -311,6 +311,11 @@ export const CRUD_PRODUK_MARKUP = `
                       <div class="akd-hint" id="kalkCmpNote"></div>
                     </div>
                   </section>
+                </div>
+
+                <!-- Info dasar set: kartu form produk yang SAMA (modal-card) dipindah ke sini oleh setModalMode('embed'), bukan modal lagi. -->
+                <div class="set-tab-panel" id="tab-info">
+                  <div class="prod-embed-host" id="setInfoHost"></div>
                 </div>
 
                 <div class="set-tab-panel" id="tab-akd">
@@ -746,7 +751,7 @@ export const CRUD_PRODUK_MARKUP = `
             <div class="grid2">
               <div class="f" id="klasKeluargaWrap">
                 <label for="f_klas_keluarga">Keluarga set</label>
-                <input type="text" id="f_klas_keluarga" list="f_klas_keluarga_list" autocomplete="off" spellcheck="false" placeholder="Otomatis"/>
+                <input type="text" id="f_klas_keluarga" data-ui-combo list="f_klas_keluarga_list" autocomplete="off" spellcheck="false" placeholder="Otomatis"/>
                 <datalist id="f_klas_keluarga_list"></datalist>
                 <div class="klas-hint" id="klasKeluargaHint"></div>
                 <div class="klas-aksi" id="klasKeluargaAksi" role="status" hidden></div>
@@ -998,7 +1003,7 @@ export const CRUD_PRODUK_MARKUP = `
         <label for="klasBulkKelMode">Keluarga set</label>
         <div class="klas-bulk-row">
           <select id="klasBulkKelMode"></select>
-          <input type="text" id="klasBulkKel" list="klasBulkKelList" autocomplete="off" spellcheck="false" placeholder="Nama keluarga" disabled/>
+          <input type="text" id="klasBulkKel" data-ui-combo list="klasBulkKelList" autocomplete="off" spellcheck="false" placeholder="Nama keluarga" disabled/>
           <datalist id="klasBulkKelList"></datalist>
         </div>
         <div class="klas-hint" id="klasBulkKelNote"></div>
@@ -1029,7 +1034,7 @@ export const CRUD_PRODUK_MARKUP = `
     </div>
 
     <div class="log-toolbar">
-      <div class="f"><label>Tanggal</label><input type="date" id="log_tanggal"/></div>
+      <div class="f"><label>Tanggal</label><input type="date" class="f-date" id="log_tanggal"/></div>
       <div class="f">
         <label>Tabel</label>
         <select id="log_table">
@@ -1089,14 +1094,14 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="f"><label>Kode Set</label><input type="text" id="a_kode_set" placeholder="Isi kalau tipe AKD = set"/></div>
       <div class="f"><label>Kategori Set</label><input type="text" id="a_kategori_set"/></div>
       <div class="f"><label>Penanda Kode</label><input type="text" id="a_penanda_kode"/></div>
-      <div class="f"><label>Golongan</label><input type="text" id="a_golongan" list="akd_golongan_list"/><datalist id="akd_golongan_list"></datalist></div>
+      <div class="f"><label>Golongan</label><input type="text" id="a_golongan" data-ui-combo list="akd_golongan_list"/><datalist id="akd_golongan_list"></datalist></div>
     </div>
 
     <div class="sec-label">Status &amp; Jadwal</div>
     <div class="grid2">
-      <div class="f"><label>Masa Berlaku</label><input type="date" id="a_masa_berlaku"/></div>
-      <div class="f"><label>Tgl Maju Mas Munir</label><input type="date" id="a_tgl_maju_mas_munir"/></div>
-      <div class="f full"><label>Status Terupdate</label><input type="text" id="a_status_terupdate" list="akd_status_list"/><datalist id="akd_status_list"></datalist></div>
+      <div class="f"><label>Masa Berlaku</label><input type="date" class="f-date" id="a_masa_berlaku"/></div>
+      <div class="f"><label>Tgl Maju Mas Munir</label><input type="date" class="f-date" id="a_tgl_maju_mas_munir"/></div>
+      <div class="f full"><label>Status Terupdate</label><input type="text" id="a_status_terupdate" data-ui-combo list="akd_status_list"/><datalist id="akd_status_list"></datalist></div>
       <div class="f full"><label>Link Dokumen</label><input type="text" id="a_link_dokumen" placeholder="https://..."/></div>
       <div class="f full"><label>Update Progres</label><textarea id="a_update_progres" placeholder="Catatan progres..."></textarea></div>
     </div>
@@ -1130,7 +1135,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="f full"><label>Kode KFA</label><input type="text" id="k_kode_kfa" placeholder="Kosongkan kalau belum dapet kode"/></div>
       <div class="f"><label>Kode Cangkang</label><input type="text" id="k_kode_cangkang" placeholder="cth. 82xxxxxx"/></div>
       <div class="f"><label>Nama Cangkang</label><input type="text" id="k_nama_cangkang" placeholder="cth. Cangkang Bedah Ortopedi"/></div>
-      <div class="f"><label>Tgl Verifikasi</label><input type="date" id="k_tanggal_verifikasi"/></div>
+      <div class="f"><label>Tgl Verifikasi</label><input type="date" class="f-date" id="k_tanggal_verifikasi"/></div>
       <div class="f full"><label>No. AKD Rujukan</label><input type="text" id="k_no_akd_rujukan" placeholder="Dasar pengajuan KFA ini"/></div>
       <div class="f full"><label>Catatan</label><textarea id="k_catatan" placeholder="Catatan bebas..."></textarea></div>
     </div>

@@ -1,6 +1,9 @@
 import { MODULES } from '../home/markup.js';
 // Dropdown custom (menggantikan popup <select> bawaan browser). Self-installing, cuma efek samping.
 import '../../../shared/ui-select.js';
+// Saran isian (pengganti popup <datalist>) dan pemilih tanggal (pengganti kalender bawaan <input type=date>); keduanya juga self-installing.
+import '../../../shared/ui-combo.js';
+import '../../../shared/ui-date.js';
 import { CRUD_PRODUK_SUBNAV } from '../crud-produk/subnav.js';
 import { KONVERSIAN_SUBNAV } from '../konversian/subnav.js';
 

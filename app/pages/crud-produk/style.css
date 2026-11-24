@@ -1348,19 +1348,19 @@ th.num .th-btn{justify-content:flex-end}
    ===================================================================== */
 
 /* 1. Dropdown isian */
-.prod-modal .ui-select.ui-select-field{display:flex;width:100%;min-width:0}
-.prod-modal .ui-select-field .ui-select-btn{width:100%;height:40px;min-width:0;padding:0 11px;justify-content:space-between;border-color:var(--border-strong);border-radius:var(--radius);background:var(--surface);font-size:13px;font-weight:400;text-align:left}
-.prod-modal .ui-select-field .ui-select-btn:hover:not(:disabled){background:var(--surface)}
-.prod-modal .ui-select-field .ui-select-btn:hover:not(:disabled):not(:focus-visible){border-color:var(--text-muted)}
-.prod-modal .ui-select-field .ui-select-label{flex:1 1 auto;min-width:0;max-width:none;text-align:left}
-.prod-modal .ui-select-field .ui-select-btn.is-placeholder .ui-select-label{color:var(--text-muted)}
-.prod-modal .ui-select-field .ui-select-btn.is-changed{border-color:var(--amber-text);box-shadow:0 0 0 1px var(--amber-text)}
-.prod-modal .ui-select-field .ui-select-btn:disabled{opacity:1;background:var(--surface-2,var(--surface));color:var(--text-secondary);cursor:not-allowed}
-.prod-modal .ui-select-field .ui-select-btn:disabled .ui-select-chev{display:none}
-.prod-modal .ui-select-field .ui-select-menu{width:100%;max-width:none;max-height:260px}
-.prod-modal .ui-select-field .ui-select-opt{padding:8px 10px;font-size:13px;white-space:normal;overflow-wrap:anywhere}
+.ui-select.ui-select-field{display:flex;width:100%;min-width:0}
+.ui-select-field .ui-select-btn{width:100%;height:40px;min-width:0;padding:0 11px;justify-content:space-between;border-color:var(--border-strong);border-radius:var(--radius);background:var(--surface);font-size:13px;font-weight:400;text-align:left}
+.ui-select-field .ui-select-btn:hover:not(:disabled){background:var(--surface)}
+.ui-select-field .ui-select-btn:hover:not(:disabled):not(:focus-visible){border-color:var(--text-muted)}
+.ui-select-field .ui-select-label{flex:1 1 auto;min-width:0;max-width:none;text-align:left}
+.ui-select-field .ui-select-btn.is-placeholder .ui-select-label{color:var(--text-muted)}
+.ui-select-field .ui-select-btn.is-changed{border-color:var(--amber-text);box-shadow:0 0 0 1px var(--amber-text)}
+.ui-select-field .ui-select-btn:disabled{opacity:1;background:var(--surface-2,var(--surface));color:var(--text-secondary);cursor:not-allowed}
+.ui-select-field .ui-select-btn:disabled .ui-select-chev{display:none}
+.ui-select-field .ui-select-menu{width:100%;max-width:none;max-height:260px}
+.ui-select-field .ui-select-opt{padding:8px 10px;font-size:13px;white-space:normal;overflow-wrap:anywhere}
 @media (prefers-reduced-motion:reduce){
-  .prod-modal .ui-select-field .ui-select-chev,.prod-modal .ui-select-field .ui-select-btn{transition:none}
+  .ui-select-field .ui-select-chev,.ui-select-field .ui-select-btn{transition:none}
 }
 
 /* Catatan kunci: satu baris penuh tepat di bawah Kode/Tipe, bukan di ujung bagian. */
@@ -1375,12 +1375,6 @@ th.num .th-btn{justify-content:flex-end}
 .prod-modal .f textarea{resize:none;min-height:96px;max-height:340px;line-height:1.5;field-sizing:content}
 .prod-modal .f input[type="number"]{-moz-appearance:textfield;appearance:textfield}
 .prod-modal .f input[type="number"]::-webkit-inner-spin-button,.prod-modal .f input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
-/* Centang Verified: kotak sendiri (read-only, mengikuti status INAPROC) */
-.prod-modal #f_verified{-webkit-appearance:none;appearance:none;position:relative;flex:0 0 auto;width:16px;height:16px;margin:0 8px 0 0;border:1px solid var(--border-strong);border-radius:4px;background:var(--surface)}
-.prod-modal #f_verified:checked{border-color:var(--accent);background:var(--accent)}
-.prod-modal #f_verified:checked::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
-.prod-modal #f_verified:disabled{cursor:not-allowed;opacity:.7}
-
 /* 2. Header kartu identitas (mode halaman) */
 .prod-modal.prod-page.has-identitas .modal-head{padding-top:20px;padding-bottom:18px;row-gap:8px}
 .prod-modal.prod-page.has-identitas .modal-head > div:first-child{display:contents}
@@ -1396,4 +1390,68 @@ th.num .th-btn{justify-content:flex-end}
   .prod-modal.prod-page.has-identitas .modal-title,
   .prod-modal.prod-page.has-identitas .prod-page-meta{grid-column:1;grid-row:auto}
   .prod-modal.prod-page.has-identitas .modal-title{font-size:19px}
+}
+
+/* =====================================================================
+   Info dasar SET di tab Set Detail (mode 'embed'): kartu form yang sama, ditanam di #setInfoHost sejajar Composition / Pricing.
+   Memakai aturan .prod-page (bagian datar bergaris bawah, pill, ui-select) tetapi tanpa gutter halaman penuh, tanpa judul
+   (sudah ada di kepala Set Detail) dan tanpa tab dalam (Harga / AKD / Media set ada di tab Set Detail sendiri).
+   ===================================================================== */
+.prod-embed-host{--pp-gutter:0px;container-type:inline-size;min-width:0}
+.prod-modal.prod-embed{display:block;width:100%;max-width:none;max-height:none;margin:0;padding:0;overflow:visible}
+.prod-modal.prod-embed .modal-head{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:0 0 14px;margin:0 0 4px;border-bottom:1px solid var(--border)}
+.prod-modal.prod-embed .modal-head > div:first-child,.prod-modal.prod-embed .prod-tabs,.prod-modal.prod-embed .prod-tabs-hint{display:none}
+.prod-modal.prod-embed .modal-actions{margin-left:auto}
+.prod-modal.prod-embed .prod-body{overflow:visible;padding:20px 0 8px}
+.prod-modal.prod-embed .prod-tab-panel .fs:last-of-type{margin-bottom:12px}
+@container (min-width:900px){
+  .prod-modal.prod-embed #ptab-dasar.active{column-count:2;column-gap:48px}
+  .prod-modal.prod-embed .prod-tab-panel .fs,.prod-modal.prod-embed #gambarInstrumenSection{break-inside:avoid}
+  .prod-modal.prod-embed #ptab-dasar .fs-panel{break-before:column}
+}
+@media (max-width:720px){
+  .prod-modal.prod-embed .modal-actions{flex:1 1 100%;justify-content:space-between}
+}
+
+/* =====================================================================
+   Kontrol bawaan browser yang diganti (2026-11-24)
+   - Saran isian (ui-combo.js): menu memakai kelas .ui-select-menu / .ui-select-opt dari nav.css.
+   - Tanggal (ui-date.js): tombol bergaya field + kalender.
+   - Checkbox: kotak sendiri. Memakai :where() agar nol spesifisitas: aturan lama yang lebih spesifik (.sel-input, #viewSync) tetap menang.
+   ===================================================================== */
+.ui-combo-host{position:relative}
+.ui-combo-menu{max-height:260px;max-width:none;min-width:0}
+.ui-combo-menu .ui-select-opt{font-size:13px;padding:8px 10px;white-space:normal;overflow-wrap:anywhere}
+.ui-combo-more{padding:6px 10px 4px;font-size:11.5px;color:var(--text-muted)}
+
+.ui-date.ui-select-field{display:flex;width:100%;min-width:0}
+.ui-date .ui-select-btn.is-placeholder .ui-select-label{color:var(--text-muted)}
+.ui-date .ui-select-icon{font-size:15px}
+.ui-date.ui-select-field .ui-select-menu.ui-date-pop{width:264px;min-width:264px;max-width:none;padding:10px}
+.ui-date-pop .ud-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.ui-date-pop .ud-title{font-size:13px;font-weight:600;color:var(--text)}
+.ui-date-pop .ud-nav{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:6px;background:none;color:var(--text-secondary);cursor:pointer}
+.ui-date-pop .ud-nav:hover{background:var(--surface-2);color:var(--text)}
+.ui-date-pop .ud-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.ui-date-pop .ud-dow{padding:4px 0;font-size:11px;font-weight:600;text-align:center;color:var(--text-muted)}
+.ui-date-pop .ud-day{height:32px;border:1px solid transparent;border-radius:6px;background:none;font:inherit;font-size:12.5px;color:var(--text);cursor:pointer}
+.ui-date-pop .ud-day:hover{background:var(--surface-2)}
+.ui-date-pop .ud-day.is-today{border-color:var(--border-strong)}
+.ui-date-pop .ud-day.is-focus{box-shadow:0 0 0 2px var(--accent-ring)}
+.ui-date-pop .ud-day.is-selected{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.ui-date-pop .ud-foot{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.ui-date-pop .ud-link{padding:4px 6px;border:0;border-radius:6px;background:none;font:inherit;font-size:12.5px;color:var(--accent-text);cursor:pointer}
+.ui-date-pop .ud-link:hover{background:var(--surface-2)}
+
+:where(#appWrap,.modal-overlay,.confirm-overlay,.prod-page-host) input[type="checkbox"]{-webkit-appearance:none;appearance:none;position:relative;flex:0 0 auto;width:16px;height:16px;margin:0;vertical-align:-3px;border:1px solid var(--border-strong);border-radius:4px;background:var(--surface);cursor:pointer;transition:background-color .12s,border-color .12s,box-shadow .12s}
+:where(#appWrap,.modal-overlay,.confirm-overlay,.prod-page-host) input[type="checkbox"]:hover:not(:disabled){border-color:var(--accent)}
+:where(#appWrap,.modal-overlay,.confirm-overlay,.prod-page-host) input[type="checkbox"]:checked,
+:where(#appWrap,.modal-overlay,.confirm-overlay,.prod-page-host) input[type="checkbox"]:indeterminate{border-color:var(--accent);background:var(--accent)}
+:where(#appWrap,.modal-overlay,.confirm-overlay,.prod-page-host) input[type="checkbox"]:checked::after{content:"";position:absolute;left:4.5px;top:1.5px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+:where(#appWrap,.modal-overlay,.confirm-overlay,.prod-page-host) input[type="checkbox"]:indeterminate::after{content:"";position:absolute;left:3.5px;top:6.5px;width:7px;height:2px;border-radius:1px;background:#fff}
+:where(#appWrap,.modal-overlay,.confirm-overlay,.prod-page-host) input[type="checkbox"]:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-ring)}
+:where(#appWrap,.modal-overlay,.confirm-overlay,.prod-page-host) input[type="checkbox"]:disabled{opacity:.55;cursor:not-allowed}
+.prod-modal #f_verified{margin-right:8px}
+@media (prefers-reduced-motion:reduce){
+  :where(#appWrap,.modal-overlay,.confirm-overlay,.prod-page-host) input[type="checkbox"]{transition:none}
 }

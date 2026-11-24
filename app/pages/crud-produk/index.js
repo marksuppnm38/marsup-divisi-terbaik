@@ -501,6 +501,7 @@ function switchView(view){
   // view Set, KECUALI lagi ada detail panel yang lagi kebuka (biar gak
   // ilang begitu aja). Behavior persis sama kayak sebelumnya, cuma
   // tempat manggilnya yang pindah.
+  if (view === 'set' && document.querySelector('.set-tab[data-tab="info"].active') && setDetailOpen() && !embedTerbuka()) switchSetTab('info'); // kartu form dipakai tempat lain selagi view lain terbuka
   if (view === 'set' && (!document.getElementById('setDetailWrap') || document.getElementById('setDetailWrap').style.display === 'none')) {
     loadSetList();
   }
@@ -2545,7 +2546,7 @@ shortcutsDispose = installShortcuts('crud-produk', {
     if (document.querySelector('.confirm-overlay.open, .cmdk-overlay.open')) return false; // konfirmasi/palette di atas dialog
     const open = document.querySelectorAll('.modal-overlay.open');
     const top = open[open.length - 1];
-    const id = top ? SAVE_BTN_BY_OVERLAY[top.id] : (isProdukPageOpen() ? 'saveBtn' : null);
+    const id = top ? SAVE_BTN_BY_OVERLAY[top.id] : ((isProdukPageOpen() || embedAktif()) ? 'saveBtn' : null);
     const btn = id && document.getElementById(id);
     if (!btn) return false; // dialog tanpa tombol Simpan (mis. Log Aktivitas)
     if (!btn.disabled) btn.click();
@@ -2634,17 +2635,21 @@ const modalActions = modalCard.querySelector('.modal-actions');
 function setModalMode(mode){
   if (modalMode === mode) return;
   modalMode = mode;
-  (mode === 'page' ? produkPageWrap : modalOverlay).appendChild(modalCard);
-  modalCard.classList.toggle('prod-page', mode === 'page');
-  // Halaman: Simpan / Hapus di header (selalu terlihat, dekat judul). Modal: kembali jadi footer. Node yang sama, listener ikut.
-  (mode === 'page' ? modalHead : modalCard).appendChild(modalActions);
+  // 'embed' = Info dasar SET di tab Set Detail (setInfoHost): kartu yang sama, tanpa overlay dan tanpa halaman penuh.
+  (mode === 'page' ? produkPageWrap : mode === 'embed' ? document.getElementById('setInfoHost') : modalOverlay).appendChild(modalCard);
+  modalCard.classList.toggle('prod-page', mode === 'page' || mode === 'embed');
+  modalCard.classList.toggle('prod-embed', mode === 'embed');
+  // Halaman / tab: Simpan / Hapus di header (selalu terlihat, dekat judul). Modal: kembali jadi footer. Node yang sama, listener ikut.
+  (mode !== 'overlay' ? modalHead : modalCard).appendChild(modalActions);
 }
+function embedTerbuka(){ return modalMode === 'embed' && modalState !== 'closed'; }
+function embedAktif(){ return embedTerbuka() && document.getElementById('tab-info').classList.contains('active'); }
 
 // Header halaman: nama produk sebagai judul, kode + status di bawahnya. Dirender dari form saat data masuk dan sesudah Simpan
 // (bukan tiap ketikan: judul / status yang berubah sebelum disimpan akan terbaca seolah sudah tersimpan).
 function renderProdukPageHead(){
   // Kartu identitas dipakai di KEDUA mode (halaman dan modal) selama yang dibuka produk yang sudah ada; 'Tambah Produk' tetap judul biasa.
-  const identitas = modalState !== 'closed' && modalState !== 'add' && currentProdukId != null;
+  const identitas = modalMode !== 'embed' && modalState !== 'closed' && modalState !== 'add' && currentProdukId != null; // di tab Set Detail kartu identitas sudah ada di atasnya
   modalCard.classList.toggle('has-identitas', identitas);
   const metaEl = document.getElementById('prodPageMeta');
   const logoEl = document.getElementById('prodBrandLogo');
@@ -2854,7 +2859,7 @@ const unsavedConfirmOverlay = document.getElementById('unsavedConfirmOverlay');
 // Mode halaman menandai Harga / AKD / Media / unggah gambar "Tersimpan otomatis": mengetik di baris tambah harga atau kolom cari AKD
 // BUKAN perubahan yang menunggu Simpan (kalau dihitung, indikator dan guard "belum disimpan" berbohong). Modal tetap seperti dulu.
 function dirtyFromEvent(e){
-  if (modalMode !== 'page') return true;
+  if (modalMode === 'overlay') return true;
   const t = e.target;
   return !(t && (t.type === 'file' || (t.closest && t.closest('#ptab-harga, #ptab-media, #ptab-akd'))));
 }
@@ -3146,6 +3151,10 @@ _produkRoute = {
   // Halaman detail tidak ditutupi backdrop seperti modal, jadi sidebar tetap bisa diklik: pindah view harus lewat guard yang sama
   // dengan tombol Kembali. false = halaman tetap terbuka (ada perubahan belum disimpan / sedang menyimpan); URL dikembalikan.
   guardLeave: () => {
+    if (embedTerbuka()) { // Info dasar set di Set Detail: tidak punya URL, tapi tetap tidak boleh hilang diam-diam
+      attemptCloseModal();
+      return !embedTerbuka();
+    }
     if (!isProdukPageOpen()) return true;
     attemptCloseModal();
     if (!isProdukPageOpen()) return true;
@@ -3167,7 +3176,7 @@ async function openEdit(produkId, opts = {}){
   // (Jalur daftar / Ctrl+K lewat goToProdukEdit, yang memasang modalRoute produk baru begitu tokennya didapat.)
   if (modalRoute && modalRoute.id !== produkId) modalRoute = null;
   // Hanya jalur daftar / URL (goToProdukEdit, openProdukFromRoute) yang meminta halaman; pemanggil lain (Set Detail, komposisi, ?edit=) tetap modal.
-  setModalMode(opts.mode === 'page' ? 'page' : 'overlay');
+  setModalMode(opts.mode === 'page' ? 'page' : opts.mode === 'embed' ? 'embed' : 'overlay');
   modalGo('loading'); // Simpan/Hapus terkunci sampai data selesai masuk
   const session = modalSession;
   resetForm();
@@ -3862,6 +3871,7 @@ async function saveProdukInner(session){
   setProdTabsLocked(false);
   document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
   kunciIdentitas(true); // sudah tersimpan: sejak ini kode & tipe terkunci
+  if (modalMode === 'embed') refreshSetHeader(); // judul set di atas tab ikut berubah
   tampilkanHapus(true);
   toggleAkdBoxBtn.style.display = 'inline-flex';
   document.getElementById('akdHint').textContent = '';
@@ -4058,6 +4068,11 @@ document.getElementById('setBackBtn').addEventListener('click', () => {
 });
 
 async function openSetDetail(setId, kodeProduk){
+  // Form Info dasar set lain masih terbuka (mis. pindah set lewat Ctrl+K): jangan biarkan tampil di tab set yang baru.
+  if (embedTerbuka() && currentProdukId !== setId) {
+    if (modalDirty && !(await crudConfirm('Perubahan Info dasar set sebelumnya belum disimpan dan akan dibuang. Lanjut?', { danger: true, okLabel: 'Buang & Lanjut' }))) return;
+    closeModal();
+  }
   currentSetId = setId;
   currentSetKode = kodeProduk;
   // Kalkulator nego: buang acuan & total komponen milik set sebelumnya (angka input tetap, user mungkin lagi membandingkan).
@@ -4092,7 +4107,6 @@ async function refreshSetHeader(){
   document.getElementById('setDetailHarga').textContent = hargaRow ? `Rp ${Number(hargaRow.harga).toLocaleString('id-ID')} (${hargaRow.jenis} ${hargaRow.tahun})` : 'Belum ada harga';
 }
 
-document.getElementById('editSetOverviewBtn').addEventListener('click', () => openEdit(currentSetId));
 
 // ---- Tabs ----
 document.querySelectorAll('.set-tab').forEach(btn => {
@@ -4101,6 +4115,8 @@ document.querySelectorAll('.set-tab').forEach(btn => {
 function switchSetTab(tab){
   document.querySelectorAll('.set-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.set-tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+  // Info dasar dimuat saat tabnya dibuka. Pindah ke tab lain TIDAK menutup form: isian yang belum disimpan tetap ada waktu kembali.
+  if (tab === 'info' && currentSetId && !(embedTerbuka() && currentProdukId === currentSetId)) openEdit(currentSetId, { mode: 'embed' });
 }
 
 // ---- Composition ----
