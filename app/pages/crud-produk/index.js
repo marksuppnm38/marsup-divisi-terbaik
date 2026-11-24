@@ -59,6 +59,7 @@ import { peringatanBrand, opsiBrand } from './brand-awalan.js';
 import { FIELD_PERUBAHAN, hitungPerubahan, labelSimpan, catatanSebelumnya, perbaruiSnapshot } from './perubahan-form.js';
 import { masaBerlakuInfo } from './akd-masa.js';
 import { orIlike } from '../../../shared/api.js';
+import { kunciBrand, logoBrand } from '../../../shared/brand-identitas.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
 import { writeTableXlsx } from '../../../shared/exports/tabel-xlsx.js';
 import { installShortcuts, applyShortcutHints, toggleCheatSheet, isTyping } from '../../../shared/shortcuts.js';
@@ -2666,10 +2667,10 @@ function renderProdukPageHead(){
   const seal = modalState === 'loading' ? '' : document.getElementById('akdSealHolder').innerHTML; // holder masih berisi produk sebelumnya selagi memuat
   modalTitle.textContent = memuat ? 'Memuat produk…' : (nama || kode || 'Produk');
   // Warna brand hanya untuk yang sudah punya tema (ROBUST, ADLER); brand lain netral, tanpa logo.
-  const brandKey = BRAND_KEY[brand.trim().toUpperCase()] || '';
+  const brandKey = kunciBrand(brand);
   if (brandKey) modalHead.dataset.brand = brandKey; else delete modalHead.dataset.brand;
   // Logo hanya untuk brand yang punya berkas logo; brand lain tidak diberi logo pengganti.
-  const logo = BRAND_LOGO[brandKey];
+  const logo = logoBrand(brand);
   logoEl.hidden = !logo;
   logoEl.classList.toggle('is-warna', !!(logo && logo.warna)); // logo dua warna (PICMA) ditampilkan apa adanya, bukan dilebur jadi satu warna
   if (logo) {
@@ -2692,13 +2693,7 @@ function renderProdukPageHead(){
   if (verified) bagian.push('<span><i class="ti ti-rosette-discount-check-filled vbadge" aria-hidden="true"></i>Verified</span>');
   metaEl.innerHTML = bagian.join('');
 }
-// Logo brand di kartu identitas (berkas yang sama dengan Lampiran Konversian; rasio = lebar/tinggi PNG).
-const BRAND_KEY = { ROBUST: 'robust', ADLER: 'adler', PICMA: 'picma' }; // brand -> kunci tema (warna aksen + logo)
-const BRAND_LOGO = {
-  robust: { src: '/assets/robust-logo.png', ratio: 2048 / 243, h: 13 },
-  adler:  { src: '/assets/adler-logo.png',  ratio: 750 / 196,  h: 17 },
-  picma:  { src: '/assets/picma-logo.png',  ratio: 836 / 177,  h: 24, warna: true }, // navy + teal; tinggi lebih besar supaya tulisan "Pionir Cipta Medika" terbaca
-};
+// Logo + kunci tema brand: lihat shared/brand-identitas.js (dipakai juga card hasil Konversian).
 // Klik kode = salin. Elemen meta dirender ulang lewat innerHTML, jadi pakai delegasi di wadahnya.
 async function salinTeks(teks){
   try { await navigator.clipboard.writeText(teks); return true; } catch (e) { /* jatuh ke cara lama */ }
@@ -4089,9 +4084,9 @@ function renderSetBrandHead(brand){
   const logoEl = document.getElementById('setBrandLogo');
   if (!head || !logoEl) return;
   const nama = String(brand || '').trim().toUpperCase();
-  const brandKey = BRAND_KEY[nama] || '';
+  const brandKey = kunciBrand(brand);
   if (brandKey) head.dataset.brand = brandKey; else delete head.dataset.brand;
-  const logo = BRAND_LOGO[brandKey];
+  const logo = logoBrand(brand);
   logoEl.hidden = !logo;
   logoEl.classList.toggle('is-warna', !!(logo && logo.warna));
   if (logo) {

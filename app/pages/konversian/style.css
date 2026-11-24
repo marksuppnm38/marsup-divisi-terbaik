@@ -3238,6 +3238,21 @@
 #app-root .filters .brand-btn.on .brand-n{color:inherit;opacity:.8}
 #app-root .filters .brand-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 #app-root #results .rcard-meta .mi-brand span{font-weight:600}
+
+/* ── Identitas brand di card hasil (ROBUST / ADLER / PICMA). Token --lb / --lb-soft dari pnm-universal.css.
+      Garis aksen = ::before di tepi atas (BUKAN border-left / box-shadow: .kbd-active, .kbd-sel, .selected sudah memakainya),
+      di dalam border 1px dan tanpa mengubah layout → tinggi card tidak berubah saat brand menyusul dari cache. ── */
+#app-root #results .rcard[data-brand]::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;border-radius:7px 7px 0 0;background:var(--lb);pointer-events:none}
+#app-root #results .rcard-meta .brand-chip{white-space:nowrap}
+#app-root #results .rcard-meta .brand-chip .brand-logo-mark{max-width:100%}
+/* Logo berwarna (PICMA): navy tenggelam di mode gelap → diberi alas putih. */
+html[data-theme="dark"] #app-root #results .rcard-meta .brand-chip.is-warna{padding:1px 5px;border-radius:4px;background:#fff}
+/* Layar sempit (breakpoint sama dengan mobile.css): baris meta cuma ~290px di 360px. Logo ROBUST (rasio 8,4:1) lebih lebar dari teks
+   lama, jadi diperkecil supaya chip tidak mendorong baris meta turun (tinggi card tidak naik). */
+@media (max-width:640px){
+  #app-root #results .rcard-meta .brand-chip .brand-logo-mark{height:calc(var(--h) * .72)}
+  html[data-theme="dark"] #app-root #results .rcard-meta .brand-chip.is-warna{padding:1px 3px}
+}
 /* ── Penampil daftar prosedur (prosedur-daftar.js) — modal dari tab Dictionary ── */
 #app-root .pd-box{width:min(1100px,94vw);max-height:88vh;padding:20px 22px;text-align:left;display:flex;flex-direction:column;gap:10px}
 #app-root .pd-head{display:flex;align-items:center;justify-content:space-between;gap:12px}

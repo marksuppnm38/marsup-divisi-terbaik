@@ -888,6 +888,19 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:8
 .mi.stok-indent span{color:var(--danger);font-weight:500}
 .mi.stok-warn span{color:var(--warning);font-weight:500}
 .mi.stok-unknown span{color:var(--text-muted)}
+
+/* ── Identitas brand (shared/brand-identitas.js): token warna aksen per brand. --lb = warna garis/logo, --lb-soft = latar lembut.
+      Hanya ROBUST / ADLER / PICMA; brand lain tidak punya data-brand → netral. Nilai atribut huruf kecil (kunci tema),
+      jadi tidak bentrok dengan pill filter yang memakai data-brand="ROBUST" (huruf besar). ── */
+[data-brand="robust"]{--lb:#00476d;--lb-soft:rgba(0,71,109,.09)}
+[data-brand="adler"]{--lb:#cc0000;--lb-soft:rgba(204,0,0,.08)}
+[data-brand="picma"]{--lb:#1f2c5c;--lb-soft:rgba(31,44,92,.09)}
+html[data-theme="dark"] [data-brand="robust"]{--lb:#5db4ee;--lb-soft:rgba(93,180,238,.13)}
+html[data-theme="dark"] [data-brand="adler"]{--lb:#ff6259;--lb-soft:rgba(255,98,89,.13)}
+html[data-theme="dark"] [data-brand="picma"]{--lb:#8fa3ee;--lb-soft:rgba(143,163,238,.14)}
+/* Logo brand sebagai mask berwarna --lb. Logo berwarna (PICMA, .is-warna) tampil apa adanya. */
+.brand-logo-mark{display:block;flex:none;height:var(--h,12px);aspect-ratio:var(--ar,4);background:var(--lb,currentColor);-webkit-mask:var(--logo) left center/contain no-repeat;mask:var(--logo) left center/contain no-repeat}
+.is-warna>.brand-logo-mark{-webkit-mask:none;mask:none;background:var(--logo) left center/contain no-repeat}
 #btn-stok{margin-right:2px}
 .stok-modal-box{background:var(--surface);border-radius:12px;padding:22px 24px;width:90vw;max-width:420px;text-align:left}
 .stok-modal-box h3{font-size:15px;font-weight:600;margin-bottom:4px}

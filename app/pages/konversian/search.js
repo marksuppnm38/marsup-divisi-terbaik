@@ -8,6 +8,8 @@
 // hal-hal yang masih tinggal di clipboard.js diganti jadi S.nama (S.rpc, S.rupiah, S.showToast,
 // S.handleClipToggleClick, S.cachedSetItemCount, S.hydrateSetCounts, S.panelBodyCari).
 // clipboard.js sendiri sekarang cuma butuh S.renderResults dari sini (dipanggil belakangan, bukan saat install).
+import { kunciBrand, brandChipHtml } from '../../../shared/brand-identitas.js';
+
 export function installSearch(S) {
 // AUTOCOMPLETE — reuses lastResults from runSearch, no separate API call needed.
 // Dikurangin dari 6 ke 4 item: dropdown ini ngambang di atas list produk yang
@@ -551,7 +553,8 @@ function renderResults(data) {
     const ctaHtml = inClip
       ? `<button type="button" class="btn-clip-toggle in-clip" data-kode="${kode}" data-action="remove" title="Sudah di Konversi — klik untuk keluarkan"><i class="ti ti-circle-check"></i><span>Di Konversi</span></button>`
       : `<button type="button" class="btn-clip-toggle" data-kode="${kode}" data-action="add" title="Tambahkan ke Konversi"><i class="ti ti-plus"></i><span>Tambah</span></button>`;
-    return `<div class="rcard${inClip?' selected':''}" data-kode="${kode}">
+    const kunciTema = kunciBrand(r.brand); // '' = tanpa tema → tanpa garis aksen; nilai hanya dari tabel konstanta
+    return `<div class="rcard${inClip?' selected':''}"${kunciTema ? ` data-brand="${kunciTema}"` : ''} data-kode="${kode}">
       <div class="rcard-top">
         <span class="rcard-name" title="${namaEsc}">${namaEsc||'—'}</span>
         ${r.tipe?`<span class="tipe-badge ${tipeClass}">${tipeEsc}</span>`:''}
@@ -565,7 +568,7 @@ function renderResults(data) {
           <span class="mi mi-kode" title="Kode produk"><i class="ti ti-barcode"></i><span>${kode||'—'}</span></span>
           ${r.no_akd?`<span class="mi" title="No. AKD"><i class="ti ti-certificate"></i><span>${noAkdEsc}</span></span>`:''}
           ${r.kode_kfa?`<span class="mi" title="Kode KFA"><i class="ti ti-tag"></i><span>${kodeKfaEsc}</span></span>`:''}
-          ${r.brand?`<span class="mi mi-brand" title="Brand"><i class="ti ti-building-factory-2"></i><span>${S.escapeHtmlAttr(brandLabel(r.brand))}</span></span>`:''}
+          ${brandChipHtml(r.brand, S.escapeHtmlAttr)}
           ${stokBadge}
         </div>
         <div class="rcard-tools">
