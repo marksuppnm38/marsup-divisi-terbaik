@@ -60,6 +60,8 @@ export function latestUnsynced(unsynced, allRev) {
   });
 }
 
+import { namaPicSaya } from './pic-login.js';
+
 export const samePic = (pic, mine) => {
   const a = String(pic || '').trim().toLowerCase(), b = String(mine || '').trim().toLowerCase();
   return !!b && a === b;
@@ -263,7 +265,7 @@ export function installAutoRecord(S) {
     const o = opts || {};
     let rec = await latestRecord(sesiId);
     if (!rec) {
-      let pic = ''; try { pic = (localStorage.getItem('pic_marsup_name') || '').trim(); } catch { /* abaikan */ }
+      const pic = S.picLogin || ''; // PIC = akun login (index.js: applyPicLogin)
       rec = await autoRecordSesiById(sesiId, 'cepat', { sumber: 'manual', picFallback: pic });
     }
     if (!rec) throw new Error('Sesi ini belum punya produk, jadi belum bisa di-Record.');
@@ -292,7 +294,10 @@ export function installAutoRecord(S) {
   // ── Kotak "Perlu tindakan" ────────────────────────────────────────────
   const st = { last: 0, view: null, data: null, open: {}, warn: [] };
   const MANDEK_MIN = 2, MANDEK_MAX = 7; // >= 7 hari ditutup sweep, jadi bukan "perlu tindakan" lagi
-  const myPic = () => { try { return (localStorage.getItem('pic_marsup_name') || '').trim(); } catch { return ''; } };
+  // Punyaku = PIC dari akun login + nama lama yang dulu diketik manual (localStorage), supaya record lama tidak hilang dari filter.
+  const myNames = () => { let lama = ''; try { lama = localStorage.getItem('pic_marsup_name') || ''; } catch { /* abaikan */ } return namaPicSaya(S.currentUser && S.currentUser.email, lama); };
+  const myPic = () => myNames()[0] || '';
+  const isMine = (pic) => myNames().some((m) => samePic(pic, m));
   const cnt = (s) => (s[S.SESI_ITEM_TABLE] && s[S.SESI_ITEM_TABLE][0] && s[S.SESI_ITEM_TABLE][0].count) || 0;
 
   // Tiap query berdiri sendiri: satu gagal (mis. kolom `sumber` belum ada karena migration belum dijalankan)
@@ -364,7 +369,7 @@ export function installAutoRecord(S) {
     const badge = document.getElementById('todo-badge');
     if (!el || !st.data) return;
     const mine = myPic(), v = viewOf();
-    const pick = (arr) => (v === 'mine' && mine) ? arr.filter(x => samePic(x.pic, mine)) : arr;
+    const pick = (arr) => (v === 'mine' && mine) ? arr.filter(x => isMine(x.pic)) : arr;
     const G = {
       klik: pick(st.data.klik), sheet: pick(st.data.sheet), mandek: pick(st.data.mandek), kosong: pick(st.data.kosong)
     };

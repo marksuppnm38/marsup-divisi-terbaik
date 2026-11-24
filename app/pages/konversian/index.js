@@ -42,6 +42,7 @@ import { installShortcuts, applyShortcutHints, toggleCheatSheet, isTyping } from
 import { installConverterBulk } from './converter-bulk.js';
 import { installDictionary } from './dictionary.js';
 import { installSetMendekati } from './set-mendekati.js';
+import { picDariEmail } from './pic-login.js';
 import { installShiftSelect } from './shift-select.js';
 import { installProject } from './project.js';
 import { installAutoRecord } from './auto-record.js';
@@ -1162,6 +1163,7 @@ async function initAuth() {
   const session = await PNMAuth.getSession();
   S.stokAccessToken = session ? session.access_token : null;
   S.currentUser = session && session.user ? { id: session.user.id, email: session.user.email } : null;
+  if (S.applyPicLogin) S.applyPicLogin(); // PIC Marsup ikut akun login
   syncRealtimeAuth();
   showApp();
 }
@@ -5054,7 +5056,7 @@ async function openSesi(id) {
     S.currentButuhBantuan = !!sesi.butuh_bantuan;
     inpRs.value = sesi.nama_rs || '';
     inpSales.value = sesi.nama_sales || '';
-    if (sesi.pic_marsup) inpMarsup.value = sesi.pic_marsup;
+    inpMarsup.value = sesi.pic_marsup || S.picLogin || inpMarsup.value; // sesi tanpa PIC → akun login; sesi yang sudah punya PIC tetap PIC-nya
     S.checklistPagu = (sesi.pagu != null) ? sesi.pagu : null;
     S.updateEndSesiBtnState();
 
@@ -5149,14 +5151,21 @@ S.resetChecklistUI = resetChecklistUI;
 const SHEETS_PROXY_URL = `${SUPABASE_URL}/functions/v1/sheets-webhook-proxy`;
 S.SHEETS_PROXY_URL = SHEETS_PROXY_URL;
 
-// Ingat nama PIC Marsup di browser supaya ga perlu ketik ulang tiap buka
-(function initMarsupName() {
-  const saved = localStorage.getItem('pic_marsup_name');
-  if (saved) inpMarsup.value = saved;
-})();
-inpMarsup.addEventListener('input', () => {
-  localStorage.setItem('pic_marsup_name', inpMarsup.value.trim());
-});
+// PIC Marsup = akun yang login (bagian email sebelum '@', sama dengan nama di Presence), bukan teks bebas lagi:
+// dikunci (readonly) supaya Record, Sheet, dan sesi baru selalu atas nama orang yang benar, dan tidak kosong di browser baru.
+// Sesi yang SUDAH punya PIC tetap menampilkan PIC-nya (lihat openSesi) — tidak diam-diam diambil alih.
+S.picLogin = '';
+function applyPicLogin() {
+  const pic = picDariEmail(S.currentUser && S.currentUser.email);
+  S.picLogin = pic;
+  if (!pic || !S.inpMarsup) return; // belum login / elemen belum siap: biarkan, dipanggil lagi dari initAuth
+  S.inpMarsup.readOnly = true;
+  S.inpMarsup.title = 'Otomatis dari akun login (' + S.currentUser.email + ')';
+  if (!S.inpMarsup.value.trim()) S.inpMarsup.value = pic;
+  if (typeof S.updateClipHeaderCompact === 'function') S.updateClipHeaderCompact();
+}
+S.applyPicLogin = applyPicLogin;
+applyPicLogin();
 
 // Hitung kategori (Instrumen / Set / Unit / Campuran) + total value dari clipboard
 function computeKonversiSummary() {

@@ -104,8 +104,8 @@ export function installSesiMachine(S) {
     },
 
     // Lepas sesi dari layar + bersihin SEMUA state turunannya, satu jalur (ganti 5 salinan blok reset).
-    // opts: { rs, sales, marsup } isi header sesudah dibersihin (default kosong; marsup default dibiarin
-    //        karena itu PIC si pemakai), { headerCollapsed: [collapsed, persist] }.
+    // opts: { rs, sales, marsup } isi header sesudah dibersihin (default kosong; marsup default = akun login,
+    //        PIC si pemakai; kolomnya dikunci jadi tidak boleh nyangkut PIC sesi lain), { headerCollapsed: [collapsed, persist] }.
     detach(reason, opts) {
       const o = opts || {};
       gen++; slot = null;
@@ -118,6 +118,7 @@ export function installSesiMachine(S) {
       S.inpRs.value = o.rs || '';
       S.inpSales.value = o.sales || '';
       if (o.marsup) S.inpMarsup.value = o.marsup;
+      else if (S.picLogin) S.inpMarsup.value = S.picLogin; // PIC = akun login (dikunci); jangan bawa PIC sesi lama/milik rekan ke sesi berikutnya
       S.updateClipboard();
       S.renderResults(S.lastResults);
       S.setClipHeaderCollapsed(...(o.headerCollapsed || [false]));

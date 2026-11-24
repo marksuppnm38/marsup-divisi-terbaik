@@ -3418,3 +3418,6 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
   #lampiran-modal .lp-img { width: 64px; }
   #lampiran-modal .lp-img img { width: 48px; height: 48px; }
 }
+
+/* PIC Marsup dikunci ke akun login (index.js: applyPicLogin) — tampil sebagai nilai tetap, bukan kolom isian. */
+#app-root #inp-marsup[readonly]{cursor:default;color:var(--text-secondary);text-overflow:ellipsis}

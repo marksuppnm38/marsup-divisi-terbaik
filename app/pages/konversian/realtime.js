@@ -300,7 +300,8 @@ function applySesiRow(row, opts) {
 
   Object.keys(SESI_FIELD_LABELS).forEach(field => {
     const el = field === 'nama_rs' ? S.inpRs : field === 'nama_sales' ? S.inpSales : S.inpMarsup;
-    const newVal = row[field] || '';
+    // Baris sesi tanpa PIC: kolom tetap atas nama akun login, jangan dikosongkan (lihat applyPicLogin di index.js).
+    const newVal = row[field] || (field === 'pic_marsup' ? (S.picLogin || '') : '');
     // Jangan timpa field yang LAGI DIFOKUS user lokal (lagi diketik).
     if (el && !isEchoOfLocalWrite(S.SESI_TABLE, row.id, field, row[field]) && document.activeElement !== el && el.value !== newVal) {
       el.value = newVal;
