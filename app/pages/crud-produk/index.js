@@ -3555,6 +3555,12 @@ async function saveProdukInner(session){
   const tipe = document.getElementById('f_tipe').value;
   if (!kodeProduk || !tipe) { showToast('Kode Produk dan Tipe wajib diisi', true); return false; }
   const wasNew = !currentProdukId; // dicek sebelum currentProdukId ditimpa di bawah
+  // Klasifikasi (keluarga / kategori / spesialisasi) ikut Simpan ini: isian yang belum valid menghentikan SEMUA, supaya tidak
+  // ada simpan setengah jalan hanya karena keluarga salah ketik.
+  if (!wasNew) {
+    const cekKlas = atributUi.periksaForm();
+    if (!cekKlas.ok) { showToast(cekKlas.pesan, true); return false; }
+  }
 
   if (kodeAsli) {
     const { error: mErr } = await sb.from('master_produk').upsert({
@@ -3601,8 +3607,14 @@ async function saveProdukInner(session){
     syncBrandDatalist();
     try { sessionStorage.removeItem(PW_CACHE_PREFIX + 'distinct_filters_v2'); } catch (e) { /* abaikan */ }
   }
-  showToast(currentProdukId ? 'Produk diperbarui' : 'Produk ditambahkan');
-  modalDirty = false; // data form sekarang sudah sama persis dengan yang di database
+  // Klasifikasi: ditulis SESUDAH produk berhasil diupdate (RPC produk_atribut_manual tidak diubah). Produk baru belum punya
+  // klasifikasi di form (terkunci sampai tersimpan), jadi hanya jalur edit.
+  let klasHasil = { ok: true, diubah: false };
+  if (!wasNew) klasHasil = await atributUi.simpanDariForm();
+  if (klasHasil.ok) showToast(wasNew ? 'Produk ditambahkan' : (klasHasil.diubah ? 'Produk dan klasifikasi diperbarui' : 'Produk diperbarui'));
+  else showToast('Info dasar tersimpan, klasifikasi gagal: ' + klasHasil.pesan + ' Perbaiki lalu Simpan lagi.', true);
+  modalDirty = !klasHasil.ok; // gagal sebagian: penanda "belum disimpan" tetap menyala untuk bagian klasifikasi
+  syncDirtyBadge();
   renderProdukPageHead(); // header halaman mengikuti data yang baru tersimpan
   currentProdukId = result.data.id;
 

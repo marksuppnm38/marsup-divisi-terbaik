@@ -737,7 +737,7 @@ export const CRUD_PRODUK_MARKUP = `
         <!-- Klasifikasi: atribut produk yang bisa ditentukan manual. Disimpan terpisah dari tombol Simpan (atribut-ui.js). -->
         <section class="fs" id="klasSection" hidden>
           <div class="fs-head">
-            <h4>Klasifikasi</h4><span class="save-mark save-mark-manual" title="Punya tombol simpan sendiri, terpisah dari Simpan di atas"><i class="ti ti-device-floppy" aria-hidden="true"></i>Simpan terpisah</span>
+            <h4>Klasifikasi</h4><span class="save-mark save-mark-manual" title="Tertulis ke database setelah klik Simpan"><i class="ti ti-device-floppy" aria-hidden="true"></i>Perlu Simpan</span>
             <span class="fs-note">Pilih "Otomatis" untuk mengikuti sistem</span>
           </div>
           <div class="akd-hint" id="klasLocked" hidden>Simpan produk dulu, lalu klasifikasinya bisa diatur di sini.</div>
@@ -748,6 +748,7 @@ export const CRUD_PRODUK_MARKUP = `
                 <input type="text" id="f_klas_keluarga" list="f_klas_keluarga_list" autocomplete="off" spellcheck="false" placeholder="Otomatis"/>
                 <datalist id="f_klas_keluarga_list"></datalist>
                 <div class="klas-hint" id="klasKeluargaHint"></div>
+                <div class="klas-aksi" id="klasKeluargaAksi" role="status" hidden></div>
               </div>
               <div class="f">
                 <label for="f_klas_kategori">Kategori</label>
@@ -761,10 +762,8 @@ export const CRUD_PRODUK_MARKUP = `
               </div>
             </div>
             <div class="klas-actions">
-              <button class="btn btn-accent btn-sm" id="klasSimpanBtn" type="button"><i class="ti ti-check"></i> Simpan klasifikasi</button>
               <button class="btn btn-ghost btn-sm" id="klasResetBtn" type="button"><i class="ti ti-restore"></i> Semua ke otomatis</button>
               <span class="klas-msg" id="klasMsg" aria-live="polite"></span>
-              <span class="klas-scope">Hanya menyimpan Klasifikasi. Info dasar disimpan lewat Simpan di atas.</span>
             </div>
           </div>
         </section>

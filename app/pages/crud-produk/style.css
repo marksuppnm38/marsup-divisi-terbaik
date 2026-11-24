@@ -590,6 +590,12 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .prod-modal .fs-link{font-size:12.5px;color:var(--accent-text);text-decoration:none;cursor:pointer}
 .prod-modal .fs-link:hover{text-decoration:underline}
 
+/* Keluarga set: pilihan eksplisit untuk nama yang belum ada / mirip (satu tombol Simpan untuk seluruh form). */
+.prod-modal .klas-aksi{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;margin-top:6px;font-size:12px;color:var(--text-secondary)}
+.prod-modal .klas-aksi[hidden]{display:none}
+.prod-modal .klas-aksi.is-warn{color:var(--amber-text,#9a5b00)}
+.prod-modal .klas-aksi .klas-aksi-teks{flex-basis:100%}
+.prod-modal .klas-aksi-ok{display:inline-flex;align-items:center;gap:5px}
 /* Identitas dikunci (produk yang sudah tersimpan): kode & tipe terbaca, tidak bisa diubah dari form. */
 .prod-modal .f input:read-only#f_kode_produk,.prod-modal .f select#f_tipe:disabled{background:var(--surface-2,var(--surface));color:var(--text-secondary);cursor:not-allowed;opacity:1}
 .prod-modal .identitas-kunci{display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:12px;line-height:1.45;color:var(--text-muted)}
@@ -700,8 +706,6 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .save-mark .ti{font-size:13px}
 .save-mark-manual{background:var(--surface-3);color:var(--text-secondary)}
 .save-mark-auto{background:var(--teal-ok-bg);color:var(--teal-ok-text)}
-.klas-scope{display:none}
-.prod-modal.prod-page .klas-scope{display:block;flex:1 1 100%;font-size:12px;color:var(--text-muted)}
 
 /* Layar lebar: dua kolom. Ambang 1280px (bukan 1100px) karena sidebar memakan 224px: di bawahnya kolom < 450px terlalu sempit untuk isian berpasangan.
    Multi-column pada DOM yang sama, jadi urutan form modal tidak perlu berubah: kiri Identitas + Klasifikasi, kanan Master + Fisik + INAPROC + Gambar. */
