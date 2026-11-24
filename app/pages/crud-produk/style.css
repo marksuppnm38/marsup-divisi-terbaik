@@ -1339,3 +1339,61 @@ th.num .th-btn{justify-content:flex-end}
 .akd-masa-hint{font-size:12px;color:var(--text-muted)}
 .akd-masa.is-warn .akd-masa-hint{color:var(--amber-text)}
 .akd-masa.is-bad .akd-masa-hint{color:var(--rust-text)}
+
+/* =====================================================================
+   Rapikan Info dasar (2026-11-24)
+   1. Dropdown isian: varian .ui-select-field (shared/ui-select.js) menggantikan <select> bawaan; tampil sama tinggi dengan input.
+   2. Header kartu identitas: baris pertama = logo brand (kiri) + Simpan (kanan); judul dan meta memakai lebar penuh.
+   3. Pill bagian hanya muncul bila bagian itu berubah; textarea dan angka tanpa kontrol bawaan.
+   ===================================================================== */
+
+/* 1. Dropdown isian */
+.prod-modal .ui-select.ui-select-field{display:flex;width:100%;min-width:0}
+.prod-modal .ui-select-field .ui-select-btn{width:100%;height:40px;min-width:0;padding:0 11px;justify-content:space-between;border-color:var(--border-strong);border-radius:var(--radius);background:var(--surface);font-size:13px;font-weight:400;text-align:left}
+.prod-modal .ui-select-field .ui-select-btn:hover:not(:disabled){background:var(--surface)}
+.prod-modal .ui-select-field .ui-select-btn:hover:not(:disabled):not(:focus-visible){border-color:var(--text-muted)}
+.prod-modal .ui-select-field .ui-select-label{flex:1 1 auto;min-width:0;max-width:none;text-align:left}
+.prod-modal .ui-select-field .ui-select-btn.is-placeholder .ui-select-label{color:var(--text-muted)}
+.prod-modal .ui-select-field .ui-select-btn.is-changed{border-color:var(--amber-text);box-shadow:0 0 0 1px var(--amber-text)}
+.prod-modal .ui-select-field .ui-select-btn:disabled{opacity:1;background:var(--surface-2,var(--surface));color:var(--text-secondary);cursor:not-allowed}
+.prod-modal .ui-select-field .ui-select-btn:disabled .ui-select-chev{display:none}
+.prod-modal .ui-select-field .ui-select-menu{width:100%;max-width:none;max-height:260px}
+.prod-modal .ui-select-field .ui-select-opt{padding:8px 10px;font-size:13px;white-space:normal;overflow-wrap:anywhere}
+@media (prefers-reduced-motion:reduce){
+  .prod-modal .ui-select-field .ui-select-chev,.prod-modal .ui-select-field .ui-select-btn{transition:none}
+}
+
+/* Catatan kunci: satu baris penuh tepat di bawah Kode/Tipe, bukan di ujung bagian. */
+.prod-modal .identitas-kunci.full{grid-column:1 / -1;margin:-4px 0 0}
+.prod-modal .identitas-kunci[hidden]{display:none}
+
+/* 3. Pill bagian: hanya saat ada perubahan */
+.prod-modal.prod-page .save-mark-manual:not(.has-n){display:none}
+.prod-modal .save-mark-manual.has-n{background:var(--amber-bg);color:var(--amber-text)}
+
+/* Kontrol bawaan yang tersisa di isian: grip resize textarea, panah angka */
+.prod-modal .f textarea{resize:none;min-height:96px;max-height:340px;line-height:1.5;field-sizing:content}
+.prod-modal .f input[type="number"]{-moz-appearance:textfield;appearance:textfield}
+.prod-modal .f input[type="number"]::-webkit-inner-spin-button,.prod-modal .f input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+/* Centang Verified: kotak sendiri (read-only, mengikuti status INAPROC) */
+.prod-modal #f_verified{-webkit-appearance:none;appearance:none;position:relative;flex:0 0 auto;width:16px;height:16px;margin:0 8px 0 0;border:1px solid var(--border-strong);border-radius:4px;background:var(--surface)}
+.prod-modal #f_verified:checked{border-color:var(--accent);background:var(--accent)}
+.prod-modal #f_verified:checked::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.prod-modal #f_verified:disabled{cursor:not-allowed;opacity:.7}
+
+/* 2. Header kartu identitas (mode halaman) */
+.prod-modal.prod-page.has-identitas .modal-head{padding-top:20px;padding-bottom:18px;row-gap:8px}
+.prod-modal.prod-page.has-identitas .modal-head > div:first-child{display:contents}
+.prod-modal.prod-page.has-identitas .pm-logo{grid-column:1;grid-row:1;margin:0;align-self:center}
+.prod-modal.prod-page.has-identitas .modal-actions{grid-column:2;grid-row:1;align-self:center}
+.prod-modal.prod-page.has-identitas .modal-title{grid-column:1 / -1;grid-row:2;font-size:22px;font-weight:700;letter-spacing:0;line-height:1.25;text-wrap:balance}
+.prod-modal.prod-page.has-identitas .prod-page-meta{grid-column:1 / -1;grid-row:3;margin-top:0;gap:6px 14px;min-height:24px}
+/* Logo sudah menyebut brand: pill brand hanya untuk brand tanpa logo (netral). */
+.prod-modal.has-identitas .modal-head[data-brand] .pm-brand{display:none}
+@media (max-width:720px){
+  .prod-modal.prod-page.has-identitas .pm-logo,
+  .prod-modal.prod-page.has-identitas .modal-actions,
+  .prod-modal.prod-page.has-identitas .modal-title,
+  .prod-modal.prod-page.has-identitas .prod-page-meta{grid-column:1;grid-row:auto}
+  .prod-modal.prod-page.has-identitas .modal-title{font-size:19px}
+}

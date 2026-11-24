@@ -713,25 +713,25 @@ export const CRUD_PRODUK_MARKUP = `
           <div class="grid2">
             <div class="f"><label for="f_kode_produk">Kode produk *</label><input type="text" id="f_kode_produk" autocomplete="off" spellcheck="false"/></div>
             <div class="f"><label for="f_tipe">Tipe *</label>
-              <select id="f_tipe">
+              <select id="f_tipe" class="f-select">
                 <option value="">Pilih tipe</option>
                 <option value="UNIT">UNIT</option>
                 <option value="INSTRUMENT">INSTRUMENT</option>
                 <option value="SET">SET</option>
               </select>
             </div>
+            <div class="identitas-kunci full" id="identitasKunci" hidden>
+              <i class="ti ti-lock" aria-hidden="true"></i>
+              <span>Kode dan tipe dikunci karena dipakai sistem lain. Salah input? Hapus produk ini, lalu buat ulang.</span>
+            </div>
             <div class="f full"><label for="f_nama_produk">Nama produk</label><input type="text" id="f_nama_produk"/></div>
             <div class="f"><label for="f_brand">Brand</label>
-              <select id="f_brand"><option value="">Tanpa brand</option></select>
+              <select id="f_brand" class="f-select"><option value="">Tanpa brand</option></select>
               <div class="brand-hint" id="brandHint" role="status" hidden>
                 <span id="brandHintText"></span>
                 <button type="button" class="btn btn-ghost btn-sm" id="brandHintBtn">Pakai</button>
               </div>
             </div>
-          </div>
-          <div class="identitas-kunci" id="identitasKunci" hidden>
-            <i class="ti ti-lock" aria-hidden="true"></i>
-            <span>Kode dan tipe dikunci: keduanya diturunkan dari kode asli dan AKD, dan dipakai sistem lain. Salah input? Hapus produk ini lalu buat ulang.</span>
           </div>
         </section>
 
@@ -753,12 +753,12 @@ export const CRUD_PRODUK_MARKUP = `
               </div>
               <div class="f">
                 <label for="f_klas_kategori">Kategori</label>
-                <select id="f_klas_kategori"></select>
+                <select id="f_klas_kategori" class="f-select"></select>
                 <div class="klas-hint" id="klasKategoriHint"></div>
               </div>
               <div class="f">
                 <label for="f_klas_spes">Spesialisasi</label>
-                <select id="f_klas_spes"></select>
+                <select id="f_klas_spes" class="f-select"></select>
                 <div class="klas-hint" id="klasSpesHint"></div>
               </div>
             </div>
@@ -915,7 +915,7 @@ export const CRUD_PRODUK_MARKUP = `
             </div>
             <div class="media-add">
               <div class="f"><label>Jenis</label>
-                <select id="md_jenis">
+                <select id="md_jenis" class="f-select">
                   <option value="brosur">Brosur</option>
                   <option value="gambar">Gambar</option>
                 </select>
@@ -1076,7 +1076,7 @@ export const CRUD_PRODUK_MARKUP = `
     <div class="sec-label">Identitas AKD</div>
     <div class="grid2">
       <div class="f"><label>Tipe AKD *</label>
-        <select id="a_tipe_akd">
+        <select id="a_tipe_akd" class="f-select">
           <option value="">— pilih —</option>
           <option value="satuan">satuan</option>
           <option value="set">set</option>

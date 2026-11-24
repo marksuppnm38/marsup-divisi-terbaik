@@ -2883,8 +2883,30 @@ function teksNilai(key, nilai){
   if (key === 'klas_keluarga') return nilai || 'Otomatis';
   return nilai;
 }
+// Pill di judul bagian (Info dasar): hanya muncul bila bagian itu punya perubahan belum disimpan, dengan jumlahnya.
+// Semua bagian di tab ini disimpan lewat satu tombol Simpan, jadi label statis "Perlu Simpan" di tiap bagian tidak menambah informasi.
+function perbaruiPillBagian(r){
+  const panel = document.getElementById('ptab-dasar');
+  if (!panel) return;
+  const hitung = new Map();
+  ((r && r.daftar) || []).forEach((d) => {
+    const el = document.getElementById(d.elId);
+    const sec = el && el.closest('.fs');
+    if (sec) hitung.set(sec, (hitung.get(sec) || 0) + 1);
+  });
+  panel.querySelectorAll('.fs').forEach((sec) => {
+    const pill = sec.querySelector('.fs-head .save-mark-manual');
+    if (!pill) return;
+    const n = hitung.get(sec) || 0;
+    pill.classList.toggle('has-n', n > 0);
+    pill.lastChild.textContent = n > 0 ? n + ' diubah' : 'Perlu Simpan';
+    const ik = pill.querySelector('i');
+    if (ik) ik.className = n > 0 ? 'ti ti-pencil' : 'ti ti-device-floppy';
+  });
+}
 function renderPerubahan(r){
   hapusPenanda();
+  perbaruiPillBagian(r);
   if (!r || !r.jumlah) return;
   r.daftar.forEach((d) => {
     const el = document.getElementById(d.elId);

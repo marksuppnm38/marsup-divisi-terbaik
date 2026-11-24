@@ -27,7 +27,7 @@
 //    pembaca layar cuma dengar nilai terpilih tanpa tahu itu pilihan apa).
 // Menu hidup DI DALAM wrapper (bukan di <body>) jadi otomatis hilang saat halaman di-unmount.
 
-const SELECTOR = 'select.filter-select, select.conv-select';
+const SELECTOR = 'select.filter-select, select.conv-select, select.f-select';
 const ICON_SORT = 'ti-arrows-sort';
 const ICON_FILTER = 'ti-filter';
 
@@ -43,8 +43,11 @@ function enhance(select) {
 
   // filter-select = filter/urutan toolbar (highlight kalau aktif); selain itu = pilihan biasa
   const isChoice = !select.classList.contains('filter-select');
+  // 2026-11-24: select.f-select = isian form (modal Produk). Tampil seperti input penuh: tanpa ikon depan,
+  // lebar mengikuti kolom, kunci (disabled) tampil sebagai isian terkunci, dan penanda .is-changed ikut disalin.
+  const isField = select.classList.contains('f-select');
   const wrap = document.createElement('div');
-  wrap.className = 'ui-select' + (isChoice ? ' ui-select-choice' : '');
+  wrap.className = 'ui-select' + (isChoice ? ' ui-select-choice' : '') + (isField ? ' ui-select-field' : '');
 
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -60,7 +63,7 @@ function enhance(select) {
   label.className = 'ui-select-label';
   const chev = document.createElement('i');
   chev.className = 'ti ti-chevron-down ui-select-chev';
-  btn.append(icon, label, chev);
+  if (isField) btn.append(label, chev); else btn.append(icon, label, chev);
 
   const menu = document.createElement('div');
   menu.className = 'ui-select-menu';
@@ -81,6 +84,10 @@ function enhance(select) {
     const opt = select.options[select.selectedIndex];
     return opt ? opt.textContent.trim() : '';
   }
+  function opt0Text() {
+    const o = select.options[0];
+    return o && o.value === '' ? o.textContent.trim() : '';
+  }
   function refresh() {
     label.textContent = currentLabel();
     btn.disabled = select.disabled;
@@ -89,6 +96,10 @@ function enhance(select) {
     // opsi kosong ("Semua Sales" value="") = belum difilter -> tampil netral; selain itu aktif.
     // Varian pilihan (conv-select) gak pernah "aktif": nilainya cuma pilihan, bukan filter.
     btn.classList.toggle('is-active', !isChoice && !isSort && select.value !== '');
+    if (isField) {
+      btn.classList.toggle('is-changed', select.classList.contains('is-changed'));
+      btn.classList.toggle('is-placeholder', select.value === '' && !!opt0Text());
+    }
     wrap.hidden = select.style.display === 'none';
   }
 
@@ -186,7 +197,7 @@ function enhance(select) {
 
   // sinkron: change dari luar, opsi di-repopulate (innerHTML), display di-toggle
   select.addEventListener('change', refresh);
-  new MutationObserver(refresh).observe(select, { childList: true, attributes: true, attributeFilter: ['style', 'disabled'] });
+  new MutationObserver(refresh).observe(select, { childList: true, attributes: true, attributeFilter: isField ? ['style', 'disabled', 'class'] : ['style', 'disabled'] });
   // `select.value = x` dari JS gak memicu event apa pun -> bungkus setter-nya
   const desc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
   Object.defineProperty(select, 'value', {
