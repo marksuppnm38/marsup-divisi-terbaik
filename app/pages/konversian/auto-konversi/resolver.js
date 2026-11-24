@@ -504,6 +504,44 @@ export async function resolveItem(item, rpc, opts = {}) {
   };
 }
 
+// ── Lintas brand ──
+// resolveItem selalu menilai SATU brand (opts.brand). Dengan opts.brandLain = true, item yang di brand utama hasilnya UNKNOWN
+// karena yang cocok hanya ada di brand lain ('lain_brand') dinilai ulang di brand-brand itu. Brand utama TETAP didahulukan:
+// selama brand utama punya jawaban, brand lain tidak ikut menilai (jadi tidak membuat ROBUST vs ADLER jadi ambigu).
+//   - tepat 1 brand lain yang punya jawaban -> dipakai apa adanya (status sama seperti penilaian brand itu), ditandai
+//     brand_dipakai + dari_brand_lain, dan alasannya menyebut brandnya.
+//   - >1 brand lain punya jawaban -> REVIEW 'beda_brand' (staf yang memilih), tidak pernah AUTO.
+// Brand kosong tidak pernah jadi target. Tanpa opts.brandLain perilakunya identik dengan resolveItem.
+export async function resolveItemLintasBrand(item, rpc, opts = {}) {
+  const utama = await resolveItem(item, rpc, opts);
+  if (!opts.brandLain || !opts.brand || utama.reason_key !== 'lain_brand') return utama;
+  const target = String(opts.brand).trim().toUpperCase();
+  const hitung = new Map();
+  (utama.lainBrand || []).forEach((x) => {
+    const b = String(x.brand || '').trim().toUpperCase();
+    if (b && b !== '(KOSONG)' && b !== target) hitung.set(b, (hitung.get(b) || 0) + 1);
+  });
+  const urut = [...hitung].sort((a, b) => b[1] - a[1]).map(([b]) => b);
+  const dapat = [];
+  for (const b of urut) {
+    const h = await resolveItem(item, rpc, { ...opts, brand: b, brandLain: false });
+    if (h.status !== 'UNKNOWN') dapat.push({ brand: b, h });
+  }
+  if (!dapat.length) return utama;
+  if (dapat.length === 1) {
+    const { brand, h } = dapat[0];
+    return { ...h, brand_dipakai: brand, dari_brand_lain: true, reason: `${h.reason} Brand ${brand} (tidak ada yang cocok di ${target}).`.replace(/\s+/g, ' ') };
+  }
+  const pertama = dapat[0].h;
+  return {
+    ...pertama, status: 'REVIEW', reason_key: 'beda_brand', reason_key_asli: pertama.reason_key, audit: false,
+    brand_dipakai: dapat[0].brand, dari_brand_lain: true,
+    reason: `Cocok di beberapa brand (${dapat.map((d) => d.brand).join(', ')}), tidak ada di ${target} — pilih yang sesuai.`,
+    candidates: dapat.flatMap((d) => d.h.candidates).slice(0, 6),
+    unverified: dapat.some((d) => d.h.unverified)
+  };
+}
+
 // ── Banyak item, paralel terbatas (pola sama dengan resolveSetcariEntries) ──
 // Opsi tambahan (semua opsional, perilaku lama tetap bila tidak diisi):
 //   onProgress(selesai, total) : SELALU naik — `selesai` = jumlah item yang sudah beres, bukan nomor urut item.
@@ -555,7 +593,7 @@ export async function resolveItems(items, rpc, opts = {}) {
     while (next < total && !aborted()) {
       const i = next++;
       const q = queriesFor(items[i]);
-      const hasil = await resolveItem(items[i], mrpc, { ...opts, brandOf, queries: q || undefined });
+      const hasil = await resolveItemLintasBrand(items[i], mrpc, { ...opts, brandOf, queries: q || undefined });
       out[i] = { item: items[i], hasil };
       selesai++;
       if (opts.onItem) { try { opts.onItem(i, out[i]); } catch (_) { /* callback UI tidak boleh mematikan worker */ } }

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { buatIndeks } from './prosedur.js';
-import { understand, parseRequestText, parseLine, extractSpecs, parseCompetitorSet, resolveItem, resolveItems, summarize, isAmbiguous, assessProduk, makeFirmCheck } from './index.js';
+import { understand, parseRequestText, parseLine, extractSpecs, parseCompetitorSet, resolveItem, resolveItemLintasBrand, resolveItems, summarize, isAmbiguous, assessProduk, makeFirmCheck } from './index.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const fx = (n) => readFileSync(join(dir, 'fixtures', n), 'utf8');
@@ -722,4 +722,65 @@ test('resolveItems: signal.aborted menghentikan item baru, hasil yang sudah ada 
   let n = 0; res.forEach(() => n++);
   assert.ok(n >= 5 && n < 20, `selesai ${n}`);
   assert.equal(n, got.length); // yang dikembalikan = yang sempat dilaporkan lewat onItem
+});
+
+// ── Lintas brand (brandLain) ──
+test('lintas brand: ROBUST didahulukan; brand lain TIDAK ikut kalau ROBUST sudah punya jawaban', async () => {
+  const mk = (kode, nama, freq) => row({ istilah: 'SET HERNIA', kode_produk: kode, nama_produk: nama, freq, is_set: true });
+  const rpc = mockRpc({ 'SET HERNIA': [mk('RB999-KE921-B99-U06', 'HERNIA S.', 9), mk('AD999-KE921-B099-U60', 'HERNIA S.', 12)] });
+  const [it] = parseRequestText('SET HERNIA\t1').items;
+  const peta = { 'RB999-KE921-B99-U06': 'ROBUST', 'AD999-KE921-B099-U60': 'ADLER' };
+  const h = await resolveItemLintasBrand(it, rpc, { brand: 'ROBUST', brandLain: true, brandOf: brandFrom(peta) });
+  assert.equal(h.kode_produk, 'RB999-KE921-B99-U06');
+  assert.ok(!h.dari_brand_lain);
+  assert.ok(h.candidates.every(c => c.kode !== 'AD999-KE921-B099-U60'));
+});
+
+test('lintas brand: yang cocok hanya brand lain -> dinilai di brand itu (bukan UNKNOWN lagi), alasan menyebut brandnya', async () => {
+  const rpc = mockRpc({ 'SET ANOSCOPY': [row({ istilah: 'SET ANOSCOPY', kode_produk: 'AD999-KE921-B099-U13', nama_produk: 'ANOSCOPY AS.', freq: 9, is_set: true })] });
+  const [it] = parseRequestText('SET ANOSCOPY\t1').items;
+  const opts = { brand: 'ROBUST', brandOf: brandFrom({ 'AD999-KE921-B099-U13': 'ADLER' }) };
+  const h = await resolveItemLintasBrand(it, rpc, { ...opts, brandLain: true });
+  assert.notEqual(h.status, 'UNKNOWN');
+  assert.equal(h.kode_produk, 'AD999-KE921-B099-U13');
+  assert.equal(h.brand_dipakai, 'ADLER'); assert.equal(h.dari_brand_lain, true);
+  assert.match(h.reason, /ADLER/); assert.match(h.reason, /ROBUST/);
+  // tanpa brandLain (pill dipilih eksplisit): tetap satu brand
+  const strict = await resolveItemLintasBrand(it, rpc, opts);
+  assert.equal(strict.status, 'UNKNOWN'); assert.equal(strict.reason_key, 'lain_brand');
+});
+
+test('lintas brand: merek baru (SKYLAR) ikut tanpa ubah kode', async () => {
+  const rpc = mockRpc({ 'TIMBANGAN ANALITIK': [row({ istilah: 'TIMBANGAN ANALITIK', kode_produk: 'SK-TA-01', nama_produk: 'SKYLAR TIMBANGAN ANALITIK FA604GM', freq: 4 })] });
+  const [it] = parseRequestText('TIMBANGAN ANALITIK\t1').items;
+  const h = await resolveItemLintasBrand(it, rpc, { brand: 'ROBUST', brandLain: true, brandOf: brandFrom({ 'SK-TA-01': 'SKYLAR' }) });
+  assert.equal(h.kode_produk, 'SK-TA-01'); assert.equal(h.brand_dipakai, 'SKYLAR');
+});
+
+test('lintas brand: cocok di >1 brand lain -> REVIEW beda_brand, tidak pernah AUTO', async () => {
+  const rpc = mockRpc({ 'SET ANOSCOPY': [
+    row({ istilah: 'SET ANOSCOPY', kode_produk: 'AD-A', nama_produk: 'ANOSCOPY AS.', freq: 9, is_set: true }),
+    row({ istilah: 'SET ANOSCOPY', kode_produk: 'PX-A', nama_produk: 'ANOSCOPY AS.', freq: 9, is_set: true })] });
+  const [it] = parseRequestText('SET ANOSCOPY\t1').items;
+  const h = await resolveItemLintasBrand(it, rpc, { brand: 'ROBUST', brandLain: true, brandOf: brandFrom({ 'AD-A': 'ADLER', 'PX-A': 'PICMA' }) });
+  assert.equal(h.status, 'REVIEW'); assert.equal(h.reason_key, 'beda_brand');
+  assert.match(h.reason, /ADLER/); assert.match(h.reason, /PICMA/);
+});
+
+test('lintas brand: brand kosong tidak pernah jadi target; hasil tetap UNKNOWN lain_brand', async () => {
+  const rpc = mockRpc({ 'SET ANOSCOPY': [row({ istilah: 'SET ANOSCOPY', kode_produk: 'X-1', nama_produk: 'ANOSCOPY AS.', freq: 9, is_set: true })] });
+  const [it] = parseRequestText('SET ANOSCOPY\t1').items;
+  const h = await resolveItemLintasBrand(it, rpc, { brand: 'ROBUST', brandLain: true, brandOf: brandFrom({}) });
+  assert.equal(h.status, 'UNKNOWN'); assert.equal(h.reason_key, 'lain_brand');
+});
+
+test('lintas brand lewat resolveItems: satu daftar campur brand', async () => {
+  const rpc = mockRpc({
+    'SET HERNIA': [row({ istilah: 'SET HERNIA', kode_produk: 'RB1', nama_produk: 'HERNIA S.', freq: 9, is_set: true })],
+    'TIMBANGAN ANALITIK': [row({ istilah: 'TIMBANGAN ANALITIK', kode_produk: 'SK1', nama_produk: 'SKYLAR TIMBANGAN ANALITIK', freq: 4 })]
+  });
+  const items = parseRequestText('SET HERNIA\t1\nTIMBANGAN ANALITIK\t1').items;
+  const out = await resolveItems(items, rpc, { brand: 'ROBUST', brandLain: true, brandOf: brandFrom({ RB1: 'ROBUST', SK1: 'SKYLAR' }) });
+  assert.deepEqual(out.map(o => o.hasil.kode_produk), ['RB1', 'SK1']);
+  assert.deepEqual(out.map(o => !!o.hasil.dari_brand_lain), [false, true]);
 });

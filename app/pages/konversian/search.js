@@ -71,6 +71,7 @@ async function enrichBrand(rows) {
   (rows || []).forEach(r => { if (brandCache.has(r.kode_produk)) r.brand = brandCache.get(r.kode_produk); });
 }
 S.enrichBrand = enrichBrand;
+S.brandDari = (kode) => brandCache.get(kode) || ''; // sinkron, dari cache enrichBrand ('' = belum dibaca / memang tanpa brand)
 
 // Warna lampiran SET per brand (2026-11-20). ROBUST = biru (default, sama seperti sebelumnya), ADLER = merah.
 // Brand lain / kosong / gagal fetch -> biru, jadi lampiran lama gak berubah.

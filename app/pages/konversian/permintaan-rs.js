@@ -642,8 +642,14 @@ function anchorTerpakai(item) {
   });
   return s;
 }
-const anchorBrand = () => String(S.selectedBrand || 'ROBUST').trim().toUpperCase();
-const anchorHitungKey = (kode) => anchorBrand() + '|' + kode;
+// Varian ditawarkan di brand produk anchor itu sendiri (anchor SKYLAR tidak boleh ditawari varian ROBUST). Cadangan: pill / ROBUST.
+const anchorBrandDefault = () => String(S.selectedBrand || 'ROBUST').trim().toUpperCase();
+const anchorBrandSinkron = (kode) => String((S.brandDari && S.brandDari(kode)) || anchorBrandDefault()).trim().toUpperCase();
+async function anchorBrandDari(kode) {
+  try { await S.enrichBrand([{ kode_produk: kode }]); } catch (e) { /* jatuh ke cadangan */ }
+  return anchorBrandSinkron(kode);
+}
+const anchorHitungKey = (kode) => anchorBrandSinkron(kode) + '|' + kode;
 
 // Angka chip: satu RPC batch untuk SEMUA anchor di daftar (bukan satu per item). Selama belum ada, chip belum muncul;
 // begitu datang daftar dirender ulang. Gagal -> chip absen saja (fitur ini saja yang hilang), dicoba lagi setelah jeda.
@@ -656,9 +662,15 @@ function anchorHitungPicu() {
   });
   if (!perlu.length) return;
   anchorHitungJalan = true;
-  const brand = anchorBrand();
-  anchorHitung(S.rpc, perlu, { brand })
-    .then((peta) => { peta.forEach((n, k) => anchorHitungCache.set(brand + '|' + k, { n, ts: Date.now() })); })
+  (async () => {
+    try { await S.enrichBrand(perlu.map((k) => ({ kode_produk: k }))); } catch (e) { /* brand cadangan */ }
+    const perBrand = new Map(); // satu RPC per brand (RPC menerima satu brand per panggilan)
+    perlu.forEach((k) => { const b = anchorBrandSinkron(k); if (!perBrand.has(b)) perBrand.set(b, []); perBrand.get(b).push(k); });
+    await Promise.all([...perBrand].map(async ([brand, kodes]) => {
+      const peta = await anchorHitung(S.rpc, kodes, { brand });
+      peta.forEach((n, k) => anchorHitungCache.set(brand + '|' + k, { n, ts: Date.now() }));
+    }));
+  })()
     .catch(() => { anchorHitungGagal = Date.now(); })
     .finally(() => { anchorHitungJalan = false; renderChecklist(); });
 }
@@ -672,7 +684,7 @@ async function anchorMuat(item, kode, level) {
   const c = { anchor: kode, loading: true, level, hasil: null, pilih: new Set(), error: null };
   anchorCache.set(item.id, c);
   try {
-    const hasil = await anchorTawarkan(S.rpc, kode, { brand: anchorBrand(), level });
+    const hasil = await anchorTawarkan(S.rpc, kode, { brand: await anchorBrandDari(kode), level });
     if (anchorCache.get(item.id) !== c) return; // ditutup/diganti selagi menunggu
     if (!hasil.opsi.length) { anchorOpen.delete(item.id); anchorCache.delete(item.id); S.showToast('Tidak ada varian lain.'); return; }
     c.hasil = hasil;
@@ -1213,7 +1225,7 @@ const AM_EMPTY_HTML = '<div class="kb-section-empty">Tidak ada item dengan hasil
 // Label pendek alasan REVIEW (chip sub-filter dan tag di baris). Urutan = urutan tampil.
 const AM_WHY = {
   atribut_beda: 'spek beda', ukuran_seri: 'ukuran seri', ukuran_dekat: 'ukuran dekat', ukuran_beda: 'ukuran beda',
-  ambigu: 'ambigu', lain_brand: 'brand lain', padanan_prosedur: 'padanan prosedur', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', belum_siap: 'perlu disiapkan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang',
+  ambigu: 'ambigu', lain_brand: 'brand lain', beda_brand: 'beda brand', padanan_prosedur: 'padanan prosedur', hanya_katalog: 'dari katalog', perkiraan: 'perkiraan', belum_siap: 'perlu disiapkan', firm_belum_dicek: 'firm belum dicek', ada_dibuang: 'ada yang dibuang',
   audit_acak: 'pemeriksaan acak'
 };
 const AM_UKURAN_TXT = { cocok: 'ukuran cocok', dekat: 'ukuran dekat (≤ 0,5 cm)', beda: 'ukuran beda', varian: 'varian lain' };
@@ -1530,7 +1542,10 @@ async function runWorkspaceAutoMatch(onlyIds) {
       lexicon,
       auditRate: AM_AUDIT_RATE,
       firmCheck: S.modeSwastaOutput ? null : firmCheck,
-      brand: S.selectedBrand || 'ROBUST', // 1 brand per konversi (pill brand Cari Produk; default ROBUST). Brand kosong = BUKAN ROBUST (tidak dianggap cocok).
+      // Pill brand Cari Produk dipilih = HANYA brand itu. Tanpa pill: ROBUST didahulukan, dan item yang tidak ada di ROBUST dinilai ulang di
+      // brand lain (SKYLAR, ADLER, PICMA, ...; lihat resolveItemLintasBrand). Brand kosong = BUKAN brand mana pun (tidak dianggap cocok).
+      brand: S.selectedBrand || 'ROBUST',
+      brandLain: !S.selectedBrand,
       prosedur: await getProsedurIndeks(),
       brandOf: async (kodes) => { const rows = kodes.map(k => ({ kode_produk: k })); await S.enrichBrand(rows); return new Map(rows.map(r => [r.kode_produk, r.brand || ''])); },
       signal: abort,
