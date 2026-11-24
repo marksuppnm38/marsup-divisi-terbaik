@@ -55,6 +55,7 @@ import { fetchKeluargaOptions, fetchKeluargaMap, fetchRowsByKeluarga, pesanKelua
 import { muatKlasifikasi, resetKlasifikasi, opsiKlasifikasi, cocokKlas, fetchRowsByKlas, attachKlas, simpanKlasDariBaris, KLAS_COLS, pesanKlasifikasi, isKlasDim } from './klasifikasi.js';
 import { installKalkulatorHarga } from './kalkulator-harga.js';
 import { createStaleTracker } from './kesegaran.js';
+import { peringatanBrand, opsiBrand } from './brand-awalan.js';
 import { orIlike } from '../../../shared/api.js';
 import { fetchHargaLatestMap as fetchHargaLatestMapShared } from '../../../shared/exports/pricelist.js';
 import { writeTableXlsx } from '../../../shared/exports/tabel-xlsx.js';
@@ -1021,10 +1022,57 @@ function pwCacheSet(key, data){
 
 // Datalist brand di form Edit Produk: saran dari brand yang sudah ada, supaya ketikan gak melenceng
 // ("Adler" vs "ADLER" vs "Adler "). Disimpan UPPERCASE di saveProdukInner.
-function syncBrandDatalist(){
-  const dl = document.getElementById('f_brand_list');
-  if (!dl) return;
-  dl.innerHTML = (produkDistinct.brand || []).map(b => `<option value="${escapeHtml(b)}"></option>`).join('');
+function syncBrandDatalist(){ isiBrandSelect(); } // nama lama dipertahankan: dipanggil dari beberapa tempat
+
+// Brand sekarang SELECT (bukan teks bebas): isinya brand yang ada di data + "Tanpa brand". Nilai produk yang dibuka
+// selalu ikut jadi opsi, jadi brand yang belum ada di cache tetap tampil benar dan tidak terhapus diam-diam saat Simpan.
+function isiBrandSelect(nilai){
+  const sel = document.getElementById('f_brand');
+  if (!sel) return;
+  const cur = nilai !== undefined ? nilai : sel.value;
+  const opsi = opsiBrand(produkDistinct.brand, cur);
+  sel.innerHTML = '<option value="">Tanpa brand</option>' + opsi.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+  sel.value = String(cur ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+function setBrandValue(v){ isiBrandSelect(v == null ? '' : v); renderBrandHint(); }
+
+// Peringatan non-blokir: awalan kode (AD / RB) vs brand terpilih. Awalan lain tidak ditegur.
+function renderBrandHint(){
+  const box = document.getElementById('brandHint');
+  if (!box) return;
+  const w = peringatanBrand(document.getElementById('f_kode_produk').value, document.getElementById('f_brand').value);
+  box.hidden = !w;
+  if (!w) return;
+  document.getElementById('brandHintText').textContent = w.pesan;
+  const btn = document.getElementById('brandHintBtn');
+  btn.textContent = 'Pakai ' + w.saran;
+  btn.dataset.saran = w.saran;
+}
+document.getElementById('brandHintBtn').addEventListener('click', (e) => {
+  const saran = e.currentTarget.dataset.saran;
+  if (!saran) return;
+  setBrandValue(saran);
+  document.getElementById('f_brand').dispatchEvent(new Event('change', { bubbles: true })); // ikut jalur dirty yang sama
+});
+document.getElementById('f_brand').addEventListener('change', renderBrandHint);
+document.getElementById('f_kode_produk').addEventListener('input', renderBrandHint);
+
+// Identitas dikunci untuk produk yang sudah tersimpan. Inputnya tetap ada di DOM (nilainya tetap dibaca saveProdukInner),
+// hanya tidak bisa diedit. Produk baru: kode & tipe tetap field biasa karena belum ada yang bergantung padanya.
+function kunciIdentitas(kunci){
+  document.getElementById('f_kode_produk').readOnly = !!kunci;
+  document.getElementById('f_tipe').disabled = !!kunci;
+  document.getElementById('identitasKunci').hidden = !kunci;
+}
+// Zona berbahaya (hapus): hanya untuk produk tersimpan dan akun yang punya izin hapus.
+function tampilkanHapus(tampil){
+  const boleh = !!tampil && window.PNMAuth?.can?.('hapus') !== false;
+  deleteBtn.style.display = boleh ? 'inline-flex' : 'none';
+  const zona = document.getElementById('zonaBahaya');
+  zona.hidden = !boleh;
+  if (!boleh) zona.open = false;
+  document.getElementById('hapusKonfirmasi').value = '';
+  document.getElementById('hapusKodeLabel').textContent = boleh ? document.getElementById('f_kode_produk').value.trim() : '';
 }
 
 let _distinctInflight = null;
@@ -2602,16 +2650,12 @@ function renderProdukPageHead(){
   const nama = baris ? (baris.nama_produk || '') : val('f_nama_produk');
   const tipe = baris ? (baris.tipe || '') : val('f_tipe');
   const brand = baris ? (baris.brand || '') : val('f_brand');
-  const aktif = baris ? baris.is_active !== false : document.getElementById('f_is_active').checked;
   const verified = !!produkVerifiedIdSet && produkVerifiedIdSet.has(currentProdukId);
   const seal = modalState === 'loading' ? '' : document.getElementById('akdSealHolder').innerHTML; // holder masih berisi produk sebelumnya selagi memuat
   modalTitle.textContent = memuat ? 'Memuat produk…' : (nama || kode || 'Produk');
   const bagian = [];
   if (kode) bagian.push('<span class="pm-kode">' + escapeHtml(kode) + '</span>');
   if (tipe) bagian.push('<span class="tipe-chip">' + escapeHtml(tipe) + '</span>');
-  if (!memuat) bagian.push(aktif
-    ? '<span class="status-pill ok"><i class="ti ti-circle-check" aria-hidden="true"></i>Aktif</span>'
-    : '<span class="status-pill neutral"><i class="ti ti-circle-x" aria-hidden="true"></i>Nonaktif</span>');
   if (seal) bagian.push(seal);
   if (verified) bagian.push('<span><i class="ti ti-rosette-discount-check-filled vbadge" aria-hidden="true"></i>Verified</span>');
   if (brand) bagian.push('<span>Brand ' + escapeHtml(brand) + '</span>');
@@ -2817,7 +2861,9 @@ function resetForm(){
   // f_kode_kfa/f_kode_cangkang/f_nama_cangkang sekarang read-only (disabled),
   // sumber datanya produk_kfa -- lihat loadKfaInfoForProduk().
   document.getElementById('f_tipe').value = '';
-  document.getElementById('f_is_active').checked = true;
+  kunciIdentitas(false); // default untuk form baru; openEdit mengunci setelah data masuk
+  isiBrandSelect('');
+  renderBrandHint();
   document.getElementById('masterFields').style.display = 'none';
   document.getElementById('masterLookupMsg').innerHTML = '';
   masterExists = false;
@@ -2859,13 +2905,13 @@ function openAdd(prefill){
   modalSub.textContent = 'Isi data produk baru';
   setProdTabsLocked(true);
   document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
-  deleteBtn.style.display = 'none';
+  tampilkanHapus(false);
   document.getElementById('toggleAkdBoxBtn').style.display = 'none';
   document.getElementById('akdHint').textContent = 'Simpan produk dulu sebelum mengelola relasi AKD.';
-  if (prefill?.kode_produk) document.getElementById('f_kode_produk').value = prefill.kode_produk;
+  if (prefill?.kode_produk) { document.getElementById('f_kode_produk').value = prefill.kode_produk; renderBrandHint(); }
   if (prefill?.link_v6) document.getElementById('f_link_v6').value = prefill.link_v6;
   if (prefill?.nama_produk) document.getElementById('f_nama_produk').value = prefill.nama_produk;
-  if (prefill?.brand) document.getElementById('f_brand').value = String(prefill.brand).toUpperCase();
+  if (prefill?.brand) setBrandValue(String(prefill.brand).toUpperCase());
   if (prefill?.spesifikasi) document.getElementById('f_spesifikasi').value = prefill.spesifikasi;
   if (prefill?.kode_asli) {
     document.getElementById('f_kode_asli').value = prefill.kode_asli;
@@ -2977,7 +3023,7 @@ async function openEdit(produkId, opts = {}){
   renderProdukPageHead(); // mode halaman: judul dari baris daftar selagi form memuat
   setProdTabsLocked(false);
   document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
-  deleteBtn.style.display = 'inline-flex';
+  tampilkanHapus(false); // muncul lagi setelah data masuk (kode untuk konfirmasi hapus belum ada selagi memuat)
   document.getElementById('toggleAkdBoxBtn').style.display = 'inline-flex';
 
   const { data: p, error } = await sb.from('produk').select('*').eq('id', produkId).single();
@@ -2988,7 +3034,7 @@ async function openEdit(produkId, opts = {}){
   document.getElementById('f_kode_produk').value = p.kode_produk || '';
   document.getElementById('f_nama_produk').value = p.nama_produk || '';
   document.getElementById('f_tipe').value = p.tipe || '';
-  document.getElementById('f_brand').value = p.brand || '';
+  setBrandValue(p.brand || '');
   document.getElementById('f_no_akd').value = p.no_akd || '';
   document.getElementById('f_masa_berlaku').value = p.masa_berlaku || '';
   document.getElementById('f_golongan').value = p.golongan || '';
@@ -3000,9 +3046,10 @@ async function openEdit(produkId, opts = {}){
   renderInaprocIndikator(p.status_inaproc, p.link_v6, !!produkVerifiedIdSet && produkVerifiedIdSet.has(produkId));
   refreshVerifiedRow();
   document.getElementById('f_spesifikasi').value = p.spesifikasi || '';
-  document.getElementById('f_is_active').checked = !!p.is_active;
   document.getElementById('akdSealHolder').innerHTML = sealHtml(p.status_akd, produkId);
   modalSub.textContent = 'Kode: ' + (p.kode_produk || '—');
+  kunciIdentitas(true);       // produk tersimpan: kode & tipe dibaca saja
+  tampilkanHapus(true);
   applySetModalAdjustments(); // tipe sudah terisi di f_tipe; dulu dikerjakan monkey-patch SETELAH semua fetch selesai
   modalGo('edit');            // form sudah berisi data asli -> Simpan/Hapus boleh dipakai
   renderProdukPageHead();     // mode halaman: header dari data asli (harus SESUDAH state 'edit'; selagi 'loading' ia meminjam baris daftar)
@@ -3535,9 +3582,11 @@ async function saveProdukInner(session){
     berat_gram: document.getElementById('f_berat_gram').value || null,
     // status_v6 sengaja TIDAK dikirim (field dibuang dari form, tidak ada pembacanya) -> nilai lama tetap utuh.
     link_v6: document.getElementById('f_link_v6').value || null,
-    spesifikasi: document.getElementById('f_spesifikasi').value || null,
-    is_active: document.getElementById('f_is_active').checked
+    spesifikasi: document.getElementById('f_spesifikasi').value || null
+    // is_active sengaja TIDAK dikirim saat update: kontrolnya sudah dibuang dari form (hanya label, tidak menyaring apa pun),
+    // jadi nilai lama di database tetap utuh. Produk baru diberi true seperti sebelumnya.
   };
+  if (!currentProdukId) payload.is_active = true;
 
   let result;
   if (currentProdukId) {
@@ -3631,7 +3680,8 @@ async function saveProdukInner(session){
   }
   setProdTabsLocked(false);
   document.getElementById('saveBtn').innerHTML = '<i class="ti ti-check"></i> Simpan';
-  deleteBtn.style.display = 'inline-flex';
+  kunciIdentitas(true); // sudah tersimpan: sejak ini kode & tipe terkunci
+  tampilkanHapus(true);
   toggleAkdBoxBtn.style.display = 'inline-flex';
   document.getElementById('akdHint').textContent = '';
   modalTitle.textContent = 'Edit Produk';
@@ -4506,6 +4556,13 @@ const _origLoadProdukRowClick = null; // handled inline below via monkey-patch a
 deleteBtn.addEventListener('click', async () => {
   if (modalState !== 'edit' || !currentProdukId) return;
   if (!guardHapus()) return;
+  const kodeTersimpan = document.getElementById('hapusKodeLabel').textContent;
+  const ketik = document.getElementById('hapusKonfirmasi');
+  if (!kodeTersimpan || ketik.value.trim().toUpperCase() !== kodeTersimpan.toUpperCase()) {
+    showToast('Ketik kode produk persis untuk menguatkan hapus', true);
+    ketik.focus();
+    return;
+  }
   const session = modalSession;
   modalGo('busy'); // kunci Simpan/Hapus/Tutup selama cek relasi + konfirmasi + delete
   try {

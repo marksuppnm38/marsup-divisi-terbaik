@@ -590,6 +590,25 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .prod-modal .fs-link{font-size:12.5px;color:var(--accent-text);text-decoration:none;cursor:pointer}
 .prod-modal .fs-link:hover{text-decoration:underline}
 
+/* Identitas dikunci (produk yang sudah tersimpan): kode & tipe terbaca, tidak bisa diubah dari form. */
+.prod-modal .f input:read-only#f_kode_produk,.prod-modal .f select#f_tipe:disabled{background:var(--surface-2,var(--surface));color:var(--text-secondary);cursor:not-allowed;opacity:1}
+.prod-modal .identitas-kunci{display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:12px;line-height:1.45;color:var(--text-muted)}
+.prod-modal .identitas-kunci .ti{margin-top:1px;flex-shrink:0}
+.prod-modal .brand-hint{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;margin-top:6px;font-size:12px;color:var(--warn-text,#9a5b00)}
+.prod-modal .brand-hint[hidden]{display:none}
+/* Zona berbahaya: jauh dari Simpan, tertutup secara default. */
+.prod-modal .zona-bahaya{margin-top:28px;border:1px solid var(--border);border-radius:10px;background:transparent}
+.prod-modal .zona-bahaya[hidden]{display:none}
+.prod-modal .zona-bahaya>summary{display:flex;align-items:center;gap:8px;padding:11px 14px;font-size:13px;font-weight:600;color:var(--text-secondary);cursor:pointer;list-style:none}
+.prod-modal .zona-bahaya>summary::-webkit-details-marker{display:none}
+.prod-modal .zona-bahaya>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:10px}
+.prod-modal .zona-bahaya[open]{border-color:var(--danger,#c0392b)}
+.prod-modal .zona-bahaya-body{padding:0 14px 14px;font-size:12.5px;color:var(--text-secondary)}
+.prod-modal .zona-bahaya-body p{margin:0 0 12px;line-height:1.5}
+.prod-modal .zona-bahaya-body label{display:block;margin-bottom:6px}
+.prod-modal .zona-bahaya-row{display:flex;flex-wrap:wrap;gap:8px}
+.prod-modal .zona-bahaya-row input{flex:1 1 180px;min-width:0}
+
 /* kolom isian */
 .prod-modal .grid2{gap:16px 14px}
 /* Deskripsi vendor lebih lebar dari Family; Berat cukup sempit karena isinya angka pendek. */

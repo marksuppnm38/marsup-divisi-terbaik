@@ -708,7 +708,6 @@ export const CRUD_PRODUK_MARKUP = `
         <section class="fs">
           <div class="fs-head">
             <h4>Identitas produk</h4><span class="save-mark save-mark-manual" title="Tertulis ke database setelah klik Simpan"><i class="ti ti-device-floppy" aria-hidden="true"></i>Perlu Simpan</span>
-            <label class="fs-toggle" for="f_is_active"><input type="checkbox" id="f_is_active" checked/> Produk aktif</label>
           </div>
           <div class="grid2">
             <div class="f"><label for="f_kode_produk">Kode produk *</label><input type="text" id="f_kode_produk" autocomplete="off" spellcheck="false"/></div>
@@ -721,7 +720,17 @@ export const CRUD_PRODUK_MARKUP = `
               </select>
             </div>
             <div class="f full"><label for="f_nama_produk">Nama produk</label><input type="text" id="f_nama_produk"/></div>
-            <div class="f"><label for="f_brand">Brand</label><input type="text" id="f_brand" list="f_brand_list" autocomplete="off" spellcheck="false" placeholder="mis. ROBUST"/><datalist id="f_brand_list"></datalist></div>
+            <div class="f"><label for="f_brand">Brand</label>
+              <select id="f_brand"><option value="">Tanpa brand</option></select>
+              <div class="brand-hint" id="brandHint" role="status" hidden>
+                <span id="brandHintText"></span>
+                <button type="button" class="btn btn-ghost btn-sm" id="brandHintBtn">Pakai</button>
+              </div>
+            </div>
+          </div>
+          <div class="identitas-kunci" id="identitasKunci" hidden>
+            <i class="ti ti-lock" aria-hidden="true"></i>
+            <span>Kode dan tipe dikunci: keduanya diturunkan dari kode asli dan AKD, dan dipakai sistem lain. Salah input? Hapus produk ini lalu buat ulang.</span>
           </div>
         </section>
 
@@ -822,6 +831,18 @@ export const CRUD_PRODUK_MARKUP = `
             </div>
           </section>
         </div>
+
+        <details class="zona-bahaya" id="zonaBahaya" hidden>
+          <summary><i class="ti ti-alert-triangle" aria-hidden="true"></i> Zona berbahaya</summary>
+          <div class="zona-bahaya-body">
+            <p>Menghapus produk juga menghapus harga, media, relasi AKD, dan komposisi set-nya. Produk yang masih punya riwayat pengajuan INAPROC, Permintaan RS, atau konversi tidak bisa dihapus.</p>
+            <label for="hapusKonfirmasi">Ketik kode produk untuk mengaktifkan hapus: <b id="hapusKodeLabel"></b></label>
+            <div class="zona-bahaya-row">
+              <input type="text" id="hapusKonfirmasi" autocomplete="off" spellcheck="false" placeholder="Kode produk"/>
+              <button class="btn btn-danger-ghost" id="deleteBtn" type="button" style="display:none;"><i class="ti ti-trash"></i> Hapus produk</button>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="prod-tab-panel" id="ptab-akd">
@@ -915,8 +936,7 @@ export const CRUD_PRODUK_MARKUP = `
 
     <div class="modal-actions">
       <span class="prod-dirty" id="prodDirty" role="status" hidden><i class="ti ti-point-filled" aria-hidden="true"></i>Ada perubahan belum disimpan</span>
-      <button class="btn btn-danger-ghost" id="deleteBtn" style="display:none;"><i class="ti ti-trash"></i> Hapus produk</button>
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;gap:8px;margin-left:auto;">
         <button class="btn btn-ghost" id="cancelBtn">Batal</button>
         <button class="btn btn-accent" id="saveBtn"><i class="ti ti-check"></i> Simpan</button>
       </div>
