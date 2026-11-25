@@ -2485,7 +2485,7 @@ function renderChecklistItemHtml(item) {
     const first = item.matched_items[0];
     const namaFirst = namaProdukByKode(first.kode_produk) || first.kode_produk;
     const more = item.matched_items.length - 1;
-    compactMatchedTxt = `<div class="kb-item-compact-matched">${paguChip}→ ${namaFirst}${more > 0 ? ` +${more} lainnya` : ''}${sisaPaguItemHtml(item)}</div>`;
+    compactMatchedTxt = `<div class="kb-item-compact-matched">${paguChip}→ ${namaFirst}${more > 0 ? ` +${more} lainnya` : ''}${sisaPaguItemHtml(item)}${stokWarnIconKb(item)}</div>`;
   } else if (paguChip) {
     compactMatchedTxt = `<div class="kb-item-compact-matched">${paguChip}</div>`; // belum ada produk: chip saja
   }
@@ -2557,9 +2557,9 @@ function renderChecklistItemHtml(item) {
       // tetep bisa diubah/dibatalkan lewat dua link kecil ini.
       bodyHtml = `
         <div class="kb-item-links">
-          ${isDone ? `<a data-action="change" data-id="${item.id}">Ubah produk</a>` : ''}
-          ${isDone && anchorUndo.has(item.id) && (item.matched_items || []).length > 1 ? `<a data-action="anchor-undo" data-id="${item.id}">Kembalikan ke 1 produk</a>` : ''}
-          <a class="kb-batal-link" data-action="undo" data-id="${item.id}">Batal</a>
+          ${isDone ? `<button type="button" class="kb-link-btn" data-action="change" data-id="${item.id}">Ubah produk</button>` : ''}
+          ${isDone && anchorUndo.has(item.id) && (item.matched_items || []).length > 1 ? `<button type="button" class="kb-link-btn" data-action="anchor-undo" data-id="${item.id}">Kembalikan ke 1 produk</button>` : ''}
+          <button type="button" class="kb-link-btn kb-link-undo" data-action="undo" data-id="${item.id}" title="Batalkan status ini, kembali ke belum diproses">Batal</button>
         </div>`;
     }
 
@@ -2594,6 +2594,21 @@ function hargaKebutuhan(item) {
   return { harga, complete };
 }
 
+// Fase 4: peringatan stok di baris ringkas = ikon saja (amber: SET stok belum lengkap, merah: indent); teks lengkap ada di detail.
+// Kondisi normal (cukup) tidak diberi tanda.
+function stokWarnIconKb(item) {
+  let kind = '';
+  for (const l of (item.matched_items || [])) {
+    const c = S.clipboard.find(x => x.kode_produk === l.kode_produk);
+    if (!c || !c.stok_status || c.stok_pending) continue;
+    const st = S.stokStatusUntukQty(c, S.qtyButuh(effQtyAlokasi(item, l, item.matched_items) ?? item.qty_diminta));
+    if (st === 'INDENT') kind = 'indent';
+    else if (st !== 'READY' && c.is_set && kind !== 'indent') kind = kind || 'warn';
+  }
+  if (!kind) return '';
+  const tip = kind === 'indent' ? 'Ada produk indent (stok kurang)' : 'Ada produk SET dengan stok belum lengkap';
+  return `<i class="ti ${kind === 'indent' ? 'ti-clock' : 'ti-alert-triangle'} kb-warn-ic is-${kind}" role="img" title="${tip}" aria-label="${tip}"></i>`;
+}
 // ---- Pagu (Fase 2 redesain panel, 2026-11-25) ----
 // 150000000 -> "150jt", 1500000000 -> "1,5M", 750000 -> "750rb". Satuan sama dengan field Pagu di pencarian (parsePagu),
 // jadi apa yang terbaca di chip bisa diketik balik apa adanya.

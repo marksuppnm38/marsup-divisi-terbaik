@@ -2934,7 +2934,6 @@
 #app-root:not([data-subtab="cari"]) #session-indicator.empty{display:none}
 /* 2026-11-25: #btn-sesi-baru TIDAK lagi disembunyikan di luar Cari Produk — alasan aslinya (sidebar tidak ikut pindah) sudah
    diperbaiki lewat S.switchSubTab yang routed. Pill #session-indicator.empty tetap disembunyikan di luar Cari Produk. */
-#app-root #sesi-list-empty .sesi-empty-cta{margin-top:var(--sp-3, 12px)}
 /* Cari SET: substitusi ukuran + perbandingan dua sisi */
 #app-root .setcari-sub-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);margin:6px 0 2px;cursor:pointer}
 #app-root .setcari-sub-opts{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--text-secondary);margin:2px 0 4px 20px}
@@ -3728,3 +3727,126 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
 @media (prefers-reduced-motion:reduce){
   #app-root .kb-picker-row,#app-root .kb-picker-more-toggle .ti{transition:none}
 }
+
+/* ============================================================
+   HEADER PANEL: menu ⋯ (Fase 4 redesain panel, 2026-11-25)
+   Tombol sekunder (Ubah RS/Sales/PIC, Minta Bantuan, Keluar dari Sesi) pindah ke menu. Menu position:fixed (posisi dari
+   clipboard.js placeClipMore) supaya tidak terpotong overflow strip — pelajaran dari popover lonceng. Selektor sengaja
+   panjang (.clip-more-wrap .clip-more-menu) supaya menang atas aturan tombol strip & ukuran data-clip-size.
+   ============================================================ */
+#app-root .clip-more-wrap{position:relative;flex:0 0 auto}
+#app-root .clip-more-wrap #clip-more-btn.has-flag::after{
+  content:'';position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--warning,#f5a623);
+}
+#app-root .clip-more-wrap #clip-more-btn{position:relative}
+#app-root .clip-more-wrap #clip-more-btn[aria-expanded="true"]{background:var(--surface-2);color:var(--text)}
+#app-root .clip-more-menu{
+  position:fixed;top:48px;left:8px;z-index:1000;box-sizing:border-box;min-width:210px;max-width:calc(100vw - 16px);padding:4px;
+  display:flex;flex-direction:column;gap:1px;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 12px 28px rgba(0,0,0,.22);
+}
+#app-root .clip-more-menu[hidden]{display:none}
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-more-item{
+  box-sizing:border-box;display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-width:0;height:32px;min-height:32px;
+  padding:0 10px;font-family:inherit;font-size:12px;font-weight:500;line-height:1;white-space:nowrap;text-align:left;
+  border:0;border-radius:6px;background:transparent;color:var(--text);cursor:pointer;
+}
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-more-item i{font-size:14px;color:var(--text-secondary)}
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-more-item:hover:not(:disabled),
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-more-item:focus-visible{background:var(--surface-2);color:var(--text)}
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-more-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-more-item:disabled{opacity:.5;cursor:not-allowed}
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-more-item.on{color:var(--warning-text,var(--text))}
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .cheb-label,
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-sesi-label{
+  display:inline;position:static;width:auto;height:auto;overflow:visible;clip:auto;
+}
+#app-root .clip-more-lbl{display:none}
+#app-root .clip-more-menu .clip-more-lbl{display:inline}
+#app-root .clip-more-sep{height:1px;margin:3px 4px;background:var(--border)}
+
+/* Badge tab Kebutuhan RS: angka = belum diproses; semua beres = centang hijau (Fase 4) */
+#app-root .clip-tab-badge.ok{background:var(--success-bg);color:var(--success-text)}
+#app-root .clip-tab-badge.ok i{font-size:11px}
+
+/* ============================================================
+   BARIS CLIPBOARD (Fase 4 redesain panel, 2026-11-25)
+   Baris 1: nama + ikon verified/stok | harga + stepper. Baris 2: kode (mono, muted) + badge qty RS.
+   Tag SET hanya bila clipboard campuran (.is-mixed). Peringatan stok = ikon amber per baris + satu chip di atas daftar.
+   Font mono hanya untuk kode produk.
+   ============================================================ */
+#app-root .clip-item{display:flex;align-items:center;gap:10px}
+#app-root .clip-item-info{flex:1 1 auto;min-width:0}
+#app-root .clip-item-name{display:flex;align-items:center;gap:6px;margin-bottom:1px}
+#app-root .clip-item-name-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#app-root .clip-verified-ic{flex:none;font-size:13px;color:#1d9bf0}
+#app-root .clip-stok-ic{flex:none;font-size:13px;color:var(--text-muted);opacity:.7}
+#app-root .clip-stok-ic.is-warn{color:var(--warning,#f5a623);opacity:1}
+#app-root .clip-stok-ic.is-indent{color:var(--danger);opacity:1}
+#app-root .clip-stok-ic.is-pending{animation:none}
+#app-root .clip-item-meta{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px}
+#app-root .clip-item-tipe{display:none}
+#app-root #clip-list.is-mixed .clip-item-tipe{display:inline}
+#app-root .clip-item-right{flex-direction:row;align-items:center;gap:10px;flex:0 0 auto}
+#app-root .clip-item-right .clip-item-harga{font-size:12px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+#app-root .clip-item-right .clip-item-harga.is-na{color:var(--text-muted);font-weight:400}
+/* chip ringkasan stok */
+#app-root .clip-stok-bar{display:flex;margin:0 0 8px}
+#app-root .clip-stok-bar[hidden]{display:none}
+#app-root .clip-stok-chip{
+  display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;font:inherit;font-size:11.5px;font-weight:500;
+  color:var(--warning-text,var(--text-secondary));background:var(--surface-2);border:1px solid var(--border);border-radius:999px;cursor:pointer;
+}
+#app-root .clip-stok-chip i{font-size:13px;color:var(--warning,#f5a623)}
+#app-root .clip-stok-chip:hover{background:var(--surface-3,var(--surface-2));color:var(--text)}
+#app-root .clip-stok-chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-text)}
+#app-root .clip-stok-chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app-root #clip-list.only-stok-warn .clip-item:not([data-stok="warn"]){display:none}
+/* panel sempit (data-clip-size, bukan lebar layar): harga + stepper pindah ke baris sendiri */
+#app-root[data-clip-size="sm"] .clip-item{flex-wrap:wrap}
+#app-root[data-clip-size="sm"] .clip-item-right{width:100%;justify-content:space-between}
+
+/* ============================================================
+   BARIS KEBUTUHAN RS (Fase 4 redesain panel, 2026-11-25)
+   Peringatan = ikon amber/merah di baris ringkas; "Ubah produk"/"Batal" = tombol dengan target klik layak, Batal netral;
+   label status (.mi) tidak lagi monospace/tebal. Override di sini, pnm-universal.css tidak disentuh.
+   ============================================================ */
+#app-root .kb-warn-ic{margin-left:6px;font-size:13px;vertical-align:-2px}
+#app-root .kb-warn-ic.is-warn{color:var(--warning,#f5a623)}
+#app-root .kb-warn-ic.is-indent{color:var(--danger)}
+#app-root .kb-item-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+#app-root .kb-link-btn{
+  min-height:28px;padding:0 10px;font:inherit;font-size:11.5px;font-weight:500;color:var(--text-secondary);
+  background:transparent;border:1px solid var(--border);border-radius:6px;cursor:pointer;
+}
+#app-root .kb-link-btn:hover{background:var(--surface-2);color:var(--text)}
+#app-root .kb-link-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app-root .kb-link-btn.kb-link-undo{color:var(--text-muted);border-color:transparent}
+#app-root .kb-link-btn.kb-link-undo:hover{border-color:var(--border);color:var(--text-secondary)}
+/* label status: font biasa, berat normal (mono hanya untuk kode produk) */
+#app-root .mi span{font-family:inherit}
+#app-root .mi.stok-ready span,
+#app-root .mi.stok-indent span,
+#app-root .mi.stok-warn span{font-weight:400}
+
+/* Item "Hapus semua" di menu ⋯ (aksi destruktif, merah hanya saat disorot) */
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-more-item.is-danger{color:var(--danger);text-decoration:none}
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-more-item.is-danger i{color:var(--danger)}
+#app-root .clip-strip-actions .clip-more-wrap .clip-more-menu .clip-more-item.is-danger:hover:not(:disabled){background:var(--danger-bg,var(--surface-2));color:var(--danger)}
+
+/* ============================================================
+   FOOTER (Fase 4 redesain panel, 2026-11-25)
+   Satu CTA utama (Record Konversi, penuh lebar, di atas); Export ke Excel -> Simpan ke Drive jadi baris sekunder yang lebih tipis.
+   Hanya CSS: ID & state (.is-done dst, dikelola convFlow.js) tidak berubah. Hapus semua pindah ke menu ⋯ di header (tetap berkonfirmasi).
+   ============================================================ */
+#app-root .clip-foot-actions{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:6px}
+#app-root .clip-foot-actions .btn-record{order:-1;flex:0 0 auto;width:100%;height:40px}
+#app-root .clip-foot-actions .conv-steps{order:1;width:100%;flex:0 0 auto;gap:6px}
+#app-root .clip-foot-actions .conv-steps > .conv-step,
+#app-root .clip-foot-actions .conv-step-row{flex:1 1 0}
+#app-root .clip-foot-actions .conv-step-row{display:flex;gap:4px}
+#app-root .clip-foot-actions .conv-step-row > .conv-step{flex:1 1 auto}
+#app-root .clip-foot-actions .conv-step{height:30px;min-height:30px;padding:0 8px;font-size:11.5px;justify-content:center}
+#app-root .clip-foot-actions .conv-step:not(.is-done):not(.is-loading):not(.is-nudge){background:transparent;border-color:var(--border);color:var(--text-secondary)}
+#app-root .clip-foot-actions .conv-step-connector{width:4px}
+#app-root .clip-foot-actions .conv-step-open{width:30px;height:30px}

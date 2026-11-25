@@ -199,6 +199,50 @@ function updateEndSesiBtnState() {
 }
 S.updateEndSesiBtnState = updateEndSesiBtnState;
 
+// Menu ⋯ di header panel (Fase 4): tombol sekunder dipindah ke sini. Handler tombol-tombolnya tetap yang lama (ID sama);
+// menu cuma membuka/menutup dan menutup diri setelah satu item diklik. position:fixed + dijepit ke viewport (lihat popover lonceng).
+const clipMoreBtn = document.getElementById('clip-more-btn');
+const clipMoreMenu = document.getElementById('clip-more-menu');
+function placeClipMore() {
+  if (!clipMoreBtn || !clipMoreMenu || clipMoreMenu.hidden) return;
+  const M = 8, r = clipMoreBtn.getBoundingClientRect();
+  const w = Math.min(Math.max(clipMoreMenu.offsetWidth, 210), window.innerWidth - M * 2);
+  clipMoreMenu.style.left = Math.max(M, Math.min(r.right - w, window.innerWidth - w - M)) + 'px';
+  clipMoreMenu.style.top = (r.bottom + 6) + 'px';
+}
+function setClipMoreOpen(open, refocus) {
+  if (!clipMoreBtn || !clipMoreMenu) return;
+  clipMoreMenu.hidden = !open;
+  clipMoreBtn.setAttribute('aria-expanded', String(open));
+  if (open) { placeClipMore(); (clipMoreMenu.querySelector('.clip-more-item:not(:disabled)') || clipMoreBtn).focus(); }
+  else if (refocus) clipMoreBtn.focus();
+}
+S.setClipMoreOpen = setClipMoreOpen;
+if (clipMoreBtn && clipMoreMenu) {
+  clipMoreBtn.addEventListener('click', (e) => { e.stopPropagation(); setClipMoreOpen(clipMoreMenu.hidden); });
+  clipMoreMenu.addEventListener('click', (e) => { if (e.target.closest('.clip-more-item')) setClipMoreOpen(false); });
+  document.addEventListener('click', (e) => {
+    if (!clipMoreMenu.hidden && !clipMoreMenu.contains(e.target) && !clipMoreBtn.contains(e.target)) setClipMoreOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (clipMoreMenu.hidden) return;
+    if (e.key === 'Escape') { e.preventDefault(); setClipMoreOpen(false, true); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const items = [...clipMoreMenu.querySelectorAll('.clip-more-item:not(:disabled)')];
+    if (!items.length) return;
+    e.preventDefault();
+    const i = items.indexOf(document.activeElement);
+    items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+  });
+  window.addEventListener('resize', placeClipMore);
+  document.addEventListener('scroll', placeClipMore, true);
+}
+const clipStokChip = document.getElementById('clip-stok-chip');
+if (clipStokChip) clipStokChip.addEventListener('click', () => {
+  const on = S.clipList.classList.toggle('only-stok-warn');
+  clipStokChip.setAttribute('aria-pressed', String(on));
+});
+
 let sesiSavedFadeTimer = null;
 function setSesiSavedStatus(text, isError) {
   sesiSaveStatus.textContent = text || '';
@@ -616,6 +660,7 @@ S.handleEditingStopBroadcast = handleEditingStopBroadcast;
 
 function renderButuhBantuanBtn() {
   btnButuhBantuan.classList.toggle('on', S.currentButuhBantuan);
+  if (clipMoreBtn) clipMoreBtn.classList.toggle('has-flag', !!S.currentButuhBantuan);
   btnButuhBantuan.innerHTML = '<i class="ti ti-lifebuoy"></i><span class="cheb-label">' + (S.currentButuhBantuan ? 'Butuh Bantuan' : 'Minta Bantuan') + '</span>';
 }
 S.renderButuhBantuanBtn = renderButuhBantuanBtn;
@@ -667,7 +712,6 @@ async function startNewSesiInner() {
 
   btnSesiBaru.disabled = true;
   btnClipIdleStart.disabled = true;
-  btnSesiEmptyStart.disabled = true;
   try {
     await ensureSesi();
     updateEndSesiBtnState();
@@ -679,15 +723,11 @@ async function startNewSesiInner() {
   } finally {
     btnSesiBaru.disabled = false;
     btnClipIdleStart.disabled = false;
-    btnSesiEmptyStart.disabled = false;
   }
 }
 btnSesiBaru.addEventListener('click', startNewSesi);
 const btnClipIdleStart = document.getElementById('btn-clip-idle-start');
 btnClipIdleStart.addEventListener('click', startNewSesi);
-// CTA di empty state Konversi Berjalan: handler SAMA (startNewSesi), cuma ikut di-disable selagi sesi dibuat.
-const btnSesiEmptyStart = document.getElementById('btn-sesi-empty-start');
-btnSesiEmptyStart.addEventListener('click', startNewSesi);
 
 // Pintasan keyboard: Alt+Shift+M = Mulai Sesi Baru (M = "Mulai"; sama persis dengan klik tombolnya, termasuk konfirmasi kalau
 // sesi yang lagi dibuka ada isinya). Lewat S.onGlobal -> otomatis lepas saat pindah dari modul Konversian.
@@ -836,9 +876,15 @@ function updateKbTabState() {
   if (S.clipHeader) S.clipHeader.classList.toggle('pr-awaiting', !hasChecklist);
   if (hasChecklist) {
     const pending = S.checklistItems.filter(i => i.status === 'PENDING').length;
-    S.clipTabBadgeKb.textContent = pending;
+    // Fase 4: angka = kebutuhan yang BELUM diproses (PENDING), bukan jumlah kebutuhan. Semua beres = centang hijau, bukan "0".
+    const total = S.checklistItems.length;
+    S.clipTabBadgeKb.innerHTML = pending > 0 ? String(pending) : '<i class="ti ti-check" aria-hidden="true"></i>';
     S.clipTabBadgeKb.style.display = 'inline-block';
     S.clipTabBadgeKb.classList.toggle('warn', pending > 0);
+    S.clipTabBadgeKb.classList.toggle('ok', pending === 0);
+    const tip = pending > 0 ? `${pending} dari ${total} kebutuhan belum diproses` : `Semua ${total} kebutuhan sudah diproses`;
+    S.clipTabBadgeKb.title = tip;
+    S.clipTabBadgeKb.setAttribute('aria-label', tip);
   } else {
     S.clipTabBadgeKb.style.display = 'none';
   }
@@ -1244,6 +1290,19 @@ function updateClipAggregates() {
   } else {
     S.clipTotalHarga.textContent = rupiah(totalHargaClip) + (adaHargaKosong ? ' +' : '');
   }
+  // Fase 4: tag SET/tipe hanya tampil bila isi clipboard campuran; chip "N stok belum lengkap" menggantikan label berulang di baris.
+  const adaSet = S.clipboard.some(c => c.is_set), adaNon = S.clipboard.some(c => !c.is_set);
+  S.clipList.classList.toggle('is-mixed', adaSet && adaNon);
+  const nWarn = S.clipboard.filter(c => stokKelas(c) === 'warn').length;
+  const stokBar = document.getElementById('clip-stok-bar');
+  if (stokBar) {
+    stokBar.hidden = nWarn === 0;
+    document.getElementById('clip-stok-chip-txt').textContent = `${nWarn} stok belum lengkap`;
+    if (nWarn === 0 && S.clipList.classList.contains('only-stok-warn')) {
+      S.clipList.classList.remove('only-stok-warn');
+      document.getElementById('clip-stok-chip').setAttribute('aria-pressed', 'false');
+    }
+  }
   updateClipSummaryStrip();
   if (typeof S.updateSetcariSourceCount === 'function') S.updateSetcariSourceCount();
   if (n > 0 && typeof S.checklistPagu !== 'undefined' && S.checklistPagu != null) {
@@ -1263,6 +1322,34 @@ function updateClipAggregates() {
   }
 }
 S.updateClipAggregates = updateClipAggregates;
+
+// Fase 4: status stok satu item clipboard sebagai kelas tunggal — dipakai ikon di baris DAN hitungan chip di atas daftar.
+// 'warn' = produk SET yang stoknya belum lengkap (sama dengan cabang "Stok blm lengkap" di stokBadgeHtml).
+function stokKelas(item) {
+  if (!item.stok_status) return '';
+  if (item.stok_pending) return 'pending';
+  const st = S.stokStatusUntukQty(item, S.qtyButuh(item.qty));
+  if (st === 'READY') return 'ready';
+  if (st === 'INDENT') return 'indent';
+  return item.is_set ? 'warn' : 'unknown';
+}
+// Ikon saja (tanpa teks mono); rincian ada di tooltip. Kondisi normal sengaja redup, hanya anomali yang berwarna.
+function stokIkonHtml(item) {
+  const k = stokKelas(item);
+  if (!k) return '';
+  const hasStok = item.stok_qty != null && item.stok_qty !== '';
+  const detail = hasStok ? (item.is_set ? `bisa rakit ${item.stok_qty} set` : `${item.stok_qty} pcs`) : '';
+  const need = S.qtyButuh(item.qty);
+  const info = {
+    pending: ['ti-loader-2', 'Cek stok…'],
+    ready: ['ti-circle-check', 'Stok cukup'],
+    indent: ['ti-clock', 'Indent'],
+    warn: ['ti-alert-triangle', item.stok_komponen_total ? `Stok komponen ${item.stok_komponen_terdata || 0}/${item.stok_komponen_total}` : 'Stok belum lengkap'],
+    unknown: ['ti-help', 'Stok tidak diketahui']
+  }[k];
+  const tip = [info[1], detail, need > 1 ? `butuh ${need}` : ''].filter(Boolean).join(' · ');
+  return `<i class="ti ${info[0]} clip-stok-ic is-${k}" role="img" title="${S.escapeHtmlAttr(tip)}" aria-label="${S.escapeHtmlAttr(tip)}"></i>`;
+}
 
 // Template satu baris clipboard — dipakai render awal (updateClipboard) MAUPUN
 // patch realtime (insertClipItem/patchClipItem), biar markup-nya gak dobel definisi.
@@ -1292,19 +1379,17 @@ function renderClipItemHtml(item) {
       ? `<span class="clip-rs-qty" title="Qty sesuai Permintaan RS">RS ${rsQty}</span>`
       : `<span class="clip-rs-qty override" title="Qty diubah manual. Permintaan RS: ${rsQty}">manual · RS ${rsQty}<button type="button" class="clip-rs-reset" data-kode="${kodeEsc}" data-qty="${rsQty}" title="Kembalikan ke qty Permintaan RS (${rsQty})" aria-label="Kembalikan ke qty Permintaan RS">↺</button></span>`;
   }
-  return `<div class="clip-item" data-kode="${kodeEsc}">
+  return `<div class="clip-item" data-kode="${kodeEsc}" data-stok="${stokKelas(item)}">
       <div class="clip-item-info">
-        <div class="clip-item-name">${S.escapeHtmlAttr(item.nama_produk)}</div>
+        <div class="clip-item-name"><span class="clip-item-name-t">${S.escapeHtmlAttr(item.nama_produk)}</span>${S.isVerified(item) ? '<i class="ti ti-rosette-discount-check-filled clip-verified-ic" title="Verified Product — tayang di INAPROC" role="img" aria-label="Verified Product"></i>' : ''}${stokIkonHtml(item)}</div>
         <div class="clip-item-meta">
           <span class="clip-item-code">${kodeEsc}</span>
-          ${S.isVerified(item) ? '<i class="ti ti-rosette-discount-check-filled" style="font-size:13px;color:#1d9bf0" title="Verified Product — tayang di INAPROC"></i>' : ''}
           ${rsBadge}
-          ${item.stok_status ? S.stokBadgeHtml(item, isSet, item.qty) : ''}
           <span class="clip-item-tipe" style="${tipeColor}">${tipeEsc}</span>
-          ${hargaTampil?`<span class="clip-item-harga">${rupiah(totalHarga)}</span>`:'<span class="clip-item-code" style="color:var(--text-muted)">Harga N/A</span>'}
         </div>
       </div>
       <div class="clip-item-right">
+        ${hargaTampil ? `<span class="clip-item-harga">${rupiah(totalHarga)}</span>` : '<span class="clip-item-harga is-na" title="Harga belum tersedia">N/A</span>'}
         <div class="qty-ctrl">
           <button class="qty-btn" data-kode="${kodeEsc}" data-d="-1" title="Kurangi qty" aria-label="Kurangi qty">−</button>
           <input

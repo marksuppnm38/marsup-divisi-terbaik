@@ -177,8 +177,7 @@ export const KONVERSIAN_MARKUP = `
       <div id="sesi-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
       <div class="clip-empty" id="sesi-list-empty" style="display:none">
         <i class="ti ti-list-details"></i>
-        <p>Belum ada konversi yang berjalan.<br>Sesi baru otomatis muncul di sini.</p>
-        <button class="pr-add-clip-btn sesi-empty-cta" id="btn-sesi-empty-start" type="button" title="Mulai Sesi Baru (Alt+Shift+M)" aria-keyshortcuts="Alt+Shift+M"><i class="ti ti-plus"></i> Mulai Sesi Baru</button>
+        <p>Belum ada konversi yang berjalan.<br>Klik “Mulai Sesi Baru” di atas, sesinya muncul di sini.</p>
       </div>
       <!-- Kotak "Perlu tindakan" (auto-record.js): sembunyi sendiri kalau gak ada yang perlu dikerjain. -->
       <div id="todo-inbox" style="display:none"></div>
@@ -469,23 +468,31 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
               </div>
             </div>
           </div>
-          <button class="clip-header-edit-btn" id="btn-butuh-bantuan" type="button" title="Tandai sesi ini butuh bantuan tim"><i class="ti ti-lifebuoy"></i><span class="cheb-label">Minta Bantuan</span></button>
-          <!-- Dua cara mengakhiri sesi hidup BERSAMA di satu grup, sama-sama kelihatan, beda konsekuensi:
-               Keluar dari Sesi  = cuma menutup tampilan, sesi tetap berjalan (murah, bisa dibuka lagi)
-               Selesaikan Sesi   = menutup sesi, pindah dari Konversi Berjalan (data tetap tersimpan)
-               Dulu Selesaikan kecil di sini sedangkan Keluar tersembunyi di menu "⋯" footer, jadi orang
-               harus menebak di mana yang satunya. ID & handler (clipboard.js) sama persis. -->
+          <!-- Fase 4: yang selalu kelihatan cuma Selesaikan Sesi + menu ⋯ + tutup. Minta Bantuan, Ubah RS/Sales/PIC, dan
+               Keluar dari Sesi pindah ke menu ⋯ (ID & handler tetap, cuma dipindah DOM-nya). Keluar & Selesaikan tidak lagi bersebelahan. -->
           <div class="clip-sesi-exit" role="group" aria-label="Akhiri sesi">
-            <button class="btn-leave-sesi clip-sesi-btn" id="btn-leave-sesi" type="button" disabled title="Keluar dari Sesi — tutup tampilan ini saja. Sesi tetap berjalan dan bisa dibuka lagi dari Konversi Berjalan.">
-              <i class="ti ti-logout"></i><span class="clip-sesi-label">Keluar dari Sesi</span>
-            </button>
             <button class="btn-end-sesi clip-sesi-btn" id="btn-end-sesi" type="button" disabled title="Selesaikan Sesi — tutup sesi ini tanpa Record. Data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan.">
               <i class="ti ti-square-check"></i><span class="clip-sesi-label">Selesaikan Sesi</span>
             </button>
           </div>
-          <button class="clip-header-icon-btn" id="clip-header-toggle" type="button" title="Ubah RS / Sales / PIC">
-            <i class="ti ti-pencil" id="clip-header-toggle-icon"></i>
-          </button>
+          <div class="clip-more-wrap" id="clip-more-wrap">
+            <button class="clip-header-icon-btn" id="clip-more-btn" type="button" title="Menu sesi" aria-label="Menu sesi" aria-haspopup="menu" aria-expanded="false" aria-controls="clip-more-menu">
+              <i class="ti ti-dots"></i>
+            </button>
+            <div class="clip-more-menu" id="clip-more-menu" role="menu" aria-label="Menu sesi" hidden>
+              <button class="clip-header-icon-btn clip-more-item" id="clip-header-toggle" type="button" role="menuitem" title="Ubah RS / Sales / PIC">
+                <i class="ti ti-pencil" id="clip-header-toggle-icon"></i><span class="clip-more-lbl">Ubah RS / Sales / PIC</span>
+              </button>
+              <button class="clip-header-edit-btn clip-more-item" id="btn-butuh-bantuan" type="button" role="menuitem" title="Tandai sesi ini butuh bantuan tim"><i class="ti ti-lifebuoy"></i><span class="cheb-label">Minta Bantuan</span></button>
+              <div class="clip-more-sep" role="separator"></div>
+              <button class="btn-leave-sesi clip-sesi-btn clip-more-item" id="btn-leave-sesi" type="button" role="menuitem" disabled title="Keluar dari Sesi — tutup tampilan ini saja. Sesi tetap berjalan dan bisa dibuka lagi dari Konversi Berjalan.">
+                <i class="ti ti-logout"></i><span class="clip-sesi-label">Keluar dari Sesi</span>
+              </button>
+              <div class="clip-more-sep" role="separator"></div>
+              <!-- Hapus semua dipindah dari footer (aksi destruktif, jarang): tetap lewat konfirmasi modal di handler clipboard.js -->
+              <button class="btn-clear-all clip-more-item is-danger" id="btn-clear-all" type="button" role="menuitem"><i class="ti ti-trash" aria-hidden="true"></i><span>Hapus semua produk di Clipboard</span></button>
+            </div>
+          </div>
           <button class="clip-header-icon-btn" id="clip-close-btn" type="button" title="Tutup clipboard" aria-label="Tutup clipboard">
             <i class="ti ti-x"></i>
           </button>
@@ -590,6 +597,10 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
           <div class="clip-empty" id="clip-empty">
             <i class="ti ti-clipboard"></i>
             <p>Belum ada produk.<br>Klik hasil pencarian untuk menambahkan.</p>
+          </div>
+          <!-- Fase 4: satu chip ringkas menggantikan "Stok blm lengkap" yang berulang di tiap baris. Klik = saring ke yang bermasalah. -->
+          <div class="clip-stok-bar" id="clip-stok-bar" hidden>
+            <button type="button" class="clip-stok-chip" id="clip-stok-chip" aria-pressed="false"><i class="ti ti-alert-triangle" aria-hidden="true"></i><span id="clip-stok-chip-txt"></span></button>
           </div>
           <div id="clip-list"></div>
         </div>
@@ -704,7 +715,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
           <span>Total: <span id="clip-total">0</span> produk dipilih</span>
           <span id="clip-total-harga"></span>
         </div>
-        <button class="btn-clear-all" id="btn-clear-all">Hapus semua</button>
     <div class="clip-output-mode-row" id="clip-output-mode-row" title="Nentuin harga & kolom link e-Katalog yang dipakai di Clipboard, Record, Export Excel, dan SPH">
       <span class="clip-output-mode-label"><i class="ti ti-receipt"></i> Mode harga output:</span>
       <div class="clip-output-mode-toggle">
