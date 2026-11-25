@@ -36,6 +36,7 @@ import { KONVERSIAN_MARKUP } from './markup.js';
 import { installSesiMachine } from './sesi-machine.js';
 import { installRealtime } from './realtime.js';
 import { installClipboard } from './clipboard.js';
+import { installProdukKatalog } from './produk-katalog.js';
 import { installSearch } from './search.js';
 import { installConverter } from './converter.js';
 import { installShortcuts, applyShortcutHints, toggleCheatSheet, isTyping } from '../../../shared/shortcuts.js';
@@ -2657,8 +2658,9 @@ lampiranSaveBtn.addEventListener('click', async () => {
 S.clipboard = [];
 S.acItems = [], S.acIndex = -1, S.onlyAkd = false, S.selectedTipe = null, S.acTimer = null;
 S.lastResults = [];
-// Cache produk untuk jalur NON-pencarian (auto-pasang Auto-Match, Cari SET, "Pakai" saran Dictionary): addToClip butuh baris
-// produk lengkap, tapi baris itu BUKAN hasil pencarian staff. Dulu jalur ini menyelipkannya ke S.lastResults, sehingga produk
+// Cache produk untuk jalur NON-pencarian (auto-pasang Auto-Match, Cari SET, "Pakai" saran Dictionary): Clipboard butuh baris
+// produk lengkap, tapi baris itu BUKAN hasil pencarian staff. JANGAN diakses langsung — baca lewat S.getProduk(), tulis lewat
+// S.simpanProduk(), muat+pasang lewat S.pasangKeClipboard() (produk-katalog.js). Dulu jalur ini menyelipkannya ke S.lastResults, sehingga produk
 // yang dipasang otomatis ikut tampil sebagai kartu di panel Cari Produk (bahkan saat kolom cari kosong, dan tetap ada setelah
 // sesi dihapus). lastResults = HANYA apa yang ditampilkan panel pencarian; produkLookup = tempat cari data, tidak pernah dirender.
 S.produkLookup = new Map();
@@ -3163,6 +3165,7 @@ S.convRows = [];
 
   installSesiMachine(S); // WAJIB sebelum installClipboard: S.currentSesiId jadi accessor milik mesin ini
   installClipboard(S);
+  installProdukKatalog(S); // satu pintu baca/tulis baris produk + pasang ke Clipboard; dipakai Auto-Match, Cari SET, saran Dictionary
   installSearch(S); // mesin pencarian produk (dulu numpang di clipboard.js) — cuma definisi + wiring, gak ada kerja saat install
   installConverter(S); // pintu Cari Cepat/Konversi + exact-by-kode + proses Converter (dulu search.js)
   installConverterBulk(S); // resolver bulk + pemilih varian + Copy Tabel (butuh S.matchOneKode dari converter.js)

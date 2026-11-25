@@ -432,9 +432,8 @@ function renderSetcariResults(rows, kodeList, useSub) {
   });
 }
 
-// Tambah SET hasil pencarian langsung ke Clipboard tanpa harus balik ke tab
-// pencarian produk dulu — cari by kode_produk persis lewat
-// findProdukByKodeExact() (shared sama modul Converter, lihat komentarnya).
+// Tombol "Tambah ke Clipboard" di kartu SET: cangkang UI saja (disabled/teks tombol + satu toast). Memuat produk dan
+// memasangnya ke Clipboard dikerjakan S.pasangKeClipboard() (produk-katalog.js), yang juga dipakai Auto-Match.
 async function addSetKodeToClip(kode, btn) {
   if (!kode) return;
   if (S.clipboard.some(c => c.kode_produk === kode)) {
@@ -445,13 +444,8 @@ async function addSetKodeToClip(kode, btn) {
   const originalHtml = btn.innerHTML;
   btn.textContent = 'Menambahkan…';
   try {
-    const { produk: match, errMsg } = await S.findProdukByKodeExact(kode);
-    if (errMsg) throw new Error(errMsg);
-    if (!match) throw new Error('SET ini tidak ada di katalog.');
-    if (!S.isProdukFirm(match) && !S.modeSwastaOutput) throw new Error('SET ini belum firm (link V6 masih ada catatan), jadi tidak dipakai untuk konversi.');
-    S.produkLookup.set(kode, match); // bukan ke S.lastResults: produk ini tidak dicari staff, jangan muncul di panel Cari Produk
-    const hasil = S.addToClip(kode);
-    if (hasil === 'missing') throw new Error('Produk tidak bisa dimuat ke Clipboard.');
+    const hasil = await S.pasangKeClipboard(kode);
+    if (!hasil.ok) throw new Error(S.ringkasGagalClip([hasil]));
     S.showToast(`${kode} ditambahkan ke Clipboard`);
     btn.innerHTML = '<i class="ti ti-check"></i> Ditambahkan';
   } catch (err) {
@@ -460,7 +454,6 @@ async function addSetKodeToClip(kode, btn) {
     btn.disabled = false;
   }
 }
-S.addSetKodeToClip = addSetKodeToClip;
 
 const STATUS_LABEL = {
   persis:        { ico: '✓', txt: 'Persis' },

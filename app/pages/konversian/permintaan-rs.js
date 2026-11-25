@@ -765,14 +765,10 @@ function anchorPanelHtml(item) {
     </div>
   </div>`;
 }
-// Tambah ke Clipboard (berurutan, sama dengan "Pakai N yang cocok"); yang gagal dilewati, errornya sudah di-toast oleh addSetKodeToClip.
-async function pastikanDiClipboard(kodes) {
-  const ok = [];
-  for (const kode of kodes) {
-    if (!amInClip(kode)) await S.addSetKodeToClip(kode, document.createElement('button'));
-    if (amInClip(kode)) ok.push(kode);
-  }
-  return ok;
+// Tambah ke Clipboard (berurutan, sama dengan "Pakai N yang cocok"); yang gagal dilewati. TIDAK ada toast per produk:
+// pemanggil merangkum satu toast dari `gagal` lewat S.ringkasGagalClip(). Mengembalikan { ok: [kode], gagal: [hasil] }.
+function pastikanDiClipboard(kodes) {
+  return S.pasangBanyakKeClipboard(kodes);
 }
 
 // "Jenis" = konteks permintaan (SET / INSTRUMENT / UNIT), diisi staff saat memasukkan permintaan supaya resolver
@@ -1603,16 +1599,17 @@ async function applyAllAuto() {
   amApplying = true;
   amVia = 'bulk';
   renderAmBar();
-  let ok = 0, gagal = 0;
+  let ok = 0;
+  const gagalList = []; // hasil gagal per item → satu toast ringkasan di akhir (bukan satu toast error per item)
   try {
     for (const { item, m } of picks) {
       if (item.status !== 'PENDING') continue;
       try {
-        if (!amInClip(m.kode)) await S.addSetKodeToClip(m.kode, document.createElement('button'));
-        if (!amInClip(m.kode)) { gagal++; continue; }
+        const h = await S.pasangKeClipboard(m.kode);
+        if (!h.ok) { gagalList.push(h); continue; }
         await markItemTerpenuhiWithSingleProduk(item, m.kode);
-        if (item.status === 'TERPENUHI') { ok++; amMap.delete(item.id); } else gagal++;
-      } catch (err) { console.error('[auto-match] gagal pasang', m.kode, err); gagal++; }
+        if (item.status === 'TERPENUHI') { ok++; amMap.delete(item.id); } else gagalList.push({ ok: false, status: 'gagal_pasang', kode: m.kode });
+      } catch (err) { console.error('[auto-match] gagal pasang', m.kode, err); gagalList.push({ ok: false, status: 'galat', kode: m.kode, detail: err && err.message }); }
     }
   } finally {
     amApplying = false;
@@ -1623,8 +1620,9 @@ async function applyAllAuto() {
     renderChecklist();
     if (next && typeof S.maybeFetchSuggestionForExpanded === 'function') S.maybeFetchSuggestionForExpanded();
   }
+  const gagal = gagalList.length;
   S.showToast(`Auto-Match: ${ok} item terpasang`, ok ? 'success' : 'error',
-    gagal ? { detail: `${gagal} item tidak terpasang — pilih manual di Kebutuhan RS.` } : undefined);
+    gagal ? { detail: `${gagal} item tidak terpasang (${S.ringkasGagalClip(gagalList)}) — pilih manual di Kebutuhan RS.` } : undefined);
 }
 
 if (amBarEl) amBarEl.addEventListener('click', (e) => {
@@ -3113,13 +3111,13 @@ S.kbList.addEventListener('click', async (e) => {
     const kodes = [c.anchor, ...c.hasil.opsi.map(o => o.kode_produk)].filter(k => c.pilih.has(k));
     if (kodes.length < 2) return;
     btn.disabled = true;
-    const okKodes = await pastikanDiClipboard(kodes);
+    const { ok: okKodes, gagal } = await pastikanDiClipboard(kodes);
     if (okKodes.length < 2) {
       btn.disabled = false;
-      S.showToast('Opsi tidak bisa dipasang', 'warning', { detail: 'Kurang dari 2 produk yang berhasil masuk Clipboard.' });
+      S.showToast('Opsi tidak bisa dipasang', 'warning', { detail: `Kurang dari 2 produk yang berhasil masuk Clipboard${gagal.length ? ` — ${S.ringkasGagalClip(gagal)}` : ''}.` });
       return;
     }
-    if (okKodes.length < kodes.length) S.showToast(`${kodes.length - okKodes.length} produk gagal ditambahkan`, 'warning', { detail: 'Sisanya tetap dipasang.' });
+    if (gagal.length) S.showToast(`${gagal.length} produk gagal ditambahkan`, 'warning', { detail: `${S.ringkasGagalClip(gagal)}. Sisanya tetap dipasang.` });
     anchorUndo.set(itemId, c.anchor);
     anchorOpen.delete(itemId);
     anchorCache.delete(itemId);
@@ -3142,26 +3140,25 @@ S.kbList.addEventListener('click', async (e) => {
     const kodes = m && m.hasil.bundle ? m.hasil.bundle.map(b => b.kode) : [];
     if (kodes.length < 2) return;
     btn.disabled = true;
-    const okKodes = [];
-    for (const kode of kodes) {
-      if (!amInClip(kode)) await S.addSetKodeToClip(kode, document.createElement('button'));
-      if (amInClip(kode)) okKodes.push(kode);
-    }
-    if (!okKodes.length) { btn.disabled = false; return; } // addSetKodeToClip sudah menampilkan toast errornya
-    if (okKodes.length < kodes.length) S.showToast(`${kodes.length - okKodes.length} produk bundle gagal ditambahkan`, 'warning', { detail: 'Sisanya tetap dipasang.' });
+    const { ok: okKodes, gagal } = await pastikanDiClipboard(kodes);
+    if (!okKodes.length) { btn.disabled = false; S.showToast('Bundle tidak bisa dipasang', 'error', { detail: S.ringkasGagalClip(gagal) }); return; }
+    if (gagal.length) S.showToast(`${gagal.length} produk bundle gagal ditambahkan`, 'warning', { detail: `${S.ringkasGagalClip(gagal)}. Sisanya tetap dipasang.` });
     await markItemTerpenuhiWithProduk(item, okKodes);
     return;
   }
 
   if (action === 'attach-suggestion') {
     // Sama kayak "Pakai", tapi produknya belum ada di Clipboard — tambahin dulu
-    // (reuse addSetKodeToClip yang udah dipakai tab Cari SET buat kasus yang
-    // sama persis: cari exact by kode_produk, masukin ke lastResults, addToClip
-    // — fungsi itu juga yang ngurus disabled/text state tombolnya sendiri),
-    // baru abis itu jalanin fast-path yang sama kayak "Pakai".
+    // lewat S.pasangKeClipboard (produk-katalog.js: muat exact by kode_produk kalau belum ada di
+    // katalog, lalu masukin ke Clipboard), baru abis itu jalanin fast-path yang sama kayak "Pakai".
     const kode = el.dataset.kode;
-    await S.addSetKodeToClip(kode, btn);
-    if (!S.clipboard.some(c => c.kode_produk === kode)) return; // gagal, addSetKodeToClip udah nampilin toast errornya
+    btn.disabled = true;
+    const hasil = await S.pasangKeClipboard(kode);
+    if (!hasil.ok) {
+      btn.disabled = false;
+      S.showToast('Gagal menambahkan produk', 'error', { detail: S.ringkasGagalClip([hasil]) });
+      return;
+    }
     amWarnBelumSiap(item, kode);
     await S.markItemTerpenuhiWithSingleProduk(item, kode);
     return;

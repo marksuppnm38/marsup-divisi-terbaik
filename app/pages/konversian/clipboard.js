@@ -1047,23 +1047,20 @@ async function handleClipToggleClick(kode, action) {
 
 S.handleClipToggleClick = handleClipToggleClick; // dipakai tombol "Tambahkan ke Konversi" di kartu hasil (search.js)
 
-// opts.quiet: tanpa toast per produk (dipakai tambah-banyak, yang merangkum hasilnya sendiri).
-// opts.noToggle: produk yang sudah ada di clipboard DILEWATI, bukan dikeluarkan.
-// Mengembalikan 'added' | 'removed' | 'dup' | 'firm' | 'stok' | 'missing' (pemanggil lama mengabaikannya).
-function addToClip(kode, opts) {
-  const quiet = !!(opts && opts.quiet);
-  const r = S.lastResults.find(x => x.kode_produk === kode);
-  if (!r) return 'missing';
+// MUTASI Clipboard: menerima BARIS PRODUK (bukan kode), tanpa lookup, tanpa toast, tanpa DOM selain render ulang.
+// Dari mana barisnya berasal (hasil cari / katalog) urusan pemanggil — lihat produk-katalog.js (S.getProduk, S.muatProduk).
+// opts.noToggle: produk yang sudah ada di clipboard DILEWATI ('dup'), bukan dikeluarkan.
+// Mengembalikan 'added' | 'removed' | 'dup' | 'firm' | 'stok'.
+function tambahProdukKeClip(r, opts) {
   if (S.clipboard.some(c => c.kode_produk === r.kode_produk)) {
     if (opts && opts.noToggle) return 'dup';
     removeFromClip(r.kode_produk);
     return 'removed';
   }
-  // Status stok masih di-fetch di belakang (lihat runSearch) — item ini bakal ke-snapshot dengan
-  // stok kosong dan ikut ke-persist ke sesi + Export. Tolak sementara; pending otomatis lepas
-  // begitu stok datang atau timeout (jadi gak bisa nyangkut selamanya di koneksi jelek).
-  if (!S.modeSwasta && !S.isProdukFirm(r)) { if (!quiet && S.showToast) S.showToast('Produk belum firm', 'warning', { detail: 'Link V6 masih ada catatan, jadi tidak dipakai untuk konversi.' }); return 'firm'; }
-  if (r.stok_pending) { if (!quiet && S.showToast) S.showToast('Stok masih dicek, coba lagi sebentar'); return 'stok'; }
+  // Aturan penolakan (belum firm; stok masih di-fetch di belakang sehingga item bakal ke-snapshot dengan stok kosong
+  // dan ikut ke-persist ke sesi + Export) hidup di satu tempat: S.alasanTolakProduk (produk-katalog.js).
+  const tolak = S.alasanTolakProduk(r);
+  if (tolak) return tolak;
   const isSet = r.tipe && r.tipe.toLowerCase() === 'set';
   const newItem = {
     kode_produk: r.kode_produk,
@@ -1091,6 +1088,22 @@ function addToClip(kode, opts) {
   S.renderResults(S.lastResults);
   persistAddItem(newItem); // simpan ke sesi (async, gak nunggu biar UI tetep responsif)
   return 'added';
+}
+S.tambahProdukKeClip = tambahProdukKeClip;
+
+// Jalur UI dari kartu hasil pencarian (toggle tambah/keluar): cari baris lewat katalog, mutasi, lalu toast alasan penolakan.
+// opts.quiet: tanpa toast per produk (dipakai tambah-banyak, yang merangkum hasilnya sendiri).
+// Mengembalikan 'added' | 'removed' | 'dup' | 'firm' | 'stok' | 'missing'.
+function addToClip(kode, opts) {
+  const quiet = !!(opts && opts.quiet);
+  const r = S.getProduk(kode);
+  if (!r) return 'missing';
+  const status = tambahProdukKeClip(r, opts);
+  if (!quiet && S.showToast) {
+    if (status === 'firm') S.showToast('Produk belum firm', 'warning', { detail: 'Link V6 masih ada catatan, jadi tidak dipakai untuk konversi.' });
+    else if (status === 'stok') S.showToast('Stok masih dicek, coba lagi sebentar');
+  }
+  return status;
 }
 S.addToClip = addToClip;
 
