@@ -604,9 +604,41 @@ function renderActivityFeed() {
     return `<div${i === 0 ? ' class="rt-fade-in"' : ''} style="padding:2px 0">${hh}:${mm} — ${S.escapeHtmlAttr(a.msg)}</div>`;
   }).join('');
 }
-document.getElementById('rt-feed-toggle').addEventListener('click', () => {
-  document.getElementById('rt-feed-wrap').classList.toggle('rt-feed-collapsed');
+// 2026-11-25: popover lonceng = position:fixed (CSS) + posisi dihitung dari tombolnya, dijepit ke viewport. Dulu absolute
+// di dalam header panel: lebarnya melebihi ruang di kiri tombol, jadi terpotong overflow panel (teks "Kamu menandai…" hilang).
+function placeFeedPopover() {
+  const wrap = document.getElementById('rt-feed-wrap');
+  const btn = document.getElementById('rt-feed-toggle');
+  const pop = wrap && wrap.querySelector('.rt-feed-collapsible');
+  if (!wrap || !btn || !pop || wrap.classList.contains('rt-feed-collapsed')) return;
+  const M = 8;
+  const r = btn.getBoundingClientRect();
+  const w = Math.min(320, window.innerWidth - M * 2);
+  pop.style.width = w + 'px';
+  let left = r.right - w;                                   // rata kanan ke lonceng
+  left = Math.max(M, Math.min(left, window.innerWidth - w - M)); // jepit ke viewport
+  pop.style.left = left + 'px';
+  pop.style.top = (r.bottom + 6) + 'px';
+}
+function setFeedOpen(open) {
+  const wrap = document.getElementById('rt-feed-wrap');
+  if (!wrap) return;
+  wrap.classList.toggle('rt-feed-collapsed', !open);
+  if (open) placeFeedPopover();
+}
+document.getElementById('rt-feed-toggle').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const wrap = document.getElementById('rt-feed-wrap');
+  setFeedOpen(wrap.classList.contains('rt-feed-collapsed'));
 });
+// Klik di luar / Esc menutup; resize & scroll (capture, panel punya scroll sendiri) menghitung ulang posisi.
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('rt-feed-wrap');
+  if (wrap && !wrap.classList.contains('rt-feed-collapsed') && !wrap.contains(e.target)) setFeedOpen(false);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setFeedOpen(false); });
+window.addEventListener('resize', placeFeedPopover);
+document.addEventListener('scroll', placeFeedPopover, true);
 
 // ---- Presence ----
 function handlePresenceSync() {

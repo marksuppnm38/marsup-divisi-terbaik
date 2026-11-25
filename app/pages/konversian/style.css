@@ -1291,8 +1291,9 @@
   content:'';position:absolute;top:2px;right:2px;width:6px;height:6px;border-radius:50%;background:var(--accent);
 }
 #app-root .rt-feed-collapsible{
-  display:block;position:absolute;top:calc(100% + 6px);right:0;z-index:40;
-  width:min(300px,80vw);opacity:1;
+  /* 2026-11-25: fixed (left/top/width diisi realtime.js placeFeedPopover) supaya tidak terpotong overflow panel */
+  display:block;position:fixed;top:56px;left:8px;z-index:1000;
+  width:min(320px,calc(100vw - 16px));opacity:1;
   background:var(--surface);border:1px solid var(--border);border-radius:8px;
   box-shadow:0 12px 28px rgba(0,0,0,.22);
 }
