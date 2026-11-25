@@ -1,0 +1,78 @@
+diff --git a/app/pages/konversian/clipboard.js b/app/pages/konversian/clipboard.js
+index a6c4fa4..7775148 100644
+--- a/app/pages/konversian/clipboard.js
++++ b/app/pages/konversian/clipboard.js
+@@ -878,13 +878,23 @@ const modalSub = document.getElementById('modal-sub');
+ // if you need to know the current theme from this file.
+ 
+ // SUPABASE
++// 2026-11-25 (hotfix): body respons BOLEH kosong. RPC yang return void dijawab PostgREST tanpa isi, dan res.json() di
++// atasnya melempar "Unexpected end of JSON input" walau penulisan ke DB sudah berhasil (kelihatan sebagai gagal simpan pagu
++// total). Body non-JSON (mis. halaman 404 HTML) sekarang jadi error terbaca (HTTP status + potongan isi), bukan SyntaxError.
+ async function rpc(fn, params) {
+   const res = await sesiFetch(`rpc/${fn}`, {
+     method: 'POST',
+     body: JSON.stringify(params)
+   });
+-  const data = await res.json();
+-  if (!res.ok) return {data:null, error:data};
++  const raw = await res.text();
++  let data = null, bisaParse = true;
++  if (raw.trim()) { try { data = JSON.parse(raw); } catch { bisaParse = false; } }
++  const potong = raw.replace(/\s+/g, ' ').trim().slice(0, 160);
++  if (!res.ok) {
++    if (bisaParse && data && typeof data === 'object') return {data:null, error:data};
++    return {data:null, error:{message: `HTTP ${res.status}${potong ? ': ' + potong : ''}`}};
++  }
++  if (!bisaParse) return {data:null, error:{message: `Respons server bukan JSON (HTTP ${res.status}): ${potong}`}};
+   return {data, error:null};
+ }
+ S.rpc = rpc;
+diff --git a/app/pages/konversian/rpc-body-kosong.test.mjs b/app/pages/konversian/rpc-body-kosong.test.mjs
+new file mode 100644
+index 0000000..fdedcbc
+--- /dev/null
++++ b/app/pages/konversian/rpc-body-kosong.test.mjs
+@@ -0,0 +1,42 @@
++// Jalankan: node --test app/pages/konversian/rpc-body-kosong.test.mjs
++// rpc() hidup di dalam closure clipboard.js, jadi fungsinya diambil dari teks sumber (anchor hilang = test gagal keras).
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++
++const src = fs.readFileSync(new URL('./clipboard.js', import.meta.url), 'utf8');
++const a = src.indexOf('async function rpc(fn, params)');
++const b = src.indexOf('S.rpc = rpc;', a);
++assert.ok(a > 0 && b > a, 'anchor rpc() di clipboard.js tidak ditemukan');
++const fnSrc = src.slice(a, b);
++
++const bikinRpc = (status, body) => {
++  const sesiFetch = async () => ({ ok: status >= 200 && status < 300, status, text: async () => body });
++  return new Function('sesiFetch', `${fnSrc}; return rpc;`)(sesiFetch);
++};
++
++test('204 / body kosong = sukses (RPC void), bukan SyntaxError', async () => {
++  assert.deepEqual(await bikinRpc(204, '')('update_permintaan_pagu', {}), { data: null, error: null });
++  assert.deepEqual(await bikinRpc(200, '  ')('x', {}), { data: null, error: null });
++});
++test('200 JSON biasa tetap terbaca (termasuk null dan array)', async () => {
++  assert.deepEqual(await bikinRpc(200, '{"a":1}')('x', {}), { data: { a: 1 }, error: null });
++  assert.deepEqual(await bikinRpc(200, '[1,2]')('x', {}), { data: [1, 2], error: null });
++  assert.deepEqual(await bikinRpc(200, 'null')('x', {}), { data: null, error: null });
++});
++test('error JSON dari PostgREST diteruskan apa adanya (callers baca error.message/hint)', async () => {
++  const err = { code: 'PGRST202', message: 'Could not find the function', hint: 'cek migration' };
++  assert.deepEqual(await bikinRpc(404, JSON.stringify(err))('x', {}), { data: null, error: err });
++});
++test('404 HTML / teks biasa -> error terbaca dengan status dan potongan isi', async () => {
++  const r = await bikinRpc(404, 'File not found')('x', {});
++  assert.equal(r.data, null);
++  assert.match(r.error.message, /^HTTP 404: File not found$/);
++  const r2 = await bikinRpc(502, '')('x', {});
++  assert.equal(r2.error.message, 'HTTP 502');
++});
++test('200 tapi bukan JSON -> error "bukan JSON", isi dipotong 160 karakter', async () => {
++  const r = await bikinRpc(200, '<html>' + 'x'.repeat(400) + '</html>')('x', {});
++  assert.match(r.error.message, /^Respons server bukan JSON \(HTTP 200\): <html>/);
++  assert.ok(r.error.message.length < 230);
++});

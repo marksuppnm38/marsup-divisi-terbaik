@@ -878,13 +878,23 @@ const modalSub = document.getElementById('modal-sub');
 // if you need to know the current theme from this file.
 
 // SUPABASE
+// 2026-11-25 (hotfix): body respons BOLEH kosong. RPC yang return void dijawab PostgREST tanpa isi, dan res.json() di
+// atasnya melempar "Unexpected end of JSON input" walau penulisan ke DB sudah berhasil (kelihatan sebagai gagal simpan pagu
+// total). Body non-JSON (mis. halaman 404 HTML) sekarang jadi error terbaca (HTTP status + potongan isi), bukan SyntaxError.
 async function rpc(fn, params) {
   const res = await sesiFetch(`rpc/${fn}`, {
     method: 'POST',
     body: JSON.stringify(params)
   });
-  const data = await res.json();
-  if (!res.ok) return {data:null, error:data};
+  const raw = await res.text();
+  let data = null, bisaParse = true;
+  if (raw.trim()) { try { data = JSON.parse(raw); } catch { bisaParse = false; } }
+  const potong = raw.replace(/\s+/g, ' ').trim().slice(0, 160);
+  if (!res.ok) {
+    if (bisaParse && data && typeof data === 'object') return {data:null, error:data};
+    return {data:null, error:{message: `HTTP ${res.status}${potong ? ': ' + potong : ''}`}};
+  }
+  if (!bisaParse) return {data:null, error:{message: `Respons server bukan JSON (HTTP ${res.status}): ${potong}`}};
   return {data, error:null};
 }
 S.rpc = rpc;
