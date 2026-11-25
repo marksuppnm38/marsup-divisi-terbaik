@@ -2294,11 +2294,14 @@ function clipboardPickerHtml(itemId, matchedItems) {
   // duplikat) — biar gak ada 2 search engine keliatan beda tapi
   // sebenernya nyari hal yang sama.
   return `<div class="kb-picker-wrap">
-    <input type="text" class="kb-picker-filter" data-filter-for="${itemId}"
-      placeholder="Saring dari ${S.clipboard.length} produk yang udah kepake di sesi ini…" ${S.clipboard.length ? '' : 'disabled'}>
+    <div class="kb-picker-filter-wrap">
+      <input type="text" class="kb-picker-filter" data-filter-for="${itemId}"
+        placeholder="Cari di clipboard…" aria-label="Cari di clipboard (${S.clipboard.length} produk)" ${S.clipboard.length ? '' : 'disabled'}>
+      <span class="kb-picker-count" aria-hidden="true">(${S.clipboard.length})</span>
+    </div>
     <div class="kb-picker-list" data-picker-list="${itemId}">${rows}</div>
     <div class="kb-picker-empty" data-picker-empty="${itemId}" style="${S.clipboard.length ? 'display:none' : ''}">
-      ${S.clipboard.length ? 'Gak ada yang cocok di pool sesi ini.' : 'Belum ada produk yang kepake di sesi ini.'}
+      ${S.clipboard.length ? 'Gak ada yang cocok di clipboard.' : 'Clipboard masih kosong.'}
       <button type="button" class="kb-picker-bridge" data-bridge-for="${itemId}">Cari di katalog →</button>
     </div>
   </div>`;

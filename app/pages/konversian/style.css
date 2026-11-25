@@ -512,6 +512,10 @@
   background:var(--surface);color:var(--text);outline:none;
 }
 #app-root .kb-picker-filter:focus{border-color:var(--accent)}
+/* 2026-11-25: hitungan (N) = label kecil di ujung kanan kolom cari, bukan di placeholder */
+#app-root .kb-picker-filter-wrap{position:relative;margin-bottom:6px}
+#app-root .kb-picker-filter-wrap .kb-picker-filter{margin-bottom:0;padding-right:40px}
+#app-root .kb-picker-count{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:10.5px;color:var(--text-muted);pointer-events:none}
 #app-root .kb-picker-filter:disabled{opacity:.5;cursor:not-allowed}
 #app-root .kb-picker-bridge{
   display:block;margin:6px auto 0;padding:5px 10px;font-size:11.5px;font-weight:600;
@@ -2926,8 +2930,10 @@
    Pill yang sudah berisi nama RS tetap tampil di mana saja (penunjuk sesi aktif). data-subtab diset
    oleh switchSubTab() di index.js.
    ============================================================ */
-#app-root:not([data-subtab="cari"]) #session-indicator.empty,
-#app-root:not([data-subtab="cari"]) #btn-sesi-baru{display:none}
+#app-root:not([data-subtab="cari"]) #session-indicator.empty{display:none}
+/* 2026-11-25: #btn-sesi-baru TIDAK lagi disembunyikan di luar Cari Produk — alasan aslinya (sidebar tidak ikut pindah) sudah
+   diperbaiki lewat S.switchSubTab yang routed. Pill #session-indicator.empty tetap disembunyikan di luar Cari Produk. */
+#app-root #sesi-list-empty .sesi-empty-cta{margin-top:var(--sp-3, 12px)}
 /* Cari SET: substitusi ukuran + perbandingan dua sisi */
 #app-root .setcari-sub-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);margin:6px 0 2px;cursor:pointer}
 #app-root .setcari-sub-opts{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--text-secondary);margin:2px 0 4px 20px}

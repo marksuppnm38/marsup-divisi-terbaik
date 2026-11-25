@@ -667,6 +667,7 @@ async function startNewSesiInner() {
 
   btnSesiBaru.disabled = true;
   btnClipIdleStart.disabled = true;
+  btnSesiEmptyStart.disabled = true;
   try {
     await ensureSesi();
     updateEndSesiBtnState();
@@ -678,11 +679,15 @@ async function startNewSesiInner() {
   } finally {
     btnSesiBaru.disabled = false;
     btnClipIdleStart.disabled = false;
+    btnSesiEmptyStart.disabled = false;
   }
 }
 btnSesiBaru.addEventListener('click', startNewSesi);
 const btnClipIdleStart = document.getElementById('btn-clip-idle-start');
 btnClipIdleStart.addEventListener('click', startNewSesi);
+// CTA di empty state Konversi Berjalan: handler SAMA (startNewSesi), cuma ikut di-disable selagi sesi dibuat.
+const btnSesiEmptyStart = document.getElementById('btn-sesi-empty-start');
+btnSesiEmptyStart.addEventListener('click', startNewSesi);
 
 // Pintasan keyboard: Alt+Shift+M = Mulai Sesi Baru (M = "Mulai"; sama persis dengan klik tombolnya, termasuk konfirmasi kalau
 // sesi yang lagi dibuka ada isinya). Lewat S.onGlobal -> otomatis lepas saat pindah dari modul Konversian.

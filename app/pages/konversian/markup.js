@@ -177,7 +177,8 @@ export const KONVERSIAN_MARKUP = `
       <div id="sesi-list-error" style="display:none;color:var(--danger);font-size:12px;padding:8px 2px;line-height:1.5"></div>
       <div class="clip-empty" id="sesi-list-empty" style="display:none">
         <i class="ti ti-list-details"></i>
-        <p>Belum ada konversi yang berjalan.<br>Mulai dari tab Cari Produk, sesi otomatis muncul di sini.</p>
+        <p>Belum ada konversi yang berjalan.<br>Sesi baru otomatis muncul di sini.</p>
+        <button class="pr-add-clip-btn sesi-empty-cta" id="btn-sesi-empty-start" type="button" title="Mulai Sesi Baru (Alt+Shift+M)" aria-keyshortcuts="Alt+Shift+M"><i class="ti ti-plus"></i> Mulai Sesi Baru</button>
       </div>
       <!-- Kotak "Perlu tindakan" (auto-record.js): sembunyi sendiri kalau gak ada yang perlu dikerjain. -->
       <div id="todo-inbox" style="display:none"></div>
