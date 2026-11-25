@@ -3655,3 +3655,34 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
 /* Hapus semua: nonaktif saat Clipboard kosong */
 #app-root .btn-clear-all:disabled{opacity:.4;cursor:default}
 #app-root .btn-clear-all:disabled:hover{color:var(--text-muted);text-decoration-color:transparent}
+
+/* ============================================================
+   PAGU (Fase 2 redesain panel, 2026-11-25)
+   Chip pagu satuan di baris kebutuhan, sisa/lebih per baris, dan header "Rp harga / Pagu Rp … · sisa …".
+   Hanya token yang sudah ada (--success/--danger/--surface-*), jadi light & dark ikut tanpa override.
+   ============================================================ */
+#app-root .kb-pagu-chip{
+  display:inline-flex;align-items:center;margin:0 6px 0 0;padding:1px 7px;
+  font:inherit;font-size:10.5px;line-height:1.5;font-variant-numeric:tabular-nums;white-space:nowrap;
+  color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;cursor:copy;
+  vertical-align:baseline;
+}
+#app-root .kb-pagu-chip:hover{background:var(--surface-3);color:var(--text)}
+#app-root .kb-pagu-chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#app-root .kb-pagu-sisa{margin-left:8px;font-size:10.5px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--text-muted)}
+#app-root .kb-pagu-sisa.is-ok{color:var(--success-text, var(--success))}
+#app-root .kb-pagu-sisa.is-over{color:var(--danger);font-weight:600}
+/* header */
+#app-root .kb-summary .kb-rollup-harga{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:0 6px;white-space:normal}
+#app-root .kb-rollup-pagu{color:var(--text-secondary);white-space:nowrap}
+#app-root .kb-prog.is-over i{background:var(--danger)}
+#app-root .kb-pagu-empty{
+  padding:0 4px;margin:0 -4px;font:inherit;color:var(--text-muted);background:none;border:0;border-radius:4px;
+  text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer;
+}
+#app-root .kb-pagu-empty:hover{color:var(--accent);background:var(--surface-2)}
+#app-root .kb-pagu-empty:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#app-root .kb-pagu-quick{
+  width:130px;padding:2px 6px;font:inherit;font-size:12px;color:var(--text);background:var(--surface);
+  border:1px solid var(--accent);border-radius:5px;outline:none;
+}

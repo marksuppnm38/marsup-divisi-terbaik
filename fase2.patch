@@ -1,0 +1,265 @@
+diff --git a/app/pages/konversian/index.js b/app/pages/konversian/index.js
+index f100d3a..8bc0679 100644
+--- a/app/pages/konversian/index.js
++++ b/app/pages/konversian/index.js
+@@ -928,6 +928,7 @@ export async function mount(container, initialSub) {
+   // sph-module.js — sph-module.js baca fungsi/variabel dari konversian.js
+   // lewat shared scope, lihat komentar di kepala sph-module.js sendiri). ──
+ // ═══ COORD LOG (baca dulu sebelum edit — file ini kepakai/kesentuh 2+ sesi Claude paralel) ═══
++// 2026-11-25: REDESAIN PANEL KONVERSI Fase 2 (Pagu, permintaan-rs.js + style.css, front-end saja) — baris kebutuhan: chip "Pagu 150jt" (button data-action=copy-pagu; klik = salin angka mentah, Shift+klik = isi #pagu-input; menggantikan teks " · pagu satuan Rp …") + "sisa/lebih" per baris untuk produk terpilih. Header #kb-summary: "Rp harga / Pagu Rp … · sisa …", bar progres mengikuti pagu (merah bila lebih), "Pagu —" = isi cepat pagu total (apiUpdatePermintaanPagu; kalau ada section → buka modal Edit). Rollup per section (sm) tidak diubah — Claude
+ // 2026-11-25: REDESAIN PANEL KONVERSI Fase 1a — tombol "Mulai Sesi Baru" (#btn-sesi-baru) tampil lagi di Konversi Berjalan (aturan sembunyi 2026-11-17 dicabut karena S.switchSubTab sudah routed; pill #session-indicator.empty tetap disembunyikan di luar Cari Produk). CTA yang sama (#btn-sesi-empty-start) ditambahkan di empty state #sesi-list-empty, handler tetap startNewSesi (clipboard.js), tidak ada logika baru. Fase 1b: placeholder picker "Cari di clipboard…" — Claude
+ // 2026-11-17: UX sesi baru — S.switchSubTab sekarang ROUTED (goSubTab: layar pindah + pnm:navigate biar URL & sorotan sidebar ikut; dulu dari Converter pencet "Mulai sesi baru" layar ke Cari Produk tapi sidebar tetap Converter); S.switchSubTabLocal = versi tanpa sinkron URL; setSubroute skip kalau tab sama (activeSubTab). "Mulai sesi baru" (pill idle + tombol di Konversi Berjalan) disembunyiin di luar Cari Produk lewat #app-root[data-subtab]; sesi aktif yang masih kosong gak dibikinin sesi kosong baru — Claude
+ // 2026-11-12: SESI MACHINE (sesi-machine.js baru) — lifecycle sesi yang tadinya implisit (S.currentSesiId ditulis di 9 tempat, 5 salinan blok reset, ensureSesi() bisa bikin sesi dobel) jadi mesin fase eksplisit idle/creating/active/closed. Semua transisi lewat S.sesi.ensure/attach/close/detach; S.currentSesiId tinggal accessor BACA. Yang kesentuh: index.js (import+install, openSesi→attach, Record→close, resetLayarKalauSesiAktif→detach), clipboard.js (ensureSesi, Sesi Baru/Keluar/Selesaikan), dictionary.js (Muat Revisi), realtime.js (applySesiRow→close, seedKnownState). Fix ikutan: pagu sesi lama gak lagi kebawa ke sesi baru; ensureSesi gak lagi bikin sesi dobel — Claude
+diff --git a/app/pages/konversian/permintaan-rs.js b/app/pages/konversian/permintaan-rs.js
+index efd663d..07c5a6c 100644
+--- a/app/pages/konversian/permintaan-rs.js
++++ b/app/pages/konversian/permintaan-rs.js
+@@ -2389,7 +2389,7 @@ function renderChecklistItemHtml(item) {
+     + (am ? ' am-' + am.hasil.status.toLowerCase() : '');
+ 
+   const qtyTxt = item.qty_diminta ? ` · qty ${item.qty_diminta}` : '';
+-  const paguTxt = item.pagu_satuan != null ? ` · pagu satuan ${S.rupiah(item.pagu_satuan)}` : '';
++  const paguChip = paguChipHtml(item); // menggantikan teks " · pagu satuan Rp …" (angka yang sama tidak tampil dua kali)
+ 
+   // ---- Baris ringkas (selalu kelihatan, ini yang diklik buat buka/tutup) ----
+   const statusIcon = isDone ? '<i class="ti ti-circle-check"></i>'
+@@ -2402,7 +2402,9 @@ function renderChecklistItemHtml(item) {
+     const first = item.matched_items[0];
+     const namaFirst = namaProdukByKode(first.kode_produk) || first.kode_produk;
+     const more = item.matched_items.length - 1;
+-    compactMatchedTxt = `<div class="kb-item-compact-matched">→ ${namaFirst}${more > 0 ? ` +${more} lainnya` : ''}</div>`;
++    compactMatchedTxt = `<div class="kb-item-compact-matched">${paguChip}→ ${namaFirst}${more > 0 ? ` +${more} lainnya` : ''}${sisaPaguItemHtml(item)}</div>`;
++  } else if (paguChip) {
++    compactMatchedTxt = `<div class="kb-item-compact-matched">${paguChip}</div>`; // belum ada produk: chip saja
+   }
+   // SECURITY FIX 2026-08-14: raw_text itu teks bebas hasil paste/OCR user
+   // (Permintaan RS) yang disimpan ke DB & ditampilin ke semua kolaborator —
+@@ -2410,7 +2412,7 @@ function renderChecklistItemHtml(item) {
+   const headerHtml = `<div class="kb-item-header" data-action="toggle-expand" data-id="${item.id}">
+     <span class="kb-item-status-icon">${statusIcon}</span>
+     <div class="kb-item-header-text">
+-      <div class="kb-item-text">${reqMarked || S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
++      <div class="kb-item-text">${reqMarked || S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${isExpanded && paguChip ? ' ' + paguChip : ''}</div>
+       ${!isExpanded ? compactMatchedTxt : ''}
+       ${!isExpanded && isDone ? anchorChipHtml(item) : ''}
+       ${!isExpanded ? amLineHtml(item) : ''}
+@@ -2508,6 +2510,58 @@ function hargaKebutuhan(item) {
+   return { harga, complete };
+ }
+ 
++// ---- Pagu (Fase 2 redesain panel, 2026-11-25) ----
++// 150000000 -> "150jt", 1500000000 -> "1,5M", 750000 -> "750rb". Satuan sama dengan field Pagu di pencarian (parsePagu),
++// jadi apa yang terbaca di chip bisa diketik balik apa adanya.
++function paguRingkas(n) {
++  n = Math.round(Number(n));
++  const f = (v, suf) => (Math.round(v * 10) / 10).toLocaleString('id-ID') + suf;
++  if (n >= 1e9) return f(n / 1e9, 'M');
++  if (n >= 1e6) return f(n / 1e6, 'jt');
++  if (n >= 1e3) return f(n / 1e3, 'rb');
++  return String(n);
++}
++// Selisih ringkas "Rp 12,3 jt" — gaya yang sama dengan baris kecil di kartu hasil pencarian.
++function rupiahRingkasKb(n) {
++  n = Math.abs(Math.round(n));
++  const f = (v, suf) => 'Rp ' + (Math.round(v * 10) / 10).toLocaleString('id-ID') + ' ' + suf;
++  if (n >= 1e9) return f(n / 1e9, 'M');
++  if (n >= 1e6) return f(n / 1e6, 'jt');
++  if (n >= 1e3) return f(n / 1e3, 'rb');
++  return 'Rp ' + n.toLocaleString('id-ID');
++}
++// Chip pagu satuan di baris kebutuhan. Cuma ada kalau pagu_satuan terisi. <button data-action> supaya klik chip TIDAK
++// jatuh ke handler header (toggle expand): handler kbList memilih button[data-action] lebih dulu dari header.
++function paguChipHtml(item) {
++  if (item.pagu_satuan == null) return '';
++  const raw = Math.round(Number(item.pagu_satuan));
++  return `<button type="button" class="kb-pagu-chip" data-action="copy-pagu" data-id="${item.id}" data-raw="${raw}" title="Pagu satuan ${S.escapeHtmlAttr(S.rupiah(raw))} — klik untuk salin, Shift+klik untuk isi kolom Pagu di pencarian">Pagu ${paguRingkas(raw)}</button>`;
++}
++// "sisa …" / "lebih …" terhadap pagu (pagu satuan × qty diminta, tanpa qty = 1) untuk produk yang sudah dipilih.
++// Hanya kalau SEMUA harga produk terpilih diketahui; harga separuh-kehitung bikin selisih menyesatkan.
++function sisaPaguItemHtml(item) {
++  if (item.status !== 'TERPENUHI' || item.pagu_satuan == null) return '';
++  const h = hargaKebutuhan(item);
++  if (!h.complete || !(h.harga > 0)) return '';
++  const qty = Number(item.qty_diminta) > 0 ? Number(item.qty_diminta) : 1;
++  const batas = Number(item.pagu_satuan) * qty;
++  const selisih = Math.round(batas - h.harga);
++  const tip = `Pagu ${S.rupiah(Math.round(batas))}${qty > 1 ? ` (${qty} × ${S.rupiah(Math.round(item.pagu_satuan))})` : ''} · harga produk ${S.rupiah(Math.round(h.harga))}`;
++  if (selisih === 0) return `<span class="kb-pagu-sisa is-ok" title="${S.escapeHtmlAttr(tip)}">pas pagu</span>`;
++  return `<span class="kb-pagu-sisa ${selisih < 0 ? 'is-over' : 'is-ok'}" title="${S.escapeHtmlAttr(tip)}">${selisih < 0 ? 'lebih ' : 'sisa '}${rupiahRingkasKb(selisih)}</span>`;
++}
++async function salinTeksKb(text) {
++  try { await navigator.clipboard.writeText(text); return true; } catch (_) {
++    try {
++      const ta = document.createElement('textarea');
++      ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
++      document.body.appendChild(ta); ta.select();
++      const ok = document.execCommand('copy'); ta.remove();
++      return ok;
++    } catch (__) { return false; }
++  }
++}
++
+ // Rollup 1 section (atau grup "Tanpa section"): pagu vs total harga item
+ // yang matched di section itu, plus progress pemenuhan.
+ function computeSectionRollup(items, pagu) {
+@@ -2530,13 +2584,31 @@ function computeSectionRollup(items, pagu) {
+ function kbRollupHtml(r, size) {
+   const cls = size === 'sm' ? 'kb-section-rollup' : 'kb-global-rollup';
+   const selisihCls = r.selisih == null ? '' : (r.selisih >= 0 ? 'positif' : 'negatif');
+-  const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
+-  const prog = size === 'sm' ? ''
++  const warn = r.anyIncomplete ? '<i class="ti ti-alert-triangle" title="Ada produk match yang harganya belum kehitung (cek clipboard)"></i>' : '';
++  if (size === 'sm') {
++    // Rollup per section: format lama (angka per section, bukan total).
++    return `<div class="${cls}">
++    <span class="kb-rollup-done">${r.done}/${r.total} terpenuhi</span>
++    <span class="kb-rollup-harga">${S.rupiah(r.harga)}${warn}</span>
++    ${r.pagu != null ? `<span>pagu ${S.rupiah(r.pagu)}</span><span class="kb-selisih ${selisihCls}">${r.selisih >= 0 ? 'sisa ' : 'lebih '}${S.rupiah(Math.abs(r.selisih))}</span>` : ''}
++  </div>`;
++  }
++  // Header (lg): "Rp <harga> / Pagu Rp <pagu> · sisa <selisih>". Total harga HANYA tampil di sini (sekali).
++  // Bar progres mengikuti pagu (harga terpakai / pagu) bila ada; tanpa pagu mengikuti kebutuhan terpenuhi.
++  const adaPagu = r.pagu != null;
++  const over = adaPagu && r.harga > r.pagu;
++  const pct = adaPagu
++    ? (r.pagu > 0 ? Math.min(100, Math.round((r.harga / r.pagu) * 100)) : (r.harga > 0 ? 100 : 0))
++    : (r.total ? Math.round((r.done / r.total) * 100) : 0);
++  const prog = adaPagu
++    ? `<span class="kb-prog${over ? ' is-over' : ''}" role="progressbar" aria-label="Harga terhadap pagu" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></span>`
+     : `<span class="kb-prog" role="progressbar" aria-label="Kebutuhan terpenuhi" aria-valuemin="0" aria-valuemax="${r.total}" aria-valuenow="${r.done}"><i style="width:${pct}%"></i></span>`;
++  const paguHtml = adaPagu
++    ? `<span class="kb-rollup-pagu">/ Pagu ${S.rupiah(r.pagu)}</span><span class="kb-selisih ${selisihCls}">· ${r.selisih >= 0 ? 'sisa ' : 'lebih '}${S.rupiah(Math.abs(r.selisih))}</span>`
++    : `<span class="kb-rollup-pagu">/ <button type="button" class="kb-pagu-empty" data-action="kb-pagu-edit" title="Isi pagu total">Pagu —</button></span>`;
+   return `<div class="${cls}">
+-    <span class="kb-rollup-done">${size === 'sm' ? `${r.done}/${r.total}` : `<b>${r.done}</b> dari ${r.total}`} terpenuhi</span>${prog}
+-    <span class="kb-rollup-harga">${S.rupiah(r.harga)}${r.anyIncomplete ? '<i class="ti ti-alert-triangle" title="Ada produk match yang harganya belum kehitung (cek clipboard)"></i>' : ''}</span>
+-    ${r.pagu != null ? `<span>pagu ${S.rupiah(r.pagu)}</span><span class="kb-selisih ${selisihCls}">${r.selisih >= 0 ? 'sisa ' : 'lebih '}${S.rupiah(Math.abs(r.selisih))}</span>` : ''}
++    <span class="kb-rollup-done"><b>${r.done}</b> dari ${r.total} terpenuhi</span>${prog}
++    <span class="kb-rollup-harga">${S.rupiah(r.harga)}${warn}${paguHtml}</span>
+   </div>`;
+ }
+ 
+@@ -2819,6 +2891,57 @@ S.kbList.addEventListener('change', async e => {
+   if (error) PNMToast.error('Gagal simpan pagu: ' + (error.message || 'error'));
+ });
+ 
++// "Pagu —" di header: isi cepat pagu total tanpa buka modal Edit. Alur tulis sama dengan modal Edit
++// (apiUpdatePermintaanPagu = permintaan_rs.pagu + sesi_konversi.pagu sekaligus, markLocalWrite biar gema realtime diabaikan).
++// Kalau Permintaan RS punya section, pagu total = jumlah pagu section (lihat renderChecklist), jadi tidak ada angka total yang
++// bisa diisi langsung: buka modal Edit dan arahkan fokus ke pagu section pertama.
++S.kbSummary.addEventListener('click', async (e) => {
++  const btn = e.target.closest('button[data-action="kb-pagu-edit"]');
++  if (!btn) return;
++  if (S.checklistSections.length) {
++    await openPrModal('edit');
++    const first = prEdPaguSections.querySelector('.pr-ed-pagu-sec');
++    if (first) first.focus();
++    return;
++  }
++  const input = document.createElement('input');
++  input.type = 'text'; input.inputMode = 'numeric'; input.className = 'kb-pagu-quick';
++  input.placeholder = 'mis. 150.000.000'; input.setAttribute('aria-label', 'Pagu total (Rp)');
++  btn.replaceWith(input);
++  input.focus();
++  let selesai = false;
++  const kembali = () => { selesai = true; renderChecklist(); };
++  input.addEventListener('input', () => {
++    const f = formatRibuan(input.value);
++    if (f !== input.value) input.value = f;
++  });
++  const simpan = async () => {
++    if (selesai) return;
++    const v = S.parsePaguValue(input.value);
++    if (v == null) { kembali(); return; } // kosong = batal, tidak ada yang ditulis
++    selesai = true;
++    input.disabled = true;
++    try {
++      if (S.checklistPermintaanId == null) throw new Error('Permintaan RS belum termuat');
++      if (S.currentSesiId) S.markLocalWrite(S.SESI_TABLE, S.currentSesiId, 'pagu', v);
++      await apiUpdatePermintaanPagu(S.checklistPermintaanId, v);
++      S.checklistPagu = v;
++      if (typeof S.updateClipAggregates === 'function') S.updateClipAggregates();
++      renderChecklist();
++      broadcastChecklistReload();
++      S.showToast(`Pagu ${v.toLocaleString('id-ID')} tersimpan ✓`);
++    } catch (err) {
++      S.showToast('Gagal simpan pagu: ' + (err.message || 'error'), 'error');
++      renderChecklist();
++    }
++  };
++  input.addEventListener('keydown', (ev) => {
++    if (ev.key === 'Enter') { ev.preventDefault(); simpan(); }
++    else if (ev.key === 'Escape') { ev.preventDefault(); kembali(); }
++  });
++  input.addEventListener('blur', () => { if (!selesai) simpan(); });
++});
++
+ // ---- Patch granular buat 1 item Kebutuhan RS (dipakai realtime UPDATE dari
+ // kolaborator lain) — gak nge-rebuild seluruh daftar kayak renderChecklist(). ----
+ function patchChecklistItem(id, changes) {
+@@ -3042,6 +3165,26 @@ S.kbList.addEventListener('click', async (e) => {
+   const item = S.checklistItems.find(i => i.id === itemId);
+   if (!item) return;
+ 
++  if (action === 'copy-pagu') {
++    // Chip pagu satuan: salin angka MENTAH (150000000) supaya langsung terbaca di field Pagu pencarian (parsePagu).
++    // Shift+klik: isi #pagu-input langsung + picu 'input' (field memformat sendiri). Tidak ikut expand/collapse baris.
++    e.stopPropagation();
++    const raw = el.dataset.raw;
++    const label = Number(raw).toLocaleString('id-ID');
++    if (e.shiftKey) {
++      const paguEl = document.getElementById('pagu-input');
++      if (paguEl) {
++        paguEl.value = raw;
++        paguEl.dispatchEvent(new Event('input', { bubbles: true }));
++        S.showToast(`Pagu ${label} diisi ke pencarian ✓`);
++        return;
++      }
++    }
++    if (!(await salinTeksKb(raw))) { S.showToast('Gagal copy — browser nolak akses clipboard', 'error'); return; }
++    S.showToast(`Pagu ${label} disalin ✓`);
++    return;
++  }
++
+   if (action === 'copy-text') {
+     // Copy deskripsi permintaan RS apa adanya (tanpa qty/pagu) — buat dipaste ke search / Sheet.
+     const text = String(item.raw_text || '').trim();
+diff --git a/app/pages/konversian/style.css b/app/pages/konversian/style.css
+index 070dfe6..d47535b 100644
+--- a/app/pages/konversian/style.css
++++ b/app/pages/konversian/style.css
+@@ -3655,3 +3655,34 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
+ /* Hapus semua: nonaktif saat Clipboard kosong */
+ #app-root .btn-clear-all:disabled{opacity:.4;cursor:default}
+ #app-root .btn-clear-all:disabled:hover{color:var(--text-muted);text-decoration-color:transparent}
++
++/* ============================================================
++   PAGU (Fase 2 redesain panel, 2026-11-25)
++   Chip pagu satuan di baris kebutuhan, sisa/lebih per baris, dan header "Rp harga / Pagu Rp … · sisa …".
++   Hanya token yang sudah ada (--success/--danger/--surface-*), jadi light & dark ikut tanpa override.
++   ============================================================ */
++#app-root .kb-pagu-chip{
++  display:inline-flex;align-items:center;margin:0 6px 0 0;padding:1px 7px;
++  font:inherit;font-size:10.5px;line-height:1.5;font-variant-numeric:tabular-nums;white-space:nowrap;
++  color:var(--text-secondary);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;cursor:copy;
++  vertical-align:baseline;
++}
++#app-root .kb-pagu-chip:hover{background:var(--surface-3);color:var(--text)}
++#app-root .kb-pagu-chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
++#app-root .kb-pagu-sisa{margin-left:8px;font-size:10.5px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--text-muted)}
++#app-root .kb-pagu-sisa.is-ok{color:var(--success-text, var(--success))}
++#app-root .kb-pagu-sisa.is-over{color:var(--danger);font-weight:600}
++/* header */
++#app-root .kb-summary .kb-rollup-harga{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:0 6px;white-space:normal}
++#app-root .kb-rollup-pagu{color:var(--text-secondary);white-space:nowrap}
++#app-root .kb-prog.is-over i{background:var(--danger)}
++#app-root .kb-pagu-empty{
++  padding:0 4px;margin:0 -4px;font:inherit;color:var(--text-muted);background:none;border:0;border-radius:4px;
++  text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer;
++}
++#app-root .kb-pagu-empty:hover{color:var(--accent);background:var(--surface-2)}
++#app-root .kb-pagu-empty:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
++#app-root .kb-pagu-quick{
++  width:130px;padding:2px 6px;font:inherit;font-size:12px;color:var(--text);background:var(--surface);
++  border:1px solid var(--accent);border-radius:5px;outline:none;
++}

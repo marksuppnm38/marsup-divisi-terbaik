@@ -2389,7 +2389,7 @@ function renderChecklistItemHtml(item) {
     + (am ? ' am-' + am.hasil.status.toLowerCase() : '');
 
   const qtyTxt = item.qty_diminta ? ` · qty ${item.qty_diminta}` : '';
-  const paguTxt = item.pagu_satuan != null ? ` · pagu satuan ${S.rupiah(item.pagu_satuan)}` : '';
+  const paguChip = paguChipHtml(item); // menggantikan teks " · pagu satuan Rp …" (angka yang sama tidak tampil dua kali)
 
   // ---- Baris ringkas (selalu kelihatan, ini yang diklik buat buka/tutup) ----
   const statusIcon = isDone ? '<i class="ti ti-circle-check"></i>'
@@ -2402,7 +2402,9 @@ function renderChecklistItemHtml(item) {
     const first = item.matched_items[0];
     const namaFirst = namaProdukByKode(first.kode_produk) || first.kode_produk;
     const more = item.matched_items.length - 1;
-    compactMatchedTxt = `<div class="kb-item-compact-matched">→ ${namaFirst}${more > 0 ? ` +${more} lainnya` : ''}</div>`;
+    compactMatchedTxt = `<div class="kb-item-compact-matched">${paguChip}→ ${namaFirst}${more > 0 ? ` +${more} lainnya` : ''}${sisaPaguItemHtml(item)}</div>`;
+  } else if (paguChip) {
+    compactMatchedTxt = `<div class="kb-item-compact-matched">${paguChip}</div>`; // belum ada produk: chip saja
   }
   // SECURITY FIX 2026-08-14: raw_text itu teks bebas hasil paste/OCR user
   // (Permintaan RS) yang disimpan ke DB & ditampilin ke semua kolaborator —
@@ -2410,7 +2412,7 @@ function renderChecklistItemHtml(item) {
   const headerHtml = `<div class="kb-item-header" data-action="toggle-expand" data-id="${item.id}">
     <span class="kb-item-status-icon">${statusIcon}</span>
     <div class="kb-item-header-text">
-      <div class="kb-item-text">${reqMarked || S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${paguTxt}</div>
+      <div class="kb-item-text">${reqMarked || S.escapeHtmlAttr(item.raw_text)}${qtyTxt}${isExpanded && paguChip ? ' ' + paguChip : ''}</div>
       ${!isExpanded ? compactMatchedTxt : ''}
       ${!isExpanded && isDone ? anchorChipHtml(item) : ''}
       ${!isExpanded ? amLineHtml(item) : ''}
@@ -2508,6 +2510,58 @@ function hargaKebutuhan(item) {
   return { harga, complete };
 }
 
+// ---- Pagu (Fase 2 redesain panel, 2026-11-25) ----
+// 150000000 -> "150jt", 1500000000 -> "1,5M", 750000 -> "750rb". Satuan sama dengan field Pagu di pencarian (parsePagu),
+// jadi apa yang terbaca di chip bisa diketik balik apa adanya.
+function paguRingkas(n) {
+  n = Math.round(Number(n));
+  const f = (v, suf) => (Math.round(v * 10) / 10).toLocaleString('id-ID') + suf;
+  if (n >= 1e9) return f(n / 1e9, 'M');
+  if (n >= 1e6) return f(n / 1e6, 'jt');
+  if (n >= 1e3) return f(n / 1e3, 'rb');
+  return String(n);
+}
+// Selisih ringkas "Rp 12,3 jt" — gaya yang sama dengan baris kecil di kartu hasil pencarian.
+function rupiahRingkasKb(n) {
+  n = Math.abs(Math.round(n));
+  const f = (v, suf) => 'Rp ' + (Math.round(v * 10) / 10).toLocaleString('id-ID') + ' ' + suf;
+  if (n >= 1e9) return f(n / 1e9, 'M');
+  if (n >= 1e6) return f(n / 1e6, 'jt');
+  if (n >= 1e3) return f(n / 1e3, 'rb');
+  return 'Rp ' + n.toLocaleString('id-ID');
+}
+// Chip pagu satuan di baris kebutuhan. Cuma ada kalau pagu_satuan terisi. <button data-action> supaya klik chip TIDAK
+// jatuh ke handler header (toggle expand): handler kbList memilih button[data-action] lebih dulu dari header.
+function paguChipHtml(item) {
+  if (item.pagu_satuan == null) return '';
+  const raw = Math.round(Number(item.pagu_satuan));
+  return `<button type="button" class="kb-pagu-chip" data-action="copy-pagu" data-id="${item.id}" data-raw="${raw}" title="Pagu satuan ${S.escapeHtmlAttr(S.rupiah(raw))} — klik untuk salin, Shift+klik untuk isi kolom Pagu di pencarian">Pagu ${paguRingkas(raw)}</button>`;
+}
+// "sisa …" / "lebih …" terhadap pagu (pagu satuan × qty diminta, tanpa qty = 1) untuk produk yang sudah dipilih.
+// Hanya kalau SEMUA harga produk terpilih diketahui; harga separuh-kehitung bikin selisih menyesatkan.
+function sisaPaguItemHtml(item) {
+  if (item.status !== 'TERPENUHI' || item.pagu_satuan == null) return '';
+  const h = hargaKebutuhan(item);
+  if (!h.complete || !(h.harga > 0)) return '';
+  const qty = Number(item.qty_diminta) > 0 ? Number(item.qty_diminta) : 1;
+  const batas = Number(item.pagu_satuan) * qty;
+  const selisih = Math.round(batas - h.harga);
+  const tip = `Pagu ${S.rupiah(Math.round(batas))}${qty > 1 ? ` (${qty} × ${S.rupiah(Math.round(item.pagu_satuan))})` : ''} · harga produk ${S.rupiah(Math.round(h.harga))}`;
+  if (selisih === 0) return `<span class="kb-pagu-sisa is-ok" title="${S.escapeHtmlAttr(tip)}">pas pagu</span>`;
+  return `<span class="kb-pagu-sisa ${selisih < 0 ? 'is-over' : 'is-ok'}" title="${S.escapeHtmlAttr(tip)}">${selisih < 0 ? 'lebih ' : 'sisa '}${rupiahRingkasKb(selisih)}</span>`;
+}
+async function salinTeksKb(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (_) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy'); ta.remove();
+      return ok;
+    } catch (__) { return false; }
+  }
+}
+
 // Rollup 1 section (atau grup "Tanpa section"): pagu vs total harga item
 // yang matched di section itu, plus progress pemenuhan.
 function computeSectionRollup(items, pagu) {
@@ -2530,13 +2584,31 @@ function computeSectionRollup(items, pagu) {
 function kbRollupHtml(r, size) {
   const cls = size === 'sm' ? 'kb-section-rollup' : 'kb-global-rollup';
   const selisihCls = r.selisih == null ? '' : (r.selisih >= 0 ? 'positif' : 'negatif');
-  const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
-  const prog = size === 'sm' ? ''
-    : `<span class="kb-prog" role="progressbar" aria-label="Kebutuhan terpenuhi" aria-valuemin="0" aria-valuemax="${r.total}" aria-valuenow="${r.done}"><i style="width:${pct}%"></i></span>`;
-  return `<div class="${cls}">
-    <span class="kb-rollup-done">${size === 'sm' ? `${r.done}/${r.total}` : `<b>${r.done}</b> dari ${r.total}`} terpenuhi</span>${prog}
-    <span class="kb-rollup-harga">${S.rupiah(r.harga)}${r.anyIncomplete ? '<i class="ti ti-alert-triangle" title="Ada produk match yang harganya belum kehitung (cek clipboard)"></i>' : ''}</span>
+  const warn = r.anyIncomplete ? '<i class="ti ti-alert-triangle" title="Ada produk match yang harganya belum kehitung (cek clipboard)"></i>' : '';
+  if (size === 'sm') {
+    // Rollup per section: format lama (angka per section, bukan total).
+    return `<div class="${cls}">
+    <span class="kb-rollup-done">${r.done}/${r.total} terpenuhi</span>
+    <span class="kb-rollup-harga">${S.rupiah(r.harga)}${warn}</span>
     ${r.pagu != null ? `<span>pagu ${S.rupiah(r.pagu)}</span><span class="kb-selisih ${selisihCls}">${r.selisih >= 0 ? 'sisa ' : 'lebih '}${S.rupiah(Math.abs(r.selisih))}</span>` : ''}
+  </div>`;
+  }
+  // Header (lg): "Rp <harga> / Pagu Rp <pagu> · sisa <selisih>". Total harga HANYA tampil di sini (sekali).
+  // Bar progres mengikuti pagu (harga terpakai / pagu) bila ada; tanpa pagu mengikuti kebutuhan terpenuhi.
+  const adaPagu = r.pagu != null;
+  const over = adaPagu && r.harga > r.pagu;
+  const pct = adaPagu
+    ? (r.pagu > 0 ? Math.min(100, Math.round((r.harga / r.pagu) * 100)) : (r.harga > 0 ? 100 : 0))
+    : (r.total ? Math.round((r.done / r.total) * 100) : 0);
+  const prog = adaPagu
+    ? `<span class="kb-prog${over ? ' is-over' : ''}" role="progressbar" aria-label="Harga terhadap pagu" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></span>`
+    : `<span class="kb-prog" role="progressbar" aria-label="Kebutuhan terpenuhi" aria-valuemin="0" aria-valuemax="${r.total}" aria-valuenow="${r.done}"><i style="width:${pct}%"></i></span>`;
+  const paguHtml = adaPagu
+    ? `<span class="kb-rollup-pagu">/ Pagu ${S.rupiah(r.pagu)}</span><span class="kb-selisih ${selisihCls}">· ${r.selisih >= 0 ? 'sisa ' : 'lebih '}${S.rupiah(Math.abs(r.selisih))}</span>`
+    : `<span class="kb-rollup-pagu">/ <button type="button" class="kb-pagu-empty" data-action="kb-pagu-edit" title="Isi pagu total">Pagu —</button></span>`;
+  return `<div class="${cls}">
+    <span class="kb-rollup-done"><b>${r.done}</b> dari ${r.total} terpenuhi</span>${prog}
+    <span class="kb-rollup-harga">${S.rupiah(r.harga)}${warn}${paguHtml}</span>
   </div>`;
 }
 
@@ -2819,6 +2891,57 @@ S.kbList.addEventListener('change', async e => {
   if (error) PNMToast.error('Gagal simpan pagu: ' + (error.message || 'error'));
 });
 
+// "Pagu —" di header: isi cepat pagu total tanpa buka modal Edit. Alur tulis sama dengan modal Edit
+// (apiUpdatePermintaanPagu = permintaan_rs.pagu + sesi_konversi.pagu sekaligus, markLocalWrite biar gema realtime diabaikan).
+// Kalau Permintaan RS punya section, pagu total = jumlah pagu section (lihat renderChecklist), jadi tidak ada angka total yang
+// bisa diisi langsung: buka modal Edit dan arahkan fokus ke pagu section pertama.
+S.kbSummary.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action="kb-pagu-edit"]');
+  if (!btn) return;
+  if (S.checklistSections.length) {
+    await openPrModal('edit');
+    const first = prEdPaguSections.querySelector('.pr-ed-pagu-sec');
+    if (first) first.focus();
+    return;
+  }
+  const input = document.createElement('input');
+  input.type = 'text'; input.inputMode = 'numeric'; input.className = 'kb-pagu-quick';
+  input.placeholder = 'mis. 150.000.000'; input.setAttribute('aria-label', 'Pagu total (Rp)');
+  btn.replaceWith(input);
+  input.focus();
+  let selesai = false;
+  const kembali = () => { selesai = true; renderChecklist(); };
+  input.addEventListener('input', () => {
+    const f = formatRibuan(input.value);
+    if (f !== input.value) input.value = f;
+  });
+  const simpan = async () => {
+    if (selesai) return;
+    const v = S.parsePaguValue(input.value);
+    if (v == null) { kembali(); return; } // kosong = batal, tidak ada yang ditulis
+    selesai = true;
+    input.disabled = true;
+    try {
+      if (S.checklistPermintaanId == null) throw new Error('Permintaan RS belum termuat');
+      if (S.currentSesiId) S.markLocalWrite(S.SESI_TABLE, S.currentSesiId, 'pagu', v);
+      await apiUpdatePermintaanPagu(S.checklistPermintaanId, v);
+      S.checklistPagu = v;
+      if (typeof S.updateClipAggregates === 'function') S.updateClipAggregates();
+      renderChecklist();
+      broadcastChecklistReload();
+      S.showToast(`Pagu ${v.toLocaleString('id-ID')} tersimpan ✓`);
+    } catch (err) {
+      S.showToast('Gagal simpan pagu: ' + (err.message || 'error'), 'error');
+      renderChecklist();
+    }
+  };
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); simpan(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); kembali(); }
+  });
+  input.addEventListener('blur', () => { if (!selesai) simpan(); });
+});
+
 // ---- Patch granular buat 1 item Kebutuhan RS (dipakai realtime UPDATE dari
 // kolaborator lain) — gak nge-rebuild seluruh daftar kayak renderChecklist(). ----
 function patchChecklistItem(id, changes) {
@@ -3041,6 +3164,26 @@ S.kbList.addEventListener('click', async (e) => {
   const action = el.dataset.action;
   const item = S.checklistItems.find(i => i.id === itemId);
   if (!item) return;
+
+  if (action === 'copy-pagu') {
+    // Chip pagu satuan: salin angka MENTAH (150000000) supaya langsung terbaca di field Pagu pencarian (parsePagu).
+    // Shift+klik: isi #pagu-input langsung + picu 'input' (field memformat sendiri). Tidak ikut expand/collapse baris.
+    e.stopPropagation();
+    const raw = el.dataset.raw;
+    const label = Number(raw).toLocaleString('id-ID');
+    if (e.shiftKey) {
+      const paguEl = document.getElementById('pagu-input');
+      if (paguEl) {
+        paguEl.value = raw;
+        paguEl.dispatchEvent(new Event('input', { bubbles: true }));
+        S.showToast(`Pagu ${label} diisi ke pencarian ✓`);
+        return;
+      }
+    }
+    if (!(await salinTeksKb(raw))) { S.showToast('Gagal copy — browser nolak akses clipboard', 'error'); return; }
+    S.showToast(`Pagu ${label} disalin ✓`);
+    return;
+  }
 
   if (action === 'copy-text') {
     // Copy deskripsi permintaan RS apa adanya (tanpa qty/pagu) — buat dipaste ke search / Sheet.
