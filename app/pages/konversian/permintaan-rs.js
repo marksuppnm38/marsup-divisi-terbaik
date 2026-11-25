@@ -8,6 +8,7 @@ import { bandingkan, tokensToHtml } from './auto-konversi/bandingkan.js';
 import { siapChipsHtml, firmChipHtml } from './auto-konversi/siap.js';
 import { suggestKonteks } from './auto-konversi/konteks-suggest.js';
 import { isTyping } from '../../../shared/shortcuts.js';
+import { urutkanPicker } from './picker-relevansi.js';
 
 export function installPermintaanRs(S) {
 // ══════════════════════════════════════════
@@ -2264,26 +2265,66 @@ function pickerStokBadge(c, need) {
   return c && c.stok_status ? S.stokBadgeHtml(c, !!c.is_set, need) : '';
 }
 
+// Fase 3 redesain panel (2026-11-25): picker = baris-klik (label) + chip terpilih + grup Cocok/Lainnya.
+//   • Seluruh baris adalah <label class="kb-picker-row"> → klik di mana saja = toggle checkbox. Checkbox ASLI tetap ada
+//     (disembunyikan secara visual saja, bukan display:none) supaya Tab/Space dan shift-select.js (yang menyaring
+//     lewat getClientRects) jalan seperti semula. Atribut data-picker-check/data-kode/data-produk-id & input
+//     data-picker-qty TIDAK berubah → pick-confirm membaca payload yang persis sama.
+//   • Urutan/grup dari picker-relevansi.js (token nama kebutuhan vs nama produk). "Lainnya" diciutkan, kecuali
+//     tidak ada yang cocok; saat mengetik di kolom cari, daftar jadi datar & semua baris ikut disaring.
+//   • Ringkasan "→ KODE" di atas picker dihapus (lihat matchedHtml di renderChecklistItemHtml): chip terpilih +
+//     badge stok di baris sudah memuat informasi yang sama.
+const pickerMoreOpen = new Map(); // String(item.id) -> boolean: "Lainnya" dibuka/ditutup, bertahan walau baris dirender ulang
+
+function pickerChipsHtml(itemId, kodes) {
+  return kodes.map(kode => {
+    const c = S.clipboard.find(x => x.kode_produk === kode);
+    const nama = c && c.nama_produk ? c.nama_produk : kode;
+    const kEsc = S.escapeHtmlAttr(kode), nEsc = S.escapeHtmlAttr(nama);
+    // Anomali stok (SET, bukan READY/INDENT = "Stok blm lengkap") tetap kelihatan sebagai titik amber walau ringkasan "→ KODE" disembunyikan.
+    const warn = c && c.stok_status && c.is_set && !['READY', 'INDENT'].includes(S.stokStatusUntukQty(c, 1));
+    return `<span class="kb-picker-chip${warn ? ' is-warn' : ''}" title="${kEsc} — ${nEsc}${warn ? ' · stok belum lengkap' : ''}"><span class="kb-picker-chip-t">${nEsc}</span>${warn ? '<span class="kb-picker-chip-dot" aria-label="Stok belum lengkap"></span>' : ''}`
+      + `<button type="button" class="kb-picker-chip-x" data-picker-chip-x="${itemId}" data-kode="${kEsc}" aria-label="Batalkan pilihan ${nEsc}"><i class="ti ti-x" aria-hidden="true"></i></button></span>`;
+  }).join('');
+}
+
 function clipboardPickerHtml(itemId, matchedItems) {
   const rsItem = S.checklistItems.find(i => i.id === itemId);
   const dqPick = rsItem ? Number(rsItem.qty_diminta) : NaN;
   const qtyPh = (!isNaN(dqPick) && dqPick >= 1) ? String(dqPick) : 'qty';
   const qtyTitle = qtyPh === 'qty' ? '' : ` title="Kosongkan = ikut qty permintaan (${qtyPh}) kalau cuma 1 produk dipilih"`;
-  const rows = S.clipboard.map(c => {
+  const kodeTerpasang = (matchedItems || []).map(l => l.kode_produk);
+  const rowHtml = (c) => {
     const link = (matchedItems || []).find(l => l.kode_produk === c.kode_produk);
     const checked = link ? ' checked' : '';
     const qtyVal = (link && link.qty_alokasi != null) ? link.qty_alokasi : '';
     // data-search dipake filter client-side di bawah — cocokin ke kode ATAU nama,
     // biar ketik "scalpel" nemu meski yang diinget cuma sebagian nama produknya.
     const haystack = `${c.kode_produk} ${c.nama_produk}`.toLowerCase();
-    return `<label class="kb-picker-row" data-search="${S.escapeHtmlAttr(haystack)}">
-      <input type="checkbox" data-picker-check="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}" data-produk-id="${c.produk_id||''}"${checked}>
+    return `<label class="kb-picker-row${link ? ' is-sel' : ''}" data-search="${S.escapeHtmlAttr(haystack)}">
+      <input type="checkbox" class="kb-picker-cb" data-picker-check="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}" data-produk-id="${c.produk_id||''}"${checked}>
       <span class="kb-picker-name">${S.escapeHtmlAttr(c.kode_produk)} — ${S.escapeHtmlAttr(c.nama_produk)}</span>
       <span class="kb-picker-stok">${pickerStokBadge(c, pickerNeedQty(rsItem, qtyVal))}</span>
+      <i class="ti ti-check kb-picker-tick" aria-hidden="true"></i>
       <input type="number" min="0" class="kb-picker-qty" data-picker-qty="${itemId}" data-kode="${S.escapeHtmlAttr(c.kode_produk)}"
         placeholder="${qtyPh}"${qtyTitle} value="${qtyVal}" style="${checked ? '' : 'display:none'}">
     </label>`;
-  }).join('');
+  };
+
+  const { cocok, lainnya } = urutkanPicker(rsItem ? rsItem.raw_text : '', S.clipboard, kodeTerpasang);
+  const bergrup = cocok.length > 0 && lainnya.length > 0; // satu grup saja / tanpa dasar memilah → daftar datar tanpa kepala
+  let rows;
+  if (!bergrup) {
+    rows = [...cocok, ...lainnya].map(x => rowHtml(x.c)).join('');
+  } else {
+    const buka = !!pickerMoreOpen.get(String(itemId));
+    rows = `<div class="kb-picker-ghead">Cocok <span class="kb-picker-gn">(${cocok.length})</span></div>`
+      + cocok.map(x => rowHtml(x.c)).join('')
+      + `<button type="button" class="kb-picker-ghead kb-picker-more-toggle" data-picker-more="${itemId}" aria-expanded="${buka}">`
+      +   `<i class="ti ti-chevron-right" aria-hidden="true"></i> Lainnya <span class="kb-picker-gn">(${lainnya.length})</span></button>`
+      + `<div class="kb-picker-more${buka ? ' is-open' : ''}" data-picker-more-body="${itemId}">${lainnya.map(x => rowHtml(x.c)).join('')}</div>`;
+  }
+  const kodeDipilih = S.clipboard.filter(c => kodeTerpasang.includes(c.kode_produk)).map(c => c.kode_produk);
   // Quick-pick dari pool sesi ini (clipboard) itu jalur UTAMA — kebanyakan
   // komponen (scalpel, gunting, forcep) kepake berulang lintas banyak baris
   // kebutuhan dalam 1 sesi, jadi begitu udah pernah dicari sekali, baris-baris
@@ -2294,17 +2335,37 @@ function clipboardPickerHtml(itemId, matchedItems) {
   // duplikat) — biar gak ada 2 search engine keliatan beda tapi
   // sebenernya nyari hal yang sama.
   return `<div class="kb-picker-wrap">
+    <div class="kb-picker-chips" data-picker-chips="${itemId}" aria-label="Produk terpilih"${kodeDipilih.length ? '' : ' hidden'}>${pickerChipsHtml(itemId, kodeDipilih)}</div>
     <div class="kb-picker-filter-wrap">
       <input type="text" class="kb-picker-filter" data-filter-for="${itemId}"
         placeholder="Cari di clipboard…" aria-label="Cari di clipboard (${S.clipboard.length} produk)" ${S.clipboard.length ? '' : 'disabled'}>
       <span class="kb-picker-count" aria-hidden="true">(${S.clipboard.length})</span>
     </div>
+    ${S.clipboard.length > 1 ? `<div class="kb-picker-tools">
+      <button type="button" class="kb-picker-tool" data-picker-selvis="${itemId}" data-mode="on">Centang yang tampil</button>
+      <button type="button" class="kb-picker-tool" data-picker-selvis="${itemId}" data-mode="off">Kosongkan yang tampil</button>
+      <span class="kb-picker-tip">Shift+klik = pilih rentang</span>
+    </div>` : ''}
     <div class="kb-picker-list" data-picker-list="${itemId}">${rows}</div>
     <div class="kb-picker-empty" data-picker-empty="${itemId}" style="${S.clipboard.length ? 'display:none' : ''}">
       ${S.clipboard.length ? 'Gak ada yang cocok di clipboard.' : 'Clipboard masih kosong.'}
       <button type="button" class="kb-picker-bridge" data-bridge-for="${itemId}">Cari di katalog →</button>
     </div>
   </div>`;
+}
+
+// Sinkronkan tampilan pilihan picker dari state checkbox (sumber kebenaran): tint/centang baris + chip di atas daftar.
+// Dipanggil dari listener 'change' (klik baris, chip ×, Space, shift-select, "Centang yang tampil" — semuanya menembak change).
+function pickerSyncSel(itemId) {
+  const list = S.kbList.querySelector(`.kb-picker-list[data-picker-list="${CSS.escape(String(itemId))}"]`);
+  if (!list) return;
+  const kodes = [];
+  list.querySelectorAll('input[data-picker-check]').forEach(chk => {
+    chk.closest('.kb-picker-row')?.classList.toggle('is-sel', chk.checked);
+    if (chk.checked) kodes.push(chk.dataset.kode);
+  });
+  const chips = S.kbList.querySelector(`.kb-picker-chips[data-picker-chips="${CSS.escape(String(itemId))}"]`);
+  if (chips) { chips.innerHTML = pickerChipsHtml(itemId, kodes); chips.hidden = !kodes.length; }
 }
 
 // Filter pool secara instan (client-side, sembunyi/tampil baris, BUKAN
@@ -2318,6 +2379,7 @@ S.kbList.addEventListener('input', e => {
   const emptyEl = S.kbList.querySelector(`.kb-picker-empty[data-picker-empty="${CSS.escape(itemId)}"]`);
   if (!list) return;
   const q = filterInput.value.trim().toLowerCase();
+  list.classList.toggle('is-filtering', !!q); // mengetik = daftar datar: kepala grup disembunyikan, "Lainnya" ikut disaring
   let anyVisible = false;
   list.querySelectorAll('.kb-picker-row').forEach(row => {
     const match = !q || row.dataset.search.includes(q);
@@ -2339,6 +2401,27 @@ S.kbList.addEventListener('input', e => {
   const c = S.clipboard.find(x => x.kode_produk === qtyInput.dataset.kode);
   const slot = qtyInput.closest('.kb-picker-row')?.querySelector('.kb-picker-stok');
   if (slot) slot.innerHTML = pickerStokBadge(c, pickerNeedQty(rsItem, qtyInput.value.trim()));
+});
+
+// "Lainnya (m)" buka/tutup — state disimpan per kebutuhan supaya tidak menutup sendiri saat baris dirender ulang.
+S.kbList.addEventListener('click', e => {
+  const t = e.target.closest('[data-picker-more]');
+  if (!t) return;
+  const id = t.dataset.pickerMore;
+  const body = S.kbList.querySelector(`[data-picker-more-body="${CSS.escape(id)}"]`);
+  if (!body) return;
+  const buka = !body.classList.contains('is-open');
+  body.classList.toggle('is-open', buka);
+  t.setAttribute('aria-expanded', String(buka));
+  pickerMoreOpen.set(String(id), buka);
+});
+
+// Chip produk terpilih: × = batalkan centang lewat checkbox aslinya (event change yang sama → qty, chip, error ikut sinkron).
+S.kbList.addEventListener('click', e => {
+  const x = e.target.closest('[data-picker-chip-x]');
+  if (!x) return;
+  const chk = S.kbList.querySelector(`input[data-picker-check="${CSS.escape(x.dataset.pickerChipX)}"][data-kode="${CSS.escape(x.dataset.kode)}"]`);
+  if (chk && chk.checked) { chk.checked = false; chk.dispatchEvent(new Event('change', { bubbles: true })); }
 });
 
 // Jalan pintas "Cari di katalog" — buka/fokusin search utama, prefill teks
@@ -2430,7 +2513,8 @@ function renderChecklistItemHtml(item) {
     else if (isNa) sub = `✕ Tidak bisa dipenuhi`;
 
     let matchedHtml = '';
-    if (isDone && item.matched_items && item.matched_items.length) {
+    // Lagi memilih ulang → ringkasan "→ KODE" tidak dirender: chip terpilih + badge stok di picker sudah memuatnya (Fase 3).
+    if (isDone && !isPicking && item.matched_items && item.matched_items.length) {
       matchedHtml = `<div class="kb-item-matched">${item.matched_items.map(l => {
         const nama = namaProdukByKode(l.kode_produk);
         const qtyLineTxt = l.qty_alokasi != null ? ` · qty ${l.qty_alokasi}` : '';
@@ -3445,6 +3529,7 @@ S.kbList.addEventListener('change', (e) => {
   if (qtyInput) qtyInput.style.display = chk.checked ? '' : 'none';
   const errEl = S.kbList.querySelector(`[data-picker-error="${chk.dataset.pickerCheck}"]`);
   if (errEl && chk.checked) errEl.style.display = 'none';
+  pickerSyncSel(chk.dataset.pickerCheck);
 });
 
 const KB_COLLAPSE_KEY = 'pnm_kb_collapsed';

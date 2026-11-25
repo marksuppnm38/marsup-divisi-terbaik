@@ -3687,3 +3687,44 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
   width:130px;padding:2px 6px;font:inherit;font-size:12px;color:var(--text);background:var(--surface);
   border:1px solid var(--accent);border-radius:5px;outline:none;
 }
+
+/* ============================================================
+   PICKER PRODUK (Fase 3 redesain panel, 2026-11-25)
+   Baris = target klik (label); checkbox asli disembunyikan SECARA VISUAL saja (bukan display:none: shift-select.js menyaring
+   checkbox lewat getClientRects, dan Tab/Space tetap harus jalan). Terpilih = tint tipis + centang di kanan + qty di ujung kanan.
+   Override di sini karena aturan dasar .kb-picker-* ada di pnm-universal.css (dipakai modul lain, tidak disentuh).
+   Hanya token yang sudah ada → light & dark ikut.
+   ============================================================ */
+#app-root .kb-picker-row{position:relative;min-height:34px;padding:6px 8px 6px 10px;border:1px solid transparent;transition:background .12s,border-color .12s}
+#app-root .kb-picker-row.is-sel{background:var(--accent-bg);border-color:color-mix(in srgb,var(--accent) 30%,transparent);color:var(--text)}
+#app-root .kb-picker-cb{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
+#app-root .kb-picker-row:has(.kb-picker-cb:focus-visible){outline:2px solid var(--accent);outline-offset:-1px}
+#app-root .kb-picker-tick{display:none;flex-shrink:0;font-size:14px;color:var(--accent)}
+#app-root .kb-picker-row.is-sel .kb-picker-tick{display:inline-block}
+/* chip produk terpilih */
+#app-root .kb-picker-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+#app-root .kb-picker-chips[hidden]{display:none}
+#app-root .kb-picker-chip{display:inline-flex;align-items:center;gap:2px;max-width:100%;padding:1px 2px 1px 9px;font-size:11px;line-height:1.5;
+  color:var(--accent-text);background:var(--accent-bg);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:999px}
+#app-root .kb-picker-chip-t{min-width:0;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#app-root .kb-picker-chip-x{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:50%;
+  background:transparent;color:inherit;font-size:12px;cursor:pointer}
+#app-root .kb-picker-chip-x:hover{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+#app-root .kb-picker-chip-x:focus-visible{outline:2px solid var(--accent);outline-offset:0}
+#app-root .kb-picker-chip-dot{flex:none;width:6px;height:6px;margin-left:2px;border-radius:50%;background:var(--warning,#f5a623)}
+/* grup Cocok / Lainnya */
+#app-root .kb-picker-ghead{display:flex;align-items:center;gap:4px;padding:6px 8px 2px;font-size:11px;font-weight:600;color:var(--text-muted)}
+#app-root .kb-picker-gn{font-weight:400}
+#app-root .kb-picker-more-toggle{width:100%;margin-top:2px;border:0;border-radius:6px;background:none;font-family:inherit;text-align:left;cursor:pointer}
+#app-root .kb-picker-more-toggle:hover{background:var(--surface);color:var(--text-secondary)}
+#app-root .kb-picker-more-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+#app-root .kb-picker-more-toggle .ti{transition:transform .12s}
+#app-root .kb-picker-more-toggle[aria-expanded="true"] .ti{transform:rotate(90deg)}
+#app-root .kb-picker-more{display:none;flex-direction:column;gap:2px}
+#app-root .kb-picker-more.is-open{display:flex}
+/* mengetik di kolom cari = daftar datar */
+#app-root .kb-picker-list.is-filtering .kb-picker-more{display:flex}
+#app-root .kb-picker-list.is-filtering .kb-picker-ghead{display:none}
+@media (prefers-reduced-motion:reduce){
+  #app-root .kb-picker-row,#app-root .kb-picker-more-toggle .ti{transition:none}
+}
