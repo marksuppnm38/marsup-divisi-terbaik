@@ -403,6 +403,26 @@ async function persistAddItem(item) {
 }
 S.persistAddItem = persistAddItem;
 
+// DELETE ke sesi_konversi_item bisa DIBLOKIR DIAM-DIAM oleh RLS: policy RESTRICTIVE blok_hapus_tanpa_izin
+// (can_delete(), allowed_users.boleh_hapus) membuat PostgREST membalas 2xx dengan 0 baris terhapus. Tanpa
+// pengecekan, layar mengosongkan clipboard padahal DB tidak berubah (produk muncul lagi saat refresh, dan
+// Kebutuhan RS tidak ikut berubah karena memang tidak ada yang terhapus).
+// Return true = terhapus (atau memang sudah tidak ada, mis. dihapus rekan duluan); false = DIBLOKIR.
+// Pembeda "diblokir" vs "sudah hilang": kalau tidak ada baris yang kembali, cek apakah salah satu baris yang
+// KITA TAHU ada (knownId) masih ada di server.
+async function hapusItemSesiDiServer(filter, knownId, errMsg) {
+  const res = await assertOk(await sesiFetch(`${SESI_ITEM_TABLE}?${filter}&select=id`, {
+    method: 'DELETE', headers: { Prefer: 'return=representation' }
+  }), errMsg);
+  const rows = await res.json().catch(() => []);
+  if (Array.isArray(rows) && rows.length > 0) return true;
+  if (!knownId) return true; // tidak ada baris yang bisa dijadikan bukti -> perilaku lama
+  const cek = await assertOk(await sesiFetch(`${SESI_ITEM_TABLE}?id=eq.${knownId}&select=id`), errMsg);
+  const masihAda = await cek.json().catch(() => []);
+  return !(Array.isArray(masihAda) && masihAda.length > 0);
+}
+const PESAN_TANPA_IZIN_HAPUS = 'Akun kamu tidak punya izin menghapus produk dari clipboard. Hubungi admin.';
+
 // Kebutuhan RS adalah TURUNAN dari Clipboard: begitu produk dihapus dari clipboard, trigger di database
 // (lepas_link_rs -> sinkron_kebutuhan_rs_sesi) melepas link produk itu dari permintaan_item_produk dan
 // membalikkan item yang kehilangan semua produknya ke PENDING. Frontend TIDAK menulis status itu sendiri —
@@ -417,10 +437,13 @@ async function persistRemoveItem(item) {
   if (!S.currentSesiId) return;
   setSesiSavedStatus('Menyimpan…');
   try {
-    if (item._sesiItemId) {
-      await assertOk(await sesiFetch(`${SESI_ITEM_TABLE}?id=eq.${item._sesiItemId}`, { method: 'DELETE' }), 'Gagal hapus item');
-    } else {
-      await assertOk(await sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${S.currentSesiId}&kode_produk=eq.${encodeURIComponent(item.kode_produk)}`, { method: 'DELETE' }), 'Gagal hapus item');
+    const terhapus = item._sesiItemId
+      ? await hapusItemSesiDiServer(`id=eq.${item._sesiItemId}`, item._sesiItemId, 'Gagal hapus item')
+      : await hapusItemSesiDiServer(`sesi_id=eq.${S.currentSesiId}&kode_produk=eq.${encodeURIComponent(item.kode_produk)}`, null, 'Gagal hapus item');
+    if (!terhapus) {
+      setSesiSavedStatus('Tidak punya izin hapus', true);
+      showToast('Produk tidak bisa dihapus', 'error', { detail: PESAN_TANPA_IZIN_HAPUS });
+      return false; // pemanggil mengembalikan produk ke clipboard
     }
     await touchSesiUpdatedAt(S.currentSesiId);
     await syncKebutuhanRsDariServer();
@@ -1159,11 +1182,20 @@ async function handleClipAddMany(kodes) {
 }
 S.handleClipAddMany = handleClipAddMany; // dipakai Enter di Cari Produk saat ada rentang Shift+↑↓ (search.js)
 function removeFromClip(kode) {
-  const removed = S.clipboard.find(c => c.kode_produk === kode);
+  const idx = S.clipboard.findIndex(c => c.kode_produk === kode);
+  const removed = idx === -1 ? null : S.clipboard[idx];
   S.clipboard = S.clipboard.filter(c => c.kode_produk !== kode);
   updateClipboard();
   S.renderResults(S.lastResults);
-  if (removed) persistRemoveItem(removed);
+  if (removed) {
+    persistRemoveItem(removed).then(ok => {
+      if (ok !== false) return;
+      // Server menolak (tidak ada izin hapus): jangan biarkan layar berbohong — kembalikan ke posisi semula.
+      if (!S.clipboard.some(c => c.kode_produk === kode)) S.clipboard.splice(Math.min(idx, S.clipboard.length), 0, removed);
+      updateClipboard();
+      S.renderResults(S.lastResults);
+    });
+  }
 }
 function updateClipAggregates() {
   if (S.checklistPermintaanId && S.checklistItems.length) S.refreshRollupHeadersOnly();
@@ -2413,11 +2445,12 @@ S.btnClearAll.addEventListener('click', async () => {
     // (dulu: layar kosong duluan, error ditelan -> item muncul lagi saat refresh / di layar rekan).
     if (sesiIdSebelumnya) {
       try {
-        const res = await sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${sesiIdSebelumnya}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const knownId = (dihapus.find(it => it._sesiItemId) || {})._sesiItemId || null;
+        const terhapus = await hapusItemSesiDiServer(`sesi_id=eq.${sesiIdSebelumnya}`, knownId, 'Gagal hapus item');
+        if (!terhapus) throw new Error(PESAN_TANPA_IZIN_HAPUS);
       } catch (err) {
         console.error('[clear all] gagal hapus item di server:', err);
-        showToast('Gagal menghapus item di server', 'error', { detail: 'Clipboard belum dikosongkan. Coba lagi. (' + err.message + ')' });
+        showToast('Gagal menghapus item di server', 'error', { detail: err.message === PESAN_TANPA_IZIN_HAPUS ? 'Clipboard tidak dikosongkan. ' + err.message : 'Clipboard belum dikosongkan. Coba lagi. (' + err.message + ')' });
         return;
       }
     }
