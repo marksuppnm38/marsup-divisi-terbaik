@@ -5,6 +5,7 @@
 import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck, buatIndeks, KONTEKS } from './auto-konversi/index.js';
 import { tawarkan as anchorTawarkan, hitung as anchorHitung, labelOpsi as anchorLabelOpsi, labelSinyal as anchorLabelSinyal, ANCHOR_LEVEL } from './auto-konversi/anchor.js';
 import { bandingkan, tokensToHtml } from './auto-konversi/bandingkan.js';
+import { siapChipsHtml, firmChipHtml } from './auto-konversi/siap.js';
 import { suggestKonteks } from './auto-konversi/konteks-suggest.js';
 import { isTyping } from '../../../shared/shortcuts.js';
 
@@ -748,7 +749,7 @@ function anchorPanelHtml(item) {
     return `<label class="kb-anchor-row${isAnchor ? ' locked' : ''}">
       <input type="checkbox" data-anchor-check="${item.id}" data-kode="${kodeEsc}"${c.pilih.has(kodeO) ? ' checked' : ''}${isAnchor ? ' disabled' : ''}>
       <span class="kb-anchor-main"><span class="kb-anchor-nama">${escapeHtmlAttr(o.nama_produk)}</span>
-        <span class="kb-anchor-sub"><span class="kb-cmp-kode">${kodeEsc}</span> ${escapeHtmlAttr(anchorLabelOpsi({ tier: o.tier, nomor: o.nomor }))}${isAnchor ? ' · pilihanmu' : ''}</span>
+        <span class="kb-anchor-sub"><span class="kb-cmp-kode">${kodeEsc}</span> ${escapeHtmlAttr(anchorLabelOpsi({ tier: o.tier, nomor: o.nomor }))}${isAnchor ? ' · pilihanmu' : ''} ${firmChipHtml(o.firm, escapeHtmlAttr)}</span>
         ${isAnchor ? '' : anchorBadgesHtml(o)}
         ${alasan ? `<span class="kb-anchor-alasan">${escapeHtmlAttr(alasan)}</span>` : ''}
       </span></label>`;
@@ -1341,8 +1342,9 @@ function amCandRowHtml(item, c, top) {
   const asal = c.src === 'katalog' ? 'dari katalog' : (c.src === 'varian' ? 'ukuran lain' : (c.freq ? `${c.freq.toLocaleString('id-ID')}× dipakai` : ''));
   // Beda spesifikasi yang tidak tertangkap penanda di nama (mis. mm, fig): tetap disebut, jangan hilang diam-diam.
   const catatan = (c.diff || []).length && !bd.adaBeda ? `<span class="kb-cmp-note">${escapeHtmlAttr(c.diff.join('; '))}</span>` : '';
-  // Cocok tapi belum siap dijual (AKD/link V6/firm): sebut apa yang kurang. Teks dari data → escape.
-  const siapNote = c.siap && !c.siap.ok ? `<span class="kb-cmp-note">perlu disiapkan: ${escapeHtmlAttr(c.siap.kurang.join(', '))}</span>` : '';
+  // Status link/AKD SELALU tampil per baris (siap = "Link ✓", belum = apa yang kurang), bukan cuma kalau belum siap:
+  // staf harus bisa langsung melihat alternatif mana yang sudah ada linknya. Tidak dicek (mode Swasta) = tanpa chip.
+  const siapNote = siapChipsHtml(c.siap, escapeHtmlAttr);
   const ukTitle = AM_UKURAN_TXT[c.ukuran] ? ` title="${escapeHtmlAttr(AM_UKURAN_TXT[c.ukuran])}"` : '';
   return `<div class="kb-cmp-row${top ? ' top' : ''}">
     <div class="kb-cmp-info">
@@ -1642,7 +1644,13 @@ if (amBarEl) amBarEl.addEventListener('click', (e) => {
   else if (act === 'settings') { if (typeof S.openSettingsModal === 'function') S.openSettingsModal(); }
 });
 // Dipanggil index.js setiap Preferensi Auto-Match berubah: tampilan ikut berubah seketika, tanpa mencocokkan ulang.
-S.amSettingsChanged = () => { amPeek = false; renderChecklist(); };
+// Preferensi diganti ke "Otomatis" saat usulan yang yakin SUDAH ada (hasil pencocokan lama / percobaan pasang yang gagal):
+// pasang sekarang. Dulu auto-pasang hanya jalan di ujung pencocokan, sehingga staf tetap harus menekan tombol.
+S.amSettingsChanged = () => {
+  amPeek = false;
+  renderChecklist();
+  if (amPolicy().yakin === 'pasang' && !amRunning && !amApplying) applyAllAuto(); // tanpa usulan AUTO = langsung return
+};
 
 // Switch footer layar Periksa item: jalankan Auto-Match otomatis begitu item tersimpan? (diingat per browser)
 const prAmOpt = document.getElementById('pr-am-opt');

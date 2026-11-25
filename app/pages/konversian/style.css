@@ -3640,3 +3640,12 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
 #app-root #results .rcard.rc3 .rcard-name.is-copied,
 #app-root #results .rcard.rc3 .rcard-price.is-copied{color:var(--success-text)}
 @media (prefers-reduced-motion:reduce){#app-root #results [data-copy]{transition:none}}
+
+/* Chip status link/AKD per baris varian & alternatif (auto-konversi/siap.js) */
+#app-root .kb-siap{display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;line-height:1;padding:2px 6px;border-radius:999px;white-space:nowrap;vertical-align:baseline}
+#app-root .kb-siap.ok{color:var(--success-text,var(--success));background:var(--success-bg)}
+#app-root .kb-siap.warn{color:var(--warn-text);background:var(--warning-bg)}
+#app-root .kb-cmp-sub .kb-siap+.kb-siap{margin-left:-6px}
+/* Hapus semua: nonaktif saat Clipboard kosong */
+#app-root .btn-clear-all:disabled{opacity:.4;cursor:default}
+#app-root .btn-clear-all:disabled:hover{color:var(--text-muted);text-decoration-color:transparent}

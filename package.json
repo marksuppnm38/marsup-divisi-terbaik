@@ -7,7 +7,8 @@
     "build": "node scripts/build.mjs",
     "check:security": "node scripts/check-security.mjs",
     "check:shortcuts": "node scripts/check-shortcuts.mjs",
-    "test:katalog": "node --test scripts/test-produk-katalog.mjs"
+    "test:katalog": "node --test scripts/test-produk-katalog.mjs",
+    "test": "node --test scripts/test-produk-katalog.mjs scripts/test-siap.mjs"
   },
   "devDependencies": {
     "@supabase/supabase-js": "2.118.0",

@@ -1162,6 +1162,8 @@ function updateClipAggregates() {
   S.btnExport.disabled = n === 0;
   S.btnRecord.disabled = n === 0;
   S.btnRecord.title = n === 0 ? 'Tambahkan produk ke Clipboard dulu' : '';
+  S.btnClearAll.disabled = n === 0;
+  S.btnClearAll.title = n === 0 ? 'Clipboard sudah kosong' : 'Hapus semua produk dari Clipboard';
   const recordHint = document.getElementById('clip-record-hint');
   if (recordHint) recordHint.textContent = n === 0 ? 'Export dan Record aktif setelah ada produk di Clipboard.' : '';
   syncIdleState();
@@ -2388,9 +2390,13 @@ async function runExportExcel() {
 }
 
 // CLEAR ALL
+// Tombol ini tidak boleh jadi no-op diam-diam: clipboard kosong = tombol nonaktif (lihat updateClipAggregates), dan kalau
+// tetap terpicu (Enter/klik cepat) staf diberi tahu.
 S.btnClearAll.addEventListener('click', async () => {
-  if (!S.clipboard.length) return;
-  if (await S.showConfirmModal({ title: 'Hapus Semua', text: 'Hapus semua item dari clipboard?', okText: 'Ya, Hapus', danger: true })) {
+  const dihapus = S.clipboard.slice();
+  const n = dihapus.length;
+  if (!n) { showToast('Clipboard sudah kosong', 'info'); return; }
+  if (await S.showConfirmModal({ title: 'Hapus Semua', text: `Hapus ${n} produk dari clipboard?`, okText: 'Ya, Hapus', danger: true })) {
     const sesiIdSebelumnya = S.currentSesiId;
     // Hapus di server DULU. Kalau gagal, clipboard dibiarkan utuh + user diberi tahu
     // (dulu: layar kosong duluan, error ditelan -> item muncul lagi saat refresh / di layar rekan).
@@ -2408,6 +2414,10 @@ S.btnClearAll.addEventListener('click', async () => {
     updateClipboard();
     S.renderResults(S.lastResults);
     if (sesiIdSebelumnya) touchSesiUpdatedAt(sesiIdSebelumnya);
+    // Sama seperti hapus satuan (persistRemoveItem): siarkan ke rekan yang membuka sesi ini, kalau tidak layar mereka
+    // tetap penuh. Satu pesan per item; feed aktivitas merangkumnya jadi "menghapus X dan N item lain".
+    if (typeof S.broadcastItemRemoved === 'function') dihapus.forEach(it => S.broadcastItemRemoved(it));
+    showToast(`${n} produk dihapus dari Clipboard`);
   }
 });
 
