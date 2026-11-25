@@ -1833,7 +1833,7 @@ async function renderPdfFromUrl(pdfUrl) {
   lampiranStatus.style.display = 'block';
   lampiranStatus.textContent = 'Memuat PDF…';
   await ensurePdfJs(); // lazy: pdf.js baru didownload di sini, pas fitur ini beneran dipakai
-  const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+  const pdf = await pdfjsLib.getDocument({ url: pdfUrl, isEvalSupported: false }).promise; // CVE-2024-4367: matikan eksekusi JS pdf.js 3.x
   lampiranStatus.textContent = `Merender ${pdf.numPages} halaman…`;
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
@@ -1855,7 +1855,7 @@ async function renderPdfFromUrl(pdfUrl) {
 // versi headless (tanpa render ke DOM) buat dipakai di export Excel
 async function getPdfPagesBase64(pdfUrl, scale = 1.5) {
   await ensurePdfJs(); // lazy: sama seperti renderPdfFromUrl() di atas
-  const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+  const pdf = await pdfjsLib.getDocument({ url: pdfUrl, isEvalSupported: false }).promise; // CVE-2024-4367: matikan eksekusi JS pdf.js 3.x
   const pages = [];
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);

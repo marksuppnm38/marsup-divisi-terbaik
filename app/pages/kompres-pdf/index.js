@@ -437,7 +437,8 @@ export async function mount(container) {
   // just downsamples the cached bitmap and re-encodes — no repeat pdf.js
   // rendering, which is by far the slowest step.
   async function renderPagesToCache(arrayBuffer, dpi, onProgress){
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
+    // CVE-2024-4367: pdf.js < 4.2.67 bisa menjalankan JS dari PDF berbahaya lewat font. isEvalSupported:false = mitigasi resmi untuk 3.x.
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0), isEvalSupported: false });
     const pdf = await loadingTask.promise;
     const scale = dpi / 72;
     const pageNums = Array.from({ length: pdf.numPages }, (_, i) => i + 1);

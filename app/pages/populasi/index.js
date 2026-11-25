@@ -38,6 +38,10 @@ const VENDOR_CHAIN = [
 ];
 // Dimuat hanya saat tombol Excel ditekan (library ini cukup besar).
 const EXCELJS_SRC = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+// SRI: browser menolak file yang byte-nya beda (URL sudah di-pin ke versi persis).
+const SRI_BY_SRC = {
+  [EXCELJS_SRC]: 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz',
+};
 
 const scriptPromises = new Map();
 function loadScript(src) {
@@ -46,6 +50,7 @@ function loadScript(src) {
   const p = new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = src;
+    if (SRI_BY_SRC[src]) { s.integrity = SRI_BY_SRC[src]; s.crossOrigin = 'anonymous'; } // crossOrigin wajib bareng integrity
     s.onload = () => resolve();
     s.onerror = () => { s.remove(); reject(new Error('Gagal memuat ' + src)); };
     document.head.appendChild(s);
