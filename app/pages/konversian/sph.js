@@ -55,8 +55,9 @@ const SPH_ZEBRA_COLOR = [244, 250, 247];  // tint ijo brand paling muda, buat ba
 const SPH_BORDER_WIDTH = 0.2;
 
 
-// Konfigurasi aset per perusahaan — PATH-BASED (assets/...), bukan base64 di
-// source lagi. Hanya file yang BENERAN ada sekarang yang dicantumkan; yang
+// Konfigurasi aset per perusahaan — 'signatures:<nama file>' = file di bucket
+// privat 'Signatures' (lihat sphResolveAssetSrc), bukan base64 di source dan
+// bukan folder assets/ yang publik. Hanya file yang BENERAN ada sekarang yang dicantumkan; yang
 // belum ada sengaja di-null-in, bukan ditebak-tebak jadi path yang gak eksis.
 // Kalau path gagal di-fetch (404 dll) juga otomatis dianggap "belum ada".
 // Lihat sphRenderAssetSlots() untuk apa yang terjadi kalau kosong: user
@@ -66,9 +67,9 @@ const SPH_COMPANIES = {
     label: 'PT Samaya Medika Indonesia (SMY)',
     prefix: 'SPH-SMY',
     namaPt: 'PT Samaya Medika Indonesia',
-    header: '/assets/HEADER_SAMAYA.png',
-    footer: '/assets/FOOTER_SAMAYA.png',
-    ttd: '/assets/TTD_SAMAYA.png', // udah komposit logo+ttd jadi satu gambar, gak perlu ditimpa manual
+    header: 'signatures:HEADER_SAMAYA.png',
+    footer: 'signatures:FOOTER_SAMAYA.png',
+    ttd: 'signatures:TTD_SAMAYA.png', // udah komposit logo+ttd jadi satu gambar, gak perlu ditimpa manual
     headerWidthMm: 45
   },
   pnm: {
@@ -84,8 +85,8 @@ const SPH_COMPANIES = {
     label: 'PT Meto Cahaya Abadi (METO)',
     prefix: 'SPH-METO',
     namaPt: 'PT Meto Cahaya Abadi',
-    header: '/assets/header_meto.png',
-    footer: '/assets/FOOTER_METO.png',
+    header: 'signatures:header_meto.png',
+    footer: 'signatures:FOOTER_METO.png',
     ttd: null, // belum ada TTD default METO — user upload sendiri tiap generate
     headerWidthMm: 170
   }
@@ -222,13 +223,34 @@ function sphReadFileAsAsset(file, trim) {
 // - 'unconfigured' — path-nya memang null (perusahaan ini belum dikasih aset itu)
 // - 'error'         — file-nya beneran gak ketemu/gagal dimuat (404, dll)
 // - 'ok'            — berhasil, siap dipakai (mungkin dengan/tanpa trim)
+// Aset kop/footer/TTD ada di bucket PRIVAT 'Signatures' (BUKAN folder assets/ yang bisa diunduh siapa pun
+// tanpa login). Path di konfigurasi berbentuk 'signatures:<nama file>'. Diambil lewat signed URL
+// (sesi login aktif; policy storage.objects: hanya allowed_users), lalu dibaca jadi dataURL supaya
+// canvas tidak ke-taint dan jalur docx (data:) tetap jalan. Path biasa dilewatkan apa adanya.
+const SPH_SIGNATURES_PREFIX = 'signatures:';
+const SPH_SIGNATURES_BUCKET = 'Signatures';
+async function sphResolveAssetSrc(path) {
+  if (!String(path).startsWith(SPH_SIGNATURES_PREFIX)) return path;
+  if (typeof window.PNM_getSignedUrl !== 'function') throw new Error('Supabase client belum siap');
+  const url = await window.PNM_getSignedUrl(SPH_SIGNATURES_BUCKET, path.slice(SPH_SIGNATURES_PREFIX.length));
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  let blob = await res.blob();
+  if (!/^image\//i.test(blob.type || '')) blob = new Blob([blob], { type: 'image/png' });
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Gagal membaca gambar'));
+    reader.readAsDataURL(blob);
+  });
+}
 function sphLoadImage(path) {
-  return new Promise((resolve, reject) => {
+  return sphResolveAssetSrc(path).then(src => new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Gambar gagal dimuat: ${path}`));
-    img.src = path;
-  });
+    img.src = src;
+  }));
 }
 function sphImageToDataUrl(img) {
   const canvas = document.createElement('canvas');

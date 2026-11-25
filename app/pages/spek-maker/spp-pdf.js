@@ -61,9 +61,9 @@ export const SPP_COMPANIES = {
   smy: {
     label: 'PT Samaya Medika Indonesia (SMY)',
     namaPt: 'PT Samaya Medika Indonesia',
-    header: '/assets/HEADER_SAMAYA.png',
-    footer: '/assets/FOOTER_SAMAYA.png',
-    ttd: '/assets/TTD_SAMAYA.png', // sudah komposit logo+ttd
+    header: 'signatures:HEADER_SAMAYA.png', // file di bucket privat 'Signatures' (lihat sppResolveAssetSrc di spp-ui.js)
+    footer: 'signatures:FOOTER_SAMAYA.png',
+    ttd: 'signatures:TTD_SAMAYA.png', // sudah komposit logo+ttd
     headerLayout: 'smy',
     footerLayout: 'smy',
   },
@@ -79,8 +79,8 @@ export const SPP_COMPANIES = {
   meto: {
     label: 'PT Meto Cahaya Abadi (METO)',
     namaPt: 'PT Meto Cahaya Abadi',
-    header: '/assets/header_meto.png',
-    footer: '/assets/FOOTER_METO.png',
+    header: 'signatures:header_meto.png',
+    footer: 'signatures:FOOTER_METO.png',
     ttd: null, // belum ada TTD default METO
     headerLayout: '_wide',
     footerLayout: '_wide',

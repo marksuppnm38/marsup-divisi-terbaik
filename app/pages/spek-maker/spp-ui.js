@@ -160,13 +160,35 @@ function readFileAsAsset(file, trim) {
   });
 }
 
+// Aset kop/footer/TTD ada di bucket PRIVAT 'Signatures' (BUKAN folder assets/ yang bisa diunduh siapa pun
+// tanpa login). Path di konfigurasi berbentuk 'signatures:<nama file>'. Diambil lewat signed URL
+// (sesi login aktif; policy storage.objects: hanya allowed_users), lalu dibaca jadi dataURL supaya
+// canvas tidak ke-taint dan jalur docx (data:) tetap jalan. Path biasa dilewatkan apa adanya.
+const SPP_SIGNATURES_PREFIX = 'signatures:';
+const SPP_SIGNATURES_BUCKET = 'Signatures';
+async function sppResolveAssetSrc(path) {
+  if (!String(path).startsWith(SPP_SIGNATURES_PREFIX)) return path;
+  if (typeof window.PNM_getSignedUrl !== 'function') throw new Error('Supabase client belum siap');
+  const url = await window.PNM_getSignedUrl(SPP_SIGNATURES_BUCKET, path.slice(SPP_SIGNATURES_PREFIX.length));
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  let blob = await res.blob();
+  if (!/^image\//i.test(blob.type || '')) blob = new Blob([blob], { type: 'image/png' });
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Gagal membaca gambar'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 function loadImage(path) {
-  return new Promise((resolve, reject) => {
+  return sppResolveAssetSrc(path).then((src) => new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('Gambar gagal dimuat: ' + path));
-    img.src = path;
-  });
+    img.src = src;
+  }));
 }
 
 // Balikin {status, asset}: 'unconfigured' (path null) | 'error' (gagal dimuat) | 'ok'.
