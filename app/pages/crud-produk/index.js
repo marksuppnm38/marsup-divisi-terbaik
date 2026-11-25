@@ -1276,10 +1276,22 @@ async function refreshVerifiedRow(){
 document.getElementById('f_verified').addEventListener('change', async (e) => {
   if (!currentProdukId) return;
   const cb = e.target, want = cb.checked, id = currentProdukId;
+  if (!want && !guardHapus()) { cb.checked = true; return; } // melepas Verified = DELETE baris produk_verified
   cb.disabled = true;
-  const { error } = want
-    ? await sb.from('produk_verified').insert({ produk_id: id, matched_by: 'manual' })
-    : await sb.from('produk_verified').delete().eq('produk_id', id);
+  let error = null;
+  if (want) {
+    ({ error } = await sb.from('produk_verified').insert({ produk_id: id, matched_by: 'manual' }));
+  } else {
+    // .select() = minta baris yang BENAR-BENAR terhapus. Delete yang ditolak RLS balik tanpa error.
+    const delRes = await sb.from('produk_verified').delete().eq('produk_id', id).select('produk_id');
+    error = delRes.error;
+    if (!error && !barisTerhapus(delRes)) {
+      showToast('Badge Verified tidak terlepas', true, { detail: 'Akun ini tidak punya izin, atau badge-nya sudah hilang.' });
+      cb.checked = !want; cb.disabled = false;
+      await refreshVerifiedRow();
+      return;
+    }
+  }
   if (error && error.code !== '23505') { // 23505 = sudah ada (mis. keburu ditandai sync) -> anggap sukses
     showToast('Gagal mengubah status Verified: ' + error.message, true);
     cb.checked = !want; cb.disabled = false;
@@ -3467,12 +3479,18 @@ function renderAkdCurrent(){
 
 async function unlinkAkd(akdId){
   if (!currentProdukId) return;
+  if (!guardHapus()) return;
   if (!await crudConfirm('Lepas relasi AKD ini dari produk?', { danger: true, okLabel: 'Ya, Lepas' })) return;
-  const { error } = await sb.from('produk_akd').delete().eq('produk_id', currentProdukId).eq('akd_id', akdId);
-  if (error) { showToast('Gagal melepas relasi: ' + error.message, true); return; }
+  const tipe = document.getElementById('f_tipe').value;
+  const delRes = await sb.from('produk_akd').delete().eq('produk_id', currentProdukId).eq('akd_id', akdId).select('akd_id');
+  if (delRes.error) { showToast('Gagal melepas relasi: ' + delRes.error.message, true); return; }
+  if (!barisTerhapus(delRes)) {
+    showToast('Relasi tidak terlepas', true, { detail: 'Akun ini tidak punya izin, atau relasinya sudah hilang.' });
+    await loadAkdLinks(currentProdukId, tipe);
+    return;
+  }
   showToast('Relasi AKD dilepas');
   markProdukStale({ akd: true, distinct: true }); // golongan / status AKD produk bisa berubah
-  const tipe = document.getElementById('f_tipe').value;
   await loadAkdLinks(currentProdukId, tipe);
   await refreshAkdFieldsFromDb();
 }
@@ -4303,8 +4321,14 @@ function renderComposition(){
   }
 }
 async function deleteCompItem(rowId){
-  const { error } = await sb.from('produk_set_item').delete().eq('id', rowId);
-  if (error) { showToast('Gagal hapus item: ' + error.message, true); return; }
+  if (!guardHapus()) return;
+  const delRes = await sb.from('produk_set_item').delete().eq('id', rowId).select('id');
+  if (delRes.error) { showToast('Gagal hapus item: ' + delRes.error.message, true); return; }
+  if (!barisTerhapus(delRes)) {
+    showToast('Item tidak terhapus', true, { detail: 'Akun ini tidak punya izin, atau item sudah hilang.' });
+    await loadComposition();
+    return;
+  }
   showToast('Item dihapus dari set');
   markProdukStale();
   await loadComposition();
@@ -4542,9 +4566,15 @@ function renderSetAkd(){
     chip.className = 'akd-chip';
     chip.innerHTML = `<span class="ac-no">${escapeHtml(a.no_akd)}</span><span class="ac-nama">${escapeHtml(a.nama_akd || '')}</span><button title="Lepas relasi"><i class="ti ti-x"></i></button>`;
     chip.querySelector('button').addEventListener('click', async () => {
+      if (!guardHapus()) return;
       if (!await crudConfirm('Lepas relasi AKD ini dari set?', { danger: true, okLabel: 'Ya, Lepas' })) return;
-      const { error } = await sb.from('produk_akd').delete().eq('produk_id', currentSetId).eq('akd_id', a.id);
-      if (error) { showToast('Gagal melepas: ' + error.message, true); return; }
+      const delRes = await sb.from('produk_akd').delete().eq('produk_id', currentSetId).eq('akd_id', a.id).select('akd_id');
+      if (delRes.error) { showToast('Gagal melepas: ' + delRes.error.message, true); return; }
+      if (!barisTerhapus(delRes)) {
+        showToast('Relasi tidak terlepas', true, { detail: 'Akun ini tidak punya izin, atau relasinya sudah hilang.' });
+        loadSetAkd();
+        return;
+      }
       showToast('Relasi AKD dilepas'); markProdukStale({ akd: true, distinct: true }); loadSetAkd(); refreshSetHeader();
     });
     el.appendChild(chip);
@@ -4823,8 +4853,12 @@ async function deleteProdukInner(id, label){
   if (!await crudConfirm(pesan, { danger: true, okLabel: 'Ya, Hapus' })) return;
 
   if (dipakaiDiSetLain) {
-    const { error: detachErr } = await sb.from('produk_set_item').delete().eq('produk_id', id);
-    if (detachErr) { showToast('Gagal melepas relasi dari set lain: ' + detachErr.message, true); return; }
+    const detachRes = await sb.from('produk_set_item').delete().eq('produk_id', id).select('id');
+    if (detachRes.error) { showToast('Gagal melepas relasi dari set lain: ' + detachRes.error.message, true); return; }
+    if (!barisTerhapus(detachRes)) {
+      showToast('Relasi dari set lain tidak terlepas', true, { detail: 'Akun ini tidak punya izin, atau relasinya sudah hilang. Produk belum dihapus.' });
+      return;
+    }
   }
 
   // Sisanya (harga, media, relasi AKD, komposisi SET ini sendiri) ikut kehapus
