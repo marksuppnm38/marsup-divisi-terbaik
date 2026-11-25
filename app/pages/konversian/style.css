@@ -3850,3 +3850,41 @@ html[data-theme="dark"] #lampiran-modal[data-brand="adler"]  { --lb: #ff6259; --
 #app-root .clip-foot-actions .conv-step:not(.is-done):not(.is-loading):not(.is-nudge){background:transparent;border-color:var(--border);color:var(--text-secondary)}
 #app-root .clip-foot-actions .conv-step-connector{width:4px}
 #app-root .clip-foot-actions .conv-step-open{width:30px;height:30px}
+
+/* ══════════════════════════════════════════════════════════════════════
+   2026-11-25 Fase 4b — toolbar Konversi Berjalan ringkas + panel varian dirapikan. PALING AKHIR (menang atas blok lama).
+   - Mulai Sesi Baru = pil kecil seperti pil "Mulai sesi baru" di Cari Produk (bukan bar penuh); Muat ulang = ikon ghost.
+   - Panel varian: alasan jadi satu baris teks muted (bukan 5 pill); chip link HANYA untuk yang belum ada link.
+   ══════════════════════════════════════════════════════════════════════ */
+#app-root .sesi-toolbar{display:flex;align-items:center;gap:6px}
+#app-root .sesi-toolbar #btn-sesi-baru{flex:0 0 auto}
+#app-root .sesi-new-pill{
+  display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;
+  font-family:inherit;font-size:12px;font-weight:600;line-height:1;white-space:nowrap;
+  color:var(--accent-text);background:transparent;border:1px solid var(--accent);border-radius:999px;cursor:pointer;
+  transition:background-color .12s;
+}
+#app-root .sesi-new-pill i{font-size:14px}
+#app-root .sesi-new-pill:hover:not(:disabled){background:var(--accent-bg)}
+#app-root .sesi-new-pill:disabled{opacity:.55;cursor:progress}
+#app-root .sesi-new-pill:focus-visible,#app-root .sesi-refresh-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app-root .sesi-refresh-btn{
+  display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;
+  color:var(--text-muted);background:transparent;border:1px solid transparent;border-radius:6px;cursor:pointer;
+}
+#app-root .sesi-refresh-btn:hover{color:var(--text);background:var(--surface-2)}
+#app-root .sesi-refresh-btn i{font-size:15px}
+
+#app-root .kb-anchor-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11.5px;line-height:1.4;color:var(--text-muted);padding:0 2px}
+#app-root .kb-anchor-list{background:var(--surface)}
+#app-root .kb-anchor-row{align-items:center;gap:10px;padding:8px 12px;transition:background-color .1s}
+#app-root .kb-anchor-row input{margin:0;width:15px;height:15px;accent-color:var(--accent)}
+#app-root .kb-anchor-row:has(input:checked:not(:disabled)){background:var(--accent-bg)}
+#app-root .kb-anchor-row.locked{opacity:1;cursor:default}
+#app-root .kb-anchor-row.locked .kb-anchor-nama{color:var(--text)}
+#app-root .kb-anchor-nama{font-weight:500}
+#app-root .kb-anchor-sub{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px}
+#app-root .kb-anchor-sub .kb-cmp-kode{color:var(--text-muted)}
+#app-root .kb-anchor-tier{color:var(--text-secondary)}
+#app-root .kb-anchor-why{display:flex;flex-wrap:wrap;gap:0;font-size:11px;line-height:1.4;color:var(--text-muted)}
+#app-root .kb-anchor-why span+span::before{content:"·";margin:0 5px}

@@ -43,3 +43,10 @@ export function firmChipHtml(firm, esc) {
   if (firm === false) return chip('warn', 'Belum firm', 'Link V6 belum ada atau masih ada catatan, atau AKD belum ada.', esc);
   return '';
 }
+
+// Baris panel varian: yang sudah ada link tidak perlu tanda (tinggal dicentang); hanya yang belum ada link yang ditandai.
+// firm undefined (tidak diketahui) = tanpa tanda, sama seperti firmChipHtml.
+export function tandaTanpaLinkHtml(firm, esc) {
+  if (firm !== false) return '';
+  return chip('warn', 'Belum ada link', 'Link V6 belum ada atau masih ada catatan, atau AKD belum ada.', esc);
+}

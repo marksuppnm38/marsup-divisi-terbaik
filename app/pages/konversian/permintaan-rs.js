@@ -5,7 +5,7 @@
 import { resolveItems, summarize, extractSpecs, buildVariants, understand, loadLexicon, makeFirmCheck, buatIndeks, KONTEKS } from './auto-konversi/index.js';
 import { tawarkan as anchorTawarkan, hitung as anchorHitung, labelOpsi as anchorLabelOpsi, labelSinyal as anchorLabelSinyal, ANCHOR_LEVEL } from './auto-konversi/anchor.js';
 import { bandingkan, tokensToHtml } from './auto-konversi/bandingkan.js';
-import { siapChipsHtml, firmChipHtml } from './auto-konversi/siap.js';
+import { siapChipsHtml, tandaTanpaLinkHtml } from './auto-konversi/siap.js';
 import { suggestKonteks } from './auto-konversi/konteks-suggest.js';
 import { isTyping } from '../../../shared/shortcuts.js';
 import { urutkanPicker } from './picker-relevansi.js';
@@ -716,10 +716,11 @@ function anchorChipHtml(item) {
   if (!n) return '';
   return `<button type="button" class="kb-am-btn kb-anchor-chip" data-action="anchor-open" data-id="${item.id}" title="Tawarkan semua varian produk ini sebagai opsi">+${n} varian lain</button>`;
 }
+// Alasan "kenapa ditawarkan": satu baris teks muted (bukan deretan pill). data-sinyal tetap ada untuk tes/penyorotan.
 function anchorBadgesHtml(o) {
   const sinyal = Array.isArray(o.sinyal) ? o.sinyal : [];
   if (!sinyal.length) return '';
-  return `<span class="kb-anchor-badges">${sinyal.map(s => `<span class="pd-tag kb-anchor-badge" data-sinyal="${escapeHtmlAttr(s)}">${escapeHtmlAttr(anchorLabelSinyal(s))}</span>`).join('')}</span>`;
+  return `<span class="kb-anchor-why">${sinyal.map(s => `<span data-sinyal="${escapeHtmlAttr(s)}">${escapeHtmlAttr(anchorLabelSinyal(s))}</span>`).join('')}</span>`;
 }
 function anchorPanelHtml(item) {
   const kode = anchorKode(item);
@@ -750,7 +751,7 @@ function anchorPanelHtml(item) {
     return `<label class="kb-anchor-row${isAnchor ? ' locked' : ''}">
       <input type="checkbox" data-anchor-check="${item.id}" data-kode="${kodeEsc}"${c.pilih.has(kodeO) ? ' checked' : ''}${isAnchor ? ' disabled' : ''}>
       <span class="kb-anchor-main"><span class="kb-anchor-nama">${escapeHtmlAttr(o.nama_produk)}</span>
-        <span class="kb-anchor-sub"><span class="kb-cmp-kode">${kodeEsc}</span> ${escapeHtmlAttr(anchorLabelOpsi({ tier: o.tier, nomor: o.nomor }))}${isAnchor ? ' · pilihanmu' : ''} ${firmChipHtml(o.firm, escapeHtmlAttr)}</span>
+        <span class="kb-anchor-sub"><span class="kb-cmp-kode">${kodeEsc}</span><span class="kb-anchor-tier">${escapeHtmlAttr(anchorLabelOpsi({ tier: o.tier, nomor: o.nomor }))}${isAnchor ? ' · pilihanmu' : ''}</span>${tandaTanpaLinkHtml(o.firm, escapeHtmlAttr)}</span>
         ${isAnchor ? '' : anchorBadgesHtml(o)}
         ${alasan ? `<span class="kb-anchor-alasan">${escapeHtmlAttr(alasan)}</span>` : ''}
       </span></label>`;
@@ -759,7 +760,7 @@ function anchorPanelHtml(item) {
   const sejenis = c.level >= ANCHOR_LEVEL.SEJENIS;
   const tombolSejenis = sejenis ? '' : `<button type="button" class="kb-am-link" data-action="anchor-sejenis" data-id="${item.id}">Tampilkan sejenis</button>`;
   return `<div class="kb-anchor-panel">
-    <div class="kb-cmp-hint">${sejenis ? 'Varian dan barang sejenis' : 'Varian'} — centang yang mau ditawarkan, tiap opsi @ ${qtyTxt}. ${tombolSejenis}</div>
+    <div class="kb-anchor-head"><span>${sejenis ? 'Varian dan barang sejenis' : 'Varian'} · centang yang mau ditawarkan, tiap opsi @ ${qtyTxt}</span>${tombolSejenis}</div>
     <div class="kb-anchor-list">${rows}</div>
     <div class="kb-picker-actions">
       <button type="button" class="kb-cancel-btn" data-action="anchor-close" data-id="${item.id}">Tutup</button>

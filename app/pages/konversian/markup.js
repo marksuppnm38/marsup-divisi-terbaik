@@ -168,8 +168,8 @@ export const KONVERSIAN_MARKUP = `
     <div class="panel-body" id="panel-body-sesi" style="display:none">
       <div class="pane-top">
       <div class="sesi-toolbar">
-        <button class="pr-add-clip-btn" id="btn-sesi-baru" type="button" title="Mulai Sesi Baru (Alt+Shift+M)" aria-keyshortcuts="Alt+Shift+M"><i class="ti ti-plus"></i> Mulai Sesi Baru</button>
-        <button class="toggle-btn" id="btn-sesi-refresh" type="button" title="Muat ulang"><i class="ti ti-refresh"></i></button>
+        <button class="sesi-new-pill" id="btn-sesi-baru" type="button" title="Mulai Sesi Baru (Alt+Shift+M)" aria-keyshortcuts="Alt+Shift+M"><i class="ti ti-plus"></i> Sesi baru</button>
+        <button class="sesi-refresh-btn" id="btn-sesi-refresh" type="button" title="Muat ulang" aria-label="Muat ulang"><i class="ti ti-refresh"></i></button>
       </div>
       </div>
       <div class="pane-scroll">
@@ -468,9 +468,12 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
               </div>
             </div>
           </div>
-          <!-- Fase 4: yang selalu kelihatan cuma Selesaikan Sesi + menu ⋯ + tutup. Minta Bantuan, Ubah RS/Sales/PIC, dan
-               Keluar dari Sesi pindah ke menu ⋯ (ID & handler tetap, cuma dipindah DOM-nya). Keluar & Selesaikan tidak lagi bersebelahan. -->
+          <!-- Fase 4: Minta Bantuan & Ubah RS/Sales/PIC ada di menu ⋯ (ID & handler tetap, cuma dipindah DOM-nya).
+               Keluar dari Sesi KEMBALI di samping Selesaikan Sesi: itu navigasi (tidak menulis apa pun), jadi harus selalu terjangkau. -->
           <div class="clip-sesi-exit" role="group" aria-label="Akhiri sesi">
+            <button class="btn-leave-sesi clip-sesi-btn" id="btn-leave-sesi" type="button" disabled title="Keluar dari Sesi — tutup tampilan ini saja. Sesi tetap berjalan dan bisa dibuka lagi dari Konversi Berjalan.">
+              <i class="ti ti-logout"></i><span class="clip-sesi-label">Keluar dari Sesi</span>
+            </button>
             <button class="btn-end-sesi clip-sesi-btn" id="btn-end-sesi" type="button" disabled title="Selesaikan Sesi — tutup sesi ini tanpa Record. Data tetap tersimpan, sesi keluar dari daftar Konversi Berjalan.">
               <i class="ti ti-square-check"></i><span class="clip-sesi-label">Selesaikan Sesi</span>
             </button>
@@ -484,10 +487,6 @@ RB999-KE921-B99-U109&#9;THT COMPLETE S. 2"></textarea>
                 <i class="ti ti-pencil" id="clip-header-toggle-icon"></i><span class="clip-more-lbl">Ubah RS / Sales / PIC</span>
               </button>
               <button class="clip-header-edit-btn clip-more-item" id="btn-butuh-bantuan" type="button" role="menuitem" title="Tandai sesi ini butuh bantuan tim"><i class="ti ti-lifebuoy"></i><span class="cheb-label">Minta Bantuan</span></button>
-              <div class="clip-more-sep" role="separator"></div>
-              <button class="btn-leave-sesi clip-sesi-btn clip-more-item" id="btn-leave-sesi" type="button" role="menuitem" disabled title="Keluar dari Sesi — tutup tampilan ini saja. Sesi tetap berjalan dan bisa dibuka lagi dari Konversi Berjalan.">
-                <i class="ti ti-logout"></i><span class="clip-sesi-label">Keluar dari Sesi</span>
-              </button>
               <div class="clip-more-sep" role="separator"></div>
               <!-- Hapus semua dipindah dari footer (aksi destruktif, jarang): tetap lewat konfirmasi modal di handler clipboard.js -->
               <button class="btn-clear-all clip-more-item is-danger" id="btn-clear-all" type="button" role="menuitem"><i class="ti ti-trash" aria-hidden="true"></i><span>Hapus semua produk di Clipboard</span></button>
