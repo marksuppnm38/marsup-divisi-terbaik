@@ -123,7 +123,7 @@ function subscribeToSesiRealtime(sesiId) {
   // semua tetep gak reliable. Update status item disiarin lewat Broadcast aja
   // (lihat broadcastChecklistItemUpdated/handleChecklistItemUpdatedBroadcast di
   // channel presence bawah), sama pola yang dipakai clipboard.
-  const dbChannel = S.rt.channel(`sesi-db-${sesiId}`)
+  const dbChannel = S.rt.channel(`sesi-db-${sesiId}`, { config: { private: true } })
     .on('postgres_changes', { event: '*', schema: 'public', table: S.SESI_TABLE, filter: `id=eq.${sesiId}` }, handleSesiRowChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: S.SESI_ITEM_TABLE, filter: `sesi_id=eq.${sesiId}` }, handleItemRowChange);
   sesiDbChannel = dbChannel;
@@ -816,7 +816,7 @@ function initSesiCountLive() {
   hydrateSesiCount(); // snapshot awal, independen dari status channel di bawah — badge langsung ada angkanya begitu token siap
   if (!S.rt) return; // SDK Realtime gagal dimuat — badge tetap kepasang dari snapshot di atas, cuma gak live-update lagi sampai resync 5 menit berikutnya
   S.syncRealtimeAuth(); // sama kayak sesi-db-* — pastiin socket Realtime pakai token authenticated, bukan anon (lihat komentar syncRealtimeAuth())
-  sesiCountChannel = S.rt.channel('konv-sesi-count')
+  sesiCountChannel = S.rt.channel('konv-sesi-count', { config: { private: true } })
     .on('postgres_changes', { event: '*', schema: 'public', table: S.SESI_TABLE }, handleSesiCountChange)
     .subscribe((status) => { if (status === 'SUBSCRIBED') hydrateSesiCount(); }); // re-snapshot pas (re)connect, nutup celah event yang kelewat pas socket sempat putus
   sesiCountResyncTimer = setInterval(hydrateSesiCount, 5 * 60 * 1000);
