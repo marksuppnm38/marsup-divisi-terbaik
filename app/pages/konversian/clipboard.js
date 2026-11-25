@@ -403,6 +403,16 @@ async function persistAddItem(item) {
 }
 S.persistAddItem = persistAddItem;
 
+// Kebutuhan RS adalah TURUNAN dari Clipboard: begitu produk dihapus dari clipboard, trigger di database
+// (lepas_link_rs -> sinkron_kebutuhan_rs_sesi) melepas link produk itu dari permintaan_item_produk dan
+// membalikkan item yang kehilangan semua produknya ke PENDING. Frontend TIDAK menulis status itu sendiri —
+// cukup muat ulang dari server (sumber kebenaran, pola sama dengan addItemsToActivePermintaan) lalu kabari rekan.
+async function syncKebutuhanRsDariServer() {
+  if (!S.currentSesiId || !S.checklistPermintaanId) return;
+  const pid = await S.loadChecklistForSesi(S.currentSesiId, { quiet: true });
+  if (pid != null && typeof S.broadcastChecklistReload === 'function') S.broadcastChecklistReload();
+}
+
 async function persistRemoveItem(item) {
   if (!S.currentSesiId) return;
   setSesiSavedStatus('Menyimpan…');
@@ -413,6 +423,7 @@ async function persistRemoveItem(item) {
       await assertOk(await sesiFetch(`${SESI_ITEM_TABLE}?sesi_id=eq.${S.currentSesiId}&kode_produk=eq.${encodeURIComponent(item.kode_produk)}`, { method: 'DELETE' }), 'Gagal hapus item');
     }
     await touchSesiUpdatedAt(S.currentSesiId);
+    await syncKebutuhanRsDariServer();
     // WORKAROUND: postgres_changes event DELETE ternyata gak reliable di Supabase
     // Realtime (dikonfirmasi manual: SQL DELETE langsung pun gak ngirim event apa-apa
     // buat tabel ini — publication/RLS/replica identity semua udah benar, ini murni
@@ -2414,6 +2425,7 @@ S.btnClearAll.addEventListener('click', async () => {
     updateClipboard();
     S.renderResults(S.lastResults);
     if (sesiIdSebelumnya) touchSesiUpdatedAt(sesiIdSebelumnya);
+    await syncKebutuhanRsDariServer(); // DELETE di atas sudah memicu trigger DB: tarik hasilnya, jangan tulis ulang dari sini
     // Sama seperti hapus satuan (persistRemoveItem): siarkan ke rekan yang membuka sesi ini, kalau tidak layar mereka
     // tetap penuh. Satu pesan per item; feed aktivitas merangkumnya jadi "menghapus X dan N item lain".
     if (typeof S.broadcastItemRemoved === 'function') dihapus.forEach(it => S.broadcastItemRemoved(it));
