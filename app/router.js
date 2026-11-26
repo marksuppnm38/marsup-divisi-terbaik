@@ -50,6 +50,9 @@ import { CRUD_PRODUK_SUBNAV } from './pages/crud-produk/subnav.js';
 import { KONVERSIAN_SUBNAV } from './pages/konversian/subnav.js';
 // Aturan segmen ketiga URL (cuma crud-produk/set/<uuid> dan crud-produk/produk/<uuid>) -- lihat route-params.js.
 import { splitRest, isValidParam } from './route-params.js';
+// Daftar modul (sumber yang sama dengan sidebar): dipakai landingModule() untuk memilih modul pertama yang boleh dibuka akun ini.
+import { MODULES } from './pages/home/markup.js';
+import { isModuleAllowed, firstAllowedSub, SUBNAV } from './pages/nav/perm-view.js';
 
 const ROUTES = {
   'kompres-pdf': () => import('./pages/kompres-pdf/index.js'),
@@ -62,6 +65,8 @@ const ROUTES = {
   'dashboard': () => import('./pages/dashboard/index.js'),
   'populasi': () => import('./pages/populasi/index.js'),
   'stok': () => import('./pages/stok/index.js'),
+  // Admin saja (is_superuser). Tidak ada di MODULES: sidebar menambahkannya sendiri untuk admin (nav-markup.js).
+  'pengaturan': () => import('./pages/pengaturan/index.js'),
 };
 
 const SUBROUTES = {
@@ -98,6 +103,19 @@ const RETIRED_REDIRECTS = { 'home': 'dashboard' };
 const RETIRED_SUB_REDIRECTS = { 'crud-produk/kategori': 'crud-produk/produk' };
 
 const DEFAULT_ROUTE = 'dashboard';
+
+// IZIN PER-AKUN (shared/auth-session.js, aturan di app/pages/nav/perm-view.js). INI LAPISAN UI -- data tetap
+// dikunci RLS di database (supabase/2026-11-26_izin_akun_modul.sql).
+//  - Modul/submodul yang disembunyikan untuk akun ini (allowed_users.modul_tersembunyi) tidak bisa dibuka lewat URL.
+//  - /pengaturan hanya untuk admin (is_superuser).
+// Izin belum termuat -> modul biasa dianggap boleh (UI tidak sok melarang), /pengaturan dianggap tidak boleh.
+// Tujuan saat path kosong / tombol "kembali": DEFAULT_ROUTE kalau boleh, kalau tidak modul pertama di
+// sidebar yang boleh dibuka akun ini.
+function landingModule() {
+  if (isModuleAllowed(DEFAULT_ROUTE)) return DEFAULT_ROUTE;
+  const first = MODULES.find((m) => ROUTES[m.id] && isModuleAllowed(m.id));
+  return first ? first.id : DEFAULT_ROUTE;
+}
 
 // "REMEMBER LAST MODULE" (polishing job -- user report: buka app dari tab
 // baru/bookmark ke root selalu jatuh ke Dashboard, jadi harus navigasi ulang
@@ -231,7 +249,7 @@ function currentRoute() {
       // itu juga bakal naikin escalateMessage()'s NOT_FOUND_HITS_KEY counter
       // buat sesuatu yang bukan salah ketik user.
       const [lastModule, lastSub] = last.split('/');
-      if (ROUTES[lastModule] && isValidSub(lastModule, lastSub || null)) {
+      if (ROUTES[lastModule] && isValidSub(lastModule, lastSub || null) && isModuleAllowed(lastModule, lastSub || null)) {
         path = last;
         // Refleksikan balik ke address bar juga (replaceState, bukan
         // pushState -- ini bukan navigasi baru, cuma nunjukin di mana
@@ -243,7 +261,7 @@ function currentRoute() {
     }
   }
   hasResolvedInitialRoute = true;
-  const [module, sub, ...rest] = (path || DEFAULT_ROUTE).split('/');
+  const [module, sub, ...rest] = (path || landingModule()).split('/');
   // `rest` is anything past the module/sub pair -- e.g. the
   // "RB999-KE878-B089-U09" in /crud-produk/produk/RB999-KE878-B089-U09.
   // Hampir semua route tidak pernah 3 segmen (lihat ROUTES + SUBROUTES di atas), jadi `rest` yang
@@ -280,6 +298,45 @@ function rejectRoute() {
   currentMounted = false;
   container.innerHTML = '';
   renderNotFound(container);
+}
+
+// Modul ada tapi tidak tersedia untuk akun ini (lihat isModuleAllowed). Nav tetap dipasang supaya user bisa
+// pindah modul; tidak menyentuh hitungan 404 dan tidak me-logout.
+async function renderForbidden(module, sub, seq) {
+  unmountPage(currentPage, currentModule);
+  currentPage = null;
+  currentModule = null;
+  currentMounted = false;
+  container.innerHTML = '';
+  if (navContainer) {
+    await navMount(navContainer, module, sub);
+    if (seq !== renderSeq) return; // sudah ada navigasi yang lebih baru
+    navSetActive(module, sub);
+  }
+  const tujuan = landingModule();
+  const bisaKeTujuan = (tujuan !== module || !!sub) && isModuleAllowed(tujuan);
+  const judulTujuan = (MODULES.find((m) => m.id === tujuan) || {}).title || tujuan;
+  container.innerHTML = `
+    <div class="pnm-403">
+      <div class="pnm-403-code">403</div>
+      <h1 class="pnm-403-title">Halaman ini tidak tersedia untuk akunmu</h1>
+      <p class="pnm-403-msg">Kalau kamu butuh akses, hubungi admin.</p>
+      ${bisaKeTujuan ? `<button type="button" class="pnm-403-btn" id="pnm-403-back">Ke ${escapeHtml(judulTujuan)}</button>` : ''}
+    </div>
+    <style>
+      .pnm-403 { max-width: 480px; margin: 90px auto; padding: 40px 32px; text-align: center;
+        font-family: 'Inter', system-ui, sans-serif; background: var(--surface, #fff);
+        border: 1px solid var(--border, #e2e4e9); border-radius: 16px; }
+      .pnm-403-code { font-family: 'JetBrains Mono', monospace; font-size: 64px; font-weight: 700; line-height: 1;
+        color: var(--text-muted, #64748b); letter-spacing: -2px; }
+      .pnm-403-title { margin: 16px 0 8px; font-size: 18px; font-weight: 600; color: var(--text, #0b1220); }
+      .pnm-403-msg { margin: 0 0 20px; font-size: 14px; color: var(--text-secondary, #334155); }
+      .pnm-403-btn { padding: 10px 20px; font-size: 14px; font-weight: 600; color: #fff;
+        background: var(--accent, #007AFF); border: none; border-radius: 8px; cursor: pointer; }
+      .pnm-403-btn:hover { background: var(--accent-hover, #0060df); }
+    </style>
+  `;
+  container.querySelector('#pnm-403-back')?.addEventListener('click', () => navigate('/' + tujuan));
 }
 
 // Cek keberadaan param lewat hook opsional `resolveRoute(sub, param)` milik halaman (router sendiri
@@ -339,6 +396,24 @@ async function render() {
   if (tampered) {
     rejectRoute();
     return;
+  }
+
+  // Izin per-akun: modul yang disembunyikan untuk akun ini (atau /pengaturan bagi non-admin) tidak dibuka lewat
+  // URL. Beda dengan `tampered` di atas: ini bukan URL ngawur, jadi TIDAK menaikkan hitungan 404 dan TIDAK
+  // me-logout -- bookmark lama ke modul yang belakangan disembunyikan harus berujung pesan yang jelas, bukan
+  // keluar paksa. Dicek SEBELUM saveLastRoute() supaya modul terlarang tidak pernah jadi "modul terakhir".
+  if (!isModuleAllowed(module, sub)) {
+    await renderForbidden(module, sub, mySeq);
+    return;
+  }
+  // URL tanpa sub membuka submodul bawaan (yang pertama di registry). Kalau yang itu disembunyikan untuk akun
+  // ini, arahkan ke submodul pertama yang boleh, bukan menampilkan yang terlarang.
+  if (!sub && SUBNAV[module]) {
+    const dest = firstAllowedSub(module);
+    if (dest && dest !== SUBNAV[module][0].id) {
+      navigate(`/${module}/${dest}`, { replace: true });
+      return;
+    }
   }
 
   // module/sub sudah lolos validasi di atas -- titik ini satu-satunya yang
@@ -686,7 +761,8 @@ function startIdlePrefetch() {
     if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ''))) return;
   } catch (err) { /* abaikan */ }
   const first = ['populasi', 'crud-produk', 'konversian', 'dashboard', 'stok'];
-  const queue = first.concat(Object.keys(ROUTES).filter((m) => !first.includes(m))).filter((m) => ROUTES[m]);
+  // Modul yang disembunyikan untuk akun ini tidak ikut diunduh di belakang layar.
+  const queue = first.concat(Object.keys(ROUTES).filter((m) => !first.includes(m))).filter((m) => ROUTES[m] && isModuleAllowed(m));
   const idle = window.requestIdleCallback ? (fn) => window.requestIdleCallback(fn, { timeout: 4000 }) : (fn) => setTimeout(fn, 500);
   const step = () => {
     const m = queue.shift();

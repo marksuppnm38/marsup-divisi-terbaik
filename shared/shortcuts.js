@@ -107,6 +107,14 @@ export const SHORTCUTS = [
   { id: 'produk.closeDialog', page: 'crud-produk', combo: 'Escape', scope: 'modal', allowTyping: true,
     desc: 'Tutup dialog yang terbuka (Produk, AKD, KFA, Log Aktivitas)', group: 'Dialog & panel' },
 
+  // ─── pengaturan (User Management, admin) ───
+  // Esc menutup panel akun, tapi lewat requestClose(): ada perubahan belum disimpan -> dialog Buang / Lanjut edit / Simpan.
+  // Handler mengembalikan false kalau dialog konfirmasi yang sedang terbuka (Esc itu milik dialog).
+  { id: 'pengaturan.search', page: 'pengaturan', combo: '/', scope: 'page', overrides: 'nav.search',
+    desc: 'Fokus ke kolom cari akun', group: 'Cari & daftar' },
+  { id: 'pengaturan.close', page: 'pengaturan', combo: 'Escape', scope: 'modal', allowTyping: true,
+    desc: 'Tutup panel akun (minta konfirmasi kalau ada perubahan belum disimpan)', group: 'Dialog & panel' },
+
   // ─── konversian ───
   // Dipasang lewat engine ini (handler di konversian/index.js), KECUALI yang bertanda `external`:
   // Alt+Shift+M masih dipasang di clipboard.js, dan tombol panah / Enter / Esc di kolom Cari Produk

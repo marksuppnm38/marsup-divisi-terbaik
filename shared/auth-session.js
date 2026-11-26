@@ -35,11 +35,19 @@ const PNMAuth = (() => {
   // balik true: UI gak sok melarang, dan DB yang menentukan.
   let _perms = null; // { role, is_superuser, boleh_hapus } | null
 
+  // Kolom izin dimuat penuh. Kalau kolom baru (boleh_hapus_sesi, modul_tersembunyi) belum ada di DB (migrasi
+  // belum dijalankan), jatuh ke daftar kolom lama supaya izin hapus yang lama tetap terbaca.
+  const PERM_COLS_FULL = 'role, is_superuser, boleh_hapus, boleh_hapus_sesi, modul_tersembunyi';
+  const PERM_COLS_LEGACY = 'role, is_superuser, boleh_hapus';
+
   async function loadPerms(email) {
     _perms = null;
+    const key = String(email || '').toLowerCase();
     try {
-      const { data, error } = await sb.from('allowed_users')
-        .select('role, is_superuser, boleh_hapus').eq('email', String(email || '').toLowerCase()).maybeSingle();
+      let { data, error } = await sb.from('allowed_users').select(PERM_COLS_FULL).eq('email', key).maybeSingle();
+      if (error) {
+        ({ data, error } = await sb.from('allowed_users').select(PERM_COLS_LEGACY).eq('email', key).maybeSingle());
+      }
       if (error) { console.warn('[PNMAuth.loadPerms] gagal, UI tidak membatasi (DB tetap menegakkan):', error.message); return null; }
       _perms = data || null;
     } catch (e) { console.warn('[PNMAuth.loadPerms]', e); }
@@ -51,6 +59,22 @@ const PNMAuth = (() => {
     if (_perms.is_superuser) return true;
     if (action === 'hapus') return _perms.boleh_hapus !== false;
     return true;
+  }
+
+  // Admin = is_superuser. Halaman Pengaturan (/pengaturan) hanya untuk ini. Penegakan sebenarnya ada di RLS
+  // (can_manage_izin()); ini cuma supaya UI tidak menawarkan sesuatu yang pasti ditolak DB.
+  // Izin belum termuat -> false: halaman admin tidak dibuka atas dasar tebakan.
+  function isAdmin() { return !!(_perms && _perms.is_superuser); }
+
+  // Boleh melihat modul (dan submodul, kalau subId diisi)? modul_tersembunyi = daftar id yang disembunyikan:
+  // 'modul' (seluruh modul) atau 'modul/sub' (satu submodul). Superuser selalu melihat semua (admin tidak bisa
+  // mengunci dirinya sendiri). Izin belum termuat -> true, sama seperti can(): UI tidak sok melarang.
+  // INI LAPISAN UI, bukan kunci data; data dikunci RLS (supabase/2026-11-26_izin_akun_modul.sql).
+  function canView(moduleId, subId) {
+    if (!_perms || _perms.is_superuser) return true;
+    const hidden = Array.isArray(_perms.modul_tersembunyi) ? _perms.modul_tersembunyi : [];
+    if (hidden.includes(moduleId)) return false;
+    return !(subId && hidden.includes(moduleId + '/' + subId));
   }
 
   async function logout() {
@@ -102,7 +126,7 @@ const PNMAuth = (() => {
     return session;
   }
 
-  return { login, logout, getSession, getUser, getAccessToken, onAuthStateChange, requireAuth, loadPerms, can, perms: () => _perms };
+  return { login, logout, getSession, getUser, getAccessToken, onAuthStateChange, requireAuth, loadPerms, can, canView, isAdmin, perms: () => _perms };
 })();
 
 window.PNMAuth = PNMAuth;

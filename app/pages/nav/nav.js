@@ -13,7 +13,7 @@
 //      navigasi lewat klik/Enter, seperti command palette kecil.
 // setSubroute() adalah separuh lainnya -- lihat router.js.
 
-import { navMarkup, buildSearchIndex } from './nav-markup.js';
+import { navMarkup, buildSearchIndex, navPermSignature } from './nav-markup.js';
 
 const TABLER_ID = 'shared-tabler-icons';
 const TABLER_HREF = 'https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css';
@@ -41,6 +41,7 @@ function ensureStyle() {
 let navEl = null;
 let lastActiveId = null;
 let lastActiveSub = null;
+let lastPermSig = ''; // daftar modul yang tampil saat nav terakhir dibuat (lihat navPermSignature)
 
 // ---- Manual collapse toggle (desktop icon-only rail, persisted) ----
 // Separate from the <768px auto-collapse in nav.css (that one's unconditional,
@@ -304,6 +305,7 @@ export async function navMount(container, activeId, activeSub) {
   navEl = container;
   lastActiveId = activeId;
   lastActiveSub = activeSub || null;
+  lastPermSig = navPermSignature();
 
   applyThemeIcon();
   fillUser();
@@ -355,8 +357,14 @@ export async function navMount(container, activeId, activeSub) {
  */
 export function navSetActive(activeId, sub) {
   if (!navEl) return;
+  // Akun lain login di tab yang sama tanpa reload: nav ini dibuat sekali, jadi daftar modul akun sebelumnya bisa
+  // tertinggal. Sidik jari berubah -> paksa render ulang penuh dan buang indeks pencarian yang basi.
+  const permSig = navPermSignature();
+  const permChanged = permSig !== lastPermSig;
+  lastPermSig = permSig;
+  if (permChanged) searchIndex = null;
   const subChangedOnly = activeId === lastActiveId && sub !== lastActiveSub;
-  const moduleChanged = activeId !== lastActiveId;
+  const moduleChanged = activeId !== lastActiveId || permChanged;
   lastActiveId = activeId;
   lastActiveSub = sub || null;
 

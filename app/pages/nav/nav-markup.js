@@ -4,8 +4,7 @@ import '../../../shared/ui-select.js';
 // Saran isian (pengganti popup <datalist>) dan pemilih tanggal (pengganti kalender bawaan <input type=date>); keduanya juga self-installing.
 import '../../../shared/ui-combo.js';
 import '../../../shared/ui-date.js';
-import { CRUD_PRODUK_SUBNAV } from '../crud-produk/subnav.js';
-import { KONVERSIAN_SUBNAV } from '../konversian/subnav.js';
+import { navModules, navPermSignature, visibleSubs } from './perm-view.js';
 
 // the design spec explicitly calls MODULES[].color + the hand-drawn per-module
 // <svg> icons the PRIMARY anti-pattern to remove ("Icons are one neutral
@@ -27,18 +26,15 @@ const NAV_ICONS = {
   'uploader-wiki': 'ti-table-export',
   'spek-maker':    'ti-file-description',
   'rekon-meeting': 'ti-scale',
+  'pengaturan':    'ti-settings',
 };
 
-// UPDATE (sesi lanjutan -- "double nav" fix): module -> its own SUBNAV
-// registry, same single-source-of-truth reasoning as NAV_ICONS above.
-// A module with no entry here just renders with no accordion (dashboard/
-// populasi/stok/kompres-pdf/export-gambar all currently have none -- single-view
-// pages, nothing to sub-navigate). Add an entry here the day a module
-// grows its own tabs/views, same moment its subnav.js gets created.
-const SUBNAV = {
-  'crud-produk': CRUD_PRODUK_SUBNAV,
-  'konversian': KONVERSIAN_SUBNAV,
-};
+// Aturan izin (modul/submodul yang tampil) ada di perm-view.js; di sini hanya dipakai untuk merender.
+export { navPermSignature };
+
+// Registry module -> submodul (SUBNAV) sekarang ada di perm-view.js (satu sumber untuk menu, router, dan
+// halaman Pengaturan). Modul tanpa entri di sana tampil tanpa accordion. Tambah entri di perm-view.js saat
+// sebuah modul punya tab/view sendiri, bersamaan dengan dibuatnya subnav.js miliknya.
 
 function navSubitemHtml(mod, sub, activeSub) {
   const isActive = sub.id === activeSub;
@@ -52,7 +48,7 @@ function navSubitemHtml(mod, sub, activeSub) {
 function navItemHtml(mod, activeId, activeSub) {
   const icon = NAV_ICONS[mod.id] || 'ti-square';
   const isActive = mod.id === activeId;
-  const subnav = SUBNAV[mod.id];
+  const subnav = visibleSubs(mod.id); // hanya submodul yang boleh dilihat akun ini
   // Legacy (not-yet-migrated) modules keep their real .html href so the nav
   // works as a plain link for them too (full navigation, same as today) —
   // migrated ones use a real clean path ('/module', no '#'); nav.js
@@ -77,7 +73,7 @@ function navItemHtml(mod, activeId, activeSub) {
 }
 
 export function navMarkup(activeId, activeSub) {
-  const items = MODULES.map((mod) => navItemHtml(mod, activeId, activeSub)).join('');
+  const items = navModules().map((mod) => navItemHtml(mod, activeId, activeSub)).join('');
   return `
     <div class="pw-nav-brand">
       <div class="pw-nav-brand-mark"><img class="logo-light" src="/assets/logo-mark-pnm-sidebar.png" alt="PNM" width="48" height="18"><img class="logo-dark" src="/assets/logo-mark-pnm-sidebar-dark.png" alt="" width="48" height="18"></div>
@@ -122,10 +118,10 @@ export function topbarMarkup(moduleTitle, actionsHtml = '') {
 // Flat search index used by nav.js's real search box: every module PLUS
 // every module's sub-items, each with the full path needed to navigate
 // straight there. Built here (not in nav.js) because it's pure data
-// derived from MODULES + SUBNAV, which already live in this file.
+// derived from MODULES + SUBNAV (perm-view.js), difilter menurut izin akun yang sedang login.
 export function buildSearchIndex() {
   const rows = [];
-  MODULES.forEach((mod) => {
+  navModules().forEach((mod) => {
     rows.push({
       label: mod.title,
       sublabel: null,
@@ -133,7 +129,7 @@ export function buildSearchIndex() {
       icon: NAV_ICONS[mod.id] || 'ti-square',
       migrated: mod.migrated,
     });
-    const subnav = SUBNAV[mod.id];
+    const subnav = visibleSubs(mod.id);
     if (subnav) {
       subnav.forEach((s) => {
         rows.push({
