@@ -940,6 +940,12 @@ const PRODUK_FILTER_DIMS = [
       { value: 'ada', label: 'Sudah diisi' },
       { value: 'kosong', label: 'Belum diisi' },
   ]},
+  // AKD: pertanyaan yang sama dengan chip "Sudah ada AKD" / "Perlu AKD" -- status_akd = 'terhubung' atau bukan --
+  // tapi bisa ditumpuk dengan filter lain (mis. Sudah ada AKD + Link V6 Belum diisi). Dikerjakan server lewat jalur langsung.
+  { key: 'akd', label: 'Ketersediaan AKD', icon: 'ti-file-certificate', options: [
+      { value: 'ada', label: 'Sudah ada AKD' },
+      { value: 'kosong', label: 'Belum ada AKD' },
+  ]},
   // Stok = atribut produk, sama kayak Harga & Link V6: bisa ditumpuk dengan filter lain
   // (mis. Stok Siap + Link V6 Sudah ada = "siap tayang"; Stok Siap + Harga Belum ada = "ada stok, belum ada harga").
   // Sumber: view v_produk_stok_ringkas (sql/01_stok_filter_produk.sql). Definisi status SAMA dengan v_siap_tayang.
@@ -1319,6 +1325,7 @@ function produkRowMatchesFilter(row, filt){
       return filt.value === 'ada' ? has : !has;
     }
     case 'link_v6': return filt.value === 'ada' ? !!row.link_v6 : !row.link_v6;
+    case 'akd': return filt.value === 'ada' ? row.status_akd === 'terhubung' : row.status_akd !== 'terhubung';
     case 'stok': { const sk = produkStokCache.get(row.id); return !!sk && sk.status === filt.value; }
     case 'keluarga': return (filt.values || [filt.value]).includes(row.keluarga); // row.keluarga diisi attachKeluarga() / view v_produk_keluarga
     case 'kategori': case 'spes': case 'klas_cek': return cocokKlas(filt, row); // cache klasifikasi dimuat ensureKlas() di loadProduk
@@ -1365,6 +1372,7 @@ const FILTER_COLS_DIM = {
   status_inaproc: ['status_inaproc', 'link'],
   harga: ['ekat', 'swasta', 'tahun'],
   link_v6: ['link'],
+  akd: ['no_akd', 'nama_akd'],
   stok: ['stok'],
 };
 function produkAutoCols(){

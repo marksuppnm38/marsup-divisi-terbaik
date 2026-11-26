@@ -107,3 +107,15 @@ test('saring client Harga & Stok lalu urutkan (kosong di bawah)', () => {
   const kosong = saringKlienLaluUrut(rows, [f('harga', 'kosong')], null, ctx);
   assert.deepEqual(kosong.map((r) => r.id), [4]);
 });
+
+test('filter AKD: dikerjakan server (ada = terhubung, kosong = selain terhubung)', async () => {
+  const { server, klien } = bagiFilter([f('akd', 'ada'), f('harga', 'ada')]);
+  assert.deepEqual(server.map((x) => x.dim), ['akd']);
+  assert.deepEqual(klien.map((x) => x.dim), ['harga']);
+  let sb = fakeSb([[]], { count: 0 });
+  await ambilHalamanLangsung(sb, { columns: 'id', server: [f('akd', 'ada')], sort: null, page: 1, pageSize: 30 });
+  assert.ok(names(sb.log[0]).includes('eq:status_akd:terhubung'));
+  sb = fakeSb([[]], { count: 0 });
+  await ambilHalamanLangsung(sb, { columns: 'id', server: [f('akd', 'kosong')], sort: null, page: 1, pageSize: 30 });
+  assert.ok(names(sb.log[0]).includes('or:status_akd.is.null,status_akd.neq.terhubung'));
+});

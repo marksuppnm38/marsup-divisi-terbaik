@@ -122,6 +122,7 @@ export function cocokIsi(row, filt) {
  */
 export function butuhJalurLangsung(filt) {
   if (!filt) return false;
+  if (filt.dim === 'akd') return true; // RPC tidak punya parameter AKD
   if (filt.value === NILAI_ISI) return filt.dim in DIM_TEKS_ISI;
   if (filt.value === NILAI_KOSONG) return filt.dim in DIM_TEKS_ISI && filt.dim !== 'brand';
   return false;

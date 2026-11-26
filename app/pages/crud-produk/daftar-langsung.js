@@ -18,7 +18,7 @@ const PAGE = 1000; // batas baris PostgREST per request
 
 // Dimensi yang bisa dipersempit di server -> kolom di tabel produk.
 export const DIM_SERVER = {
-  tipe: 'tipe', golongan: 'golongan', brand: 'brand', is_active: 'is_active', status_inaproc: 'status_inaproc', link_v6: 'link_v6',
+  tipe: 'tipe', golongan: 'golongan', brand: 'brand', is_active: 'is_active', status_inaproc: 'status_inaproc', link_v6: 'link_v6', akd: 'status_akd',
 };
 
 const nilaiFilter = (f) => f.values || (f.value != null && f.value !== '' ? [f.value] : []);
@@ -40,6 +40,8 @@ export function pasangFilterServer(q, serverFilters) {
     const col = DIM_SERVER[f.dim];
     if (f.dim === 'tipe') { const v = nilaiFilter(f); if (v.length) out = out.in('tipe', v); return; }
     if (f.dim === 'is_active') { out = out.eq('is_active', f.value === 'aktif'); return; }
+    // AKD: "ada" = status_akd 'terhubung'; "kosong" = selain itu (termasuk NULL)
+    if (f.dim === 'akd') { out = f.value === 'ada' ? out.eq('status_akd', 'terhubung') : out.or('status_akd.is.null,status_akd.neq.terhubung'); return; }
     if (f.dim === 'link_v6') { out = f.value === 'ada' ? isiServer(out, col) : kosongServer(out, col); return; }
     // golongan / brand / status_inaproc: pasangan Sudah / Belum diisi atau nilai biasa
     if (f.value === NILAI_ISI) { out = isiServer(out, col); return; }

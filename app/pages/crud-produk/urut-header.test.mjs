@@ -105,3 +105,8 @@ test('menu: wording & pasangan tiap kolom; kolom harga / link diarahkan ke filte
   assert.ok(!punyaMenuHeader('flags') && !punyaMenuHeader('akd'));
   assert.ok(!('ekat' in KOLOM_URUT) && !('stok' in KOLOM_URUT)); // urut harga / stok = fase 2 (butuh view)
 });
+
+test('butuhJalurLangsung: filter AKD selalu lewat jalur langsung (RPC tidak mengenalnya)', () => {
+  assert.equal(butuhJalurLangsung({ dim: 'akd', value: 'ada' }), true);
+  assert.equal(butuhJalurLangsung({ dim: 'akd', value: 'kosong' }), true);
+});
