@@ -98,6 +98,12 @@
 .pg-page .pg-pop { margin: 0 0 10px; padding: 9px 12px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); }
 .pg-page .pg-hint { margin: 0 0 8px; font-size: 12px; color: var(--text-muted); }
 
+/* Preset izin: dua dropdown (shared/ui-select.js) sebaris. Section diberi stacking sendiri supaya menu yang
+   terbuka menimpa daftar modul di bawahnya, bukan terpotong olehnya. */
+.pg-page .pg-preset { position: relative; z-index: 3; }
+.pg-page .pg-preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.pg-page .pg-preset .pg-hint { margin-bottom: 0; }
+
 /* Banner konflik / gagal */
 .pg-page .pg-banner { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; border-radius: var(--radius); }
 .pg-page .pg-banner[hidden] { display: none; }

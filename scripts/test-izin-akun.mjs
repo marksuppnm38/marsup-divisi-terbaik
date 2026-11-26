@@ -257,3 +257,101 @@ test('XSS: email/role dari database selalu di-escape di semua sel tabel', () => 
   assert.ok(html.includes('&lt;img'));
   assert.equal(tbl.escapeHtml(`&<>"'`), '&amp;&lt;&gt;&quot;&#39;');
 });
+
+
+// ── Fase 2: preset izin & salin dari akun lain ───────────────────────────────────────────────
+const pr = await import(new URL('app/pages/pengaturan/presets.js', ROOT).href);
+const formOf = (o = {}) => ({ boleh_hapus: false, boleh_hapus_sesi: false, hidden: [], ...o });
+
+test('preset: id unik dan semua id di `tampil` dikenal (preset tidak menunjuk modul hantu)', () => {
+  const known = knownPermIds();
+  assert.equal(new Set(pr.PRESETS.map((p) => p.id)).size, pr.PRESETS.length);
+  assert.ok(!pr.PRESETS.some((p) => p.id === pr.CUSTOM_ID), '"custom" dicadangkan untuk keadaan terhitung');
+  for (const p of pr.PRESETS) {
+    if (p.tampil === '*') continue;
+    for (const id of p.tampil) assert.ok(known.has(id), `${p.id}: id tidak dikenal "${id}"`);
+  }
+});
+
+test('preset -> hidden: "*" tidak menyembunyikan apa pun; modul utuh menyembunyikan semua modul lain (bentuk baku)', () => {
+  assert.deepEqual(pr.presetHidden({ tampil: '*' }), []);
+  const h = pr.presetHidden({ tampil: ['konversian'] });
+  const mods = [...knownPermIds()].filter((id) => !id.includes('/'));
+  assert.deepEqual(h, canonHidden(mods.filter((m) => m !== 'konversian'))); // modul lain tersembunyi utuh, tanpa id submodulnya
+  assert.ok(!h.some((id) => id === 'konversian' || id.startsWith('konversian/')));
+  assert.ok(!h.some((id) => id.includes('/')), 'modul yang tersembunyi utuh tidak mencantumkan submodulnya');
+  assert.deepEqual(canonHidden(h), h); // sudah baku: round-trip tidak berubah
+});
+
+test('preset -> hidden: sebagian submodul saja = modul tetap tampil, submodul lain tersembunyi', () => {
+  const h = pr.presetHidden({ tampil: ['konversian/cari'] });
+  assert.ok(!h.includes('konversian'));
+  assert.ok(!h.includes('konversian/cari'));
+  for (const s of SUBNAV.konversian.filter((x) => x.id !== 'cari')) assert.ok(h.includes(`konversian/${s.id}`), s.id);
+  assert.ok(h.includes('stok'));
+});
+
+test('preset -> hidden: id basi di `tampil` diabaikan, tidak error dan tidak menyembunyikan lebih', () => {
+  assert.deepEqual(pr.presetHidden({ tampil: ['konversian', 'modul-hantu', 'konversian/hantu'] }), pr.presetHidden({ tampil: ['konversian'] }));
+});
+
+test('applyPreset: mengisi ketiga kolom, tidak memutasi form asal; matchPreset mengenalinya', () => {
+  const before = formOf({ boleh_hapus_sesi: true, hidden: ['stok'] });
+  const snapshot = JSON.stringify(before);
+  for (const p of pr.PRESETS) {
+    const next = pr.applyPreset(before, p);
+    assert.equal(next.boleh_hapus, !!p.boleh_hapus);
+    assert.equal(next.boleh_hapus_sesi, !!p.boleh_hapus_sesi);
+    assert.deepEqual(next.hidden, pr.presetHidden(p));
+    assert.equal(pr.matchPreset(next), p.id);
+  }
+  assert.equal(JSON.stringify(before), snapshot);
+});
+
+test('matchPreset: Custom dihitung (null) begitu form menyimpang dari preset mana pun', () => {
+  const konversi = pr.PRESETS.find((p) => p.id === 'konversi');
+  const f = pr.applyPreset(formOf(), konversi);
+  assert.equal(pr.matchPreset(f), 'konversi');
+  assert.equal(pr.matchPreset(st.setSub(f, 'konversian', 'riwayat', false)), null);   // ubah submodul
+  assert.equal(pr.matchPreset(st.setMod(f, 'stok', true)), null);                      // tampilkan modul lain
+  assert.equal(pr.matchPreset(st.setIzin(f, 'boleh_hapus_sesi', true)), null);         // ubah izin hapus
+  assert.equal(pr.matchPreset(formOf({ hidden: ['stok'] })), null);
+});
+
+test('preset + diffForm/buildPayload: hanya kolom yang berubah ditulis; admin tidak pernah menulis modul_tersembunyi', () => {
+  const konversi = pr.PRESETS.find((p) => p.id === 'konversi');
+  const row = baseRow();
+  const payload = st.buildPayload(row, pr.applyPreset(st.rowToForm(row), konversi));
+  assert.deepEqual(Object.keys(payload), ['modul_tersembunyi']); // izin hapus sudah sama (mati) -> tidak ikut
+  assert.deepEqual(payload.modul_tersembunyi, pr.presetHidden(konversi));
+  const adminRow = baseRow({ is_superuser: true });
+  assert.ok(!('modul_tersembunyi' in st.buildPayload(adminRow, pr.applyPreset(st.rowToForm(adminRow), konversi))));
+});
+
+test('preset yang menyalakan Hapus data wajib lewat konfirmasi (needsDeleteConfirm), yang mematikannya tidak', () => {
+  const penuh = pr.PRESETS.find((p) => p.boleh_hapus);
+  if (!penuh) return; // tidak ada preset yang menyalakan Hapus data
+  const off = baseRow();
+  assert.equal(st.needsDeleteConfirm(off, pr.applyPreset(st.rowToForm(off), penuh)), true);
+  const on = baseRow({ boleh_hapus: true });
+  assert.equal(st.needsDeleteConfirm(on, pr.applyPreset(st.rowToForm(on), penuh)), false);
+  const konversi = pr.PRESETS.find((p) => p.id === 'konversi');
+  assert.equal(st.needsDeleteConfirm(on, pr.applyPreset(st.rowToForm(on), konversi)), false);
+});
+
+test('salin dari akun: menyalin tiga kolom; sumber admin = semua tampil; tidak memutasi sumber maupun form', () => {
+  const src = baseRow({ email: 'b@x.id', boleh_hapus: true, boleh_hapus_sesi: true, modul_tersembunyi: ['stok', 'konversian/riwayat'] });
+  const snapshot = JSON.stringify(src);
+  const next = pr.applyCopy(formOf({ hidden: ['rekon-meeting'] }), src);
+  assert.deepEqual(next, { boleh_hapus: true, boleh_hapus_sesi: true, hidden: src.modul_tersembunyi });
+  next.hidden.push('x');
+  assert.equal(JSON.stringify(src), snapshot, 'hidden hasil salinan bukan referensi yang sama dengan sumber');
+  const admin = baseRow({ email: 'adm@x.id', is_superuser: true, boleh_hapus: true, modul_tersembunyi: ['stok'] });
+  assert.deepEqual(pr.applyCopy(formOf({ hidden: ['rekon-meeting'] }), admin), { boleh_hapus: true, boleh_hapus_sesi: false, hidden: [] });
+});
+
+test('copySources: semua akun selain diri sendiri (tak peka huruf besar/kecil), urut email', () => {
+  const rows = ['c@x.id', 'A@x.id', 'b@x.id'].map((email) => baseRow({ email }));
+  assert.deepEqual(pr.copySources(rows, 'a@X.id').map((r) => r.email), ['b@x.id', 'c@x.id']);
+  assert.deepEqual(pr.copySources([], 'a@x.id'), []);
+});

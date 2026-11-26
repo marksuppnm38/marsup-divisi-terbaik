@@ -10,6 +10,9 @@
 //   3. UPDATE yang ditolak RLS membalas SUKSES dengan 0 baris -> dianggap gagal ("Ditolak database").
 //   4. Berhasil: baris diganti hasil server, akun sendiri memuat ulang izinnya (PNMAuth.loadPerms), riwayat segar.
 //
+// Preset izin (presets.js): dropdown "Preset izin" + "Salin dari akun lain" hanya MENGISI form; penyimpanan tetap lewat
+// saveDrawer di atas. Tidak dirender untuk admin (kontrol modulnya terkunci, tidak ada yang bisa diisi).
+//
 // Tidak ada inline onclick/onchange. Listener dipasang di elemen overlay/konfirmasi milik halaman, jadi ikut
 // hilang saat router mengosongkan container. Semua teks dari database di-escape sebelum masuk innerHTML.
 
@@ -20,6 +23,7 @@ import {
   IZIN_COLS, normalizeRow, sameServerState, rowToForm, isModOn, isSubOn, modState, setMod, setSub, setIzin,
   diffForm, buildPayload, needsDeleteConfirm, initialOf, describeAudit,
 } from './state.js';
+import { PRESETS, CUSTOM_ID, applyPreset, matchPreset, applyCopy, copySources } from './presets.js';
 
 const AUDIT_LIMIT = 50;
 
@@ -105,8 +109,26 @@ export function createDrawer(deps) {
       </div>${subsHtml}</div>`;
   }
 
-  function izinHtml() {
+  function presetHtml() {
+    if (row.is_superuser) return '';
+    const presetOpts = [`<option value="${CUSTOM_ID}">Custom</option>`]
+      .concat(PRESETS.map((p) => `<option value="${esc(p.id)}">${esc(p.label)}</option>`)).join('');
+    const sources = copySources(deps.getRows(), row.email);
+    const copyOpts = ['<option value="">Salin dari akun lain…</option>']
+      .concat(sources.map((r) => `<option value="${esc(r.email)}">${esc(r.email)}${r.is_superuser ? ' (Admin)' : ''}</option>`)).join('');
     return `
+      <section class="pg-sec pg-preset" aria-labelledby="pgSecPreset">
+        <div class="pg-sec-head"><h3 id="pgSecPreset">Preset izin</h3></div>
+        <div class="pg-preset-row">
+          <select class="conv-select" data-preset="preset" data-ui-icon="ti-adjustments" aria-label="Preset izin">${presetOpts}</select>
+          ${sources.length ? `<select class="conv-select" data-preset="copy" data-ui-icon="ti-copy" aria-label="Salin izin dari akun lain">${copyOpts}</select>` : ''}
+        </div>
+        <p class="pg-hint">Mengisi modul dan izin hapus sekaligus. Belum tersimpan sampai kamu menekan Simpan.</p>
+      </section>`;
+  }
+
+  function izinHtml() {
+    return `${presetHtml()}
       <section class="pg-sec" aria-labelledby="pgSecModul">
         <div class="pg-sec-head">
           <h3 id="pgSecModul">Modul yang tampil</h3>
@@ -188,6 +210,14 @@ export function createDrawer(deps) {
         btn.classList.toggle('is-open', open);
       }
     });
+
+    const presetSel = aside.querySelector('select[data-preset="preset"]');
+    if (presetSel) {
+      presetSel.value = matchPreset(form) || CUSTOM_ID; // Custom = tidak cocok preset mana pun (dihitung, tidak disimpan)
+      presetSel.disabled = busy;
+    }
+    const copySel = aside.querySelector('select[data-preset="copy"]');
+    if (copySel) { copySel.value = ''; copySel.disabled = busy; }
 
     const hapus = aside.querySelector('input[data-izin="boleh_hapus"]');
     const sesi = aside.querySelector('input[data-izin="boleh_hapus_sesi"]');
@@ -406,9 +436,43 @@ export function createDrawer(deps) {
   }
 
   // ── Event ──────────────────────────────────────────────────────────────────────────────────
+  // Terapkan form hasil preset/salinan. Kalau hasilnya MENGAKTIFKAN "Hapus data" (yang sebelumnya mati), minta
+  // konfirmasi yang sama seperti saklar manual; batal = tidak ada yang berubah sama sekali.
+  async function applyFormChange(next, what) {
+    if (needsDeleteConfirm(row, next)) {
+      confirming = true;
+      const v = await ask(confirmHost, {
+        title: 'Aktifkan Hapus data?',
+        message: `${what} akan mengaktifkan Hapus data untuk ${row.email}, jadi akun ini bisa menghapus produk, master produk, AKD, item clipboard, dan data lain yang dikunci. Terapkan hanya kalau memang perlu.`,
+        danger: true,
+        buttons: [{ value: 'no', label: 'Batal' }, { value: 'yes', label: 'Ya, terapkan', danger: true }],
+      });
+      confirming = false;
+      if (!aside || v !== 'yes') { if (aside) syncUi(); return; }
+    }
+    form = next;
+    MODULES.forEach((m) => { if (modState(form, m.id).partial) openMods.add(m.id); });
+    showBanner(null);
+    syncUi();
+  }
+
+  async function onSelectChange(sel) {
+    if (sel.dataset.preset === 'preset') {
+      const preset = PRESETS.find((p) => p.id === sel.value);
+      if (!preset) { syncUi(); return; } // "Custom" dipilih: bukan perintah, kembalikan ke keadaan sebenarnya
+      await applyFormChange(applyPreset(form, preset), `Preset “${preset.label}”`);
+    } else if (sel.dataset.preset === 'copy') {
+      const src = deps.getRows().find((r) => r.email === sel.value);
+      if (!src) { syncUi(); return; }
+      await applyFormChange(applyCopy(form, src), `Menyalin izin dari ${src.email}`);
+    }
+  }
+
   async function onChange(e) {
     const t = e.target;
-    if (!aside || !row || busy || !(t instanceof HTMLInputElement)) return;
+    if (!aside || !row || busy) return;
+    if (t instanceof HTMLSelectElement) { await onSelectChange(t); return; }
+    if (!(t instanceof HTMLInputElement)) return;
     if (t.dataset.izin) {
       const next = setIzin(form, t.dataset.izin, t.checked);
       if (t.dataset.izin === 'boleh_hapus' && needsDeleteConfirm(row, next)) {
@@ -512,6 +576,8 @@ export function createDrawer(deps) {
     // Esc: tutup popover info dulu, baru drawer. Kembali true kalau ada yang ditangani.
     escape() {
       if (!opened || confirming) return false;
+      // Esc milik menu dropdown yang sedang terbuka: ui-select menutupnya sendiri, drawer jangan ikut tertutup.
+      if (aside && aside.querySelector('.ui-select.is-open')) return false;
       const pop = q('#pgInfoPop');
       if (pop && !pop.hidden) { pop.hidden = true; q('[data-act="info"]').setAttribute('aria-expanded', 'false'); return true; }
       requestClose();
