@@ -36,44 +36,45 @@ export { navPermSignature };
 // halaman Pengaturan). Modul tanpa entri di sana tampil tanpa accordion. Tambah entri di perm-view.js saat
 // sebuah modul punya tab/view sendiri, bersamaan dengan dibuatnya subnav.js miliknya.
 
-function navSubitemHtml(mod, sub, activeSub) {
-  const isActive = sub.id === activeSub;
+function navSubitemHtml(mod, sub, activeSub, index, isActiveModule) {
+  const isActive = isActiveModule && sub.id === activeSub;
   return `
-    <a class="pw-nav-subitem${isActive ? ' active' : ''}" href="/${mod.id}/${sub.id}" data-module="${mod.id}" data-sub="${sub.id}" title="${sub.title}">
+    <a class="pw-nav-subitem${isActive ? ' active' : ''}" style="--i:${index}" href="/${mod.id}/${sub.id}" data-module="${mod.id}" data-sub="${sub.id}" title="${sub.title}">
       <i class="ti ${sub.icon}"></i>
       <span>${sub.title}</span>
     </a>`;
 }
 
-function navItemHtml(mod, activeId, activeSub) {
+// isOpen(id) -> boolean: apakah accordion modul ini sedang terbuka. State-nya dipegang nav.js (bisa
+// dibuka/ditutup user, disimpan di localStorage), BUKAN lagi diturunkan dari route.
+function navItemHtml(mod, activeId, activeSub, isOpen) {
   const icon = NAV_ICONS[mod.id] || 'ti-square';
   const isActive = mod.id === activeId;
   const subnav = visibleSubs(mod.id); // hanya submodul yang boleh dilihat akun ini
-  // Legacy (not-yet-migrated) modules keep their real .html href so the nav
-  // works as a plain link for them too (full navigation, same as today) —
-  // migrated ones use a real clean path ('/module', no '#'); nav.js
-  // intercepts clicks on these (see its wireInternalNav()) and hands them
-  // to router.js's pushState-based navigate() instead of letting the
-  // browser reload, so behavior stays identical to the old hash-nav.
+  const hasSub = !!(subnav && subnav.length);
+  const open = hasSub && isOpen(mod.id);
+  // Legacy (not-yet-migrated) modules keep their real .html href; migrated ones use a clean path.
+  // nav.js intercepts clicks (wireInternalNav()) -- lihat komentarnya soal klik ke modul aktif = toggle.
   const itemHtml = `
-    <a class="pw-nav-item${isActive ? ' active' : ''}" href="${mod.url}" title="${mod.title}">
+    <a class="pw-nav-item${isActive ? ' active' : ''}" href="${mod.url}" title="${mod.title}" data-module="${mod.id}"${hasSub ? ` data-has-sub="1" aria-expanded="${open}" aria-controls="pwSub-${mod.id}"` : ''}>
       <i class="ti ${icon}"></i>
       <span>${mod.title}</span>
-      ${subnav ? `<i class="ti ti-chevron-down pw-nav-item-chevron${isActive ? ' open' : ''}"></i>` : ''}
+      ${hasSub ? `<i class="ti ti-chevron-down pw-nav-item-chevron${open ? ' open' : ''}"></i>` : ''}
     </a>`;
-  // Sub-items only render (in the DOM at all) while their module is
-  // active -- there's no separate expand/collapse click state to manage,
-  // it's driven purely by the route itself. Simpler than a real
-  // accordion widget, and it means the accordion can never show a sub-item
-  // list for a module you're not even looking at.
-  const subHtml = (subnav && isActive)
-    ? `<div class="pw-nav-subitems">${subnav.map((s) => navSubitemHtml(mod, s, activeSub)).join('')}</div>`
+  // Sub-item SELALU ada di DOM untuk modul yang punya submodul (bukan cuma saat aktif), dibungkus grid
+  // 0fr -> 1fr supaya tinggi bisa dianimasikan tanpa JS ukur-ukur. Tertutup = inert (tidak bisa di-Tab).
+  const subHtml = hasSub
+    ? `<div class="pw-nav-sub${open ? ' open' : ''}" id="pwSub-${mod.id}" data-group="${mod.id}">
+         <div class="pw-nav-sub-clip"${open ? '' : ' inert'}>
+           <div class="pw-nav-subitems">${subnav.map((s, i) => navSubitemHtml(mod, s, activeSub, i, isActive)).join('')}</div>
+         </div>
+       </div>`
     : '';
-  return itemHtml + subHtml;
+  return `<div class="pw-nav-group" data-module="${mod.id}">${itemHtml}${subHtml}</div>`;
 }
 
-export function navMarkup(activeId, activeSub) {
-  const items = navModules().map((mod) => navItemHtml(mod, activeId, activeSub)).join('');
+export function navMarkup(activeId, activeSub, isOpen = (id) => id === activeId) {
+  const items = navModules().map((mod) => navItemHtml(mod, activeId, activeSub, isOpen)).join('');
   return `
     <div class="pw-nav-brand">
       <div class="pw-nav-brand-mark"><img class="logo-light" src="/assets/logo-mark-pnm-sidebar.png" alt="PNM" width="48" height="18"><img class="logo-dark" src="/assets/logo-mark-pnm-sidebar-dark.png" alt="" width="48" height="18"></div>

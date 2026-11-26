@@ -336,20 +336,35 @@ html[data-theme="dark"] .pw-nav-brand-mark .logo-dark { display: block; }
   color: var(--text-muted);
   flex-shrink: 0;
   transform: rotate(-90deg);
-  transition: transform 0.15s ease;
+  /* Pegas: overshoot sedikit lalu mendarat. Itu "bouncy"-nya. */
+  transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.15s ease;
+  /* Area klik lebih lega dari glyph-nya (13px terlalu kecil), tanpa menggeser layout. */
+  padding: 8px 6px;
+  margin: -8px -4px;
+  cursor: pointer;
 }
+.pw-nav-item-chevron:hover { color: var(--text); }
 .pw-nav-item-chevron.open { transform: rotate(0deg); }
 
-/* ---- Sub-navigation accordion (the design spec "double nav" fix) ----
-   Only rendered (in the DOM at all -- see nav-markup.js's navItemHtml)
-   while the parent module is the active route, so there's no separate
-   expand/collapse click state to track here -- CSS is pure presentation. */
+/* ---- Sub-navigation accordion ----
+   Submodul SELALU ada di DOM; buka/tutup = class .open di .pw-nav-sub (diatur nav.js, state disimpan).
+   Tinggi dianimasikan lewat grid-template-rows 0fr -> 1fr: tidak perlu ukur tinggi dengan JS, dan tetap
+   benar kalau jumlah submodul berubah (izin akun). Margin/padding visual ada DI DALAM .pw-nav-sub-clip
+   supaya ikut menguncup ke 0 saat tertutup (tidak ada sisa celah antar modul). */
+.pw-nav-group { display: flex; flex-direction: column; }
+.pw-nav-sub {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pw-nav-sub.open { grid-template-rows: 1fr; }
+.pw-nav-sub-clip { min-height: 0; overflow: hidden; }
 .pw-nav-subitems {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding-left: 10px;
-  margin: 2px 0 2px 18px;   /* garis kiri sejajar tengah ikon induk (8 + 10 + 18/2); 2px bawah + gap 4px = pitch 40px ke item berikutnya, sama kayak antar item biasa */
+  margin: 6px 0 2px 18px;   /* 6px atas = gap 4px antar item (dulu) + 2px; garis kiri sejajar tengah ikon induk (8 + 10 + 18/2) */
   border-left: 1px solid var(--border);
 }
 .pw-nav-subitem {
@@ -363,6 +378,20 @@ html[data-theme="dark"] .pw-nav-brand-mark .logo-dark { display: block; }
   text-decoration: none;
   font-size: 12.5px;
   white-space: nowrap;
+}
+/* Masuk berurutan (stagger) saat dibuka, keluar serentak & cepat saat ditutup. */
+.pw-nav-subitem {
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.12s ease, transform 0.12s ease, background 0.12s ease;
+}
+.pw-nav-sub.open .pw-nav-subitem {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.25s ease calc(var(--i, 0) * 25ms + 50ms),
+    transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) calc(var(--i, 0) * 25ms + 50ms),
+    background 0.12s ease;
 }
 .pw-nav-subitem:hover { background: var(--fill-ghost-hover); }
 .pw-nav-subitem.active {
@@ -672,3 +701,10 @@ html[data-theme="dark"] .pw-nav-brand-mark .logo-dark { display: block; }
 .ui-select-choice .ui-select-btn { height: 30px; }
 .ui-select-choice .ui-select-label { max-width: min(340px, 60vw); }
 .ui-select-choice .ui-select-menu { max-width: min(420px, calc(100vw - 32px)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pw-nav-sub,
+  .pw-nav-item-chevron,
+  .pw-nav-subitem,
+  .pw-nav-sub.open .pw-nav-subitem { transition: none; }
+}

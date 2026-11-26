@@ -43,6 +43,43 @@ let lastActiveId = null;
 let lastActiveSub = null;
 let lastPermSig = ''; // daftar modul yang tampil saat nav terakhir dibuat (lihat navPermSignature)
 
+// ---- Accordion submodul: state buka/tutup per modul (dikontrol user, disimpan) ----
+// Dulu accordion cuma "ada" kalau modulnya aktif, dan tiap pindah modul seluruh nav dirender ulang
+// (innerHTML) -> mustahil dianimasikan dan klik modul aktif tidak bisa menutup. Sekarang semua submodul
+// selalu ada di DOM; buka/tutup = toggle class, jadi CSS transition jalan. Pindah modul otomatis membuka
+// modul tujuan (reveal), tapi tidak menutup yang lain -- itu urusan user.
+const EXPANDED_KEY = 'pnm_nav_expanded';
+let expandedSet = new Set();
+
+function loadExpanded() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(EXPANDED_KEY) || '[]');
+    return new Set(Array.isArray(raw) ? raw : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function saveExpanded() {
+  try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...expandedSet])); } catch (e) { /* storage penuh / diblok: state cukup di memori */ }
+}
+
+const isGroupOpen = (id) => expandedSet.has(id);
+
+// Ubah DOM satu grup tanpa render ulang -> inilah yang memicu transition di nav.css.
+function setGroupOpen(id, open, { persist = true } = {}) {
+  if (open) expandedSet.add(id); else expandedSet.delete(id);
+  if (persist) saveExpanded();
+  if (!navEl) return;
+  const sub = navEl.querySelector(`.pw-nav-sub[data-group="${CSS.escape(id)}"]`);
+  const item = navEl.querySelector(`.pw-nav-item[data-module="${CSS.escape(id)}"]`);
+  if (!sub) return;
+  sub.classList.toggle('open', open);
+  sub.querySelector('.pw-nav-sub-clip')?.toggleAttribute('inert', !open);
+  item?.setAttribute('aria-expanded', String(open));
+  item?.querySelector('.pw-nav-item-chevron')?.classList.toggle('open', open);
+}
+
 // ---- Manual collapse toggle (desktop icon-only rail, persisted) ----
 // Separate from the <768px auto-collapse in nav.css (that one's unconditional,
 // viewport-driven, no state to track) -- this is a user choice that should
@@ -103,6 +140,17 @@ function wireInternalNav() {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     const a = e.target.closest('a');
     if (!a) return;
+    // Modul bersubmenu: klik chevron = buka/tutup saja (tanpa pindah halaman); klik baris modul yang SEDANG
+    // aktif = buka/tutup juga (bukan reload halaman yang sama). Klik baris modul lain = pindah modul, dan
+    // navSetActive() yang membukakan accordion-nya.
+    if (a.classList.contains('pw-nav-item') && a.dataset.hasSub) {
+      const id = a.dataset.module;
+      if (e.target.closest('.pw-nav-item-chevron') || id === lastActiveId) {
+        e.preventDefault();
+        setGroupOpen(id, !isGroupOpen(id));
+        return;
+      }
+    }
     const href = a.getAttribute('href') || '';
     if (!isInternalRoute(href)) return; // legacy .html link — let the browser navigate normally
     e.preventDefault();
@@ -301,7 +349,10 @@ function wireSearch() {
 export async function navMount(container, activeId, activeSub) {
   if (navEl === container) return; // already mounted here
   await ensureStyle();
-  container.innerHTML = navMarkup(activeId, activeSub);
+  expandedSet = loadExpanded();
+  if (activeId) expandedSet.add(activeId); // reveal modul aktif, kayak Obsidian buka folder file yang aktif
+  saveExpanded();
+  container.innerHTML = navMarkup(activeId, activeSub, isGroupOpen);
   navEl = container;
   lastActiveId = activeId;
   lastActiveSub = activeSub || null;
@@ -363,30 +414,26 @@ export function navSetActive(activeId, sub) {
   const permChanged = permSig !== lastPermSig;
   lastPermSig = permSig;
   if (permChanged) searchIndex = null;
-  const subChangedOnly = activeId === lastActiveId && sub !== lastActiveSub;
-  const moduleChanged = activeId !== lastActiveId || permChanged;
+  const activeModuleChanged = activeId !== lastActiveId;
   lastActiveId = activeId;
   lastActiveSub = sub || null;
 
-  if (moduleChanged) {
-    // Re-render is unavoidable here (new accordion needs to exist in the
-    // DOM) — cheap enough (a few dozen small nodes, not a heavy page) that
-    // this isn't worth optimizing further.
-    // Blok brand (logo + nama) TIDAK ikut dibuat ulang: elemen lama dipindah balik ke
-    // markup baru. Kalau <img> logo dibuat ulang tiap pindah modul, logo sempat
-    // berkedip / loncat ukuran sesaat -- kelihatan jelas, padahal isinya sama persis.
+  // Pindah modul -> buka accordion modul tujuan (yang lain dibiarkan sesuai pilihan user).
+  const reveal = activeModuleChanged && activeId && !isGroupOpen(activeId);
+
+  if (permChanged) {
+    // Render ulang penuh HANYA kalau daftar modul/submodul berubah (akun lain login). Pindah modul biasa
+    // tidak lagi lewat sini, supaya elemen tetap hidup dan transition buka/tutup bisa berjalan.
+    // Blok brand (logo + nama) TIDAK ikut dibuat ulang: elemen lama dipindah balik ke markup baru,
+    // supaya logo tidak berkedip.
+    if (reveal) { expandedSet.add(activeId); saveExpanded(); }
     const keptBrand = navEl.querySelector('.pw-nav-brand');
-    navEl.innerHTML = navMarkup(activeId, sub);
+    navEl.innerHTML = navMarkup(activeId, sub, isGroupOpen);
     if (keptBrand) navEl.querySelector('.pw-nav-brand')?.replaceWith(keptBrand);
     applyThemeIcon();
     fillUser();
-    // Re-wire the bits that live inside the just-replaced innerHTML —
-    // theme/logout/search all had their listeners attached to elements
-    // that no longer exist post re-render. Simplest correct fix: re-run
-    // the same wiring navMount() does for those three, without repeating
-    // its style-loading/idempotency guard (that part doesn't need to
-    // re-run — the stylesheet's already loaded, navEl is still the same
-    // element).
+    // Listener yang menempel di elemen yang baru diganti harus dipasang ulang (theme/logout/collapse/search).
+    // wireInternalNav() tidak perlu: delegasi di navEl sendiri.
     wireThemeToggle();
     const logoutBtn = document.getElementById('pwNavLogoutBtn');
     logoutBtn?.addEventListener('click', async () => {
@@ -394,36 +441,18 @@ export function navSetActive(activeId, sub) {
       logoutBtn.disabled = true;
       try { await window.PNMAuth.logout(); } finally { logoutBtn.disabled = false; }
     });
-    // navEl.classList itself already kept 'collapsed' across the re-render
-    // (it's on the container, not inside the replaced innerHTML) -- only
-    // the fresh #pwNavCollapseBtn's aria/title (baked into navMarkup() as
-    // the "expanded" defaults) and click listener need re-syncing here.
     applyCollapsedState(isNavCollapsed());
     wireCollapseToggle();
     wireSearch();
     return;
   }
 
-  if (subChangedOnly) {
-    // Same module, just the sub-item changed — no new accordion needed,
-    // it's already in the DOM, just move which entries carry `.active`.
-    navEl.querySelectorAll('.pw-nav-subitem').forEach((el) => {
-      el.classList.toggle('active', el.dataset.sub === sub);
-    });
-    return;
-  }
-  // activeId === lastActiveId (before this call) && sub === lastActiveSub:
-  // truly nothing changed (e.g. router.js re-ran render() for an unrelated
-  // reason) — module .active state below is idempotent either way, so no
-  // special-case needed, just fall through to it.
-
-  navEl.querySelectorAll('.pw-nav-item').forEach((el) => el.classList.remove('active'));
-  // migrated items have href="/id"; legacy items have href="/id.html" —
-  // match on whichever form this activeId's module actually uses, same
-  // matching MODULES itself already encodes (see markup.js's navItemHtml).
-  const match = Array.from(navEl.querySelectorAll('.pw-nav-item')).find((el) => {
-    const href = el.getAttribute('href') || '';
-    return href === `/${activeId}` || href.includes(`/${activeId}.html`) || href.includes(`/${activeId}`);
+  // Update in-place: cuma pindahin class .active, tanpa menyentuh struktur DOM.
+  navEl.querySelectorAll('.pw-nav-item').forEach((el) => {
+    el.classList.toggle('active', el.dataset.module === activeId);
   });
-  match?.classList.add('active');
+  navEl.querySelectorAll('.pw-nav-subitem').forEach((el) => {
+    el.classList.toggle('active', el.dataset.module === activeId && el.dataset.sub === sub);
+  });
+  if (reveal) setGroupOpen(activeId, true);
 }
