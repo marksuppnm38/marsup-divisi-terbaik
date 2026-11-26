@@ -2090,6 +2090,9 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise, pro
       <button id="lampiran-xlsx-btn" class="lp-btn" title="Download .xlsx — gambar beneran nempel di cell (paling pasti, tinggal copy range-nya ke file kamu)">
         <i class="ti ti-file-spreadsheet"></i><span>.xlsx</span>
       </button>
+      <button id="lampiran-pdf-btn" class="lp-btn" title="Download PDF Lampiran Set — layout sama persis dengan tab Lampiran Set di Document Maker">
+        <i class="ti ti-file-type-pdf"></i><span>PDF</span>
+      </button>
     </div>
     <table class="lp-table">
       <thead>
@@ -2126,6 +2129,12 @@ async function renderSetRincianInLampiranModal(kode_produk, produkIdPromise, pro
     // (Copy+Gambar sengaja TIDAK menunggu: dia pakai signed URL, bukan imgs[], dan
     // menahan klik bisa bikin Safari menganggap user-gesture-nya sudah hangus.)
     xlsxBtn.addEventListener('click', async () => { await imgsReady; downloadSetRincianXlsx(kode_produk, items, imgs, xlsxBtn); });
+  }
+
+  const pdfBtn = document.getElementById('lampiran-pdf-btn');
+  if (pdfBtn) {
+    // Sama seperti .xlsx: tunggu gambar selesai dimuat, supaya PDF tidak keluar dengan kotak gambar kosong.
+    pdfBtn.addEventListener('click', async () => { await imgsReady; downloadSetRincianPdf(kode_produk, items, imgs, pdfBtn); });
   }
 
   // ── Muat gambar progresif ──
@@ -2386,6 +2395,43 @@ async function copySetRincianWithImages(items, imgs, btnEl, kodeSet) {
     const original = btnEl.innerHTML;
     btnEl.innerHTML = '<i class="ti ti-check"></i><span>Tersalin!</span>';
     setTimeout(() => { btnEl.innerHTML = original; }, 1800);
+  }
+}
+
+// Download PDF "Lampiran Set" dari rincian set yang lagi dibuka. Layout dibangun oleh
+// buildLampiranPdf() milik Document Maker (spek-maker/lampiran-pdf.js) lewat
+// lampiran-pdf-download.js -- JANGAN bikin layout PDF baru di sini.
+async function downloadSetRincianPdf(kodeSet, items, imgs, btnEl) {
+  const originalHtml = btnEl ? btnEl.innerHTML : null;
+  if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<i class="ti ti-loader-2"></i><span>Menyiapkan…</span>'; }
+  try {
+    const { buatLampiranPdfRincian } = await import('./lampiran-pdf-download.js');
+    const { blob, filename, tanpaGambar } = await buatLampiranPdfRincian({
+      kodeSet,
+      judul: lampiranTitle.textContent,
+      brand: lampiranBrandOf(kodeSet) || lampiranBrandOf((items[0] || {}).kode_produk) || 'robust',
+      items,
+      imgs,
+      loadJsPdf: () => loadScript(
+        'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+        'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk'
+      ),
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    if (tanpaGambar) S.showToast(`PDF terunduh, tapi ${tanpaGambar} gambar belum ada`, 'warning');
+    else S.showToast('PDF terunduh');
+  } catch (e) {
+    console.error(e);
+    S.showToast('Gagal membuat PDF: ' + (e && e.message ? e.message : e), 'error');
+  } finally {
+    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = originalHtml; }
   }
 }
 
