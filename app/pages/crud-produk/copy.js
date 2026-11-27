@@ -561,6 +561,8 @@ export function createCopyKit(ctx) {
     moreBtnCard(p) {
       return `<button type="button" class="cp-more cp-more-card" aria-haspopup="menu" aria-label="Salin data ${esc(p.kode_produk)}" title="Salin data produk ini"><i class="ti ti-copy"></i></button>`;
     },
+    /** Tutup menu Salin kalau terbuka (dipakai suspend(): popover ini menempel di document.body, di luar container modul). Seleksi tidak disentuh. */
+    closePopover() { closePop(); },
     destroy() {
       closePop();
       extra.clear();

@@ -571,7 +571,10 @@ export function installOrphan(S) {
       const go = $('orphDelGo');
       if (go) go.disabled = st.del.typed.trim().toUpperCase() !== 'HAPUS' || !st.del.preview.some((r) => r.outcome === 'can_delete');
     });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ov.classList.contains('open')) dClose(); });
+    // Level document: lewat S.pasangGlobal supaya dilepas saat suspend()/unmount() (dulu tidak pernah dilepas -> menumpuk tiap mount()).
+    const onEscDelOrphan = (e) => { if (e.key === 'Escape' && ov.classList.contains('open')) dClose(); };
+    if (S.pasangGlobal) S.pasangGlobal(document, 'keydown', onEscDelOrphan);
+    else document.addEventListener('keydown', onEscDelOrphan);
   }
 
   (function wire() {

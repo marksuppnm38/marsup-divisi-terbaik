@@ -41,6 +41,7 @@
 
 import { CRUD_PRODUK_MARKUP } from './markup.js';
 import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6, isAkdPlaceholder, sembunyikanAkdPlaceholder, guardHapus, barisTerhapus } from './ui-utils.js';
+import { createGlobalBindings, perluSegarkan, adaDraft } from './siklus-hidup.js';
 import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
@@ -270,6 +271,13 @@ function routeTo(path) {
   return true;
 }
 let beforeUnloadHandler = null;
+// KEEP-ALIVE (router.js bagian 9): semua listener document/window modul ini dipasang lewat daftar ini, supaya suspend() bisa
+// melepas dan resume() memasangnya lagi tanpa menyentuh mount(). Variabel handler bernama di bawah tetap dipakai (diisi mount()).
+const globalBindings = createGlobalBindings();
+let suspended = false;     // true selama diparkir router (suspend() sampai resume()/unmount())
+let _shortcutHandlers = null; // objek handler pintasan (dibuat mount()), dipakai resume() untuk installShortcuts ulang
+let _lifecycle = null;     // { isDirty, suspend, resume } -- closure di dalam mount(), pola sama dengan _switchView / _produkRoute
+let dataFreshAt = 0;       // Date.now() saat daftar Produk terakhir selesai dimuat (resume() menyegarkan kalau lebih tua dari BATAS_SEGAR_MS)
 let copyKitDestroy = null; // copy.js: tutup popover salin + buang cache saat halaman di-unmount
 let shortcutsDispose = null; // shared/shortcuts.js: lepas listener keydown pintasan + tutup daftar pintasan (?)
 
@@ -390,6 +398,8 @@ function renderInaprocIndikator(statusInaproc, linkV6, isVerified){
 
 export async function mount(container, initialSub, initialParam) {
   mountedContainer = container;
+  suspended = false;
+  dataFreshAt = 0;
   perfReset();
   perfMark('mount-mulai');
   const stylesReady = ensureStyle();
@@ -406,7 +416,7 @@ export async function mount(container, initialSub, initialParam) {
   // S: shared state buat modul hasil breakup (akd-master.js dkk), pola sama
   // kayak konversian/index.js -- installXxx(S) dipanggil di bawah, modul
   // baca/tulis ke S buat apa pun yang lintas-file (bukan window global).
-  const S = { sb, escapeHtml };
+  const S = { sb, escapeHtml, pasangGlobal: (target, type, fn, opts) => globalBindings.pasang(target, type, fn, opts) };
   container.innerHTML = CRUD_PRODUK_MARKUP;
   perfMark('markup-siap');
 
@@ -706,6 +716,7 @@ const tableBody = document.getElementById('tableBody');
 }
 const cardWrap = document.getElementById('cardWrap');
 const tableWrap = document.getElementById('tableWrap');
+const produkPgEl = document.getElementById('produkPagination'); // di-cache: loadProduk yang selesai saat modul terparkir tidak boleh query ke dokumen (DOM-nya terlepas -> null)
 const produkHasil = document.getElementById('produkHasil');     // "Hasil: N produk" di bar pintasan (mengikuti search + semua token)
 const produkTotalSub = document.getElementById('produkCount');  // subjudul: total seluruh katalog
 const viewTableBtn = document.getElementById('viewTableBtn');
@@ -819,14 +830,18 @@ let lastQuery = '';
 let topSearchTimer = null;
 const topSearchInput = document.getElementById('topSearchInput');
 const topSearchClear = document.getElementById('topSearchClear');
+let topSearchPending = false; // true = ketikan terakhir belum dieksekusi (debounce 300 ms jalan); suspend() menahannya, resume() menjalankannya
+function runTopSearch(){
+  topSearchPending = false;
+  goView('produk');
+  loadProduk(topSearchInput.value);
+}
 topSearchInput.addEventListener('input', () => {
   clearTimeout(topSearchTimer);
   topSearchClear.style.display = topSearchInput.value ? 'block' : 'none';
   syncTopSearchKbd();
-  topSearchTimer = setTimeout(() => {
-    goView('produk');
-    loadProduk(topSearchInput.value);
-  }, 300);
+  topSearchPending = true;
+  topSearchTimer = setTimeout(runTopSearch, 300);
 });
 topSearchClear.addEventListener('click', () => {
   topSearchInput.value = '';
@@ -1431,6 +1446,11 @@ function setProdukSort(s){
 
 async function loadProduk(q, page, opts){
   const pageOnly = !!(opts && opts.pageOnly); // true hanya dari tombol paging: filter / search tidak berubah, total boleh dipakai ulang
+  // silent = penyegaran di latar saat modul dilanjutkan (resume): baris lama tetap tampil sampai data baru siap -- tanpa skeleton,
+  // tanpa "Memuat...", sel tidak dikembalikan ke keadaan memuat. Kalau gagal, tampilan lama dipertahankan (bukan diganti pesan galat).
+  const silent = !!(opts && opts.silent);
+  const gagalMuat = (html) => { if (!silent) tableBody.innerHTML = html; else console.warn('crud-produk: penyegaran di latar gagal, tampilan lama dipertahankan'); };
+  const labelHasil = (t) => { if (!silent) produkHasil.textContent = t; };
   const newQ = (q ?? lastQuery ?? '').trim();
   const searchChanged = newQ !== (lastQuery ?? '').trim();
   // Query ulang ke DB kalau: kata kunci berganti, data baru berubah (dirty), atau dipanggil tanpa argumen
@@ -1444,14 +1464,15 @@ async function loadProduk(q, page, opts){
   const qq = newQ;
   copyKit.invalidate(); // harga/AKD hasil salin selalu diambil ulang (bisa baru diedit)
   colKit.invalidate();
-  copyKit.setPage([]);
-  produkPageRows = [];
+  if (!silent) { copyKit.setPage([]); produkPageRows = []; }
   colKit.setAuto(produkAutoCols()); // kolom ikut filter yang aktif
   colKit.renderHead();
 
-  tableBody.innerHTML = produkSkeletonRows();
-  cardWrap.innerHTML = '';
-  produkHasil.textContent = 'Memuat...';
+  if (!silent) {
+    tableBody.innerHTML = produkSkeletonRows();
+    cardWrap.innerHTML = '';
+    produkHasil.textContent = 'Memuat...';
+  }
 
   const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
   if (needsHarga) await ensureProdukHargaSet();
@@ -1468,7 +1489,7 @@ async function loadProduk(q, page, opts){
     // Filter klasifikasi butuh cache seluruh katalog SEBELUM jalur manapun memasang filter (search / Verified / Keluarga / client).
     const k = await ensureKlas();
     if (mySeq !== produkLoadSeq) return;
-    if (!k.ok) { produkHasil.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">${escapeHtml(k.message)}</td></tr>`; return; }
+    if (!k.ok) { labelHasil('Gagal memuat'); gagalMuat(`<tr class="state-row"><td colspan="${colKit.span()}">${escapeHtml(k.message)}</td></tr>`); return; }
   }
   const needsStok = produkActiveFilters.some(f => f.dim === 'stok');
   // Jalur yang menyaring di client (search / chip Verified / Keluarga / klasifikasi) membaca produkVerifiedIdSet lewat matcher,
@@ -1499,14 +1520,14 @@ async function loadProduk(q, page, opts){
       if (!fastSearchOk) {
       if (listErr) console.warn('search_produk_list gagal, fallback ke 2 langkah:', listErr.message);
       const { data: rpcData, error: rpcErr } = await sb.rpc('search_produk_dengan_harga', { q: qq, p_tipe: null, only_akd: false, only_kfa: false });
-      if (rpcErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`; return; }
+      if (rpcErr) { gagalMuat(`<tr class="state-row"><td colspan="${colKit.span()}">Gagal mencari: ${escapeHtml(rpcErr.message)}</td></tr>`); return; }
       const kodeList = (rpcData || []).map(r => r.kode_produk);
       if (kodeList.length === 0) { produkSearchRawRows = []; }
       else {
         const { data: fullRows, error: fullErr } = await sb.from('produk')
           .select(PRODUK_LIST_COLUMNS)
           .in('kode_produk', kodeList);
-        if (fullErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`; return; }
+        if (fullErr) { gagalMuat(`<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(fullErr.message)}</td></tr>`); return; }
         const byKode = Object.fromEntries((fullRows || []).map(r => [r.kode_produk, r]));
         produkSearchRawRows = kodeList.map(k => byKode[k]).filter(Boolean);
       }
@@ -1532,7 +1553,7 @@ async function loadProduk(q, page, opts){
     // ("+ Tambah Filter") dipasang di client pakai produkRowMatchesFilter yang sama dgn jalur
     // search — get_produk_list sengaja TIDAK dipakai (gak kenal status "verified").
     const all = await ensureVerifiedRows();
-    if (all === null) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat produk Verified.</td></tr>`; return; }
+    if (all === null) { gagalMuat(`<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat produk Verified.</td></tr>`); return; }
     let filtered = all;
     if (needsStok && !(await ensureStokForIds(all.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
@@ -1552,7 +1573,7 @@ async function loadProduk(q, page, opts){
     // Hasil sudah urut per keluarga lalu nomor varian, jadi MAYOR S., MAYOR S. 2, MAYOR S. 3 berkumpul.
     const kf = produkActiveFilters.find(f => f.dim === 'keluarga');
     const { rows: kRows, error: kErr } = await fetchRowsByKeluarga(sb, kf.values || [kf.value], PRODUK_LIST_COLUMNS_BASE + ', keluarga');
-    if (kErr) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">${escapeHtml(pesanKeluarga(kErr))}</td></tr>`; return; }
+    if (kErr) { gagalMuat(`<tr class="state-row"><td colspan="${colKit.span()}">${escapeHtml(pesanKeluarga(kErr))}</td></tr>`); return; }
     if (needsStok && !(await ensureStokForIds(kRows.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
     }
@@ -1572,7 +1593,7 @@ async function loadProduk(q, page, opts){
     // Urut sama dengan list biasa (terakhir diubah dulu).
     const { rows: kRows, error: kErr } = await fetchRowsByKlas(sb, produkActiveFilters, PRODUK_LIST_COLUMNS);
     if (mySeq !== produkLoadSeq) return;
-    if (kErr) { produkHasil.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(kErr.message || String(kErr))}</td></tr>`; return; }
+    if (kErr) { labelHasil('Gagal memuat'); gagalMuat(`<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(kErr.message || String(kErr))}</td></tr>`); return; }
     if (needsStok && !(await ensureStokForIds(kRows.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
     }
@@ -1594,14 +1615,14 @@ async function loadProduk(q, page, opts){
         server, sort: produkSort, page: produkPage, pageSize: PRODUK_PAGE_SIZE,
       });
       if (mySeq !== produkLoadSeq) return;
-      if (res.error) { produkHasil.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(res.error.message || String(res.error))}</td></tr>`; return; }
+      if (res.error) { labelHasil('Gagal memuat'); gagalMuat(`<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(res.error.message || String(res.error))}</td></tr>`); return; }
       rows = res.rows;
       total = res.total;
       produkCurrentFilteredFull = null; // export menarik ulang lewat muatSemuaLangsung (lihat getRowsToExport)
     } else {
       const all = await muatSemuaLangsung();
       if (mySeq !== produkLoadSeq) return;
-      if (all.error) { produkHasil.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(all.error.message || String(all.error))}</td></tr>`; return; }
+      if (all.error) { labelHasil('Gagal memuat'); gagalMuat(`<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(all.error.message || String(all.error))}</td></tr>`); return; }
       produkCurrentFilteredFull = all.rows;
       total = all.rows.length;
       rows = all.rows.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
@@ -1620,9 +1641,9 @@ async function loadProduk(q, page, opts){
     });
     if (error) {
       const stokBelumMigrasi = needsStok && (error.code === 'PGRST202' || /p_stok/.test(error.message || ''));
-      tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">${stokBelumMigrasi
+      gagalMuat(`<tr class="state-row"><td colspan="${colKit.span()}">${stokBelumMigrasi
         ? 'Filter Stok belum aktif di database. Jalankan <code>sql/01_stok_filter_produk.sql</code> di Supabase SQL Editor, lalu muat ulang.'
-        : 'Gagal memuat: ' + escapeHtml(error.message)}</td></tr>`;
+        : 'Gagal memuat: ' + escapeHtml(error.message)}</td></tr>`);
       return;
     }
     rows = data?.rows || [];
@@ -1644,7 +1665,7 @@ async function loadProduk(q, page, opts){
         .range(from, to);
     }
     const { data, error, count } = res;
-    if (error) { tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`; return; }
+    if (error) { gagalMuat(`<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(error.message)}</td></tr>`); return; }
     rows = data || [];
     if (count == null && reuseTotal) total = produkTotalCache.total;
     else { total = count || 0; produkTotalCache = { key: produkActiveFilter, total, t: Date.now() }; }
@@ -1664,18 +1685,19 @@ async function loadProduk(q, page, opts){
   simpanKlasDariBaris(rows); // baris dari .from('produk') sudah membawa kategori / spesialisasi: kolom tabel tidak perlu request lagi
   produkLastTotal = Number(total) || 0;
   if (exportPanelRepaint) exportPanelRepaint();
+  dataFreshAt = Date.now(); // daftar yang tampil sekarang segar; resume() membandingkan umurnya dengan BATAS_SEGAR_MS
   produkHasil.textContent = 'Hasil: ' + Number(total).toLocaleString('id-ID') + ' produk' + (qq ? ` untuk "${qq}"` : '');
   // Subjudul = total katalog. Kalau hitungan katalog (RPC) belum / gagal datang dan ini daftar polos, pakai total daftar ini.
   if (!produkCatalogTotal && !qq && !produkActiveFilters.length && Number(total) > 0) { produkCatalogTotal = Number(total); paintProdukTotalSub(); }
   const tabTotal = produkCatalogTotal; // total katalog (tanpa search / token), untuk keterangan "dari N" di paging
-  renderPgBar(document.getElementById('produkPagination'), {
+  renderPgBar(produkPgEl, {
     page: produkPage, pageSize: PRODUK_PAGE_SIZE, total, ofTotal: tabTotal,
     onPageChange: (p) => loadProduk(qq, p, { pageOnly: true })
   });
 
   // Hapus item terakhir di halaman 2+ -> halaman ini kosong padahal masih ada data di halaman sebelumnya: mundur otomatis.
   if (rows.length === 0 && total > 0 && produkPage > 1) {
-    loadProduk(qq, Math.max(1, Math.ceil(total / PRODUK_PAGE_SIZE)));
+    loadProduk(qq, Math.max(1, Math.ceil(total / PRODUK_PAGE_SIZE)), silent ? { silent: true } : undefined);
     return;
   }
   if (rows.length === 0) {
@@ -1709,11 +1731,13 @@ async function loadProduk(q, page, opts){
   const ids = rows.map(r => r.id);
   produkPageRows = rows;
   produkRowById = new Map(rows.map(r => [String(r.id), r]));
-  produkHargaExistIds = new Set();
-  setProdukPhase('harga', 'loading');
-  setProdukPhase('stok', ids.every(id => stokFresh(id)) ? 'ok' : 'loading');
-  setProdukPhase('extra', ids.every(id => copyKit.extraOf(id)) ? 'ok' : 'loading');
-  setProdukPhase('needs', colKit.hasNeeds() ? 'loading' : 'ok');
+  if (!silent) {
+    produkHargaExistIds = new Set();
+    setProdukPhase('harga', 'loading');
+    setProdukPhase('stok', ids.every(id => stokFresh(id)) ? 'ok' : 'loading');
+    setProdukPhase('extra', ids.every(id => copyKit.extraOf(id)) ? 'ok' : 'loading');
+    setProdukPhase('needs', colKit.hasNeeds() ? 'loading' : 'ok');
+  } // silent: fase & set harga lama dipertahankan (tanpa kedip skeleton di sel); runProdukExtras di bawah menambal sel yang berubah
   copyKit.setPage(rows);
   paintProdukRows();
   paintProdukCards();
@@ -1924,9 +1948,9 @@ filterPopOutsideClickHandler = (e) => {
     produkAddFilterPop.classList.remove('open');
   }
 };
-document.addEventListener('click', filterPopOutsideClickHandler);
+globalBindings.pasang(document, 'click', filterPopOutsideClickHandler);
 resizeHandler = () => { if (produkAddFilterPop.classList.contains('open')) positionAddFilterPop(); };
-window.addEventListener('resize', resizeHandler);
+globalBindings.pasang(window, 'resize', resizeHandler);
 function positionAddFilterPop(){
   // Popover default nempel rata kiri ke tombol; kalau bakal kepotong tepi kanan
   // layar (misal di layar sempit / tombol deket ujung), balik jadi rata kanan
@@ -2484,8 +2508,8 @@ exportMenuDocHandler = (e) => {
   if (!e.target.isConnected) return;
   if (!exportPop.hidden && !e.target.closest('#produkExportMenu')) setExportMenu(false);
 };
-document.addEventListener('click', exportMenuDocHandler);
-document.addEventListener('keydown', exportMenuDocHandler);
+globalBindings.pasang(document, 'click', exportMenuDocHandler);
+globalBindings.pasang(document, 'keydown', exportMenuDocHandler);
 cmdkOverlay.addEventListener('click', e => { if (e.target === cmdkOverlay) closeCmdk(); });
 document.getElementById('cmdkCloseBtn').addEventListener('click', closeCmdk);
 
@@ -2493,7 +2517,7 @@ cmdkKeydownHandler = e => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); if (!focusProdukSearch()) openCmdk(); }
   if (e.key === 'Escape' && cmdkOverlay.classList.contains('open')) closeCmdk();
 };
-document.addEventListener('keydown', cmdkKeydownHandler);
+globalBindings.pasang(document, 'keydown', cmdkKeydownHandler);
 
 // ---- Pintasan keyboard ----
 // Definisi (kombinasi, deskripsi, ruang lingkup) ada di shared/shortcuts.js: SATU registry buat semua halaman.
@@ -2541,7 +2565,7 @@ function arrowProdukRow(e, step, extend){
   return moveProdukRow(step, extend);
 }
 
-shortcutsDispose = installShortcuts('crud-produk', {
+const shortcutHandlers = {
   'produk.search': () => {
     const id = SEARCH_INPUT_BY_VIEW[activeCrudView()];
     const input = id && document.getElementById(id);
@@ -2601,7 +2625,9 @@ shortcutsDispose = installShortcuts('crud-produk', {
     if (!btn.disabled) btn.click();
     return true;
   },
-});
+};
+_shortcutHandlers = shortcutHandlers;
+shortcutsDispose = installShortcuts('crud-produk', shortcutHandlers); // resume() memasang lagi dengan handler yang sama
 // Tooltip + aria-keyshortcuts tombol diambil dari registry, bukan diketik manual di markup.
 applyShortcutHints({
   '#addBtn': 'produk.add',
@@ -3024,7 +3050,8 @@ beforeUnloadHandler = (e) => {
     e.returnValue = '';
   }
 };
-window.addEventListener('beforeunload', beforeUnloadHandler);
+// tetapSaatDraft: modul terparkir dengan draft tetap memperingatkan F5 / tutup tab (rencana 9.2: beforeunload khusus tab browser).
+globalBindings.pasang(window, 'beforeunload', beforeUnloadHandler, { tetapSaatDraft: true });
 
 // ---- Tab bertahap di modal Produk (Info Dasar selalu kebuka; sisanya kekunci
 // sampai Info Dasar tersimpan pertama kali, biar form gak kerasa numpuk) ----
@@ -4968,6 +4995,49 @@ function animateProdukRowOut(id){
   // specifically to land after every `let`/`const` this depends on has
   // executed. Still fires synchronously within this same mount() call,
   // same as before.
+  // ---- KEEP-ALIVE: bagian yang butuh closure mount() (export suspend/resume/isDirty ada di dekat unmount()) ----
+  // Sengaja didefinisikan SETELAH semua let/const mount() terisi (hindari TDZ), dan dikosongkan di unmount().
+  _lifecycle = {
+    // Hanya membaca state modal (bukan DOM) -> benar juga selagi DOM terparkir. Modal Tambah / Edit / Info Dasar set memakai modalDirty yang sama.
+    isDirty: () => adaDraft({ modalState, modalDirty }),
+    suspend() {
+      // UI sementara yang menempel di document.body atau bergantung pada listener global yang baru dilepas: ditutup,
+      // supaya tidak tertinggal tampil di atas modul lain (popover Salin / Kolom / header menempel di <body>).
+      copyKit.closePopover();
+      colKit.tutupPicker();
+      headMenuCtl.tutup();
+      produkAddFilterPop.classList.remove('open');
+      setExportMenu(false);
+      // Palette Ctrl+K: tutup + batalkan pencariannya.
+      clearTimeout(cmdkTimer);
+      if (cmdkCtl) cmdkCtl.abort();
+      cmdkSeq++;
+      closeCmdk();
+      // Konfirmasi generik (crudConfirm) yang masih terbuka: listener keydown-nya (Enter = OK) menempel di document dan tidak ikut
+      // terlepas. Dibatalkan (Batal / Oke untuk alert) supaya Enter di modul lain tidak mengeksekusi aksi yang menunggu (mis. hapus produk).
+      const gco = document.getElementById('genericConfirmOverlay');
+      if (gco && gco.classList.contains('open')) {
+        const batal = document.getElementById('genericConfirmCancelBtn');
+        (batal && batal.style.display !== 'none' ? batal : document.getElementById('genericConfirmOkBtn'))?.click();
+      }
+      // Debounce cari: yang belum jalan ditahan (topSearchPending tetap true), dijalankan lagi di resume().
+      clearTimeout(topSearchTimer);
+    },
+    resume() {
+      paintProdukPintasan(); // dilukis lewat query dokumen: selagi terlepas hasilnya kosong, jadi lukis ulang sekarang (idempoten)
+      // Ketikan cari yang tertahan saat suspend: jalankan sekarang (muat ulang biasa, ini kata kunci baru).
+      if (topSearchPending) { runTopSearch(); return; }
+      if (!produkLoadedOnce || !perluSegarkan(dataFreshAt, Date.now())) return; // belum pernah dimuat / masih segar
+      // Modal terbuka: daftar di belakangnya jangan diutak-atik; tandai basi, mekanisme stale memuatnya saat modal ditutup.
+      if (modalState !== 'closed') { stale.mark(); return; }
+      // Penyegaran di latar: filter, kata kunci, halaman, urutan, scroll dan seleksi tetap; baris diganti begitu data baru tiba.
+      invalidateProdukStackCache();
+      resetManual();
+      loadProduk(undefined, undefined, { silent: true });
+      refreshProdukFilterCounts();
+    },
+  };
+
   loadProdukDistinctValues(); // 1 RPC kecil, aman dipanggil dari tab manapun
   handleNavParamsIfAny();
 
@@ -5050,21 +5120,58 @@ export async function resolveRoute(sub, param) {
   return true;
 }
 
+// ---- KEEP-ALIVE (kontrak router.js, bagian 9): suspend() / resume() / isDirty() ----------------------------------
+// Pindah modul TIDAK membongkar halaman ini: router memindahkan DOM-nya ke DocumentFragment dan memanggil suspend();
+// kembali ke sini = DOM dipasang lagi + resume(), TANPA mount(). Semua state (kata kunci, token filter, halaman, urutan,
+// scroll, seleksi baris, modal terbuka + draft-nya) ada di closure mount() dan di DOM yang sama, jadi utuh dengan sendirinya.
+// Pindah sub-menu (Products <-> AKD <-> KFA) tetap lewat setSubroute() -> switchView(): hanya menampilkan/menyembunyikan view.
+//
+// Daftar "Listener global" (document/window) dan timer:
+//   DILEPAS saat suspend, DIPASANG lagi saat resume (lewat globalBindings / installShortcuts):
+//     document click   filterPopOutsideClickHandler   tutup popover "+ Filter" saat klik di luar
+//     window   resize  resizeHandler                  reposisi popover "+ Filter"
+//     document click + keydown  exportMenuDocHandler  tutup panel Export (klik luar / Esc)
+//     document keydown cmdkKeydownHandler             Ctrl/Cmd+K, Esc palette
+//     document keydown (capture)  shortcutsDispose    registry shared/shortcuts.js (installShortcuts, handler = shortcutHandlers)
+//     document keydown orphan.js (Esc hapus orphan)   dulu bocor (tidak pernah dilepas); sekarang lewat S.pasangGlobal
+//   TETAP TERPASANG selama modal berdraft (dilepas bila bersih): window beforeunload (beforeUnloadHandler) -- F5 / tutup tab
+//     saat draft terparkir tetap diperingatkan (rencana 9.2: beforeunload khusus tab browser; pindah modul tidak ditanya).
+//   Dilepas lewat kit masing-masing: copyKit.closePopover(), colKit.tutupPicker(), headMenuCtl.tutup() -- popover ini menempel di
+//     <body> dan memasang pointerdown/scroll/resize/mousedown/keydown level document selama terbuka. Ditutup saat suspend.
+//   TIMER: topSearchTimer (debounce cari 300 ms) ditahan lalu dijalankan di resume(); cmdkTimer + request palette dibatalkan.
+//   SENGAJA DIBIARKAN jalan: debounce kecil yang hanya menyentuh elemen ter-cache (akdSearchTimer, compSearchTimer, setAkdSearchTimer,
+//     debounce cari Set, _fcTimer hitungan filter) dan qtyDebounceTimer -- yang terakhir MENULIS ke DB, jangan sampai hilang.
+//   copyKitDestroy / resetManual / resetKlasifikasi TIDAK dipanggil saat suspend (itu urusan unmount): cache & seleksi dipertahankan.
+export function isDirty() {
+  return !!mountedContainer && !!_lifecycle && _lifecycle.isDirty();
+}
+
+export function suspend() {
+  if (!mountedContainer || suspended) return;
+  const draft = isDirty(); // dihitung sebelum apa pun dilepas
+  suspended = true;
+  // Urutan: listener global dilepas PERTAMA -- kalau langkah closure di bawah melempar, router membongkar modul (unmount) dan
+  // tidak ada listener yang tertinggal di document/window.
+  globalBindings.lepas({ draft });
+  if (shortcutsDispose) { shortcutsDispose(); shortcutsDispose = null; } // juga menutup daftar pintasan (?)
+  if (_lifecycle) _lifecycle.suspend();
+}
+
+export function resume() {
+  if (!suspended) return;
+  suspended = false;
+  globalBindings.sambung();
+  if (_shortcutHandlers && !shortcutsDispose) shortcutsDispose = installShortcuts('crud-produk', _shortcutHandlers);
+  if (_lifecycle) _lifecycle.resume();
+}
+
 export function unmount() {
-  // Lepas semua listener document/window-level yang di-nama-in di atas --
-  // listener yang nempel di elemen DALAM container udah otomatis ke-GC pas
-  // router.js nge-set container.innerHTML = '' sebelum manggil unmount ini,
-  // jadi cuma yang document/window-level yang perlu dilepas manual.
-  if (filterPopOutsideClickHandler) document.removeEventListener('click', filterPopOutsideClickHandler);
-  if (resizeHandler) window.removeEventListener('resize', resizeHandler);
-  if (cmdkKeydownHandler) document.removeEventListener('keydown', cmdkKeydownHandler);
-  if (exportMenuDocHandler) {
-    document.removeEventListener('click', exportMenuDocHandler);
-    document.removeEventListener('keydown', exportMenuDocHandler);
-    exportMenuDocHandler = null;
-  }
+  // Dipanggil dalam dua keadaan: (1) halaman aktif yang dibongkar (DOM masih terpasang), (2) modul TERPARKIR yang dibuang
+  // router (LRU / TTL 30 menit / logout) -- DOM-nya terlepas dan listener global sudah dilepas suspend(). Keduanya harus aman:
+  // melepas listener yang sudah lepas tidak error, dan tidak ada query ke elemen DALAM container di sini (sudah terlepas).
+  // Listener yang nempel di elemen DALAM container ikut ke-GC bersama DOM-nya; yang document/window-level ada di globalBindings.
+  globalBindings.buang();
   exportPanelRepaint = null;
-  if (beforeUnloadHandler) window.removeEventListener('beforeunload', beforeUnloadHandler);
   if (copyKitDestroy) { copyKitDestroy(); copyKitDestroy = null; }
   resetManual(); // cache koreksi manual atribut (atribut.js), sama siklusnya dengan cache klasifikasi
   resetKlasifikasi(); // cache klasifikasi katalog (klasifikasi.js, level modul): dibuang saat keluar halaman Produk, dimuat ulang kalau dipakai lagi
@@ -5072,7 +5179,12 @@ export function unmount() {
   filterPopOutsideClickHandler = null;
   resizeHandler = null;
   cmdkKeydownHandler = null;
+  exportMenuDocHandler = null;
   beforeUnloadHandler = null;
+  suspended = false;
+  _shortcutHandlers = null;
+  _lifecycle = null;
+  dataFreshAt = 0;
 
   // UPDATE (jank fix): pnm-universal.css NO LONGER removed here. It's now
   // a permanent <link> loaded once by index.html -- see the
@@ -5092,8 +5204,9 @@ export function unmount() {
   _switchView = null; // avoid a stale closure over this mount's DOM being callable after teardown
   _setRoute = null;   // idem untuk fungsi Set Management
   _produkRoute = null; // idem untuk modal edit produk
-  modalMode = 'overlay'; // DOM-nya sudah dibuang router; pemasangan berikutnya mulai dari mode modal
-  pageReturnId = null;
+  // modalMode / pageReturnId SENGAJA tidak di-reset di sini: keduanya `let` di dalam mount() (closure per-mount, mulai bersih di mount berikutnya).
+  // Dulu baris `modalMode = 'overlay'` / `pageReturnId = null` ada di sini -> ReferenceError (modul ES = strict) yang menghentikan unmount()
+  // sebelum resolvedSet / resolvedProduk / produkPrefetch / mountedContainer sempat dikosongkan.
   resolvedSet = null;
   resolvedProduk = null;
   produkPrefetch = null;

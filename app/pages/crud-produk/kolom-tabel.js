@@ -542,6 +542,8 @@ export function createTableColumns(opts) {
     /** Kolom yang diminta filter aktif (urutan = urutan tampil). Panggil sebelum renderHead(). */
     setAuto(keys) { autoKeys = (keys || []).filter((x) => MOVABLE.includes(x)); },
     openPicker,
+    /** Tutup panel Kolom kalau terbuka (dipakai suspend(): popover menempel di document.body). */
+    tutupPicker() { closePicker(); },
     destroy() { closePicker(); tableBody.removeEventListener('click', onLinkClick, true); if (headMenu && headRow.removeEventListener) headRow.removeEventListener('click', onHeadClick); akdNamaCache.clear(); keluargaCache.clear(); },
   };
 }
