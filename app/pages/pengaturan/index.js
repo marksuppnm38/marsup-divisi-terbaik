@@ -9,8 +9,10 @@
 // Pembagian file:
 //   state.js   logika murni (form <-> baris, hitung perubahan, payload, label riwayat)  -> dites node --test
 //   table.js   definisi kolom tabel (shared/data-table.js, mode client)
-//   drawer.js  drawer izin + riwayat, alur simpan (cek konflik, UPDATE kolom yang berubah)
-//   index.js   mount/unmount, muat data, pencarian, pintasan keyboard
+//   drawer.js  drawer izin + riwayat per akun, alur simpan (cek konflik, UPDATE kolom yang berubah)
+//   audit.js   logika murni + pengambil data izin_audit (riwayat global, kolom "Terakhir diubah")
+//   riwayat.js tampilan Riwayat Perubahan (sub-route /pengaturan/riwayat)
+//   index.js   mount/unmount, pindah tampilan (sub-route), muat data, pencarian, pintasan keyboard
 //
 // Yang boleh ditulis halaman ini cuma tiga kolom: boleh_hapus, boleh_hapus_sesi, modul_tersembunyi.
 // email, role, is_superuser tidak bisa diubah lewat API (hak kolom dicabut), itu tetap lewat SQL Editor.
@@ -27,6 +29,8 @@ import { installShortcuts, applyShortcutHints } from '../../../shared/shortcuts.
 import { IZIN_COLS, normalizeRow, matchSearch } from './state.js';
 import { buildColumns, escapeHtml } from './table.js';
 import { createDrawer } from './drawer.js';
+import { createRiwayat } from './riwayat.js';
+import { fetchTerakhir } from './audit.js';
 
 const SHARED_LINKS = [
   { id: 'shared-google-fonts', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap' },
@@ -63,6 +67,9 @@ let dt = null;
 let drawer = null;
 let shortcutsDispose = null;
 let loadSeq = 0;
+let view = 'user-management'; // sub-route aktif: 'user-management' | 'riwayat'
+let riwayat = null;
+let terakhir = null;          // Map email -> perubahan terakhir, atau null kalau view izin_audit_terakhir belum ada
 
 const $ = (sel) => (root ? root.querySelector(sel) : null);
 
@@ -141,6 +148,35 @@ async function loadRows() {
   refreshTable();
 }
 
+// Perubahan terakhir per akun dimuat ulang sesudah simpan (trigger audit menulis di transaksi yang sama dengan UPDATE).
+async function refreshTerakhir() {
+  if (!terakhir) return; // kolomnya memang tidak ada
+  const next = await fetchTerakhir(window.pnmSupabase);
+  if (!root || !root.isConnected || !next) return;
+  terakhir = next;
+  refreshTable();
+}
+
+// ── Sub-route ────────────────────────────────────────────────────────────────────────────────
+
+function applyView(sub) {
+  view = sub === 'riwayat' ? 'riwayat' : 'user-management';
+  const akun = $('#pgViewAkun');
+  if (akun) akun.hidden = view !== 'user-management';
+  // Crumb ada di .pw-topbar, DI LUAR #pgRoot (yang dicari $()), jadi dicari dari container.
+  const crumb = mountedContainer && mountedContainer.querySelector('#pgCrumb');
+  if (crumb) crumb.textContent = view === 'riwayat' ? 'Riwayat Perubahan' : 'User Management';
+  if (!riwayat) return;
+  if (view === 'riwayat') {
+    // URL sudah berpindah. Drawer yang masih terbuka ditutup lewat jalur biasa (dialog Buang / Lanjut edit / Simpan
+    // kalau ada perubahan), jadi tidak ada edit yang hilang diam-diam.
+    if (drawer && drawer.isOpen()) drawer.requestClose();
+    riwayat.show();
+  } else {
+    riwayat.hide();
+  }
+}
+
 // ── Event ────────────────────────────────────────────────────────────────────────────────────
 
 function openAccount(email, trigger) {
@@ -170,7 +206,7 @@ function onSearchKey(e) {
 
 function focusSearch() {
   const input = $('#pgSearch');
-  if (!input) return false;
+  if (!input || view !== 'user-management') return false; // tampilan lain: "/" tetap milik pencarian sidebar
   input.focus();
   input.select();
   return true;
@@ -178,7 +214,7 @@ function focusSearch() {
 
 // ── Mount / unmount ──────────────────────────────────────────────────────────────────────────
 
-export async function mount(container) {
+export async function mount(container, initialSub) {
   mountedContainer = container;
   await ensureStyle();
   container.classList.add('pg-page');
@@ -192,13 +228,17 @@ export async function mount(container) {
     return;
   }
 
-  try {
-    const user = await window.PNMAuth.getUser();
-    meEmail = String(user?.email || '').toLowerCase();
-  } catch (_) { meEmail = ''; }
+  // Diminta bersamaan: terakhir harus sudah ada sebelum kolom dibangun (kolom "Terakhir diubah" hanya dibuat kalau
+  // view-nya terbaca).
+  const [user, terakhirMap] = await Promise.all([
+    Promise.resolve().then(() => window.PNMAuth.getUser()).catch(() => null),
+    fetchTerakhir(window.pnmSupabase),
+  ]);
+  meEmail = String(user?.email || '').toLowerCase();
+  terakhir = terakhirMap;
   if (!root || !root.isConnected) return;
 
-  COLUMNS = buildColumns({ getRows: () => rows, getMe: () => meEmail });
+  COLUMNS = buildColumns({ getRows: () => rows, getMe: () => meEmail, getTerakhir: () => terakhir });
   dt = createDataTable({
     id: 'pengaturan-akun',
     columns: COLUMNS,
@@ -224,12 +264,16 @@ export async function mount(container) {
     onRowUpdated: (saved) => {
       rows = rows.map((r) => (r.email === saved.email ? saved : r));
       refreshTable();
+      refreshTerakhir();
     },
     onClosed: () => {
       selectedEmail = null;
       markRows(visibleRows());
     },
   });
+
+  riwayat = createRiwayat({ root: $('#pgViewRiwayat') });
+  applyView(initialSub);
 
   $('#pgBody').addEventListener('click', onBodyClick);
   const search = $('#pgSearch');
@@ -249,12 +293,19 @@ export async function mount(container) {
   await loadRows();
 }
 
+/** Dipanggil router.js saat sub-route berubah tanpa modulnya ikut berubah (klik sub-item sidebar, Back/Forward). */
+export function setSubroute(sub) {
+  if (!root || !root.isConnected) return;
+  applyView(sub);
+}
+
 export function unmount() {
   // Yang dipasang di luar container harus dilepas: listener keydown pintasan, popover/listener data-table,
   // dialog konfirmasi yang masih terbuka. Listener di dalam container hilang bersama container.innerHTML = ''.
   loadSeq++;
   if (shortcutsDispose) { shortcutsDispose(); shortcutsDispose = null; }
   if (drawer) { drawer.destroy(); drawer = null; }
+  if (riwayat) { riwayat.destroy(); riwayat = null; }
   if (dt) { dt.destroy(); dt = null; }
   mountedContainer?.classList.remove('pg-page');
   mountedContainer = null;
@@ -263,6 +314,8 @@ export function unmount() {
   meEmail = '';
   query = '';
   selectedEmail = null;
+  view = 'user-management';
+  terakhir = null;
   COLUMNS = [];
   // style.css halaman ini dilepas di sini (router memarkirnya, bukan membuangnya). Semua selector sudah di bawah `.pg-page`.
   document.getElementById('page-pengaturan-style')?.remove();

@@ -21,6 +21,17 @@ export const SUBNAV = {
   'konversian': KONVERSIAN_SUBNAV,
 };
 
+// Submodul modul ADMIN (sekarang: pengaturan). SENGAJA terpisah dari SUBNAV: SUBNAV melayani menu DAN pohon izin
+// (knownPermIds -> canonHidden -> constraint database). Kalau sub-route Pengaturan ditaruh di SUBNAV, ia akan muncul
+// sebagai submodul yang bisa disembunyikan dan id-nya lolos validasi. Di sini hanya dipakai menu + router, dan
+// aksesnya dijaga isAdmin() (lihat isModuleAllowed), BUKAN modul_tersembunyi.
+export const ADMIN_SUBNAV = {
+  pengaturan: [
+    { id: 'user-management', title: 'User Management', icon: 'ti-users' },
+    { id: 'riwayat', title: 'Riwayat Perubahan', icon: 'ti-history' },
+  ],
+};
+
 // Pengaturan bukan bagian MODULES (daftar bersama); hanya muncul untuk admin.
 export const PENGATURAN_MODULE = { id: 'pengaturan', title: 'Pengaturan', url: '/pengaturan', migrated: true };
 
@@ -45,6 +56,7 @@ export function isModuleAllowed(moduleId, subId) {
 
 // Submodul yang tampil untuk modul ini; null kalau modulnya memang tidak punya submodul.
 export function visibleSubs(moduleId) {
+  if (ADMIN_SUBNAV[moduleId]) return isModuleAllowed(moduleId) ? ADMIN_SUBNAV[moduleId] : null; // admin saja
   const subs = SUBNAV[moduleId];
   if (!subs) return null;
   return subs.filter((s) => canView(moduleId, s.id));

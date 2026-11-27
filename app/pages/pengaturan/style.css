@@ -196,3 +196,25 @@
   .pg-page .pg-drawer { animation: none; }
   .pg-page .pg-switch, .pg-page .pg-switch::after, .pg-page .pg-acc i, .pg-page .pg-table tbody tr.clickable { transition: none; }
 }
+
+/* ── Riwayat Perubahan (sub-route /pengaturan/riwayat) ──────────────────────────────── */
+.pg-page .pg-hint { margin: 0; font-size: 12px; color: var(--text-muted); }
+.pg-page .pg-hist-table .pg-td-waktu, .pg-page .pg-when { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.pg-page .pg-hist-table .pg-td-ubah { min-width: 220px; color: var(--text-secondary); }
+.pg-page .pg-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; background: var(--surface-2); border-top: 1px solid var(--border); }
+.pg-page .pg-pager[hidden] { display: none; }
+.pg-page .pg-pager-info { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.pg-page .pg-pager-btns { display: flex; gap: 6px; }
+.pg-page .pg-pager .pg-btn { min-width: 32px; min-height: 32px; padding: 0 8px; line-height: 1; }
+
+/* Di HP, tabel akun berubah jadi daftar kartu (judul kolom disembunyikan). Riwayat TIDAK: filter/urut hanya ada di judul
+   kolom, jadi judulnya harus tetap terjangkau. Tabel biasa yang bisa digeser ke samping. */
+@media (max-width: 768px) {
+  .pg-page .pg-hist-table { display: table; min-width: 640px; }
+  .pg-page .pg-hist-table thead { display: table-header-group; }
+  .pg-page .pg-hist-table tbody { display: table-row-group; }
+  .pg-page .pg-hist-table tbody tr { display: table-row; padding: 0; }
+  .pg-page .pg-hist-table tbody td { padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  .pg-page .pg-hist-table tbody tr:last-child td { border-bottom: 0; }
+  .pg-page .pg-hist-table .state-row { display: table-row; }
+}

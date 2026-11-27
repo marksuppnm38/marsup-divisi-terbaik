@@ -8,8 +8,8 @@
     "check:security": "node scripts/check-security.mjs",
     "check:shortcuts": "node scripts/check-shortcuts.mjs",
     "test:katalog": "node --test scripts/test-produk-katalog.mjs",
-    "test": "node --test scripts/test-produk-katalog.mjs scripts/test-siap.mjs scripts/test-izin-akun.mjs",
-    "test:izin": "node --test scripts/test-izin-akun.mjs"
+    "test": "node --test scripts/test-produk-katalog.mjs scripts/test-siap.mjs scripts/test-izin-akun.mjs scripts/test-riwayat-izin.mjs",
+    "test:izin": "node --test scripts/test-izin-akun.mjs scripts/test-riwayat-izin.mjs"
   },
   "devDependencies": {
     "@supabase/supabase-js": "2.118.0",

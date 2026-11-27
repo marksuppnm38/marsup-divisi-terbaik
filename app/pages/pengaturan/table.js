@@ -3,6 +3,7 @@
 // tabel hanya menampilkan apa yang boleh dibaca akun admin ini lewat RLS.
 import { NIL_HTML } from '../../../shared/data-table.js';
 import { modulCategory, modulSummary, hapusLevel, initialOf, roleOptions } from './state.js';
+import { localStamp, formatWaktu } from './audit.js';
 
 export const escapeHtml = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;')
@@ -11,8 +12,17 @@ export const escapeHtml = (s) => String(s == null ? '' : s)
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;');
 
-// ctx: { getRows(): row[], getMe(): string }  -- diambil saat render, bukan saat modul di-load.
+// ctx: { getRows(): row[], getMe(): string, getTerakhir(): Map|null }  -- diambil saat render, bukan saat modul di-load.
+// getTerakhir() = email huruf kecil -> instan perubahan terakhir (view izin_audit_terakhir). null = view belum ada /
+// tidak terbaca: kolom "Terakhir diubah" TIDAK dibuat sama sekali (bukan diisi "—", yang terbaca "belum pernah diubah").
+// Dipanggil sesudah getTerakhir() terisi (index.js memuatnya sebelum membangun kolom).
 export function buildColumns(ctx) {
+  const terakhirOf = (r) => { const m = ctx.getTerakhir && ctx.getTerakhir(); return m ? (m.get(r.email.toLowerCase()) || null) : null; };
+  const terakhirCol = ctx.getTerakhir && ctx.getTerakhir() ? [{
+    key: 'terakhir', label: 'Terakhir diubah', type: 'date', locked: true,
+    get: (r) => localStamp(terakhirOf(r)), // zona waktu browser, supaya filter tanggal tidak bergeser dini hari WIB
+    render: (r) => { const t = terakhirOf(r); return t ? `<span class="pg-when">${escapeHtml(formatWaktu(t))}</span>` : NIL_HTML; },
+  }] : [];
   const HAPUS_LEVELS = ['Penuh', 'Clipboard', 'Tidak'];
   return [
     {
@@ -51,6 +61,7 @@ export function buildColumns(ctx) {
         return `<span class="pg-hapus pg-hapus-${lv.toLowerCase()}">${lv === 'Penuh' ? '<i class="ti ti-alert-triangle" aria-hidden="true"></i>' : ''}${escapeHtml(lv)}</span>`;
       },
     },
+    ...terakhirCol,
     {
       key: 'aksi', label: '', locked: true, sortable: false, filterable: false, td: 'pg-td-aksi',
       render: () => '<i class="ti ti-chevron-right pg-chev" aria-hidden="true"></i>',

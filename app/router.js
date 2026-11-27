@@ -52,7 +52,7 @@ import { KONVERSIAN_SUBNAV } from './pages/konversian/subnav.js';
 import { splitRest, isValidParam } from './route-params.js';
 // Daftar modul (sumber yang sama dengan sidebar): dipakai landingModule() untuk memilih modul pertama yang boleh dibuka akun ini.
 import { MODULES } from './pages/home/markup.js';
-import { isModuleAllowed, firstAllowedSub, SUBNAV } from './pages/nav/perm-view.js';
+import { isModuleAllowed, firstAllowedSub, SUBNAV, ADMIN_SUBNAV } from './pages/nav/perm-view.js';
 
 const ROUTES = {
   'kompres-pdf': () => import('./pages/kompres-pdf/index.js'),
@@ -72,6 +72,7 @@ const ROUTES = {
 const SUBROUTES = {
   'crud-produk': CRUD_PRODUK_SUBNAV.map((s) => s.id),
   'konversian': KONVERSIAN_SUBNAV.map((s) => s.id),
+  'pengaturan': ADMIN_SUBNAV.pengaturan.map((s) => s.id), // admin saja; dijaga isModuleAllowed, bukan modul_tersembunyi
 };
 
 // A sub-route is legitimate only if: no sub was requested at all, OR the
@@ -408,6 +409,11 @@ async function render() {
   }
   // URL tanpa sub membuka submodul bawaan (yang pertama di registry). Kalau yang itu disembunyikan untuk akun
   // ini, arahkan ke submodul pertama yang boleh, bukan menampilkan yang terlarang.
+  if (!sub && module === 'pengaturan') {
+    // Pengaturan tidak punya halaman "induk": /pengaturan = User Management, supaya item menu aktifnya jelas.
+    navigate('/pengaturan/' + ADMIN_SUBNAV.pengaturan[0].id, { replace: true });
+    return;
+  }
   if (!sub && SUBNAV[module]) {
     const dest = firstAllowedSub(module);
     if (dest && dest !== SUBNAV[module][0].id) {
