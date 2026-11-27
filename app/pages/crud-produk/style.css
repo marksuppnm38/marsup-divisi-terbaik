@@ -609,6 +609,14 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .prod-modal .zona-bahaya-body p{margin:0 0 12px;line-height:1.5}
 .prod-modal .zona-bahaya-body label{display:block;margin-bottom:6px}
 .prod-modal .zona-bahaya-row{display:flex;flex-wrap:wrap;gap:8px}
+.prod-modal .hapus-paksa{margin-top:14px}
+.prod-modal .hapus-paksa[hidden]{display:none}
+.prod-modal .hapus-paksa hr{border:0;border-top:1px dashed var(--border);margin:0 0 12px}
+.prod-modal .hapus-paksa-mode{border:0;padding:0;margin:0 0 10px}
+.prod-modal .hapus-paksa-mode legend{padding:0;margin-bottom:6px}
+.prod-modal .hapus-paksa-mode label{display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;cursor:pointer}
+.prod-modal .hapus-paksa-out{margin-top:10px;line-height:1.5}
+.prod-modal .hapus-paksa-out.is-err{color:var(--danger,#c0392b)}
 .prod-modal .zona-bahaya-row input{flex:1 1 180px;min-width:0}
 
 /* kolom isian */

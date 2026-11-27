@@ -849,6 +849,20 @@ export const CRUD_PRODUK_MARKUP = `
               <input type="text" id="hapusKonfirmasi" autocomplete="off" spellcheck="false" placeholder="Kode produk"/>
               <button class="btn btn-danger-ghost" id="deleteBtn" type="button" style="display:none;"><i class="ti ti-trash"></i> Hapus produk</button>
             </div>
+            <div class="hapus-paksa" id="hapusPaksaBox" hidden>
+              <hr/>
+              <p><b>Hapus permanen (khusus admin).</b> Untuk produk yang ditolak di atas karena masih punya riwayat. Berjalan sebagai satu transaksi di database dan dicatat di <code>produk_hapus_audit</code>.</p>
+              <fieldset class="hapus-paksa-mode">
+                <legend>Riwayat INAPROC, Permintaan RS, dan konversi yang menunjuk ke produk ini:</legend>
+                <label><input type="radio" name="hapusPaksaMode" value="lepas" checked/> <b>Lepaskan tautan</b> — baris riwayat tetap ada, hanya tidak lagi menunjuk ke produk (disarankan)</label>
+                <label><input type="radio" name="hapusPaksaMode" value="hapus"/> <b>Hapus riwayatnya juga</b> — tidak bisa dibatalkan</label>
+              </fieldset>
+              <div class="zona-bahaya-row">
+                <button class="btn btn-ghost btn-sm" id="hapusPaksaPreviewBtn" type="button"><i class="ti ti-search"></i> Pratinjau dampak</button>
+                <button class="btn btn-danger-ghost" id="hapusPaksaBtn" type="button" disabled><i class="ti ti-flame"></i> Hapus permanen</button>
+              </div>
+              <div class="hapus-paksa-out" id="hapusPaksaOut" role="status" aria-live="polite"></div>
+            </div>
           </div>
         </details>
       </div>
