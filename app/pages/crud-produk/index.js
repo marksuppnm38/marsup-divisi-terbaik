@@ -42,7 +42,7 @@
 import { CRUD_PRODUK_MARKUP } from './markup.js';
 import { showToast, crudConfirm, crudAlert, renderPgBar, parseLinkV6, isAkdPlaceholder, sembunyikanAkdPlaceholder, guardHapus, barisTerhapus } from './ui-utils.js';
 import { createGlobalBindings, perluSegarkan, adaDraft } from './siklus-hidup.js';
-import { bolehHapusPaksa, normalisasiMode, ringkasDampak, teksDampak, pesanKonfirmasi, pesanErrorHapusPaksa, kunciPratinjau } from './hapus-paksa.js';
+import { bolehHapusPaksa, teksDampak, pesanKonfirmasi, pesanErrorHapusPaksa } from './hapus-paksa.js';
 import { installAkdMaster } from './akd-master.js';
 import { installKfa } from './kfa.js';
 import { installBulk } from './bulk.js';
@@ -1123,7 +1123,6 @@ function tampilkanHapus(tampil){
   if (!boleh) zona.open = false;
   document.getElementById('hapusKonfirmasi').value = '';
   document.getElementById('hapusKodeLabel').textContent = boleh ? document.getElementById('f_kode_produk').value.trim() : '';
-  resetHapusPaksa(boleh && bolehHapusPaksa(window.PNMAuth));
 }
 
 let _distinctInflight = null;
@@ -2698,7 +2697,6 @@ const modalSub = document.getElementById('modalSub');
 const hargaSection = document.getElementById('hargaSection');
 const mediaSection = document.getElementById('mediaSection');
 const deleteBtn = document.getElementById('deleteBtn');
-let hapusPaksaPratinjau = null; // hapus permanen: { kunci, dampak } dari dry run terakhir; sah hanya untuk produk + mode yang sama (dideklarasi di sini supaya aman dipakai renderModalChrome)
 
 // Satu .modal-card dipakai dua tempat: 'overlay' (modal lama) atau 'page' (halaman detail di #viewProduk). Yang dipindah adalah
 // NODE-nya, bukan form-nya, jadi semua ID, listener, modalState/modalSession/modalDirty dan guard "belum disimpan" ikut utuh.
@@ -2873,8 +2871,6 @@ function renderModalChrome(){
   syncDirtyBadge();
   const locked = modalState === 'loading' || modalState === 'busy';
   deleteBtn.disabled = locked;
-  document.getElementById('hapusPaksaPreviewBtn').disabled = locked;
-  if (locked) document.getElementById('hapusPaksaBtn').disabled = true; else syncHapusPaksaBtn();
   syncSaveBtn();
 }
 // Simpan: terkunci selagi memuat/menyimpan; di mode edit juga nonaktif kalau tidak ada yang berubah. Produk baru selalu boleh.
@@ -4884,6 +4880,7 @@ deleteBtn.addEventListener('click', async () => {
 async function deleteProdukInner(id, label){
   if (!guardHapus()) return;
   if (!label) label = produkPageRows.find(r => r.id === id)?.kode_produk || '';
+  if (bolehHapusPaksa(window.PNMAuth) && await hapusProdukViaRpc(id, label)) return; // admin: lewat RPC; false = fungsi belum ada -> alur lama di bawah
 
   const [hargaR, mediaR, akdR, komposisiSendiriR, dipakaiDiSetLainR, inaprocR, permintaanR, konversiR] = await Promise.all([
     sb.from('produk_harga').select('id', { count: 'exact', head: true }).eq('produk_id', id),
@@ -4904,8 +4901,7 @@ async function deleteProdukInner(id, label){
   if (permintaanCount) blokir.push(`${permintaanCount} riwayat Permintaan RS`);
   if (konversiCount) blokir.push(`${konversiCount} riwayat konversi`);
   if (blokir.length) {
-    const petunjukAdmin = bolehHapusPaksa(window.PNMAuth) ? ' Sebagai admin, kamu bisa memakai "Hapus permanen" di Zona berbahaya pada form produk ini.' : '';
-    await crudAlert(`Produk ini belum bisa dihapus — masih ada ${blokir.join(', ')} yang menunjuk ke sini. Data riwayat lintas modul ini sengaja tidak dihapus otomatis dari halaman Produk; bersihkan dulu dari sumbernya kalau memang perlu.${petunjukAdmin}`);
+    await crudAlert(`Produk ini belum bisa dihapus — masih ada ${blokir.join(', ')} yang menunjuk ke sini. Data riwayat lintas modul ini sengaja tidak dihapus otomatis dari halaman Produk; bersihkan dulu dari sumbernya kalau memang perlu.`);
     return;
   }
 
@@ -4963,73 +4959,38 @@ async function selesaiHapusProduk(id, label, pesanToast){
   refreshProdukFilterCounts(true);
 }
 
-// ---- Hapus permanen (hard delete, khusus admin) ----
-// Semua kerja berat ada di RPC hapus_produk_paksa (supabase/2026-11-27_hapus_produk_paksa.sql): satu transaksi,
-// izin dicek di DB, audit ditulis sebelum delete. Di sini hanya: pratinjau (dry run) -> ketik kode -> konfirmasi -> eksekusi.
-const hapusPaksaMode = () => normalisasiMode(document.querySelector('input[name="hapusPaksaMode"]:checked')?.value);
-function hapusPaksaOut(html, err){
-  const el = document.getElementById('hapusPaksaOut');
-  el.classList.toggle('is-err', !!err);
-  el.innerHTML = html || '';
-}
-function syncHapusPaksaBtn(){
-  const btn = document.getElementById('hapusPaksaBtn');
-  btn.disabled = !(hapusPaksaPratinjau && currentProdukId && hapusPaksaPratinjau.kunci === kunciPratinjau(currentProdukId, hapusPaksaMode()));
-}
-function resetHapusPaksa(tampil){
-  const box = document.getElementById('hapusPaksaBox');
-  box.hidden = !tampil;
-  hapusPaksaPratinjau = null;
-  hapusPaksaOut('');
-  const lepas = document.querySelector('input[name="hapusPaksaMode"][value="lepas"]');
-  if (lepas) lepas.checked = true;
-  syncHapusPaksaBtn();
-}
-function hapusPaksaRpc(dryRun){
-  const kode = document.getElementById('hapusKodeLabel').textContent;
-  return sb.rpc('hapus_produk_paksa', { p_id: currentProdukId, p_kode: kode, p_riwayat: hapusPaksaMode(), p_dry_run: dryRun });
-}
-document.querySelectorAll('input[name="hapusPaksaMode"]').forEach(el => el.addEventListener('change', () => {
-  hapusPaksaPratinjau = null; hapusPaksaOut(''); syncHapusPaksaBtn(); // mode berubah -> pratinjau lama tidak berlaku
-}));
-document.getElementById('hapusPaksaPreviewBtn').addEventListener('click', async () => {
-  if (modalState !== 'edit' || !currentProdukId || !guardHapus() || !bolehHapusPaksa(window.PNMAuth)) return;
-  const session = modalSession, id = currentProdukId, mode = hapusPaksaMode();
-  modalGo('busy');
-  try {
-    hapusPaksaOut('<i class="ti ti-loader-2"></i> Memeriksa dampak…');
-    const { data, error } = await hapusPaksaRpc(true);
-    if (session !== modalSession) return; // modal sudah ditutup / ganti produk selama menunggu
-    if (error) { hapusPaksaPratinjau = null; hapusPaksaOut(pesanErrorHapusPaksa(error), true); return; }
-    hapusPaksaPratinjau = { kunci: kunciPratinjau(id, mode), dampak: data.dampak };
-    const baris = ringkasDampak(data.dampak).map(x => `<li>${x.jumlah.toLocaleString('id-ID')} ${x.label}</li>`).join('');
-    hapusPaksaOut(baris ? `Yang akan terdampak:<ul>${baris}</ul>Ketik kode produk di atas, lalu tekan <b>Hapus permanen</b>.` : 'Tidak ada data terkait. Ketik kode produk di atas, lalu tekan <b>Hapus permanen</b>.');
-  } finally {
-    if (session === modalSession && modalState === 'busy') modalGo('edit');
-    syncHapusPaksaBtn();
+// ---- Hapus lewat RPC (admin) ----
+// Satu tombol "Hapus produk" untuk semua. Untuk admin, hapus berjalan di RPC hapus_produk_paksa (satu transaksi, izin dicek
+// di DB, audit ditulis sebelum delete). Riwayat INAPROC / Permintaan RS / konversi DILEPAS dari produk (barisnya tetap ada);
+// kalau kolomnya tidak boleh NULL, ditanya sekali: hapus riwayatnya juga? Return true = sudah ditangani, false = fungsi
+// belum terpasang di DB -> pemanggil lanjut ke alur lama.
+async function hapusProdukViaRpc(id, label){
+  const kode = label || produkPageRows.find(r => r.id === id)?.kode_produk || '';
+  if (!kode) { showToast('Kode produk tidak terbaca, muat ulang daftar', true); return true; }
+  let mode = 'lepas';
+  const panggil = (dryRun) => sb.rpc('hapus_produk_paksa', { p_id: id, p_kode: kode, p_riwayat: mode, p_dry_run: dryRun });
+  const galat = (e, re) => re.test(String((e && e.message) || ''));
+
+  let { data, error } = await panggil(true);
+  if (error && galat(error, /Could not find the function|PGRST202/i)) return false;
+  if (error && galat(error, /HP_NOT_NULLABLE/)) {
+    if (!await crudConfirm(`${pesanErrorHapusPaksa(error)} Hapus juga riwayat yang menunjuk ke produk ini?`, { danger: true, okLabel: 'Ya, hapus riwayatnya juga' })) return true;
+    mode = 'hapus';
+    ({ data, error } = await panggil(true));
   }
-});
-document.getElementById('hapusPaksaBtn').addEventListener('click', async () => {
-  if (modalState !== 'edit' || !currentProdukId || !guardHapus() || !bolehHapusPaksa(window.PNMAuth)) return;
-  if (!hapusPaksaPratinjau || hapusPaksaPratinjau.kunci !== kunciPratinjau(currentProdukId, hapusPaksaMode())) { showToast('Jalankan Pratinjau dampak dulu', true); return; }
-  const kode = document.getElementById('hapusKodeLabel').textContent;
-  const ketik = document.getElementById('hapusKonfirmasi');
-  if (!kode || ketik.value.trim().toUpperCase() !== kode.toUpperCase()) { showToast('Ketik kode produk persis untuk menguatkan hapus', true); ketik.focus(); return; }
-  const session = modalSession, id = currentProdukId, dampak = { ...hapusPaksaPratinjau.dampak };
-  modalGo('busy');
-  let selesai = false;
-  try {
-    if (!await crudConfirm(pesanKonfirmasi({ label: kode, dampak }), { danger: true, okLabel: 'Ya, Hapus Permanen' })) return;
-    // Pratinjau dihitung ulang di dalam transaksi eksekusi (dampak bisa berubah sejak pratinjau); yang berlaku = hasil eksekusi.
-    const { data, error } = await hapusPaksaRpc(false);
-    if (error) { hapusPaksaOut(pesanErrorHapusPaksa(error), true); showToast('Hapus permanen gagal', true, { detail: pesanErrorHapusPaksa(error) }); return; }
-    selesai = true;
-    await selesaiHapusProduk(id, kode, `Produk ${kode} dihapus permanen (${teksDampak(data?.dampak)})`);
-  } finally {
-    if (!selesai && session === modalSession && modalState === 'busy') modalGo('edit');
-    syncHapusPaksaBtn();
+  if (error && galat(error, /HP_NOT_FOUND/)) {
+    await selesaiHapusProduk(id, kode, `Produk ${kode} sudah terhapus sebelumnya, daftar disegarkan`);
+    return true;
   }
-});
+  if (error) { showToast('Produk belum bisa dihapus', true, { detail: pesanErrorHapusPaksa(error) }); return true; }
+
+  if (!await crudConfirm(pesanKonfirmasi({ label: kode, dampak: data.dampak }), { danger: true, okLabel: 'Ya, Hapus' })) return true;
+
+  const res = await panggil(false); // dampak dihitung ulang di dalam transaksi ini; yang berlaku = hasil ini
+  if (res.error) { showToast('Gagal menghapus produk', true, { detail: pesanErrorHapusPaksa(res.error) }); return true; }
+  await selesaiHapusProduk(id, kode, `Produk ${kode} dihapus (${teksDampak(res.data?.dampak)})`);
+  return true;
+}
 
 // Set Management: kalau detail SET yang barusan dihapus masih terbuka, tutup & balik ke daftar; kalau daftar set lagi tampil, muat ulang.
 function syncSetViewAfterDelete(id){

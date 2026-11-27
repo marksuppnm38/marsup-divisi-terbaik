@@ -843,25 +843,11 @@ export const CRUD_PRODUK_MARKUP = `
         <details class="zona-bahaya" id="zonaBahaya" hidden>
           <summary><i class="ti ti-alert-triangle" aria-hidden="true"></i> Zona berbahaya</summary>
           <div class="zona-bahaya-body">
-            <p>Menghapus produk juga menghapus harga, media, relasi AKD, dan komposisi set-nya. Produk yang masih punya riwayat pengajuan INAPROC, Permintaan RS, atau konversi tidak bisa dihapus.</p>
+            <p>Menghapus produk juga menghapus harga, media, relasi AKD, dan komposisi set-nya. Admin: riwayat pengajuan INAPROC, Permintaan RS, dan konversi dilepas dari produk (barisnya tetap ada) dan penghapusan dicatat di audit. Akun lain: produk yang masih punya riwayat tidak bisa dihapus.</p>
             <label for="hapusKonfirmasi">Ketik kode produk untuk mengaktifkan hapus: <b id="hapusKodeLabel"></b></label>
             <div class="zona-bahaya-row">
               <input type="text" id="hapusKonfirmasi" autocomplete="off" spellcheck="false" placeholder="Kode produk"/>
               <button class="btn btn-danger-ghost" id="deleteBtn" type="button" style="display:none;"><i class="ti ti-trash"></i> Hapus produk</button>
-            </div>
-            <div class="hapus-paksa" id="hapusPaksaBox" hidden>
-              <hr/>
-              <p><b>Hapus permanen (khusus admin).</b> Untuk produk yang ditolak di atas karena masih punya riwayat. Berjalan sebagai satu transaksi di database dan dicatat di <code>produk_hapus_audit</code>.</p>
-              <fieldset class="hapus-paksa-mode">
-                <legend>Riwayat INAPROC, Permintaan RS, dan konversi yang menunjuk ke produk ini:</legend>
-                <label><input type="radio" name="hapusPaksaMode" value="lepas" checked/> <b>Lepaskan tautan</b> — baris riwayat tetap ada, hanya tidak lagi menunjuk ke produk (disarankan)</label>
-                <label><input type="radio" name="hapusPaksaMode" value="hapus"/> <b>Hapus riwayatnya juga</b> — tidak bisa dibatalkan</label>
-              </fieldset>
-              <div class="zona-bahaya-row">
-                <button class="btn btn-ghost btn-sm" id="hapusPaksaPreviewBtn" type="button"><i class="ti ti-search"></i> Pratinjau dampak</button>
-                <button class="btn btn-danger-ghost" id="hapusPaksaBtn" type="button" disabled><i class="ti ti-flame"></i> Hapus permanen</button>
-              </div>
-              <div class="hapus-paksa-out" id="hapusPaksaOut" role="status" aria-live="polite"></div>
             </div>
           </div>
         </details>
