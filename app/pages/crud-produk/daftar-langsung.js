@@ -56,8 +56,15 @@ export function pasangFilterServer(q, serverFilters) {
     const col = DIM_SERVER[f.dim];
     if (f.dim === 'tipe') { const v = nilaiFilter(f); if (v.length) out = out.in('tipe', v); return; }
     if (f.dim === 'is_active') { out = out.eq('is_active', f.value === 'aktif'); return; }
-    // AKD: "ada" = status_akd 'terhubung'; "kosong" = selain itu (termasuk NULL)
-    if (f.dim === 'akd') { out = f.value === 'ada' ? out.eq('status_akd', 'terhubung') : out.or('status_akd.is.null,status_akd.neq.terhubung'); return; }
+    // AKD: "ada" = status_akd 'terhubung'; "kosong" = selain itu (termasuk NULL).
+    // Dengan f.idsTanpaAsli (id produk yang hanya tertaut placeholder "TIDAK ADA", lihat akd-placeholder.js) definisinya mengikuti sheet:
+    // placeholder dihitung TANPA AKD -> "kosong" ditambah id itu, "ada" mengeluarkannya. Tanpa daftar itu: perilaku lama (status_akd saja).
+    if (f.dim === 'akd') {
+      const ph = Array.isArray(f.idsTanpaAsli) ? f.idsTanpaAsli : [];
+      if (f.value === 'ada') { out = out.eq('status_akd', 'terhubung'); if (ph.length) out = out.not('id', 'in', `(${ph.join(',')})`); }
+      else out = out.or('status_akd.is.null,status_akd.neq.terhubung' + (ph.length ? `,id.in.(${ph.join(',')})` : ''));
+      return;
+    }
     if (f.dim === 'link_v6') { out = f.value === 'ada' ? isiServer(out, col) : kosongServer(out, col); return; }
     if (f.dim === 'terakhir') { const b = batasTerakhir(f.value); if (b) out = out.gte('updated_at', b); return; }
     if (f.dim === 'status') { if (f.value) out = out.eq('status_akd', f.value); return; }

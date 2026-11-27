@@ -50,6 +50,7 @@ import { createAtributUi } from './atribut-ui.js';
 import { muatManual, resetManual } from './atribut.js';
 import { createTableColumns, TABLE_COLS } from './kolom-tabel.js';
 import { createHeaderMenu, punyaMenuHeader, KOLOM_MENU, urutkan, urutButuhKlas, deskripsiUrut, cocokIsi, butuhJalurLangsung, opsiIsi, DIM_TEKS_ISI } from './urut-header.js';
+import { muatHanyaPlaceholder, tanpaAkdAsli } from './akd-placeholder.js';
 import { bagiFilter, ambilHalamanLangsung, ambilSemuaLangsung, ambilIdStok, saringKlienLaluUrut, cocokTerakhir } from './daftar-langsung.js';
 import { fetchKeluargaOptions, fetchKeluargaMap, fetchRowsByKeluarga, pesanKeluarga, urutKeluarga } from './keluarga.js';
 import { muatKlasifikasi, resetKlasifikasi, opsiKlasifikasi, cocokKlas, fetchRowsByKlas, attachKlas, simpanKlasDariBaris, KLAS_COLS, pesanKlasifikasi, isKlasDim } from './klasifikasi.js';
@@ -896,6 +897,22 @@ let produkVerifiedIdSet = null; // Set<produk_id> berbadge Verified (RPC get_ver
 let produkVerifiedRows = null;  // cache baris produk berbadge (dipakai chip "Verified" — ~700 baris, cukup ditarik sekali)
 let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
 let produkLastTotal = 0; // jumlah hasil filter terakhir -> ringkasan di menu Export
+let produkAkdPlaceholderIds = null; // Set<produk_id> yang hanya tertaut placeholder "TIDAK ADA" (null = belum dimuat); dibuang invalidateProdukStackCache()
+let _akdPhInflight = null;
+async function ensureAkdPlaceholder(){
+  if (produkAkdPlaceholderIds) return true;
+  if (!_akdPhInflight) _akdPhInflight = muatHanyaPlaceholder(sb).finally(() => { _akdPhInflight = null; });
+  const r = await _akdPhInflight;
+  if (r.error) { console.warn('muatHanyaPlaceholder gagal:', r.error.message || r.error); return false; }
+  produkAkdPlaceholderIds = r.ids;
+  return true;
+}
+// Filter server untuk jalur langsung: filter AKD membawa daftar id placeholder (lihat pasangFilterServer di daftar-langsung.js).
+function bagiFilterProduk(){
+  const { server, klien } = bagiFilter(produkActiveFilters);
+  const ph = produkAkdPlaceholderIds ? [...produkAkdPlaceholderIds] : [];
+  return { server: server.map(f => f.dim === 'akd' ? { ...f, idsTanpaAsli: ph } : f), klien };
+}
 let produkCatalogTotal = 0; // total seluruh katalog (RPC get_produk_filter_counts.all) -> subjudul + keterangan paging
 function paintProdukTotalSub(){ if (produkTotalSub && produkCatalogTotal) produkTotalSub.textContent = produkCatalogTotal.toLocaleString('id-ID') + ' produk'; }
 // Total daftar biasa (chip status, tanpa search / filter tambahan). Dipakai ulang HANYA saat user cuma pindah halaman
@@ -1258,6 +1275,7 @@ async function lengkapiKlas(rows){
 function invalidateProdukStackCache(){
   produkSearchDirty = true; // search lagi aktif? loadProduk berikutnya harus ambil ulang dari DB, bukan pakai hasil lama
   produkHargaIdSet = null;
+  produkAkdPlaceholderIds = null; // AKD produk bisa berubah (hubungkan / lepas AKD): muat ulang saat filter AKD dipakai lagi
   produkVerifiedIdSet = null;
   produkVerifiedRows = null;
   produkPrefetch = null; // hasil prefetch lahir sebelum edit ini
@@ -1332,7 +1350,8 @@ function produkRowMatchesFilter(row, filt){
       return filt.value === 'ada' ? has : !has;
     }
     case 'link_v6': return filt.value === 'ada' ? !!row.link_v6 : !row.link_v6;
-    case 'akd': return filt.value === 'ada' ? row.status_akd === 'terhubung' : row.status_akd !== 'terhubung';
+    // AKD mengikuti definisi sheet: placeholder "TIDAK ADA" = tanpa AKD (akd-placeholder.js). Himpunannya dimuat ensureAkdPlaceholder() di loadProduk.
+    case 'akd': return filt.value === 'ada' ? !tanpaAkdAsli(row, produkAkdPlaceholderIds) : tanpaAkdAsli(row, produkAkdPlaceholderIds);
     case 'stok': { const sk = produkStokCache.get(row.id); return !!sk && sk.status === filt.value; }
     case 'status': return row.status_akd === filt.value;
     case 'verified': return !!produkVerifiedIdSet && produkVerifiedIdSet.has(row.id);
@@ -1390,7 +1409,8 @@ function produkAutoCols(){
 
 // Semua baris yang lolos chip status + filter (+ urutan) lewat jalur langsung. Dipakai daftar (ada filter Harga / Stok) dan export.
 async function muatSemuaLangsung(){
-  const { server, klien } = bagiFilter(produkActiveFilters);
+  if (produkActiveFilters.some(f => f.dim === 'akd')) await ensureAkdPlaceholder(); // bisa dibuang invalidate sejak load terakhir (mis. export setelah edit)
+  const { server, klien } = bagiFilterProduk();
   const res = await ambilSemuaLangsung(sb, { columns: PRODUK_LIST_COLUMNS, chipFn: (q) => applyProdukFilterToQuery(q, produkActiveFilter), server, sort: produkSort });
   if (res.error) return { rows: [], error: res.error };
   const ctx = { hargaIds: new Set(), stokIds: new Map() };
@@ -1435,6 +1455,9 @@ async function loadProduk(q, page, opts){
 
   const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
   if (needsHarga) await ensureProdukHargaSet();
+  if (produkActiveFilters.some(f => f.dim === 'akd') && !(await ensureAkdPlaceholder())) {
+    showToast('Penanda AKD "TIDAK ADA" gagal dimuat: hitungan Tanpa AKD bisa kurang dari sebenarnya.', true);
+  }
   // Verified dimulai SEKARANG tapi tidak ditunggu di sini: dulu ia berurutan di depan query daftar (1 putaran jaringan sia-sia).
   // Hanya dipakai buat badge + matcher chip Verified, jadi ditunggu tepat sebelum dibutuhkan (lihat clientSideMatch & Promise.all di bawah).
   perfMark('load-mulai');
@@ -1564,7 +1587,7 @@ async function loadProduk(q, page, opts){
     // Urutan kolom (menu header) dan / atau filter Sudah / Belum diisi: get_produk_list tidak punya parameter urutan dan tidak
     // mengenal nilai filter itu, jadi baca langsung dari tabel produk (pola sama dengan jalur klasifikasi).
     // Semua filter bisa di server -> satu halaman per request; ada Harga / Stok -> baca yang dipersempit server lalu saring di client.
-    const { server, klien } = bagiFilter(produkActiveFilters);
+    const { server, klien } = bagiFilterProduk();
     if (!klien.length) {
       const res = await ambilHalamanLangsung(sb, {
         columns: PRODUK_LIST_COLUMNS, chipFn: (q) => applyProdukFilterToQuery(q, produkActiveFilter),

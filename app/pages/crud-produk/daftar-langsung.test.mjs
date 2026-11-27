@@ -157,3 +157,13 @@ test('batasTerakhir / cocokTerakhir: 24 jam, 7 hari, 30 hari (waktu diinjeksi)',
   assert.equal(cocokTerakhir({ updated_at: null }, '30h', now), false);
   assert.equal(cocokTerakhir({}, '30h', now), false);
 });
+
+test('AKD dengan idsTanpaAsli: "kosong" menambah id placeholder, "ada" mengeluarkannya; tanpa daftar = perilaku lama', async () => {
+  const sb = fakeSb([[], [], []]);
+  await ambilHalamanLangsung(sb, { columns: 'id', server: [{ dim: 'akd', value: 'kosong', idsTanpaAsli: ['a', 'b'] }], sort: null, page: 1, pageSize: 30 });
+  await ambilHalamanLangsung(sb, { columns: 'id', server: [{ dim: 'akd', value: 'ada', idsTanpaAsli: ['a', 'b'] }], sort: null, page: 1, pageSize: 30 });
+  await ambilHalamanLangsung(sb, { columns: 'id', server: [{ dim: 'akd', value: 'kosong', idsTanpaAsli: [] }], sort: null, page: 1, pageSize: 30 });
+  assert.ok(names(sb.log[0]).includes('or:status_akd.is.null,status_akd.neq.terhubung,id.in.(a,b)'));
+  assert.ok(names(sb.log[1]).includes('eq:status_akd:terhubung') && names(sb.log[1]).includes('not:id:in:(a,b)'));
+  assert.ok(names(sb.log[2]).includes('or:status_akd.is.null,status_akd.neq.terhubung')); // daftar kosong: tidak ada id.in.() yang invalid
+});

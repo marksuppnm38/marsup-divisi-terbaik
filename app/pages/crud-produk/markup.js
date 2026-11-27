@@ -112,7 +112,7 @@ export const CRUD_PRODUK_MARKUP = `
              Jumlah hasil selalu di sini, mengikuti pencarian + semua token. -->
         <div class="filter-bar" id="produkFilterBar" role="group" aria-label="Pintasan filter">
           <button type="button" class="filter-chip active" data-pintasan="semua" aria-pressed="true" title="Semua produk, tanpa filter.">Semua</button>
-          <button type="button" class="filter-chip" data-pintasan="tanpa_akd" aria-pressed="false" title="Produk yang belum punya nomor AKD, apa pun statusnya.">Tanpa AKD</button>
+          <button type="button" class="filter-chip" data-pintasan="tanpa_akd" aria-pressed="false" title="Produk yang belum punya nomor AKD asli, apa pun statusnya. Produk yang hanya tertaut 'TIDAK ADA' ikut dihitung.">Tanpa AKD</button>
           <button type="button" class="filter-chip" data-pintasan="menunggu_link" aria-pressed="false" title="Produk berstatus Disetujui di INAPROC yang Link V6-nya belum diisi.">Menunggu Link</button>
           <button type="button" class="filter-chip" data-pintasan="verified" aria-pressed="false" title="Produk dengan centang biru Verified di INAPROC."><i class="ti ti-rosette-discount-check-filled vbadge vbadge-chip"></i>Verified</button>
           <span class="filter-result" id="produkHasil" aria-live="polite">Memuat...</span>
