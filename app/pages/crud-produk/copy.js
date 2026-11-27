@@ -7,7 +7,8 @@
 //   1. Salin satu field  : ikon salin kecil di sel Kode & Nama (muncul saat sel di-hover).
 //   2. Menu "Salin"      : tombol di ujung baris, klik kanan di baris, atau tombol ContextMenu/Shift+F10.
 //                          Isinya: Salin baris (TSV) + kode, nama, tipe, golongan, No. AKD, harga, link.
-//   3. Salin banyak      : centang baris (Shift+klik = rentang), bar di bawah list -> "Salin sebagai tabel".
+//   3. Salin banyak      : pilih baris (Ctrl/Cmd+klik = pilih/lepas, Shift+klik = rentang, tombol x; layar sentuh: tombol "Pilih"),
+//                          lalu bar di bawah list -> "Salin sebagai tabel". Tidak ada kotak centang di baris.
 //                          Ctrl/Cmd+C di dalam tabel juga menyalin baris terpilih (atau baris yang difokus).
 //   4. Kolom salinan     : WYSIWYG. Salin baris / salin banyak mengikuti kolom yang TAMPIL di tabel (urutan, judul, dan
 //                          kolom dinamis hasil filter ikut), bukan daftar kolom sendiri. Definisi kolom ada di kolom-tabel.js
@@ -104,6 +105,8 @@ export function createCopyKit(ctx) {
   const barCols = $(barIds.cols || 'copyBarCols');
   const barClear = $(barIds.clear || 'copyBarClear');
   const barPage = $(barIds.page || 'copyBarPage');
+  const selBtn = $(barIds.selectBtn || 'produkSelectBtn');   // mode "Pilih" untuk layar sentuh (boleh tidak ada)
+  const selHint = $(barIds.hint || 'selHint');               // petunjuk satu baris di dasar tabel (boleh tidak ada)
 
   const extra = new Map();     // produk_id -> { t, ekatalog, swasta, tahun, akd[] }
   const inflight = new Map();  // produk_id -> Promise<boolean>
@@ -111,6 +114,7 @@ export function createCopyKit(ctx) {
   const byId = new Map();      // String(id) -> baris di halaman yang tampil
   let pageRows = [];
   let lastId = null;           // anchor Shift+klik
+  let selectMode = false;      // mode "Pilih" (layar sentuh): ketuk baris = toggle seleksi, bukan buka edit
   let extAnchor = null;        // anchor Shift+panah (rentang dari baris yang difokus waktu mulai)
   let extPre = null;           // seleksi SEBELUM Shift+panah mulai: rentang ditambahkan di atasnya, mengecil = ikut dilepas
   let withHeader = readHdr();
@@ -343,21 +347,34 @@ export function createCopyKit(ctx) {
 
   // ---------- seleksi ----------
   function syncUi() {
-    tableBody.querySelectorAll('tr[data-id]').forEach((tr) => {
-      const p = byId.get(tr.dataset.id);
-      const on = !!p && selected.has(p.id);
-      const cb = tr.querySelector('.sel-input');
-      if (cb) cb.checked = on;
-      tr.classList.toggle('is-selected', on);
+    // Penanda baris terpilih (.is-selected): latar aksen + garis kiri, digambar CSS. Berlaku untuk baris tabel DAN kartu.
+    [[tableBody, 'tr[data-id]'], [cardWrap, ':scope > [data-id]']].forEach(([root, sel]) => {
+      root.querySelectorAll(sel).forEach((el) => {
+        const p = byId.get(el.dataset.id);
+        el.classList.toggle('is-selected', !!p && selected.has(p.id));
+      });
     });
-    // Kotak pilih disembunyikan sampai ada baris terpilih (lalu tampil di semua baris).
-    tableBody.classList.toggle('has-sel', selected.size > 0);
     const n = pageRows.filter((r) => selected.has(r.id)).length;
     if (barPage) barPage.hidden = !pageRows.length || n === pageRows.length;
-    if (bar) bar.hidden = selected.size === 0;
-    if (barCount) barCount.textContent = `${selected.size.toLocaleString('id-ID')} produk dipilih`;
+    // Bar tampil bila ada yang dipilih, atau bila mode "Pilih" aktif (supaya user sentuh tahu sedang memilih).
+    if (bar) bar.hidden = selected.size === 0 && !selectMode;
+    if (barCount) barCount.textContent = selected.size
+      ? `${selected.size.toLocaleString('id-ID')} produk dipilih`
+      : 'Ketuk baris untuk memilih';
     // Bar hanya tampil saat ada yang dipilih; tidak menyentuh ctx.table waktu kit dibuat (colKit baru ada sesudahnya).
     if (barCols && selected.size) barCols.textContent = `Kolom (${ctx.table.labels().length})`;
+    if (selHint) selHint.hidden = !pageRows.length;
+    if (selBtn) {
+      selBtn.classList.toggle('is-on', selectMode);
+      selBtn.setAttribute('aria-pressed', selectMode ? 'true' : 'false');
+      const lbl = selBtn.querySelector('[data-sel-label]');
+      if (lbl) lbl.textContent = selectMode ? 'Selesai' : 'Pilih';
+    }
+  }
+
+  function setSelectMode(on) {
+    selectMode = !!on;
+    syncUi();
   }
 
   function setSelected(p, on, shift) {
@@ -391,8 +408,14 @@ export function createCopyKit(ctx) {
     const p = byId.get(host.dataset.id);
     if (!p) return;
 
-    if (t.matches('.sel-input')) { e.stopPropagation(); setSelected(p, t.checked, e.shiftKey); return; }
-    // Ctrl/Cmd+klik = pilih/lepas baris, Shift+klik = rentang (cara Excel/Finder), tanpa perlu kotak pilih.
+    // Mode "Pilih" (layar sentuh): ketuk baris/kartu = toggle seleksi, bukan buka edit. Tombol salin per field & menu "Salin" tetap jalan.
+    if (selectMode && !t.closest('[data-cp],.cp-more,a,input')) {
+      e.stopPropagation();
+      e.preventDefault();
+      setSelected(p, !selected.has(p.id), false);
+      return;
+    }
+    // Ctrl/Cmd+klik = pilih/lepas baris, Shift+klik = rentang (cara Excel/Finder).
     if ((e.ctrlKey || e.metaKey || e.shiftKey) && !t.closest('button,a,input')) {
       e.stopPropagation();
       e.preventDefault();
@@ -410,7 +433,7 @@ export function createCopyKit(ctx) {
 
   function onKeydown(e) {
     const host = hostOf(e.target);
-    // Enter/Spasi pada tombol/checkbox di dalam baris jangan dibajak jadi "buka produk".
+    // Enter/Spasi pada tombol di dalam baris jangan dibajak jadi "buka produk".
     if (host && e.target !== host && (e.key === 'Enter' || e.key === ' ')) { e.stopPropagation(); return; }
 
     // x = pilih/lepas baris yang sedang difokus (seperti Gmail)
@@ -464,6 +487,7 @@ export function createCopyKit(ctx) {
   barCopy?.addEventListener('click', copySelected);
   barCols?.addEventListener('click', () => openCols({ rect: barCols.getBoundingClientRect() }, barCols));
   barClear?.addEventListener('click', () => { selected.clear(); lastId = null; extAnchor = null; extPre = null; syncUi(); });
+  selBtn?.addEventListener('click', () => setSelectMode(!selectMode));
   syncUi();
 
   // ---------- API untuk index.js ----------
@@ -486,8 +510,10 @@ export function createCopyKit(ctx) {
     selectedRows() { return [...selected.values()]; },
     /** Gambar ulang bar salin (mis. jumlah "Kolom (n)" berubah karena kolom tabel diganti). */
     refresh() { syncUi(); },
-    /** Kosongkan semua centang (dipakai tampilan yang disembunyikan, supaya bar salin tidak tertinggal). */
-    clearSelection() { selected.clear(); lastId = null; extAnchor = null; extPre = null; syncUi(); },
+    /** Kosongkan semua pilihan + keluar dari mode "Pilih" (dipakai tampilan yang disembunyikan, supaya bar salin tidak tertinggal). */
+    clearSelection() { selected.clear(); lastId = null; extAnchor = null; extPre = null; selectMode = false; syncUi(); },
+    /** Mode "Pilih" aktif? (ketuk baris = toggle seleksi). index.js tidak perlu memanggilnya; tersedia untuk tes/diagnosa. */
+    isSelectMode() { return selectMode; },
     /** Salin baris-baris ini langsung (tanpa dicentang dulu), pakai kolom & judul yang sedang diatur. */
     copyRows(rows) { return copyRows(rows || []); },
     /** Data harga/AKD dibuang tiap loadProduk() supaya tidak menyalin harga lama setelah edit. */
@@ -519,10 +545,6 @@ export function createCopyKit(ctx) {
     },
     /** Panah biasa (tanpa Shift) mengakhiri rentang: pilihan tetap, anchor baru dimulai di Shift+panah berikutnya. */
     endExtend() { extAnchor = null; extPre = null; },
-    /** Kotak pilih kecil di tepi kiri sel Kode (hanya tampil saat hover / ada seleksi). */
-    selBox(p) {
-      return `<input type="checkbox" class="sel-input" tabindex="-1" aria-label="Pilih ${esc(p.kode_produk)}"${selected.has(p.id) ? ' checked' : ''}/>`;
-    },
     /** No. AKD terhubung untuk produk ini (kosong kalau belum termuat / tidak ada). */
     akdOf(id) { const c = freshExtra(id); return c ? c.akd : []; },
     /** Harga + No. AKD yang sudah termuat untuk satu produk (null kalau belum / sudah basi). Dipakai kolom-tabel.js. */
@@ -543,6 +565,7 @@ export function createCopyKit(ctx) {
       closePop();
       extra.clear();
       selected.clear();
+      selectMode = false;
     },
   };
 }

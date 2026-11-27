@@ -11,6 +11,8 @@
 // user actually navigates there). Keep this file lightweight forever;
 // anything with real logic belongs in index.js, not here.
 //
+// Judul = teks tampilan (Product Manager, 2026-11): satu bahasa, satu-dua kata. Nilai `id` TIDAK BOLEH berubah --
+// dipakai router, bookmark, dan switchView().
 // id here is the URL sub-segment (`#crud-produk/<id>`) AND is passed
 // straight into crud-produk's existing switchView(id) — the two need to
 // stay in sync (same 7 values: produk/set/akd/kfa/bulk/sync/orphan -- 'sync'
@@ -19,11 +21,11 @@
 // If index.js's switchView() ever gets another view, add it here too,
 // and vice versa.
 export const CRUD_PRODUK_SUBNAV = [
-  { id: 'produk', title: 'Produk', icon: 'ti-package' },
-  { id: 'set', title: 'Set Management', icon: 'ti-stack-2' },
+  { id: 'produk', title: 'Products', icon: 'ti-package' },
+  { id: 'set', title: 'Sets', icon: 'ti-stack-2' },
   { id: 'akd', title: 'AKD', icon: 'ti-shield-check' },
-  { id: 'kfa', title: 'KFA Management', icon: 'ti-barcode' },
+  { id: 'kfa', title: 'KFA', icon: 'ti-barcode' },
   { id: 'bulk', title: 'Bulk Edit', icon: 'ti-table' },
-  { id: 'sync', title: 'Sync dari Sheet', icon: 'ti-refresh' },
-  { id: 'orphan', title: 'Orphan / Drift', icon: 'ti-git-compare' },
+  { id: 'sync', title: 'Sheet Sync', icon: 'ti-refresh' },
+  { id: 'orphan', title: 'Drift Check', icon: 'ti-git-compare' },
 ];

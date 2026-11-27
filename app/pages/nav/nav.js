@@ -43,6 +43,29 @@ let lastActiveId = null;
 let lastActiveSub = null;
 let lastPermSig = ''; // daftar modul yang tampil saat nav terakhir dibuat (lihat navPermSignature)
 
+// ---- Titik "ada draft" (keep-alive router, lihat app/keepalive.js) ----
+// Modul yang diparkir router dan masih punya draft belum disimpan diberi titik kecil di ikonnya.
+// State disimpan di sini (bukan hanya di DOM) karena navSetActive() bisa merender ulang seluruh nav
+// saat akun lain login; applyDraftDots() dipanggil lagi setelah render supaya titiknya tidak hilang.
+// Tampilannya murni CSS (.pw-nav-item.has-draft di nav.css), jadi nav-markup.js tidak disentuh.
+let draftModules = new Set();
+
+function applyDraftDots() {
+  if (!navEl) return;
+  navEl.querySelectorAll('.pw-nav-item').forEach((el) => {
+    const on = draftModules.has(el.dataset.module);
+    el.classList.toggle('has-draft', on);
+    if (on) el.setAttribute('aria-description', 'Ada draft yang belum disimpan');
+    else el.removeAttribute('aria-description');
+  });
+}
+
+/** Set daftar id modul yang menampilkan titik "ada draft" (menggantikan daftar sebelumnya). */
+export function navSetDraft(moduleIds) {
+  draftModules = new Set(moduleIds || []);
+  applyDraftDots();
+}
+
 // ---- Accordion submodul: state buka/tutup per modul (dikontrol user, disimpan) ----
 // Dulu accordion cuma "ada" kalau modulnya aktif, dan tiap pindah modul seluruh nav dirender ulang
 // (innerHTML) -> mustahil dianimasikan dan klik modul aktif tidak bisa menutup. Sekarang semua submodul
@@ -357,6 +380,7 @@ export async function navMount(container, activeId, activeSub) {
   lastActiveId = activeId;
   lastActiveSub = activeSub || null;
   lastPermSig = navPermSignature();
+  applyDraftDots();
 
   applyThemeIcon();
   fillUser();
@@ -430,6 +454,7 @@ export function navSetActive(activeId, sub) {
     const keptBrand = navEl.querySelector('.pw-nav-brand');
     navEl.innerHTML = navMarkup(activeId, sub, isGroupOpen);
     if (keptBrand) navEl.querySelector('.pw-nav-brand')?.replaceWith(keptBrand);
+    applyDraftDots(); // markup baru: titik "ada draft" dipasang lagi
     applyThemeIcon();
     fillUser();
     // Listener yang menempel di elemen yang baru diganti harus dipasang ulang (theme/logout/collapse/search).

@@ -25,7 +25,7 @@ export const MODULES = [
   },
   {
     id: 'crud-produk',
-    title: 'CRUD Produk',
+    title: 'Product Manager',
     desc: 'Control, without complexity.',
     url: '/crud-produk',
     migrated: true,

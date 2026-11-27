@@ -59,7 +59,7 @@ export const tsvCell = (v) => (v == null ? '' : typeof v === 'number' ? (Number.
 const TIPE_LABEL = { INSTRUMENT: 'Instrumen', SET: 'Set', UNIT: 'Unit' };
 export const TABLE_COLS = [
   { key: 'kode', label: 'Kode Produk', locked: true, td: 'kode-cell',
-    render: (p, c) => `${c.h.selBox(p)}${esc(p.kode_produk)}${c.h.btn('kode', 'Salin kode produk')}${c.h.recent(p.updated_at)}`,
+    render: (p, c) => `${esc(p.kode_produk)}${c.h.btn('kode', 'Salin kode produk')}`,
     xl: [{ id: 'kode', label: 'Kode Produk', w: 22, get: (p) => p.kode_produk }] },
   { key: 'nama', label: 'Nama Produk', td: 'nama-cell',
     render: (p, c) => `${esc(p.nama_produk || '—')}${c.h.btn('nama', 'Salin nama produk')}${c.h.verified(p.id)}`,
@@ -224,7 +224,7 @@ function readState() {
 /**
  * opts: {
  *   sb, headRow (<tr> di <thead>), tableBody,
- *   helpers: { selBox(p), btn(key,label), recent(updatedAt), verified(id), seal(p), akdNoOf(id) -> [no],
+ *   helpers: { btn(key,label), verified(id), seal(p), akdNoOf(id) -> [no],
  *              stokCell(id), moreCell(p),
  *              (khusus export, data mentah:) extraOf(id), stokOf(id) -> {status, qty}, stokLabel {READY:'Siap',..},
  *              sealLabel(status_akd) -> teks, isVerified(id) -> bool },

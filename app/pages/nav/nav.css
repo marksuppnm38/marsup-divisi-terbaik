@@ -330,6 +330,20 @@ html[data-theme="dark"] .pw-nav-brand-mark .logo-dark { display: block; }
 }
 .pw-nav-item i { font-size: 16px; width: 18px; text-align: center; flex-shrink: 0; }
 .pw-nav-item span { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+/* Titik "ada draft": modul terparkir (keep-alive router) yang punya perubahan belum disimpan.
+   Menempel di ikon modul (bukan di tepi item) supaya posisinya benar juga di rail menciut dan layar sempit. */
+.pw-nav-item.has-draft > i:first-child { position: relative; }
+.pw-nav-item.has-draft > i:first-child::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning, #f59e0b);
+  box-shadow: 0 0 0 2px var(--surface, #fff);
+}
 .pw-nav-item-chevron {
   font-size: 13px !important;
   width: auto !important;

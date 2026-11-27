@@ -33,7 +33,7 @@ export const CRUD_PRODUK_MARKUP = `
 <div class="shell" id="appWrap">
   <main class="main">
     <div class="pw-topbar">
-      <div class="pw-topbar-crumb">CRUD Produk <span class="pw-topbar-crumb-sep">/</span> <strong id="pw-topbar-crumb-text">Produk</strong></div>
+      <div class="pw-topbar-crumb">Product Manager <span class="pw-topbar-crumb-sep">/</span> <strong id="pw-topbar-crumb-text">Products</strong></div>
       <div class="pw-topbar-actions">
         <button class="btn" id="btnKembaliKonversi" style="display:none;border:1px solid var(--accent-text);color:var(--accent-text);background:var(--accent-bg)" title="Balik ke Conversion Workspace"><i class="ti ti-arrow-back"></i> Kembali ke Konversi</button>
         <button class="btn" id="logToggle" title="Log Aktivitas"><i class="ti ti-history"></i> Log Aktivitas</button>
@@ -45,7 +45,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="vwrap">
         <div class="content-head">
           <div>
-            <div class="content-title">Produk</div>
+            <div class="content-title">Product Manager</div>
             <div class="content-sub" id="produkCount">Memuat...</div>
           </div>
           <div class="produk-head-actions">
@@ -68,6 +68,7 @@ export const CRUD_PRODUK_MARKUP = `
               </div>
             </div>
           <div class="vtools-end">
+            <button type="button" class="btn-cols btn-select" id="produkSelectBtn" aria-pressed="false" title="Pilih beberapa baris untuk disalin (layar sentuh)"><i class="ti ti-checkbox"></i> <span data-sel-label>Pilih</span></button>
             <button type="button" class="btn-cols" id="produkColsBtn" aria-haspopup="dialog" aria-expanded="false" title="Pilih & urutkan kolom (tampil di tabel dan ikut di file Export)"><i class="ti ti-columns"></i> Kolom</button>
             <!-- Export sejajar dengan Kolom karena keduanya satu paket: kolom export = kolom tabel.
                  Panel berisi 3 hal berurutan -- baris (berapa & dari filter apa), kolom (apa saja, urutan, preset), lalu tombol download
@@ -129,6 +130,7 @@ export const CRUD_PRODUK_MARKUP = `
                   </table>
                 </div>
           <div class="card-grid" id="cardWrap" style="display:none;"></div>
+          <p class="sel-hint" id="selHint" hidden>Shift+klik untuk memilih baris</p>
         </div>
         <div class="copy-bar" id="copyBar" role="region" aria-label="Salin produk terpilih" hidden>
           <span class="cb-count" id="copyBarCount" aria-live="polite"></span>
@@ -155,7 +157,7 @@ export const CRUD_PRODUK_MARKUP = `
           <div class="vcol">
             <div class="content-head">
               <div>
-                <div class="content-title">Set Management</div>
+                <div class="content-title">Sets</div>
                 <div class="content-sub" id="setListCount">Memuat...</div>
                 <div class="content-hint">Satu set adalah satu paket instrumen untuk satu jenis tindakan. Buka set untuk mengatur isi, harga, dan AKD-nya.</div>
               </div>
@@ -343,7 +345,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="vwrap">
         <div class="content-head">
           <div>
-            <div class="content-title">AKD Management</div>
+            <div class="content-title">AKD</div>
             <div class="content-sub" id="akdCount">Memuat...</div>
           </div>
           <div class="produk-head-actions">
@@ -379,7 +381,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="vwrap">
         <div class="content-head">
           <div>
-            <div class="content-title">KFA Management</div>
+            <div class="content-title">KFA</div>
             <div class="content-sub" id="kfaCount">Memuat...</div>
           </div>
           <div class="produk-head-actions">
@@ -557,7 +559,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="vwrap">
         <div class="content-head">
           <div>
-            <div class="content-title">Sync dari Sheet</div>
+            <div class="content-title">Sheet Sync</div>
             <div class="content-sub" id="syncCount">Memuat...</div>
             <div class="content-hint">Kode dari Google Sheets yang belum ada di database. Tambah satu per satu lewat form, atau centang beberapa baris untuk menambah sekaligus.</div>
           </div>
@@ -616,7 +618,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="vwrap">
         <div class="content-head">
           <div>
-            <div class="content-title">Orphan / Drift</div>
+            <div class="content-title">Drift Check</div>
             <div class="content-sub" id="orphanCount">Memuat...</div>
           </div>
           <div class="orph-actions">
@@ -875,7 +877,7 @@ export const CRUD_PRODUK_MARKUP = `
         <section class="fs">
           <div class="fs-head">
             <h4>KFA</h4>
-            <a href="javascript:void(0)" class="fs-link" id="jumpToKfaLink">Kelola di KFA Management</a>
+            <a href="javascript:void(0)" class="fs-link" id="jumpToKfaLink">Kelola di KFA</a>
           </div>
           <dl class="ro-grid">
             <div><dt>Kode KFA</dt><dd><output id="f_kode_kfa"></output></dd></div>

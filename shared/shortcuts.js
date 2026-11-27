@@ -235,7 +235,7 @@ export const SHORTCUTS = [
     desc: 'Riwayat: tutup menu status kartu', group: 'Dialog & panel' },
 ];
 
-const PAGE_LABELS = { 'crud-produk': 'CRUD Produk', konversian: 'Konversian' };
+const PAGE_LABELS = { 'crud-produk': 'Product Manager', konversian: 'Konversian' };
 const GROUP_ORDER = ['Sesi', 'Pindah tab', 'Cari & daftar', 'Aksi', 'Dialog & panel'];
 
 // Bagian tambahan di cheat sheet yang BUKAN pintasan tombol (info cara pakai). Dirender setelah daftar pintasan.
@@ -299,7 +299,7 @@ function matchEvent(e, c) {
 const NON_TEXT_INPUT = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'file', 'color', 'image']);
 
 // Fokus di tempat orang mengetik. Checkbox/radio/tombol sengaja TIDAK dihitung, jadi j/k tetap jalan
-// setelah user mencentang kotak pilih di baris.
+// setelah user menekan tombol di dalam baris (mis. "Pilih" di toolbar atau ikon salin).
 export function isTyping(t) {
   if (!t) return false;
   if (t.isContentEditable) return true;

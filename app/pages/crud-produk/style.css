@@ -539,11 +539,6 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .flag-warn{color:var(--amber-text)}
 .flag-mute{color:var(--text-muted)}
 
-/* Baru diubah (<24 jam): titik kecil + teks redup. Teks biru tebal dulu terbaca seperti tautan dan menjerit di
-   30 baris sekaligus (mis. habis edit massal); titik sendirian tidak menjelaskan apa-apa, jadi dua-duanya dipakai. */
-.tag-baru{display:inline-flex;align-items:center;gap:5px;margin-left:10px;font-family:var(--font-body);font-size:11.5px;font-weight:500;color:var(--text-muted);white-space:nowrap}
-.tag-baru::before{content:"";flex:none;width:5px;height:5px;border-radius:50%;background:var(--accent)}
-
 /* Verified: ikon centang INAPROC dipertahankan (itu memang lencananya), tanpa gaya tambahan */
 #tableBody .vbadge{margin-left:4px}
 
@@ -928,18 +923,21 @@ html[data-theme="dark"] .pm-logo.is-warna{align-self:flex-start;width:fit-conten
 #tableBody tr.is-selected td{background:var(--accent-soft)}
 #tableBody tr.is-selected:hover td,#tableBody tr.is-selected:focus-visible td{background:var(--accent-soft)}
 
-/* kotak pilih: di margin kiri sel Kode, tidak makan kolom sendiri. Tampil saat baris di-hover,
-   dan di SEMUA baris begitu ada yang terpilih. Ctrl/Cmd+klik & Shift+klik tetap bisa tanpa kotak. */
-#tableBody .kode-cell{position:relative}
-.sel-input{appearance:none;-webkit-appearance:none;position:absolute;left:max(2px,calc(var(--gutter) - 22px));top:50%;width:15px;height:15px;margin:-7.5px 0 0;border:1.5px solid var(--border-strong);border-radius:4px;background:var(--surface) center/11px no-repeat;cursor:pointer;opacity:0;transition:opacity .12s,background-color .12s,border-color .12s}
-#tableBody tr:hover .sel-input,#tableBody.has-sel .sel-input,.sel-input:checked,.sel-input:focus-visible{opacity:1}
-.sel-input:hover{border-color:var(--accent)}
-.sel-input:checked{border-color:var(--accent);background-color:var(--accent);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.4 5 8.9l4.5-5.3' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
-.sel-input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-@media (hover:none),(max-width:760px){
-  #appWrap #tableWrap td.kode-cell,#appWrap #tableWrap th:first-child{padding-left:calc(var(--gutter) + 24px)}
-  .sel-input{left:var(--gutter);opacity:1}
-}
+/* Seleksi baris: tanpa kotak centang (Product Manager, 2026-11). Ctrl/Cmd+klik = pilih/lepas, Shift+klik = rentang,
+   tombol x = pilih baris yang difokus; di layar sentuh pakai tombol "Pilih" di toolbar. Penanda = latar aksen + garis di tepi kiri,
+   digambar dengan box-shadow inset supaya tidak menggeser teks / lebar kolom. */
+#tableBody tr.is-selected td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+#appWrap .prod-card.is-selected{background:var(--accent-soft);border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+
+/* Petunjuk satu baris di dasar tabel. Disembunyikan di layar sentuh (di sana ada tombol "Pilih"). */
+.sel-hint{margin:0;padding:10px var(--gutter) 14px;font-size:12px;color:var(--text-muted)}
+.sel-hint[hidden]{display:none}
+@media (hover:none){.sel-hint{display:none}}
+
+/* Tombol "Pilih" (mode pilih untuk layar sentuh): hanya ada bila ada pointer kasar (jari/stylus); mouse memakai Ctrl/Shift+klik. */
+.btn-select{display:none}
+@media (any-pointer:coarse){.btn-select{display:inline-flex}}
+.btn-select.is-on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text)}
 
 /* kolom AKD: nomor AKD menggantikan kata "Terhubung" */
 .seal-akd{font-variant-numeric:tabular-nums;font-weight:500}
@@ -960,9 +958,9 @@ html[data-theme="dark"] .pm-logo.is-warna{align-self:flex-start;width:fit-conten
 .cp-more:hover{border-color:var(--accent);color:var(--accent-text)}
 @media (hover:none){.cp-btn,.cp-more{opacity:1}}
 
-/* Teks pada kontrol (tombol "Salin" di ujung baris, ikon salin, kotak pilih, skeleton, "coba lagi") BUKAN data produk. Tanpa ini, men-drag teks
+/* Teks pada kontrol (tombol "Salin" di ujung baris, ikon salin, skeleton, "coba lagi") BUKAN data produk. Tanpa ini, men-drag teks
    di tabel lalu Ctrl+C native ikut membawa kata "Salin" dari tombol yang tersembunyi (opacity:0 tetap terblok) di tiap baris. */
-.cp-btn,.cp-more,.sel-input,.sk,.sk-fail,#appWrap #tableWrap th.c-act,#appWrap #tableWrap td.c-act{-webkit-user-select:none;user-select:none}
+.cp-btn,.cp-more,.sk,.sk-fail,#appWrap #tableWrap th.c-act,#appWrap #tableWrap td.c-act{-webkit-user-select:none;user-select:none}
 
 /* kartu: satu tombol ikon di pojok kanan atas */
 #appWrap .prod-card{position:relative}
@@ -1417,7 +1415,7 @@ th.num .th-btn{justify-content:flex-end}
    Kontrol bawaan browser yang diganti (2026-11-24)
    - Saran isian (ui-combo.js): menu memakai kelas .ui-select-menu / .ui-select-opt dari nav.css.
    - Tanggal (ui-date.js): tombol bergaya field + kalender.
-   - Checkbox: kotak sendiri. Memakai :where() agar nol spesifisitas: aturan lama yang lebih spesifik (.sel-input, #viewSync) tetap menang.
+   - Checkbox: kotak sendiri. Memakai :where() agar nol spesifisitas: aturan lama yang lebih spesifik (#viewSync) tetap menang.
    ===================================================================== */
 .ui-combo-host{position:relative}
 .ui-combo-menu{max-height:260px;max-width:none;min-width:0}

@@ -2,6 +2,11 @@
 // Each route lazily imports a page module exposing mount(container) / unmount()
 // (and optionally setSubroute(sub)). To add a page, register it in ROUTES below.
 //
+// KEEP-ALIVE (opsional per modul): modul yang juga mengekspor suspend()/resume() (+ isDirty()) tidak
+// dibongkar saat pindah modul, melainkan diparkir dan dipasang lagi dengan state utuh. Kontrak lengkap
+// dan alasannya ada di blok "KEEP-ALIVE" di bawah; aturan LRU/TTL/draft di keepalive.js. Modul tanpa
+// kontrak itu berperilaku seperti biasa (unmount() + mount() ulang).
+//
 // AUTH: router.js gates ALL routing behind ONE shared login (shared/auth-gate.js) --
 // popstate/DOMContentLoaded listeners aren't even attached, and no page module is
 // ever mount()ed, until initAuthGate()'s onReady() fires. Page modules have no
@@ -32,7 +37,11 @@
 //      purpose: they need a fresh load so the target page's mount() sees
 //      window.location.search cleanly.
 
-import { navMount, navSetActive } from './pages/nav/nav.js';
+import { navMount, navSetActive, navSetDraft } from './pages/nav/nav.js';
+// Keep-alive (modul diparkir, bukan dibongkar saat pindah modul): aturan LRU/TTL/draft ada di keepalive.js
+// (murni, tanpa DOM, dites di keepalive.test.mjs). Router hanya memegang bagian DOM-nya. Lihat blok
+// "KEEP-ALIVE" di bawah.
+import { createParkingLot } from './keepalive.js';
 import { initAuthGate } from '../shared/auth-gate.js';
 // Jaring pengaman biar textbox biasa (search, form field, dst) gak
 // disodorin saran password/email tersimpan sama password manager
@@ -197,16 +206,161 @@ function unmountPage(page, moduleId, label) {
   }
 }
 
+// Pulihkan satu elemen style yang tadinya diparkir (media="not all").
+function unparkEl(el) {
+  if (!el.isConnected) return;
+  const orig = el.getAttribute('data-pnm-media');
+  if (orig) el.setAttribute('media', orig); else el.removeAttribute('media');
+  el.removeAttribute('data-pnm-media');
+}
+
+// Kembalikan daftar elemen yang dipulihkan (kosong kalau modul ini belum pernah diparkir).
 function unparkStyles(moduleId) {
   const list = parkedStyles.get(moduleId);
-  if (!list) return;
+  if (!list) return [];
   parkedStyles.delete(moduleId);
-  list.forEach((el) => {
-    if (!el.isConnected) return;
-    const orig = el.getAttribute('data-pnm-media');
-    if (orig) el.setAttribute('media', orig); else el.removeAttribute('media');
-    el.removeAttribute('data-pnm-media');
-  });
+  list.forEach(unparkEl);
+  return list;
+}
+
+// ── KEEP-ALIVE: modul diparkir (DOM-nya dilepas ke DocumentFragment), bukan dibongkar ────────
+// Rencana: product-manager-design-rebase-plan.md bagian 9. Masalah yang diselesaikan: pindah modul
+// (Produk -> Document Maker -> Produk) dulu = unmount() + container.innerHTML = '' + mount() dari nol,
+// jadi pencarian, filter, scroll, seleksi, modal terbuka, dan draft form hilang.
+//
+// KONTRAK MODUL (semua OPSIONAL; modul tanpa kontrak berperilaku PERSIS seperti sebelumnya:
+// dibongkar lewat unmount() dan di-mount ulang). Modul ikut keep-alive HANYA kalau mengekspor
+// suspend() DAN resume():
+//   suspend()  dipanggil saat pindah ke modul lain. Lepas listener tingkat document/window (Ctrl+K,
+//              resize, shortcut registry, beforeunload) dan hentikan timer. DOM-nya tidak disentuh:
+//              router yang memindahkannya ke fragment. Sinkron.
+//   resume()   dipanggil setelah DOM-nya dipasang kembali ke container. Pasang lagi listener tadi;
+//              boleh menyegarkan data di latar (boleh async, router TIDAK menunggunya).
+//   isDirty()  (opsional) true = ada draft yang belum disimpan. Modul terparkir yang dirty tidak
+//              dibuang LRU/TTL dan sidebar menampilkan titik "ada draft".
+// Syarat tambahan: unmount() harus tahan dipanggil SETELAH suspend() (listener sudah lepas; hapus ulang
+// tidak boleh error) dan saat DOM-nya terlepas dari dokumen, karena modul terparkir yang dibuang
+// (LRU/TTL/logout) di-unmount() sungguhan dalam kondisi itu.
+//
+// Kenapa fragment lepas, bukan display:none: dua modul tidak pernah ada di dokumen bersamaan, jadi tidak
+// ada bentrok id (getElementById) maupun kebocoran CSS. Listener yang menempel di elemen dalam tetap hidup.
+// CSS modul diparkir dengan cara yang sama seperti parkedStyles di atas (media="not all").
+const parkingLot = createParkingLot(); // maks 3 modul, TTL 30 menit, draft tidak dibuang (lihat keepalive.js)
+const lastUrl = new Map(); // moduleId -> path+query terakhir modul itu (dipakai klik modul di sidebar)
+let activeRoute = { sub: null, param: null }; // sub/param modul AKTIF, disimpan ke entri saat diparkir
+let styleBaseline = new Set(); // elemen style yang sudah ada saat modul aktif mulai tampil dan BUKAN miliknya
+let sweepTimer = null;
+const SWEEP_INTERVAL_MS = 60 * 1000;
+
+const isParkable = (page) => !!page && typeof page.suspend === 'function' && typeof page.resume === 'function';
+const pageDirty = (page) => typeof page.isDirty === 'function' && page.isDirty() === true;
+const sameRouteValue = (a, b) => (a ?? null) === (b ?? null);
+const parkableHeadEls = () => [...document.head.children].filter(isParkableStyle);
+
+function parkEl(el) {
+  if (!el.hasAttribute('data-pnm-media')) el.setAttribute('data-pnm-media', el.getAttribute('media') || '');
+  el.setAttribute('media', 'not all');
+}
+
+// Titik "ada draft" di sidebar mengikuti modul terparkir yang dirty.
+function refreshDraftDots() {
+  navSetDraft(parkingLot.dirtyIds());
+}
+
+// Buang modul terparkir SUNGGUHAN (kena LRU/TTL, atau logout): unmount() dalam kondisi DOM terlepas.
+// Style-nya sudah media="not all"; dicatat ke parkedStyles supaya mount() segar berikutnya memulihkannya.
+function disposeParked(id, entry) {
+  unmountPage(entry.page, id, `unmount gagal (modul terparkir "${id}"):`);
+  const list = parkedStyles.get(id) || [];
+  entry.styles.forEach((el) => { if (!list.includes(el)) list.push(el); });
+  parkedStyles.set(id, list);
+  entry.fragment = null;
+}
+
+function stopSweepTimerIfIdle() {
+  if (!parkingLot.size && sweepTimer) { clearInterval(sweepTimer); sweepTimer = null; }
+}
+
+function runSweep() {
+  const expired = parkingLot.sweep();
+  expired.forEach(({ id, value }) => disposeParked(id, value));
+  if (expired.length) refreshDraftDots();
+  stopSweepTimerIfIdle();
+}
+
+function ensureSweepTimer() {
+  if (sweepTimer || !parkingLot.size) return;
+  sweepTimer = setInterval(runSweep, SWEEP_INTERVAL_MS);
+}
+
+// Keluar dari halaman aktif karena pindah modul: DIPARKIR kalau modulnya ikut kontrak keep-alive dan
+// sudah selesai mount; selain itu dibongkar seperti dulu. Sesudahnya `container` selalu kosong.
+function parkOrUnmountCurrent() {
+  const page = currentPage;
+  const id = currentModule;
+  const mounted = currentMounted;
+  currentPage = null;
+  currentModule = null;
+  currentMounted = false;
+  if (page && id && mounted && isParkable(page)) {
+    try {
+      page.suspend();
+      const fragment = document.createDocumentFragment();
+      while (container.firstChild) fragment.appendChild(container.firstChild);
+      const styles = parkableHeadEls().filter((el) => !styleBaseline.has(el));
+      styles.forEach(parkEl);
+      const entry = { page, fragment, styles, sub: activeRoute.sub, param: activeRoute.param };
+      const evicted = parkingLot.park(id, entry, { isDirty: () => pageDirty(page) });
+      evicted.forEach(({ id: evId, value }) => disposeParked(evId, value));
+      ensureSweepTimer();
+      refreshDraftDots();
+      return;
+    } catch (err) {
+      console.error(`suspend gagal untuk modul "${id}", dibongkar seperti biasa:`, err);
+    }
+  }
+  unmountPage(page, id);
+  container.innerHTML = '';
+}
+
+// `entry` = hasil parkingLot.take(moduleId) (diambil caller SEBELUM memarkir halaman aktif, lihat render()).
+// Pasang DOM-nya lagi dan resume(), TANPA mount(). false kalau resume() gagal (modul dibongkar dan caller
+// mount segar).
+function resumeParked(moduleId, entry) {
+  entry.styles.forEach(unparkEl);
+  container.replaceChildren(entry.fragment);
+  currentPage = entry.page;
+  currentModule = moduleId;
+  currentMounted = true;
+  activeRoute = { sub: entry.sub, param: entry.param };
+  // Semua style lain yang ada sekarang (milik modul lain) bukan milik modul ini.
+  const own = new Set(entry.styles);
+  styleBaseline = new Set(parkableHeadEls().filter((el) => !own.has(el)));
+  refreshDraftDots();
+  stopSweepTimerIfIdle();
+  try {
+    const r = entry.page.resume();
+    // resume() boleh async (segarkan data di latar): jangan ditunggu, tapi kegagalannya dicatat.
+    if (r && typeof r.catch === 'function') r.catch((err) => console.error(`resume (async) gagal untuk "${moduleId}":`, err));
+    return true;
+  } catch (err) {
+    console.error(`resume gagal untuk modul "${moduleId}", di-mount ulang:`, err);
+    const page = entry.page;
+    currentPage = null;
+    currentModule = null;
+    currentMounted = false;
+    unmountPage(page, moduleId);
+    container.innerHTML = '';
+    return false;
+  }
+}
+
+// Logout: semua modul terparkir dibuang (draft pun), supaya data akun sebelumnya tidak tertinggal.
+function disposeAllParked() {
+  parkingLot.clear().forEach(({ id, value }) => disposeParked(id, value));
+  lastUrl.clear();
+  stopSweepTimerIfIdle();
+  refreshDraftDots();
 }
 
 // ── PERCEPTED-SPEED: skeleton instan selama chunk/CSS/data modul baru belum siap ──────────
@@ -283,8 +437,15 @@ function currentRoute() {
 // is for real navigations (clicking a module/sub-item).
 function navigate(path, { replace = false } = {}) {
   if (!routingEnabled) return;
-  const target = path.startsWith('/') ? path : '/' + path;
-  if (!replace && target === location.pathname) return; // already there, no-op (avoids a dead history entry)
+  let target = path.startsWith('/') ? path : '/' + path;
+  // KEEP-ALIVE: klik modul di sidebar (path polos satu segmen, mis. "/crud-produk") yang MASIH TERPARKIR
+  // membuka URL terakhir modul itu (sub-menu terakhir, modal terakhir), bukan path polos. Klik sub-item
+  // (path eksplisit "/modul/sub"), modul yang sedang aktif, dan redirect (replace) tidak diubah.
+  if (!replace) {
+    const seg = target.replace(/^\/+|\/+$/g, '');
+    if (seg && !/[/?#]/.test(seg) && seg !== currentModule && parkingLot.has(seg) && lastUrl.has(seg)) target = lastUrl.get(seg);
+  }
+  if (!replace && (target === location.pathname || target === location.pathname + location.search)) return; // already there, no-op (avoids a dead history entry)
   if (replace) history.replaceState({}, '', target);
   else history.pushState({}, '', target);
   render();
@@ -362,6 +523,31 @@ function renderParamError() {
     </div>`;
 }
 
+// Modul yang sama sudah tampil (ter-mount, atau baru saja dipasang lagi dari parkir) dan hanya sub/param
+// yang berubah: biarkan halaman menanganinya di tempat lewat setSubroute(). Pemanggil menjamin
+// currentPage punya setSubroute().
+async function applyRouteInPlace(sub, param, mySeq) {
+  if (param != null) {
+    // Halaman sudah ter-mount tapi URL membawa param (klik baris set, tombol Back/Forward browser):
+    // tetap cek keberadaannya dulu, supaya id yang sudah dihapus / ngawur tidak lolos lewat jalur cepat ini.
+    const page = currentPage;
+    const hasil = await cekParam(page, sub, param);
+    if (mySeq !== renderSeq) return; // sudah ada navigasi yang lebih baru
+    if (hasil === 'tidak-ada') { rejectRoute(); return; }
+    if (hasil === 'gagal') {
+      // Pemeriksaan gagal (bukan "tidak ada"): halaman dibongkar, pesan error biasa, TANPA hitungan 404 / logout.
+      unmountPage(currentPage, currentModule);
+      currentPage = null;
+      currentModule = null;
+      currentMounted = false;
+      renderParamError();
+      return;
+    }
+  }
+  activeRoute = { sub, param };
+  currentPage.setSubroute(sub, param);
+}
+
 async function render() {
   if (!routingEnabled) return; // popstate fired while logged out -- ignore, gate owns the screen
   clearPendingKick(); // any earlier "you're about to be logged out" from a previous bad URL no longer applies
@@ -427,6 +613,10 @@ async function render() {
   // paling pas buat "diinget" LAST_ROUTE_KEY. Route 404/tampered di atas
   // sengaja gak pernah nyampe sini -- gak mau nyimpen route yang salah.
   saveLastRoute(module, sub);
+  // KEEP-ALIVE: URL terakhir modul ini (path + query), dipakai klik modul di sidebar (lihat navigate()).
+  // Sengaja SETELAH validasi/izin di atas: URL ngawur atau terlarang tidak pernah jadi "URL terakhir".
+  lastUrl.set(module, location.pathname + location.search);
+  runSweep(); // buang modul terparkir yang kedaluwarsa (selain timer berkala)
 
   // Nav is mounted ONCE (idempotent — navMount() no-ops on repeat calls with
   // the same container, see nav.js), not per-route like page modules — it's
@@ -448,31 +638,25 @@ async function render() {
   // to the normal mount/unmount below exactly as before. `sub` is
   // guaranteed valid for this module by the `tampered` check above.
   if (currentMounted && currentModule === module && currentPage && typeof currentPage.setSubroute === 'function') {
-    if (param != null) {
-      // Halaman sudah ter-mount tapi URL membawa param (klik baris set, tombol Back/Forward browser):
-      // tetap cek keberadaannya dulu, supaya id yang sudah dihapus / ngawur tidak lolos lewat jalur cepat ini.
-      const page = currentPage;
-      const hasil = await cekParam(page, sub, param);
-      if (mySeq !== renderSeq) return; // sudah ada navigasi yang lebih baru
-      if (hasil === 'tidak-ada') { rejectRoute(); return; }
-      if (hasil === 'gagal') {
-        // Pemeriksaan gagal (bukan "tidak ada"): halaman dibongkar, pesan error biasa, TANPA hitungan 404 / logout.
-        unmountPage(currentPage, currentModule);
-        currentPage = null;
-        currentModule = null;
-        currentMounted = false;
-        renderParamError();
-        return;
-      }
-    }
-    currentPage.setSubroute(sub, param);
+    await applyRouteInPlace(sub, param, mySeq);
     return;
   }
 
-  unmountPage(currentPage, currentModule);
-  currentPage = null;
-  currentModule = null;
-  container.innerHTML = '';
+  // KEEP-ALIVE: pindah modul. Halaman aktif DIPARKIR (kalau ikut kontrak) atau dibongkar seperti dulu;
+  // setelah baris ini `container` kosong. Kalau modul tujuan masih terparkir, DOM + state-nya dipasang
+  // lagi lewat resume() -- TANPA mount(), jadi filter/scroll/seleksi/modal/draft persis seperti ditinggalkan.
+  // Modul tujuan DIAMBIL dulu sebelum halaman aktif diparkir: memarkir yang aktif bisa menyingkirkan
+  // modul tujuan lewat LRU (kalau kebetulan ia yang bersih tertua), tepat sebelum mau dipasang lagi.
+  const parkedTarget = parkingLot.take(module);
+  parkOrUnmountCurrent();
+  if (parkedTarget && resumeParked(module, parkedTarget)) {
+    // Rute yang diminta sama dengan saat diparkir (kasus normal: klik modul -> lastUrl): tidak ada yang
+    // perlu dilakukan. Beda (klik sub-item lain, back/forward): arahkan seperti modul yang sudah ter-mount.
+    if (!sameRouteValue(sub, activeRoute.sub) || !sameRouteValue(param, activeRoute.param)) {
+      if (typeof currentPage.setSubroute === 'function') await applyRouteInPlace(sub, param, mySeq);
+    }
+    return;
+  }
   const skelTimer = scheduleSkeleton(mySeq);
 
   let mod;
@@ -508,7 +692,12 @@ async function render() {
   currentPage = mod;
   currentModule = module;
   currentMounted = false;
-  unparkStyles(module); // CSS halaman ini (kalau pernah dibuka) dipasang lagi dari memori, sebelum mount()
+  activeRoute = { sub, param };
+  // CSS halaman ini (kalau pernah dibuka) dipasang lagi dari memori, sebelum mount(). Style yang sudah ada
+  // SEBELUM mount() dan bukan hasil pemulihan ini milik modul lain: dicatat sebagai baseline supaya saat
+  // modul ini diparkir, hanya style miliknya sendiri yang ikut diparkir (lihat parkOrUnmountCurrent).
+  const restoredStyles = new Set(unparkStyles(module));
+  styleBaseline = new Set(parkableHeadEls().filter((el) => !restoredStyles.has(el)));
   try {
     await mod.mount(container, sub, param);
     if (currentPage === mod) currentMounted = true;
@@ -708,7 +897,11 @@ function stopRouting() {
   unmountPage(currentPage, currentModule, 'unmount gagal (logout):');
   currentPage = null;
   currentModule = null;
+  currentMounted = false;
   container.innerHTML = '';
+  // KEEP-ALIVE: modul terparkir ikut dibuang (termasuk yang punya draft) dan URL terakhir dilupakan, supaya
+  // akun berikutnya di tab yang sama tidak mewarisi state/DOM/URL akun ini.
+  disposeAllParked();
   if (navContainer) navContainer.style.display = 'none';
 }
 

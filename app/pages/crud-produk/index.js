@@ -335,22 +335,8 @@ function verifiedBadgeHtml(isVerified){
 const SK_BADGE = ' <span class="sk sk-badge" aria-hidden="true"></span>';
 
 
-// Penanda "baru diubah" (<24 jam): teks kecil dengan waktu relatif, bukan titik biru.
-// Titik tanpa label gak ngasih tau apa-apa sampai di-hover; teks langsung kebaca.
-function updatedAgoText(iso){
-  const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return 'baru saja';
-  const mnt = Math.floor(ms / 60000);
-  if (mnt < 2) return 'baru saja';
-  if (mnt < 60) return mnt + ' menit lalu';
-  return Math.floor(mnt / 60) + ' jam lalu';
-}
-function recentBadgeHtml(updatedAt){
-  if (!updatedAt) return '';
-  const ms = Date.now() - new Date(updatedAt).getTime();
-  if (!(ms < 24 * 60 * 60 * 1000)) return '';
-  return `<span class="tag-baru" title="Diubah ${escapeHtml(updatedAgoText(updatedAt))}">Baru diubah</span>`;
-}
+// (Label "Baru diubah" di baris/kartu dihapus -- Product Manager, 2026-11: muncul di hampir semua baris = noise.
+// Urutan bawaan (terakhir diubah dulu) dan kolom opsional "Terakhir Diubah" tetap ada; filter "Terakhir diubah" menyusul di patch a2-02.)
 
 // BUGFIX (sesi keamanan, 15 September 2026): escapeHtml() dulu cuma
 // dideklarasikan di dalam mount()'s closure (baris jauh di bawah), padahal
@@ -470,13 +456,13 @@ export async function mount(container, initialSub, initialParam) {
 // CRUD_PRODUK_SUBNAV's ids (subnav.js) since both drive off the same
 // switchView(view) values.
 const CRUD_VIEW_LABELS = {
-  produk: 'Produk',
-  set: 'Set Management',
+  produk: 'Products',
+  set: 'Sets',
   akd: 'AKD',
-  kfa: 'KFA Management',
+  kfa: 'KFA',
   bulk: 'Bulk Edit',
-  sync: 'Sync dari Sheet',
-  orphan: 'Orphan / Drift',
+  sync: 'Sheet Sync',
+  orphan: 'Drift Check',
 };
 function switchView(view){
   ['produk','set','akd','kfa','bulk','sync','orphan'].forEach(v => {
@@ -781,10 +767,8 @@ const colKit = createTableColumns({
   headRow: document.getElementById('produkHeadRow'),
   tableBody,
   helpers: {
-    selBox: (p) => copyKit.selBox(p),
     btn: (key, label) => copyKit.btn(key, label),
     moreCell: (p) => copyKit.moreCell(p),
-    recent: (updatedAt) => recentBadgeHtml(updatedAt),
     verified: (id) => verifiedBadgeFor(id),
     seal: (p) => sealHtml(p.status_akd, p.id),
     akdNoOf: (id) => copyKit.akdOf(id),
@@ -1765,7 +1749,7 @@ function cardInnerHtml(p){
   const seal = produkPhase.extra === 'loading' ? '<span class="sk sk-pill" aria-hidden="true"></span>' : sealHtml(p.status_akd, p.id);
   return `
     ${copyKit.moreBtnCard(p)}
-    <div class="pc-kode">${escapeHtml(p.kode_produk)}${recentBadgeHtml(p.updated_at)}</div>
+    <div class="pc-kode">${escapeHtml(p.kode_produk)}</div>
     <div class="pc-nama">${escapeHtml(p.nama_produk || '—')}${verifiedBadgeFor(p.id)}</div>
     <div class="pc-meta"><span class="tipe-cell">${escapeHtml(p.tipe || '—')}${p.brand ? ' · ' + escapeHtml(p.brand) : ''}</span>${seal}</div>
     <div class="pc-foot">${stokPillHtml(p.id)}${produkFlagsHtml(p)}</div>
@@ -4045,19 +4029,17 @@ async function loadSetList(page){
   // produkHargaIdSet.
   copyKit.invalidate();
   const [hargaExistIds] = await Promise.all([fetchHargaExistForIds(data.map(s => s.set_id)), copyKit.loadExtra(data.map(s => s.set_id))]);
-  const ONE_DAY = 24 * 60 * 60 * 1000;
 
   wrap.innerHTML = '';
   data.forEach(s => {
     const noHarga = !hargaExistIds.has(s.set_id);
     const noItem = !(s.jumlah_jenis_item > 0); // set kosong (belum ada komposisi) — sama pentingnya kayak belum ada harga
-    const recentlyUpdated = s.updated_at && (Date.now() - new Date(s.updated_at).getTime()) < ONE_DAY;
     const row = document.createElement('div');
     row.className = 'set-list-row' + ((noHarga || noItem) ? ' row-attention' : '');
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
     row.innerHTML = `
-      <span class="sl-kode"><span>${escapeHtml(s.kode_produk)}</span>${recentlyUpdated ? recentBadgeHtml(s.updated_at) : ''}</span>
+      <span class="sl-kode"><span>${escapeHtml(s.kode_produk)}</span></span>
       <span class="sl-nama">${escapeHtml(s.nama_produk || '—')}</span>
       <span class="num">${noItem ? '<span class="sl-warn">Kosong</span>' : s.jumlah_jenis_item}</span>
       <span class="num">${noItem ? '<span class="sl-dash">–</span>' : (s.total_qty || 0)}</span>
@@ -4763,7 +4745,7 @@ function applySetModalAdjustments(){
       note.id = 'setRedirectNote';
       note.className = 'akd-hint';
       note.style.marginTop = '4px';
-      note.innerHTML = 'Harga & AKD untuk SET dikelola di halaman <b>Set Management</b>, bukan di sini.';
+      note.innerHTML = 'Harga & AKD untuk SET dikelola di halaman <b>Sets</b>, bukan di sini.';
       toggleAkdBoxBtn.parentElement.appendChild(note);
     }
   } else {
