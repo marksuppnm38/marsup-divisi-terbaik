@@ -2,7 +2,7 @@
 // Jalur langsung ke tabel produk: urutan + filter Sudah / Belum diisi tanpa RPC get_produk_list.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bagiFilter, ambilHalamanLangsung, ambilSemuaLangsung, ambilIdStok, saringKlienLaluUrut } from './daftar-langsung.js';
+import { bagiFilter, ambilHalamanLangsung, ambilSemuaLangsung, ambilIdStok, saringKlienLaluUrut, batasTerakhir, cocokTerakhir } from './daftar-langsung.js';
 import { NILAI_ISI, NILAI_KOSONG } from './urut-header.js';
 
 // Supabase tiruan: mencatat rantai pemanggilan; hasil = dataPages[i] untuk range ke-i.
@@ -118,4 +118,42 @@ test('filter AKD: dikerjakan server (ada = terhubung, kosong = selain terhubung)
   sb = fakeSb([[]], { count: 0 });
   await ambilHalamanLangsung(sb, { columns: 'id', server: [f('akd', 'kosong')], sort: null, page: 1, pageSize: 30 });
   assert.ok(names(sb.log[0]).includes('or:status_akd.is.null,status_akd.neq.terhubung'));
+});
+
+
+// ---- Product Manager (a2-02): dimensi Status & Terakhir diubah ----
+test('Status & Terakhir diubah = filter server (bukan client)', () => {
+  const { server, klien } = bagiFilter([f('status', 'belum_firm'), f('terakhir', '7h'), f('verified', 'ya')]);
+  assert.deepEqual(server.map((x) => x.dim), ['status', 'terakhir']);
+  assert.deepEqual(klien.map((x) => x.dim), ['verified']); // Verified sengaja hanya di jalur client (cache id berbadge)
+});
+
+test('Status dipasang sebagai eq status_akd; Terakhir diubah sebagai gte updated_at', async () => {
+  const sb = fakeSb([[]]);
+  await ambilHalamanLangsung(sb, { columns: 'id', server: [f('status', 'di_luar_cakupan'), f('terakhir', '24j'), f('akd', 'kosong')], sort: null, page: 1, pageSize: 30 });
+  const n = names(sb.log[0]);
+  assert.ok(n.includes('eq:status_akd:di_luar_cakupan'));
+  assert.ok(n.some((x) => x.startsWith('gte:updated_at:')));
+  assert.ok(n.includes('or:status_akd.is.null,status_akd.neq.terhubung')); // kombinasi dengan AKD: keduanya jalan (AND)
+});
+
+test('Terakhir diubah dengan nilai tak dikenal: tidak memasang batas (server) dan tidak meloloskan baris (client)', async () => {
+  const sb = fakeSb([[]]);
+  await ambilHalamanLangsung(sb, { columns: 'id', server: [f('terakhir', 'ngawur')], sort: null, page: 1, pageSize: 30 });
+  assert.ok(!names(sb.log[0]).some((x) => x.startsWith('gte:')));
+  assert.equal(cocokTerakhir({ updated_at: new Date().toISOString() }, 'ngawur'), false);
+});
+
+test('batasTerakhir / cocokTerakhir: 24 jam, 7 hari, 30 hari (waktu diinjeksi)', () => {
+  const now = Date.parse('2026-11-27T12:00:00Z');
+  assert.equal(batasTerakhir('24j', now), '2026-11-26T12:00:00.000Z');
+  assert.equal(batasTerakhir('7h', now), '2026-11-20T12:00:00.000Z');
+  assert.equal(batasTerakhir('30h', now), '2026-10-28T12:00:00.000Z');
+  assert.equal(batasTerakhir('x', now), null);
+  const jam = (h) => new Date(now - h * 3600 * 1000).toISOString();
+  assert.equal(cocokTerakhir({ updated_at: jam(23) }, '24j', now), true);
+  assert.equal(cocokTerakhir({ updated_at: jam(25) }, '24j', now), false);
+  assert.equal(cocokTerakhir({ updated_at: jam(25) }, '7h', now), true);
+  assert.equal(cocokTerakhir({ updated_at: null }, '30h', now), false);
+  assert.equal(cocokTerakhir({}, '30h', now), false);
 });

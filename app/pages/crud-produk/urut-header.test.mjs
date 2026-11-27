@@ -110,3 +110,9 @@ test('butuhJalurLangsung: filter AKD selalu lewat jalur langsung (RPC tidak meng
   assert.equal(butuhJalurLangsung({ dim: 'akd', value: 'ada' }), true);
   assert.equal(butuhJalurLangsung({ dim: 'akd', value: 'kosong' }), true);
 });
+
+
+test('butuhJalurLangsung: Status & Terakhir diubah tidak dikenal RPC get_produk_list', () => {
+  assert.equal(butuhJalurLangsung({ dim: 'status', value: 'belum_firm' }), true);
+  assert.equal(butuhJalurLangsung({ dim: 'terakhir', value: '7h' }), true);
+});

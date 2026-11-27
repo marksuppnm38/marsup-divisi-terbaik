@@ -50,7 +50,7 @@ import { createAtributUi } from './atribut-ui.js';
 import { muatManual, resetManual } from './atribut.js';
 import { createTableColumns, TABLE_COLS } from './kolom-tabel.js';
 import { createHeaderMenu, punyaMenuHeader, KOLOM_MENU, urutkan, urutButuhKlas, deskripsiUrut, cocokIsi, butuhJalurLangsung, opsiIsi, DIM_TEKS_ISI } from './urut-header.js';
-import { bagiFilter, ambilHalamanLangsung, ambilSemuaLangsung, ambilIdStok, saringKlienLaluUrut } from './daftar-langsung.js';
+import { bagiFilter, ambilHalamanLangsung, ambilSemuaLangsung, ambilIdStok, saringKlienLaluUrut, cocokTerakhir } from './daftar-langsung.js';
 import { fetchKeluargaOptions, fetchKeluargaMap, fetchRowsByKeluarga, pesanKeluarga, urutKeluarga } from './keluarga.js';
 import { muatKlasifikasi, resetKlasifikasi, opsiKlasifikasi, cocokKlas, fetchRowsByKlas, attachKlas, simpanKlasDariBaris, KLAS_COLS, pesanKlasifikasi, isKlasDim } from './klasifikasi.js';
 import { installKalkulatorHarga } from './kalkulator-harga.js';
@@ -705,7 +705,8 @@ const tableBody = document.getElementById('tableBody');
 }
 const cardWrap = document.getElementById('cardWrap');
 const tableWrap = document.getElementById('tableWrap');
-const produkCount = document.getElementById('produkCount');
+const produkHasil = document.getElementById('produkHasil');     // "Hasil: N produk" di bar pintasan (mengikuti search + semua token)
+const produkTotalSub = document.getElementById('produkCount');  // subjudul: total seluruh katalog
 const viewTableBtn = document.getElementById('viewTableBtn');
 const viewCardBtn = document.getElementById('viewCardBtn');
 
@@ -857,7 +858,11 @@ const PRODUK_FILTERS = {
   disetujui_tanpa_link: p => p.status_inaproc === 'Disetujui' && !p.link_v6,
   verified: p => !!produkVerifiedIdSet && produkVerifiedIdSet.has(p.id),
 };
-let produkActiveFilter = 'all';
+// Slot chip status LAMA (7 chip dihapus di Product Manager, 2026-11): sekarang SELALU 'all'. Semua kondisi adalah token di produkActiveFilters;
+// slot ini dipertahankan hanya supaya jalur lama (p_status_filter RPC, applyProdukFilterToQuery) tetap utuh tanpa operasi besar.
+const produkActiveFilter = 'all';
+// Token Verified: jalur client memuat cache baris berbadge (ensureVerifiedRows) lalu menyaring token lain di client.
+const verifiedAktif = () => produkActiveFilters.some(f => f.dim === 'verified');
 function applyProdukFilterToQuery(query, filterKey){
   if (filterKey === 'disetujui_tanpa_link') return query.eq('status_inaproc', 'Disetujui').is('link_v6', null);
   if (filterKey && filterKey !== 'all') return query.eq('status_akd', filterKey);
@@ -891,6 +896,8 @@ let produkVerifiedIdSet = null; // Set<produk_id> berbadge Verified (RPC get_ver
 let produkVerifiedRows = null;  // cache baris produk berbadge (dipakai chip "Verified" — ~700 baris, cukup ditarik sekali)
 let produkHargaIdSet = null; // Set<produk_id> yang SUDAH punya baris produk_harga, dimuat lazy pas dimensi "harga" dipakai
 let produkLastTotal = 0; // jumlah hasil filter terakhir -> ringkasan di menu Export
+let produkCatalogTotal = 0; // total seluruh katalog (RPC get_produk_filter_counts.all) -> subjudul + keterangan paging
+function paintProdukTotalSub(){ if (produkTotalSub && produkCatalogTotal) produkTotalSub.textContent = produkCatalogTotal.toLocaleString('id-ID') + ' produk'; }
 // Total daftar biasa (chip status, tanpa search / filter tambahan). Dipakai ulang HANYA saat user cuma pindah halaman
 // (tombol paging), dan dibuang oleh invalidateProdukStackCache() (simpan / hapus / bulk / verified) serta berumur maks. 5 menit.
 let produkTotalCache = null; // { key, total, t }
@@ -926,9 +933,25 @@ const PRODUK_FILTER_DIMS = [
   ]},
   // AKD: pertanyaan yang sama dengan chip "Sudah ada AKD" / "Perlu AKD" -- status_akd = 'terhubung' atau bukan --
   // tapi bisa ditumpuk dengan filter lain (mis. Sudah ada AKD + Link V6 Belum diisi). Dikerjakan server lewat jalur langsung.
-  { key: 'akd', label: 'Ketersediaan AKD', icon: 'ti-file-certificate', options: [
+  { key: 'akd', label: 'AKD', icon: 'ti-file-certificate', options: [
       { value: 'ada', label: 'Sudah ada AKD' },
       { value: 'kosong', label: 'Belum ada AKD' },
+  ]},
+  // Status (2026-11): nilai status_akd selain 'terhubung' (itu sudah "AKD: Sudah ada AKD"). Nilai DB tidak berubah, hanya labelnya.
+  { key: 'status', label: 'Status', icon: 'ti-flag', options: [
+      { value: 'belum_firm', label: 'Belum firm' },
+      { value: 'di_luar_cakupan', label: 'Di luar cakupan' },
+      { value: 'belum_diajukan', label: 'Belum diajukan' },
+  ]},
+  // Verified: centang biru INAPROC (set id dari get_verified_produk_ids). Hanya "Ya": produk tanpa badge = tidak memakai filter ini.
+  { key: 'verified', label: 'Verified', icon: 'ti-rosette-discount-check', options: [
+      { value: 'ya', label: 'Ya' },
+  ]},
+  // Terakhir diubah: updated_at dalam 24 jam / 7 hari / 30 hari terakhir. Pasangan urutan bawaan (terakhir diubah dulu).
+  { key: 'terakhir', label: 'Terakhir diubah', icon: 'ti-clock', options: [
+      { value: '24j', label: '24 jam terakhir' },
+      { value: '7h', label: '7 hari terakhir' },
+      { value: '30h', label: '30 hari terakhir' },
   ]},
   // Stok = atribut produk, sama kayak Harga & Link V6: bisa ditumpuk dengan filter lain
   // (mis. Stok Siap + Link V6 Sudah ada = "siap tayang"; Stok Siap + Harga Belum ada = "ada stok, belum ada harga").
@@ -1311,6 +1334,9 @@ function produkRowMatchesFilter(row, filt){
     case 'link_v6': return filt.value === 'ada' ? !!row.link_v6 : !row.link_v6;
     case 'akd': return filt.value === 'ada' ? row.status_akd === 'terhubung' : row.status_akd !== 'terhubung';
     case 'stok': { const sk = produkStokCache.get(row.id); return !!sk && sk.status === filt.value; }
+    case 'status': return row.status_akd === filt.value;
+    case 'verified': return !!produkVerifiedIdSet && produkVerifiedIdSet.has(row.id);
+    case 'terakhir': return cocokTerakhir(row, filt.value);
     case 'keluarga': return (filt.values || [filt.value]).includes(row.keluarga); // row.keluarga diisi attachKeluarga() / view v_produk_keluarga
     case 'kategori': case 'spes': case 'klas_cek': return cocokKlas(filt, row); // cache klasifikasi dimuat ensureKlas() di loadProduk
     default: return true;
@@ -1336,14 +1362,8 @@ function buildProdukDimParams(){
   return params;
 }
 
-// Kolom dinamis: filter yang sedang aktif (chip status + "+ Tambah Filter") meminta kolom yang relevan.
+// Kolom dinamis: token filter yang sedang aktif meminta kolom yang relevan.
 // Hanya menambah di atas pilihan kolom user -- lihat kolom-tabel.js.
-const FILTER_COLS_CHIP = {
-  belum_diajukan: ['no_akd', 'nama_akd'],
-  terhubung: ['no_akd', 'nama_akd'],
-  disetujui_tanpa_link: ['status_inaproc', 'link'],
-  verified: ['status_inaproc', 'link'],
-};
 const FILTER_COLS_DIM = {
   tipe: ['tipe'],
   golongan: ['golongan'],
@@ -1358,9 +1378,12 @@ const FILTER_COLS_DIM = {
   link_v6: ['link'],
   akd: ['no_akd', 'nama_akd'],
   stok: ['stok'],
+  status: ['akd'],
+  verified: ['status_inaproc', 'link'],
+  terakhir: ['updated'],
 };
 function produkAutoCols(){
-  const keys = [...(FILTER_COLS_CHIP[produkActiveFilter] || [])];
+  const keys = [];
   produkActiveFilters.forEach(f => (FILTER_COLS_DIM[f.dim] || []).forEach(k => keys.push(k)));
   return [...new Set(keys)];
 }
@@ -1408,7 +1431,7 @@ async function loadProduk(q, page, opts){
 
   tableBody.innerHTML = produkSkeletonRows();
   cardWrap.innerHTML = '';
-  produkCount.textContent = 'Memuat...';
+  produkHasil.textContent = 'Memuat...';
 
   const needsHarga = produkActiveFilters.some(f => f.dim === 'harga');
   if (needsHarga) await ensureProdukHargaSet();
@@ -1422,12 +1445,12 @@ async function loadProduk(q, page, opts){
     // Filter klasifikasi butuh cache seluruh katalog SEBELUM jalur manapun memasang filter (search / Verified / Keluarga / client).
     const k = await ensureKlas();
     if (mySeq !== produkLoadSeq) return;
-    if (!k.ok) { produkCount.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">${escapeHtml(k.message)}</td></tr>`; return; }
+    if (!k.ok) { produkHasil.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">${escapeHtml(k.message)}</td></tr>`; return; }
   }
   const needsStok = produkActiveFilters.some(f => f.dim === 'stok');
   // Jalur yang menyaring di client (search / chip Verified / Keluarga / klasifikasi) membaca produkVerifiedIdSet lewat matcher,
   // jadi set-nya harus sudah ada. Jalur server (daftar biasa & RPC get_produk_list) tidak, dan menunggu di Promise.all akhir.
-  if (qq || produkActiveFilter === 'verified' || keluargaAktif() || klasAktif()) {
+  if (qq || verifiedAktif() || keluargaAktif() || klasAktif()) {
     await Promise.all([verifiedP, manualP]); // jalur client membaca koreksi manual (klasOf / fetchRowsByKeluarga / fetchKeluargaMap)
     if (mySeq !== produkLoadSeq) return;
   }
@@ -1481,8 +1504,8 @@ async function loadProduk(q, page, opts){
     produkCurrentFilteredFull = filtered;
     total = filtered.length;
     rows = filtered.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
-  } else if (produkActiveFilter === 'verified') {
-    // Chip "Verified" tanpa search: semua baris berbadge diambil dari cache, filter tambahan
+  } else if (verifiedAktif()) {
+    // Token "Verified" tanpa search: semua baris berbadge diambil dari cache, filter tambahan
     // ("+ Tambah Filter") dipasang di client pakai produkRowMatchesFilter yang sama dgn jalur
     // search — get_produk_list sengaja TIDAK dipakai (gak kenal status "verified").
     const all = await ensureVerifiedRows();
@@ -1526,7 +1549,7 @@ async function loadProduk(q, page, opts){
     // Urut sama dengan list biasa (terakhir diubah dulu).
     const { rows: kRows, error: kErr } = await fetchRowsByKlas(sb, produkActiveFilters, PRODUK_LIST_COLUMNS);
     if (mySeq !== produkLoadSeq) return;
-    if (kErr) { produkCount.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(kErr.message || String(kErr))}</td></tr>`; return; }
+    if (kErr) { produkHasil.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(kErr.message || String(kErr))}</td></tr>`; return; }
     if (needsStok && !(await ensureStokForIds(kRows.map(r => r.id)))) {
       showToast('Gagal memuat status stok — pastikan SQL migrasi stok sudah dijalankan.', true);
     }
@@ -1548,14 +1571,14 @@ async function loadProduk(q, page, opts){
         server, sort: produkSort, page: produkPage, pageSize: PRODUK_PAGE_SIZE,
       });
       if (mySeq !== produkLoadSeq) return;
-      if (res.error) { produkCount.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(res.error.message || String(res.error))}</td></tr>`; return; }
+      if (res.error) { produkHasil.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(res.error.message || String(res.error))}</td></tr>`; return; }
       rows = res.rows;
       total = res.total;
       produkCurrentFilteredFull = null; // export menarik ulang lewat muatSemuaLangsung (lihat getRowsToExport)
     } else {
       const all = await muatSemuaLangsung();
       if (mySeq !== produkLoadSeq) return;
-      if (all.error) { produkCount.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(all.error.message || String(all.error))}</td></tr>`; return; }
+      if (all.error) { produkHasil.textContent = 'Gagal memuat'; tableBody.innerHTML = `<tr class="state-row"><td colspan="${colKit.span()}">Gagal memuat: ${escapeHtml(all.error.message || String(all.error))}</td></tr>`; return; }
       produkCurrentFilteredFull = all.rows;
       total = all.rows.length;
       rows = all.rows.slice((produkPage - 1) * PRODUK_PAGE_SIZE, produkPage * PRODUK_PAGE_SIZE);
@@ -1608,7 +1631,7 @@ async function loadProduk(q, page, opts){
   // kalau user pindah halaman (menu lain) SEBELUM salah satu await itu
   // resolve, container udah dikosongin router.js dan mountedContainer di-null-
   // kan di unmount() sebelum kode di bawah ini sempet lanjut. Tanpa guard ini,
-  // produkCount.textContent/tableBody.innerHTML masih "aman" (nunjuk elemen
+  // produkHasil.textContent/tableBody.innerHTML masih "aman" (nunjuk elemen
   // lama yang cuma detached, gak throw), TAPI
   // document.getElementById('produkPagination') query FRESH dan balik null ->
   // renderPgBar(null, ...) throw. Bail out di sini daripada nunggu ketauan di
@@ -1618,9 +1641,10 @@ async function loadProduk(q, page, opts){
   simpanKlasDariBaris(rows); // baris dari .from('produk') sudah membawa kategori / spesialisasi: kolom tabel tidak perlu request lagi
   produkLastTotal = Number(total) || 0;
   if (exportPanelRepaint) exportPanelRepaint();
-  produkCount.textContent = Number(total).toLocaleString('id-ID') + ' produk' + (qq ? ` untuk "${qq}"` : '') +
-    (produkActiveFilters.length ? `, ${produkActiveFilters.length} filter tambahan aktif` : '');
-  const tabTotal = Number(String((document.getElementById('fc-' + produkActiveFilter) || {}).textContent || '').replace(/\D/g, '')) || 0; // angka tab aktif (tanpa search / filter tambahan)
+  produkHasil.textContent = 'Hasil: ' + Number(total).toLocaleString('id-ID') + ' produk' + (qq ? ` untuk "${qq}"` : '');
+  // Subjudul = total katalog. Kalau hitungan katalog (RPC) belum / gagal datang dan ini daftar polos, pakai total daftar ini.
+  if (!produkCatalogTotal && !qq && !produkActiveFilters.length && Number(total) > 0) { produkCatalogTotal = Number(total); paintProdukTotalSub(); }
+  const tabTotal = produkCatalogTotal; // total katalog (tanpa search / token), untuk keterangan "dari N" di paging
   renderPgBar(document.getElementById('produkPagination'), {
     page: produkPage, pageSize: PRODUK_PAGE_SIZE, total, ofTotal: tabTotal,
     onPageChange: (p) => loadProduk(qq, p, { pageOnly: true })
@@ -1820,12 +1844,37 @@ async function applyProdukColumns(){
   await runProdukExtras(ids, seq, ['needs', 'extra']);
 }
 
-// ---- Klik chip filter status di atas list Produk ----
-document.querySelectorAll('#produkFilterBar .filter-chip').forEach(btn => {
+// ---- Pintasan filter (Semua · Tanpa AKD · Menunggu Link · Verified) ----
+// Pintasan BUKAN filter tersendiri: klik = mengganti seluruh token dengan isi pintasan (preset bersih), token itu lalu
+// bisa diubah / dilepas / ditumpuk lewat "+ Filter". Definisi "Tanpa AKD" = definisi sheet: produk tanpa nomor AKD, tanpa
+// menyaring harga / firm / tipe (lihat catatan verifikasi di ringkasan a2-02).
+const PRODUK_PINTASAN = {
+  semua: [],
+  tanpa_akd: [{ dim: 'akd', value: 'kosong', label: 'AKD: Belum ada AKD' }],
+  menunggu_link: [
+    { dim: 'status_inaproc', value: 'Disetujui', label: 'Status INAPROC: Disetujui' },
+    { dim: 'link_v6', value: 'kosong', label: 'Link V6: Belum diisi' },
+  ],
+  verified: [{ dim: 'verified', value: 'ya', label: 'Verified: Ya' }],
+};
+const kunciToken = (fs) => fs.map(f => f.dim + '=' + (f.values ? f.values.join('|') : f.value)).sort().join(',');
+function pintasanAktif(){
+  const sekarang = kunciToken(produkActiveFilters);
+  return Object.keys(PRODUK_PINTASAN).find(k => kunciToken(PRODUK_PINTASAN[k]) === sekarang) || null;
+}
+function paintProdukPintasan(){
+  const aktif = pintasanAktif();
+  document.querySelectorAll('#produkFilterBar [data-pintasan]').forEach(b => {
+    const on = b.dataset.pintasan === aktif;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+document.querySelectorAll('#produkFilterBar [data-pintasan]').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (btn.dataset.filter === produkActiveFilter) return;
-    produkActiveFilter = btn.dataset.filter;
-    document.querySelectorAll('#produkFilterBar .filter-chip').forEach(b => b.classList.toggle('active', b === btn));
+    if (btn.dataset.pintasan === pintasanAktif()) return;
+    produkActiveFilters = PRODUK_PINTASAN[btn.dataset.pintasan].map(f => ({ ...f }));
+    renderProdukFilterChips();
     loadProduk(lastQuery, 1);
   });
 });
@@ -2027,6 +2076,7 @@ function renderProdukFilterChips(){
   });
   const sc = el.querySelector('.adv-sort-chip button');
   if (sc) sc.addEventListener('click', () => setProdukSort(null));
+  paintProdukPintasan();
 }
 
 // ---- Ambil baris yang mau di-export, respect filter+search yang lagi aktif.
@@ -2035,8 +2085,8 @@ function renderProdukFilterChips(){
 // gak keduplikasi/berisiko divergen di 2 tempat.
 async function getRowsToExport(){
   let rowsToExport;
-  if (lastQuery.trim() || produkActiveFilter === 'verified' || keluargaAktif() || klasAktif()) {
-    // Search aktif, chip Verified, filter Keluarga set, ATAU filter Kategori / Spesialisasi / Klasifikasi -> hasil match
+  if (lastQuery.trim() || verifiedAktif() || keluargaAktif() || klasAktif()) {
+    // Search aktif, token Verified, filter Keluarga set, ATAU filter Kategori / Spesialisasi / Klasifikasi -> hasil match
     // sudah lengkap di client (RPC search gak paging; Verified & Keluarga dimuat penuh dari view; klasifikasi dari cache + baris per id),
     // filter tambahan sudah diterapkan di client -> produkCurrentFilteredFull.
     rowsToExport = produkCurrentFilteredFull || [];
@@ -2068,22 +2118,12 @@ async function getRowsToExport(){
 // ---- Deskripsi filter+search yang lagi aktif, dalam bentuk kalimat/tag pendek.
 // Dipakai buat ngasih bukti visual di file export (judul + nama file) bahwa
 // export-nya BENERAN ngikut filter yang lagi kepilih di layar (chip status +
-// SEMUA dimensi dari "Tambah Filter" -- Tipe/Golongan/dll -- + search box),
+// SEMUA token filter -- AKD/Status/Verified/Tipe/Golongan/dll -- + search box),
 // bukan cuma "katanya" ngikut. label chip status diambil langsung dari teks
 // tombolnya di DOM (bukan map hardcoded terpisah) biar otomatis sinkron kalau
 // nanti ada yang nambah/ubah teks chip di markup.js.
 function describeActiveFilters(){
   const parts = [];
-  if (produkActiveFilter !== 'all') {
-    const chipBtn = document.querySelector(`.filter-chip[data-filter="${produkActiveFilter}"]`);
-    if (chipBtn) {
-      const clone = chipBtn.cloneNode(true);
-      const countEl = clone.querySelector('.fc-count');
-      if (countEl) countEl.remove();
-      const label = clone.textContent.trim();
-      if (label) parts.push(label);
-    }
-  }
   produkActiveFilters.forEach(f => { if (f.label) parts.push(f.label); });
   if (produkSort) parts.push('urut: ' + deskripsiUrut(produkSort, labelKolomProduk(produkSort.key)));
   if (lastQuery.trim()) parts.push(`cari "${lastQuery.trim()}"`);
@@ -2250,16 +2290,14 @@ async function exportTampilanIni(){
 }
 document.getElementById('produkExportBtn').addEventListener('click', exportTampilanIni);
 
-// ---- Angka di tiap chip (total per kategori, independen dari search/pagination) ----
-const FILTER_COUNT_KEYS = ['all','belum_diajukan','belum_firm','di_luar_cakupan','terhubung','disetujui_tanpa_link','verified'];
+// ---- Total katalog (subjudul + keterangan "dari N" di paging), independen dari search / token ----
+// Dulu: angka di tiap chip status. Chip dihapus; yang dipakai tinggal `all` dari RPC get_produk_filter_counts.
 let _fcInflight = null;
 let _fcBackoffUntil = 0;
 let _fcTimer = null;
 function paintProdukFilterCounts(data){
-  FILTER_COUNT_KEYS.forEach(key => {
-    const el = document.getElementById('fc-' + key);
-    if (el) el.textContent = data[key] == null ? '' : Number(data[key]).toLocaleString('id-ID');
-  });
+  const n = Number(data && data.all);
+  if (Number.isFinite(n) && n > 0) { produkCatalogTotal = n; paintProdukTotalSub(); }
 }
 // force=true dipakai setelah simpan/hapus produk (angka memang berubah). Tanpa force:
 // pakai cache <= 2 menit. Panggilan beruntun digabung (debounce 1,5 dtk) dan kalau RPC
@@ -2284,7 +2322,7 @@ async function doRefreshProdukFilterCounts(){
       console.warn('get_produk_filter_counts gagal:', error && error.message);
       const missing = error && (error.code === '42883' || error.code === 'PGRST202');
       if (missing) return refreshProdukFilterCountsLegacy(); // RPC belum dimigrasi
-      _fcBackoffUntil = Date.now() + 60 * 1000;               // timeout/500: JANGAN fallback ke 6 query lain
+      _fcBackoffUntil = Date.now() + 60 * 1000;               // timeout/500: JANGAN fallback ke query lain
       return;
     }
     paintProdukFilterCounts(data);
@@ -2293,25 +2331,8 @@ async function doRefreshProdukFilterCounts(){
   try { await _fcInflight; } finally { _fcInflight = null; }
 }
 async function refreshProdukFilterCountsLegacy(){
-  const defs = [
-    ['all', q => q],
-    ['belum_diajukan', q => q.eq('status_akd', 'belum_diajukan')],
-    ['belum_firm', q => q.eq('status_akd', 'belum_firm')],
-    ['di_luar_cakupan', q => q.eq('status_akd', 'di_luar_cakupan')],
-    ['terhubung', q => q.eq('status_akd', 'terhubung')],
-    ['disetujui_tanpa_link', q => q.eq('status_inaproc', 'Disetujui').is('link_v6', null)],
-  ];
-  const results = await Promise.all(defs.map(([key, apply]) =>
-    apply(sb.from('produk').select('id', { count: 'exact', head: true }))
-      .then(r => [key, r.error ? null : (r.count ?? 0)])
-  ));
-  results.forEach(([key, count]) => {
-    const el = document.getElementById('fc-' + key);
-    if (el) el.textContent = count === null ? '' : Number(count).toLocaleString('id-ID');
-  });
-  await ensureVerifiedSet();
-  const fv = document.getElementById('fc-verified');
-  if (fv) fv.textContent = produkVerifiedIdSet.size.toLocaleString('id-ID');
+  const r = await sb.from('produk').select('id', { count: 'exact', head: true });
+  if (!r.error) paintProdukFilterCounts({ all: r.count ?? 0 });
 }
 
 // debounce search dari topbar? -> topbar sekarang cuma trigger command palette,

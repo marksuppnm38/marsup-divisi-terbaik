@@ -19,7 +19,23 @@ const PAGE = 1000; // batas baris PostgREST per request
 // Dimensi yang bisa dipersempit di server -> kolom di tabel produk.
 export const DIM_SERVER = {
   tipe: 'tipe', golongan: 'golongan', brand: 'brand', is_active: 'is_active', status_inaproc: 'status_inaproc', link_v6: 'link_v6', akd: 'status_akd',
+  // Product Manager (2026-11): Status (= status_akd: belum_firm / di_luar_cakupan / belum_diajukan) dan Terakhir diubah (updated_at >= batas).
+  status: 'status_akd', terakhir: 'updated_at',
 };
+
+// Filter "Terakhir diubah": nilai -> jumlah jam ke belakang. Satu sumber untuk server (batas ISO) dan client (pencocok baris).
+export const JAM_TERAKHIR = { '24j': 24, '7h': 7 * 24, '30h': 30 * 24 };
+/** Batas waktu (ISO) untuk nilai filter "Terakhir diubah"; null kalau nilainya tidak dikenal. `now` bisa diinjeksi untuk tes. */
+export function batasTerakhir(value, now = Date.now()) {
+  const jam = JAM_TERAKHIR[value];
+  return jam ? new Date(now - jam * 3600 * 1000).toISOString() : null;
+}
+/** Apakah baris (updated_at) lolos filter "Terakhir diubah". Nilai tak dikenal = tidak ada yang lolos (bukan semua). */
+export function cocokTerakhir(row, value, now = Date.now()) {
+  const batas = batasTerakhir(value, now);
+  const t = row && row.updated_at ? new Date(row.updated_at).getTime() : NaN;
+  return !!batas && Number.isFinite(t) && t >= new Date(batas).getTime();
+}
 
 const nilaiFilter = (f) => f.values || (f.value != null && f.value !== '' ? [f.value] : []);
 
@@ -43,6 +59,8 @@ export function pasangFilterServer(q, serverFilters) {
     // AKD: "ada" = status_akd 'terhubung'; "kosong" = selain itu (termasuk NULL)
     if (f.dim === 'akd') { out = f.value === 'ada' ? out.eq('status_akd', 'terhubung') : out.or('status_akd.is.null,status_akd.neq.terhubung'); return; }
     if (f.dim === 'link_v6') { out = f.value === 'ada' ? isiServer(out, col) : kosongServer(out, col); return; }
+    if (f.dim === 'terakhir') { const b = batasTerakhir(f.value); if (b) out = out.gte('updated_at', b); return; }
+    if (f.dim === 'status') { if (f.value) out = out.eq('status_akd', f.value); return; }
     // golongan / brand / status_inaproc: pasangan Sudah / Belum diisi atau nilai biasa
     if (f.value === NILAI_ISI) { out = isiServer(out, col); return; }
     if (f.value === NILAI_KOSONG) { out = kosongServer(out, col); return; }

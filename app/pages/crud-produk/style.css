@@ -496,6 +496,7 @@ button.orph-stat:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 #produkFilterBar .filter-chip.active,#kfaFilterBar .filter-chip.active{background:none;border-color:transparent;border-bottom-color:var(--accent);color:var(--text);font-weight:600}
 #produkFilterBar .filter-chip .fc-count,#kfaFilterBar .filter-chip .fc-count{font-family:var(--font-body);font-size:12px;font-variant-numeric:tabular-nums;opacity:1;color:var(--text-muted)}
 #produkFilterBar .filter-chip.active .fc-count,#kfaFilterBar .filter-chip.active .fc-count{color:var(--accent-text)}
+#produkFilterBar .filter-result{margin-left:auto;align-self:center;padding:0 12px;font-size:12.5px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 #produkFilterBar .filter-chip:focus-visible,#kfaFilterBar .filter-chip:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--radius-sm)}
 
 /* ---- Filter tambahan ---- */

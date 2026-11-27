@@ -63,7 +63,7 @@ export const CRUD_PRODUK_MARKUP = `
       <div class="stacked-filters-row">
               <div class="stacked-filter-chips" id="produkFilterChips"></div>
               <div class="add-filter-wrap">
-                <button class="add-filter-btn" id="produkAddFilterBtn"><i class="ti ti-plus"></i> Tambah Filter</button>
+                <button class="add-filter-btn" id="produkAddFilterBtn"><i class="ti ti-plus"></i> Filter</button>
                 <div class="add-filter-pop" id="produkAddFilterPop"></div>
               </div>
             </div>
@@ -108,15 +108,15 @@ export const CRUD_PRODUK_MARKUP = `
           </div>
         </div>
 
-        <div class="filter-bar" id="produkFilterBar">
-                <button class="filter-chip active" data-filter="all">Semua<span class="fc-count" id="fc-all"></span></button>
-                <button class="filter-chip" data-filter="belum_diajukan">Perlu AKD<span class="fc-count" id="fc-belum_diajukan"></span></button>
-                <button class="filter-chip" data-filter="belum_firm">Belum firm<span class="fc-count" id="fc-belum_firm"></span></button>
-                <button class="filter-chip" data-filter="di_luar_cakupan">Di luar cakupan<span class="fc-count" id="fc-di_luar_cakupan"></span></button>
-                <button class="filter-chip" data-filter="terhubung">Sudah ada AKD<span class="fc-count" id="fc-terhubung"></span></button>
-                <button class="filter-chip" data-filter="disetujui_tanpa_link">Disetujui, belum ada link<span class="fc-count" id="fc-disetujui_tanpa_link"></span></button>
-                <button class="filter-chip" data-filter="verified"><i class="ti ti-rosette-discount-check-filled vbadge vbadge-chip"></i>Verified<span class="fc-count" id="fc-verified"></span></button>
-              </div>
+        <!-- Pintasan = isi token filter (bukan filter terpisah): klik mengisi token di atas, token itu tetap bisa diubah / dilepas.
+             Jumlah hasil selalu di sini, mengikuti pencarian + semua token. -->
+        <div class="filter-bar" id="produkFilterBar" role="group" aria-label="Pintasan filter">
+          <button type="button" class="filter-chip active" data-pintasan="semua" aria-pressed="true" title="Semua produk, tanpa filter.">Semua</button>
+          <button type="button" class="filter-chip" data-pintasan="tanpa_akd" aria-pressed="false" title="Produk yang belum punya nomor AKD, apa pun statusnya.">Tanpa AKD</button>
+          <button type="button" class="filter-chip" data-pintasan="menunggu_link" aria-pressed="false" title="Produk berstatus Disetujui di INAPROC yang Link V6-nya belum diisi.">Menunggu Link</button>
+          <button type="button" class="filter-chip" data-pintasan="verified" aria-pressed="false" title="Produk dengan centang biru Verified di INAPROC."><i class="ti ti-rosette-discount-check-filled vbadge vbadge-chip"></i>Verified</button>
+          <span class="filter-result" id="produkHasil" aria-live="polite">Memuat...</span>
+        </div>
 
         <div class="vbody">
           <div class="table-card" id="tableWrap">
