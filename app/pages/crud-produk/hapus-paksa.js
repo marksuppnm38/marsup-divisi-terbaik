@@ -6,7 +6,7 @@
 export const MODE_RIWAYAT = Object.freeze({ LEPAS: 'lepas', HAPUS: 'hapus' });
 
 const LABEL_CASCADE = { harga: 'baris harga', media: 'media', akd: 'relasi AKD', komposisi: 'item komposisi set ini' };
-const LABEL_RIWAYAT = { inaproc_pengajuan: 'riwayat pengajuan INAPROC', permintaan_item: 'riwayat Permintaan RS', konversi_item: 'riwayat konversi' };
+const LABEL_RIWAYAT = { inaproc_pengajuan: 'riwayat pengajuan INAPROC', permintaan_item: 'riwayat Permintaan RS', konversi_item: 'riwayat konversi', permintaan_item_produk: 'tautan produk di Permintaan RS' };
 
 /** Tombol hapus permanen hanya untuk admin yang izin hapusnya tidak dicabut. DB tetap yang memutuskan. */
 export function bolehHapusPaksa(auth) {
@@ -24,6 +24,7 @@ export function ringkasDampak(dampak) {
   const out = [];
   const n = (v) => Number(v) || 0;
   for (const [k, label] of Object.entries(LABEL_CASCADE)) if (n(d.cascade?.[k]) > 0) out.push({ kelompok: 'cascade', label, jumlah: n(d.cascade[k]) });
+  for (const [k, v] of Object.entries(d.cascade_lain || {})) if (n(v) > 0) out.push({ kelompok: 'cascade_lain', label: `baris di ${k} (ikut terhapus otomatis)`, jumlah: n(v) });
   if (n(d.set_lain) > 0) out.push({ kelompok: 'set_lain', label: 'SET lain yang memakai produk ini (item dilepas)', jumlah: n(d.set_lain) });
   const aksi = d.mode_riwayat === MODE_RIWAYAT.HAPUS ? 'dihapus' : 'dilepas, baris tetap ada';
   for (const [k, label] of Object.entries(LABEL_RIWAYAT)) if (n(d.riwayat?.[k]) > 0) out.push({ kelompok: 'riwayat', label: `${label} (${aksi})`, jumlah: n(d.riwayat[k]) });

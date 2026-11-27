@@ -50,3 +50,11 @@ test('kunciPratinjau: beda mode = beda kunci', () => {
   assert.notEqual(kunciPratinjau('a', 'lepas'), kunciPratinjau('a', 'hapus'));
   assert.equal(kunciPratinjau('a', 'x'), kunciPratinjau('a', 'lepas'));
 });
+
+test('ringkasDampak: tabel CASCADE lain & permintaan_item_produk ikut tampil', () => {
+  const r = ringkasDampak({ cascade_lain: { 'produk_kfa.produk_id': 1, 'produk_varian.produk_id': 0 },
+    riwayat: { permintaan_item_produk: 4 }, mode_riwayat: 'lepas' });
+  assert.deepEqual(r.map((x) => x.kelompok), ['cascade_lain', 'riwayat']);
+  assert.match(r[0].label, /produk_kfa\.produk_id/);
+  assert.match(r[1].label, /Permintaan RS.*dilepas/);
+});
