@@ -166,3 +166,39 @@ test('park id yang sama menggantikan entri lama (tidak menggandakan)', () => {
   assert.equal(lot.size, 1);
   assert.equal(lot.take('a'), 'A2');
 });
+
+// ---- posisi scroll ----
+import { collectScrollSpots, applyScrollSpots } from './keepalive.js';
+
+test('scroll: hanya elemen yang benar-benar tergulir yang dicatat', () => {
+  const a = { scrollTop: 120, scrollLeft: 0 };
+  const b = { scrollTop: 0, scrollLeft: 0 };
+  const c = { scrollTop: 0, scrollLeft: 30 };
+  const spots = collectScrollSpots([a, b, c, null]);
+  assert.deepEqual(spots.map((s) => [s.node, s.top, s.left]), [[a, 120, 0], [c, 0, 30]]);
+});
+
+test('scroll: pemulihan mengembalikan posisi ke elemen yang sama', () => {
+  const a = { scrollTop: 120, scrollLeft: 5 };
+  const spots = collectScrollSpots([a]);
+  a.scrollTop = 0; a.scrollLeft = 0; // meniru reset saat dilepas dari dokumen
+  applyScrollSpots(spots);
+  assert.equal(a.scrollTop, 120);
+  assert.equal(a.scrollLeft, 5);
+});
+
+test('scroll: satu elemen yang gagal diatur tidak menghentikan yang lain', () => {
+  const bad = { scrollLeft: 1 };
+  Object.defineProperty(bad, 'scrollTop', { get: () => 10, set: () => { throw new Error('detached'); } });
+  const good = { scrollTop: 50, scrollLeft: 0 };
+  const spots = collectScrollSpots([bad, good]);
+  good.scrollTop = 0;
+  applyScrollSpots(spots);
+  assert.equal(good.scrollTop, 50);
+});
+
+test('scroll: applyScrollSpots tahan undefined / daftar kosong', () => {
+  assert.doesNotThrow(() => applyScrollSpots(undefined));
+  assert.doesNotThrow(() => applyScrollSpots([]));
+  assert.deepEqual(collectScrollSpots([]), []);
+});

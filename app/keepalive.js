@@ -14,6 +14,27 @@
 //    membuang draft karena bug kecil.
 //  - Entri yang BARU diparkir tidak pernah jadi korban LRU pada pemanggilan park() yang sama.
 
+// ---- posisi scroll ------------------------------------------------------------------------
+// Elemen yang dilepas dari dokumen kehilangan posisi scroll-nya (dan elemen yang dipasang lagi mulai dari 0),
+// jadi router mencatatnya SEBELUM DOM modul dilepas dan memulihkannya SESUDAH dipasang lagi. Fungsi di bawah
+// hanya bekerja pada objek yang punya scrollTop/scrollLeft (tanpa menyentuh DOM), supaya bisa dites tanpa DOM.
+
+// Dari `nodes`, simpan hanya yang benar-benar tergulir.
+export function collectScrollSpots(nodes) {
+  const spots = [];
+  for (const node of nodes) {
+    if (node && (node.scrollTop || node.scrollLeft)) spots.push({ node, top: node.scrollTop || 0, left: node.scrollLeft || 0 });
+  }
+  return spots;
+}
+
+// Pulihkan. Satu elemen yang gagal diatur tidak boleh menghentikan yang lain.
+export function applyScrollSpots(spots) {
+  for (const { node, top, left } of spots || []) {
+    try { node.scrollTop = top; node.scrollLeft = left; } catch (err) { /* elemen sudah tidak valid: abaikan */ }
+  }
+}
+
 export const DEFAULT_MAX_PARKED = 3;
 export const DEFAULT_TTL_MS = 30 * 60 * 1000;
 

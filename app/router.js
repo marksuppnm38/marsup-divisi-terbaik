@@ -41,7 +41,7 @@ import { navMount, navSetActive, navSetDraft } from './pages/nav/nav.js';
 // Keep-alive (modul diparkir, bukan dibongkar saat pindah modul): aturan LRU/TTL/draft ada di keepalive.js
 // (murni, tanpa DOM, dites di keepalive.test.mjs). Router hanya memegang bagian DOM-nya. Lihat blok
 // "KEEP-ALIVE" di bawah.
-import { createParkingLot } from './keepalive.js';
+import { createParkingLot, collectScrollSpots, applyScrollSpots } from './keepalive.js';
 import { initAuthGate } from '../shared/auth-gate.js';
 // Jaring pengaman biar textbox biasa (search, form field, dst) gak
 // disodorin saran password/email tersimpan sama password manager
@@ -305,11 +305,18 @@ function parkOrUnmountCurrent() {
   if (page && id && mounted && isParkable(page)) {
     try {
       page.suspend();
+      // Posisi scroll dicatat SEBELUM DOM dilepas: elemen yang dilepas dari dokumen kehilangan scroll-nya,
+      // begitu pula #app dan halaman saat isinya tiba-tiba hilang. Pemulihannya di resumeParked().
+      const scroll = {
+        spots: collectScrollSpots([container, ...container.querySelectorAll('*')]),
+        winX: window.scrollX,
+        winY: window.scrollY,
+      };
       const fragment = document.createDocumentFragment();
       while (container.firstChild) fragment.appendChild(container.firstChild);
       const styles = parkableHeadEls().filter((el) => !styleBaseline.has(el));
       styles.forEach(parkEl);
-      const entry = { page, fragment, styles, sub: activeRoute.sub, param: activeRoute.param };
+      const entry = { page, fragment, styles, scroll, sub: activeRoute.sub, param: activeRoute.param };
       const evicted = parkingLot.park(id, entry, { isDirty: () => pageDirty(page) });
       evicted.forEach(({ id: evId, value }) => disposeParked(evId, value));
       ensureSweepTimer();
@@ -329,6 +336,12 @@ function parkOrUnmountCurrent() {
 function resumeParked(moduleId, entry) {
   entry.styles.forEach(unparkEl);
   container.replaceChildren(entry.fragment);
+  // Pulihkan scroll (#app, elemen dalam, halaman) sebelum resume(), supaya modul yang membaca/menggulung
+  // sesuatu di resume() melihat posisi yang benar.
+  if (entry.scroll) {
+    applyScrollSpots(entry.scroll.spots);
+    window.scrollTo(entry.scroll.winX, entry.scroll.winY);
+  }
   currentPage = entry.page;
   currentModule = moduleId;
   currentMounted = true;

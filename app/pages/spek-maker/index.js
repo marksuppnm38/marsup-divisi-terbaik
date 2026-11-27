@@ -26,6 +26,14 @@
 //     (kode, daftar, gambar); tab lain dipulihkan isian formulirnya (hasil/daftar
 //     di tab itu dibuat ulang dengan "Ambil Data"). Snapshot hanya hidup di
 //     memori halaman dan dibuang kalau user yang login berganti.
+//   - KEEP-ALIVE (router.js, blok "KEEP-ALIVE"): modul ini ikut kontrak suspend()/resume()/isDirty(),
+//     jadi pindah modul TIDAK membongkarnya: DOM-nya diparkir router dan state-nya (semua tab, preview,
+//     isian) utuh saat kembali. Snapshot di atas tetap dipakai sebagai jaring pengaman kalau modul yang
+//     terparkir akhirnya dibuang (LRU / TTL 30 menit / logout) lalu di-mount ulang.
+//     Listener global yang harus dilepas saat suspend: TIDAK ADA di document/window, TAPI semua
+//     listener modul ini dipasang di `container` (#app), elemen router yang menetap lintas modul,
+//     bukan di elemen dalam. Kalau tidak dilepas, klik/tombol di modul lain ikut menjalankan
+//     handler modul ini (banyak modul memakai data-action yang sama) -- lihat bindings/detachListeners.
 
 import { SPEK_MAKER_MARKUP } from './markup.js';
 import { buildSpekPdf, loadSpekFonts, fileSafeName } from './pdf.js';
@@ -165,7 +173,9 @@ let previewBusy = false;
 let livePreviewTimer = null;
 let pendingReplaceId = null;
 let logosPromise = null;
-let handlers = [];
+let bindings = [];          // { target, type, fn } -- listener yang dipasang lewat listen(), bisa dilepas/dipasang ulang
+let suspended = false;      // true selama diparkir router (suspend() sampai resume()/unmount())
+let dirtyAtSuspend = false; // hasil computeDirty() saat suspend: DOM terlepas, jadi tidak bisa dihitung ulang
 let activeTab = 'spek';
 let resetTimer = null;
 let currentUid = null;
@@ -613,7 +623,16 @@ function removeItem(id) {
 
 function listen(target, type, fn) {
   target.addEventListener(type, fn);
-  handlers.push(() => target.removeEventListener(type, fn));
+  bindings.push({ target, type, fn });
+}
+
+// Dipakai suspend()/resume(): melepas/memasang ulang SEMUA listener dari listen(). Aman dipanggil berulang
+// (removeEventListener pada listener yang sudah lepas diabaikan; addEventListener dengan fn yang sama tidak menggandakan).
+function detachListeners() {
+  bindings.forEach((b) => b.target.removeEventListener(b.type, b.fn));
+}
+function attachListeners() {
+  bindings.forEach((b) => b.target.addEventListener(b.type, b.fn));
 }
 
 // ---- tab -----------------------------------------------------------------
@@ -932,17 +951,73 @@ export async function mount(container) {
   }
 }
 
+// ---- keep-alive (kontrak router.js: suspend / resume / isDirty) -------------------------------
+// Ada isian teks yang belum jadi apa-apa? Dipakai isDirty(). Sengaja sempit: HANYA daftar hasil "Ambil Data"
+// tab Spesifikasi (items) dan textarea yang berisi (kode, alamat, catatan) di tab mana pun. Input teks biasa
+// tidak dihitung karena ada yang terisi default (mis. estimasi di Struktur Harga) dan akan membuat modul
+// selalu dianggap punya draft. Konsekuensi yang diterima: hasil/koreksi di tab Struktur Harga, Lampiran,
+// Mock AKD, dan Bulk tanpa teks di textarea tidak dihitung draft; kalau modul terparkir akhirnya dibuang,
+// yang kembali hanya yang dipulihkan snapshot isian (sama seperti sebelum keep-alive).
+function computeDirty() {
+  if (items.length) return true;
+  if (!root) return false;
+  return [...root.querySelectorAll('textarea')].some((n) => String(n.value).trim() !== '');
+}
+
+// Dipanggil router saat pindah ke modul lain. DOM-nya BELUM dilepas pada saat ini; router yang
+// memindahkannya ke fragment sesudah suspend() selesai. Sinkron.
+export function suspend() {
+  if (!alive || suspended) return;
+  dirtyAtSuspend = computeDirty(); // hitung sekarang, selagi DOM masih terpasang
+  takeSnapshot();                  // jaring pengaman kalau modul terparkir ini kelak dibuang dan di-mount ulang
+  clearTimeout(livePreviewTimer);
+  disarmReset();                   // jendela konfirmasi Reset 2-klik tidak boleh "menggantung" sampai kembali
+  detachListeners();               // listener ada di #app (milik router, menetap): wajib lepas, lihat header file
+  // Proses async yang sedang jalan ("Ambil Data", muat gambar, preview) dibatalkan lewat penjaga yang sudah
+  // ada: alive=false + runId++ membuat hasilnya diabaikan. Yang terputus dilanjutkan di resume().
+  alive = false;
+  runId++;
+  suspended = true;
+}
+
+// Dipanggil router setelah DOM-nya dipasang kembali ke container. Boleh tanpa menunggu apa pun.
+export function resume() {
+  if (!suspended) return;
+  suspended = false;
+  alive = true;
+  saved = null;                    // snapshot suspend() tidak dipakai: state utuh di tempat
+  attachListeners();
+  // "Ambil Data" yang terpotong tidak akan membuka tombolnya sendiri (hasilnya diabaikan lewat runId).
+  setResolving(false);
+  // Perubahan data selagi terpisah dari dokumen (mis. gambar manual yang selesai dibaca) belum tergambar.
+  renderList();
+  updateCodeStatus();
+  // Gambar yang masih dimuat saat modul diparkir dilanjutkan, sama seperti pemulihan snapshot di mount().
+  const pending = items.filter((i) => i.found && i.imgState === 'loading');
+  if (pending.length) loadImagesFor(pending, ++runId);
+}
+
+// Ada draft yang belum diunduh/disimpan? Saat diparkir DOM terlepas, jadi pakai hasil yang dihitung di suspend().
+export function isDirty() {
+  if (suspended) return dirtyAtSuspend;
+  return alive && computeDirty();
+}
+
 export function unmount() {
-  takeSnapshot();
+  // Dibongkar saat masih terparkir (LRU / TTL / logout): snapshot sudah diambil di suspend(). JANGAN ambil lagi:
+  // `root` adalah container bersama router, yang sekarang kosong atau berisi DOM modul lain.
+  if (!suspended) takeSnapshot();
   TAB_ORDER.forEach(unmountSub);
   if (decor.spek) { decor.spek(); decor.spek = null; }
   alive = false;
+  suspended = false;
+  dirtyAtSuspend = false;
   runId++;
   clearTimeout(livePreviewTimer);
   clearTimeout(resetTimer);
   resetTimer = null;
-  handlers.forEach((off) => off());
-  handlers = [];
+  detachListeners();
+  bindings = [];
   if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
   document.getElementById(STYLE_ID)?.remove();
   items = [];
